@@ -162,6 +162,20 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         return retval
 
+    def create_simplex_backup(self, context, software_upgrade):
+        """Asynchronously, have the agent create the simplex backup data
+
+        :param context: request context.
+        :param software_upgrade: software_upgrade object
+        :returns: none
+        """
+        retval = self.fanout_cast(context,
+                                  self.make_msg(
+                                      'create_simplex_backup',
+                                      software_upgrade=software_upgrade))
+
+        return retval
+
     def apply_tpm_config(self, context, tpm_context):
         """Asynchronously, have the agent apply the tpm config
 

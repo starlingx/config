@@ -1466,6 +1466,42 @@ class AgentManager(service.PeriodicService):
 
         return
 
+    def create_simplex_backup(self, context, software_upgrade):
+        """Creates the upgrade metadata and creates the system backup
+
+        :param context: request context.
+        :param software_upgrade: software_upgrade object
+        :returns: none
+        """
+        try:
+            from controllerconfig import backup_restore
+            from controllerconfig.upgrades import \
+                management as upgrades_management
+        except ImportError:
+            LOG.error("Attempt to import during create_simplex_backup failed")
+            return
+
+        if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+            LOG.error("create_simplex_backup called for non-simplex system")
+            return
+
+        LOG.info("Starting simplex upgrade data collection")
+        success = True
+        try:
+            upgrades_management.create_simplex_backup(software_upgrade)
+        except Exception as ex:
+            LOG.info("Exception during simplex upgrade data collection")
+            LOG.exception(ex)
+            success = False
+        else:
+            LOG.info("Simplex upgrade data collection complete")
+
+        rpcapi = conductor_rpcapi.ConductorAPI(
+            topic=conductor_rpcapi.MANAGER_TOPIC)
+        rpcapi.complete_simplex_backup(context, success=success)
+
+        return
+
     def _audit_tpm_device(self, context, host_id):
         """ Audit the tpmdevice status on this host and update. """
         rpcapi = conductor_rpcapi.ConductorAPI(

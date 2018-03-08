@@ -8310,12 +8310,12 @@ class ConductorManager(service.PeriodicService):
                                    '-r', to_version])
 
             if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                LOG.info("Creating upgrade backup")
-                backup_data = {}
-                controller_fs = self.dbapi.controller_fs_get_one()
+                LOG.info("Generating agent request to create simplex upgrade "
+                         "data")
                 software_upgrade = self.dbapi.software_upgrade_get_one()
-                upgrades_management.create_simplex_backup(controller_fs,
-                                                          software_upgrade)
+                rpcapi = agent_rpcapi.AgentAPI()
+                rpcapi.create_simplex_backup(context, software_upgrade)
+                return
             else:
                 i_system = self.dbapi.isystem_get_one()
                 upgrades_management.prepare_upgrade(
@@ -8352,12 +8352,6 @@ class ConductorManager(service.PeriodicService):
 
         self.dbapi.software_upgrade_update(
             upgrade.uuid, {'state': constants.UPGRADE_STARTED})
-
-        if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            controller_fs = self.dbapi.controller_fs_get()
-            software_upgrade = self.dbapi.software_upgrade_get_one()
-            upgrades_management.create_simplex_backup(controller_fs,
-                                                      software_upgrade)
 
     def activate_upgrade(self, context, upgrade):
         """Activate the upgrade. Generate and apply new manifests.
@@ -8534,6 +8528,53 @@ class ConductorManager(service.PeriodicService):
                     open(abort_flag, "w").close()
 
         return rpc_upgrade
+
+    def complete_simplex_backup(self, context, success):
+        """Complete the simplex upgrade start process
+
+        :param context: request context.
+        :param success: If the create_simplex_backup call completed
+        """
+        try:
+            upgrade = self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            LOG.error("Software upgrade record not found")
+            return
+
+        from_version = upgrade.from_release
+        to_version = upgrade.to_release
+
+        if not success:
+            # The upgrade start data collection failed, stop the upgrade
+            upgrades_management.abort_upgrade(from_version, to_version,
+                                              upgrade)
+            # Delete upgrade record
+            self.dbapi.software_upgrade_destroy(upgrade.uuid)
+            LOG.info("Simplex upgrade start failed")
+        else:
+            LOG.info("Simplex upgrade start completed")
+            # Raise alarm to show an upgrade is in progress
+            entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                            constants.CONTROLLER_HOSTNAME)
+            fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_UPGRADE_IN_PROGRESS,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+                reason_text="System Upgrade in progress.",
+                # operational
+                alarm_type=fm_constants.FM_ALARM_TYPE_7,
+                # congestion
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
+                proposed_repair_action="No action required.",
+                service_affecting=False)
+            fm_api.FaultAPIs().set_fault(fault)
+
+            self.dbapi.software_upgrade_update(
+                upgrade.uuid, {'state': constants.UPGRADE_STARTED})
+
+        return
 
     def get_system_health(self, context, force=False, upgrade=False):
         """

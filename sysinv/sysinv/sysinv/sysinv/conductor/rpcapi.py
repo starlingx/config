@@ -1205,6 +1205,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('abort_upgrade',
                                                 upgrade=upgrade))
 
+    def complete_simplex_backup(self, context, success):
+        """Asynchronously, complete the simplex upgrade start process
+
+        :param context: request context.
+        :param success: If the create_simplex_backup call completed
+                """
+        return self.cast(context, self.make_msg('complete_simplex_backup',
+                                                success=success))
+
     def get_system_health(self, context, force=False, upgrade=False):
         """
         Performs a system health check.

@@ -7,7 +7,6 @@
 #
 # This file contains functions used by sysinv to manage upgrades.
 #
-
 import json
 import glob
 import os
@@ -196,12 +195,9 @@ def prepare_upgrade(from_load, to_load, i_system):
     LOG.info("Finished upgrade preparations")
 
 
-def create_simplex_backup(controller_fs, software_upgrade):
+def create_simplex_backup(software_upgrade):
     """Creates the upgrade metadata and creates the system backup"""
     backup_data = {}
-    fs_data = {}
-    fs_data['database_gib'] = controller_fs.database_gib * 2
-    backup_data['filesystem'] = fs_data
     upgrade_data = software_upgrade.as_dict()
     if upgrade_data['created_at']:
         upgrade_data['created_at'] = \
