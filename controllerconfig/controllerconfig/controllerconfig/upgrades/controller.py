@@ -1489,7 +1489,9 @@ def get_simplex_metadata(archive, staging_dir):
 
 def check_load_version(to_release):
     """Ensure that the running release matches the archive metadata"""
-    return to_release == SW_VERSION
+    if to_release != SW_VERSION:
+        raise Exception("Incorrect software load installed. Found: %s "
+                        "expecting: %s" % (SW_VERSION, to_release))
 
 
 def upgrade_controller_simplex(backup_file):
