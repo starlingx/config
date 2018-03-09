@@ -814,7 +814,15 @@ def migrate_databases(from_release, shared_services, hiera_db_records,
         # To avoid a deadlock during keystone contract we will use offline
         # migration for simplex upgrades. Other upgrades will have to use
         # another method to resolve the deadlock
-        system_mode = packstack_config.get('general', 'CONFIG_SYSTEM_MODE')
+        try:
+            system_mode = packstack_config.get('general', 'CONFIG_SYSTEM_MODE')
+        except ConfigParser.NoOptionError:
+            # We may not have the system mode if the system was upgraded from
+            # R2 or R3. Those systems can only be duplex so we will use that
+            # value
+            LOG.info("Missing value CONFIG_SYSTEM_MODE. Using duplex.")
+            system_mode = sysinv_constants.SYSTEM_MODE_DUPLEX
+
         if system_mode != sysinv_constants.SYSTEM_MODE_SIMPLEX:
             migrate_commands += [
                 # Migrate keystone
