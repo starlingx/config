@@ -27,7 +27,7 @@ from configutilities import is_valid_vlan, is_mtu_valid, is_speed_valid, \
 from configutilities import DEFAULT_DOMAIN_NAME
 from netaddr import (IPNetwork,
                      IPAddress,
-                     iter_iprange,
+                     IPRange,
                      AddrFormatError)
 from sysinv.common import constants as sysinv_constants
 from tsconfig.tsconfig import SW_VERSION
@@ -1193,10 +1193,9 @@ class ConfigAssistant():
                     print
                     continue
 
-                address_list = list(iter_iprange(
-                    str(self.management_start_address),
-                    str(self.management_end_address)))
-                if not len(address_list) >= min_addresses:
+                address_range = IPRange(str(self.management_start_address),
+                                        str(self.management_end_address))
+                if not address_range.size >= min_addresses:
                     print (
                         "Address range must contain at least %d addresses. " %
                         min_addresses)
@@ -1742,10 +1741,9 @@ class ConfigAssistant():
                     print
                     continue
 
-                address_list = list(iter_iprange(
-                    str(self.infrastructure_start_address),
-                    str(self.infrastructure_end_address)))
-                if not len(address_list) >= min_addresses:
+                address_range = IPRange(str(self.infrastructure_start_address),
+                                        str(self.infrastructure_end_address))
+                if not address_range.size >= min_addresses:
                     print (
                         "Address range must contain at least %d addresses. " %
                         min_addresses)

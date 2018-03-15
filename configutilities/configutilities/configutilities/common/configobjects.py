@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
-from netaddr import iter_iprange
+from netaddr import IPRange
 from exceptions import ConfigFail, ValidateFail
 from utils import is_mtu_valid, is_speed_valid, is_valid_vlan, \
     validate_network_str, validate_address_str
@@ -307,9 +307,8 @@ class Network(object):
                         "Start address %s not less than end address %s for %s."
                         % (str(self.start_address), str(self.end_address),
                            network_name))
-                address_list = list(iter_iprange(start_address_str,
-                                                 end_address_str))
-                if not len(address_list) >= min_addresses:
+                if not IPRange(start_address_str, end_address_str).size >= \
+                        min_addresses:
                     raise ConfigFail("Address range for %s must contain at "
                                      "least %d addresses." %
                                      (network_name, min_addresses))
