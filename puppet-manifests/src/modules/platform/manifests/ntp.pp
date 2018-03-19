@@ -26,7 +26,7 @@ class platform::ntp (
   exec { 'start-ntpdate':
     command => '/usr/bin/systemctl start ntpdate.service',
     returns => [ 0, 1 ],
-    onlyif  => "grep -q '^server' /etc/ntp.conf",
+    onlyif  => "test ! -f /etc/platform/simplex || grep -q '^server' /etc/ntp.conf",
   }
 
   exec { 'ntpdate-systemd-daemon-reload':
