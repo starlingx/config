@@ -106,6 +106,49 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_tenant_name(),
         }
 
+    def _is_ceph_mon_required(self, host, operator):
+        # Two conditions that we need to check for:
+        # 1) If cinder is a shared service and it has a ceph backend
+        # 2) If remote instance backing is configured on the host
+        if (constants.SERVICE_TYPE_VOLUME in self._get_shared_services() and
+                operator.region_has_ceph_backend()):
+            lvgs = self.dbapi.ilvg_get_by_ihost(host.uuid)
+            for lvg in lvgs:
+                if lvg.capabilities.get(constants.LVG_NOVA_PARAM_BACKING) \
+                        == constants.LVG_NOVA_BACKING_REMOTE:
+                    return True
+        return False
+
+    def _get_remote_ceph_mon_info(self, operator):
+        # retrieve the ceph monitor information from the primary
+        ceph_mon_info = operator.get_ceph_mon_info()
+        if ceph_mon_info is None:
+            return None
+
+        cluster_id = ceph_mon_info['cluster_id']
+
+        mon_0_addr = self._format_ceph_mon_address(
+            ceph_mon_info['ceph-mon-0-ip'])
+        mon_1_addr = self._format_ceph_mon_address(
+            ceph_mon_info['ceph-mon-1-ip'])
+        mon_2_addr = self._format_ceph_mon_address(
+            ceph_mon_info['ceph-mon-2-ip'])
+
+        config = {
+            'platform::ceph::params::configure_ceph_mon_info': True,
+            'platform::ceph::params::cluster_uuid': cluster_id,
+            'platform::ceph::params::mon_0_host':
+                constants.CONTROLLER_0_HOSTNAME,
+            'platform::ceph::params::mon_1_host':
+                constants.CONTROLLER_1_HOSTNAME,
+            'platform::ceph::params::mon_2_host':
+                constants.STORAGE_0_HOSTNAME,
+            'platform::ceph::params::mon_0_addr': mon_0_addr,
+            'platform::ceph::params::mon_1_addr': mon_1_addr,
+            'platform::ceph::params::mon_2_addr': mon_2_addr,
+        }
+        return config
+
     def get_host_config(self, host):
         config = {}
         if host.personality in [constants.CONTROLLER, constants.STORAGE]:
@@ -113,6 +156,17 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
         if host.personality == constants.STORAGE:
             config.update(self._get_ceph_osd_config(host))
+
+        # if it is a compute node and on an secondary region,
+        # check if ceph mon configuration is required
+        if constants.COMPUTE in host.subfunctions and self._region_config():
+            from sysinv.conductor import openstack
+            op = openstack.OpenStackOperator(self.dbapi)
+            if self._is_ceph_mon_required(host, op):
+                ceph_mon_info = self._get_remote_ceph_mon_info(op)
+                if ceph_mon_info is not None:
+                    config.update(ceph_mon_info)
+
         return config
 
     def get_public_url(self):

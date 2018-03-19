@@ -30,13 +30,14 @@ class platform::ceph::params(
   $rgw_gc_obj_min_wait = '600',
   $rgw_gc_processor_max_time = '300',
   $rgw_gc_processor_period = '300',
+  $configure_ceph_mon_info = false,
 ) { }
 
 
 class platform::ceph
   inherits ::platform::ceph::params {
 
-  if $service_enabled {
+  if $service_enabled or $configure_ceph_mon_info {
     class { '::ceph':
       fsid => $cluster_uuid,
       authentication_type => $authentication_type,

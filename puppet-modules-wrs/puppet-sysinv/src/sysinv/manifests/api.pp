@@ -112,6 +112,7 @@ class sysinv::api (
 
   include sysinv::params
 
+
   Sysinv_config<||> ~> Service['sysinv-api']
   Sysinv_config<||> ~> Exec['sysinv-dbsync']
   Sysinv_api_paste_ini<||> ~> Service['sysinv-api']
@@ -234,7 +235,10 @@ class sysinv::api (
     require     => Package['sysinv'],
     # Only do the db sync if both controllers are running the same software
     # version. Avoids impacting mate controller during an upgrade.
-    onlyif      => "test $::controller_sw_versions_match = true",
+    onlyif      => [
+                    "test $::controller_sw_versions_match = true",
+                    "systemctl status postgresql"
+                   ]
   }
 
 }
