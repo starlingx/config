@@ -21,6 +21,7 @@ class TPMDevice(base.SysinvObject):
         'id': int,
         'uuid': utils.str_or_none,
         'state': utils.str_or_none,
+        'tpm_data': utils.dict_or_none,
 
         'host_id': int,
         'host_uuid': utils.str_or_none,

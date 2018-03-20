@@ -29,9 +29,10 @@ import contextlib
 import datetime
 import errno
 import functools
-
 import fcntl
+import glob
 import hashlib
+import itertools as it
 import json
 import math
 import os
@@ -1658,3 +1659,33 @@ def get_cgts_vg_free_space():
         raise Exception("Command vgdisplay failed")
 
     return cgts_vg_free
+
+
+def read_filtered_directory_content(dirpath, *filters):
+    """ Reads the content of a directory, filtered on
+    glob like expressions.
+
+    Returns a dictionary, with the "key" being the filename
+    and the "value" being the content of that file
+    """
+    def filter_directory_files(dirpath, *filters):
+        return it.chain.from_iterable(glob.iglob(dirpath + '/' + filter)
+                                      for filter in filters)
+
+    content_dict = {}
+    for filename in filter_directory_files(dirpath, *filters):
+        content = ""
+        with open(os.path.join(filename), 'rb') as obj:
+            content = obj.read()
+        try:
+            # If the filter specified binary files then
+            # these will need to be base64 encoded so that
+            # they can be transferred over RPC and stored in DB
+            content.decode('utf-8')
+        except UnicodeError:
+            content = content.encode('base64')
+            content_dict['base64_encoded_files'] = \
+                content_dict.get("base64_encoded_files", []) + [filename]
+
+        content_dict[filename] = content
+    return content_dict

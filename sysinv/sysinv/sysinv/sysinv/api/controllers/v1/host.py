@@ -4906,31 +4906,31 @@ class HostController(rest.RestController):
         """Pre swact/unlock semantic checks for TPM configuration"""
         tpmconfig = utils.get_tpm_config()
         if tpmconfig:
-            # retrieve the tpmdevice configuration for this host
+            # retrieve the tpmdevice configuration for this host.
+            # If this host got Reinstalled or Restored, and it had
+            # TPM configured on it prior, then we should still find
+            # a valid tpmdevice entry for this host. Otherwise this
+            # is a new host or a previous host that was deleted and re-added
             tpmdevice = \
                 pecan.request.dbapi.tpmdevice_get_by_host(ihost['uuid'])
-            if not tpmdevice:
+            if not tpmdevice or len(tpmdevice) > 1:
                 raise wsme.exc.ClientSideError(
-                        _("Global TPM configuration found; "
-                          "but no TPM Device configuration on host %s." %
-                          ihost['hostname']))
-            # only one entry per host
-            if len(tpmdevice) > 1:
-                raise wsme.exc.ClientSideError(
-                        _("Global TPM configuration found; "
-                          "but no TPM Device configuration on host %s." %
+                        _("Global TPM configuration found; but "
+                          "no valid TPM Device configuration on host %s." %
                           ihost['hostname']))
             tpmdevice = tpmdevice[0]
-            if tpmdevice.state:
-                if tpmdevice.state == constants.TPMCONFIG_APPLYING:
-                    raise wsme.exc.ClientSideError(
-                        _("TPM configuration in progress on host %s; "
-                          "Please wait for operation to complete "
-                          "before re-attempting." % ihost['hostname']))
-                elif tpmdevice.state != constants.TPMCONFIG_APPLIED:
+            if tpmdevice.state == constants.TPMCONFIG_APPLYING:
+                raise wsme.exc.ClientSideError(
+                    _("TPM configuration in progress on host %s; "
+                      "Please wait for operation to complete "
+                      "before re-attempting." % ihost['hostname']))
+            elif tpmdevice.state != constants.TPMCONFIG_APPLIED:
+                # if the TPM certificate for this host is not
+                # preserved as tpm_data, then disallow unlock/swact
+                if not tpmdevice.tpm_data:
                     raise wsme.exc.ClientSideError(
                         _("TPM configuration not fully applied on host %s; "
-                          "Please run system certificate-install -m tpm_mode"
+                          "Please run system certificate-install -m tpm_mode "
                           "before re-attempting." % ihost['hostname']))
 
     @staticmethod

@@ -208,6 +208,24 @@ class platform::config::timezone
 }
 
 
+class platform::config::tpm {
+  $tpm_certs = hiera_hash('platform::tpm::tpm_data', undef)
+  if $tpm_certs != undef {
+    # iterate through each tpm_cert creating it if it doesn't exist
+    $tpm_certs.each |String $key, String $value| {
+      file { "create-TPM-cert-${key}":
+        path => $key,
+        ensure => present,
+        owner => root,
+        group => root,
+        mode => '0644',
+        content => $value,
+      }
+    }
+  }
+}
+
+
 class platform::config::pre {
   group { 'nobody':
     ensure => 'present',
@@ -218,6 +236,7 @@ class platform::config::pre {
   include ::platform::config::hostname
   include ::platform::config::hosts
   include ::platform::config::file
+  include ::platform::config::tpm
 }
 
 

@@ -1522,7 +1522,7 @@ class AgentManager(service.PeriodicService):
                                              response_dict)
 
     def apply_tpm_config(self, context, tpm_context):
-        """Configure TPM device on this node
+        """Configure or Update TPM device on this node
 
         :param context: request context
         :param tpm_context: the tpm object context
@@ -1536,44 +1536,44 @@ class AgentManager(service.PeriodicService):
             # agent applies the tpmconfig
             self._tpmconfig_host_first_apply = True
 
-            # create a tpmdevice configuration for this host
             self._tpmconfig_rpc_failure = False
             response_dict = {}
+            attribute_dict = {}
             rpcapi = conductor_rpcapi.ConductorAPI(
                             topic=conductor_rpcapi.MANAGER_TOPIC)
 
-            tpmdevice = None
-            update_dict = {}
-            if tpm_context.get('modify', False):
-                # we are editing an existing configuration
-                # reset the state to APPLYING and pass in
-                # update parameters. Since this request
-                # came from the Sysinv-api layer, assume
-                # update parameters have already been validated
-                update_dict['state'] = constants.TPMCONFIG_APPLYING
-                tpmdevice = rpcapi.tpm_device_update_by_host(context,
-                                                             self._ihost_uuid,
-                                                             update_dict)
-            else:
-                # pass in a dictionary of attributes if need be
-                tpmdevice = rpcapi.tpm_device_create_by_host(context,
-                                                             self._ihost_uuid,
-                                                             {})
-            if not tpmdevice:
+            # invoke tpmdevice-setup on this node.
+            #
+            # We also need to fetch and persist the content
+            # of the TPM certificates in DB.
+            try:
+                utils.execute('tpmdevice-setup',
+                              tpm_context['cert_path'],
+                              tpm_context['tpm_path'],
+                              tpm_context['public_path'],
+                              run_as_root=True)
+
+                attribute_dict['tpm_data'] = \
+                        utils.read_filtered_directory_content(
+                                os.path.dirname(tpm_context['tpm_path']),
+                                "*.bin", "*.tpm")
+            except exception.ProcessExecutionError as e:
+                LOG.exception(e)
                 response_dict['is_configured'] = False
             else:
-                # invoke tpmdevice-setup on this node
-                try:
-                    utils.execute('tpmdevice-setup',
-                                  tpm_context['cert_path'],
-                                  tpm_context['tpm_path'],
-                                  tpm_context['public_path'],
-                                  run_as_root=True)
-                except exception.ProcessExecutionError as e:
-                    LOG.exception(e)
+                response_dict['is_configured'] = True
+                attribute_dict['state'] = constants.TPMCONFIG_APPLYING
+
+            # Only create a TPM device entry if the TPM certificates
+            # were successfully created
+            if response_dict['is_configured']:
+                # Create a new TPM device for this host, or update it
+                # with new TPM certs if such a device already exists.
+                tpmdevice = rpcapi.tpm_device_update_by_host(context,
+                                                             self._ihost_uuid,
+                                                             attribute_dict)
+                if not tpmdevice:
                     response_dict['is_configured'] = False
-                else:
-                    response_dict['is_configured'] = True
 
             # we will not tie this to agent audit, send back
             # response to conductor now.

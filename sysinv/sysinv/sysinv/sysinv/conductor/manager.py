@@ -9026,10 +9026,10 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "Invalid host_uuid: %s") % host_uuid)
 
-    def tpm_device_create_by_host(self, context,
+    def tpm_device_update_by_host(self, context,
                                   host_uuid, tpmdevice_dict):
-        """Synchronously, have the conductor create a tpmdevice per host.
-           returns the created device
+        """Synchronously, have the conductor create or update
+        a tpmdevice per host.
 
         :param context: request context.
         :param host_uuid: uuid or id of the host
@@ -9046,67 +9046,27 @@ class ConductorManager(service.PeriodicService):
         tpm_devices = self.dbapi.tpmdevice_get_by_host(tpm_host.id)
         if tpm_devices:
             tpmdevice = self.dbapi.tpmdevice_update(tpm_devices[0].uuid,
-                {'state': constants.TPMCONFIG_APPLYING})
-
+                                                    tpmdevice_dict)
             # update table tpmconfig updated_at as its visible from tpmconfig-show
             try:
                 tpm_obj = self.dbapi.tpmconfig_get_one()
+                updated_at = timeutils.utcnow()
                 self.dbapi.tpmconfig_update(tpm_obj.uuid,
-                                            {'updated_at': timeutils.utcnow()})
-                LOG.info("tpm_device_create_by_host tpmconfig updated_at")
+                                            {'updated_at': updated_at})
+                LOG.info("TPM config updated at: %s" % updated_at)
             except exception.NotFound:
-                LOG.error("tpm_device_create_by_host tpmconfig NotFound")
+                LOG.error("tpm_device_update_by_host tpmconfig NotFound")
         else:
             try:
                 # create new tpmdevice
-                devicedict = {
-                                'host_uuid': tpm_host['uuid'],
-                                'state': constants.TPMCONFIG_APPLYING
-                             }
+                tpmdevice_dict.update({'host_uuid': tpm_host['uuid']})
                 tpmdevice = self.dbapi.tpmdevice_create(tpm_host['id'],
-                                                        devicedict)
+                                                        tpmdevice_dict)
             except:
                 LOG.exception("Cannot create TPM device for host %s" % host_uuid)
                 return
 
         return tpmdevice
-
-    def tpm_device_update_by_host(self, context,
-                                  host_uuid, update_dict):
-        """Synchronously, have the conductor update a tpmdevice per host.
-           returns the updated device
-
-        :param context: request context.
-        :param host_uuid: uuid or id of the host
-        :param update_dict: a dictionary of attributes to be updated
-
-        :returns tpmdevice object
-        """
-        try:
-            tpm_host = self.dbapi.ihost_get(host_uuid)
-        except exception.ServerNotFound:
-            LOG.error("Cannot find host by id %s" % host_uuid)
-            return
-
-        try:
-            # update the tpmdevice
-            # since this will be an internal call from the
-            # agent, we will not validate the update parameters
-            existing_tpmdevice = \
-                self.dbapi.tpmdevice_get_by_host(tpm_host.uuid)
-
-            if (not existing_tpmdevice or len(existing_tpmdevice) > 1):
-                LOG.error("TPM device not found, or multiple found "
-                          "for host %s" % tpm_host.uuid)
-                return
-
-            updated_tpmdevice = self.dbapi.tpmdevice_update(
-                    existing_tpmdevice[0].uuid, update_dict)
-        except:
-            LOG.exception("TPM device not found, or cannot be updated "
-                          "for host %s" % tpm_host.uuid)
-            return
-        return updated_tpmdevice
 
     def cinder_prepare_db_for_volume_restore(self, context):
         """
@@ -9471,13 +9431,15 @@ class ConductorManager(service.PeriodicService):
             self._perform_config_certificate_tpm_mode(
                 context, tpm, private_bytes, public_bytes)
 
+            file_content = public_bytes
+            # copy the certificate to shared directory
+            with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
+                                   os.O_CREAT | os.O_WRONLY,
+                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
+                                   'wb') as f:
+                f.write(file_content)
+
             self._remove_certificate_file(mode, certificate_file)
-            try:
-                LOG.info("config_certificate mode=%s remove %s" %
-                         (mode, constants.SSL_PEM_FILE_SHARED))
-                os.remove(constants.SSL_PEM_FILE_SHARED)
-            except OSError:
-                pass
 
         elif mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)

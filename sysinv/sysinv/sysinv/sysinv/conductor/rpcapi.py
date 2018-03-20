@@ -1390,9 +1390,10 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                           host_uuid=host_uuid,
                           response_dict=response_dict))
 
-    def tpm_device_create_by_host(self, context,
+    def tpm_device_update_by_host(self, context,
                                   host_uuid, tpmdevice_dict):
-        """Synchronously , have the conductor create a tpmdevice per host.
+        """Synchronously , have the conductor create or update
+        a tpmdevice per host.
 
         :param context: request context.
         :param host_uuid: uuid or id of the host
@@ -1402,25 +1403,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(
             context,
-            self.make_msg('tpm_device_create_by_host',
-                          host_uuid=host_uuid,
-                          tpmdevice_dict=tpmdevice_dict))
-
-    def tpm_device_update_by_host(self, context,
-                                  host_uuid, update_dict):
-        """Synchronously , have the conductor update a tpmdevice per host.
-
-        :param context: request context.
-        :param host_uuid: uuid or id of the host
-        :param update_dict: a dictionary of attributes to be updated
-
-        :returns: tpmdevice object
-        """
-        return self.call(
-            context,
             self.make_msg('tpm_device_update_by_host',
                           host_uuid=host_uuid,
-                          update_dict=update_dict))
+                          tpmdevice_dict=tpmdevice_dict))
 
     def cinder_prepare_db_for_volume_restore(self, context):
         """

@@ -65,6 +65,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_sysctl_config(host))
         config.update(self._get_host_drbd_config(host))
         config.update(self._get_host_upgrade_config(host))
+        config.update(self._get_host_tpm_config(host))
         config.update(self._get_host_cpu_config(host))
         config.update(self._get_host_hugepage_config(host))
         return config
@@ -487,6 +488,27 @@ class PlatformPuppet(base.BasePuppet):
             config.update({
                 'platform::drbd::params::cpumask': drbd_cpumask
             })
+        return config
+
+    def _get_host_tpm_config(self, host):
+        config = {}
+        if host.personality == constants.CONTROLLER:
+            try:
+                tpmdevice = self.dbapi.tpmdevice_get_by_host(host.id)
+                if tpmdevice and len(tpmdevice) == 1:
+                    tpm_data = tpmdevice[0].tpm_data
+                    # some of the TPM certs may be base64 encoded
+                    # for transmission over RPC and storage in DB,
+                    # convert these back to their native encoding
+                    encoded_files = tpm_data.pop("base64_encoded_files", [])
+                    for binary in encoded_files:
+                        tpm_data[binary] = tpm_data[binary].decode('base64')
+                    config.update({
+                        'platform::tpm::tpm_data': tpm_data
+                    })
+            except exception.NotFound:
+                # No TPM device found
+                pass
         return config
 
     def _get_host_cpu_config(self, host):
