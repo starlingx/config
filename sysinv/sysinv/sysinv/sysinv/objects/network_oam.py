@@ -117,7 +117,9 @@ class OAMNetwork(base.SysinvObject):
         for field, name in self.address_names.iteritems():
             address = addresses.get(name)
             if address:
-                values = {'address': self[field]}
+                values = {'address': self[field],
+                          'family': subnet.version,
+                          'prefix': subnet.prefixlen}
                 self.dbapi.address_update(address.uuid, values)
 
         self.obj_reset_changes()
