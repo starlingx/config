@@ -290,11 +290,19 @@ class DiskOperator(object):
             if device.get("ID_BUS") == "usb":
                 # Skip USB devices
                 continue
-            if device.get("ID_VENDOR") == VENDOR_ID_LIO:
-                # Skip iSCSI devices, they are links for volume storage
-                continue
             if device.get("DM_VG_NAME") or device.get("DM_LV_NAME"):
                 # Skip LVM devices
+                continue
+            id_path = device.get("ID_PATH", "")
+            if "iqn." in id_path or "eui." in id_path:
+                # Skip all iSCSI devices, they are links for volume storage.
+                # As per https://www.ietf.org/rfc/rfc3721.txt, "iqn." or "edu."
+                # have to be present when constructing iSCSI names.
+                continue
+            if device.get("ID_VENDOR") == VENDOR_ID_LIO:
+                # LIO devices are iSCSI, should be skipped above!
+                LOG.error("Invalid id_path. Device %s (%s) is iSCSI!" %
+                            (id_path, device.get('DEVNAME')))
                 continue
             major = device['MAJOR']
             if major in valid_major_list:
