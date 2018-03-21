@@ -179,8 +179,8 @@ def do_host_lvg_delete(cc, args):
                  "[nova-local]"))
 @utils.arg('-l', '--lvm_type',
            metavar='<lvm_type>',
-           choices=['default', 'thin'],
-           help=("Determines the thick (default) or thin provisioning format "
+           choices=['thick', 'thin'],
+           help=("Determines the thick or thin provisioning format "
                  "of the LVM volume group. [cinder-volumes]"))
 def do_host_lvg_modify(cc, args):
     """Modify the attributes of a Local Volume Group."""
