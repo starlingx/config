@@ -84,6 +84,9 @@ class Certificate(base.APIBase):
     mode = wtypes.text
     "Represents the desired mode"
 
+    details = types.MultiType({dict})
+    "Represents additional details of the certificate"
+
     updated_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
@@ -93,6 +96,11 @@ class Certificate(base.APIBase):
                 continue
             setattr(self, k, kwargs.get(k, wtypes.Unset))
 
+        # 'details' is not part of the object.certificate.fields
+        # (it is an API-only attribute)
+        self.fields.append('details')
+        setattr(self, 'details', kwargs.get('details', None))
+
     @classmethod
     def convert_with_links(cls, rpc_certificate, expand=False):
         certificate = Certificate(**rpc_certificate.as_dict())
@@ -101,8 +109,12 @@ class Certificate(base.APIBase):
                                              'certtype',
                                              'issuer',
                                              'signature',
+                                             'details',
                                              'start_date',
                                              'expiry_date'])
+
+        # insert details for this certificate if they exist
+        certificate = _insert_certificate_details(certificate)
 
         certificate.links = \
             [link.Link.make_link('self', pecan.request.host_url,
@@ -146,18 +158,31 @@ def _check_certificate_data(certificate):
     return certificate
 
 
-def _clear_existing_certificate_alarms():
-    # Clear all existing CERTIFICATE configuration alarms,
-    # for one or both controller hosts
-    obj = fm_api.FaultAPIs()
-
-    alarms = obj.get_faults_by_id(fm_constants.FM_ALARM_ID_CERTIFICATE_INIT)
-    if not alarms:
+def _insert_certificate_details(certificate):
+    if not certificate:
         return
-    for alarm in alarms:
-        obj.clear_fault(
-            fm_constants.FM_ALARM_ID_CERTIFICATE_INIT,
-            alarm.entity_instance_id)
+
+    if certificate.certtype == constants.CERT_MODE_TPM:
+        try:
+            tpmconfig = pecan.request.dbapi.tpmconfig_get_one()
+        except exception.NotFound:
+            return certificate
+
+        tpmdevices = pecan.request.dbapi.tpmdevice_get_list()
+        certificate.details = {}
+        states = {}
+        for device in tpmdevices:
+            # extract the state info per host
+            ihost = pecan.request.dbapi.ihost_get(device['host_id'])
+            if ihost:
+                states[ihost.hostname] = device.state
+        if tpmdevices:
+            certificate.details['state'] = states
+            if tpmconfig.updated_at:
+                certificate.details['updated_at'] = \
+                    tpmconfig.updated_at.isoformat()
+
+    return certificate
 
 
 LOCK_NAME = 'CertificateController'
@@ -251,7 +276,14 @@ class CertificateController(rest.RestController):
         fileitem = pecan.request.POST['file']
         passphrase = pecan.request.POST.get('passphrase')
         mode = pecan.request.POST.get('mode')
+
         certificate_file = pecan.request.POST.get('certificate_file')
+        # Ensure that the certificate_file is a valid file path
+        if os.path.isabs(certificate_file):
+            if not os.path.isfile(certificate_file):
+                msg = "'certificate_file' is not a valid file path"
+                LOG.info(msg)
+                return dict(success="", error=msg)
 
         LOG.info("certificate %s mode=%s" % (log_start, mode))
 

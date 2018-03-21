@@ -11,21 +11,38 @@
 import os
 from cgtsclient import exc
 from cgtsclient.common import utils
+from collections import OrderedDict
 
 
 def _print_certificate_show(certificate):
     fields = ['uuid', 'certtype', 'signature', 'start_date', 'expiry_date']
     if type(certificate) is dict:
         data = [(f, certificate.get(f, '')) for f in fields]
+        details = ('details', certificate.get('details', ''))
     else:
         data = [(f, getattr(certificate, f, '')) for f in fields]
+        details = ('details', getattr(certificate, 'details', ''))
+    if details[1]:
+        data.append(details)
+
     utils.print_tuple_list(data)
 
 
 @utils.arg('certificate_uuid', metavar='<certificate_uuid>',
-           help="UUID of certificate")
+           help="UUID of certificate or the reserved word 'tpm' "
+                "to show TPM certificate")
 def do_certificate_show(cc, args):
     """Show Certificate details."""
+    if args.certificate_uuid == 'tpm':
+        certificates = cc.certificate.list()
+        for cert in certificates:
+            if cert.certtype == 'tpm_mode':
+                args.certificate_uuid = cert.uuid
+                break
+        else:
+            print "No TPM certificate installed"
+            return
+
     certificate = cc.certificate.get(args.certificate_uuid)
     if certificate:
         _print_certificate_show(certificate)
