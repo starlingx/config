@@ -347,9 +347,7 @@ cinder::rpc_response_timeout: 180
 cinder::backend_host: 'controller'
 cinder::image_conversion_dir: '/opt/img-conversions/cinder'
 
-
-cinder::api::nova_catalog_info: 'compute:nova:internalURL'
-cinder::api::nova_catalog_admin_info: 'compute:nova:adminURL'
+cinder::api::nova_interface: 'internal'
 cinder::api::enable_proxy_headers_parsing: true
 
 cinder::ceilometer::notification_driver: 'messaging'
