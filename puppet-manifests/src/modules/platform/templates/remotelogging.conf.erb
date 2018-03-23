@@ -1,0 +1,132 @@
+################################################################################
+# Remote Logging rewrite set
+#
+# This file is only in use when Remote Logging is enable using: system remotelogging-modify
+# The file becomes active by: @include "remotelogging.conf" in the syslog-ng.conf
+#
+# Note: this file must be updated when a logfile is added to syslog-ng.conf.
+#
+# Note: this file is managed by puppet and should not be modified.
+#
+################################################################################
+rewrite r_rewrite_set{
+  set("<%= @system_name %> aodh-api.log ${HOST}", value("HOST") condition(filter(f_aodhapi)));
+  set("<%= @system_name %> aodh-dbsync.log ${HOST}", value("HOST") condition(filter(f_aodhdbsync)));
+  set("<%= @system_name %> aodh-evaluator.log ${HOST}", value("HOST") condition(filter(f_aodhevaluator)));
+  set("<%= @system_name %> aodh-expirer.log ${HOST}", value("HOST") condition(filter(f_aodhexpirer)));
+  set("<%= @system_name %> aodh-listener.log ${HOST}", value("HOST") condition(filter(f_aodhlistener)));
+  set("<%= @system_name %> aodh-notifier.log ${HOST}", value("HOST") condition(filter(f_aodhnotifier)));
+  set("<%= @system_name %> auth.log ${HOST}", value("HOST") condition(filter(f_auth)));
+  set("<%= @system_name %> bash.log ${HOST}", value("HOST") condition(filter(f_bash)));
+  set("<%= @system_name %> ceilometer-agent-central.log ${HOST}", value("HOST") condition(filter(f_ceilometeragentcentral)));
+  set("<%= @system_name %> ceilometer-agent-notification.log ${HOST}", value("HOST") condition(filter(f_ceilometeragentnotification)));
+  set("<%= @system_name %> ceilometer-alarm-evaluator.log ${HOST}", value("HOST") condition(filter(f_ceilometeralarmevaluator)));
+  set("<%= @system_name %> ceilometer-alarm-notifier.log ${HOST}", value("HOST") condition(filter(f_ceilometeralarmnotifier)));
+  set("<%= @system_name %> ceilometer-api.log ${HOST}", value("HOST") condition(filter(f_ceilometerapi)));
+  set("<%= @system_name %> ceilometer-collector.log ${HOST}", value("HOST") condition(filter(f_ceilometercollector)));
+  set("<%= @system_name %> cinder-api.log ${HOST}", value("HOST") condition(filter(f_cinderapi)));
+  set("<%= @system_name %> cinder-scheduler.log ${HOST}", value("HOST") condition(filter(f_cinderscheduler)));
+  set("<%= @system_name %> cinder-volume.log ${HOST}", value("HOST") condition(filter(f_cindervolume)));
+  set("<%= @system_name %> cron.log ${HOST}", value("HOST") condition(filter(f_cron)));
+  set("<%= @system_name %> daemon.log ${HOST}", value("HOST") condition(filter(f_daemon)));
+  set("<%= @system_name %> daemon-ocf.log ${HOST}", value("HOST") condition(filter(f_daemon_ocf)));
+  set("<%= @system_name %> debug ${HOST}", value("HOST") condition(filter(f_err)));
+  set("<%= @system_name %> error ${HOST}", value("HOST") condition(filter(f_error)));
+  set("<%= @system_name %> fm-event.log ${HOST}", value("HOST") condition(filter(f_fm_event)));
+  set("<%= @system_name %> fm-manager.log ${HOST}", value("HOST") condition(filter(f_fm_manager)));
+  set("<%= @system_name %> ima.log ${HOST}", value("HOST") condition(filter(f_ima)));
+  set("<%= @system_name %> fsmond.log ${HOST}", value("HOST") condition(filter(f_fsmon)));
+  set("<%= @system_name %> glance-api.log ${HOST}", value("HOST") condition(filter(f_glanceapi)));
+  set("<%= @system_name %> glance-registry.log ${HOST}", value("HOST") condition(filter(f_glanceregistry)));
+  set("<%= @system_name %> glance-registry-api.log ${HOST}", value("HOST") condition(filter(f_glanceregistryrest)));
+  set("<%= @system_name %> guestAgent.log ${HOST}", value("HOST") condition(filter(f_guestagent)));
+  set("<%= @system_name %> guestServer.log ${HOST}", value("HOST") condition(filter(f_guestserver)));
+  set("<%= @system_name %> hbsAgent.log ${HOST}", value("HOST") condition(filter(f_hbsagent)));
+  set("<%= @system_name %> hbsClient.log ${HOST}", value("HOST") condition(filter(f_hbsclient)));
+  set("<%= @system_name %> heat-api-cfn.log ${HOST}", value("HOST") condition(filter(f_heatapicfn)));
+  set("<%= @system_name %> heat-api-cloudwatch.log ${HOST}", value("HOST") condition(filter(f_heatapicloud)));
+  set("<%= @system_name %> heat-api.log ${HOST}", value("HOST") condition(filter(f_heatapi)));
+  set("<%= @system_name %> heat-engine.log ${HOST}", value("HOST") condition(filter(f_heatengine)));
+  set("<%= @system_name %> horizon.log ${HOST}", value("HOST") condition(filter(f_horizon)));
+  set("<%= @system_name %> hostwd.log ${HOST}", value("HOST") condition(filter(f_hostw)));
+  set("<%= @system_name %> hwmond.log ${HOST}", value("HOST") condition(filter(f_hwmon)));
+  set("<%= @system_name %> ironic-api.log ${HOST}", value("HOST") condition(filter(f_ironicapi)));
+  set("<%= @system_name %> ironic-conductor.log ${HOST}", value("HOST") condition(filter(f_ironicconductor)));
+  set("<%= @system_name %> kern.log ${HOST}", value("HOST") condition(filter(f_kern)));
+  set("<%= @system_name %> keystone-api.log ${HOST}", value("HOST") condition(filter(f_keystoneapi)));
+  set("<%= @system_name %> keystone-all.log ${HOST}", value("HOST") condition(filter(f_keystoneall)));
+  set("<%= @system_name %> libvirtd.log ${HOST}", value("HOST") condition(filter(f_libvirtd)));
+  set("<%= @system_name %> local4.log ${HOST}", value("HOST") condition(filter(f_local4)));
+  set("<%= @system_name %> lpr.log ${HOST}", value("HOST") condition(filter(f_lpr)));
+  set("<%= @system_name %> magnum-api.log ${HOST}", value("HOST") condition(filter(f_magnumapi)));
+  set("<%= @system_name %> magnum-conductor.log ${HOST}", value("HOST") condition(filter(f_magnumconductor)));
+  set("<%= @system_name %> mail.log ${HOST}", value("HOST") condition(filter(f_mail)));
+  set("<%= @system_name %> mtcAgent_alarm.log ${HOST}", value("HOST") condition(filter(f_mtcagentalarm)));
+  set("<%= @system_name %> mtcAgent_api.log ${HOST}", value("HOST") condition(filter(f_mtcagentapi)));
+  set("<%= @system_name %> mtcAgent_event.log ${HOST}", value("HOST") condition(filter(f_mtcagentevent)));
+  set("<%= @system_name %> mtcAgent.log ${HOST}", value("HOST") condition(filter(f_mtcagent)));
+  set("<%= @system_name %> mtcClient.log ${HOST}", value("HOST") condition(filter(f_mtcclient)));
+  set("<%= @system_name %> murano-api.log ${HOST}", value("HOST") condition(filter(f_muranoapi)));
+  set("<%= @system_name %> murano-engine.log ${HOST}", value("HOST") condition(filter(f_muranoengine)));
+  set("<%= @system_name %> news.crit ${HOST}", value("HOST") condition(filter(f_newscrit)));
+  set("<%= @system_name %> news.err ${HOST}", value("HOST") condition(filter(f_newserr)));
+  set("<%= @system_name %> news.notice ${HOST}", value("HOST") condition(filter(f_newsnotice)));
+  set("<%= @system_name %> nfv-vim-api.log ${HOST}", value("HOST") condition(filter(f_vim_api)));
+  set("<%= @system_name %> nfv-vim.log ${HOST}", value("HOST") condition(filter(f_vim)));
+  set("<%= @system_name %> nfv-vim-webserver.log ${HOST}", value("HOST") condition(filter(f_vim_webserver)));
+  set("<%= @system_name %> nova-api.log ${HOST}", value("HOST") condition(filter(f_novaapi)));
+  set("<%= @system_name %> nova-compute.log ${HOST}", value("HOST") condition(filter(f_novacompute)));
+  set("<%= @system_name %> nova-conductor.log ${HOST}", value("HOST") condition(filter(f_novaconductor)));
+  set("<%= @system_name %> nova-consoleauth.log ${HOST}", value("HOST") condition(filter(f_novaconsole)));
+  set("<%= @system_name %> nova-manage.log ${HOST}", value("HOST") condition(filter(f_novamanage)));
+  set("<%= @system_name %> nova-scheduler.log ${HOST}", value("HOST") condition(filter(f_novascheduler)));
+  set("<%= @system_name %> nova-placement-api.log ${HOST}", value("HOST") condition(filter(f_novaplacementapi)));
+  set("<%= @system_name %> neutron-api.log ${HOST}", value("HOST") condition(filter(f_neutronapi)));
+  set("<%= @system_name %> openstack.log ${HOST}", value("HOST") condition(filter(f_local2)));
+  set("<%= @system_name %> panko-api.log ${HOST}", value("HOST") condition(filter(f_pankoapi)));
+  set("<%= @system_name %> panko-dbsync.log ${HOST}", value("HOST") condition(filter(f_pankodbsync)));
+  set("<%= @system_name %> panko-expirer.log ${HOST}", value("HOST") condition(filter(f_pankoexpirer)));
+  set("<%= @system_name %> platform.log ${HOST}", value("HOST") condition(filter(f_local1)));
+  set("<%= @system_name %> pmond.log ${HOST}", value("HOST") condition(filter(f_pmon)));
+  set("<%= @system_name %> postgres.log ${HOST}", value("HOST") condition(filter(f_local0)));
+  set("<%= @system_name %> rmond.log ${HOST}", value("HOST") condition(filter(f_rmon)));
+  set("<%= @system_name %> rmond_notify.log ${HOST}", value("HOST") condition(filter(f_rmon_notify)));
+  set("<%= @system_name %> sm.log ${HOST}", value("HOST") condition(filter(f_local3)));
+  set("<%= @system_name %> sysinv-api.log ${HOST}", value("HOST") condition(filter(f_sysinvapi)));
+  set("<%= @system_name %> nova-api-proxy.log ${HOST}", value("HOST") condition(filter(f_novaapiproxy)));
+  set("<%= @system_name %> sysinv.log ${HOST}", value("HOST") condition(filter(f_sysinv)));
+  set("<%= @system_name %> syslog ${HOST}", value("HOST") condition(filter(f_syslog)));
+  set("<%= @system_name %> user.log ${HOST}", value("HOST") condition(filter(f_user)));
+  set("<%= @system_name %> uucp.log ${HOST}", value("HOST") condition(filter(f_uucp)));
+  set("<%= @system_name %> snmp-api.log ${HOST}", value("HOST") condition(filter(f_snmpat)));
+  # Most logs write log level to the message field. some writes it to the PRIORITY field
+  # The priority field is not sent remotely. This is because tcp/udp destinations don't
+  # work well with templates, which we use to write the priority field to log files on the
+  # controllers. These lines append the priority/log level field before the message
+  # in cases where the log level is sent through the priority field as opposed to the
+  # message field
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_daemon)));
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_auth)));
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_cron)));
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_kern)));
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_user)));
+  # postgres
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_local0)));
+  # platform
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_local1)));
+  # sm
+  set("${PRIORITY} ${MSG}", value("MSG") condition(filter(f_local3)));
+};
+
+# This rewrite set is used by haproxy and 'HOST' is replaced with the hostname by packstack.
+rewrite r_hap_rewrite_set{
+  set("<%= @system_name %> haproxy.log <%= @hostname %>", value("HOST") condition(filter(f_local1)));
+};
+
+#######################################################
+# Log to remote log server configured in syslog-ng.conf
+#######################################################
+
+log { source(s_src); rewrite(r_rewrite_set); destination(remote_log_server); };
+log { source(s_udp); rewrite(r_hap_rewrite_set); destination(remote_log_server); };
+

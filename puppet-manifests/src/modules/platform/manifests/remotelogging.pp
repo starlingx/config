@@ -13,6 +13,7 @@ class platform::remotelogging
   if $enabled {
     include ::platform::params
     $system_name = $::platform::params::system_name
+    $hostname = $::hostname
 
     if($transport == 'tls') {
       $server = "{tcp(\"$ip_address\" port($port) tls(peer-verify(\"required-untrusted\")));};"
@@ -28,18 +29,17 @@ class platform::remotelogging
       line  => $destination_line,
       match => $destination,
     } ->
-    file_line { 'add-haproxy-host':
-      path   => '/etc/syslog-ng/remotelogging.conf',
-      line   => "  set(\"$system_name haproxy.log $::hostname\", value(\"HOST\") condition(filter(f_local1)));",
-      match  => '^  set\(.*haproxy\.log',
-    } ->
     file_line { 'conf-add-remote':
       path  => '/etc/syslog-ng/syslog-ng.conf',
       line  => '@include "remotelogging.conf"',
       match => '#@include \"remotelogging.conf\"',
     } ->
-    exec { 'conf-add-name':
-      command => "/bin/sed -i 's/  set(\"[^ ]* \\(.*value(\"HOST\").*\\)/  set(\"${system_name} \\1/' /etc/syslog-ng/remotelogging.conf"
+    file { "/etc/syslog-ng/remotelogging.conf":
+      ensure  => present,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => template('platform/remotelogging.conf.erb'),
     } ->
     exec { "remotelogging-update-tc":
       command => "/usr/local/bin/remotelogging_tc_setup.sh ${port}"
