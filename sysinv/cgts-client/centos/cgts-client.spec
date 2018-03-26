@@ -32,10 +32,16 @@ Contains SDK files for %{name} package
 %prep
 %autosetup -n %{name}-%{version} -S git
 
+# Remove bundled egg-info
+rm -rf *.egg-info
+
+
 %build
+export PBR_VERSION=%{version}
 %{__python} setup.py build
 
 %install
+export PBR_VERSION=%{version}
 %{__python} setup.py install --root=$RPM_BUILD_ROOT \
                              --install-lib=%{pythonroot} \
                              --prefix=/usr \
@@ -59,10 +65,8 @@ rm -rf $RPM_BUILD_ROOT
 %doc LICENSE
 %{local_bindir}/*
 %{local_etc_bash_completiond}/*
-%dir %{pythonroot}/cgtsclient
-%{pythonroot}/cgtsclient/*
-%dir %{pythonroot}/cgtsclient-%{version}.0-py2.7.egg-info
-%{pythonroot}/cgtsclient-%{version}.0-py2.7.egg-info/*
+%{pythonroot}/cgtsclient
+%{pythonroot}/cgtsclient-%{version}*.egg-info
 
 %files sdk
 /usr/share/remote-clients/python-wrs-system-client-%{version}.tgz

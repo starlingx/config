@@ -8,7 +8,7 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient import exc
+
 
 class LldpNeighbour(base.Resource):
     def __repr__(self):

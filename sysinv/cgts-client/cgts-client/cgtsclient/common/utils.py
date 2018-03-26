@@ -17,22 +17,25 @@
 try:
     import tsconfig.tsconfig as tsc
     is_remote = False
-except:
+except Exception:
     is_remote = True
+
 import argparse
 import copy
+import dateutil
 import os
+import prettytable
+import re
+import six
 import sys
 import textwrap
 import uuid
-import six
 
-import prettytable
-from prettytable import FRAME, ALL, NONE
+from prettytable import ALL
+from prettytable import FRAME
+from prettytable import NONE
 
-import re
 from datetime import datetime
-import dateutil
 from dateutil import parser
 
 from cgtsclient import exc
@@ -217,8 +220,10 @@ def _sort_for_list(objs, fields, formatters={}, sortby=0, reversesort=False):
 
     return rows_to_sort
 
+
 def default_printer(s):
     print s
+
 
 def pt_builder(field_labels, fields, formatters, paging, printer=default_printer):
     """
@@ -269,7 +274,7 @@ def pt_builder(field_labels, fields, formatters, paging, printer=default_printer
             else:
                 printer(self.get_string())
                 if self.terminal_lines_left > 0:
-                    printer("\n" * (self.terminal_lines_left-1))
+                    printer("\n" * (self.terminal_lines_left - 1))
 
                 s = raw_input("Press Enter to continue or 'q' to exit...")
                 if s == 'q':
@@ -359,7 +364,7 @@ def print_list(objs, fields, field_labels, formatters={}, sortby=0,
     # print_list() is the same as print_long_list() with paging turned off
     return print_long_list(objs, fields, field_labels, formatters=formatters, sortby=sortby,
                            reversesort=reversesort, no_wrap_fields=no_wrap_fields,
-                           no_paging=True,  printer=printer)
+                           no_paging=True, printer=printer)
 
 
 def _build_row_from_object(fields, formatters, o):
@@ -421,7 +426,7 @@ def row_height(texts):
 
 
 def print_long_list(objs, fields, field_labels, formatters={}, sortby=0, reversesort=False, no_wrap_fields=[],
-                    no_paging=False,  printer=default_printer):
+                    no_paging=False, printer=default_printer):
 
     formatters = wrapping_formatters.as_wrapping_formatters(objs, fields, field_labels, formatters,
                                                             no_wrap_fields=no_wrap_fields)
@@ -440,7 +445,7 @@ def print_dict(d, dict_property="Property", wrap=0):
     pt = prettytable.PrettyTable([dict_property, 'Value'],
                                  caching=False, print_empty=False)
     pt.align = 'l'
-    for k, v in d.iteritems():
+    for k, v in sorted(d.iteritems()):
         v = parse_date(v)
         # convert dict to str to check length
         if isinstance(v, dict):
@@ -516,9 +521,8 @@ def args_array_to_dict(kwargs, key_to_convert):
             kwargs[key_to_convert] = dict(v.split("=", 1)
                                           for v in values_to_convert)
         except ValueError:
-            raise exc.CommandError(
-                    '%s must be a list of KEY=VALUE not "%s"' % (
-                        key_to_convert, values_to_convert))
+            raise exc.CommandError('%s must be a list of KEY=VALUE not "%s"' %
+                                   (key_to_convert, values_to_convert))
     return kwargs
 
 
@@ -634,16 +638,17 @@ def is_uuid_like(val):
 
 def get_terminal_size():
     """Returns a tuple (x, y) representing the width(x) and the height(x)
-    in characters of the terminal window."""
+    in characters of the terminal window.
+    """
 
     def ioctl_GWINSZ(fd):
         try:
             import fcntl
-            import termios
             import struct
+            import termios
             cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ,
                                                  '1234'))
-        except:
+        except Exception:
             return None
         if cr == (0, 0):
             return None
@@ -657,7 +662,7 @@ def get_terminal_size():
             fd = os.open(os.ctermid(), os.O_RDONLY)
             cr = ioctl_GWINSZ(fd)
             os.close(fd)
-        except:
+        except Exception:
             pass
     if not cr:
         cr = (os.environ.get('LINES', 25), os.environ.get('COLUMNS', 80))
@@ -675,8 +680,7 @@ def normalize_field_data(obj, fields):
 
 
 class WRPrettyTable(prettytable.PrettyTable):
-    """ A PrettyTable that allows word wrapping of its headers.
-    """
+    """A PrettyTable that allows word wrapping of its headers."""
 
     def __init__(self, field_names=None, **kwargs):
         super(WRPrettyTable, self).__init__(field_names, **kwargs)
@@ -742,10 +746,12 @@ def extract_keypairs(args):
             attributes[key] = value
     return attributes
 
+
 # Convert size from BYTE to KiB, MiB, GiB, TiB, PiB
 # 1 - KiB, 2 - MiB, 3 - GiB, 4 - TiB, 5 - PiB
 def convert_size_from_bytes(bytes, type):
-    return '%.2f' % (float(bytes) / (1024**type))
+    return '%.2f' % (float(bytes) / (1024 ** type))
+
 
 def _get_system_info(cc):
     """Gets the system mode and type"""

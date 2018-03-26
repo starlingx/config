@@ -9,8 +9,8 @@
 # All Rights Reserved.
 #
 
-from cgtsclient.common import utils
 from cgtsclient.common import constants
+from cgtsclient.common import utils
 from cgtsclient.v1 import ihost as ihost_utils
 
 
@@ -36,8 +36,7 @@ def _print_ceph_mon_list(cc):
                     constants.CONTROLLER_1_HOSTNAME],
            help='Specify controller host name <%s | %s> ' % (
                    constants.CONTROLLER_0_HOSTNAME,
-                   constants.CONTROLLER_1_HOSTNAME
-               ))
+                   constants.CONTROLLER_1_HOSTNAME))
 @utils.arg('attributes',
            metavar='<path=value>',
            nargs='+',
@@ -75,6 +74,7 @@ def do_ceph_mon_modify(cc, args):
 def do_ceph_mon_list(cc, args):
     """List ceph mons"""
     _print_ceph_mon_list(cc)
+
 
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',

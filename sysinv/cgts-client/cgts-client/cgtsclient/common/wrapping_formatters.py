@@ -21,30 +21,33 @@ The basic idea is:
    the existing prettyTable code base for rendering.
 
 """
-import six
 import copy
-import textwrap, re
+import re
+import six
+import textwrap
+
+from cgtsclient.common.cli_no_wrap import is_nowrap_set
+from cgtsclient.common.cli_no_wrap import set_no_wrap
 from prettytable import _get_size
-from cgtsclient.common.cli_no_wrap import is_nowrap_set, set_no_wrap
 
 UUID_MIN_LENGTH = 36
 
 # monkey patch (customize) how the textwrap module breaks text into chunks
-wordsep_re = re.compile(
-        r'(\s+|'                                  # any whitespace
-        r',|'
-        r'=|'
-        r'\.|'
-        r':|'
-        r'[^\s\w]*\w+[^0-9\W]-(?=\w+[^0-9\W])|'   # hyphenated words
-        r'(?<=[\w\!\"\'\&\.\,\?])-{2,}(?=\w))')   # em-dash
+wordsep_re = re.compile(r'(\s+|'                          # any whitespace
+                        r',|'
+                        r'=|'
+                        r'\.|'
+                        r':|'
+                        r'[^\s\w]*\w+[^0-9\W]-(?=\w+[^0-9\W])|'   # hyphenated words
+                        r'(?<=[\w\!\"\'\&\.\,\?])-{2,}(?=\w))')   # em-dash
 
 textwrap.TextWrapper.wordsep_re = wordsep_re
+
 
 def _get_width(value):
     if value is None:
         return 0
-    # TODO: take into account \n
+    # TODO(jkung): take into account \n
     return _get_size(six.text_type(value))[0]  # get width from [width,height]
 
 
@@ -137,7 +140,7 @@ def field_value_function_factory(formatter, field):
 
 
 class WrapperFormatter(object):
-    """ Base (abstract) class definition of wrapping formatters """
+    """Base (abstract) class definition of wrapping formatters"""
 
     def __init__(self, ctx, field):
         self.ctx = ctx
@@ -159,7 +162,7 @@ class WrapperFormatter(object):
 
     def get_calculated_desired_width(self):
         basic_desired_width = self.get_basic_desired_width()
-        if self.header_width >  basic_desired_width:
+        if self.header_width > basic_desired_width:
             return self.header_width
         return basic_desired_width
 
@@ -186,8 +189,7 @@ class WrapperFormatter(object):
         self.actual_column_char_len = actual
 
     def get_actual_column_char_len(self, desired_char_len, check_remaining_row_chars=True):
-        """
-           Utility method to adjust desired width to a width
+        """Utility method to adjust desired width to a width
            that can actually be applied based on current table width
            and current terminal width
 
@@ -216,7 +218,7 @@ class WrapperFormatter(object):
                 if actual > self.min_width:
                     # shrink column
                     while actual > self.min_width:
-                        actual -= 1  # TODO: fix in next sprint
+                        actual -= 1  # TODO(jkung): fix in next sprint
                         #  each column needs to share in
                         # table shrinking - but this is good
                         # enough for now - also - why the loop?
@@ -269,7 +271,7 @@ class WrapperFormatter(object):
 
 
 class WrapperLambdaFormatter(WrapperFormatter):
-    """ A wrapper formatter that adapts a function (callable)
+    """A wrapper formatter that adapts a function (callable)
        to look like a WrapperFormatter
     """
 
@@ -282,8 +284,8 @@ class WrapperLambdaFormatter(WrapperFormatter):
 
 
 class WrapperFixedWidthFormatter(WrapperLambdaFormatter):
-    """ A wrapper formatter that forces the text to wrap within
-        a specific width (in chars)
+    """A wrapper formatter that forces the text to wrap within
+       a specific width (in chars)
     """
 
     def __init__(self, ctx, field, width):
@@ -298,8 +300,8 @@ class WrapperFixedWidthFormatter(WrapperLambdaFormatter):
 
 
 class WrapperPercentWidthFormatter(WrapperFormatter):
-    """ A wrapper formatter that forces the text to wrap within
-        a specific percentage width of the current terminal width
+    """A wrapper formatter that forces the text to wrap within
+       a specific percentage width of the current terminal width
     """
 
     def __init__(self, ctx, field, width_as_decimal):
@@ -318,11 +320,11 @@ class WrapperPercentWidthFormatter(WrapperFormatter):
 
 
 class WrapperWithCustomFormatter(WrapperLambdaFormatter):
-    """ A wrapper formatter that allows the programmer to have a custom
-        formatter (in the form of a function) that is first applied
-        and then a wrapper function is applied to the result
+    """A wrapper formatter that allows the programmer to have a custom
+       formatter (in the form of a function) that is first applied
+       and then a wrapper function is applied to the result
 
-        See wrapperFormatterFactory for a better explanation! :-)
+       See wrapperFormatterFactory for a better explanation! :-)
     """
 
     # noinspection PyUnusedLocal
@@ -359,6 +361,7 @@ class WrapperWithCustomFormatter(WrapperLambdaFormatter):
 
     def get_basic_desired_width(self):
         return self.wrapper_formatter.get_basic_desired_width()
+
 
 def wrapper_formatter_factory(ctx, field, formatter):
     """
@@ -462,28 +465,26 @@ def build_column_stats_for_best_guess_formatting(objs, fields, field_labels, cus
                 self.average_percent = float(self.average_width) / float(avg_total_width)
 
         def __str__(self):
-            return str(
-                    [self.field,
-                     self.average_width,
-                     self.min_width,
-                     self.max_width,
-                     self.total_width,
-                     self.count,
-                     self.average_percent,
-                     self.max_percent,
-                     self.isUUID])
+            return str([self.field,
+                        self.average_width,
+                        self.min_width,
+                        self.max_width,
+                        self.total_width,
+                        self.count,
+                        self.average_percent,
+                        self.max_percent,
+                        self.isUUID])
 
         def __repr__(self):
-            return str(
-                    [self.field,
-                     self.average_width,
-                     self.min_width,
-                     self.max_width,
-                     self.total_width,
-                     self.count,
-                     self.average_percent,
-                     self.max_percent,
-                     self.isUUID])
+            return str([self.field,
+                        self.average_width,
+                        self.min_width,
+                        self.max_width,
+                        self.total_width,
+                        self.count,
+                        self.average_percent,
+                        self.max_percent,
+                        self.isUUID])
 
     if objs is None or len(objs) == 0:
         return {"stats": {},
@@ -520,7 +521,7 @@ def build_best_guess_formatters_using_average_widths(objs, fields, field_labels,
 
     # Handle no wrap fields by building formatters that will not wrap
     for f in [ff for ff in fields if ff in no_wrap_fields]:
-        format_spec[f] = {"hard_width" : column_info["stats"][f].max_width }
+        format_spec[f] = {"hard_width": column_info["stats"][f].max_width}
         custom_formatter = custom_formatters.get(f, None)
         if custom_formatter:
             format_spec[f] = {"formatter": custom_formatter, "wrapperFormatter": format_spec[f]}
@@ -538,7 +539,7 @@ def build_best_guess_formatters_using_max_widths(objs, fields, field_labels, cus
 
     # Handle no wrap fields by building formatters that will not wrap
     for f in [ff for ff in fields if ff in no_wrap_fields]:
-        format_spec[f] = {"hard_width" : column_info["stats"][f].max_width }
+        format_spec[f] = {"hard_width": column_info["stats"][f].max_width}
         custom_formatter = custom_formatters.get(f, None)
         if custom_formatter:
             format_spec[f] = {"formatter": custom_formatter, "wrapperFormatter": format_spec[f]}
@@ -566,17 +567,17 @@ def needs_wrapping_formatters(formatters, no_wrap=None):
 
 
 def as_wrapping_formatters(objs, fields, field_labels, formatters, no_wrap=None, no_wrap_fields=[]):
-    """ This function is the entry point for building the "best guess"
-        word wrapping formatters.  A best guess formatter guesses what the best
-        columns widths should be for the table celldata.  It does this by collecting
-        various stats on the celldata (min, max average width of column celldata) and from
-        this celldata decides the desired widths and the minimum widths.
+    """This function is the entry point for building the "best guess"
+       word wrapping formatters.  A best guess formatter guesses what the best
+       columns widths should be for the table celldata.  It does this by collecting
+       various stats on the celldata (min, max average width of column celldata) and from
+       this celldata decides the desired widths and the minimum widths.
 
-        Given a list of formatters and the list of objects (objs),  this function
-        first determines if we need to augment the passed formatters with word wrapping
-        formatters.  If the no_wrap parameter or global no_wrap flag is set,
-        then we do not build wrapping formatters.  If any of the formatters within formatters
-        is a word wrapping formatter, then it is assumed no more wrapping is required.
+       Given a list of formatters and the list of objects (objs),  this function
+       first determines if we need to augment the passed formatters with word wrapping
+       formatters.  If the no_wrap parameter or global no_wrap flag is set,
+       then we do not build wrapping formatters.  If any of the formatters within formatters
+       is a word wrapping formatter, then it is assumed no more wrapping is required.
 
     :param objs:
     :param fields:
@@ -717,13 +718,13 @@ def set_no_wrap_on_formatters(no_wrap, formatters):
     global_orig_no_wrap = is_nowrap_set()
     set_no_wrap(no_wrap)
 
-    for k,f in formatters.iteritems():
+    for k, f in formatters.iteritems():
         if WrapperFormatter.is_wrapper_formatter(f):
             formatter_no_wrap_settings[k] = (f.wrapper_formatter.no_wrap, f.wrapper_formatter)
             f.wrapper_formatter.no_wrap = no_wrap
 
-    return { "global_orig_no_wrap" : global_orig_no_wrap,
-             "formatter_no_wrap_settings" : formatter_no_wrap_settings }
+    return {"global_orig_no_wrap": global_orig_no_wrap,
+            "formatter_no_wrap_settings": formatter_no_wrap_settings}
 
 
 def unset_no_wrap_on_formatters(orig_no_wrap_settings):
@@ -740,7 +741,7 @@ def unset_no_wrap_on_formatters(orig_no_wrap_settings):
 
     formatters = {}
 
-    for k,v in formatter_no_wrap_settings.iteritems():
+    for k, v in formatter_no_wrap_settings.iteritems():
         formatters[k] = v[1]
         formatters[k].no_wrap = v[0]
 
@@ -758,49 +759,46 @@ def _simpleTestHarness(no_wrap):
 
     def buildFormatter(field, width):
         def f(dict):
-            if field=='number':
+            if field == 'number':
                 return dict[field]
-            return "{}".format(dict[field]).replace("_"," ")
-        return  {"formatter":f,"wrapperFormatter":width}
+            return "{}".format(dict[field]).replace("_", " ")
+        return {"formatter": f, "wrapperFormatter": width}
 
     set_no_wrap(no_wrap)
 
     field_labels = ['Time Stamp', 'State', 'Event Log ID', 'Reason Text',
-                        'Entity Instance ID', 'Severity','Number']
+                    'Entity Instance ID', 'Severity', 'Number']
     fields = ['timestamp', 'state', 'event_log_id', 'reason_text',
-                  'entity_instance_id', 'severity','number']
+              'entity_instance_id', 'severity', 'number']
 
-    formatterSpecX = {
-                            "timestamp"                  : 10,
-                            "state"                      : 8,
-                            "event_log_id"               : 70,
-                            "reason_text"                : 30,
-                            "entity_instance_id"         : 30,
-                            "severity"                   : 12,
-                            "number"                     : 4
-                    }
+    formatterSpecX = {"timestamp": 10,
+                      "state": 8,
+                      "event_log_id": 70,
+                      "reason_text": 30,
+                      "entity_instance_id": 30,
+                      "severity": 12,
+                      "number": 4}
 
     formatterSpec = {}
     for f in fields:
-        formatterSpec[f] = buildFormatter(f,formatterSpecX[f])
+        formatterSpec[f] = buildFormatter(f, formatterSpecX[f])
 
     logs = []
-    for i in xrange(0,30):
+    for i in xrange(0, 30):
         log = {}
         for f in fields:
             if f == 'number':
                 log[f] = i
             else:
-                log[f] = "{}{}".format(f,i)
+                log[f] = "{}{}".format(f, i)
         logs.append(utils.objectify(log))
 
     formatterSpec = formatterSpecX
 
     formatters = build_wrapping_formatters(logs, fields, field_labels, formatterSpec)
 
-
-    utils.print_list(logs, fields, field_labels,  formatters=formatters, sortby=6,
-                          reversesort=True,no_wrap_fields=['entity_instance_id'])
+    utils.print_list(logs, fields, field_labels, formatters=formatters, sortby=6,
+                     reversesort=True, no_wrap_fields=['entity_instance_id'])
 
     print "nowrap = {}".format(is_nowrap_set())
 

@@ -58,7 +58,7 @@ def do_snmp_comm_add(cc, args):
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
     # fields = utils.args_array_to_dict(fields, 'activity')
-    #fields = utils.args_array_to_dict(fields, 'reason')
+    # fields = utils.args_array_to_dict(fields, 'reason')
     icommunity = cc.icommunity.create(**fields)
 
     field_list.append('uuid')
@@ -78,7 +78,3 @@ def do_snmp_comm_delete(cc, args):
         except exc.HTTPNotFound:
             raise exc.CommandError('Community not found: %s' % c)
         print 'Deleted community %s' % c
-
-
-
-

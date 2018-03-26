@@ -11,7 +11,6 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 
 
 def _print_idns_show(idns):
@@ -52,7 +51,7 @@ def donot_dns_add(cc, args):
     fields = {}
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
-                  if k in field_list and not (v is None))
+                                 if k in field_list and not (v is None))
 
     fields.update(user_specified_fields)
 

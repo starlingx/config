@@ -8,7 +8,6 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient import exc
 
 
 class License(base.Resource):

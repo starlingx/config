@@ -10,8 +10,8 @@
 #
 
 from cgtsclient.common import utils
-from cgtsclient.v1 import cluster as cluster_utils
 from cgtsclient import exc
+from cgtsclient.v1 import cluster as cluster_utils
 import os
 
 

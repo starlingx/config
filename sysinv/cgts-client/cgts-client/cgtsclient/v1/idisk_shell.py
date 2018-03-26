@@ -13,7 +13,6 @@
 from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
 
 

@@ -10,24 +10,20 @@
 # All Rights Reserved.
 #
 
-import datetime
-import json
-import os
-import requests
-import time
 from collections import OrderedDict
-from cgtsclient import exc
+import datetime
+import os
+
+from cgtsclient.common import constants
 from cgtsclient.common import utils
+from cgtsclient import exc
 from cgtsclient.openstack.common.gettextutils import _
 from cgtsclient.v1 import icpu as icpu_utils
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import iinterface as iinterface_utils
-from cgtsclient.v1 import ilvg as ilvg_utils
 from cgtsclient.v1 import iprofile as iprofile_utils
-from cgtsclient.v1 import ipv as ipv_utils
 from cgtsclient.v1 import istor as istor_utils
-from sys import stdout
-from cgtsclient.common import constants
+
 
 def _print_ihost_show(ihost):
     fields = ['id', 'uuid', 'personality', 'hostname', 'invprovision',
@@ -184,7 +180,7 @@ def do_host_bulk_add(cc, args):
         raise exc.CommandError("Error: %s is a directory." % hostsfile)
     try:
         req = open(hostsfile, 'rb')
-    except:
+    except Exception:
         raise exc.CommandError("Error: Could not open file %s." % hostsfile)
 
     response = cc.ihost.create_many(req)
@@ -223,10 +219,10 @@ def donot_host_sysaddlab(cc, args):
         raise exc.CommandError('host not found: %s' % suuid)
     else:
         _print_ihost_show(ihost)
-        #field_list.append('uuid')
-        #field_list.append('id')
-        #data = dict([(f, getattr(ihost, f, '')) for f in field_list])
-        #utils.print_dict(data, wrap=72)
+        # field_list.append('uuid')
+        # field_list.append('id')
+        # data = dict([(f, getattr(ihost, f, '')) for f in field_list])
+        # utils.print_dict(data, wrap=72)
 
 
 @utils.arg('hostnameorid',
@@ -457,6 +453,8 @@ NOTE (neid):
     or a profile including all of cpu, stor, if
     or a profile including all of cpu, stor, if
 """
+
+
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',
            help="Name or ID of host")
@@ -624,7 +622,7 @@ def _prepare_profile_patch(iprofile_uuid):
 
     patch = []
     for (k, v) in dict.items():
-        patch.append({'op':'replace', 'path':'/'+k, 'value':str(v)})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': str(v)})
 
     return patch
 
@@ -637,9 +635,7 @@ def _timestamped(dname, fmt='%Y-%m-%d-%H-%M-%S_{dname}'):
            metavar='<hostname or id>',
            help="Name or ID of host")
 def do_host_patch_reboot(cc, args):
-    """Command has been deprecated.
-    """
-
+    """Command has been deprecated."""
     try:
         ihost = cc.ihost.get(args.hostnameorid)
     except exc.HTTPNotFound:
@@ -660,7 +656,7 @@ def do_host_patch_reboot(cc, args):
 
 @utils.arg('--filename',
            help="The full file path to store the host file. Default './hosts.xml'")
-def do_host_bulk_export (cc, args):
+def do_host_bulk_export(cc, args):
     """Export host bulk configurations."""
     result = cc.ihost.bulk_export()
 
@@ -673,7 +669,7 @@ def do_host_bulk_export (cc, args):
             fw.write(xml_content)
         print _('Export successfully to %s') % config_filename
     except IOError:
-        print _('Cannot write to file: %s' % config_filename)
+        print _('Cannot write to file: %s') % config_filename
 
     return
 

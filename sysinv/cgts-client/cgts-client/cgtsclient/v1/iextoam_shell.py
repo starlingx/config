@@ -9,8 +9,8 @@
 # All Rights Reserved.
 #
 
-from cgtsclient.common import utils
 from cgtsclient.common import constants
+from cgtsclient.common import utils
 from cgtsclient import exc
 from collections import OrderedDict
 

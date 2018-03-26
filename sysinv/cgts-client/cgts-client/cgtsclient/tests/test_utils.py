@@ -69,7 +69,7 @@ class UtilsTest(test_utils.BaseTestCase):
         self.assertEqual(patch, [{'op': 'add',
                                   'value': 'bar',
                                   'path': '/foo'},
-                                  {'op': 'add',
+                                 {'op': 'add',
                                   'value': 'baz',
                                   'path': '/extra/bar'}])
 

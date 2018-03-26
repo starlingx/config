@@ -65,10 +65,10 @@ def do_host_disk_partition_list(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostname_or_id)
     if args.disk:
         idisk = idisk_utils._find_disk(cc, args.hostname_or_id, args.disk)
- 
+
         if not idisk:
             raise exc.CommandError('Disk not found: %s' % args.disk)
- 
+
         ipartitions = cc.partition.list(ihost.uuid, idisk.uuid)
     else:
         ipartitions = cc.partition.list(ihost.uuid, None)
@@ -212,7 +212,7 @@ def do_host_disk_partition_modify(cc, args):
 
     patch = []
     for (k, v) in user_specified_fields.items():
-        patch.append({'op': 'replace', 'path': '/'+k, 'value': v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     # Update the partition attributes
     try:

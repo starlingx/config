@@ -68,7 +68,7 @@ def _find_disk(cc, ihost, idisk):
         try:
             disk = cc.idisk.get(idisk)
         except exc.HTTPNotFound:
-            return None 
+            return None
         else:
             return disk
     else:

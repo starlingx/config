@@ -8,14 +8,14 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient.common import utils
 from cgtsclient.common import constants
+from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ceph_mon as ceph_mon_utils
 from cgtsclient.v1 import storage_ceph  # noqa
+from cgtsclient.v1 import storage_external  # noqa
 from cgtsclient.v1 import storage_file  # noqa
 from cgtsclient.v1 import storage_lvm  # noqa
-from cgtsclient.v1 import storage_external  # noqa
 from oslo_serialization import jsonutils
 
 CREATION_ATTRIBUTES = ['forisystemid', 'backend']

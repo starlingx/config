@@ -9,9 +9,9 @@
 # All Rights Reserved.
 #
 import os
-from cgtsclient import exc
+
 from cgtsclient.common import utils
-from collections import OrderedDict
+from cgtsclient import exc
 
 
 def _print_certificate_show(certificate):
@@ -77,7 +77,7 @@ def do_certificate_install(cc, args):
     certificate_file = args.certificate_file
     try:
         sec_file = open(certificate_file, 'rb')
-    except:
+    except Exception:
         raise exc.CommandError("Error: Could not open file %s." %
                                certificate_file)
 

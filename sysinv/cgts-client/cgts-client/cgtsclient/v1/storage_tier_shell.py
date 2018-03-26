@@ -142,7 +142,7 @@ def do_storage_tier_modify(cc, args):
                                                  args.storage_tier_or_uuid)
     patch = []
     for (k, v) in user_specified_fields.items():
-        patch.append({'op': 'replace', 'path': '/'+k, 'value': v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     # Update the storage tier attributes
     try:

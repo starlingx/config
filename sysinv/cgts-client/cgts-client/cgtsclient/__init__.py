@@ -13,8 +13,6 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-# import pbr.version
-
 try:
     import cgtsclient.client
     Client = cgtsclient.client.Client
@@ -22,5 +20,4 @@ except ImportError:
     import warnings
     warnings.warn("Could not import cgtsclient.client", ImportWarning)
 
-__version__ = "1.0"
-#__version__ = pbr.version.VersionInfo('python-cgtsclient').version_string()
+__version__ = "1.0.0"

@@ -12,12 +12,12 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
 
 
 def _bootp_formatter(value):
     return bool(value)
+
 
 def _bootp_port_formatter(port):
     return _bootp_formatter(port.bootp)
@@ -40,7 +40,7 @@ def _print_ethernet_port_show(port):
               'link_mode', 'capabilities',
               'uuid', 'host_uuid', 'interface_uuid',
               'created_at', 'updated_at']
-    data = [ (f, getattr(port, f, '')) for f in fields ]
+    data = [(f, getattr(port, f, '')) for f in fields]
     utils.print_tuple_list(data, labels,
                            formatters={'bootp': _bootp_formatter})
 
@@ -52,7 +52,7 @@ def _find_port(cc, ihost, portnameoruuid):
             break
     else:
         raise exc.CommandError('Ethernet port not found: host %s port %s' % (ihost.id, portnameoruuid))
-    p.autoneg = 'Yes'   # TODO Remove when autoneg supported in DB
+    p.autoneg = 'Yes'   # TODO(jkung) Remove when autoneg supported in DB
     return p
 
 
@@ -76,10 +76,10 @@ def do_host_ethernet_port_list(cc, args):
 
     ports = cc.ethernet_port.list(ihost.uuid)
     for p in ports:
-        p.autoneg = 'Yes'   # TODO Remove when autoneg supported in DB
+        p.autoneg = 'Yes'   # TODO(jkung) Remove when autoneg supported in DB
 
-    field_labels = ['uuid', 'name', 'mac address', 'pci address', 'processor', 'auto neg', 'device type', 'boot i/f' ]
-    fields = ['uuid', 'name', 'mac', 'pciaddr', 'numa_node', 'autoneg', 'pdevice', 'bootp' ]
+    field_labels = ['uuid', 'name', 'mac address', 'pci address', 'processor', 'auto neg', 'device type', 'boot i/f']
+    fields = ['uuid', 'name', 'mac', 'pciaddr', 'numa_node', 'autoneg', 'pdevice', 'bootp']
 
     utils.print_list(ports, fields, field_labels, sortby=1,
                      formatters={'bootp': _bootp_port_formatter})

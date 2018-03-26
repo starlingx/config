@@ -12,8 +12,8 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
+from collections import OrderedDict
 
 
 def _print_isensor_show(isensor):

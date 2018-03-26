@@ -29,6 +29,7 @@ def do_license_list(cc, args):
 
     utils.print_list(licenses, fields, labels, sortby=0)
 
+
 @utils.arg('license_file_path',
            metavar='<license file path>',
            default=None,
@@ -38,7 +39,7 @@ def do_license_install(cc, args):
     filename = args.license_file_path
     try:
         license_file = open(filename, 'rb')
-    except:
+    except Exception:
         raise exc.CommandError(
             "Error: Could not open file %s for read." % filename)
 

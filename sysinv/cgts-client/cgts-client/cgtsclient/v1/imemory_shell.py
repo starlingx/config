@@ -60,8 +60,7 @@ def _print_imemory_show(imemory):
         if d[0] == 'vm_hugepages_nr_1G_pending':
             if d[1] is None:
                 fields.remove(d[0])
-                labels.pop(len(labels)-labels[::-1].
-                           index('                Total Pending')-1)
+                labels.pop(len(labels) - labels[::-1].index('                Total Pending') - 1)
 
     data = [(f, getattr(imemory, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)
@@ -86,7 +85,7 @@ def do_host_memory_show(cc, args):
                     return
     else:
         raise exc.CommandError('Processor not found: host %s processor %s' %
-                                (ihost.hostname, args.numa_node)) 
+                               (ihost.hostname, args.numa_node))
 
 
 @utils.arg('hostnameorid',
@@ -141,21 +140,19 @@ def do_host_memory_list(cc, args):
 
     utils.print_list(imemorys, fields, field_labels, sortby=1)
 
+
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',
            help="Name or ID of host")
 @utils.arg('numa_node',
            metavar='<processor>',
            help="processor")
-
 @utils.arg('-m', '--platform_reserved_mib',
            metavar='<Platform Reserved MiB>',
            help='The amount of platform memory (MiB) for the numa node')
-
 @utils.arg('-2M', '--vm_hugepages_nr_2M_pending',
            metavar='<2M hugepages number>',
            help='The number of 2M vm huge pages for the numa node')
-
 @utils.arg('-1G', '--vm_hugepages_nr_1G_pending',
            metavar='<1G hugepages number>',
            help='The number of 1G vm huge pages for the numa node')
@@ -169,7 +166,7 @@ def do_host_memory_modify(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
-                                  if k in rwfields and not (v is None))
+                                 if k in rwfields and not (v is None))
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     inodes = cc.inode.list(ihost.uuid)
@@ -180,19 +177,18 @@ def do_host_memory_modify(cc, args):
             if m.inode_uuid == n.uuid:
                 if int(n.numa_node) == int(args.numa_node):
                     mem = m
-                    break 
+                    break
         if mem:
             break
 
     if mem is None:
         raise exc.CommandError('Processor not found: host %s processor %s' %
-                                (ihost.hostname, args.numa_node))
+                               (ihost.hostname, args.numa_node))
 
     patch = []
     for (k, v) in user_specified_fields.items():
-        patch.append({'op':'replace', 'path':'/'+k, 'value':v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     if patch:
         imemory = cc.imemory.update(mem.uuid, patch)
         _print_imemory_show(imemory)
-

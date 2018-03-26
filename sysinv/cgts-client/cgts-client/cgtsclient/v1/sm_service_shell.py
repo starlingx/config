@@ -18,9 +18,8 @@
 #
 # Copyright (c) 2013-2017 Wind River Systems, Inc.
 #
-
-
 import socket
+
 from cgtsclient.common import utils
 from cgtsclient import exc
 

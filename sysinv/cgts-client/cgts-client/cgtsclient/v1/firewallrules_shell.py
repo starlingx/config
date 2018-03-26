@@ -39,10 +39,9 @@ def do_firewall_rules_install(cc, args):
     filename = args.firewall_rules_path
     try:
         fw_file = open(filename, 'rb')
-    except:
-        raise exc.CommandError(
-            "Error: Could not open file %s for read." % filename)
-
+    except Exception:
+        raise exc.CommandError("Error: Could not open file %s for read." %
+                               filename)
     try:
         response = cc.firewallrules.import_firewall_rules(fw_file)
         error = response.get('error')

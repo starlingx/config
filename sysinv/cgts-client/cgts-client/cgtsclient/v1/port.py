@@ -8,7 +8,6 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient import exc
 
 
 class Port(base.Resource):
@@ -38,4 +37,3 @@ def get_port_display_name(p):
         return p.namedisplay
     else:
         return '(' + str(p.uuid)[-8:] + ')'
-

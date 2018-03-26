@@ -11,7 +11,6 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import iinterface as iinterface_utils
 
@@ -24,12 +23,12 @@ def _print_iinterface_show(iinterface):
               'vlan_id', 'uses', 'used_by',
               'created_at', 'updated_at', 'sriov_numvfs']
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
-    rename_fields = [{'field':'dpdksupport', 'label':'accelerated'}]
-    data = [ (f, getattr(iinterface, f, '')) for f in fields ]
-    data += [ (f, getattr(iinterface, f, '')) for f in optional_fields
-              if hasattr(iinterface, f) ]
-    data += [ (f['label'], getattr(iinterface, f['field'], '')) for f in rename_fields
-              if hasattr(iinterface, f['field']) ]
+    rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
+    data = [(f, getattr(iinterface, f, '')) for f in fields]
+    data += [(f, getattr(iinterface, f, '')) for f in optional_fields
+             if hasattr(iinterface, f)]
+    data += [(f['label'], getattr(iinterface, f['field'], '')) for f in rename_fields
+             if hasattr(iinterface, f['field'])]
     utils.print_tuple_list(data)
 
 
@@ -82,7 +81,7 @@ def do_host_if_list(cc, args):
                 attr_str = "%s,AE_XMIT_POLICY=%s" % (
                     attr_str, i.txhashpolicy)
         if (i.networktype and
-            any(network in ['data'] for \
+            any(network in ['data'] for
                 network in i.networktype.split(","))):
             if False in i.dpdksupport:
                 attr_str = "%s,accelerated=False" % attr_str
@@ -175,7 +174,7 @@ def do_host_if_add(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
-                                if k in field_list and not (v is None))
+                                 if k in field_list and not (v is None))
 
     if 'iftype' in user_specified_fields.keys():
         if args.iftype == 'ae' or args.iftype == 'vlan':
@@ -186,7 +185,7 @@ def do_host_if_add(cc, args):
             portnamesoruuids = ','.join(args.portsorifaces)
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
-                  if k in field_list and not (v is None))
+                                 if k in field_list and not (v is None))
 
     if 'providernetworks' in user_specified_fields.keys():
         user_specified_fields['providernetworks'] = user_specified_fields['providernetworks'].replace(" ", "")
@@ -264,7 +263,7 @@ def do_host_if_modify(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
-                                  if k in rwfields and not (v is None))
+                                 if k in rwfields and not (v is None))
 
     if 'providernetworks' in user_specified_fields.keys():
         user_specified_fields['providernetworks'] = user_specified_fields['providernetworks'].replace(" ", "")
@@ -283,13 +282,13 @@ def do_host_if_modify(cc, args):
                     for p in interface.ports:
                         user_specified_fields['ifname'] = p
                         break
-            if any(network in ['data'] for \
+            if any(network in ['data'] for
                    network in interface.networktype.split(",")):
                 user_specified_fields['providernetworks'] = 'none'
 
     patch = []
     for (k, v) in user_specified_fields.items():
-        patch.append({'op':'replace', 'path':'/'+k, 'value':v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     iinterface = cc.iinterface.update(interface.uuid, patch)
     iinterface_utils._get_ports(cc, ihost, iinterface)

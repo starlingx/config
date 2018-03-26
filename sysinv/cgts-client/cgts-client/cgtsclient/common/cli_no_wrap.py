@@ -11,6 +11,7 @@ used by the wrapping_formatters module
 
 _no_wrap = [False]
 
+
 def is_nowrap_set(no_wrap=None):
     """
        returns True if no wrapping desired.

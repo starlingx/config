@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from cgtsclient.common import base
 from ceilometerclient.v2 import options
+from cgtsclient.common import base
 
 
 class EventSuppression(base.Resource):

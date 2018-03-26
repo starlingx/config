@@ -101,8 +101,8 @@ def do_service_delete(cc, args):
            metavar='<path=value>',
            nargs='+',
            action='append',
-          default=[],
-          help="Attributes to add/replace or remove ")
+           default=[],
+           help="Attributes to add/replace or remove ")
 def donot_service_modify_lab(cc, args):
     """LAB ONLY Update a service. """
     # JKUNG comment this out prior to delivery

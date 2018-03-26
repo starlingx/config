@@ -4,8 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from cgtsclient.common import base
 from ceilometerclient.v2 import options
+from cgtsclient.common import base
+
 
 class ialarm(base.Resource):
     def __repr__(self):
@@ -49,4 +50,4 @@ class ialarmManager(base.Manager):
         params = []
         if include_suppress:
             params.append('include_suppress=True')
-        return self._list(options.build_url(self._path('summary'), None ,params))
+        return self._list(options.build_url(self._path('summary'), None, params))

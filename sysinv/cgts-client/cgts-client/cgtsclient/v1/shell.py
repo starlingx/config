@@ -3,62 +3,62 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-
 #
 
-
 from cgtsclient.common import utils
-from cgtsclient.v1 import address_shell
 from cgtsclient.v1 import address_pool_shell
-from cgtsclient.v1 import isystem_shell
-from cgtsclient.v1 import iHost_shell
+from cgtsclient.v1 import address_shell
+from cgtsclient.v1 import ceph_mon_shell
+from cgtsclient.v1 import certificate_shell
+from cgtsclient.v1 import cluster_shell
+from cgtsclient.v1 import controller_fs_shell
+from cgtsclient.v1 import drbdconfig_shell
+from cgtsclient.v1 import ethernetport_shell
+from cgtsclient.v1 import event_log_shell
+from cgtsclient.v1 import event_suppression_shell
+from cgtsclient.v1 import firewallrules_shell
+from cgtsclient.v1 import health_shell
+
+from cgtsclient.v1 import ialarm_shell
+from cgtsclient.v1 import icommunity_shell
 from cgtsclient.v1 import icpu_shell
-from cgtsclient.v1 import imemory_shell
-from cgtsclient.v1 import iinterface_shell
 from cgtsclient.v1 import idisk_shell
-from cgtsclient.v1 import istor_shell
+from cgtsclient.v1 import idns_shell
+from cgtsclient.v1 import iextoam_shell
+from cgtsclient.v1 import iHost_shell
+from cgtsclient.v1 import iinfra_shell
+from cgtsclient.v1 import iinterface_shell
 from cgtsclient.v1 import ilvg_shell
-from cgtsclient.v1 import ipv_shell
+from cgtsclient.v1 import imemory_shell
+from cgtsclient.v1 import intp_shell
 from cgtsclient.v1 import iprofile_shell
+from cgtsclient.v1 import ipv_shell
+from cgtsclient.v1 import isensor_shell
+from cgtsclient.v1 import isensorgroup_shell
+from cgtsclient.v1 import istor_shell
+from cgtsclient.v1 import isystem_shell
+from cgtsclient.v1 import itrapdest_shell
+from cgtsclient.v1 import iuser_shell
+
+from cgtsclient.v1 import license_shell
+from cgtsclient.v1 import lldp_agent_shell
+from cgtsclient.v1 import lldp_neighbour_shell
+from cgtsclient.v1 import load_shell
+from cgtsclient.v1 import network_shell
+from cgtsclient.v1 import partition_shell
+from cgtsclient.v1 import pci_device_shell
+from cgtsclient.v1 import port_shell
+from cgtsclient.v1 import remotelogging_shell
+from cgtsclient.v1 import route_shell
+from cgtsclient.v1 import sdn_controller_shell
+from cgtsclient.v1 import service_parameter_shell
 from cgtsclient.v1 import sm_service_nodes_shell
 from cgtsclient.v1 import sm_service_shell
 from cgtsclient.v1 import sm_servicegroup_shell
-from cgtsclient.v1 import ialarm_shell
-from cgtsclient.v1 import icommunity_shell
-from cgtsclient.v1 import itrapdest_shell
-from cgtsclient.v1 import iuser_shell
-from cgtsclient.v1 import idns_shell
-from cgtsclient.v1 import intp_shell
-from cgtsclient.v1 import iextoam_shell
-from cgtsclient.v1 import controller_fs_shell
 from cgtsclient.v1 import storage_backend_shell
-from cgtsclient.v1 import ceph_mon_shell
-from cgtsclient.v1 import drbdconfig_shell
-from cgtsclient.v1 import event_log_shell
-from cgtsclient.v1 import event_suppression_shell
-from cgtsclient.v1 import iinfra_shell
-from cgtsclient.v1 import ethernetport_shell
-from cgtsclient.v1 import port_shell
-from cgtsclient.v1 import route_shell
-from cgtsclient.v1 import isensor_shell
-from cgtsclient.v1 import isensorgroup_shell
-from cgtsclient.v1 import load_shell
-from cgtsclient.v1 import pci_device_shell
-from cgtsclient.v1 import upgrade_shell
-from cgtsclient.v1 import network_shell
-from cgtsclient.v1 import service_parameter_shell
-#from cgtsclient.v1 import storagepool_shell
-from cgtsclient.v1 import cluster_shell
-from cgtsclient.v1 import lldp_agent_shell
-from cgtsclient.v1 import lldp_neighbour_shell
-from cgtsclient.v1 import license_shell
-from cgtsclient.v1 import health_shell
-from cgtsclient.v1 import remotelogging_shell
-from cgtsclient.v1 import sdn_controller_shell
-from cgtsclient.v1 import firewallrules_shell
-from cgtsclient.v1 import partition_shell
-from cgtsclient.v1 import certificate_shell
 from cgtsclient.v1 import storage_tier_shell
+from cgtsclient.v1 import upgrade_shell
+
 
 COMMAND_MODULES = [
     isystem_shell,
@@ -100,7 +100,6 @@ COMMAND_MODULES = [
     upgrade_shell,
     network_shell,
     service_parameter_shell,
-    #storagepool_shell,
     cluster_shell,
     lldp_agent_shell,
     lldp_neighbour_shell,

@@ -8,9 +8,7 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient.common import utils
 from cgtsclient import exc
-from cgtsclient.v1 import ihost as ihost_utils
 
 CREATION_ATTRIBUTES = ['ceph_mon_gib', 'ceph_mon_dev',
                        'ceph_mon_dev_ctrl0', 'ceph_mon_dev_ctrl1']

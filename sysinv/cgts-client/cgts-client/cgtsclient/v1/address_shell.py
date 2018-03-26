@@ -71,15 +71,15 @@ def do_host_addr_add(cc, args):
 
     field_list = ['address', 'prefix']
 
-    ## Lookup parent host and interface
+    # Lookup parent host and interface
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     iinterface = iinterface_utils._find_interface(cc, ihost, args.ifnameorid)
 
-    ## Prune input fields down to required/expected values
+    # Prune input fields down to required/expected values
     data = dict((k, v) for (k, v) in vars(args).items()
                 if k in field_list and not (v is None))
 
-    ## Insert interface UUID
+    # Insert interface UUID
     data['interface_uuid'] = iinterface.uuid
 
     address = cc.address.create(**data)

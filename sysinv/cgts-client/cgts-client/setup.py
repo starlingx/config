@@ -6,18 +6,25 @@
 
 import setuptools
 
+
+
 setuptools.setup(
     name='cgtsclient',
-    description='CGCS System Client and CLI',
     version='1.0.0',
-    license='Apache-2.0',
-    packages=['cgtsclient', 'cgtsclient.v1', 'cgtsclient.openstack',
-              'cgtsclient.openstack.common',
-              'cgtsclient.openstack.common.config',
-              'cgtsclient.openstack.common.rootwrap',
-              'cgtsclient.common'],
-    entry_points={
-         'console_scripts': [
-             'system = cgtsclient.shell:main'
-         ]}
+    description='Titanium Cloud System Client and CLI',
+    classifiers=[
+        'Environment :: OpenStack',
+        'Intended Audience :: Information Technology',
+        'Intended Audience :: System Administrators',
+        'License :: windriver',
+        'Operating System :: POSIX :: Linux',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 2.6',
+    ],
+    include_package_data=True,
+    setup_requires=['pbr>=0.5'],
+    pbr=True,
+    packages=setuptools.find_packages()
 )

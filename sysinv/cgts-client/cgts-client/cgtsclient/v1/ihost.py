@@ -9,9 +9,8 @@
 
 from cgtsclient.common import base
 from cgtsclient.common import utils
-from cgtsclient.v1 import icpu
 from cgtsclient import exc
-
+from cgtsclient.v1 import icpu
 
 
 CREATION_ATTRIBUTES = ['hostname', 'personality', 'subfunctions',
@@ -78,21 +77,21 @@ class ihostManager(base.Manager):
         new = {}
         new['force'] = force
         resp, body = self.api.json_request(
-            'POST', self._path(hostid)+"/upgrade", body=new)
+            'POST', self._path(hostid) + "/upgrade", body=new)
         return self.resource_class(self, body)
 
     def downgrade(self, hostid, force):
         new = {}
         new['force'] = force
         resp, body = self.api.json_request(
-            'POST', self._path(hostid)+"/downgrade", body=new)
+            'POST', self._path(hostid) + "/downgrade", body=new)
         return self.resource_class(self, body)
 
     def create_many(self, body):
-        return self._upload(self._path()+"/bulk_add", body)
+        return self._upload(self._path() + "/bulk_add", body)
 
     def host_cpus_modify(self, hostid, patch):
-        path = self._path(hostid)+"/state/host_cpus_modify"
+        path = self._path(hostid) + "/state/host_cpus_modify"
 
         resp, body = self.api.json_request(
             'PUT', path, body=patch)
@@ -134,5 +133,3 @@ def _find_ihost(cc, ihost):
                 return h
         else:
             raise exc.CommandError('host not found: %s' % ihost)
-
-

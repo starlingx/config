@@ -14,9 +14,11 @@ CREATION_ATTRIBUTES = ['confirmed', 'name', 'services', 'capabilities']
 DISPLAY_ATTRIBUTES = []
 PATCH_ATTRIBUTES = []
 
+
 class StorageExternal(base.Resource):
     def __repr__(self):
         return "<storage_external %s>" % self._info
+
 
 class StorageExternalManager(base.Manager):
     resource_class = StorageExternal

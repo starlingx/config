@@ -63,9 +63,8 @@ def do_addrpool_delete(cc, args):
 
 
 def _get_range_tuples(data):
-    """
-    Split the ranges field from a comma separated list of start-end to a
-    real list of (start, end) tuples.
+    """Split the ranges field from a comma separated list of start-end to a
+       real list of (start, end) tuples.
     """
     ranges = []
     for r in data['ranges'].split(',') or []:
@@ -94,7 +93,7 @@ def do_addrpool_add(cc, args):
 
     field_list = ['name', 'network', 'prefix', 'order', 'ranges']
 
-    ## Prune input fields down to required/expected values
+    # Prune input fields down to required/expected values
     data = dict((k, v) for (k, v) in vars(args).items()
                 if k in field_list and not (v is None))
 
@@ -135,7 +134,7 @@ def do_addrpool_modify(cc, args):
 
     patch = []
     for (k, v) in data.items():
-        patch.append({'op':'replace', 'path':'/'+k, 'value':v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     address_pool = cc.address_pool.update(args.address_pool_uuid, patch)
     _print_address_pool_show(address_pool)

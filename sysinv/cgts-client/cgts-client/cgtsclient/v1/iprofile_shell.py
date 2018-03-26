@@ -10,9 +10,9 @@
 # All Rights Reserved.
 #
 
-from cgtsclient import exc
 from cgtsclient.common import constants
 from cgtsclient.common import utils
+from cgtsclient import exc
 from cgtsclient.v1 import ethernetport as ethernetport_utils
 from cgtsclient.v1 import icpu as icpu_utils
 from cgtsclient.v1 import ihost as ihost_utils
@@ -47,7 +47,7 @@ def get_portconfig(iprofile):
     pstr = ''
     for port in iprofile.ports:
         pstr = pstr + "%s: %s" % (ethernetport_utils.get_port_display_name(port), port.pdevice)
-        port.autoneg = 'Yes'  # TODO Remove when autoneg supported in DB
+        port.autoneg = 'Yes'  # TODO(jkung) Remove when autoneg supported in DB
         if port.autoneg != 'na':
             pstr = pstr + " | Auto Neg = %s" % (port.autoneg)
         if port.bootp:
@@ -351,7 +351,7 @@ def get_ilvg_config(iprofile):
             str += "; "
 
         capabilities_str = ''
-        for k,v in ilvg.capabilities.iteritems():
+        for k, v in ilvg.capabilities.iteritems():
             if capabilities_str != '':
                 capabilities_str += "; "
             capabilities_str += "%s: %s " % (k, v)
@@ -394,7 +394,7 @@ def get_storprofile_data(cc, iprofile, detailed=False):
 def do_storprofile_list(cc, args):
     """List storage profiles."""
     profiles = cc.iprofile.list_storage_profiles()
-    storprofiles=[]
+    storprofiles = []
     localstorprofiles = []
     profile_disk_invalid = False
 
@@ -654,7 +654,7 @@ def do_profile_import(cc, args):
 
     try:
         file = open(filename, 'rb')
-    except:
+    except Exception:
         raise exc.CommandError("Error: Could not open file %s for read." % filename)
 
     results = cc.iprofile.import_profile(file)

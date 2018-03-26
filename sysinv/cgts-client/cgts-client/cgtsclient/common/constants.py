@@ -65,7 +65,7 @@ PARTITION_USER_MANAGED_GUID_PREFIX = "ba5eba11-0000-1111-2222-"
 USER_PARTITION_PHYSICAL_VOLUME = (PARTITION_USER_MANAGED_GUID_PREFIX +
                                   "000000000001")
 
-# Size conversion types 
+# Size conversion types
 KiB = 1
 MiB = 2
 GiB = 3

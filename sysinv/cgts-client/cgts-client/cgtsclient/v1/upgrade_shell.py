@@ -9,9 +9,9 @@
 # All Rights Reserved.
 #
 
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
-from cgtsclient.common import constants
 
 
 def _print_upgrade_show(obj):
@@ -54,7 +54,7 @@ def do_upgrade_activate(cc, args):
 
     patch = []
     for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/'+k, 'value': v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
     try:
         upgrade = cc.upgrade.update(patch)
     except exc.HTTPNotFound:
@@ -143,7 +143,7 @@ def do_upgrade_abort(cc, args):
 
     patch = []
     for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/'+k, 'value': v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
     try:
         upgrade = cc.upgrade.update(patch)
     except exc.HTTPNotFound:

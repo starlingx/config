@@ -25,6 +25,7 @@ from cgtsclient import exc
 CREATION_ATTRIBUTES = ['servicename', 'hostname', 'state', 'activity', 'reason']
 # missing forihostid
 
+
 class iService(base.Resource):
     def __repr__(self):
         return "<iService %s>" % self._info

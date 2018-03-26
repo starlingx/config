@@ -15,13 +15,10 @@
 #    under the License.
 #
 
-import copy
-import httplib
 import logging
 import os
 import requests
 import socket
-import StringIO
 
 import httplib2
 
@@ -31,7 +28,7 @@ import six.moves.urllib.parse as urlparse
 try:
     import ssl
 except ImportError:
-    #TODO(bcwaldon): Handle this failure more gracefully
+    # TODO(bcwaldon): Handle this failure more gracefully
     pass
 
 try:
@@ -46,7 +43,6 @@ if not hasattr(urlparse, 'parse_qsl'):
 
 from cgtsclient import exc as exceptions
 from neutronclient.common import utils
-from cgtsclient.openstack.common.gettextutils import _
 
 _logger = logging.getLogger(__name__)
 
@@ -157,13 +153,13 @@ class HTTPClient(httplib2.Http):
     def http_log_resp(_logger, resp, body=None):
         if not _logger.isEnabledFor(logging.DEBUG):
             return
-        
+
         resp_status_code = resp.get('status_code') or ""
         resp_headers = resp.get('headers') or ""
         _logger.debug("RESP:%(code)s %(headers)s %(body)s\n",
-                  {'code': resp_status_code,
-                   'headers': resp_headers,
-                   'body': body})
+                      {'code': resp_status_code,
+                       'headers': resp_headers,
+                       'body': body})
 
     def _cs_request(self, *args, **kwargs):
         kargs = {}
@@ -248,8 +244,8 @@ class HTTPClient(httplib2.Http):
 
         connection_url = self._get_connection_url(url)
         try:
-            resp, body_iter = self._cs_request(connection_url, method,
-                                          **kwargs)
+            resp, body_iter = self._cs_request(connection_url,
+                                               method, **kwargs)
         except exceptions.HTTPUnauthorized:
             self.authenticate()
             resp, body_iter = self._cs_request(
@@ -408,8 +404,7 @@ class HTTPClient(httplib2.Http):
 
         body = json.loads(body)
         for endpoint in body.get('endpoints', []):
-            if (endpoint['type'] == 'platform' and
-                endpoint.get('region') == self.region_name):
+            if (endpoint['type'] == 'platform' and endpoint.get('region') == self.region_name):
                 if self.endpoint_type not in endpoint:
                     raise exceptions.EndpointTypeNotFound(
                         self.endpoint_type)

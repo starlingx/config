@@ -11,9 +11,7 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
-from cgtsclient.v1 import inode as inode_utils
 
 
 def _print_inode_show(inode):
@@ -109,7 +107,7 @@ def do_host_node_modify(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
-                                  if k in rwfields and not (v is None))
+                                 if k in rwfields and not (v is None))
 
     i = _find_node(cc, ihost, args.inodeuuid)
     fields = i.__dict__

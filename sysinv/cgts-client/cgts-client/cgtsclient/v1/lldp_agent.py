@@ -8,7 +8,7 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient import exc
+
 
 class LldpAgent(base.Resource):
     def __repr__(self):
@@ -33,4 +33,3 @@ class LldpAgentManager(base.Manager):
     def get_by_port(self, port_id):
         path = '/v1/ports/%s/lldp_agents' % port_id
         return self._list(path, "lldp_agents")
-

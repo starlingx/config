@@ -7,9 +7,9 @@
 # -*- encoding: utf-8 -*-
 #
 
-from cgtsclient import exc
 from cgtsclient.common import base
 from cgtsclient.common import utils
+from cgtsclient import exc
 
 
 CREATION_ATTRIBUTES = ['profiletype', 'profilename', 'ihost_uuid']
@@ -41,7 +41,7 @@ class iprofileManager(base.Manager):
 
     def list_cpu_profiles(self):
         path = "cpuprofiles_list"
-        profiles =  self._list(self._path(path))
+        profiles = self._list(self._path(path))
         for profile in profiles:
             profile.cpus = [utils.objectify(n) for n in profile.cpus]
             profile.nodes = [utils.objectify(n) for n in profile.nodes]

@@ -28,7 +28,6 @@ from cgtsclient import client as cgclient
 from cgtsclient.common import utils
 from cgtsclient import exc
 
-import keyring
 import os
 
 
@@ -151,8 +150,7 @@ class CgtsShell(object):
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--system-api-version',
-                            default=utils.env(
-                            'SYSTEM_API_VERSION', default='1'),
+                            default=utils.env('SYSTEM_API_VERSION', default='1'),
                             help='Defaults to env[SYSTEM_API_VERSION] '
                             'or 1')
 
@@ -233,9 +231,7 @@ class CgtsShell(object):
 
             httplib2.debuglevel = 1
         else:
-            logging.basicConfig(
-                    format="%(levelname)s %(message)s",
-                    level=logging.CRITICAL)
+            logging.basicConfig(format="%(levelname)s %(message)s", level=logging.CRITICAL)
 
     def main(self, argv):
         # Parse args once to find version
@@ -274,6 +270,7 @@ class CgtsShell(object):
             if not args.os_password:
                 # priviledge check (only allow Keyring retrieval if we are root)
                 if os.geteuid() == 0:
+                    import keyring
                     args.os_password = keyring.get_password('CGCS', args.os_username)
                 else:
                     raise exc.CommandError("You must provide a password via "
@@ -314,7 +311,6 @@ class CgtsShell(object):
 
         commands.remove('bash_completion')
         print(' '.join(commands | options))
-
 
     @utils.arg('command', metavar='<subcommand>', nargs='?',
                help='Display help for <subcommand>')

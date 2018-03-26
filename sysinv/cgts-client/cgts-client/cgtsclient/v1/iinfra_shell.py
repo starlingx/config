@@ -82,7 +82,7 @@ def do_infra_modify(cc, args):
     for entry in args.attributes[0]:
         if(entry.count("=") != 1):
             raise exc.CommandError('infra-modify parameters must be '
-                    'of the form property=value')
+                                   'of the form property=value')
 
     patch = utils.args_array_to_patch("replace", args.attributes[0])
     try:

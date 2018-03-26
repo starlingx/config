@@ -17,7 +17,6 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 
 
 def _print_iuser_show(iuser):
@@ -35,6 +34,7 @@ def donot_user_show(cc, args):
     # iuser = cc.iuser.get(iusers[0])
 
     _print_iuser_show(iusers[0])
+
 
 @utils.arg('attributes',
            metavar='<path=value>',

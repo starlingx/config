@@ -10,19 +10,15 @@
 # All Rights Reserved.
 #
 
-import subprocess
-
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
-from cgtsclient.v1 import isystem as isystem_utils
-from cgtsclient.common import constants
 
 
 def _print_isystem_show(isystem):
     fields = ['name', 'system_type', 'system_mode', 'description', 'location',
               'contact', 'timezone', 'software_version', 'uuid',
-              'created_at', 'updated_at', 'region_name', 'service_project_name'] 
+              'created_at', 'updated_at', 'region_name', 'service_project_name']
     if isystem.capabilities.get('region_config'):
         fields.append('shared_services')
         setattr(isystem, 'shared_services',
@@ -31,7 +27,7 @@ def _print_isystem_show(isystem):
         fields.append('sdn_enabled')
         setattr(isystem, 'sdn_enabled',
                 isystem.capabilities.get('sdn_enabled'))
-    
+
     if isystem.capabilities.get('https_enabled') is not None:
         fields.append('https_enabled')
         setattr(isystem, 'https_enabled',
@@ -89,7 +85,6 @@ def do_show(cc, args):
            help='The vswitch type for the system')
 def do_modify(cc, args):
     """Modify system attributes."""
-
     isystems = cc.isystem.list()
     isystem = isystems[0]
 
@@ -134,7 +129,7 @@ def do_modify(cc, args):
         print 'Please follow the admin guide to complete the reconfiguration.'
 
     field_list = ['name', 'system_mode', 'description', 'location', 'contact',
-                  'timezone', 'sdn_enabled','https_enabled', 'vswitch_type']
+                  'timezone', 'sdn_enabled', 'https_enabled', 'vswitch_type']
 
     # use field list as filter
     user_fields = dict((k, v) for (k, v) in vars(args).items()
@@ -148,8 +143,8 @@ def do_modify(cc, args):
     for (k, v) in user_fields.items():
         patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
-        if k == "https_enabled" and v == "true" :
-          print_https_warning = True
+        if k == "https_enabled" and v == "true":
+            print_https_warning = True
 
     try:
         isystem = cc.isystem.update(isystem.uuid, patch)
@@ -157,6 +152,6 @@ def do_modify(cc, args):
         raise exc.CommandError('system not found: %s' % isystem.uuid)
     _print_isystem_show(isystem)
 
-    if print_https_warning :
-       print "HTTPS enabled with a self-signed certificate.\nThis should be " \
-             "changed to a CA-signed certificate with 'system certificate-install'. "
+    if print_https_warning:
+        print "HTTPS enabled with a self-signed certificate.\nThis should be " \
+              "changed to a CA-signed certificate with 'system certificate-install'. "

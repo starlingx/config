@@ -8,10 +8,10 @@
 # All Rights Reserved.
 #
 
+from ceilometerclient.v2 import options
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
-from ceilometerclient.v2 import options
+
 
 def _print_service_parameter_show(obj):
     fields = ['uuid', 'service', 'section', 'name', 'value',
@@ -25,7 +25,6 @@ def _print_service_parameter_show(obj):
            help="UUID of service parameter")
 def do_service_parameter_show(cc, args):
     """Show Service parameter."""
-
     service_parameter = cc.service_parameter.get(args.uuid)
     _print_service_parameter_show(service_parameter)
 
@@ -41,7 +40,6 @@ def do_service_parameter_show(cc, args):
            help="Search by parameter name")
 def do_service_parameter_list(cc, args):
     """List Service parameters."""
-
     query = None
     field_list = ['service', 'section', 'name']
     for (k, v) in vars(args).items():
@@ -69,9 +67,7 @@ def do_service_parameter_delete(cc, args):
 def _find_service_parameter(cc, service, section, name):
     service_parameters = cc.service_parameter.list()
     for p in service_parameters:
-        if (p.service == service and
-            p.section == section and
-            p.name ==  name):
+        if p.service == service and p.section == section and p.name == name:
             break
     else:
         p = None
@@ -187,5 +183,3 @@ def do_service_parameter_add(cc, args):
                 raise exc.CommandError('Service parameter not found: %s' % uuid)
 
             _print_service_parameter_show(parameter)
-
-

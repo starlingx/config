@@ -8,8 +8,6 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient import exc
-
 
 CREATION_ATTRIBUTES = ['state', 'from_load', 'to_load']
 

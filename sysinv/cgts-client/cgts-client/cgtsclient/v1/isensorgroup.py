@@ -73,7 +73,7 @@ class isensorgroupManager(base.Manager):
     def relearn(self, ihost_uuid):
         new = {}
         new['host_uuid'] = ihost_uuid
-        return self.api.json_request('POST', self._path()+"/relearn", body=new)
+        return self.api.json_request('POST', self._path() + "/relearn", body=new)
 
 
 def get_sensorgroup_display_name(s):

@@ -11,7 +11,6 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 
 
 def _print_remotelogging_show(remotelogging):
@@ -20,7 +19,6 @@ def _print_remotelogging_show(remotelogging):
               'enabled',
               'transport',
               'port',
-              #NC 'key_file',
               'created_at',
               'updated_at']
 
@@ -64,10 +62,6 @@ def donot_config_remotelogging_list(cc, args):
            metavar='<port>',
            default=None,
            help="Remote log server port.")
-#@utils.arg('--key_file',
-#           metavar='<key_file>',
-#           default=None,
-#           help="Remote log server TLS key file.")
 def do_remotelogging_modify(cc, args):
     """Modify Remote Logging attributes."""
 

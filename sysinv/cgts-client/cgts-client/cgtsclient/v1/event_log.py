@@ -4,9 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from cgtsclient.common import base
 from ceilometerclient.v2 import options
-
+from cgtsclient.common import base
 
 
 class EventLog(base.Resource):
@@ -29,10 +28,10 @@ class EventLogManager(base.Manager):
             params.append('marker=%s' % str(marker))
         if include_suppress:
             params.append('include_suppress=True')
-        if   alarms==True and logs==False:
-           params.append('alarms=True')
-        elif alarms==False and logs==True:
-           params.append('logs=True')
+        if alarms is True and logs is False:
+            params.append('alarms=True')
+        elif alarms is False and logs is True:
+            params.append('logs=True')
 
         restAPIURL = options.build_url(self._path(), q, params)
 
@@ -44,4 +43,3 @@ class EventLogManager(base.Manager):
             return self._list(self._path(iid))[0]
         except IndexError:
             return None
-

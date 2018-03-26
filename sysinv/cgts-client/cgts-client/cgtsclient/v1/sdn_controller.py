@@ -36,7 +36,7 @@ class SDNControllerManager(base.Manager):
             return None
 
     def create(self, **kwargs):
-        # path = /v1/sdn_controller' 
+        # path = /v1/sdn_controller'
         new = {}
         for (key, value) in kwargs.items():
             if key in CREATION_ATTRIBUTES:

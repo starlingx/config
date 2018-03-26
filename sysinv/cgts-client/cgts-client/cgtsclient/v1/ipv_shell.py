@@ -12,9 +12,9 @@
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import idisk as idisk_utils
-from cgtsclient.v1 import partition as partition_utils
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import ilvg as ilvg_utils
+from cgtsclient.v1 import partition as partition_utils
 
 
 def _print_ipv_show(ipv):
@@ -114,7 +114,7 @@ def do_host_pv_add(cc, args):
         fields['pv_type'] = 'disk'
     else:
         partition = partition_utils._find_partition(cc, ihost,
-                                               args.device_name_path_uuid)
+                                                    args.device_name_path_uuid)
         if partition:
             fields['disk_or_part_uuid'] = partition.uuid
             fields['pv_type'] = 'partition'
@@ -122,7 +122,7 @@ def do_host_pv_add(cc, args):
     if not idisk and not partition:
         raise exc.CommandError("No disk or partition found on host \'%s\' "
                                "by device path or uuid %s" %
-                               (ihost.hostname,args.device_name_path_uuid))
+                               (ihost.hostname, args.device_name_path_uuid))
 
     try:
         ipv = cc.ipv.create(**fields)

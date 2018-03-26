@@ -12,8 +12,8 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
+
 
 def _print_device_show(device):
     fields = ['name', 'pciaddr', 'pclass_id', 'pvendor_id', 'pdevice_id',
@@ -30,6 +30,7 @@ def _print_device_show(device):
     data = [(f, getattr(device, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)
 
+
 def _find_device(cc, host, nameorpciaddr):
     devices = cc.pci_device.list(host.uuid)
     for d in devices:
@@ -38,6 +39,7 @@ def _find_device(cc, host, nameorpciaddr):
     else:
         raise exc.CommandError('PCI devices not found: host %s device %s' % (host.id, nameorpciaddr))
     return d
+
 
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',
@@ -78,6 +80,7 @@ def do_host_device_list(cc, args):
 
     utils.print_list(devices, fields, labels, sortby=1)
 
+
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',
            help="Name or ID of host")
@@ -99,7 +102,7 @@ def do_host_device_modify(cc, args):
     host = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
-                                  if k in rwfields and not (v is None))
+                                 if k in rwfields and not (v is None))
 
     device = _find_device(cc, host, args.nameorpciaddr)
 
@@ -108,12 +111,11 @@ def do_host_device_modify(cc, args):
 
     patch = []
     for (k, v) in user_specified_fields.items():
-        patch.append({'op':'replace', 'path':'/'+k, 'value':v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     if patch:
         try:
             device = cc.pci_device.update(device.uuid, patch)
             _print_device_show(device)
         except exc.HTTPNotFound:
-            raise exc.CommandError('Device update failed: host %s device %s : update %s' % (args.hostnameorid, nameorpciaddr, patch))
-
+            raise exc.CommandError('Device update failed: host %s device %s : update %s' % (args.hostnameorid, args.nameorpciaddr, patch))

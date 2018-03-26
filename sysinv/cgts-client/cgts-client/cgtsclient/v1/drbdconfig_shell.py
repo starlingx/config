@@ -18,6 +18,7 @@ from cgtsclient import exc
 
 CONTROLLER = 'controller'
 
+
 def _print_drbdsync_show(drbdconfig):
     fields = ['uuid',
               'isystem_uuid',
@@ -25,8 +26,7 @@ def _print_drbdsync_show(drbdconfig):
               'updated_at',
               'link_util',
               'num_parallel',
-              'rtt_ms',
-             ]
+              'rtt_ms']
     data = [(f, getattr(drbdconfig, f, '')) for f in fields]
     utils.print_tuple_list(data)
 
@@ -34,8 +34,7 @@ def _print_drbdsync_show(drbdconfig):
 def _print_controller_config_show(ihosts):
     fields = ['id', 'hostname', 'personality',
               'administrative', 'operational', 'availability',
-              'config_status',
-             ]
+              'config_status']
     field_labels = list(fields)
     utils.print_list(ihosts, fields, field_labels, sortby=0)
 
@@ -89,8 +88,7 @@ def do_drbdsync_modify(cc, args):
     is_config = False
     ihosts = cc.ihost.list_personality(personality=CONTROLLER)
     for ihost in ihosts:
-        if ihost.config_target and \
-            ihost.config_applied != ihost.config_target:
+        if ihost.config_target and ihost.config_applied != ihost.config_target:
             is_config = True
             print ("host %s is configuring ..." % (ihost.hostname))
     if is_config:
@@ -114,14 +112,13 @@ def do_drbdsync_modify(cc, args):
         do_wait = False
         hosts = []
         for ihost in ihosts:
-            if ihost.config_target and \
-                ihost.config_applied != ihost.config_target:
+            if ihost.config_target and ihost.config_applied != ihost.config_target:
                 do_wait = True
                 hosts.append(ihost.hostname)
         if do_wait:
             if x == 0:
-                print ("waiting for hosts: %s to finish configuring"
-                    % ', '.join(hosts)),
+                print ("waiting for hosts: %s to finish configuring" %
+                       ', '.join(hosts)),
                 sys.stdout.flush()
             else:
                 print ".",

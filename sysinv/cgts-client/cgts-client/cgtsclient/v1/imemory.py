@@ -44,7 +44,7 @@ class imemoryManager(base.Manager):
             return self._list(path)[0]
         except IndexError:
             return None
-    
+
     def update(self, imemory_id, patch):
         return self._update(self._path(imemory_id), patch)
 

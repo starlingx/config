@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Red Hat, Inc.
 # All Rights Reserved.
 #
@@ -18,4 +15,3 @@
 #
 # Copyright (c) 2013-2014 Wind River Systems, Inc.
 #
-

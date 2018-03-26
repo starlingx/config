@@ -51,4 +51,3 @@ class iTrapdestManager(base.Manager):
 
     def update(self, iid, patch):
         return self._update(self._path(iid), patch)
-

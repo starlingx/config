@@ -7,9 +7,8 @@
 # -*- encoding: utf-8 -*-
 #
 
-from cgtsclient.common import base
-from cgtsclient import exc
 from ceilometerclient.v2 import options
+from cgtsclient.common import base
 
 
 class ServiceParameter(base.Resource):
@@ -51,5 +50,4 @@ class ServiceParameterManager(base.Manager):
     def apply(self, service):
         new = {}
         new['service'] = service
-        return self.api.json_request('POST', self._path()+"/apply", body=new)
-
+        return self.api.json_request('POST', self._path() + "/apply", body=new)

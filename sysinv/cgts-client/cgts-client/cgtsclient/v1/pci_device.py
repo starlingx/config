@@ -8,7 +8,6 @@
 #
 
 from cgtsclient.common import base
-from cgtsclient import exc
 
 
 class PciDevice(base.Resource):
@@ -44,4 +43,3 @@ def get_pci_device_display_name(p):
         return p.name
     else:
         return '(' + str(p.uuid)[-8:] + ')'
-    

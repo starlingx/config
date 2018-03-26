@@ -4,10 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from cgtsclient import exc
 from cgtsclient.common import utils
+from cgtsclient import exc
 from cgtsclient.openstack.common.gettextutils import _
-from keystoneclient.v3 import client as ksclient
 
 
 def _get_ksclient(**kwargs):
@@ -22,6 +21,7 @@ def _get_ksclient(**kwargs):
             * insecure: allow insecure SSL (no cert verification)
             * project_name: Project name for project scoping.
     """
+    from keystoneclient.v3 import client as ksclient
     return ksclient.Client(username=kwargs.get('username'),
                            password=kwargs.get('password'),
                            user_domain_name=kwargs.get('user_domain_name'),
@@ -89,9 +89,7 @@ def get_client(api_version, **kwargs):
             'os_cacert': kwargs.get('ca_file')
         }
         _ksclient = _get_ksclient(**ks_kwargs)
-        token = kwargs.get('os_auth_token') \
-                if kwargs.get('os_auth_token') \
-                else _ksclient.auth_ref.auth_token
+        token = kwargs.get('os_auth_token') if kwargs.get('os_auth_token') else _ksclient.auth_ref.auth_token
 
         ep_kwargs = {
             'service_type': kwargs.get('os_service_type'),
@@ -117,8 +115,6 @@ def get_client(api_version, **kwargs):
         'cert_file': kwargs.get('cert_file'),
         'key_file': kwargs.get('key_file'),
         'auth_ref': auth_ref,
-        #'tenant_id': kwargs.get('os_tenant_id'),
-        #'tenant_name': kwargs.get('os_tenant_name'),
         'auth_url': kwargs.get('os_auth_url'),
         'smapi_endpoint': 'http:localhost:7777',
     }

@@ -53,8 +53,7 @@ def do_servicenode_show(cc, args):
     try:
         node = cc.sm_service_nodes.get(args.node)
     except exc.HTTPNotFound:
-        raise exc.CommandError(
-                  'Service Node not found: %s' % args.node)
+        raise exc.CommandError('Service Node not found: %s' % args.node)
     except exc.Forbidden:
         raise exc.CommandError("Not authorized. The requested action "
                                "requires 'admin' level")

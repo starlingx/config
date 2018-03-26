@@ -18,10 +18,9 @@
 #
 # Copyright (c) 2013-2014 Wind River Systems, Inc.
 #
-
-
 from cgtsclient.common import utils
 from cgtsclient import exc
+
 
 def _print_iservicegroup_show(servicegroup):
     fields = ['uuid', 'name', 'hostname', 'service_group_name', 'state']
@@ -52,8 +51,7 @@ def do_servicegroup_show(cc, args):
     try:
         servicegroup = cc.sm_servicegroup.get(args.servicegroup)
     except exc.HTTPNotFound:
-        raise exc.CommandError(
-                  'Service Group not found: %s' % args.servicegroup)
+        raise exc.CommandError('Service Group not found: %s' % args.servicegroup)
     except exc.Forbidden:
         raise exc.CommandError("Not authorized. The requested action "
                                "requires 'admin' level")
@@ -105,8 +103,8 @@ def donot_servicegroup_delete(cc, args):
            metavar='<path=value>',
            nargs='+',
            action='append',
-          default=[],
-          help="Attributes to add/replace or remove ")
+           default=[],
+           help="Attributes to add/replace or remove ")
 def donot_servicegroup_modify_labonly(cc, args):
     """LAB ONLY Update a servicegroup. """
     # JKUNG comment this out prior to delivery
@@ -114,6 +112,5 @@ def donot_servicegroup_modify_labonly(cc, args):
     try:
         iservicegroup = cc.smapiClient.iservicegroup.update(args.iservicegroup, patch)
     except exc.HTTPNotFound:
-        raise exc.CommandError(
-                  'Service Group not found: %s' % args.iservicegroup)
+        raise exc.CommandError('Service Group not found: %s' % args.iservicegroup)
     _print_iservicegroup_show(iservicegroup)

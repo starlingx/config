@@ -172,7 +172,7 @@ def do_host_stor_update(cc, args):
 
     patch = []
     for (k, v) in user_specified_fields.items():
-        patch.append({'op': 'replace', 'path': '/'+k, 'value': v})
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     try:
         istor = cc.istor.update(args.osd, patch)

@@ -82,8 +82,3 @@ def do_snmp_trapdest_delete(cc, args):
         except exc.HTTPNotFound:
             raise exc.CommandError('IP not found: %s' % c)
         print 'Deleted ip %s' % c
-
-
-
-
-

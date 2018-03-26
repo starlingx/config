@@ -12,9 +12,8 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
-from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import icpu as icpu_utils
+from cgtsclient.v1 import ihost as ihost_utils
 
 
 def _print_icpu_show(icpu):
@@ -47,7 +46,7 @@ def _find_cpu(cc, ihost, cpunameoruuid):
             break
     else:
         raise exc.CommandError('CPU logical core not found: host %s cpu %s' %
-                                (ihost.hostname, cpunameoruuid))
+                               (ihost.hostname, cpunameoruuid))
     return c
 
 

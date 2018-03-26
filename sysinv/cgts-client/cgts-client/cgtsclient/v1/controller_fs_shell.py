@@ -33,6 +33,7 @@ def _print_controller_fs_show(controller_fs):
     data = [(f, getattr(controller_fs, f)) for f in fields]
     utils.print_tuple_list(data, labels)
 
+
 @utils.arg('attributes',
            metavar='<fs_name=size>',
            nargs='+',
@@ -43,7 +44,6 @@ def _print_controller_fs_show(controller_fs):
            action='store_true',
            default=False,
            help="Force the resize operation ")
-
 def do_controllerfs_modify(cc, args):
     """Modify controller filesystem sizes."""
 
@@ -89,6 +89,7 @@ def _print_controllerfs_list(cc):
                     'Replicated', 'State']
     fields = ['uuid', 'name', 'size', 'logical_volume', 'replicated', 'state']
     utils.print_list(controller_fs_list, fields, field_labels, sortby=1)
+
 
 def do_controllerfs_list(cc, args):
     """Show list of controller filesystems"""

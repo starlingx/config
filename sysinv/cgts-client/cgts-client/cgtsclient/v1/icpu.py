@@ -11,10 +11,10 @@ from cgtsclient import exc
 from cgtsclient.openstack.common.gettextutils import _
 
 
-CREATION_ATTRIBUTES = ['ihost_uuid', 'inode_uuid', 'cpu', 'core', 'thread', 
+CREATION_ATTRIBUTES = ['ihost_uuid', 'inode_uuid', 'cpu', 'core', 'thread',
                        'cpu_family', 'cpu_model', 'allocated_function',
-                       'numa_node', 'capabilities', 'function', 
-                       'num_cores_on_processor0', 'num_cores_on_processor1', 
+                       'numa_node', 'capabilities', 'function',
+                       'num_cores_on_processor0', 'num_cores_on_processor1',
                        'num_cores_on_processor2', 'num_cores_on_processor3']
 
 PLATFORM_CPU_TYPE = "Platform"
@@ -113,25 +113,27 @@ def check_core_functions(personality, icpus):
     if platform_cores == 0:
         error_string = ("There must be at least one core for %s." %
                         PLATFORM_CPU_TYPE_FORMAT)
-    elif personality == 'compute' and vswitch_cores == 0 :
+    elif personality == 'compute' and vswitch_cores == 0:
         error_string = ("There must be at least one core for %s." %
                         VSWITCH_CPU_TYPE_FORMAT)
-    elif personality == 'compute' and vm_cores == 0 :
+    elif personality == 'compute' and vm_cores == 0:
         error_string = ("There must be at least one core for %s." %
                         VMS_CPU_TYPE_FORMAT)
     return error_string
 
+
 def compress_range(c_list):
-    c_list.append( 999 )
+    c_list.append(999)
     c_list.sort()
     c_sep = ""
     c_item = ""
     c_str = ""
+    pn = 0   # pn is not used until second loop anyways
     for n in c_list:
         if not c_item:
             c_item = "%s" % n
         else:
-            if n > (pn+1):
+            if n > (pn + 1):
                 if int(pn) == int(c_item):
                     c_str = "%s%s%s" % (c_str, c_sep, c_item)
                 else:
@@ -140,6 +142,7 @@ def compress_range(c_list):
                 c_item = "%s" % n
         pn = n
     return c_str
+
 
 def restructure_host_cpu_data(host):
     host.core_assignment = []
@@ -160,39 +163,37 @@ def restructure_host_cpu_data(host):
                 host.hyperthreading = "Yes"
 
             if cpu.numa_node not in host.node_min_max_cores:
-                host.node_min_max_cores[cpu.numa_node] = { 'min': 99999, 'max': 0 }
+                host.node_min_max_cores[cpu.numa_node] = {'min': 99999, 'max': 0}
             if cpu.cpu < host.node_min_max_cores[cpu.numa_node]['min']:
                 host.node_min_max_cores[cpu.numa_node]['min'] = cpu.cpu
             if cpu.cpu > host.node_min_max_cores[cpu.numa_node]['max']:
                 host.node_min_max_cores[cpu.numa_node]['max'] = cpu.cpu
 
-            if cpu.allocated_function == None:
+            if cpu.allocated_function is None:
                 cpu.allocated_function = NONE_CPU_TYPE
 
             if cpu.allocated_function not in core_assignment:
                 core_assignment[cpu.allocated_function] = {}
                 number_of_cores[cpu.allocated_function] = {}
             if cpu.numa_node not in core_assignment[cpu.allocated_function]:
-                core_assignment[cpu.allocated_function][cpu.numa_node] = [ int(cpu.cpu) ]
+                core_assignment[cpu.allocated_function][cpu.numa_node] = [int(cpu.cpu)]
                 number_of_cores[cpu.allocated_function][cpu.numa_node] = 1
             else:
-                core_assignment[cpu.allocated_function][cpu.numa_node].append( int(cpu.cpu) )
+                core_assignment[cpu.allocated_function][cpu.numa_node].append(int(cpu.cpu))
                 number_of_cores[cpu.allocated_function][cpu.numa_node] = number_of_cores[cpu.allocated_function][cpu.numa_node] + 1
-
 
         for f in CPU_TYPE_LIST:
             cpufunction = CpuFunction(f)
             if f in core_assignment:
-                host.core_assignment.append( cpufunction )
-                for s,cores in core_assignment[f].items():
+                host.core_assignment.append(cpufunction)
+                for s, cores in core_assignment[f].items():
                     cpufunction.socket_cores[s] = compress_range(cores)
                     cpufunction.socket_cores_number[s] = number_of_cores[f][s]
             else:
-                if (f == PLATFORM_CPU_TYPE or
-                    (hasattr(host, 'subfunctions') and
-                                            'compute' in host.subfunctions)):
+                if (f == PLATFORM_CPU_TYPE or (hasattr(host, 'subfunctions')
+                                               and 'compute' in host.subfunctions)):
                     if f != NONE_CPU_TYPE:
-                        host.core_assignment.append( cpufunction )
+                        host.core_assignment.append(cpufunction)
                         for s in range(0, len(host.nodes)):
                             cpufunction.socket_cores[s] = ""
                             cpufunction.socket_cores_number[s] = 0

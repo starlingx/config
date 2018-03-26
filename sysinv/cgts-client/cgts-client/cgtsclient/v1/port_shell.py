@@ -12,7 +12,6 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
 
 
@@ -35,7 +34,7 @@ def _print_port_show(port):
               'uuid', 'host_uuid', 'interface_uuid',
               'accelerated',
               'created_at', 'updated_at']
-    data = [ (f, getattr(port, f, '')) for f in fields ]
+    data = [(f, getattr(port, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)
 
 

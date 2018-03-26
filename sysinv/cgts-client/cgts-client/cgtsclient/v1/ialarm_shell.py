@@ -9,11 +9,11 @@
 # All Rights Reserved.
 #
 
-from cgtsclient import exc
-from ceilometerclient.v2 import options
 from ceilometerclient.common import utils
-from cgtsclient.common import wrapping_formatters
+from ceilometerclient.v2 import options
 from cgtsclient.common import utils as cgts_utils
+from cgtsclient.common import wrapping_formatters
+from cgtsclient import exc
 
 
 def _display_fault(fault):
@@ -49,18 +49,14 @@ def do_alarm_delete(cc, args={}):
 @utils.arg('-q', '--query', metavar='<QUERY>',
            help='key[op]data_type::value; list. data_type is optional, '
                 'but if supplied must be string, integer, float, or boolean.')
-
 @utils.arg('--uuid', action='store_true',
            help='Include UUID in output')
-
 @utils.arg('--include_suppress',
            action='store_true',
            help='Include suppressed alarms in output')
-
 @utils.arg('--mgmt_affecting',
            action='store_true',
            help='Include management affecting status in output')
-
 def do_alarm_list(cc, args={}):
     '''List all active alarms.'''
 
@@ -83,7 +79,7 @@ def do_alarm_list(cc, args={}):
     # (can switch over to vertical formatting when available from CLIFF)
 
     def hightlightAlarmId(alarm):
-        suppressed = hasattr(alarm,"suppression_status") and alarm.suppression_status=="suppressed"
+        suppressed = hasattr(alarm, "suppression_status") and alarm.suppression_status == "suppressed"
         if suppressed:
             value = "S({})".format(alarm.alarm_id)
         else:
@@ -93,13 +89,12 @@ def do_alarm_list(cc, args={}):
     field_labels = ['Alarm ID', 'Reason Text', 'Entity ID', 'Severity', 'Time Stamp']
     fields = ['alarm_id', 'reason_text', 'entity_instance_id', 'severity', 'timestamp']
     # for best results, ensure width ratios add up to 1 (=100%)
-    formatterSpec =  {
-                        "alarm_id"                   : {"formatter" : hightlightAlarmId, "wrapperFormatter": .08},
-                        "reason_text"                : .54,
-                        "entity_instance_id"         : .15,
-                        "severity"                   : .10,
-                        "timestamp"                  : .10,
-                      }
+    formatterSpec = {"alarm_id": {"formatter": hightlightAlarmId, "wrapperFormatter": .08},
+                     "reason_text": .54,
+                     "entity_instance_id": .15,
+                     "severity": .10,
+                     "timestamp": .10,
+                     }
 
     if includeUUID:
         field_labels.insert(0, 'UUID')
@@ -122,6 +117,7 @@ def do_alarm_list(cc, args={}):
     cgts_utils.print_list(faults, fields, field_labels, formatters=formatters,
                           sortby=fields.index('timestamp'), reversesort=True)
 
+
 @utils.arg('--include_suppress',
            action='store_true',
            help='Include suppressed alarms in output')
@@ -136,5 +132,3 @@ def do_alarm_summary(cc, args={}):
     field_labels = ['Critical Alarms', 'Major Alarms', 'Minor Alarms', 'Warnings']
     fields = ['critical', 'major', 'minor', 'warnings']
     cgts_utils.print_list(faults, fields, field_labels)
-
- 
