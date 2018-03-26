@@ -10,6 +10,7 @@ class openstack::glance::params (
   $service_create = false,
   $configured_registry_host = '0.0.0.0',
   $glance_cached = false,
+  $glance_delete_interval = 6,
 ) { }
 
 
@@ -73,6 +74,15 @@ class openstack::glance
       hour        => '*/24',
       user        => 'root',
     }
+
+    cron { 'glance-cleaner':
+       ensure      => 'present',
+       command     => "/usr/bin/glance-cleaner --config-file /etc/glance/glance-api.conf --delete-interval $glance_delete_interval",
+       environment => 'PATH=/bin:/usr/bin:/usr/sbin',
+       minute      => '35',
+       hour        => "*/$glance_delete_interval",
+       user        => 'root',
+     }
 
     # In glance cached mode run the pruner once every 6 hours to clean
     # stale or orphaned images
