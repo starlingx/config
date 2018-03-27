@@ -258,7 +258,15 @@ class openstack::cinder::lvm::filesystem::drbd (
     $resync_after = undef
   }
 
-  if str2bool($::is_controller_active) {
+  if (str2bool($::is_controller_active) or
+    (str2bool($::is_standalone_controller) and $is_node_cinder_lvm)
+  ) {
+    # Run DRBD cinder initial setup in two cases
+    # 1) first time Cinder LVM is configured,
+    # 2) when cinder's disk is replaced on a standalone controller
+    #    (mostly to accommodate SX disk replacement).
+    # Note: Cinder disk replacement is triggered from sysinv by removing
+    # the checkpoint file behind is_node_cinder_lvm.
     $ha_primary = true
     $initial_setup = true
     $service_enable = true
@@ -315,7 +323,15 @@ class openstack::cinder::lvm::filesystem::drbd (
     require       => [ Class['::platform::partitions'], File_line['final filter: update lvm global_filter'] ]
   }
 
-  if $is_initial_cinder_lvm {
+  if ($is_initial_cinder_lvm or
+    (str2bool($::is_standalone_controller) and $is_node_cinder_lvm)
+  ){
+    # Recreate cinder-volumes in two cases:
+    # 1) first time Cinder LVM is configured,
+    # 2) when cinder's disk is replaced on a standalone controller
+    #    (mostly to accommodate SX disk replacement).
+    # Note: Cinder disk replacement is triggered from sysinv by removing
+    # the checkpoint file behind is_node_cinder_lvm.
     physical_volume { $device:
       ensure => present,
       require => Drbd::Resource[$drbd_resource]
@@ -586,9 +602,9 @@ class openstack::cinder::api(
   $api_host = $::platform::network::mgmt::params::controller_address
 
   $upgrade = $::platform::params::controller_upgrade
-  if $service_enabled  and (str2bool($::is_controller_active) or $upgrade) {
+  if $service_enabled and (str2bool($::is_controller_active) or $upgrade) {
     include ::cinder::keystone::auth
-    if $::platform::params::distributed_cloud_role =='systemcontroller' {
+    if $::platform::params::distributed_cloud_role == 'systemcontroller' {
       include ::dcorch::keystone::auth
       include ::platform::dcorch::firewall
       include ::platform::dcorch::haproxy

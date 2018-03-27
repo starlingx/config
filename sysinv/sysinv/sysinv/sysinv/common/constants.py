@@ -1178,6 +1178,10 @@ NODE_CINDER_LVM_CONFIG_COMPLETE_FILE = \
 INITIAL_CINDER_LVM_CONFIG_COMPLETE_FILE = \
     os.path.join(tsc.CONFIG_PATH, '.initial_cinder_lvm_config_complete')
 
+DISK_WIPE_IN_PROGRESS_FLAG = \
+    os.path.join(tsc.PLATFORM_CONF_PATH, '.disk_wipe_in_progress')
+DISK_WIPE_COMPLETE_TIMEOUT = 5  # wait for a disk to finish wiping.
+
 # Clone label set in DB
 CLONE_ISO_MAC = 'CLONEISOMAC_'
 CLONE_ISO_DISK_SID = 'CLONEISODISKSID_'

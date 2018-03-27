@@ -2818,8 +2818,37 @@ class ConductorManager(service.PeriodicService):
                 if agent_idisk.get('device_path') in cinder_device:
                     is_cinder_device = True
 
+            # On SX we have to wait for disk wipe confirmation
+            # before updating DB otherwise user may unlock host without wipe
+            # and operation won't be retried.
+            # If DB was not updated, operation will be retried on reboot
+            # ensuring that the disk was indeed wiped.
+            system_mode = utils.get_system_mode(self.dbapi)
+            if system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                try:
+                    os.mknod(constants.DISK_WIPE_IN_PROGRESS_FLAG)
+                except OSError:
+                    pass
+
             rpcapi.disk_format_gpt(context, ihost.uuid, agent_idisk,
                                    is_cinder_device)
+
+            if system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                timeout = 0
+                while os.path.isfile(constants.DISK_WIPE_IN_PROGRESS_FLAG):
+                    if timeout > constants.DISK_WIPE_COMPLETE_TIMEOUT:
+                        # Wipe takes a few seconds. Problem is that if
+                        # sysinv-agent is stuck in a long running operation,
+                        # such as applying manifests, then the wipe itself
+                        # will be delayed and even skipped if user unlocks
+                        # the host.
+                        msg = ("Wiping device: %s on %s takes too long. "
+                               "Aborting! Operation will retry on next "
+                               "agent inventory reporting." % (agent_idisk, ihost.uuid))
+                        raise exception.SysinvException(msg)
+                    time.sleep(1)
+                    timeout += 1
+
         except exception.ServerNotFound:
             LOG.exception("Invalid ihost_id %s" % host_id)
             return

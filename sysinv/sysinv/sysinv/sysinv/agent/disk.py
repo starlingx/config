@@ -186,6 +186,14 @@ class DiskOperator(object):
                 LOG.error(".node_cinder_lvm_config_complete_file not present.")
                 pass
 
+        # On SX ensure wipe succeeds before DB is updated.
+        # Flag file is used to mark wiping in progress.
+        try:
+            os.remove(constants.DISK_WIPE_IN_PROGRESS_FLAG)
+        except OSError:
+            # it's ok if file is not present.
+            pass
+
         # We need to send the updated info about the host disks back to
         # the conductor.
         idisk_update = self.idisk_get()

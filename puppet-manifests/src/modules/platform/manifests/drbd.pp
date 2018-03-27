@@ -340,7 +340,14 @@ class platform::drbd(
   $service_enable = false,
   $service_ensure = 'stopped',
 ) {
-  if str2bool($::is_initial_config_primary) {
+  if (str2bool($::is_initial_config_primary) or
+    ('lvm' in $openstack::cinder::params::enabled_backends and
+      str2bool($::is_standalone_controller) and str2bool($::is_node_cinder_lvm_config))
+  ){
+    # Enable DRBD in two cases:
+    # 1) At config_controller,
+    # 2) When cinder volumes disk is replaced on a standalone controller
+    #   (e.g. AIO SX).
     class { '::drbd':
       service_enable => true,
       service_ensure => 'running',
