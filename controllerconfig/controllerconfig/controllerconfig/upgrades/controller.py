@@ -1004,6 +1004,40 @@ def nova_fix_db_connect(packstack_config):
     LOG.info("Finished fixup of nova cells database connections.")
 
 
+def get_controller_1_uuid():
+    """ Read in the uuid from the sysinv db"""
+    conn = psycopg2.connect("dbname=sysinv user=postgres")
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("select uuid from i_host where hostname="
+                        "'controller-1';")
+            row = cur.fetchone()
+            if row is None:
+                LOG.error("Failed to fetch controller-1 uuid")
+                raise Exception("Error reading controller UUID")
+
+            return row[0]
+
+
+def update_platform_conf_file(uuid):
+    """ Update the platform conf file with the uuid
+        This is needed for the compute_huge script to update the CPU
+        allocations
+    """
+    if os.path.isfile(PLATFORM_CONF_FILE):
+        # read the platform config file and check for UUID
+        with open(PLATFORM_CONF_FILE, "r") as fd:
+            for line in fd:
+                if line.find("UUID=") == 0:
+                    LOG.info("Found UUID in platform.conf: %s" % line)
+                    return
+
+        # the UUID is not found, append it
+        LOG.info("Appending UUID to platform.conf. UUID: %s" % uuid)
+        with open(PLATFORM_CONF_FILE, "a") as fd:
+            fd.write("UUID=" + uuid + "\n")
+
+
 def upgrade_controller(from_release, to_release):
     """ Executed on the release N+1 side upgrade controller-1. """
 
@@ -1111,6 +1145,10 @@ def upgrade_controller(from_release, to_release):
     # Execute migration scripts
     utils.execute_migration_scripts(
         from_release, to_release, utils.ACTION_MIGRATE)
+
+    uuid = get_controller_1_uuid()
+
+    update_platform_conf_file(uuid)
 
     # Stop postgres server
     try:
