@@ -139,7 +139,7 @@ LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 class ConductorManager(service.PeriodicService):
     """Sysinv Conductor service main class."""
 
-    RPC_API_VERSION = '1.0'
+    RPC_API_VERSION = '1.1'
     my_host_id = None
 
     def __init__(self, host, topic):

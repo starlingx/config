@@ -38,9 +38,10 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
     API version history:
 
         1.0 - Initial version.
+        1.1 - Used for R5
     """
 
-    RPC_API_VERSION = '1.0'
+    RPC_API_VERSION = '1.1'
 
     def __init__(self, topic=None):
         if topic is None:
@@ -49,7 +50,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         super(ConductorAPI, self).__init__(
             topic=topic,
             serializer=objects_base.SysinvObjectSerializer(),
-            default_version=self.RPC_API_VERSION)
+            default_version='1.0',
+            version_cap=self.RPC_API_VERSION)
 
     def handle_dhcp_lease(self, context, tags, mac, ip_address, cid=None):
         """Synchronously, have a conductor handle a DHCP lease update.
@@ -365,6 +367,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         This method allows records for a physical volume for ihost to be
         created, or updated.
 
+        R5 - Moved to version 1.1 as partition schema is no longer applicable
+        to R4
+
         :param context: an admin context
         :param ihost_uuid: ihost uuid unique id
         :param ipv_dict_array: initial values for physical volume objects
@@ -374,7 +379,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('ipv_update_by_ihost',
                                        ihost_uuid=ihost_uuid,
-                                       ipv_dict_array=ipv_dict_array))
+                                       ipv_dict_array=ipv_dict_array),
+                         version='1.1')
 
     def ipartition_update_by_ihost(self, context,
                                    ihost_uuid, ipart_dict_array):
