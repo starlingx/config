@@ -497,30 +497,6 @@ class ConductorManager(service.PeriodicService):
          'value': None},
     ]
 
-    if tsc.system_type != constants.TIS_AIO_BUILD:
-        DEFAULT_PARAMETERS.extend([
-            {'service': constants.SERVICE_TYPE_CEPH,
-             'section': constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER,
-             'name': constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED,
-             'value': False
-             },
-            {'service': constants.SERVICE_TYPE_CEPH,
-             'section': constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED,
-             'name': constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED,
-             'value': False
-             },
-            {'service': constants.SERVICE_TYPE_CEPH,
-             'section': constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER,
-             'name': constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED,
-             'value': False
-             },
-            {'service': constants.SERVICE_TYPE_CEPH,
-             'section': constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED,
-             'name': constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED,
-             'value': False
-             }]
-        )
-
     def _create_default_service_parameter(self):
         """ Populate the default service parameters"""
         for p in ConductorManager.DEFAULT_PARAMETERS:
@@ -1496,10 +1472,7 @@ class ConductorManager(service.PeriodicService):
                 # Ensure the OSD pools exists. In the case of a system restore,
                 # the pools must be re-created when the first storage node is
                 # unlocked.
-                if host.capabilities['pers_subtype'] == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                    pass
-                else:
-                    self._ceph.configure_osd_pools()
+                self._ceph.configure_osd_pools()
 
                 # Generate host configuration files
                 self._puppet.update_storage_config(host)
@@ -1596,12 +1569,6 @@ class ConductorManager(service.PeriodicService):
         elif host.personality == constants.COMPUTE:
             self._configure_compute_host(context, host)
         elif host.personality == constants.STORAGE:
-            subtype_dict = host.capabilities
-            if (host.hostname in
-                    [constants.STORAGE_0_HOSTNAME, constants.STORAGE_1_HOSTNAME]):
-                if subtype_dict.get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                    raise exception.SysinvException(_("storage-0/storage-1 personality sub-type "
-                                                      "is restricted to cache-backing"))
             self._configure_storage_host(context, host)
         else:
             raise exception.SysinvException(_(
@@ -8680,23 +8647,6 @@ class ConductorManager(service.PeriodicService):
 
     def get_ceph_pools_config(self, context):
         return self._ceph.get_pools_config()
-
-    def get_pool_pg_num(self, context, pool_name):
-        return self._ceph.get_pool_pg_num(pool_name)
-
-    def cache_tiering_get_config(self, context):
-        # During system startup ceph-manager may ask for this before the ceph
-        # operator has been instantiated
-        config = {}
-        if self._ceph:
-            config = self._ceph.cache_tiering_get_config()
-        return config
-
-    def cache_tiering_disable_cache_complete(self, context, success, exception, new_config, applied_config):
-        self._ceph.cache_tiering_disable_cache_complete(success, exception, new_config, applied_config)
-
-    def cache_tiering_enable_cache_complete(self, context, success, exception, new_config, applied_config):
-        self._ceph.cache_tiering_enable_cache_complete(success, exception, new_config, applied_config)
 
     def get_controllerfs_lv_sizes(self, context):
         system = self.dbapi.isystem_get_one()

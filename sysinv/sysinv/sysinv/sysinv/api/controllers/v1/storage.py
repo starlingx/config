@@ -795,32 +795,6 @@ def _create(stor, iprofile=None, create_pv=True):
 
         create_attrs['fortierid'] = tier.id
 
-        if ihost.capabilities.get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-            idisk = pecan.request.dbapi.idisk_get(idisk_uuid)
-            if (idisk.device_type != constants.DEVICE_TYPE_SSD and
-                    idisk.device_type != constants.DEVICE_TYPE_NVME):
-                raise wsme.exc.ClientSideError(_(
-                    "Invalid stor device type: only SSD and NVME devices "
-                    "are supported on {} hosts.").format(
-                    constants.PERSONALITY_SUBTYPE_CEPH_CACHING))
-
-            # OSDs should not be created when cache tiering is enabled
-            cache_enabled_desired = pecan.request.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_CEPH,
-                section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED,
-                name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED)
-            cache_enabled_applied = pecan.request.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_CEPH,
-                section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED,
-                name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED)
-            if (cache_enabled_desired.value.lower() == 'true' or
-                    cache_enabled_applied.value.lower() == 'true'):
-                raise wsme.exc.ClientSideError(_("Adding OSDs to {} nodes "
-                                                 "is not allowed when cache "
-                                                 "tiering is "
-                                                 "enabled.").format(
-                    constants.PERSONALITY_SUBTYPE_CEPH_CACHING))
-
         if not iprofile:
             try:
                 journal_location = \
@@ -856,12 +830,6 @@ def _create(stor, iprofile=None, create_pv=True):
             raise wsme.exc.ClientSideError(_(
                 "Invalid stor device type: only SSD and NVME devices are supported"
                 " for journal functions."))
-
-        if ihost.capabilities.get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-            raise wsme.exc.ClientSideError(_(
-                "Invalid stor device type: journal function not allowed "
-                "on {} hosts.").format(
-                constants.PERSONALITY_SUBTYPE_CEPH_CACHING))
 
     new_stor = pecan.request.dbapi.istor_create(forihostid,
                                                 create_attrs)

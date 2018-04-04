@@ -1254,52 +1254,6 @@ class HostController(rest.RestController):
 
         HostController._personality_license_check(personality)
 
-    def _validate_subtype_cache_tiering(self, operation):
-        ''' Validate cache tiering personality subtype when adding or
-            when deleting hosts
-        '''
-        # TODO(rchurch): Ceph cache tiering is no longer supported. This will be
-        # refactored out in R6. For R5 we are preventing the service parameter
-        # from being enabled. This should prevent a caching host from being
-        # provisioned. To ensure this, just skip all checks and raise an error.
-        msg = _("Ceph cache tiering is no longer supported. Caching hosts are "
-                "not allowed to be provisioned")
-        raise wsme.exc.ClientSideError(msg)
-
-        cache_enabled_applied = pecan.request.dbapi.service_parameter_get_one(
-            service=constants.SERVICE_TYPE_CEPH,
-            section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED,
-            name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED)
-        if operation == constants.HOST_ADD:
-            feature_enabled = pecan.request.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_CEPH,
-                section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED,
-                name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED)
-            if feature_enabled.value.lower() != 'true':
-                raise wsme.exc.ClientSideError(_("Adding storage hosts with "
-                                                 "personality subtype {} requires "
-                                                 "cache tiering feature to be "
-                                                 "enabled.").format(
-                    constants.PERSONALITY_SUBTYPE_CEPH_CACHING))
-            if cache_enabled_applied.value.lower() == 'true':
-                raise wsme.exc.ClientSideError(_("Adding storage hosts with "
-                                                 "personality subtype {} requires "
-                                                 "cache tiering to be "
-                                                 "disabled.").format(
-                    constants.PERSONALITY_SUBTYPE_CEPH_CACHING))
-        elif operation == constants.HOST_DELETE:
-            cache_enabled_desired = pecan.request.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_CEPH,
-                section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED,
-                name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED)
-            if (cache_enabled_desired.value.lower() == 'true'or
-                    cache_enabled_applied.value.lower() == 'true'):
-                raise wsme.exc.ClientSideError(_("Delete storage hosts with "
-                                                 "personality subtype {} requires "
-                                                 "cache tiering to be "
-                                                 "disabled.").format(
-                    constants.PERSONALITY_SUBTYPE_CEPH_CACHING))
-
     def _do_post(self, ihost_dict):
         """Create a new ihost based off a dictionary of attributes """
 
@@ -1397,19 +1351,6 @@ class HostController(rest.RestController):
         if (not 'capabilities' in ihost_dict) \
                 or not ihost_dict['capabilities']:
             ihost_dict['capabilities'] = {}
-
-        if ihost_dict['personality'] == constants.STORAGE:
-            if not 'subtype' in ihost_dict:
-                ihost_dict['capabilities']['pers_subtype'] = constants.PERSONALITY_SUBTYPE_CEPH_BACKING
-            else:
-                if ihost_dict['subtype'] == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                    ihost_dict['capabilities']['pers_subtype'] = ihost_dict['subtype']
-                else:
-                    ihost_dict['capabilities']['pers_subtype'] = constants.PERSONALITY_SUBTYPE_CEPH_BACKING
-                del ihost_dict['subtype']
-
-            if ihost_dict['capabilities']['pers_subtype'] == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                self._validate_subtype_cache_tiering(constants.HOST_ADD)
 
         # If this is the first controller being set up,
         # configure and return
@@ -1770,35 +1711,9 @@ class HostController(rest.RestController):
 
         # Add transient fields that are not stored in the database
         ihost_dict['bm_password'] = None
-        subtype_added = False
-        for p in patch:
-            if (p['path'] == '/personality' and p['value'] == 'storage'):
-                if 'pers_subtype' in ihost_dict['capabilities']:
-                    raise wsme.exc.ClientSideError(_("Subtype personality already assigned."))
-                else:
-                    subtype_added = True
-                for p1 in patch:
-                    if p1['path'] == '/subtype':
-                        subtype = p1['value']
-                        allowed_subtypes = [
-                            constants.PERSONALITY_SUBTYPE_CEPH_BACKING,
-                            constants.PERSONALITY_SUBTYPE_CEPH_CACHING]
-                        if subtype not in allowed_subtypes:
-                            raise wsme.exc.ClientSideError(_(
-                                "Only {} subtypes are supported for storage personality").format(
-                                ",".join(allowed_subtypes)))
-                        ihost_dict['capabilities']['pers_subtype'] = subtype
-                        patch.remove(p1)
-                        break
-                else:
-                    ihost_dict['capabilities']['pers_subtype'] = constants.PERSONALITY_SUBTYPE_CEPH_BACKING
-                break
 
         for p in patch:
             if p['value'] != 'storage':
-                break
-            if p['path'] == '/subtype':
-                patch.remove(p)
                 break
 
         try:
@@ -1807,10 +1722,6 @@ class HostController(rest.RestController):
         except jsonpatch.JsonPatchException as e:
             LOG.exception(e)
             raise wsme.exc.ClientSideError(_("Patching Error: %s") % e)
-
-        if subtype_added and patched_ihost['personality'] == constants.STORAGE:
-            if patched_ihost['capabilities'].get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                self._validate_subtype_cache_tiering(constants.HOST_ADD)
 
         defaults = objects.host.get_defaults()
 
@@ -2230,9 +2141,6 @@ class HostController(rest.RestController):
                               constants.CONTROLLER_0_HOSTNAME,
                               constants.CONTROLLER_1_HOSTNAME,
                               constants.STORAGE_0_HOSTNAME))
-            # We are not allowed to delete caching hosts if cache tiering is enabled
-            if ihost['capabilities'].get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                self._validate_subtype_cache_tiering(constants.HOST_DELETE)
 
             # If it is the last storage node to delete, we need to delete
             # ceph osd pools and update additional tier status to "defined"
@@ -5178,37 +5086,24 @@ class HostController(rest.RestController):
                         available_peer_count += 1
 
             if available_peer_count < min_replication:
-                host_subtype = hostupdate.ihost_orig.get('capabilities', {}).get('pers_subtype')
-                if host_subtype == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                    cache_enabled = pecan.request.dbapi.service_parameter_get_one(
-                        service=constants.SERVICE_TYPE_CEPH,
-                        section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED,
-                        name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED)
-                    if cache_enabled.value == 'true':
-                        msg = _("Cannot lock a {} storage node when replication "
-                                "is lost and cache is enabled. Please disable cache first.").format(
-                            constants.PERSONALITY_SUBTYPE_CEPH_CACHING)
+                pools_usage = \
+                    pecan.request.rpcapi.get_ceph_pools_df_stats(pecan.request.context)
+                if not pools_usage:
+                    raise wsme.exc.ClientSideError(
+                        _("Cannot lock a storage node when ceph pool usage is undetermined."))
+                for ceph_pool in pools_usage:
+                    # We only need to check data pools
+                    if ([pool for pool in constants.ALL_CEPH_POOLS
+                            if ceph_pool['name'].startswith(pool)] and
+                            int(ceph_pool['stats']['bytes_used']) > 0):
+                        # Ceph pool is not empty and no other enabled storage
+                        # in set, so locking this storage node is not allowed.
+                        msg = _("Cannot lock a storage node when ceph pools are"
+                                " not empty and replication is lost. This may"
+                                " result in data loss. ")
                         raise wsme.exc.ClientSideError(msg)
-                    else:
-                        pass
-                else:
-                    pools_usage = \
-                        pecan.request.rpcapi.get_ceph_pools_df_stats(pecan.request.context)
-                    if not pools_usage:
-                        raise wsme.exc.ClientSideError(
-                            _("Cannot lock a storage node when ceph pool usage is undetermined."))
-                    for ceph_pool in pools_usage:
-                        # We only need to check data pools
-                        if ([pool for pool in constants.ALL_BACKING_POOLS
-                                if ceph_pool['name'].startswith(pool)] and
-                                int(ceph_pool['stats']['bytes_used']) > 0):
-                            # Ceph pool is not empty and no other enabled storage
-                            # in set, so locking this storage node is not allowed.
-                            msg = _("Cannot lock a storage node when ceph pools are not empty "
-                                    "and replication is lost. This may result in data loss. ")
-                            raise wsme.exc.ClientSideError(msg)
 
-                    ceph_pools_empty = True
+                ceph_pools_empty = True
 
         # Perform checks on storage regardless of operational state
         # as a minimum number of monitor is required.
@@ -5731,10 +5626,7 @@ def _create_node(host, xml_node, personality, is_dynamic_ip):
     if personality == constants.COMPUTE:
         et.SubElement(host_node, 'hostname').text = host.hostname
         et.SubElement(host_node, 'subfunctions').text = host.subfunctions
-    elif personality == constants.STORAGE:
-        subtype = host.capabilities.get('pers_subtype')
-        if subtype == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-            et.SubElement(host_node, 'subtype').text = subtype
+
     et.SubElement(host_node, 'mgmt_mac').text = host.mgmt_mac
     if not is_dynamic_ip:
         et.SubElement(host_node, 'mgmt_ip').text = host.mgmt_ip

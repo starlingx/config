@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,7 +19,6 @@ from sysinv.openstack.common import context
 from sysinv.openstack.common import uuidutils
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
-from sysinv.common import exception
 
 
 class UpdateCephCluster(base.DbTestCase):
@@ -32,8 +31,6 @@ class UpdateCephCluster(base.DbTestCase):
     # Tests for initial provisioning
     #  - test_add_storage_0_no_fsid
     #  - test_add_storage_0_fsid
-    #  - test_add_storage_0_caching
-    #  - test_add_storage_1_caching
     #  - test_add_storage_0
     #  - test_add_storage_1
     #  - test_add_3_storage_backing
@@ -41,8 +38,7 @@ class UpdateCephCluster(base.DbTestCase):
     #  - test_cgts_7208
     # Tests for adding patterns of hosts based on subtype:
     #  - test_add_valid_mix_tiers
-    #  - test_add_4_mix_bbbc
-    #  - test_add_4_mix_bbcb
+    #  - test_add_4_mix_bbbb
 
     def setUp(self):
         super(UpdateCephCluster, self).setUp()
@@ -54,7 +50,7 @@ class UpdateCephCluster(base.DbTestCase):
         self.load = utils.create_test_load()
         self.host_index = -1
 
-    def _create_storage_ihost(self, hostname, pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING):
+    def _create_storage_ihost(self, hostname):
         self.host_index += 1
         ihost_dict = utils.get_test_ihost(
             id=self.host_index,
@@ -67,10 +63,7 @@ class UpdateCephCluster(base.DbTestCase):
             administrative='unlocked',
             operational='enabled',
             availability='available',
-            invprovision='unprovisioned',
-            capabilities={
-                'pers_subtype': pers_subtype,
-            })
+            invprovision='unprovisioned')
         return self.dbapi.ihost_create(ihost_dict)
 
     def test_init_fsid_none(self):
@@ -97,7 +90,7 @@ class UpdateCephCluster(base.DbTestCase):
                          self.service._ceph.cluster_db_uuid)
 
     def test_init_fsid_update_on_unlock(self):
-        storage_0 = self._create_storage_ihost('storage-0', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
 
         # Mock the fsid call so that we don't have to wait for the timeout
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
@@ -137,7 +130,7 @@ class UpdateCephCluster(base.DbTestCase):
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
         self.assertNotEquals(self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH), [])
 
-        storage_0 = self._create_storage_ihost('storage-0', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
 
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
@@ -167,76 +160,13 @@ class UpdateCephCluster(base.DbTestCase):
         self.assertEqual(len(clusters), 1)
         self.assertEqual(clusters[0].cluster_uuid, cluster_uuid)
 
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
         self.service._ceph.update_ceph_cluster(storage_0)
         ihost = self.dbapi.ihost_get(storage_0.id)
         self.assertEqual(storage_0.id, ihost.id)
         peer = self.dbapi.peer_get(ihost.peer_id)
         self.assertEqual(peer.name, 'group-0')
         self.assertIn(ihost.hostname, peer.hosts)
-
-        peers = self.dbapi.peers_get_all_by_cluster(clusters[0].id)
-        self.assertEqual(
-            set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0',))})
-
-    def test_add_storage_0_caching(self):
-        # Mock fsid with a faux cluster_uuid
-        cluster_uuid = uuidutils.generate_uuid()
-        with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
-            mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
-            self.service.start()
-            mock_fsid.assert_called()
-
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING)
-        self.assertRaises(
-            exception.StorageSubTypeUnexpected,
-            self.service._ceph.update_ceph_cluster,
-            storage_0)
-
-        clusters = self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH)
-        self.assertEqual(len(clusters), 1)
-        self.assertEqual(clusters[0].cluster_uuid, cluster_uuid)
-
-        # check no (unexpected) peers exist
-        peers = self.dbapi.peers_get_all_by_cluster(clusters[0].id)
-        self.assertEqual(
-            set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            set())
-
-    def test_add_storage_1_caching(self):
-        # Mock fsid with a faux cluster_uuid
-        cluster_uuid = uuidutils.generate_uuid()
-        with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
-            mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
-            self.service.start()
-            mock_fsid.assert_called()
-
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
-        self.service._ceph.update_ceph_cluster(storage_0)
-
-        clusters = self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH)
-        self.assertEqual(len(clusters), 1)
-        self.assertEqual(clusters[0].cluster_uuid, cluster_uuid)
-
-        peers = self.dbapi.peers_get_all_by_cluster(clusters[0].id)
-        self.assertEqual(
-            set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0',))})
-
-        storage_1 = self._create_storage_ihost(
-            'storage-1',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING)
-        self.assertRaises(
-            exception.StorageSubTypeUnexpected,
-            self.service._ceph.update_ceph_cluster,
-            storage_1)
 
         peers = self.dbapi.peers_get_all_by_cluster(clusters[0].id)
         self.assertEqual(
@@ -253,9 +183,7 @@ class UpdateCephCluster(base.DbTestCase):
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
         self.assertNotEqual(self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH), [])
 
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
 
         cluster_uuid = uuidutils.generate_uuid()
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
@@ -293,9 +221,7 @@ class UpdateCephCluster(base.DbTestCase):
         self.assertEqual(len(clusters), 1)
         self.assertEqual(clusters[0].cluster_uuid, cluster_uuid)
 
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
         self.service._ceph.update_ceph_cluster(storage_0)
 
         peers = self.dbapi.peers_get_all_by_cluster(clusters[0].id)
@@ -303,9 +229,7 @@ class UpdateCephCluster(base.DbTestCase):
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
             {('group-0', ('storage-0',))})
 
-        storage_1 = self._create_storage_ihost(
-            'storage-1',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_1 = self._create_storage_ihost('storage-1')
         self.service._ceph.update_ceph_cluster(storage_1)
         ihost = self.dbapi.ihost_get(storage_1.id)
         self.assertEqual(storage_1.id, ihost.id)
@@ -331,9 +255,7 @@ class UpdateCephCluster(base.DbTestCase):
         self.assertEqual(len(clusters), 1)
         self.assertEqual(clusters[0].cluster_uuid, cluster_uuid)
 
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
         self.service._ceph.update_ceph_cluster(storage_0)
         ihost = self.dbapi.ihost_get(storage_0.id)
         self.assertEqual(storage_0.id, ihost.id)
@@ -346,9 +268,7 @@ class UpdateCephCluster(base.DbTestCase):
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
             {('group-0', ('storage-0',)),})
 
-        storage_1 = self._create_storage_ihost(
-            'storage-1',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_1 = self._create_storage_ihost('storage-1')
         self.service._ceph.update_ceph_cluster(storage_1)
         ihost = self.dbapi.ihost_get(storage_1.id)
         self.assertEqual(storage_1.id, ihost.id)
@@ -361,9 +281,7 @@ class UpdateCephCluster(base.DbTestCase):
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
             {('group-0', ('storage-0', 'storage-1')),})
 
-        storage_2 = self._create_storage_ihost(
-            'storage-2',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_2 = self._create_storage_ihost('storage-2')
         self.service._ceph.update_ceph_cluster(storage_2)
         ihost = self.dbapi.ihost_get(storage_2.id)
         self.assertEqual(storage_2.id, ihost.id)
@@ -378,10 +296,10 @@ class UpdateCephCluster(base.DbTestCase):
              ('group-1', ('storage-2',))})
 
     def test_cgts_7208(self):
-        hosts = [self._create_storage_ihost('storage-0', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING),
-                 self._create_storage_ihost('storage-1', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING),
-                 self._create_storage_ihost('storage-2', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING),
-                 self._create_storage_ihost('storage-3', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)]
+        hosts = [self._create_storage_ihost('storage-0'),
+                 self._create_storage_ihost('storage-1'),
+                 self._create_storage_ihost('storage-2'),
+                 self._create_storage_ihost('storage-3')]
 
         expected_groups = {'storage-0': 'group-0', 'storage-1': 'group-0',
                            'storage-2': 'group-1', 'storage-3': 'group-1'}
@@ -429,19 +347,19 @@ class UpdateCephCluster(base.DbTestCase):
             self.assertEqual(set(peer.hosts), expected_peer_hosts2[h.hostname])
 
     def test_add_valid_mix_tiers(self):
-        hosts = [self._create_storage_ihost('storage-0', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING),
-                 self._create_storage_ihost('storage-1', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING),
-                 self._create_storage_ihost('storage-2', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING),
-                 self._create_storage_ihost('storage-3', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING),
-                 self._create_storage_ihost('storage-4', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING),
-                 self._create_storage_ihost('storage-5', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING),
-                 self._create_storage_ihost('storage-6', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING),
-                 self._create_storage_ihost('storage-7', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING)]
+        hosts = [self._create_storage_ihost('storage-0'),
+                 self._create_storage_ihost('storage-1'),
+                 self._create_storage_ihost('storage-2'),
+                 self._create_storage_ihost('storage-3'),
+                 self._create_storage_ihost('storage-4'),
+                 self._create_storage_ihost('storage-5'),
+                 self._create_storage_ihost('storage-6'),
+                 self._create_storage_ihost('storage-7')]
 
-        expected_groups = {'storage-0': 'group-0'      , 'storage-1': 'group-0',
-                           'storage-2': 'group-cache-0', 'storage-3': 'group-cache-0',
-                           'storage-4': 'group-1'      , 'storage-5': 'group-1',
-                           'storage-6': 'group-cache-1', 'storage-7': 'group-cache-1'}
+        expected_groups = {'storage-0': 'group-0', 'storage-1': 'group-0',
+                           'storage-2': 'group-1', 'storage-3': 'group-1',
+                           'storage-4': 'group-2', 'storage-5': 'group-2',
+                           'storage-6': 'group-3', 'storage-7': 'group-3'}
 
         expected_peer_hosts = {'storage-0': {'storage-0'}, 'storage-1': {'storage-0', 'storage-1'},
                                'storage-2': {'storage-2'}, 'storage-3': {'storage-2', 'storage-3'},
@@ -464,7 +382,7 @@ class UpdateCephCluster(base.DbTestCase):
             self.assertEqual(peer.name, expected_groups[h.hostname])
             self.assertEqual(set(peer.hosts), expected_peer_hosts[h.hostname])
 
-    def test_add_4_mix_bbbc(self):
+    def test_add_4_mix_bbbb(self):
         # Mock fsid with a faux cluster_uuid
         cluster_uuid = uuidutils.generate_uuid()
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
@@ -472,9 +390,7 @@ class UpdateCephCluster(base.DbTestCase):
             self.service.start()
             mock_fsid.assert_called()
 
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
         self.service._ceph.update_ceph_cluster(storage_0)
         ihost = self.dbapi.ihost_get(storage_0.id)
         self.assertEqual(storage_0.id, ihost.id)
@@ -487,9 +403,7 @@ class UpdateCephCluster(base.DbTestCase):
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
             {('group-0', ('storage-0',)),})
 
-        storage_1 = self._create_storage_ihost(
-            'storage-1',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_1 = self._create_storage_ihost('storage-1')
         self.service._ceph.update_ceph_cluster(storage_1)
         ihost = self.dbapi.ihost_get(storage_1.id)
         self.assertEqual(storage_1.id, ihost.id)
@@ -502,9 +416,7 @@ class UpdateCephCluster(base.DbTestCase):
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
             {('group-0', ('storage-0', 'storage-1')),})
 
-        storage_2 = self._create_storage_ihost(
-            'storage-2',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_2 = self._create_storage_ihost('storage-2')
         self.service._ceph.update_ceph_cluster(storage_2)
         ihost = self.dbapi.ihost_get(storage_2.id)
         self.assertEqual(storage_2.id, ihost.id)
@@ -518,80 +430,7 @@ class UpdateCephCluster(base.DbTestCase):
             {('group-0', ('storage-0', 'storage-1')),
              ('group-1', ('storage-2',))})
 
-        storage_3 = self._create_storage_ihost(
-            'storage-3',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING)
-        self.service._ceph.update_ceph_cluster(storage_3)
-        ihost = self.dbapi.ihost_get(storage_3.id)
-        self.assertEqual(storage_3.id, ihost.id)
-        peer = self.dbapi.peer_get(ihost.peer_id)
-        self.assertEqual(peer.name, 'group-cache-0')
-        self.assertIn(ihost.hostname, peer.hosts)
-
-        peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
-        self.assertEqual(
-            set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0', 'storage-1')),
-             ('group-1', ('storage-2',)),
-             ('group-cache-0', ('storage-3',))})
-
-    def test_add_4_mix_bbcb(self):
-        # Mock fsid with a faux cluster_uuid
-        cluster_uuid = uuidutils.generate_uuid()
-        with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
-            mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
-            self.service.start()
-            mock_fsid.assert_called()
-
-        storage_0 = self._create_storage_ihost(
-            'storage-0',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
-        self.service._ceph.update_ceph_cluster(storage_0)
-        ihost = self.dbapi.ihost_get(storage_0.id)
-        self.assertEqual(storage_0.id, ihost.id)
-        peer = self.dbapi.peer_get(ihost.peer_id)
-        self.assertEqual(peer.name, 'group-0')
-        self.assertIn(ihost.hostname, peer.hosts)
-
-        peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
-        self.assertEqual(
-            set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0',)),})
-
-        storage_1 = self._create_storage_ihost(
-            'storage-1',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
-        self.service._ceph.update_ceph_cluster(storage_1)
-        ihost = self.dbapi.ihost_get(storage_1.id)
-        self.assertEqual(storage_1.id, ihost.id)
-        peer = self.dbapi.peer_get(ihost.peer_id)
-        self.assertEqual(peer.name, 'group-0')
-        self.assertIn(ihost.hostname, peer.hosts)
-
-        peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
-        self.assertEqual(
-            set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0', 'storage-1')),})
-
-        storage_2 = self._create_storage_ihost(
-            'storage-2',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_CACHING)
-        self.service._ceph.update_ceph_cluster(storage_2)
-        ihost = self.dbapi.ihost_get(storage_2.id)
-        self.assertEqual(storage_2.id, ihost.id)
-        peer = self.dbapi.peer_get(ihost.peer_id)
-        self.assertEqual(peer.name, 'group-cache-0')
-        self.assertIn(ihost.hostname, peer.hosts)
-
-        peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
-        self.assertEqual(
-            set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0', 'storage-1')),
-             ('group-cache-0', ('storage-2',))})
-
-        storage_3 = self._create_storage_ihost(
-            'storage-3',
-            pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_3 = self._create_storage_ihost('storage-3')
         self.service._ceph.update_ceph_cluster(storage_3)
         ihost = self.dbapi.ihost_get(storage_3.id)
         self.assertEqual(storage_3.id, ihost.id)
@@ -603,5 +442,4 @@ class UpdateCephCluster(base.DbTestCase):
         self.assertEqual(
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
             {('group-0', ('storage-0', 'storage-1')),
-             ('group-cache-0', ('storage-2',)),
-             ('group-1', ('storage-3',))})
+             ('group-1', ('storage-2', 'storage-3'))})

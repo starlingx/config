@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2018 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -236,20 +236,6 @@ class CephPoolGetQuotaFailure(CephFailure):
                 + ": %(reason)s"
 
 
-class CephPoolAddTierFailure(CephFailure):
-    message = _("Failed to add OSD tier: "
-                "backing_pool=%(backing_pool)s, cache_pool=%(cache_pool)s, "
-                "response=%(response_status_code)s:%(response_reason)s, "
-                "status=%(status)s, output=%(output)s")
-
-
-class CephPoolRemoveTierFailure(CephFailure):
-    message = _("Failed to remove tier: "
-                "backing_pool=%(backing_pool)s, cache_pool=%(cache_pool)s, "
-                "response=%(response_status_code)s:%(response_reason)s, "
-                "status=%(status)s, output=%(output)s")
-
-
 class CephGetClusterUsageFailure(CephFailure):
     message = _("Getting the cluster usage information failed: %(reason)s")
 
@@ -268,11 +254,6 @@ class CephPoolGetParamFailure(CephFailure):
                 "Reason: %(reason)s")
 
 
-class CephPoolApplySetParamFailure(CephFailure):
-    message = _("Cannot apply/set Ceph OSD pool parameters. "
-                "Reason: cache tiering operation in progress.")
-
-
 class CephPoolApplyRestoreInProgress(CephFailure):
     message = _("Cannot apply/set Ceph OSD pool parameters. "
                 "Reason: storage restore in progress (wait until "
@@ -282,59 +263,6 @@ class CephPoolApplyRestoreInProgress(CephFailure):
 class CephPoolSetParamFailure(CephFailure):
     message = _("Cannot set Ceph OSD pool parameter: "
                 "pool_name=%(pool_name)s, param=%(param)s, value=%(value)s. "
-                "Reason: %(reason)s")
-
-
-class CephCacheSetModeFailure(CephFailure):
-    message = _("Failed to set OSD tier cache mode: "
-                "cache_pool=%(cache_pool)s, mode=%(mode)s, "
-                "response=%(response_status_code)s:%(response_reason)s, "
-                "status=%(status)s, output=%(output)s")
-
-
-class CephCacheCreateOverlayFailure(CephFailure):
-    message = _("Failed to create overlay: "
-                "backing_pool=%(backing_pool)s, cache_pool=%(cache_pool)s, "
-                "response=%(response_status_code)s:%(response_reason)s, "
-                "status=%(status)s, output=%(output)s")
-
-
-class CephCacheDeleteOverlayFailure(CephFailure):
-    message = _("Failed to delete overlay: "
-                "backing_pool=%(backing_pool)s, cache_pool=%(cache_pool)s, "
-                "response=%(response_status_code)s:%(response_reason)s, "
-                "status=%(status)s, output=%(output)s")
-
-
-class CephCacheFlushFailure(CephFailure):
-    message = _("Failed to flush cache pool: "
-                "cache_pool=%(cache_pool)s, "
-                "return_code=%(return_code)s, "
-                "cmd=%(cmd)s, output=%(output)s")
-
-
-class CephCacheFeatureEnableFailure(CephFailure):
-    message = _("Cannot enable Ceph cache tiering feature. "
-                "Reason: %(reason)s")
-
-
-class CephCacheFeatureDisableFailure(CephFailure):
-    message = _("Cannot disable Ceph cache tiering feature. "
-                "Reason: %(reason)s")
-
-
-class CephCacheConfigFailure(CephFailure):
-    message = _("Cannot change Ceph cache tiering. "
-                "Reason: %(reason)s")
-
-
-class CephCacheEnableFailure(CephFailure):
-    message = _("Cannot enable Ceph cache tiering. "
-                "Reason: %(reason)s")
-
-
-class CephCacheDisableFailure(CephFailure):
-    message = _("Cannot enable Ceph cache tiering. "
                 "Reason: %(reason)s")
 
 
@@ -1166,12 +1094,6 @@ class PeerNotFound(NotFound):
 
 class PeerContainsDuplicates(Conflict):
     message = _("Peer with name % already exists")
-
-
-class StorageSubTypeUnexpected(SysinvException):
-    message = _("Host %(host)s cannot be assigned subtype %(subtype)s. "
-                "storage-0 and storage-1 personality sub-type can "
-                "only be ceph backing.")
 
 
 class StoragePeerGroupUnexpected(SysinvException):

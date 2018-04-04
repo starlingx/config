@@ -8,7 +8,6 @@
 # coding=utf-8
 #
 
-import copy
 import os
 import tsconfig.tsconfig as tsc
 
@@ -119,8 +118,6 @@ VM_FUNCTION = "VMs"
 NO_FUNCTION = "None"
 
 # Host Personality Sub-Types
-PERSONALITY_SUBTYPE_CEPH_BACKING = 'ceph-backing'
-PERSONALITY_SUBTYPE_CEPH_CACHING = 'ceph-caching'
 HOST_ADD = 'host_add'  # for personality sub-type validation
 HOST_DELETE = 'host_delete'  # for personality sub-type validation
 
@@ -169,9 +166,7 @@ STORAGE_2_HOSTNAME = '%s-2' % STORAGE_HOSTNAME
 # Other Storage Hostnames are built dynamically.
 
 # Replication Peer groups
-PEER_PREFIX_BACKING = 'group-'
-PEER_PREFIX_CACHING = 'group-cache-'
-PEER_BACKING_RSVD_GROUP = '%s0' % PEER_PREFIX_BACKING
+PEER_PREFIX = 'group-'
 
 VIM_DEFAULT_TIMEOUT_IN_SECS = 5
 VIM_DELETE_TIMEOUT_IN_SECS = 10
@@ -646,33 +641,33 @@ CEPH_POOL_OBJECT_GATEWAY_NAME = {
     CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER}
 
 # Main pools for Ceph data backing
-BACKING_POOLS = [{'pool_name': CEPH_POOL_VOLUMES_NAME,
-                  'pg_num': CEPH_POOL_VOLUMES_PG_NUM,
-                  'pgp_num': CEPH_POOL_VOLUMES_PGP_NUM,
-                  'quota_gib': None,
-                  'data_pt': 40},
-                 {'pool_name': CEPH_POOL_IMAGES_NAME,
-                  'pg_num': CEPH_POOL_IMAGES_PG_NUM,
-                  'pgp_num': CEPH_POOL_IMAGES_PGP_NUM,
-                  'quota_gib': None,
-                  'data_pt': 20},
-                 {'pool_name': CEPH_POOL_EPHEMERAL_NAME,
-                  'pg_num': CEPH_POOL_EPHEMERAL_PG_NUM,
-                  'pgp_num': CEPH_POOL_EPHEMERAL_PGP_NUM,
-                  'quota_gib': None,
-                  'data_pt': 30},
-                 {'pool_name': CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL,
-                  'pg_num': CEPH_POOL_OBJECT_GATEWAY_PG_NUM,
-                  'pgp_num': CEPH_POOL_OBJECT_GATEWAY_PGP_NUM,
-                  'quota_gib': None,
-                  'data_pt': 10}]
+CEPH_POOLS = [{'pool_name': CEPH_POOL_VOLUMES_NAME,
+               'pg_num': CEPH_POOL_VOLUMES_PG_NUM,
+               'pgp_num': CEPH_POOL_VOLUMES_PGP_NUM,
+               'quota_gib': None,
+               'data_pt': 40},
+              {'pool_name': CEPH_POOL_IMAGES_NAME,
+               'pg_num': CEPH_POOL_IMAGES_PG_NUM,
+               'pgp_num': CEPH_POOL_IMAGES_PGP_NUM,
+               'quota_gib': None,
+               'data_pt': 20},
+              {'pool_name': CEPH_POOL_EPHEMERAL_NAME,
+               'pg_num': CEPH_POOL_EPHEMERAL_PG_NUM,
+               'pgp_num': CEPH_POOL_EPHEMERAL_PGP_NUM,
+               'quota_gib': None,
+               'data_pt': 30},
+              {'pool_name': CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL,
+               'pg_num': CEPH_POOL_OBJECT_GATEWAY_PG_NUM,
+               'pgp_num': CEPH_POOL_OBJECT_GATEWAY_PGP_NUM,
+               'quota_gib': None,
+               'data_pt': 10}]
 
-ALL_BACKING_POOLS = [CEPH_POOL_RBD_NAME,
-                     CEPH_POOL_VOLUMES_NAME,
-                     CEPH_POOL_IMAGES_NAME,
-                     CEPH_POOL_EPHEMERAL_NAME,
-                     CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL,
-                     CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER]
+ALL_CEPH_POOLS = [CEPH_POOL_RBD_NAME,
+                  CEPH_POOL_VOLUMES_NAME,
+                  CEPH_POOL_IMAGES_NAME,
+                  CEPH_POOL_EPHEMERAL_NAME,
+                  CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL,
+                  CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER]
 
 # Supported pools for secondary ceph tiers
 SB_TIER_CEPH_POOLS = [
@@ -682,12 +677,6 @@ SB_TIER_CEPH_POOLS = [
      'be_quota_attr': 'cinder_pool_gib',
      'quota_default': 0,
      'data_pt': 100}]
-
-# Pools for Ceph cache tiering
-CACHE_POOLS = copy.deepcopy(BACKING_POOLS)
-for p in CACHE_POOLS:
-    # currently all BACKING_POOLS are cached, but this may change in the future
-    p['pool_name'] = p['pool_name'] + "-cache"
 
 # See http://ceph.com/pgcalc/. We set it to more than 100 because pool usage
 # varies greatly in Titanium Cloud and we want to avoid running too low on PGs
@@ -818,28 +807,6 @@ SERVICE_PARAM_NAME_IRONIC_CONTROLLER_1_NIC = 'controller_1_if'
 SERVICE_PARAM_NAME_IRONIC_NETMASK = 'netmask'
 SERVICE_PARAM_NAME_IRONIC_PROVISIONING_NETWORK = 'provisioning_network'
 SERVICE_PARAM_SECTION_HORIZON_AUTH = 'auth'
-
-SERVICE_PARAM_SECTION_CEPH_CACHE_TIER = 'cache_tiering'
-SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED = 'cache_tiering.desired'
-SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED = 'cache_tiering.applied'
-SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED = 'feature_enabled'
-SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED = 'cache_enabled'
-SERVICE_PARAM_CEPH_CACHE_TIER_TARGET_MAX_BYTES = 'target_max_bytes'
-
-SERVICE_PARAM_CEPH_CACHE_HIT_SET_TYPE_BLOOM = 'bloom'
-CACHE_TIERING_DEFAULTS = {
-    'cache_min_evict_age': 0,
-    'cache_min_flush_age': 0,
-    # cache_target_dirty_high_ratio - not implemented
-    'cache_target_dirty_ratio': 0.4,
-    'cache_target_full_ratio': 0.95,
-    'hit_set_count': 0,
-    'hit_set_period': 0,
-    'hit_set_type': SERVICE_PARAM_CEPH_CACHE_HIT_SET_TYPE_BLOOM,
-    'min_read_recency_for_promote': 0,
-    # min_write_recency_for_promote - not implemented
-}
-
 SERVICE_PARAM_ASSIGNMENT_DRIVER = 'driver'
 SERVICE_PARAM_IDENTITY_DRIVER = 'driver'
 

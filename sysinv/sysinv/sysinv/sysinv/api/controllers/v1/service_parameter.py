@@ -162,13 +162,9 @@ class ServiceParameterController(rest.RestController):
             parms = pecan.request.dbapi.service_parameter_get_all(**kwargs)
 
         # filter out desired and applied parameters; they are used to keep
-        # track of updates between two consecutive apply actions;
-        s_applied = constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED
-        s_desired = constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED
-
-        parms = [p for p in parms if not (
-                    p.service == constants.SERVICE_TYPE_CEPH and
-                    p.section in [s_applied, s_desired])]
+        # track of updates between two consecutive apply actions
+        parms = [p for p in parms if not
+                 p.service == constants.SERVICE_TYPE_CEPH]
 
         # filter out cinder state
         parms = [p for p in parms if not (
@@ -619,52 +615,6 @@ class ServiceParameterController(rest.RestController):
             raise wsme.exc.ClientSideError(str(e.value))
 
     @staticmethod
-    def _cache_tiering_feature_enabled_semantic_check(service):
-        if service != constants.SERVICE_TYPE_CEPH:
-            return
-
-        # TODO(rchurch): Ceph cache tiering is no longer supported. This will be
-        # refactored out in R6. For R5 prevent enabling.
-        msg = _("Ceph cache tiering is no longer supported.")
-        raise wsme.exc.ClientSideError(msg)
-
-        if not StorageBackendConfig.has_backend_configured(
-                pecan.request.dbapi,
-                constants.CINDER_BACKEND_CEPH):
-            msg = _("Ceph backend is required.")
-            raise wsme.exc.ClientSideError(msg)
-
-        section = 'cache_tiering'
-        feature_enabled = pecan.request.dbapi.service_parameter_get_one(
-                service=service, section=section,
-                name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED)
-        if feature_enabled.value == 'true':
-            for name in CEPH_CACHE_TIER_PARAMETER_REQUIRED_ON_FEATURE_ENABLED:
-                try:
-                    pecan.request.dbapi.service_parameter_get_one(
-                        service=service, section=section, name=name)
-                except exception.NotFound:
-                    msg = _("Unable to apply service parameters. "
-                            "Missing service parameter '%s' for service '%s' "
-                            "in section '%s'." % (name, service, section))
-                    raise wsme.exc.ClientSideError(msg)
-        else:
-            storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
-                    constants.STORAGE)
-            ceph_caching_hosts = []
-            for node in storage_nodes:
-                if node.capabilities.get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                    ceph_caching_hosts.append(node['hostname'])
-            if len(ceph_caching_hosts):
-                msg = _("Unable to apply service parameters. "
-                        "Trying to disable CEPH cache tiering feature "
-                        "with {} host(s) present: {}. "
-                        "Delete host(s) first.").format(
-                    constants.PERSONALITY_SUBTYPE_CEPH_CACHING,
-                    ", ".join(sorted(ceph_caching_hosts)))
-                raise wsme.exc.ClientSideError(msg)
-
-    @staticmethod
     def _service_parameter_apply_semantic_check_identity():
         """ Perform checks for the Identity Service Type."""
         identity_driver = pecan.request.dbapi.service_parameter_get_one(
@@ -941,15 +891,13 @@ class ServiceParameterController(rest.RestController):
                             "in section '%s'." % (name, service, section))
                     raise wsme.exc.ClientSideError(msg)
 
-        ServiceParameterController._cache_tiering_feature_enabled_semantic_check(service)
-
         # Apply service specific semantic checks
         if service == constants.SERVICE_TYPE_IDENTITY:
             self._service_parameter_apply_semantic_check_identity()
 
         if service == constants.SERVICE_TYPE_CINDER:
-            # Make sure one of the internal cinder configs is enabled so that we
-            # know cinder is operational in this region
+            # Make sure one of the internal cinder configs is enabled so that
+            # we know cinder is operational in this region
             if not StorageBackendConfig.is_service_enabled(pecan.request.dbapi,
                                                            constants.SB_SVC_CINDER,
                                                            filter_shared=True):

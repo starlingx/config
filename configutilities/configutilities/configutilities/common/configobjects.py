@@ -33,7 +33,7 @@ HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions',
                        'bm_ip', 'bm_type', 'bm_username',
                        'bm_password', 'boot_device', 'rootfs_device',
                        'install_output', 'console', 'vsc_controllers',
-                       'power_on', 'location', 'subtype']
+                       'power_on', 'location']
 
 # Network naming types
 DEFAULT_NAMES = 0

@@ -524,7 +524,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error
 
-    def _create_storage_ihost(self, hostname, pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING):
+    def _create_storage_ihost(self, hostname):
         self.host_index += 1
         ihost_dict = dbutils.get_test_ihost(
             id=self.host_index,
@@ -537,10 +537,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
             administrative='locked',
             operational='disabled',
             availability='online',
-            invprovision='unprovisioned',
-            capabilities={
-                'pers_subtype': pers_subtype,
-            })
+            invprovision='unprovisioned')
         return self.dbapi.ihost_create(ihost_dict)
 
     #
@@ -548,7 +545,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
     #
 
     def test_cluster_tier_host_osd(self):
-        storage_0 = self._create_storage_ihost('storage-0', pers_subtype=constants.PERSONALITY_SUBTYPE_CEPH_BACKING)
+        storage_0 = self._create_storage_ihost('storage-0')
         disk_0 = dbutils.create_test_idisk(device_node='/dev/sda',
                                            device_path='/dev/disk/by-path/pci-0000:00:0d.0-ata-1.0',
                                            forihostid=storage_0.id)

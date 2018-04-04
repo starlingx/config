@@ -1,4 +1,4 @@
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -204,24 +204,6 @@ def _validate_value_in_set(name, value, _set):
                 name,
                 " one of" if (len(_set) > 1) else "",
                 ", ".join(_set))))
-
-
-def _validate_ceph_cache_tier_feature_enabled(name, value):
-    _validate_value_in_set(
-        name, value,
-        ['true', 'false'])
-
-
-def _validate_ceph_cache_tier_cache_enabled(name, value):
-    _validate_value_in_set(
-        name, value,
-        ['true', 'false'])
-
-
-def _validate_ceph_cache_tier_hit_set_type(name, value):
-    _validate_value_in_set(
-        name, value,
-        [constants.SERVICE_PARAM_CEPH_CACHE_HIT_SET_TYPE_BLOOM])
 
 
 def _validate_token_expiry_time(name, value):
@@ -888,58 +870,6 @@ HORIZON_AUTH_PARAMETER_RESOURCE = {
    constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES: 'openstack::horizon::params::lockout_retries',
 }
 
-CEPH_CACHE_TIER_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED,
-    constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED,
-]
-
-CEPH_CACHE_TIER_PARAMETER_REQUIRED_ON_FEATURE_ENABLED = [
-    'hit_set_type',
-    'hit_set_count',
-    'hit_set_period',
-    'cache_target_dirty_ratio',
-    'cache_target_full_ratio'
-]
-
-CEPH_CACHE_TIER_PARAMETER_OPTIONAL = CEPH_CACHE_TIER_PARAMETER_REQUIRED_ON_FEATURE_ENABLED + [
-    'min_read_recency_for_promote',
-    'min_write_recency_for_promote',
-    'cache_target_dirty_high_ratio',
-    'cache_min_flush_age',
-    'cache_min_evict_age'
-]
-
-CEPH_CACHE_TIER_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED: _validate_ceph_cache_tier_feature_enabled,
-    constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED: _validate_ceph_cache_tier_cache_enabled,
-    'hit_set_type': _validate_ceph_cache_tier_hit_set_type,
-    'hit_set_count': _validate_integer,
-    'hit_set_period': _validate_integer,
-    'min_read_recency_for_promote': _validate_integer,
-    # (not implemented) 'min_write_recency_for_promote': _validate_integer,
-    'cache_target_dirty_ratio': _validate_float,
-    # (not implemented) 'cache_target_dirty_high_ratio': _validate_integer,
-    'cache_target_full_ratio': _validate_float,
-    'cache_min_flush_age': _validate_integer,
-    'cache_min_evict_age': _validate_integer,
-}
-
-CEPH_CACHE_TIER_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED: None,
-    constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED: None,
-    'hit_set_type': None,
-    'hit_set_count': None,
-    'hit_set_period': None,
-    'min_read_recency_for_promote': None,
-    # (not implemented) 'min_write_recency_for_promote': None,
-    'cache_target_dirty_ratio': None,
-    # (not implemented) 'cache_target_dirty_high_ratio': None,
-    'cache_target_full_ratio': None,
-    'cache_min_flush_age': None,
-    'cache_min_evict_age': None,
-}
-
-
 # Neutron Service Parameters (optional)
 NEUTRON_ML2_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS,
@@ -1549,19 +1479,6 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: HORIZON_AUTH_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: HORIZON_AUTH_PARAMETER_RESOURCE,
         },
-    },
-    constants.SERVICE_TYPE_CEPH: {
-        constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER: {
-            SERVICE_PARAM_MANDATORY: CEPH_CACHE_TIER_PARAMETER_MANDATORY,
-            SERVICE_PARAM_OPTIONAL: CEPH_CACHE_TIER_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: CEPH_CACHE_TIER_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: CEPH_CACHE_TIER_PARAMETER_RESOURCE,
-        },
-        constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED: {
-            SERVICE_PARAM_OPTIONAL: CEPH_CACHE_TIER_PARAMETER_MANDATORY + CEPH_CACHE_TIER_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: CEPH_CACHE_TIER_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: CEPH_CACHE_TIER_PARAMETER_RESOURCE,
-        }
     },
     constants.SERVICE_TYPE_IRONIC: {
         constants.SERVICE_PARAM_SECTION_IRONIC_NEUTRON: {

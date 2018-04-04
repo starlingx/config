@@ -15,13 +15,10 @@ from __future__ import absolute_import
 import os
 import uuid
 import copy
-import wsme
 from requests.exceptions import RequestException, ReadTimeout
 
 from cephclient import wrapper as ceph
-from fm_api import constants as fm_constants
 from fm_api import fm_api
-from sysinv.common import ceph as ceph_utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -30,363 +27,14 @@ from sysinv.openstack.common import uuidutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 from sysinv.openstack.common.gettextutils import _
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common import rpc
 from sysinv.openstack.common.rpc.common import CommonRpcContext
-from sysinv.openstack.common.rpc.common import RemoteError as RpcRemoteError
 
-from sysinv.conductor.cache_tiering_service_config import ServiceConfig
 
 LOG = logging.getLogger(__name__)
-BACKING_POOLS = copy.deepcopy(constants.BACKING_POOLS)
-CACHE_POOLS = copy.deepcopy(constants.CACHE_POOLS)
+CEPH_POOLS = copy.deepcopy(constants.CEPH_POOLS)
 
 SERVICE_TYPE_CEPH = constants.SERVICE_TYPE_CEPH
-CACHE_TIER = constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER
-CACHE_TIER_DESIRED = constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED
-CACHE_TIER_APPLIED = constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED
-CACHE_TIER_SECTIONS = [CACHE_TIER, CACHE_TIER_DESIRED, CACHE_TIER_APPLIED]
-CACHE_TIER_CACHE_ENABLED = constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED
-
-CACHE_TIER_RESTORE_TASK_DISABLE = "cache_tier_restore_task_disable"
-CACHE_TIER_RESTORE_TASK_ENABLE = "cache_tier_restore_task_enable"
-
-
-class CacheTiering(object):
-    def __init__(self, operator):
-        self.operator = operator
-        # Cache UUIDs of service_parameters for later use to
-        # reduce DB access
-        self.config_uuids = {}
-        self.desired_config_uuids = {}
-        self.applied_config_uuids = {}
-        self.restore_task = None
-
-    def get_config(self):
-        ret = {}
-        if StorageBackendConfig.is_ceph_backend_restore_in_progress(self.operator._db_api):
-            LOG.info("Restore in progress. Return stub (disabled) Ceph cache tiering configuration")
-            return ret
-        for section in CACHE_TIER_SECTIONS:
-            config = self.operator.service_parameter_get_all(section=section)
-            if config:
-                ret[section] = ServiceConfig(config).to_dict()
-        LOG.info("Ceph cache tiering configuration: %s" % str(ret))
-        return ret
-
-    def is_cache_tiering_enabled(self):
-        p = self.operator.service_parameter_get_one(SERVICE_TYPE_CEPH,
-                                                    CACHE_TIER,
-                                                    CACHE_TIER_CACHE_ENABLED)
-        return (p.value.lower() == 'true')
-
-    def apply_service_config(self, new_config, desired_config, applied_config):
-        LOG.debug("Applying Ceph service config "
-                  "new_config: %(new)s desired_config: %(desired)s "
-                  "applied_config: %(applied)s" %
-                  {'new': new_config.to_dict(),
-                   'desired': desired_config.to_dict(),
-                   'applied': applied_config.to_dict()})
-        # See description in ceph.update_service_config for design detail
-
-        if new_config.feature_enabled != applied_config.feature_enabled:
-            if new_config.feature_enabled:
-                self.enable_feature(new_config, applied_config)
-            else:
-                self.disable_feature(new_config, applied_config)
-        elif new_config.cache_enabled != desired_config.cache_enabled:
-            if not new_config.feature_enabled:
-                raise exception.CephCacheEnableFailure(
-                    reason='Cache tiering feature is not enabled')
-            else:
-                if not self.operator.ceph_status_ok() and \
-                        not self.restore_task:
-                    raise exception.CephCacheConfigFailure(
-                        reason=_('Ceph Status is not healthy.'))
-
-                if new_config.cache_enabled:
-                    # Enable cache only if caching tier nodes are available
-                    caching_hosts = self.operator.get_caching_hosts()
-                    if len(caching_hosts) < 2:
-                        raise exception.CephCacheConfigFailure(
-                            reason=_('At least two caching hosts must be '
-                                     'configured and enabled before '
-                                     'enabling cache tiering.'))
-                    if len(caching_hosts) % 2:
-                        raise exception.CephCacheConfigFailure(
-                            reason=_('Caching hosts are configured in pairs, '
-                                     'both hosts of each pair must be '
-                                     'configured and enabled before '
-                                     'enabling cache tiering.'))
-                    for h in caching_hosts:
-                        if (h.availability != constants.AVAILABILITY_AVAILABLE and
-                                h.operational != constants.OPERATIONAL_ENABLED):
-                            raise exception.CephCacheConfigFailure(
-                                reason=_('All caching hosts must be '
-                                         'available before enabling '
-                                         'cache tiering.'))
-                    self.enable_cache(new_config, desired_config)
-                else:
-                    self.disable_cache(new_config, desired_config)
-        else:
-            if new_config.feature_enabled and new_config.cache_enabled:
-                # To be safe let configure_osd_pools() be the only place that can
-                # update the object pool name in BACKING_POOLS.
-                backing_pools_snapshot = copy.deepcopy(BACKING_POOLS)
-                for pool in backing_pools_snapshot:
-                    # Need to query which Rados object data pool exists
-                    if pool['pool_name'] == constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL:
-                        pool_name = self.operator.get_ceph_object_pool_name()
-                        if pool_name is None:
-                            raise wsme.exc.ClientSideError("Ceph object data pool does not exist.")
-                        else:
-                            pool['pool_name'] = pool_name
-
-                    self.cache_pool_set_config(pool, new_config, desired_config)
-            self.db_param_apply(new_config, desired_config, CACHE_TIER_DESIRED)
-            self.db_param_apply(new_config, desired_config, CACHE_TIER_APPLIED)
-
-    def db_param_apply(self, new_config, old_config, section):
-        """ Update database section with delta between configs
-
-        We are comparing 'new_config' with old_config and any difference is
-        stored in 'section'. If a parameter is missing from new_config then
-        it is also removed from 'section' otherwise, any difference will be
-        updated or created in section.
-
-        Note that 'section' will not necessarily have the same content as in
-        'new_config' only the difference between new_config and old_config is
-        updated in 'section'
-
-        """
-        # Use cached uuids for current section
-        if section == CACHE_TIER:
-            uuids = self.config_uuids
-        elif section == CACHE_TIER_DESIRED:
-            uuids = self.desired_config_uuids
-        elif section == CACHE_TIER_APPLIED:
-            uuids = self.applied_config_uuids
-        else:
-            uuids = old_config.uuid
-
-        # Delete service parameters that have been removed
-        for name in (set(old_config.params) - set(new_config.params)):
-            try:
-                self.operator.service_parameter_destroy(name, section)
-            except exception.NotFound:
-                pass
-
-        # Update feature_enable of old_config with new value
-        name = constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED
-        _uuid = uuids.get(name)
-        value = 'true' if new_config.feature_enabled else 'false'
-        self.operator.service_parameter_create_or_update(name, value,
-                                                         section, _uuid)
-
-        # Update cache_enable of old_config with new value
-        name = constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED
-        _uuid = uuids.get(name)
-        value = 'true' if new_config.cache_enabled else 'false'
-        self.operator.service_parameter_create_or_update(name, value,
-                                                         section, _uuid)
-        # Update all of the other service parameters
-        for name, value in new_config.params.iteritems():
-            _uuid = uuids.get(name)
-            self.operator.service_parameter_create_or_update(name, value,
-                                                             section, _uuid)
-        if section == CACHE_TIER_APPLIED:
-            self.operator.cache_tier_config_out_of_date_alarm_clear()
-
-    def cache_pool_set_config(self, pool, new_config, applied_config):
-        for name in (set(applied_config.params) - set(new_config.params)):
-            if name in constants.CACHE_TIERING_DEFAULTS:
-                LOG.debug("Setting default for parameter: %s" % name)
-                self.operator.cache_pool_set_param(pool, name,
-                                                   constants.CACHE_TIERING_DEFAULTS[name])
-            else:
-                LOG.warn(_("Unable to reset cache pool parameter {} to default value").format(name))
-        for name, value in new_config.params.iteritems():
-            if value != applied_config.params.get(name):
-                LOG.debug("Setting value of parameter: %(name)s"
-                          " to: %(value)s" % {'name': name,
-                                              'value': value})
-                self.operator.cache_pool_set_param(pool, name, value)
-
-    def enable_feature(self, new_config, applied_config):
-        if new_config.cache_enabled:
-            raise exception.CephCacheFeatureEnableFailure(
-                reason=_("Cannot enable feature and cache at the same time, "
-                         "please enable feature first then cache"))
-        else:
-            ceph_helper = ceph_utils.CephApiOperator()
-            num_monitors, required_monitors, quorum_names = \
-                ceph_helper.get_monitors_status(self.operator._db_api)
-
-            if num_monitors < required_monitors:
-                raise exception.CephCacheFeatureEnableFailure(
-                    reason=_("Only %d storage monitor available. At least %s "
-                             "unlocked and enabled hosts with monitors are "
-                             "required. Please ensure hosts with monitors are "
-                             "unlocked and enabled - candidates: controller-0, "
-                             "controller-1, storage-0") % (num_monitors,
-                                                           required_monitors))
-        # This is only a flag so we set it to both desired and applied at the
-        # same time
-        self.db_param_apply(new_config, applied_config, CACHE_TIER_DESIRED)
-        self.db_param_apply(new_config, applied_config, CACHE_TIER_APPLIED)
-        LOG.info(_("Cache tiering feature enabled"))
-
-    def disable_feature(self, new_config, desired_config):
-        if desired_config.cache_enabled:
-            raise exception.CephCacheFeatureDisableFailure(
-                reason=_("Please disable cache before disabling feature."))
-        else:
-            ceph_caching_hosts = self.operator.get_caching_hosts()
-            if len(ceph_caching_hosts):
-                raise exception.CephCacheFeatureDisableFailure(
-                    reason=_("{} hosts present: {}").format(
-                        constants.PERSONALITY_SUBTYPE_CEPH_CACHING,
-                        [h['hostname'] for h in ceph_caching_hosts]))
-        # This is only a flag so we set it to both desired and applied at the
-        # same time
-        self.db_param_apply(new_config, desired_config, CACHE_TIER_DESIRED)
-        self.db_param_apply(new_config, desired_config, CACHE_TIER_APPLIED)
-        LOG.info(_("Cache tiering feature disabled"))
-
-    def enable_cache(self, new_config, desired_config):
-        if not new_config.feature_enabled:
-            raise exception.CephCacheEnableFailure(
-                reason='Cache tiering feature is not enabled')
-        if not self.operator.check_all_group_cache_valid():
-            raise exception.CephCacheEnableFailure(
-                reason=_("Each cache group should have at least"
-                         " one storage host available"))
-        self.db_param_apply(new_config, desired_config, CACHE_TIER_DESIRED)
-        # 'cache_tiering_enable_cache' is called with a 'desired_config'
-        # before it was stored in the database! self.db_param_apply only
-        # updates the database.
-        rpc.call(CommonRpcContext(),
-                 constants.CEPH_MANAGER_RPC_TOPIC,
-                 {'method': 'cache_tiering_enable_cache',
-                  'args': {'new_config': new_config.to_dict(),
-                           'applied_config': desired_config.to_dict()}})
-
-    def enable_cache_complete(self, success, _exception, new_config, applied_config):
-        new_config = ServiceConfig.from_dict(new_config)
-        applied_config = ServiceConfig.from_dict(applied_config)
-        if success:
-            self.db_param_apply(new_config, applied_config, CACHE_TIER_APPLIED)
-            LOG.info(_("Cache tiering: enable cache complete"))
-            if self.restore_task == CACHE_TIER_RESTORE_TASK_ENABLE:
-                self.operator.reset_storage_backend_task()
-                self.restore_task = None
-        else:
-            # Operation failed, so desired config need to be returned
-            # to the initial value before user executed
-            #   system service-parameter-apply ceph
-            self.db_param_apply(applied_config, new_config, CACHE_TIER_DESIRED)
-            LOG.warn(_exception)
-
-    def disable_cache(self, new_config, desired_config):
-        self.db_param_apply(new_config, desired_config, CACHE_TIER_DESIRED)
-        rpc.call(CommonRpcContext(),
-                 constants.CEPH_MANAGER_RPC_TOPIC,
-                 {'method': 'cache_tiering_disable_cache',
-                  'args': {'new_config': new_config.to_dict(),
-                           'applied_config': desired_config.to_dict()}})
-
-    def disable_cache_complete(self, success, _exception,
-                               new_config, applied_config):
-        new_config = ServiceConfig.from_dict(new_config)
-        applied_config = ServiceConfig.from_dict(applied_config)
-        if success:
-            self.db_param_apply(new_config, applied_config, CACHE_TIER_APPLIED)
-            LOG.info(_("Cache tiering: disable cache complete"))
-            if self.restore_task == CACHE_TIER_RESTORE_TASK_DISABLE:
-                self.restore_task = CACHE_TIER_RESTORE_TASK_ENABLE
-                self.operator.restore_cache_tiering()
-        else:
-            self.db_param_apply(applied_config, new_config, CACHE_TIER_DESIRED)
-            LOG.warn(_exception)
-
-    def operation_in_progress(self):
-        return rpc.call(CommonRpcContext(),
-                        constants.CEPH_MANAGER_RPC_TOPIC,
-                        {'method': 'cache_tiering_operation_in_progress',
-                         'args': {}})
-
-    def restore_ceph_config_after_storage_enabled(self):
-        LOG.info(_("Restore Ceph config after storage enabled"))
-
-        # get cache tiering config.sections
-        #
-        current_config = ServiceConfig(
-            self.operator.service_parameter_get_all(section=CACHE_TIER))
-        LOG.info(_("Cache tiering: current configuration %s") % str(current_config))
-        applied_config = ServiceConfig(
-            self.operator.service_parameter_get_all(section=CACHE_TIER_APPLIED))
-        LOG.info(_("Cache tiering: applied configuration %s") % str(applied_config))
-        desired_config = ServiceConfig(
-            self.operator.service_parameter_get_all(section=CACHE_TIER_DESIRED))
-        LOG.info(_("Cache tiering: desired configuration %s") % str(desired_config))
-
-        # desired config is the union of applied and desired config. prior
-        # to backup. This should handle the case when backup is executed
-        # while cache tiering operation is in progress
-        #
-        config = current_config.to_dict()
-        config.update(applied_config.to_dict())
-        config.update(desired_config.to_dict())
-        config = ServiceConfig.from_dict(config)
-        if (len(self.operator.service_parameter_get_all(
-                section=CACHE_TIER_DESIRED,
-                name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_FEATURE_ENABLED)) == 0):
-            # use applied config in case there's no desired config in
-            # the database - otherwise ServiceConfig() uses the default
-            # value (False) which may incorrectly override applied config
-            #
-            config.feature_enabled = applied_config.feature_enabled
-        if (len(self.operator.service_parameter_get_all(
-                section=CACHE_TIER_DESIRED,
-                name=constants.SERVICE_PARAM_CEPH_CACHE_TIER_CACHE_ENABLED)) == 0):
-            # use applied config in case there's no desired config in
-            # the database - otherwise ServiceConfig() uses the default
-            # value (False) which may incorrectly override applied config
-            #
-            config.cache_enabled = applied_config.cache_enabled
-        LOG.info(_("Cache tiering: set database desired config %s") % str(config))
-        self.db_param_apply(config, desired_config, CACHE_TIER_DESIRED)
-        desired_config = config
-
-        # cache tier applied section stores system state prior to backup;
-        # clear it on restore before triggering a ceph-manager apply action
-        #
-        config = ServiceConfig()
-        LOG.info(_("Cache tiering: clear database applied configuration"))
-        self.db_param_apply(config, applied_config, CACHE_TIER_APPLIED)
-        applied_config = config
-
-        # apply desired configuration in 2 steps: enable feature
-        # then enable cache
-        #
-        if desired_config.feature_enabled:
-            cache_enabled = desired_config.cache_enabled
-            if cache_enabled:
-                LOG.info(_("Cache tiering: disable cache_enabled while enabling feature"))
-                desired_config.cache_enabled = False
-            LOG.info(_("Cache tiering: enable feature after restore"))
-            try:
-                self.apply_service_config(desired_config, applied_config, applied_config)
-                applied_config.feature_enabled = True
-                if cache_enabled:
-                    desired_config.cache_enabled = True
-                    LOG.info(_("Cache tiering: enable cache after restore"))
-                    try:
-                        self.apply_service_config(desired_config, applied_config, applied_config)
-                    except exception.CephFailure as e:
-                        LOG.warn(_("Cache tiering: failed to enable cache after restore. Reason: %s") % str(e))
-            except exception.CephFailure as e:
-                LOG.warn(_("Cache tiering: failed to enable feature after restore. Reason: %s") % str(e))
 
 
 class CephOperator(object):
@@ -405,12 +53,6 @@ class CephOperator(object):
         self._db_cluster = None
         self._db_primary_tier = None
         self._cluster_name = 'ceph_cluster'
-        self._cache_tiering_pools = {
-            constants.CEPH_POOL_VOLUMES_NAME + '-cache': constants.CEPH_POOL_VOLUMES_NAME,
-            constants.CEPH_POOL_EPHEMERAL_NAME + '-cache': constants.CEPH_POOL_EPHEMERAL_NAME,
-            constants.CEPH_POOL_IMAGES_NAME + '-cache': constants.CEPH_POOL_IMAGES_NAME
-        }
-        self._cache_tiering = CacheTiering(self)
         self._init_db_cluster_and_tier()
 
     # Properties: During config_controller we will not initially have a cluster
@@ -534,23 +176,18 @@ class CephOperator(object):
     def _get_db_peer_groups(self, replication):
         # Process all existing peer records and extract view of the peer groups
         host_to_peer = {}
-        group_stats = {
-            constants.PERSONALITY_SUBTYPE_CEPH_BACKING: CephOperator.GroupStats(),
-            constants.PERSONALITY_SUBTYPE_CEPH_CACHING: CephOperator.GroupStats()}
+        stats = CephOperator.GroupStats()
 
         peers = self._db_api.peers_get_all_by_cluster(self.cluster_id)
         for peer in peers:
             for host in peer.hosts:
                 # Update host mapping
                 host_to_peer[host] = peer
-            if "cache" in peer.name:
-                stats = group_stats[constants.PERSONALITY_SUBTYPE_CEPH_CACHING]
-            else:
-                stats = group_stats[constants.PERSONALITY_SUBTYPE_CEPH_BACKING]
+
             stats.peer_count += 1
             if len(peer.hosts) < replication:
                 stats.incomplete_peers.append(peer)
-        return host_to_peer, group_stats
+        return host_to_peer, stats
 
     def assign_host_to_peer_group(self, host_obj):
         # Prevent re-running the peer assignment logic if the host already has a
@@ -561,19 +198,9 @@ class CephOperator(object):
             return
 
         hostname = host_obj.hostname
-        subtype = host_obj.capabilities['pers_subtype']
 
         # Get configured ceph replication
         replication, min_replication = StorageBackendConfig.get_ceph_pool_replication(self._db_api)
-
-        # Sanity check #1: storage-0 and storage-1 subtype is ceph-backing
-        # TODO: keep this check only for default replication until
-        # TODO: cache tiering is deprecated
-        if replication == constants.CEPH_REPLICATION_FACTOR_DEFAULT:
-            if hostname in [constants.STORAGE_0_HOSTNAME,
-                            constants.STORAGE_1_HOSTNAME] and \
-                    subtype != constants.PERSONALITY_SUBTYPE_CEPH_BACKING:
-                raise exception.StorageSubTypeUnexpected(host=hostname, subtype=subtype)
 
         host_to_peer, stats = self._get_db_peer_groups(replication)
 
@@ -585,33 +212,12 @@ class CephOperator(object):
                 peer_name=peer.name)
 
         try:
-            peer_obj = stats[subtype].incomplete_peers[0]
+            peer_obj = stats.incomplete_peers[0]
             peer_name = peer_obj.name
         except IndexError:
             peer_obj = None
-            if subtype == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                peer_name = '%s%s' % (constants.PEER_PREFIX_CACHING,
-                                      str(stats[subtype].peer_count))
-            else:
-                peer_name = '%s%s' % (constants.PEER_PREFIX_BACKING,
-                                      str(stats[subtype].peer_count))
-
-        # TODO: keep these checks only for default repication until
-        # TODO: cache tiering is deprecated
-        if replication == constants.CEPH_REPLICATION_FACTOR_DEFAULT:
-            # Sanity check #3: storage-0 and storage-1 are always in group-0
-            if hostname in [constants.STORAGE_0_HOSTNAME,
-                            constants.STORAGE_1_HOSTNAME] and \
-                    peer_name != constants.PEER_BACKING_RSVD_GROUP:
-                raise exception.StoragePeerGroupUnexpected(
-                    host=hostname, subtype=subtype, peer_name=peer_name)
-
-            # Sanity check #4: group-0 is reserved for storage-0 and storage-1
-            if peer_name == constants.PEER_BACKING_RSVD_GROUP \
-                    and hostname not in [constants.STORAGE_0_HOSTNAME,
-                                         constants.STORAGE_1_HOSTNAME]:
-                raise exception.StoragePeerGroupUnexpected(
-                    host=hostname, subtype=subtype, peer_name=peer_name)
+            peer_name = '%s%s' % (constants.PEER_PREFIX,
+                                  str(stats.peer_count))
 
         if not peer_obj:
             peer_obj = self._db_api.peer_create({
@@ -653,81 +259,6 @@ class CephOperator(object):
                 self._db_cluster.cluster_uuid = fsid
 
         self.assign_host_to_peer_group(host)
-
-    def _calculate_target_pg_num(self, storage_hosts, pool_name):
-        """
-        Calculate target pg_num based upon storage hosts and OSD
-
-        storage_hosts: storage host objects
-        returns target_pg_num  calculated target policy group number
-                osds_raw       actual osds
-
-        Minimum: <= 2 storage applies minimum. (512, 512, 256, 256)
-            Assume max 8 OSD for first pair to set baseline.
-            cinder_volumes:  512 * 2
-            ephemeral_vms:   512 * 2
-            glance_images:   256 * 2
-            .rgw.buckets:    256 * 2
-            rbd:             64 (this is created by Ceph)
-            --------------------
-            Total:          3136
-        Note: for a single OSD the value has to be less than 2048, formula:
-        [Total] / [total number of OSD] = [PGs/OSD]
-        3136    / 2 = 1568 < 2048
-        See constants.BACKING_POOLS for up to date values
-
-        Above 2 Storage hosts: Calculate OSDs based upon pg_calc:
-            [(Target PGs per OSD) * (# OSD) * (% Data) ]/ Size
-
-        Select Target PGs per OSD = 200; to forecast it can double
-
-        Determine number of OSD (in muliples of storage-pairs) on the
-        first host-unlock of storage pair.
-        """
-        target_pg_num = None
-
-        osds = 0
-        stors = None
-        for i in storage_hosts:
-            # either cinder or ceph
-            stors = self._db_api.istor_get_by_ihost(i.uuid)
-            osds += len(stors)
-
-        osds_raw = osds
-        if len(storage_hosts) % 2 != 0:
-            osds += len(stors)
-            LOG.debug("OSD odd number of storage hosts, adjusting osds by %d "
-                      "to osds=%d" % (len(stors), osds))
-
-        data_pt = None
-
-        for pool in (BACKING_POOLS + CACHE_POOLS):
-            # Either pool name would be fine here
-            if pool_name in constants.CEPH_POOL_OBJECT_GATEWAY_NAME:
-                if pool['pool_name'] in constants.CEPH_POOL_OBJECT_GATEWAY_NAME:
-                    data_pt = int(pool['data_pt'])
-                    break
-
-            if pool['pool_name'] == pool_name:
-                data_pt = int(pool['data_pt'])
-                break
-
-        target_pg_num_raw = None
-        if data_pt and osds:
-            # Get configured ceph replication
-            replication, min_replication = StorageBackendConfig.get_ceph_pool_replication(self._db_api)
-
-            # [(Target PGs per OSD) * (# OSD) * (% Data) ]/ Size
-            target_pg_num_raw = ((osds * constants.CEPH_TARGET_PGS_PER_OSD * data_pt / 100) /
-                                 replication)
-            # find next highest power of 2 via shift bit length
-            target_pg_num = 1 << (int(target_pg_num_raw) - 1).bit_length()
-
-        LOG.info("OSD pool %s target_pg_num_raw=%s target_pg_num=%s "
-                 "osds_raw=%s osds=%s" %
-                 (pool_name, target_pg_num_raw, target_pg_num, osds_raw, osds))
-
-        return target_pg_num, osds_raw
 
     def osd_pool_get(self, pool_name, param):
         response, body = self._ceph_api.osd_pool_get(
@@ -797,59 +328,6 @@ class CephOperator(object):
         LOG.info("osdmap is rebuilt.")
         return True
 
-    def reset_cache_tiering(self):
-        """Restore Cache Tiering service by toggling the cache_enabled field.
-           The first step here is to disable cache_tiering.
-        """
-
-        # return if restore is already ongoing
-        if self._cache_tiering.restore_task:
-            LOG.info("Cache Tiering restore task %s inprogress"
-                     % self._cache_tiering.restore_task)
-            return
-
-        # No need to restore if Cache Tiering is not enabled
-        if not self._cache_tiering.is_cache_tiering_enabled():
-            LOG.info("Cache Tiering service is not enabled. No need to restore")
-            return True
-        else:
-            self._cache_tiering.restore_task = CACHE_TIER_RESTORE_TASK_DISABLE
-
-        cache_enabled = self._db_api.service_parameter_get_one(
-            service=SERVICE_TYPE_CEPH,
-            section=CACHE_TIER,
-            name=CACHE_TIER_CACHE_ENABLED)
-
-        self.service_parameter_update(
-            cache_enabled.uuid, CACHE_TIER_CACHE_ENABLED, 'false', CACHE_TIER)
-        try:
-            self.update_service_config(do_apply=True)
-        except RpcRemoteError as e:
-            raise wsme.exc.ClientSideError(str(e.value))
-        except Exception as e:
-            with excutils.save_and_reraise_exception():
-                LOG.exception(e)
-        return True
-
-    def restore_cache_tiering(self):
-        """Restore Cache Tiering service by toggling the cache_enabled field.
-           The second step here is to re-enable cache_tiering.
-        """
-        cache_enabled = self._db_api.service_parameter_get_one(
-            service=SERVICE_TYPE_CEPH,
-            section=CACHE_TIER,
-            name=CACHE_TIER_CACHE_ENABLED)
-
-        self.service_parameter_update(
-            cache_enabled.uuid, CACHE_TIER_CACHE_ENABLED, 'true', CACHE_TIER)
-        try:
-            self.update_service_config(do_apply=True)
-        except RpcRemoteError as e:
-            raise wsme.exc.ClientSideError(str(e.value))
-        except Exception as e:
-            with excutils.save_and_reraise_exception():
-                LOG.exception(e)
-
     def restore_ceph_config(self, after_storage_enabled=False):
         """Restore Ceph configuration during Backup and Restore process.
 
@@ -899,7 +377,6 @@ class CephOperator(object):
                 constants.CINDER_BACKEND_CEPH,
                 task=constants.SB_TASK_NONE
             )
-            self._cache_tiering.restore_ceph_config_after_storage_enabled()
             return True
 
         # check if osdmap is emtpy as an indication for Backup and Restore
@@ -1009,95 +486,13 @@ class CephOperator(object):
         :param min_size:  minimum number of replicas required for I/O
         """
 
-        # Determine the ruleset to use
-        if pool_name.endswith("-cache"):
-            # ruleset 1: is the ruleset for the cache tier
-            # Name: cache_tier_ruleset
-            ruleset = 1
-        else:
-            # ruleset 0: is the default ruleset if no crushmap is loaded or
-            # the ruleset for the backing tier if loaded:
-            # Name: storage_tier_ruleset
-            ruleset = 0
+        # ruleset 0: is the default ruleset if no crushmap is loaded or
+        # the ruleset for the backing tier if loaded:
+        # Name: storage_tier_ruleset
+        ruleset = 0
 
         # Create the pool if not present
         self._pool_create(pool_name, pg_num, pgp_num, ruleset, size, min_size)
-
-    def cache_pool_create(self, pool):
-        backing_pool = pool['pool_name']
-        cache_pool = backing_pool + '-cache'
-
-        # Due to http://tracker.ceph.com/issues/8043 we only audit
-        # caching pool PGs when the pools are created, for now.
-        pg_num, _ = self._calculate_target_pg_num(self.get_caching_hosts(), cache_pool)
-        self.create_or_resize_osd_pool(cache_pool, pg_num, pg_num)
-
-    def cache_pool_delete(self, pool):
-        cache_pool = pool['pool_name'] + '-cache'
-        self.delete_osd_pool(cache_pool)
-
-    def cache_tier_add(self, pool):
-        backing_pool = pool['pool_name']
-        cache_pool = backing_pool + '-cache'
-        response, body = self._ceph_api.osd_tier_add(
-            backing_pool, cache_pool,
-            force_nonempty="--force-nonempty",
-            body='json')
-        if response.ok:
-            LOG.info(_("Added OSD tier: "
-                       "backing_pool={}, cache_pool={}").format(backing_pool, cache_pool))
-        else:
-            e = exception.CephPoolAddTierFailure(
-                backing_pool=backing_pool,
-                cache_pool=cache_pool,
-                response_status_code=response.status_code,
-                response_reason=response.reason,
-                status=body.get('status'),
-                output=body.get('output'))
-            LOG.warn(e)
-            raise e
-
-    def cache_tier_remove(self, pool):
-        backing_pool = pool['pool_name']
-        cache_pool = backing_pool + '-cache'
-        response, body = self._ceph_api.osd_tier_remove(
-            backing_pool, cache_pool, body='json')
-        if response.ok:
-            LOG.info(_("Removed OSD tier: "
-                       "backing_pool={}, cache_pool={}").format(backing_pool, cache_pool))
-        else:
-            e = exception.CephPoolRemoveTierFailure(
-                backing_pool=backing_pool,
-                cache_pool=cache_pool,
-                response_status_code=response.status_code,
-                response_reason=response.reason,
-                status=body.get('status'),
-                output=body.get('output'))
-            LOG.warn(e)
-            raise e
-
-    def cache_mode_set(self, pool, mode):
-        backing_pool = pool['pool_name']
-        cache_pool = backing_pool + '-cache'
-        response, body = self._ceph_api.osd_tier_cachemode(
-            cache_pool, mode, body='json')
-        if response.ok:
-            LOG.info(_("Set OSD tier cache mode: "
-                       "cache_pool={}, mode={}").format(cache_pool, mode))
-        else:
-            e = exception.CephCacheSetModeFailure(
-                cache_pool=cache_pool,
-                response_status_code=response.status_code,
-                response_reason=response.reason,
-                status=body.get('status'),
-                output=body.get('output'))
-            LOG.warn(e)
-            raise e
-
-    def cache_pool_set_param(self, pool, name, value):
-        backing_pool = pool['pool_name']
-        cache_pool = backing_pool + '-cache'
-        self.osd_set_pool_param(cache_pool, name, value)
 
     def service_parameter_get_all(self, section, name=None):
         return self._db_api.service_parameter_get_all(
@@ -1146,23 +541,6 @@ class CephOperator(object):
              'section': section,
              'name': name,
              'value': value})
-
-    def get_caching_hosts(self):
-        storage_nodes = self._db_api.ihost_get_by_personality(constants.STORAGE)
-        ceph_caching_hosts = []
-        for node in storage_nodes:
-            if node.capabilities.get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-                ceph_caching_hosts.append(node)
-        return ceph_caching_hosts
-
-    def get_backing_hosts(self):
-        storage_nodes = self._db_api.ihost_get_by_personality(constants.STORAGE)
-        ceph_backing_hosts = []
-        for node in storage_nodes:
-            if ('pers_subtype' not in node.capabilities or
-                    node.capabilities.get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_BACKING):
-                ceph_backing_hosts.append(node)
-        return ceph_backing_hosts
 
     def delete_osd_pool(self, pool_name):
         """Delete an osd pool
@@ -1449,7 +827,7 @@ class CephOperator(object):
                     pass
 
                 # Handle primary tier pools (cinder/glance/swift/ephemeral)
-                for pool in BACKING_POOLS:
+                for pool in CEPH_POOLS:
                     # TODO(rchurch): The following is added for R3->R4 upgrades. Can we
                     # remove this for R5? Or is there some R3->R4->R5 need to keep this
                     # around.
@@ -1610,137 +988,13 @@ class CephOperator(object):
             return False
         return True
 
-    def check_all_group_cache_valid(self):
-        peers = self._db_api.peers_get_all_by_cluster(self.cluster_id)
-        if not len(peers):
-            return False
-        for peer in peers:
-            group_name = peer.name
-            if group_name.find("cache") != -1:
-                available_cnt = 0
-                host_cnt = 0
-                for host in self._db_api.ihost_get_by_personality(constants.STORAGE):
-                    if peer.id == host['peer_id']:
-                        host_cnt += 1
-                        host_action_locking = False
-                        host_action = host['ihost_action'] or ""
-                        if (host_action.startswith(constants.FORCE_LOCK_ACTION) or
-                                host_action.startswith(constants.LOCK_ACTION)):
-                            host_action_locking = True
-                        if (host['administrative'] == constants.ADMIN_UNLOCKED and
-                                host['operational'] == constants.OPERATIONAL_ENABLED and
-                                not host_action_locking):
-                            available_cnt += 1
-                if (host_cnt > 0) and (available_cnt == 0):
-                    return False
-        return True
-
-    def cache_tier_config_out_of_date_alarm_set(self):
-        entity_instance_id = "%s=%s" % (
-            fm_constants.FM_ENTITY_TYPE_CLUSTER,
-            self.cluster_ceph_uuid)
-        LOG.warn(_("Raise Ceph cache tier configuration out of date alarm: %s") % entity_instance_id)
-        self._fm_api.set_fault(
-            fm_api.Fault(
-                alarm_id=fm_constants.FM_ALARM_ID_CEPH_CACHE_TIER_CONFIG_OUT_OF_DATE,
-                alarm_state=fm_constants.FM_ALARM_STATE_SET,
-                entity_type_id=fm_constants.FM_ENTITY_TYPE_CLUSTER,
-                entity_instance_id=entity_instance_id,
-                severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
-                reason_text=_("Ceph Cache Tier: Configuration is out-of-date."),
-                alarm_type=fm_constants.FM_ALARM_TYPE_7,
-                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_75,
-                proposed_repair_action=_("Run 'system service-parameter-apply ceph' "
-                                         "to apply Ceph service configuration"),
-                service_affecting=True))
-
-    def cache_tier_config_out_of_date_alarm_clear(self):
-        entity_instance_id = "%s=%s" % (
-            fm_constants.FM_ENTITY_TYPE_CLUSTER,
-            self.cluster_ceph_uuid)
-        LOG.warn(_("Clear Ceph cache tier configuration out of date alarm: %s") % entity_instance_id)
-        self._fm_api.clear_fault(
-            fm_constants.FM_ALARM_ID_CEPH_CACHE_TIER_CONFIG_OUT_OF_DATE,
-            entity_instance_id)
-
-    def cache_tiering_get_config(self):
-        return self._cache_tiering.get_config()
-
-    def get_pool_pg_num(self, pool_name):
-        pg_num, _ = self._calculate_target_pg_num(self.get_caching_hosts(),
-                                                  pool_name)
-
-        # Make sure we return the max between the minimum configured value
-        # and computed target pg_num
-        for pool in (BACKING_POOLS + CACHE_POOLS):
-            # either object pool name is fine here
-            if pool_name in constants.CEPH_POOL_OBJECT_GATEWAY_NAME:
-                if pool['pool_name'] in constants.CEPH_POOL_OBJECT_GATEWAY_NAME:
-                    break
-            if pool['pool_name'] == pool_name:
-                break
-
-        return max(pg_num, pool['pg_num'])
-
-    def update_service_config(self, do_apply=False):
-        if StorageBackendConfig.is_ceph_backend_restore_in_progress(self._db_api):
-            raise exception.CephPoolApplyRestoreInProgress()
-        if self._cache_tiering.operation_in_progress():
-            raise exception.CephPoolApplySetParamFailure()
-
-        # Each service parameter has three states:
-        #   1. First, the one that the client sees, stored in section:
-        #      SERVICE_PARAM_SECTION_CEPH_CACHE_TIER
-        #   2. Second, the one that is stored when the client runs:
-        #      'system service-parameter-apply ceph' stored in:
-        #      SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED
-        #   3. Third, the one after the config is correctly applied:
-        #      SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED
-        # When a service (e.g. ceph-manager) is restarted and finds that
-        # DESIRED != APPLIED then it takes corrective action.
-
-        # Get service parameters from DB, this should only be needed once
-        new_config = ServiceConfig(
-            self.service_parameter_get_all(
-                section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER))
-        desired_config = ServiceConfig(
-            self.service_parameter_get_all(
-                section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_DESIRED))
-        applied_config = ServiceConfig(
-            self.service_parameter_get_all(
-                section=constants.SERVICE_PARAM_SECTION_CEPH_CACHE_TIER_APPLIED))
-
-        # Cache UUIDs for configs
-        if new_config:
-            self.config_uuids = new_config.uuid
-        if desired_config:
-            self.desired_config_uuids = desired_config.uuid
-        if applied_config:
-            self.applied_config_uuids = applied_config.uuid
-
-        if not do_apply:
-            if new_config != applied_config:
-                self.cache_tier_config_out_of_date_alarm_set()
-            else:
-                self.cache_tier_config_out_of_date_alarm_clear()
-        else:
-            self._cache_tiering.apply_service_config(new_config,
-                                                     desired_config,
-                                                     applied_config)
-
-    def cache_tiering_enable_cache_complete(self, *args):
-        self._cache_tiering.enable_cache_complete(*args)
-
-    def cache_tiering_disable_cache_complete(self, *args):
-        self._cache_tiering.disable_cache_complete(*args)
-
     def get_pools_config(self):
-        for pool in BACKING_POOLS:
+        for pool in CEPH_POOLS:
             # Here it is okay for object pool name is either
             # constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL or
             # constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER
             pool['quota_gib'] = self.set_quota_gib(pool['pool_name'])
-        return BACKING_POOLS
+        return CEPH_POOLS
 
     def get_ceph_primary_tier_size(self):
         return rpc.call(CommonRpcContext(),
@@ -1819,7 +1073,7 @@ class CephOperator(object):
             Note: for a single OSD the value has to be less than 2048, formula:
             [Total] / [total number of OSD] = [PGs/OSD]
             3136    / 2 = 1568 < 2048
-            See constants.BACKING_POOLS for up to date values
+            See constants.CEPH_POOLS for up to date values
 
         Secondary Tiers:
             Minimum: <= 2 storage applies minimum. (512)
@@ -1849,7 +1103,7 @@ class CephOperator(object):
 
         if tiers_obj.uuid == self.primary_tier_uuid:
             is_primary_tier = True
-            pools = (BACKING_POOLS + CACHE_POOLS)
+            pools = CEPH_POOLS
         else:
             is_primary_tier = False
             pools = constants.SB_TIER_CEPH_POOLS
@@ -2170,17 +1424,17 @@ class CephOperator(object):
                 self.audit_osd_quotas_for_tier(t)
 
             audit = []
-            backing_hosts = self.get_backing_hosts()
+            storage_hosts = self._db_api.ihost_get_by_personality(constants.STORAGE)
             # osd audit is not required for <= 2 hosts
-            if backing_hosts and len(backing_hosts) > 2:
+            if storage_hosts and len(storage_hosts) > 2:
                 if t.uuid == self.primary_tier_uuid:
 
                     # Query ceph to get rgw object pool name.
                     # To be safe let configure_osd_pools() be the only place that can
-                    # update the object pool name in BACKING_POOLS, so we make a local
-                    # copy of BACKING_POOLS here.
-                    backing_pools_snapshot = copy.deepcopy(BACKING_POOLS)
-                    for pool in backing_pools_snapshot:
+                    # update the object pool name in CEPH_POOLS, so we make a local
+                    # copy of CEPH_POOLS here.
+                    pools_snapshot = copy.deepcopy(CEPH_POOLS)
+                    for pool in pools_snapshot:
                         if pool['pool_name'] == constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL:
                             try:
                                 pool_name = self.get_ceph_object_pool_name()
@@ -2193,23 +1447,14 @@ class CephOperator(object):
                                            'Reason: %(reason)s') % {'reason': str(e.message)})
                                 break
 
-                    audit = [(backing_pools_snapshot, backing_hosts)]
+                    audit = [(pools_snapshot, storage_hosts)]
 
                 else:
                     # Adjust the pool name based on the current tier
                     pools_snapshot = copy.deepcopy(constants.SB_TIER_CEPH_POOLS)
                     for p in pools_snapshot:
                         p['pool_name'] += "-%s" % t.name
-                    audit = [(pools_snapshot, backing_hosts)]
-
-                # Due to http://tracker.ceph.com/issues/8043 we only audit
-                # caching pool PGs when the pools are created, for now.
-                # Uncomment bellow to enable automatic configuration
-                # Audit backing and caching pools
-                # if self._cache_tiering.is_cache_tiering_enabled():
-                #     caching_hosts = self.get_caching_hosts()
-                #     if caching_hosts and len(caching_hosts) > 2:
-                #         audit = audit.extend([(CACHE_POOLS, caching_hosts)])
+                    audit = [(pools_snapshot, storage_hosts)]
 
                 if audit is not None:
                     for pools, storage_hosts in audit:

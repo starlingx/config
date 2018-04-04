@@ -2748,11 +2748,6 @@ def storprofile_applicable(host, profile):
     if not len(host.disks) >= len(profile.disks):
         return (False, _('profile has more disks than host does'))
 
-    if host.capabilities.get('pers_subtype') == constants.PERSONALITY_SUBTYPE_CEPH_CACHING:
-        for pstor in profile.stors:
-            if pstor.function == constants.STOR_FUNCTION_JOURNAL:
-                return (False, _('journal storage functions not allowed on {} host').format(
-                    constants.PERSONALITY_SUBTYPE_CEPH_CACHING))
     return (True, None)
 
 
