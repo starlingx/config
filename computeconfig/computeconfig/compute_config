@@ -98,12 +98,11 @@ get_ip()
 
 wait_for_controller_services()
 {
-    SERVICE="platform-nfs-ip"
     while [ "$SECONDS" -le "$DELAY_SEC" ]
     do
-        # Check to make sure the service is enabled
-        sm-query service ${SERVICE} | grep -q "enabled-active"
-        if [ $? -eq 0 ]
+        # Check to make sure the cloud-services group is enabled
+        OUTPUT=`sm-query service-group cloud-services`
+        if [ "$OUTPUT" == "cloud-services active" ]
         then
            return 0
         fi
