@@ -28,7 +28,7 @@ class Partition(base.SysinvObject):
         'device_node': utils.str_or_none,
         'type_guid': utils.str_or_none,
         'type_name': utils.str_or_none,
-        'idisk_id': int,
+        'idisk_id': utils.int_or_none,
         'foripvid': utils.int_or_none,
         'forihostid': utils.int_or_none,
         'status': int,

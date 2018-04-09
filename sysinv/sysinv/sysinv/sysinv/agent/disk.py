@@ -40,8 +40,6 @@ from sysinv.openstack.common import context
 
 LOG = logging.getLogger(__name__)
 
-VENDOR_ID_LIO = 'LIO-ORG'
-
 
 class DiskOperator(object):
     '''Class to encapsulate Disk operations for System Inventory'''
@@ -128,7 +126,7 @@ class DiskOperator(object):
         # Check that partition table format is GPT.
         # Return 0 if not.
         if not utils.disk_is_gpt(device_node=device_node):
-            LOG.warn("Format of disk node %s is not GPT." % device_node)
+            LOG.debug("Format of disk node %s is not GPT." % device_node)
             return 0
 
         pvs_command = '{} {}'.format('pvs | grep -w ', device_node)
@@ -268,53 +266,11 @@ class DiskOperator(object):
         idisk = []
         context = pyudev.Context()
 
-        # Valid major numbers for disks:
-        #     https://www.kernel.org/doc/Documentation/admin-guide/devices.txt
-        #
-        #   3 block First MFM, RLL and IDE hard disk/CD-ROM interface
-        #   8 block SCSI disk devices (0-15)
-        #  65 block SCSI disk devices (16-31)
-        #  66 block SCSI disk devices (32-47)
-        #  67 block SCSI disk devices (48-63)
-        #  68 block SCSI disk devices (64-79)
-        #  69 block SCSI disk devices (80-95)
-        #  70 block SCSI disk devices (96-111)
-        #  71 block SCSI disk devices (112-127)
-        # 128 block SCSI disk devices (128-143)
-        # 129 block SCSI disk devices (144-159)
-        # 130 block SCSI disk devices (160-175)
-        # 131 block SCSI disk devices (176-191)
-        # 132 block SCSI disk devices (192-207)
-        # 133 block SCSI disk devices (208-223)
-        # 134 block SCSI disk devices (224-239)
-        # 135 block SCSI disk devices (240-255)
-        # 240-254 block	LOCAL/EXPERIMENTAL USE (253 == /dev/vdX)
-        # 259 block	Block Extended Major (NVMe - /dev/nvmeXn1)
-        valid_major_list = ['3','8', '65', '66', '67', '68', '69', '70', '71',
-                            '128', '129', '130', '131', '132', '133', '134',
-                            '135', '253', '259']
-
         for device in context.list_devices(DEVTYPE='disk'):
-            if device.get("ID_BUS") == "usb":
-                # Skip USB devices
+            if not utils.is_system_usable_block_device(device):
                 continue
-            if device.get("DM_VG_NAME") or device.get("DM_LV_NAME"):
-                # Skip LVM devices
-                continue
-            id_path = device.get("ID_PATH", "")
-            if "iqn." in id_path or "eui." in id_path:
-                # Skip all iSCSI devices, they are links for volume storage.
-                # As per https://www.ietf.org/rfc/rfc3721.txt, "iqn." or "edu."
-                # have to be present when constructing iSCSI names.
-                continue
-            if device.get("ID_VENDOR") == VENDOR_ID_LIO:
-                # LIO devices are iSCSI, should be skipped above!
-                LOG.error("Invalid id_path. Device %s (%s) is iSCSI!" %
-                            (id_path, device.get('DEVNAME')))
-                continue
-            major = device['MAJOR']
-            if major in valid_major_list:
 
+            if device['MAJOR'] in constants.VALID_MAJOR_LIST:
                 if 'ID_PATH' in device:
                     device_path = "/dev/disk/by-path/" + device['ID_PATH']
                     LOG.debug("[DiskEnum] device_path: %s ", device_path)

@@ -272,6 +272,33 @@ REGION_ONE_NAME = 'RegionOne'
 # DC Region Must match VIRTUAL_MASTER_CLOUD in dcorch
 SYSTEM_CONTROLLER_REGION = 'SystemController'
 
+# Valid major numbers for disks:
+#     https://www.kernel.org/doc/Documentation/admin-guide/devices.txt
+#
+#   3 block First MFM, RLL and IDE hard disk/CD-ROM interface
+#   8 block SCSI disk devices (0-15)
+#  65 block SCSI disk devices (16-31)
+#  66 block SCSI disk devices (32-47)
+#  67 block SCSI disk devices (48-63)
+#  68 block SCSI disk devices (64-79)
+#  69 block SCSI disk devices (80-95)
+#  70 block SCSI disk devices (96-111)
+#  71 block SCSI disk devices (112-127)
+# 128 block SCSI disk devices (128-143)
+# 129 block SCSI disk devices (144-159)
+# 130 block SCSI disk devices (160-175)
+# 131 block SCSI disk devices (176-191)
+# 132 block SCSI disk devices (192-207)
+# 133 block SCSI disk devices (208-223)
+# 134 block SCSI disk devices (224-239)
+# 135 block SCSI disk devices (240-255)
+# 240-254 block    LOCAL/EXPERIMENTAL USE (253 == /dev/vdX)
+# 259 block    Block Extended Major (NVMe - /dev/nvmeXn1)
+VALID_MAJOR_LIST = ['3', '8', '65', '66', '67', '68', '69', '70', '71',
+                    '128', '129', '130', '131', '132', '133', '134',
+                    '135', '253', '259']
+VENDOR_ID_LIO = 'LIO-ORG'
+
 # Storage backends supported
 SB_TYPE_FILE = 'file'
 SB_TYPE_LVM = 'lvm'

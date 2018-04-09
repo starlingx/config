@@ -482,6 +482,35 @@ def is_valid_pci_class_id(id):
     return True
 
 
+def is_system_usable_block_device(pydev_device):
+    """ Check if a block device is local and can be used for partitioning
+
+    Example devices:
+     o local block devices: local HDDs, SSDs, RAID arrays
+     o remote devices: iscsi mounted, LIO, EMC
+     o non permanent devices: USB stick
+    :return bool: True if device can be used else False
+    """
+    if pydev_device.get("ID_BUS") == "usb":
+        # Skip USB devices
+        return False
+    if pydev_device.get("DM_VG_NAME") or pydev_device.get("DM_LV_NAME"):
+        # Skip LVM devices
+        return False
+    id_path = pydev_device.get("ID_PATH", "")
+    if "iqn." in id_path or "eui." in id_path:
+        # Skip all iSCSI devices, they are links for volume storage.
+        # As per https://www.ietf.org/rfc/rfc3721.txt, "iqn." or "edu."
+        # have to be present when constructing iSCSI names.
+        return False
+    if pydev_device.get("ID_VENDOR") == constants.VENDOR_ID_LIO:
+        # LIO devices are iSCSI, should be skipped above!
+        LOG.error("Invalid id_path. Device %s (%s) is iSCSI!" %
+                    (id_path, pydev_device.get('DEVNAME')))
+        return False
+    return True
+
+
 def get_ip_version(network):
     """Returns the IP version of a network (IPv4 or IPv6).
 

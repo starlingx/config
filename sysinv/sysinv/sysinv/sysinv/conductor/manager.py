@@ -3444,16 +3444,24 @@ class ConductorManager(service.PeriodicService):
         # Check that the DB partitions are in sync with the DB disks and PVs.
         for db_part in db_parts:
             if not db_part.device_path:
-                LOG.warning("Disk partition %s is missing its device path." %
-                            db_part.uuid)
+                # Should not happen unless pyudev gives us wrong data
+                # or we have a programming error.
+                LOG.error("PART ipartition_update_by_ihost: "
+                          "Disk partition %s is missing its "
+                          "device path, ignoring!" % db_part.uuid)
+                continue
 
             # Obtain the disk the partition is on.
             part_disk = next((d for d in db_disks
                              if d.device_path in db_part.device_path), None)
 
             if not part_disk:
-                LOG.debug("PART conductor - partition disk is not "
-                          "present.")
+                # Should not happen as we only store partitions associated
+                # with a disk.
+                LOG.error("PART ipartition_update_by_ihost: "
+                          "Disk for partition %s is not "
+                          "present in database, ignoring!" % db_part.uuid)
+                continue
 
             partition_dict = {'forihostid': forihostid}
             partition_update_needed = False
@@ -3519,20 +3527,29 @@ class ConductorManager(service.PeriodicService):
                         LOG.debug("PART conductor - disk - part_dict: %s " %
                                   str(part_dict))
 
-                new_part = None
-                try:
-                    new_part = self.dbapi.partition_create(
-                        forihostid, part_dict)
-                except:
-                    LOG.exception("Partition creation failed.")
+                        new_part = None
+                        try:
+                            LOG.info("Partition create on host: %s. Details: %s" % (forihostid, part_dict))
+                            new_part = self.dbapi.partition_create(
+                                forihostid, part_dict)
+                        except Exception as e:
+                            LOG.exception("Partition creation failed on host: %s. "
+                                          "Details: %s" % (forihostid, str(e)))
 
-                # If the partition has been successfully created, update its status.
-                if new_part:
-                    if new_part.type_guid != constants.USER_PARTITION_PHYSICAL_VOLUME:
-                        partition_status = {'status': constants.PARTITION_IN_USE_STATUS}
-                    else:
-                        partition_status = {'status': constants.PARTITION_READY_STATUS}
-                    self.dbapi.partition_update(new_part.uuid, partition_status)
+                        # If the partition has been successfully created, update its status.
+                        if new_part:
+                            if new_part.type_guid != constants.USER_PARTITION_PHYSICAL_VOLUME:
+                                status = {'status': constants.PARTITION_IN_USE_STATUS}
+                            else:
+                                status = {'status': constants.PARTITION_READY_STATUS}
+                            self.dbapi.partition_update(new_part.uuid, status)
+                        break
+                else:
+                    # This shouldn't happen as disks are reported before partitions
+                    LOG.warning("Found partition not associated with any disks, "
+                                "underlying disk should be created on next inventory "
+                                "reporting, ignoring for now. Details: ihost_uuid: %s "
+                                "ipart_dict_array: %s" % (ihost_uuid, part_dict))
 
         # Check to see if partitions have been removed.
         for db_part in db_parts:

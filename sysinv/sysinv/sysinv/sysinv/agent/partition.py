@@ -18,6 +18,7 @@ import pyudev
 import subprocess
 import sys
 from sysinv.common import utils as utils
+from sysinv.common import constants
 from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class PartitionOperator(object):
         :returns: list of partitions"""
         # Check that partition table format is GPT. Return 0 if not.
         if not utils.disk_is_gpt(device_node=device_node):
-            LOG.warn("Format of disk node %s is not GPT." % device_node)
+            LOG.debug("Format of disk node %s is not GPT." % device_node)
             return None
 
         try:
@@ -151,19 +152,10 @@ class PartitionOperator(object):
         # Get all disk devices.
         context = pyudev.Context()
         for device in context.list_devices(DEVTYPE='disk'):
-            if device.get("ID_BUS") == "usb":
-                # Skip USB devices
+            if not utils.is_system_usable_block_device(device):
                 continue
-            if device.get("ID_VENDOR") == VENDOR_ID_LIO:
-                # Skip iSCSI devices, they are links for volume storage
-                continue
-            if device.get("DM_VG_NAME") or device.get("DM_LV_NAME"):
-                # Skip LVM devices
-                continue
-            major = device['MAJOR']
 
-            if (major == '8' or major == '3' or major == '253' or
-                    major == '259'):
+            if device['MAJOR'] in constants.VALID_MAJOR_LIST:
                 device_path = "/dev/disk/by-path/" + device['ID_PATH']
                 device_node = device.device_node
 
