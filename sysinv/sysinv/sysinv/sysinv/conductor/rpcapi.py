@@ -656,8 +656,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('get_ceph_pools_df_stats'))
 
     def get_cinder_lvm_usage(self, context):
+        """Get the usage information for the LVM pools.
+
+        :param context: request context.
+        """
         return self.call(context,
                          self.make_msg('get_cinder_lvm_usage'))
+
+    def get_cinder_volume_type_names(self, context):
+        """Get the names of all currently defined cinder volume types.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('get_cinder_volume_type_names'))
 
     def kill_ceph_storage_monitor(self, context):
         """Stop the ceph storage monitor.

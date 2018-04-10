@@ -697,8 +697,43 @@ class ServiceParameterController(rest.RestController):
                 raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
+    def _service_parameter_apply_semantic_check_cinder_default():
+        """Semantic checks for the Cinder Service Type: DEFAULT parameters """
+        try:
+            volume_type = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_CINDER,
+                section=constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
+                name=constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE)
+        except exception.MultipleResults:
+            msg = (_('Unable to apply service parameters. Multiple parameters '
+                     'found for %s/%s/%s. Ensure only one parameter is '
+                     'provided.') % (
+                         constants.SERVICE_TYPE_CINDER,
+                         constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
+                         constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE))
+            raise wsme.exc.ClientSideError(msg)
+        except exception.NotFound:
+            # not required to be set
+            volume_type = None
+
+        if volume_type:
+            try:
+                volume_types = pecan.request.rpcapi.get_cinder_volume_type_names(
+                    pecan.request.context)
+            except rpc_common.RemoteError as e:
+                raise wsme.exc.ClientSideError(str(e.value))
+
+            if volume_type.value not in volume_types:
+                msg = (_('Unable to apply service parameters. Cannot set "%s" '
+                         'to value "%s". This is not a valid cinder volume '
+                         'type. Acceptable values are: [%s].') % (
+                             constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE,
+                             volume_type.value, ','.join(volume_types)))
+                raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
     def _service_parameter_apply_semantic_check_cinder_emc_vnx():
-        """Semantic checks for the Cinder Service Type """
+        """Semantic checks for the Cinder Service Type: EMC VNX backend """
         feature_enabled = pecan.request.dbapi.service_parameter_get_one(
             service=constants.SERVICE_TYPE_CINDER,
             section=constants.SERVICE_PARAM_SECTION_CINDER_EMC_VNX,
@@ -925,10 +960,12 @@ class ServiceParameterController(rest.RestController):
             if not StorageBackendConfig.is_service_enabled(pecan.request.dbapi,
                                                            constants.SB_SVC_CINDER,
                                                            filter_shared=True):
-                msg = _("Cannot apply Cinder SAN configuration. Cinder is "
-                        "not currently enabled on either the %s or %s backends."
+                msg = _("Cannot apply Cinder configuration. Cinder is not "
+                        "currently enabled on either the %s or %s backends."
                         % (constants.SB_TYPE_LVM, constants.SB_TYPE_CEPH))
                 raise wsme.exc.ClientSideError(msg)
+
+            self._service_parameter_apply_semantic_check_cinder_default()
 
             self._service_parameter_apply_semantic_check_cinder_emc_vnx()
             self._emc_vnx_ip_addresses_reservation()

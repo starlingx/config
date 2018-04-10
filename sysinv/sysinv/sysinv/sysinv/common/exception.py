@@ -673,6 +673,10 @@ class NotFound(SysinvException):
     code = 404
 
 
+class MultipleResults(SysinvException):
+    message = _("More than one result found.")
+
+
 class DiskNotFound(NotFound):
     message = _("No disk with id %(disk_id)s")
 

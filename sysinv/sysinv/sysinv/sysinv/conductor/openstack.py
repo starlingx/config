@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -763,6 +763,20 @@ class OpenStackOperator(object):
                 LOG.error("get_cinder_services:Failed to access Cinder client: %s" % e)
 
         return service_list
+
+    def get_cinder_volume_types(self):
+        """Obtain the current list of volume types."""
+        volume_types_list = []
+
+        if StorageBackendConfig.is_service_enabled(self.dbapi,
+                                                   constants.SB_SVC_CINDER,
+                                                   filter_shared=True):
+            try:
+                volume_types_list = self._get_cinderclient().volume_types.list()
+            except Exception as e:
+                LOG.error("get_cinder_volume_types: Failed to access Cinder client: %s" % e)
+
+        return volume_types_list
 
     def cinder_prepare_db_for_volume_restore(self, context):
         """

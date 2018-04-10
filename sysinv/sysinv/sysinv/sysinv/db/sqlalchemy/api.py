@@ -6382,6 +6382,8 @@ class Connection(api.Connection):
             result = query.one()
         except NoResultFound:
             raise exception.NotFound()
+        except MultipleResultsFound:
+            raise exception.MultipleResults()
 
         return result
 

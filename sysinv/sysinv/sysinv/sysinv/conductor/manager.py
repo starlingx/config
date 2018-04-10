@@ -4967,6 +4967,12 @@ class ConductorManager(service.PeriodicService):
 
         return None
 
+    def get_cinder_volume_type_names(self, context):
+        """Get the names of all currently defined cinder volume types."""
+
+        volume_types_list = self._openstack.get_cinder_volume_types()
+        return [t.name for t in volume_types_list]
+
     def _ipv_replace_disk(self, pv_id):
         """Handle replacement of the disk this physical volume is attached to.
         """
@@ -6553,7 +6559,7 @@ class ConductorManager(service.PeriodicService):
 
                 config_dict = {
                     "personalities": personalities,
-                    "classes": ['openstack::cinder::backends::san::runtime'],
+                    "classes": ['openstack::cinder::service_param::runtime'],
                     "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)

@@ -103,6 +103,7 @@ class openstack::cinder::params (
   }
 }
 
+
 # Called from controller manifest
 class openstack::cinder
   inherits ::openstack::cinder::params {
@@ -191,6 +192,7 @@ class openstack::cinder
   include ::cinder::ceilometer
   include ::cinder::glance
 
+  include ::openstack::cinder::config
   include ::openstack::cinder::backends
 
   # TODO(mpeters): move to puppet module formal parameters
@@ -215,12 +217,28 @@ class openstack::cinder
   }
 }
 
+
+class openstack::cinder::config::default(
+  $config_params
+) inherits ::openstack::cinder::params {
+  # Realize any service parameter provided DEFAULT section params of cinder.conf
+  create_resources('cinder_config', hiera_hash('openstack::cinder::config::default::config_params', {}))
+}
+
+
+class openstack::cinder::config
+  inherits ::openstack::cinder::params {
+    include ::openstack::cinder::config::default
+}
+
+
 class openstack::cinder::backends::san
   inherits ::openstack::cinder::params {
     include ::openstack::cinder::emc_vnx
     include ::openstack::cinder::hpe3par
     include ::openstack::cinder::hpelefthand
   }
+
 
 class openstack::cinder::backends
   inherits ::openstack::cinder::params {
@@ -239,6 +257,7 @@ class openstack::cinder::backends
 
   include openstack::cinder::backends::san
 }
+
 
 class openstack::cinder::lvm::filesystem::drbd (
   $device = '/dev/drbd4',
@@ -569,6 +588,7 @@ define openstack::cinder::api::backend(
   }
 }
 
+
 class openstack::cinder::api::backends(
   $ceph_type_configs = {}
 ) inherits ::openstack::cinder::params {
@@ -591,9 +611,8 @@ class openstack::cinder::api::backends(
 
 
 # Called from the controller manifest
-class openstack::cinder::api(
-  $default_volume_type = $::os_service_default
-) inherits ::openstack::cinder::params {
+class openstack::cinder::api
+  inherits ::openstack::cinder::params {
 
   include ::platform::params
   $api_workers = $::platform::params::eng_workers
@@ -615,8 +634,7 @@ class openstack::cinder::api(
     bind_host           => $api_host,
     service_workers     => $api_workers,
     sync_db             => $::platform::params::init_database,
-    enabled             => str2bool($enable_cinder_service),
-    default_volume_type => $default_volume_type
+    enabled             => str2bool($enable_cinder_service)
   }
 
   if $::openstack::cinder::params::configure_endpoint {
@@ -634,6 +652,7 @@ class openstack::cinder::api(
   }
 }
 
+
 class openstack::cinder::pre {
   include ::openstack::cinder::params
   $enabled = str2bool($::openstack::cinder::params::enable_cinder_service)
@@ -644,6 +663,7 @@ class openstack::cinder::pre {
     }
   }
 }
+
 
 class openstack::cinder::post
   inherits openstack::cinder::params {
@@ -714,6 +734,7 @@ class openstack::cinder::reload {
   platform::sm::restart {'cinder-api': }
 }
 
+
 # Called for runtime changes
 class openstack::cinder::runtime
   inherits ::openstack::cinder::params {
@@ -726,6 +747,7 @@ class openstack::cinder::runtime
   }
 }
 
+
 # Called for runtime changes on region
 class openstack::cinder::endpoint::runtime {
   if str2bool($::is_controller_active) {
@@ -733,13 +755,18 @@ class openstack::cinder::endpoint::runtime {
   }
 }
 
-# Called for SAN backend runtime changes => cinder.conf only changes
-class openstack::cinder::backends::san::runtime
+
+# Called for service_parameter runtime changes:
+# - Currently cinder.conf only changes
+#   - external SAN backend sections
+#   - default section changes
+class openstack::cinder::service_param::runtime
   inherits ::openstack::cinder::params {
   class { '::cinder::backends':
     enabled_backends => $enabled_backends
   }
 
+  include ::openstack::cinder::config::default
   include ::openstack::cinder::backends::san
 
   class { '::openstack::cinder::reload':

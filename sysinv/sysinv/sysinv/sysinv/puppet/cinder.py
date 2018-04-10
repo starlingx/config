@@ -13,7 +13,16 @@ from . import openstack
 
 LOG = logging.getLogger(__name__)
 
-SP_CINDER_EMC_VNX = 'emc_vnx'
+# This section is for [DEFAULT] config params that may need to be applied
+SP_CINDER_DEFAULT = constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT
+SP_CINDER_DEFAULT_PREFIX = 'openstack::cinder::config::default'
+SP_CINDER_DEFAULT_ALL_SUPPORTED_PARAMS = [
+    constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE
+    # Hardcoded params: params we always want set
+]
+
+# This section is for [emc_vnx] config params that may need to be applied
+SP_CINDER_EMC_VNX = constants.SERVICE_PARAM_SECTION_CINDER_EMC_VNX
 SP_CINDER_EMC_VNX_PREFIX = 'openstack::cinder::emc_vnx'
 
 # The entries in CINDER_EMC_VNX_PARAMETER_REQUIRED_ON_FEATURE_ENABLED,
@@ -42,19 +51,20 @@ SP_CINDER_EMC_VNX_ALL_BLACKLIST_PARAMS = [
     'control_network', 'data_network', 'data_san_ip',
 ]
 
-
-SP_CINDER_HPE3PAR = 'hpe3par'
+# This section is for [hpe3par] config params that may need to be applied
+SP_CINDER_HPE3PAR = constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR
 SP_CINDER_HPE3PAR_PREFIX = 'openstack::cinder::hpe3par'
 SP_CINDER_HPE3PAR_ALL_SUPPORTED_PARAMS = [
     'hpe3par_api_url', 'hpe3par_username', 'hpe3par_password',
     'hpe3par_cpg', 'hpe3par_cpg_snap', 'hpe3par_snapshot_expiration',
     'hpe3par_debug', 'hpe3par_iscsi_ips', 'hpe3par_iscsi_chap_enabled',
-    'san_login', 'san_password', 'san_ip'
+    'san_login', 'san_password', 'san_ip',
     # Hardcoded params
     'volume_backend_name', 'volume_driver'
 ]
 
-SP_CINDER_HPELEFTHAND = 'hpelefthand'
+# This section is for [hpelefthand] config params that may need to be applied
+SP_CINDER_HPELEFTHAND = constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND
 SP_CINDER_HPELEFTHAND_PREFIX = 'openstack::cinder::hpelefthand'
 SP_CINDER_HPELEFTHAND_ALL_SUPPORTED_PARAMS = [
     'hpelefthand_api_url', 'hpelefthand_username', 'hpelefthand_password',
@@ -71,29 +81,36 @@ SP_PROVIDED_PARAMS_LIST_KEY = 'provided_params_list'
 SP_ABSENT_PARAMS_LIST_KEY = 'absent_params_list'
 
 
-def sp_default_param_process(config, section, section_map, name, value):
+#
+# common section processing calls
+#
+
+
+def sp_common_param_process(config, section, section_map, name, value):
     if SP_PROVIDED_PARAMS_LIST_KEY not in section_map:
         section_map[SP_PROVIDED_PARAMS_LIST_KEY] = {}
     section_map[SP_PROVIDED_PARAMS_LIST_KEY][name] = value
 
 
-def sp_default_post_process(config, section, section_map,
-                            is_service_enabled, enabled_backends):
+def sp_common_post_process(config, section, section_map, is_service_enabled,
+                           enabled_backends, is_a_feature=True):
     if section_map:
         provided_params = section_map.get(SP_PROVIDED_PARAMS_LIST_KEY, {})
         absent_params = section_map.get(SP_ABSENT_PARAMS_LIST_KEY, [])
 
         conf_name = section_map.get(SP_CONF_NAME_KEY) + '::config_params'
-        feature_enabled_conf = section_map.get(SP_CONF_NAME_KEY) + '::feature_enabled'
 
-        # Convert "enabled" service param to 'feature_enabled' param
-        config[feature_enabled_conf] = provided_params.get('enabled', 'false').lower()
-        if 'enabled' in provided_params:
-            del provided_params['enabled']
+        if is_a_feature:
+            feature_enabled_conf = section_map.get(SP_CONF_NAME_KEY) + '::feature_enabled'
 
-        # Inform Cinder to support this storage backend as well
-        if config[feature_enabled_conf] == 'true':
-            enabled_backends.append(section)
+            # Convert "enabled" service param to 'feature_enabled' param
+            config[feature_enabled_conf] = provided_params.get('enabled', 'false').lower()
+            if 'enabled' in provided_params:
+                del provided_params['enabled']
+
+            # Inform Cinder to support this storage backend as well
+            if config[feature_enabled_conf] == 'true':
+                enabled_backends.append(section)
 
         # Reformat the params data structure to match with puppet config
         # resource.  This will make puppet code very simple. For example
@@ -110,7 +127,7 @@ def sp_default_post_process(config, section, section_map,
         #    emc_vnx/san_secondary_ip:
         #        ensure: absent
         #
-        # With this format, Puppet only need to do this:
+        # With this format, Puppet only needs to do this:
         #    create_resources('cinder_config', hiera_hash(
         #        '', {}))
 
@@ -125,7 +142,45 @@ def sp_default_post_process(config, section, section_map,
             provided_params_puppet_format[section + '/' + param] = {
                 'ensure': 'absent'
             }
+
         config[conf_name] = provided_params_puppet_format
+
+#
+# Section specific post processing calls: DEFAULT, emc_vnx, hpe3par, hpelefthand
+#
+
+
+def sp_default_post_process(config, section, section_map,
+                            is_service_enabled, enabled_backends):
+
+    provided_params = section_map.get(SP_PROVIDED_PARAMS_LIST_KEY, {})
+
+    if not is_service_enabled:
+        # If the service is not enabled and there are some provided params then
+        # just remove all of these params as they should not be in cinder.conf
+        section_map[SP_PROVIDED_PARAMS_LIST_KEY] = {}
+        provided_params = section_map[SP_PROVIDED_PARAMS_LIST_KEY]
+    else:
+        # Special Handling:
+
+        # SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE:
+        #   Ceph tiers: Since we may have multiple ceph backends, prioritize the
+        #   primary backend to maintain existing behavior if a default volume
+        #   type is not set
+        param = constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE
+        if param not in provided_params:
+            if constants.CINDER_BACKEND_CEPH in enabled_backends:
+                provided_params[param] = constants.CINDER_BACKEND_CEPH
+
+    # Now make sure the parameters which are not in the provided_params list are
+    # removed out of cinder.conf
+    absent_params = section_map[SP_ABSENT_PARAMS_LIST_KEY] = []
+    for param in SP_CINDER_DEFAULT_ALL_SUPPORTED_PARAMS:
+        if param not in provided_params:
+            absent_params.append(param)
+
+    sp_common_post_process(config, section, section_map, is_service_enabled,
+                           enabled_backends, is_a_feature=False)
 
 
 def sp_emc_vnx_post_process(config, section, section_map,
@@ -176,15 +231,15 @@ def sp_emc_vnx_post_process(config, section, section_map,
         section_map[SP_PROVIDED_PARAMS_LIST_KEY] = {}
         provided_params = section_map[SP_PROVIDED_PARAMS_LIST_KEY]
 
-    # Now make sure the parameters which are not in provided_params list
-    # then they should be removed out of cinder.conf
+    # Now make sure the parameters which are not in the provided_params list are
+    # removed out of cinder.conf
     absent_params = section_map[SP_ABSENT_PARAMS_LIST_KEY] = []
     for param in SP_CINDER_EMC_VNX_ALL_SUPPORTED_PARAMS:
         if param not in provided_params:
             absent_params.append(param)
 
-    sp_default_post_process(config, section, section_map,
-                            is_service_enabled, enabled_backends)
+    sp_common_post_process(config, section, section_map, is_service_enabled,
+                           enabled_backends)
 
 
 def sp_hpe3par_post_process(config, section, section_map,
@@ -205,15 +260,15 @@ def sp_hpe3par_post_process(config, section, section_map,
         section_map[SP_PROVIDED_PARAMS_LIST_KEY] = {}
         provided_params = section_map[SP_PROVIDED_PARAMS_LIST_KEY]
 
-    # Now make sure the parameters which are not in provided_params list
-    # then they should be removed out of cinder.conf
+    # Now make sure the parameters which are not in the provided_params list are
+    # removed out of cinder.conf
     absent_params = section_map[SP_ABSENT_PARAMS_LIST_KEY] = []
     for param in SP_CINDER_HPE3PAR_ALL_SUPPORTED_PARAMS:
         if param not in provided_params:
             absent_params.append(param)
 
-    sp_default_post_process(config, section, section_map,
-                            is_service_enabled, enabled_backends)
+    sp_common_post_process(config, section, section_map, is_service_enabled,
+                           enabled_backends)
 
 
 def sp_hpelefthand_post_process(config, section, section_map,
@@ -234,37 +289,45 @@ def sp_hpelefthand_post_process(config, section, section_map,
         section_map[SP_PROVIDED_PARAMS_LIST_KEY] = {}
         provided_params = section_map[SP_PROVIDED_PARAMS_LIST_KEY]
 
-    # Now make sure the parameters which are not in provided_params list
-    # then they should be removed out of cinder.conf
+    # Now make sure the parameters which are not in the provided_params list are
+    # removed out of cinder.conf
     absent_params = section_map[SP_ABSENT_PARAMS_LIST_KEY] = []
     for param in SP_CINDER_HPELEFTHAND_ALL_SUPPORTED_PARAMS:
         if param not in provided_params:
             absent_params.append(param)
 
-    sp_default_post_process(config, section, section_map,
-                            is_service_enabled, enabled_backends)
+    sp_common_post_process(config, section, section_map, is_service_enabled,
+                           enabled_backends)
 
 
+# For each section provided is:
+#   SP_CONF_NAME_KEY    : The hieradata path for this section
+#   SP_PARAM_PROCESS_KEY: This function is invoked for every service param
+#                         belonging to the section
+#   SP_POST_PROCESS_KEY : This function is invoked after each individual service
+#                          param in the section is processed
 SP_CINDER_SECTION_MAPPING = {
+    SP_CINDER_DEFAULT: {
+        SP_CONF_NAME_KEY: SP_CINDER_DEFAULT_PREFIX,
+        SP_PARAM_PROCESS_KEY: sp_common_param_process,
+        SP_POST_PROCESS_KEY: sp_default_post_process,
+    },
+
     SP_CINDER_EMC_VNX: {
         SP_CONF_NAME_KEY: SP_CINDER_EMC_VNX_PREFIX,
-        # This function is invoked for every service param
-        # belong to Emc VNX SAN
-        SP_PARAM_PROCESS_KEY: sp_default_param_process,
-        # This function is invoked one after each individual service param
-        # is processed
+        SP_PARAM_PROCESS_KEY: sp_common_param_process,
         SP_POST_PROCESS_KEY: sp_emc_vnx_post_process,
     },
 
     SP_CINDER_HPE3PAR: {
         SP_CONF_NAME_KEY: SP_CINDER_HPE3PAR_PREFIX,
-        SP_PARAM_PROCESS_KEY: sp_default_param_process,
+        SP_PARAM_PROCESS_KEY: sp_common_param_process,
         SP_POST_PROCESS_KEY: sp_hpe3par_post_process,
     },
 
     SP_CINDER_HPELEFTHAND: {
         SP_CONF_NAME_KEY: SP_CINDER_HPELEFTHAND_PREFIX,
-        SP_PARAM_PROCESS_KEY: sp_default_param_process,
+        SP_PARAM_PROCESS_KEY: sp_common_param_process,
         SP_POST_PROCESS_KEY: sp_hpelefthand_post_process,
     },
 }
@@ -477,19 +540,6 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
                 ceph_type_configs,
         })
 
-        # TODO(rchurch): Since setting the default volume type can only be done
-        # via the config file (no cinder cli support), defining this should be
-        # migrated to a cinder service parameter to easily cover multiple
-        # backend scenarios with custom volume types.
-
-        # Ceph tiers: Since we may have multiple ceph backends, then prioritize
-        # the primary backend to maintain existing behavior.
-        if constants.CINDER_BACKEND_CEPH in enabled_backends:
-            config.update({
-                'openstack::cinder::api::default_volume_type':
-                constants.CINDER_BACKEND_CEPH
-            })
-
         return config
 
     def get_secure_system_config(self):
@@ -648,16 +698,21 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
         if service_parameters is None:
             return {}
 
+        # DEFAULT section may or may not be present therefore reset param list
+        SP_CINDER_SECTION_MAPPING[
+            SP_CINDER_DEFAULT][SP_PROVIDED_PARAMS_LIST_KEY] = {}
+
+        # Eval all currently provided parameters
         for s in service_parameters:
             if s.section in SP_CINDER_SECTION_MAPPING:
                 SP_CINDER_SECTION_MAPPING[s.section].get(
-                    SP_PARAM_PROCESS_KEY, sp_default_param_process)(
+                    SP_PARAM_PROCESS_KEY, sp_common_param_process)(
                         config, s.section,
                         SP_CINDER_SECTION_MAPPING[s.section],
                         s.name, s.value)
 
         for section, sp_section_map in SP_CINDER_SECTION_MAPPING.items():
-            sp_section_map.get(SP_POST_PROCESS_KEY, sp_default_post_process)(
+            sp_section_map.get(SP_POST_PROCESS_KEY, sp_common_post_process)(
                 config, section, sp_section_map,
                 is_service_enabled, enabled_backends)
 
