@@ -53,8 +53,9 @@ class RPCAPITestCase(base.DbTestCase):
         ctxt = context.get_admin_context()
         rpcapi = conductor_rpcapi.ConductorAPI(topic='fake-topic')
 
+        default_rpc_api_version = '1.0'
         expected_retval = 'hello world' if method == 'call' else None
-        expected_version = kwargs.pop('version', rpcapi.RPC_API_VERSION)
+        expected_version = kwargs.pop('version', default_rpc_api_version)
         expected_msg = rpcapi.make_msg(method, **kwargs)
 
         expected_msg['version'] = expected_version
