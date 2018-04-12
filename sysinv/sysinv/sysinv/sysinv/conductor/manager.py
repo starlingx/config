@@ -696,12 +696,15 @@ class ConductorManager(service.PeriodicService):
             if utils.is_host_active_controller(h):
                 active_controller = h
                 break
+        software_load = None
         if active_controller is not None:
             tboot_value = active_controller.get('tboot')
             if tboot_value is not None:
                 values.update({'tboot': tboot_value})
+            software_load = active_controller.software_load
+            LOG.info("create_ihost software_load=%s" % software_load)
 
-        ihost = self.dbapi.ihost_create(values)
+        ihost = self.dbapi.ihost_create(values, software_load=software_load)
 
         # A host is being created, generate discovery log.
         self._log_host_create(ihost, reason)

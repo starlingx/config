@@ -130,7 +130,7 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ihost_create(self, values, session=None):
+    def ihost_create(self, values, software_load=None):
         """Create a new ihost.
 
         :param values: A dict containing several items used to identify
@@ -148,6 +148,7 @@ class Connection(object):
                          'availability': 'offduty',
                          'extra': { ... },
                         }
+        :param: software_load.  The load software_version.
         :returns: A ihost.
         """
 

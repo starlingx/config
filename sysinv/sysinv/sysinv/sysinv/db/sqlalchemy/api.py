@@ -1240,7 +1240,7 @@ class Connection(api.Connection):
             raise exception.ServerNotFound(server=server)
 
     @objects.objectify(objects.host)
-    def ihost_create(self, values):
+    def ihost_create(self, values, software_load=None):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         host = models.ihost()
@@ -1251,7 +1251,7 @@ class Connection(api.Connection):
                 session.flush()
             except db_exc.DBDuplicateEntry:
                 raise exception.NodeAlreadyExists(uuid=values['uuid'])
-            self._host_upgrade_create(host.id)
+            self._host_upgrade_create(host.id, software_load)
             return self._host_get(values['uuid'])
 
     @objects.objectify(objects.host)
@@ -6264,12 +6264,15 @@ class Connection(api.Connection):
 
             query.delete()
 
-    def _host_upgrade_create(self, host_id, values=None, session=None):
+    def _host_upgrade_create(self, host_id, version, values=None):
         if values is None:
             values = dict()
-            systems = self.isystem_get_list()
-            if systems is not None:
-                version = systems[0].software_version
+            if not version:
+                systems = self.isystem_get_list()
+                if systems is not None:
+                    version = systems[0].software_version
+                    LOG.info("_host_upgrade_create system version=%s" % version)
+            if version:
                 # get the load_id from the loads table
                 query = model_query(models.Load)
                 query = query.filter_by(software_version=version)
@@ -6295,8 +6298,8 @@ class Connection(api.Connection):
             return upgrade
 
     @objects.objectify(objects.host_upgrade)
-    def host_upgrade_create(self, host_id, values):
-        return self._host_upgrade_create(host_id, values)
+    def host_upgrade_create(self, host_id, version, values):
+        return self._host_upgrade_create(host_id, version, values)
 
     @objects.objectify(objects.host_upgrade)
     def host_upgrade_get(self, id):

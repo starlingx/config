@@ -2314,6 +2314,31 @@ class HostController(rest.RestController):
 
         pecan.request.dbapi.ihost_destroy(ihost_id)
 
+    def _check_upgrade_provision_order(self, personality, hostname):
+        LOG.info("_check_upgrade_provision_order personality=%s, hostname=%s" %
+                  (personality, hostname))
+
+        # If this is a simplex system skip this check; there's no other nodes
+        simplex = (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX)
+        if simplex:
+            return
+
+        try:
+            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            return
+
+        loads = pecan.request.dbapi.load_get_list()
+        target_load = cutils.get_imported_load(loads)
+
+        if personality == constants.STORAGE:
+            if hostname == constants.STORAGE_0_HOSTNAME:
+                LOG.warn("Allow storage-0 add during upgrade")
+            else:
+                LOG.info("Adding storage, ensure controllers upgraded")
+                self._check_personality_load(constants.CONTROLLER,
+                                             target_load)
+
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Host, unicode, body=unicode)
     def upgrade(self, uuid, body):
@@ -2945,8 +2970,7 @@ class HostController(rest.RestController):
                     'count': count})
             raise wsme.exc.ClientSideError(msg)
 
-    @staticmethod
-    def _semantic_check_unlock_upgrade(ihost):
+    def _semantic_check_unlock_upgrade(self, ihost, force_unlock=False):
         """
         Perform semantic checks related to upgrades prior to unlocking host.
         """
@@ -2970,6 +2994,9 @@ class HostController(rest.RestController):
                     "failed. Please abort upgrade and downgrade host." %
                     ihost['hostname'])
             raise wsme.exc.ClientSideError(msg)
+
+        # Check for new hardware since upgrade-start
+        self._semantic_check_upgrade_refresh(upgrade, ihost, force_unlock)
 
     @staticmethod
     def _semantic_check_oam_interface(ihost):
@@ -3677,6 +3704,81 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
+    def _new_host_hardware_since_upgrade(host, upgrade_created_at):
+        """
+        Determines the new hardware on the host since the upgrade started.
+
+        :param host  host object
+        :param upgrade_created_at upgrade start timestamp
+
+        returns: new_hw tuple of new hardware on host
+        """
+        new_hw = []
+        disks = pecan.request.dbapi.idisk_get_by_ihost(host.id)
+        new_disks = [x.uuid for x in disks
+                     if x.created_at > upgrade_created_at]
+        if new_disks:
+            new_hw.append(('disks', host.hostname, new_disks))
+
+        interfaces = pecan.request.dbapi.iinterface_get_by_ihost(host.id)
+        new_interfaces = [x.uuid for x in interfaces
+                          if x.created_at > upgrade_created_at]
+        if new_interfaces:
+            new_hw.append(('interfaces', host.hostname, new_interfaces))
+
+        stors = pecan.request.dbapi.istor_get_by_ihost(host.id)
+        new_stors = [x.uuid for x in stors
+                     if x.created_at > upgrade_created_at]
+        if new_stors:
+            new_hw.append(('stors', host.hostname, new_stors))
+
+        return new_hw
+
+    def _semantic_check_upgrade_refresh(self, upgrade, ihost, force):
+        """
+        Determine whether upgrade should be aborted/refreshed due to
+        new hardware since upgrade start
+        """
+        if force:
+            LOG.info("_semantic_check_upgrade_refresh check force")
+            return
+
+        if ihost['hostname'] != constants.CONTROLLER_1_HOSTNAME:
+            return
+
+        if upgrade.state not in [constants.UPGRADE_STARTED,
+                                 constants.UPGRADE_DATA_MIGRATION,
+                                 constants.UPGRADE_DATA_MIGRATION_COMPLETE,
+                                 constants.UPGRADE_UPGRADING_CONTROLLERS]:
+            LOG.info("_semantic_check_upgrade_refresh allow upgrade state=%s" %
+                     upgrade.state)
+            return
+
+        upgrade_created_at = upgrade.created_at
+
+        # check for new host hardware since upgrade started
+        hosts = pecan.request.dbapi.ihost_get_list()
+        new_hw = []
+        for h in hosts:
+            if not h.personality:
+                continue
+
+            if h.created_at > upgrade_created_at:
+                new_hw.append(('host', h.hostname, h.uuid))
+                break
+
+            new_hw_h = self._new_host_hardware_since_upgrade(
+                h, upgrade_created_at)
+            if new_hw_h:
+                new_hw.append(new_hw_h)
+
+        if new_hw:
+            msg = _("New hardware %s detected after upgrade started at %s. "
+                    "Upgrade should be aborted."
+                    % (new_hw, upgrade_created_at))
+            raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
     def _semantic_check_nova_local_storage(ihost_uuid, personality):
         """
         Perform semantic checking for nova local storage
@@ -4232,6 +4334,13 @@ class HostController(rest.RestController):
                 LOG.error("Unexpected personality: %s" %
                           hostupdate.ihost_patch['personality'])
 
+            hostname = (hostupdate.ihost_val.get('hostname') or
+                        hostupdate.ihost_patch['hostname'])
+            # Check host personality provisioning order during upgrades
+            self._check_upgrade_provision_order(
+                hostupdate.ihost_patch['personality'],
+                hostname)
+
             # Always configure when the personality has been set - this will
             # set up the PXE boot information so the software can be installed
             hostupdate.configure_required = True
@@ -4467,7 +4576,7 @@ class HostController(rest.RestController):
 
         personality = hostupdate.ihost_patch.get('personality')
         if personality == constants.CONTROLLER:
-            self.check_unlock_controller(hostupdate)
+            self.check_unlock_controller(hostupdate, force_unlock)
 
         if cutils.host_has_function(hostupdate.ihost_patch, constants.COMPUTE):
             self.check_unlock_compute(hostupdate)
@@ -4650,10 +4759,10 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _("%s" % response['error_details']))
 
-    def check_unlock_controller(self, hostupdate):
+    def check_unlock_controller(self, hostupdate, force_unlock=False):
         """Pre unlock semantic checks for controller"""
         LOG.info("%s ihost check_unlock_controller" % hostupdate.displayid)
-        self._semantic_check_unlock_upgrade(hostupdate.ihost_orig)
+        self._semantic_check_unlock_upgrade(hostupdate.ihost_orig, force_unlock)
         self._semantic_check_oam_interface(hostupdate.ihost_orig)
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
         self._semantic_check_storage_backend(hostupdate.ihost_orig)
@@ -4933,8 +5042,7 @@ class HostController(rest.RestController):
                           "Please run system certificate-install -m tpm_mode "
                           "before re-attempting." % ihost['hostname']))
 
-    @staticmethod
-    def _semantic_check_swact_upgrade(from_host, to_host):
+    def _semantic_check_swact_upgrade(self, from_host, to_host, force_swact=False):
         """
         Perform semantic checks related to upgrades prior to swacting host.
         """
@@ -4984,7 +5092,10 @@ class HostController(rest.RestController):
                       "operation can proceed. Currently using load %s.") %
                     (to_host['hostname'], to_sw_version, to_host_sw_version))
 
-    def check_swact(self, hostupdate):
+        # Check for new hardware since upgrade-start
+        self._semantic_check_upgrade_refresh(upgrade, to_host, force_swact)
+
+    def check_swact(self, hostupdate, force_swact=False):
         """Pre swact semantic checks for controller"""
 
         if hostupdate.ihost_orig['personality'] != constants.CONTROLLER:
@@ -5065,7 +5176,8 @@ class HostController(rest.RestController):
                                 (ihost_ctr.hostname, ihost_ctr.config_target))
 
                 self._semantic_check_swact_upgrade(hostupdate.ihost_orig,
-                                                   ihost_ctr)
+                                                   ihost_ctr,
+                                                   force_swact)
 
                 # If HTTPS is enabled then we may be in TPM mode
                 if utils.get_https_enabled():

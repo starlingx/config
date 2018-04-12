@@ -238,7 +238,9 @@ class LoadController(rest.RestController):
                 values['forihostid'] = host.id
                 values['software_load'] = new_load.id
                 values['target_load'] = new_load.id
-                pecan.request.dbapi.host_upgrade_create(host.id, values)
+                pecan.request.dbapi.host_upgrade_create(host.id,
+                                                        new_load.software_version,
+                                                        values)
 
         except exception.SysinvException as e:
             LOG.exception(e)
