@@ -502,6 +502,9 @@ class ConfigAssistant():
         self.mtce_ks_password = ""
         self.nfv_ks_user_name = ""
         self.nfv_ks_password = ""
+        self.ldap_region_name = ""
+        self.ldap_service_name = ""
+        self.ldap_service_uri = ""
 
         # Subcloud config (only valid when region configured)
         self.system_controller_subnet = None
@@ -2694,6 +2697,15 @@ class ConfigAssistant():
                 if config.has_option('cREGION', 'GLANCE_PUBLIC_URI'):
                     self.glance_public_uri = config.get(
                         'cREGION', 'GLANCE_PUBLIC_URI')
+                if config.has_option('cREGION', 'LDAP_REGION_NAME'):
+                    self.ldap_region_name = config.get(
+                        'cREGION', 'LDAP_REGION_NAME')
+                if config.has_option('cREGION', 'LDAP_SERVICE_NAME'):
+                    self.ldap_service_name = config.get(
+                        'cREGION', 'LDAP_SERVICE_NAME')
+                if config.has_option('cREGION', 'LDAP_SERVICE_URI'):
+                    self.ldap_service_uri = config.get(
+                        'cREGION', 'LDAP_SERVICE_URI')
                 self.nova_ks_user_name = config.get(
                     'cREGION', 'NOVA_USER_NAME')
                 self.nova_ks_password = config.get(
@@ -2981,6 +2993,9 @@ class ConfigAssistant():
             print "Glance admin URI: " + self.glance_admin_uri
             print "Glance internal URI: " + self.glance_internal_uri
             print "Glance public URI: " + self.glance_public_uri
+            print "LDAP service name: " + self.ldap_service_name
+            print "LDAP region: " + self.ldap_region_name
+            print "LDAP service URI:" + self.ldap_service_uri
             print "Nova user name: " + self.nova_ks_user_name
             print "Nova service name: " + self.nova_service_name
             print "Nova service type: " + self.nova_service_type
@@ -3275,6 +3290,15 @@ class ConfigAssistant():
                             self.glance_internal_uri)
                     f.write("GLANCE_PUBLIC_URI=%s\n" %
                             self.glance_public_uri)
+                    if self.ldap_service_name:
+                        f.write("LDAP_SERVICE_NAME=%s\n" %
+                                self.ldap_service_name)
+                    if self.ldap_region_name:
+                        f.write("LDAP_REGION_NAME=%s\n" %
+                                self.ldap_region_name)
+                    if self.ldap_service_uri:
+                        f.write("LDAP_SERVICE_URI=%s\n" %
+                                self.ldap_service_uri)
                     f.write("NOVA_USER_NAME=%s\n" %
                             self.nova_ks_user_name)
                     f.write("NOVA_PASSWORD=%s\n" %
@@ -3723,6 +3747,16 @@ class ConfigAssistant():
                   'region_name': self.glance_region_name,
                   'capabilities': capabilities}
         client.sysinv.sm_service.service_create(**values)
+
+        # if ldap is a shared service
+        if self.ldap_service_uri:
+            capabilities = {'service_name': self.ldap_service_name}
+            capabilities.update({'service_uri': self.ldap_service_uri})
+            values = {'name': self.ldap_service_name,
+                      'enabled': True,
+                      'region_name': self.ldap_region_name,
+                      'capabilities': capabilities}
+            client.sysinv.sm_service.service_create(**values)
 
         # neutron service config
         capabilities = {'service_name': self.neutron_service_name,

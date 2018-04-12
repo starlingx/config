@@ -201,6 +201,14 @@ def create_cgcs_config_file(output_file, system_config,
             cgcs_config.set('cREGION', 'GLANCE_INTERNAL_URI',
                             glance_internal_url)
 
+        # if ldap is a shared service
+        if (system_config.has_option('SHARED_SERVICES', 'LDAP_SERVICE_URL')):
+            ldap_service_url = system_config.get('SHARED_SERVICES',
+                                                 'LDAP_SERVICE_URL')
+            cgcs_config.set('cREGION', 'LDAP_SERVICE_URI', ldap_service_url)
+            cgcs_config.set('cREGION', 'LDAP_SERVICE_NAME', 'open-ldap')
+            cgcs_config.set('cREGION', 'LDAP_REGION_NAME', region_1_name)
+
         # The domains are not available in the validation phase
         heat_admin_domain = system_config.get('REGION_2_SERVICES',
                                               'HEAT_ADMIN_DOMAIN')

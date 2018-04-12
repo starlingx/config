@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import ConfigParser
 import os
+import subprocess
 import sys
 import textwrap
 import time
@@ -473,6 +474,19 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
                         endpointtype, expected, endpointtype, found))
 
 
+def validate_region_one_ldap_config(region_config):
+    """Validate ldap on region one by a ldap search"""
+
+    ldapserver_uri = region_config.get('SHARED_SERVICES', 'LDAP_SERVICE_URL')
+    cmd = ["ldapsearch", "-xH", ldapserver_uri,
+           "-b", "dc=cgcs,dc=local", "(objectclass=*)"]
+    try:
+        with open(os.devnull, "w") as fnull:
+            subprocess.check_call(cmd, stdout=fnull, stderr=fnull)
+    except subprocess.CalledProcessError:
+        raise ConfigFail("LDAP configuration error: not accessible")
+
+
 def set_subcloud_config_defaults(region_config):
     """Set defaults in region_config for subclouds"""
 
@@ -644,6 +658,12 @@ def configure_region(config_file, config_type=REGION_CONFIG):
                                             config_type=config_type,
                                             user_config=user_config)
         print "DONE"
+
+        # validate ldap if it is shared
+        if region_config.has_option('SHARED_SERVICES', 'LDAP_SERVICE_URL'):
+            print "Validating ldap configuration... ",
+            validate_region_one_ldap_config(region_config)
+            print "DONE"
 
         # Create cgcs_config file
         print "Creating config apply file... ",

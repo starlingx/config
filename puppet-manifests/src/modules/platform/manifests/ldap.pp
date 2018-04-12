@@ -58,8 +58,11 @@ class platform::ldap::server::local
     onlyif => '/usr/bin/test -e /etc/openldap/slapd.conf'
   }
 
-  file { "/usr/local/etc/ldapscripts/ldapscripts.passwd":
-    content => $admin_pw,
+  # don't populate the adminpw if binding anonymously
+  if ! $bind_anonymous {
+    file { "/usr/local/etc/ldapscripts/ldapscripts.passwd":
+      content => $admin_pw,
+    }
   }
 
   file { "/usr/share/cracklib/cracklib-small":
@@ -98,6 +101,14 @@ class platform::ldap::client
     name       => 'nslcd',
     hasstatus  => true,
     hasrestart => true,
+  }
+
+  if $::personality == 'controller' {
+    file { "/usr/local/etc/ldapscripts/ldapscripts.conf":
+      ensure  => 'present',
+      replace => true,
+      content => template('platform/ldapscripts.conf.erb'),
+    }
   }
 }
 

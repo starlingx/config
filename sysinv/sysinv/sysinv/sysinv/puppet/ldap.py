@@ -13,6 +13,7 @@ from . import base
 
 class LdapPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for ldap configuration"""
+    SERVICE_NAME = 'open-ldap'
 
     def get_secure_static_config(self):
         password = self._generate_random_password()
@@ -53,6 +54,15 @@ class LdapPuppet(base.BasePuppet):
             ldapserver_host = self._format_url_address(ldapserver_addr)
             bind_anonymous = True
 
+        elif self._region_config():
+            service_config = self.get_service_config(self.SERVICE_NAME)
+            if service_config is not None:
+                ldapserver_remote = True
+                ldapserver_uri = service_config.capabilities.get('service_uri')
+                addr_index = ldapserver_uri.rfind('/')
+                ldapserver_host = ldapserver_uri[addr_index + 1:]
+                bind_anonymous = True
+
         if host.personality != constants.CONTROLLER:
             # if storage/compute, use bind anonymously
             bind_anonymous = True
@@ -80,3 +90,9 @@ class LdapPuppet(base.BasePuppet):
             'platform::ldap::params::ldapserver_host': ldapserver_host,
             'platform::ldap::params::bind_anonymous': bind_anonymous,
         }
+
+    def get_service_config(self, service):
+        configs = self.context.setdefault('_service_configs', {})
+        if service not in configs:
+            configs[service] = self._get_service(service)
+        return configs[service]
