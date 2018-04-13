@@ -2835,6 +2835,25 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Invalid ihost_id %s" % host_id)
             return
 
+    def host_version_match(self, host_uuid):
+        """
+        Returns if the host software version matches the software version of
+        this node (the active controller)
+        :param host_uuid: the uuid of the host
+        :return:
+        """
+        try:
+            upgrade = self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # Not upgrading. We assume the host versions match
+            # If they somehow don't match we've got bigger problems
+            return True
+
+        host_obj = self.dbapi.ihost_get(host_uuid)
+        host_version = host_obj.software_load
+
+        return host_version == tsc.SW_VERSION
+
     def idisk_update_by_ihost(self, context,
                               ihost_uuid, idisk_dict_array):
         """Create or update idisk for an ihost with the supplied data.

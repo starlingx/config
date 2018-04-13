@@ -610,6 +610,14 @@ class AgentManager(service.PeriodicService):
             LOG.info("Sysinv no matching ihost found... await Audit")
             return
 
+        # update the load first. This ensures the conductor knows the version
+        # of the agent for the rest of inventory calls
+        try:
+            rpcapi.load_update_by_host(icontext, ihost['uuid'], tsc.SW_VERSION)
+        except:
+            LOG.exception("Sysinv Agent exception updating load conductor.")
+            pass
+
         subfunctions = self.subfunctions_get()
 
         try:
@@ -807,12 +815,6 @@ class AgentManager(service.PeriodicService):
                                         ilvg)
         except:
             LOG.exception("Sysinv Agent exception updating ilvg conductor.")
-            pass
-
-        try:
-            rpcapi.load_update_by_host(icontext, ihost['uuid'], tsc.SW_VERSION)
-        except:
-            LOG.exception("Sysinv Agent exception updating load conductor.")
             pass
 
         if constants.COMPUTE in self.subfunctions_list_get():
