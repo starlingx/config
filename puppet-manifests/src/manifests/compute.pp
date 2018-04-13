@@ -33,6 +33,7 @@ include ::openstack::neutron
 include ::openstack::neutron::agents
 include ::openstack::nova
 include ::openstack::nova::compute
+include ::openstack::nova::compute::pci
 include ::openstack::nova::storage
 include ::openstack::nova::network
 include ::openstack::nova::placement

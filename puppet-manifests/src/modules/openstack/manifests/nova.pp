@@ -134,8 +134,6 @@ class openstack::nova::compute (
   $migration_private_key,
   $migration_public_key,
   $migration_key_type,
-  $pci_pt_whitelist = [],
-  $pci_sriov_whitelist = undef,
   $compute_monitors,
   $iscsi_initiator_name = undef,
 ) inherits ::openstack::nova::params {
@@ -333,20 +331,6 @@ class openstack::nova::compute (
       path => '/etc/libvirt/qemu.conf',
       line => 'cgroup_controllers = [ "cpu", "cpuacct" ]',
       match => '^cgroup_controllers = .*',
-  }
-
-  # The pci_passthrough option in the nova::compute class is not sufficient.
-  # In particular, it sets the pci_passthrough_whitelist in nova.conf to an
-  # empty string if the list is empty, causing the nova-compute process to fail.
-  if $pci_sriov_whitelist {
-      class { '::nova::compute::pci':
-          passthrough => generate("/usr/bin/nova-sriov",
-            $pci_pt_whitelist, $pci_sriov_whitelist),
-      }
-  } else {
-      class { '::nova::compute::pci':
-          passthrough => $pci_pt_whitelist,
-      }
   }
 
   if $iscsi_initiator_name {
@@ -669,6 +653,28 @@ class openstack::nova::api::runtime {
 
   class {'::openstack::nova::api::reload':
     stage => post
+  }
+}
+
+
+class openstack::nova::compute::pci
+(
+  $pci_pt_whitelist = [],
+  $pci_sriov_whitelist = undef,
+) {
+
+  # The pci_passthrough option in the nova::compute class is not sufficient.
+  # In particular, it sets the pci_passthrough_whitelist in nova.conf to an
+  # empty string if the list is empty, causing the nova-compute process to fail.
+  if $pci_sriov_whitelist {
+      class { '::nova::compute::pci':
+          passthrough => generate("/usr/bin/nova-sriov",
+            $pci_pt_whitelist, $pci_sriov_whitelist),
+      }
+  } else {
+      class { '::nova::compute::pci':
+          passthrough => $pci_pt_whitelist,
+      }
   }
 }
 

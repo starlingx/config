@@ -436,9 +436,9 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             'nova::compute::shared_pcpu_map':
                 self._get_shared_pcpu_map(host),
 
-            'openstack::nova::compute::pci_pt_whitelist':
+            'openstack::nova::compute::pci::pci_pt_whitelist':
                 self._get_pci_pt_whitelist(host),
-            'openstack::nova::compute::pci_sriov_whitelist':
+            'openstack::nova::compute::pci::pci_sriov_whitelist':
                 self._get_pci_sriov_whitelist(host),
             'openstack::nova::compute::iscsi_initiator_name':
                 host.iscsi_initiator_name
