@@ -331,7 +331,7 @@
       <xs:extension base="xs:string">
         <xs:attribute type="Lvm_vg_name" name="lvm_vg_name" use="required" />
         <xs:attribute type="Instance_backing" name="instance_backing" use="required" />
-        <xs:attribute type="xs:positiveInteger" name="instances_lv_size_mib" use="optional" />
+        <xs:attribute type="xs:positiveInteger" name="instances_lv_size_gib" use="optional" />
         <xs:attribute type="xs:positiveInteger" name="concurrent_disk_operations" use="required" />
       </xs:extension>
     </xs:simpleContent>

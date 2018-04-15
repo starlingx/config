@@ -1599,8 +1599,9 @@ def _create_storage_profile(profile_name, profile_node):
     for disk in disks:
         dev_path = disk.get('path')
         dev_func = disk.get('volumeFunc')
-        dev_size = int(disk.get('size'))
-        journal_size = int(disk.get('journalSize', '0'))
+        ## Convert from GiB to MiB
+        dev_size = int(disk.get('size')) * 1024
+        journal_size = int(disk.get('journalSize', '0')) * 1024
         tier = disk.get('tier', constants.SB_TIER_DEFAULT_NAMES[
             constants.SB_TIER_TYPE_CEPH])
         if not dev_path:
@@ -1623,10 +1624,10 @@ def _create_storage_profile(profile_name, profile_node):
                          ' is invalid') % profile_name, \
                        _('device path %(dev)s journal size of %(size)s'
                          ' is invalid.') % {'dev': dev_path,
-                                            'size': journal_size}, \
+                                            'size': journal_size / 1024}, \
                        _('size should be between %(min)s and '
-                         ' %(max)s.') % {'min': CONF.journal.journal_min_size,
-                                         'max': CONF.journal.journal_max_size}
+                         ' %(max)s.') % {'min': CONF.journal.journal_min_size / 1024,
+                                         'max': CONF.journal.journal_max_size / 1024}
 
         if dev_func == constants.STOR_FUNCTION_JOURNAL:
             journal_disks.append(dev_path)
@@ -1672,7 +1673,8 @@ def _create_storage_profile(profile_name, profile_node):
             dev_func = disk.get('volumeFunc')
             if dev_func == constants.STOR_FUNCTION_JOURNAL:
                 dev_path = disk.get('path')
-                dev_size = int(disk.get('size'))
+                # Convert disk size from GiB to MiB
+                dev_size = int(disk.get('size')) * 1024
                 ddict = {'device_path': dev_path,
                          'size_mib': dev_size,
                          'forihostid': profile_id,
@@ -1690,7 +1692,8 @@ def _create_storage_profile(profile_name, profile_node):
         for disk in disks:
             dev_path = disk.get('path')
             dev_func = disk.get('volumeFunc')
-            dev_size = int(disk.get('size'))
+            # convert disk size from GiB to MiB
+            dev_size = int(disk.get('size')) * 1024
             tier = disk.get('tier', constants.SB_TIER_DEFAULT_NAMES[
                 constants.SB_TIER_TYPE_CEPH])
 
@@ -1706,8 +1709,10 @@ def _create_storage_profile(profile_name, profile_node):
                     default_size = CONF.journal.journal_default_size
                     if len(journals) > 0:
                         # we don't expect collocated journals
-                        journal_size = disk.get('journalSize',
-                                                     default_size)
+                        if disk.get('journalSize'):
+                            journal_size = int(disk.get('journalSize')) * 1024
+                        else:
+                            journal_size = default_size
                         sdict['journal_size_mib'] = journal_size
                         if len(journals) > 1:
                             # multiple journal disks are available, use
@@ -1774,7 +1779,8 @@ def _create_localstorage_profile(profile_name, profile_node):
 
     for disk in disks:
         dev_path = disk.get('path')
-        dev_size = int(disk.get('size'))
+        # Convert disk size from GiB to MiB
+        dev_size = int(disk.get('size')) * 1024
         dev_func = disk.get('volumeFunc')
 
         if dev_func and dev_func in prohibitedFuncs:
@@ -1808,7 +1814,8 @@ def _create_localstorage_profile(profile_name, profile_node):
         instance_backing = ilvg.get(constants.LVG_NOVA_PARAM_BACKING)
         concurrent_disk_operations = ilvg.get(constants.LVG_NOVA_PARAM_DISK_OPS)
         if instance_backing == constants.LVG_NOVA_BACKING_LVM:
-            instances_lv_size_mib = ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ)
+            instances_lv_size_mib = \
+                int(ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB)) * 1024
             if not instances_lv_size_mib:
                 return ("Error", _('error: importing Local Storage profile %s '
                         'failed.') %
@@ -1820,26 +1827,26 @@ def _create_localstorage_profile(profile_name, profile_node):
                                  constants.LVG_NOVA_PARAM_DISK_OPS:
                                      int(concurrent_disk_operations)}
         elif instance_backing == constants.LVG_NOVA_BACKING_IMAGE:
-            instances_lv_size_mib = ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ)
-            if instances_lv_size_mib:
+            if ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB):
                 return ("Error",
                         _('error: Local Storage profile %s is invalid')
                         % profile_name,
-                        _('instances_lv_size_mib (%s) must not be set for '
-                          'image backed instance') % instances_lv_size_mib)
+                        _('instances_lv_size_gib (%s) must not be set for '
+                          'image backed instance')
+                        % ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB))
 
             capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
                                      constants.LVG_NOVA_BACKING_IMAGE,
                                  constants.LVG_NOVA_PARAM_DISK_OPS:
                                      int(concurrent_disk_operations)}
         elif instance_backing == constants.LVG_NOVA_BACKING_REMOTE:
-            instances_lv_size_mib = ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ)
-            if instances_lv_size_mib:
+            if ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB):
                 return ("Error",
                         _('error: Local Storage profile %s is invalid')
                         % profile_name,
-                        _('instances_lv_size_mib (%s) must not be set for '
-                          'remote backed instance') % instances_lv_size_mib)
+                        _('instances_lv_size_gib (%s) must not be set for '
+                          'remote backed instance')
+                        % ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB))
 
             capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
                                      constants.LVG_NOVA_BACKING_REMOTE,
@@ -1860,7 +1867,7 @@ def _create_localstorage_profile(profile_name, profile_node):
 
         for disk in disks:
             dev_path = disk.get('path')
-            dev_size = int(disk.get('size'))
+            dev_size = int(disk.get('size')) * 1024
 
             ddict = {'device_path': dev_path,
                      'size_mib': dev_size,

@@ -79,28 +79,28 @@
         <storageProfile name="storage-profile">
             <!--The disk tags below define each device,
             path: device path
-            size: minimum size (in MB)
+            size: minimum size (in GiB)
             volumeFunc: volume function to be assigned to the device
                 For 'osd' function:
-                    journalSize: the size of the ceph journal, if absent defaults to journal_default_size in sysinv.conf
+                    journalSize: the size of the ceph journal in GiB, if absent defaults to journal_default_size in sysinv.conf
                     journalLocation: location of the journal partition, mandatory if multiple journal functions are defined,
                                      if absent defaults to the single available journal drive.
                 If no device with journal function is configured then the journals for all OSDs will be collocated on the
                 same device with the OSD data (partition #1 is for the data and partition #2 for the journl).
                 In this case the size of the journal will be journal_default_size.-->
-            <disk path="/dev/sdb" size="228936" volumeFunc="osd" journalSize="2048" journalLocation="/dev/sdd" />
-            <disk path="/dev/sdc" size="228936" volumeFunc="osd" journalLocation="/dev/sde" />
-            <disk path="/dev/sdd" size="228936" volumeFunc="journal" />
-            <disk path="/dev/sde" size="228936" volumeFunc="journal" />
+            <disk path="/dev/sdb" size="223" volumeFunc="osd" journalSize="2" journalLocation="/dev/sdd" />
+            <disk path="/dev/sdc" size="223" volumeFunc="osd" journalLocation="/dev/sde" />
+            <disk path="/dev/sdd" size="223" volumeFunc="journal" />
+            <disk path="/dev/sde" size="223" volumeFunc="journal" />
         </storageProfile>
 
         <storageProfile name="storage-profile-coloc-no-tier">
             <!--The disk tags below define each device,
             path: device path
-            size: minimum size (in MB)
+            size: minimum size (in GiB)
             volumeFunc: volume function to be assigned to the device
                 For 'osd' function:
-                    journalSize: the size of the ceph journal, if absent defaults to journal_default_size in sysinv.conf
+                    journalSize: the size of the ceph journal in GiB, if absent defaults to journal_default_size in sysinv.conf
                     journalLocation: location of the journal partition, mandatory if multiple journal functions are defined,
                                      if absent defaults to the single available journal drive.
                     tier: storage tier for OSDs. If this is not specified, then the
@@ -109,17 +109,17 @@
                 same device with the OSD data (partition #1 is for the data and partition #2 for the journl).
                 In this case the size of the journal will be journal_default_size.
             -->
-            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0" size="51200" volumeFunc="osd"/>
-            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0" size="51200" volumeFunc="osd"/>
+            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0" size="50" volumeFunc="osd"/>
+            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0" size="50" volumeFunc="osd"/>
         </storageProfile>
 
         <storageProfile name="storage-profile-journal-no-tier">
             <!--The disk tags below define each device,
             path: device path
-            size: minimum size (in MB)
+            size: minimum size (in GiB)
             volumeFunc: volume function to be assigned to the device
                 For 'osd' function:
-                    journalSize: the size of the ceph journal, if absent defaults to journal_default_size in sysinv.conf
+                    journalSize: the size of the ceph journal in GiB, if absent defaults to journal_default_size in sysinv.conf
                     journalLocation: location of the journal partition, mandatory if multiple journal functions are defined,
                                      if absent defaults to the single available journal drive.
                     tier: storage tier for OSDs. If this is not specified, then the
@@ -128,17 +128,17 @@
                 same device with the OSD data (partition #1 is for the data and partition #2 for the journl).
                 In this case the size of the journal will be journal_default_size.
             -->
-            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0" size="51200" volumeFunc="osd"/>
-            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0" size="51200" volumeFunc="journal"/>
+            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0" size="50" volumeFunc="osd"/>
+            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0" size="50" volumeFunc="journal"/>
         </storageProfile>
 
         <storageProfile name="storage-profile-coloc-two-tiers">
             <!--The disk tags below define each device,
             path: device path
-            size: minimum size (in MB)
+            size: minimum size (in GiB)
             volumeFunc: volume function to be assigned to the device
                 For 'osd' function:
-                    journalSize: the size of the ceph journal, if absent defaults to journal_default_size in sysinv.conf
+                    journalSize: the size of the ceph journal in GiB, if absent defaults to journal_default_size in sysinv.conf
                     journalLocation: location of the journal partition, mandatory if multiple journal functions are defined,
                                      if absent defaults to the single available journal drive.
                     tier: storage tier for OSDs. If this is not specified, then the
@@ -147,34 +147,34 @@
                 same device with the OSD data (partition #1 is for the data and partition #2 for the journl).
                 In this case the size of the journal will be journal_default_size.
             -->
-            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0" size="51200" volumeFunc="osd" tier="storage"/>
-            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0" size="51200" volumeFunc="osd" tier="gold"/>
+            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0" size="50" volumeFunc="osd" tier="storage"/>
+            <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0" size="50" volumeFunc="osd" tier="gold"/>
         </storageProfile>
 
         <localstorageProfile name="localstorage-profile_lvm">
 		<!--The disk tags below define each device,
 		        node: device node
-		        size: minimum size (in MB).
+		        size: minimum size (in GiB).
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
                         instance_backing: lvm, image, or remote
-                        instances_lv_size_mib: local volume size in MiBytes
+                        instances_lv_size_gib: local volume size in GiB
                         concurrent_disk_operations: number of parallel I/O intensive disk operaions
                 -->
-           <disk path="/dev/sdb" size="228936" />
-           <lvg lvm_vg_name="nova-local" instance_backing="lvm" instances_lv_size_mib="2048" concurrent_disk_operations="2" />
+           <disk path="/dev/sdb" size="223" />
+           <lvg lvm_vg_name="nova-local" instance_backing="lvm" instances_lv_size_gib="2" concurrent_disk_operations="2" />
         </localstorageProfile>
 
         <localstorageProfile name="localstorage-profile_localimage">
 		<!--The disk tags below define each device,
 		        node: device node
-		        size: minimum size (in MB).
+		        size: minimum size (in GiB).
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
                         instance_backing: lvm, image, or remote
                         concurrent_disk_operations: number of parallel I/O intensive disk operaions
                 -->
-           <disk path="/dev/sdb" size="228936" />
+           <disk path="/dev/sdb" size="223" />
            <lvg lvm_vg_name="nova-local" instance_backing="image" concurrent_disk_operations="2" />
         </localstorageProfile>
 
@@ -187,7 +187,7 @@
                         instance_backing: lvm, image, or remote
                         concurrent_disk_operations: number of parallel I/O intensive disk operaions
                 -->
-           <disk path="/dev/sdb" size="228936" />
+           <disk path="/dev/sdb" size="223" />
            <lvg lvm_vg_name="nova-local" instance_backing="remote" concurrent_disk_operations="2" />
         </localstorageProfile>
 

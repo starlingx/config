@@ -17,6 +17,7 @@ from cgtsclient.v1 import ethernetport as ethernetport_utils
 from cgtsclient.v1 import icpu as icpu_utils
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import iprofile as iprofile_utils
+import math
 
 #
 # INTERFACE PROFILES
@@ -311,7 +312,7 @@ def get_storconfig_detailed(iprofile):
         if stor.function == 'journal' and count > 1:
             str += " %s" % journals[stor.uuid]
         if stor.function == 'osd':
-            str += ", ceph journal: size %s MiB, " % stor.journal_size_mib
+            str += ", ceph journal: size %s GiB, " % (stor.journal_size_mib / 1024)
             if stor.journal_location == stor.uuid:
                 str += "collocated on osd stor"
             else:
@@ -329,7 +330,7 @@ def get_diskconfig(iprofile):
     for disk in iprofile.disks:
         if str != '':
             str = str + "; "
-        str = str + "%s: %s" % (disk.device_path, disk.size_mib)
+        str = str + "%s: %s GiB" % (disk.device_path, math.floor(float(disk.size_mib) / 1024 * 1000) / 1000.0)
         if not disk.device_path:
             invalid_profile = True
     return str, invalid_profile
@@ -340,7 +341,7 @@ def get_partconfig(iprofile):
     for part in iprofile.partitions:
         if str != '':
             str = str + "; "
-        str = str + "%s: %s" % (part.device_path, part.size_mib)
+        str = str + "%s: %s GiB" % (part.device_path, math.floor(float(part.size_mib) / 1024 * 1000) / 1000.0)
     return str
 
 
@@ -354,6 +355,9 @@ def get_ilvg_config(iprofile):
         for k, v in ilvg.capabilities.iteritems():
             if capabilities_str != '':
                 capabilities_str += "; "
+            if k == "instances_lv_size_mib":
+                k = "instances_lv_size_gib"
+                v = v / 1024
             capabilities_str += "%s: %s " % (k, v)
 
         str += "%s, %s" % (ilvg.lvm_vg_name, capabilities_str)

@@ -21,6 +21,7 @@
 
 import jsonpatch
 import copy
+import math
 
 from oslo_serialization import jsonutils
 
@@ -386,20 +387,20 @@ def _discover_and_validate_cinder_hiera_data(caps_dict):
     if len(valid_ctrls) == 2:
         if pv_sizes[0]['size'] != pv_sizes[1]['size']:
             msg = (_('Allocated storage for %s PVs must be equal and greater than '
-                     '%s MiB on both controllers. Allocation for %s is %s MiB '
-                     'while for %s is %s MiB.') %
+                     '%s GiB on both controllers. Allocation for %s is %s GiB '
+                     'while for %s is %s GiB.') %
                    (constants.LVG_CINDER_VOLUMES,
-                    constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB * 1024,
-                    pv_sizes[0]['host'], pv_sizes[0]['size'],
-                    pv_sizes[1]['host'], pv_sizes[1]['size']))
+                    constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB,
+                    pv_sizes[0]['host'], math.floor(float(pv_sizes[0]['size']) / 1024 * 1000) / 1000.0,
+                    pv_sizes[1]['host'], math.floor(float(pv_sizes[1]['size']) / 1024 * 1000) / 1000.0))
             raise wsme.exc.ClientSideError(msg)
 
     if pv_sizes[0]['size'] < (constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB * 1024):
-        msg = (_('Minimum allocated storage for %s PVs is: %s MiB. '
-                 'Current allocation is: %s MiB.') %
+        msg = (_('Minimum allocated storage for %s PVs is: %s GiB. '
+                 'Current allocation is: %s GiB.') %
                (constants.LVG_CINDER_VOLUMES,
-                constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB * 1024,
-                pv_sizes[0]['size']))
+                constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB,
+                math.floor(float(pv_sizes[0]['size']) / 1024 * 1000) / 1000.0))
         raise wsme.exc.ClientSideError(msg)
 
     # Log all the LVM parameters

@@ -5,6 +5,7 @@
 #
 
 import jsonpatch
+import math
 import re
 import six
 
@@ -359,15 +360,16 @@ def _partition_pre_patch_checks(partition_obj, patch_obj):
             if not cutils.is_int_like(p['value']):
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be an integer "
-                      "greater than 0: %s") % p['value'])
+                      "greater than 0: %s GiB") % p['value'] / 1024)
             if int(p['value']) <= 0:
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be an integer "
-                      "greater than 0: %s") % p['value'])
+                      "greater than 0: %s GiB") % p['value'] / 1024)
             if int(p['value']) <= partition_obj.size_mib:
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be larger than current "
-                      "size: %s <= %s") % (p['value'], partition_obj.size_mib))
+                      "size: %s GiB <= %s GiB") % (p['value'] / 1024,
+                      math.floor(float(partition_obj.size_mib) / 1024 * 1000) / 1000.0))
 
 
 def _is_user_created_partition(guid):
@@ -487,8 +489,9 @@ def _semantic_checks(operation, partition):
         # partition.
         if not _enough_avail_space_on_disk(partition.get('size_mib'), idisk):
             raise wsme.exc.ClientSideError(
-                _("Requested size %s MiB is larger than the %s MiB "
-                  "available.") % (partition['size_mib'],idisk.available_mib))
+                _("Requested size %s GiB is larger than the %s GiB "
+                  "available.") % (partition['size_mib'] / 1024,
+                                   math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0))
 
         _are_partition_operations_simultaneous(ihost, partition,
                                                constants.PARTITION_CMD_CREATE)
@@ -566,8 +569,9 @@ def _semantic_checks(operation, partition):
         # Check if there is enough space to enlarge the partition.
         if not _enough_avail_space_on_disk(extra_size, idisk):
             raise wsme.exc.ClientSideError(
-                _("Requested extra size %s MiB is larger than the %s MiB "
-                  "available.") % (extra_size,idisk.available_mib))
+                _("Requested extra size %s GiB is larger than the %s GiB "
+                  "available.") % (extra_size / 1024,
+                                   math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0))
 
     elif operation == constants.PARTITION_CMD_DELETE:
         ############

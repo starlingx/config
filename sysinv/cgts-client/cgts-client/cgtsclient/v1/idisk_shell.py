@@ -14,6 +14,7 @@ from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
+import math
 
 
 def _print_idisk_show(idisk):
@@ -22,7 +23,7 @@ def _print_idisk_show(idisk):
               'ihost_uuid', 'istor_uuid', 'ipv_uuid', 'created_at',
               'updated_at']
     labels = ['device_node', 'device_num', 'device_type', 'device_path',
-              'size_mib', 'available_mib', 'rpm', 'serial_id', 'uuid',
+              'size_gib', 'available_gib', 'rpm', 'serial_id', 'uuid',
               'ihost_uuid', 'istor_uuid', 'ipv_uuid', 'created_at',
               'updated_at']
     data = [(f, getattr(idisk, f, '')) for f in fields]
@@ -50,6 +51,11 @@ def do_host_disk_show(cc, args):
     """Show disk attributes."""
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     idisk = _find_disk(cc, ihost, args.device_nodeoruuid)
+
+    # Convert size from mib to gib and round it down
+    idisk.size_mib = math.floor(float(idisk.size_mib) / 1024 * 1000) / 1000.0
+    idisk.available_mib = math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0
+
     _print_idisk_show(idisk)
 
 
@@ -64,11 +70,16 @@ def do_host_disk_list(cc, args):
     idisks = cc.idisk.list(ihost.uuid)
 
     field_labels = ['uuid', 'device_node', 'device_num', 'device_type',
-                    'size_mib', 'available_mib', 'rpm', 'serial_id',
+                    'size_gib', 'available_gib', 'rpm', 'serial_id',
                     'device_path']
     fields = ['uuid', 'device_node', 'device_num', 'device_type',
               'size_mib', 'available_mib', 'rpm', 'serial_id',
               'device_path']
+
+    # Convert size from mib to gib and round it down
+    for i in idisks:
+        i.size_mib = math.floor(float(i.size_mib) / 1024 * 1000) / 1000.0
+        i.available_mib = math.floor(float(i.available_mib) / 1024 * 1000) / 1000.0
 
     utils.print_list(idisks, fields, field_labels, sortby=1)
 

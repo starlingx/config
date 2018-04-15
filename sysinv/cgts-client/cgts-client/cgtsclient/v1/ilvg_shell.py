@@ -18,6 +18,11 @@ from oslo_serialization import jsonutils
 
 
 def _print_ilvg_show(ilvg):
+    labels = ['lvm_vg_name', 'vg_state', 'uuid', 'ihost_uuid', 'lvm_vg_access',
+              'lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv', 'lvm_cur_pv',
+              'lvm_vg_size_gib', 'lvm_vg_total_pe', 'lvm_vg_free_pe', 'created_at',
+              'updated_at', 'parameters']
+
     fields = ['lvm_vg_name', 'vg_state', 'uuid', 'ihost_uuid', 'lvm_vg_access',
               'lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv', 'lvm_cur_pv',
               'lvm_vg_size', 'lvm_vg_total_pe', 'lvm_vg_free_pe', 'created_at',
@@ -32,7 +37,7 @@ def _print_ilvg_show(ilvg):
     # rename capabilities for display purposes and add to display list
     data.append(('parameters', getattr(ilvg, 'capabilities', '')))
 
-    utils.print_tuple_list(data)
+    utils.print_tuple_list(data, labels)
 
 
 def _find_lvg(cc, ihost, lvguuid):
@@ -171,11 +176,11 @@ def do_host_lvg_delete(cc, args):
            help=("Set the number of concurrent I/O intensive disk operations "
                  "such as glance image downloads, image format conversions, "
                  "etc. [nova-local]"))
-@utils.arg('-s', '--instances_lv_size_mib',
-           metavar='<instances_lv size in MiB>',
-           help=("Set the desired size (in MiB) of the instances LV that is "
+@utils.arg('-s', '--instances_lv_size_gib',
+           metavar='<instances_lv size in GiB>',
+           help=("Set the desired size (in GiB) of the instances LV that is "
                  "used for /etc/nova/instances. Example: For a 50GB volume, "
-                 "use 51200. Required when instance backing is \"lvm\". "
+                 "use 50. Required when instance backing is \"lvm\". "
                  "[nova-local]"))
 @utils.arg('-l', '--lvm_type',
            metavar='<lvm_type>',
@@ -187,22 +192,29 @@ def do_host_lvg_modify(cc, args):
 
     # Get all the fields from the command arguments
     field_list = ['hostnameorid', 'lvgnameoruuid',
-                  'instance_backing', 'instances_lv_size_mib',
+                  'instance_backing', 'instances_lv_size_gib',
                   'concurrent_disk_operations', 'lvm_type']
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
 
-    all_caps_list = ['instance_backing', 'instances_lv_size_mib',
+    all_caps_list = ['instance_backing', 'instances_lv_size_gib',
                      'concurrent_disk_operations', 'lvm_type']
-    integer_fields = ['instances_lv_size_mib', 'concurrent_disk_operations']
+    integer_fields = ['instances_lv_size_gib', 'concurrent_disk_operations']
     requested_caps_dict = {}
 
     for cap in all_caps_list:
         if cap in fields:
-            if cap in integer_fields:
-                requested_caps_dict[cap] = int(fields[cap])
-            else:
-                requested_caps_dict[cap] = fields[cap]
+            try:
+                if cap in integer_fields:
+                    requested_caps_dict[cap] = int(fields[cap])
+                else:
+                    requested_caps_dict[cap] = fields[cap]
+                if cap == 'instances_lv_size_gib':
+                    requested_caps_dict['instances_lv_size_mib'] = \
+                        requested_caps_dict.pop('instances_lv_size_gib') * 1024
+            except ValueError:
+                raise exc.CommandError('instances_lv size must be an integer '
+                                       'greater than 0: %s' % fields[cap])
 
     # Get the ihost object
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)

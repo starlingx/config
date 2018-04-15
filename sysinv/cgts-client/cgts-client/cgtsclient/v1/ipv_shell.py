@@ -15,16 +15,23 @@ from cgtsclient.v1 import idisk as idisk_utils
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import ilvg as ilvg_utils
 from cgtsclient.v1 import partition as partition_utils
+import math
 
 
 def _print_ipv_show(ipv):
+    labels = ['uuid', 'pv_state', 'pv_type', 'disk_or_part_uuid',
+              'disk_or_part_device_node', 'disk_or_part_device_path',
+              'lvm_pv_name', 'lvm_vg_name', 'lvm_pv_uuid',
+              'lvm_pv_size_gib', 'lvm_pe_total', 'lvm_pe_alloced', 'ihost_uuid',
+              'created_at', 'updated_at']
     fields = ['uuid', 'pv_state', 'pv_type', 'disk_or_part_uuid',
               'disk_or_part_device_node', 'disk_or_part_device_path',
               'lvm_pv_name', 'lvm_vg_name', 'lvm_pv_uuid',
               'lvm_pv_size', 'lvm_pe_total', 'lvm_pe_alloced', 'ihost_uuid',
               'created_at', 'updated_at']
+    ipv.lvm_pv_size = math.floor(float(ipv.lvm_pv_size) / (1024 ** 3) * 1000) / 1000.0
     data = [(f, getattr(ipv, f, '')) for f in fields]
-    utils.print_tuple_list(data)
+    utils.print_tuple_list(data, labels)
 
 
 def _find_pv(cc, ihost, pvuuid):

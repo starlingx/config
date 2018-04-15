@@ -474,6 +474,7 @@ PV_NAME_UNKNOWN = 'unknown'
 # Storage: Volume Group Parameter Types
 LVG_NOVA_PARAM_BACKING = 'instance_backing'
 LVG_NOVA_PARAM_INST_LV_SZ = 'instances_lv_size_mib'
+LVG_NOVA_PARAM_INST_LV_SZ_GIB = 'instances_lv_size_gib'
 LVG_NOVA_PARAM_DISK_OPS = 'concurrent_disk_operations'
 LVG_CINDER_PARAM_LVM_TYPE = 'lvm_type'
 

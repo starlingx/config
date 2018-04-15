@@ -16,6 +16,7 @@ from cgtsclient import exc
 from cgtsclient.v1 import idisk as idisk_utils
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import partition as part_utils
+import math
 
 
 PARTITION_MAP = {'lvm_phys_vol': constants.USER_PARTITION_PHYSICAL_VOLUME}
@@ -76,8 +77,10 @@ def do_host_disk_partition_list(cc, args):
     for p in ipartitions:
         p.status = constants.PARTITION_STATUS_MSG[p.status]
 
+        p.size_mib = math.floor(float(p.size_mib) / 1024 * 1000) / 1000.0
+
     field_labels = ['uuid', 'device_path', 'device_node', 'type_guid',
-                    'type_name', 'size_mib', 'status']
+                    'type_name', 'size_gib', 'status']
     fields = ['uuid', 'device_path', 'device_node', 'type_guid', 'type_name',
               'size_mib', 'status']
 
@@ -90,9 +93,9 @@ def do_host_disk_partition_list(cc, args):
 @utils.arg('disk_path_or_uuid',
            metavar='<disk path or uuid>',
            help="UUID of the disk to place the partition [REQUIRED]")
-@utils.arg('size_mib',
-           metavar='<partition size in MiB>',
-           help="Requested size of the new partition in MiB [REQUIRED]")
+@utils.arg('size_gib',
+           metavar='<partition size in GiB>',
+           help="Requested size of the new partition in GiB [REQUIRED]")
 @utils.arg('-t', '--partition_type',
            metavar='<partition type>',
            choices=['lvm_phys_vol'],
@@ -102,8 +105,22 @@ def do_host_disk_partition_list(cc, args):
 def do_host_disk_partition_add(cc, args):
     """Add a disk partition to a disk of a specified host."""
 
-    field_list = ['size_mib', 'partition_type']
-    integer_fields = ['size_mib']
+    field_list = ['size_gib', 'partition_type']
+    integer_fields = ['size_gib']
+
+    user_fields = dict((k, v) for (k, v) in vars(args).items()
+                       if k in field_list and not (v is None))
+
+    for f in user_fields:
+        try:
+            if f in integer_fields:
+                user_fields[f] = int(user_fields[f])
+        except ValueError:
+            raise exc.CommandError('Partition size must be an integer '
+                                   'greater than 0: %s' % user_fields[f])
+
+    # Convert size from gib to mib
+    user_fields['size_mib'] = user_fields.pop('size_gib') * 1024
 
     # Get the ihost object
     ihost = ihost_utils._find_ihost(cc, args.hostname_or_id)
@@ -116,17 +133,6 @@ def do_host_disk_partition_add(cc, args):
     fields = {'ihost_uuid': ihost.uuid,
               'idisk_uuid': idisk.uuid,
               'size_mib': 0}
-
-    user_fields = dict((k, v) for (k, v) in vars(args).items()
-                       if k in field_list and not (v is None))
-
-    for f in user_fields:
-        try:
-            if f in integer_fields:
-                user_fields[f] = int(user_fields[f])
-        except ValueError:
-            raise exc.CommandError('Partition size must be an integer '
-                                   'greater than 0: %s' % user_fields[f])
 
     fields.update(user_fields)
 
@@ -184,20 +190,33 @@ def do_host_disk_partition_delete(cc, args):
 @utils.arg('partition_path_or_uuid',
            metavar='<partition path or uuid>',
            help="UUID of the partition [REQUIRED]")
-@utils.arg('-s', '--size_mib',
-           metavar='<partition size in MiB>',
+@utils.arg('-s', '--size_gib',
+           metavar='<partition size in GiB>',
            help=("Update the desired size of the partition"))
 def do_host_disk_partition_modify(cc, args):
     """Modify the attributes of a Disk Partition."""
 
     # Get all the fields from the command arguments
-    field_list = ['size_mib']
+    field_list = ['size_gib']
+    integer_fields = ['size_gib']
+
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
                                  if k in field_list and not (v is None))
 
     if not user_specified_fields:
         raise exc.CommandError('No update parameters specified, '
                                'partition is unchanged.')
+
+    for f in user_specified_fields:
+        try:
+            if f in integer_fields:
+                user_specified_fields[f] = int(user_specified_fields[f])
+        except ValueError:
+            raise exc.CommandError('Partition size must be an integer '
+                                   'greater than 0: %s' % user_specified_fields[f])
+
+    # Convert size from gib to mib
+    user_specified_fields['size_mib'] = user_specified_fields.pop('size_gib') * 1024
 
     # Get the ihost object
     ihost = ihost_utils._find_ihost(cc, args.hostname_or_id)
