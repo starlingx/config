@@ -28,6 +28,6 @@ libvirt-python>=1.2.5
 migrate
 python-novaclient!=2.33.0,>=2.29.0 # Apache-2.0
 python-cephclient
-python-ldap>=2.4.22
+python-ldap>=2.4.22,<3.0.0
 markupsafe
 # Babel>=0.9.6
