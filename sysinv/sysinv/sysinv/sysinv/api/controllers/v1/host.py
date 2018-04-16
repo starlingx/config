@@ -2511,6 +2511,10 @@ class HostController(rest.RestController):
                     except OSError:
                         LOG.exception("Failed to remove upgrade fail flag")
 
+        # Check for new hardware since upgrade-start
+        force = body.get('force', False) is True
+        self._semantic_check_downgrade_refresh(upgrade, rpc_ihost, force)
+
         if disable_storage_monitor:
             # When we downgrade controller-0 during a rollback we need to
             # disable the storage monitor on controller-1. We want to ensure
@@ -3770,13 +3774,62 @@ class HostController(rest.RestController):
             new_hw_h = self._new_host_hardware_since_upgrade(
                 h, upgrade_created_at)
             if new_hw_h:
-                new_hw.append(new_hw_h)
+                new_hw.extend(new_hw_h)
 
         if new_hw:
             msg = _("New hardware %s detected after upgrade started at %s. "
                     "Upgrade should be aborted."
                     % (new_hw, upgrade_created_at))
             raise wsme.exc.ClientSideError(msg)
+
+    def _semantic_check_downgrade_refresh(self, upgrade, ihost, force):
+        """
+        Determine whether downgrade should be aborted due to
+        new hardware since upgrade start
+        """
+        if force:
+            LOG.info("_semantic_check_downgrade_refresh check force")
+            return
+
+        if upgrade.state not in [constants.UPGRADE_ABORTING,
+                                 constants.UPGRADE_ABORTING_ROLLBACK]:
+            LOG.info("_semantic_check_downgrade_refresh allow upgrade state=%s" %
+                     upgrade.state)
+            return
+
+        upgrade_created_at = upgrade.created_at
+
+        # check for new host hardware since upgrade started
+        hosts = pecan.request.dbapi.ihost_get_list()
+        new_hw = []
+        for h in hosts:
+            if not h.personality:
+                continue
+
+            if h.created_at > upgrade_created_at:
+                new_hw.append(('host', h.hostname, h.uuid))
+
+            new_hw_h = self._new_host_hardware_since_upgrade(
+                h, upgrade_created_at)
+            if new_hw_h:
+                new_hw.extend(new_hw_h)
+
+        if new_hw:
+            new_host_hw = [(new_hw_type, name, info) for (new_hw_type, name, info) in new_hw
+                           if name == ihost['hostname']]
+            if new_host_hw:
+                msg = _("New host %s detected after upgrade started at %s. "
+                        "Host can not be downgraded."
+                        % (ihost['hostname'], upgrade_created_at))
+                raise wsme.exc.ClientSideError(msg)
+            else:
+                # Acceptable to downgrade this host
+                msg = _("New host hardware %s detected after upgrade "
+                        "started at %s. "
+                        "Allow downgrade of %s during upgrade abort phase."
+                         % (new_hw, upgrade_created_at, ihost['hostname']))
+                LOG.info(msg)
+                return
 
     @staticmethod
     def _semantic_check_nova_local_storage(ihost_uuid, personality):
