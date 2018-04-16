@@ -146,19 +146,21 @@ class platform::network (
 
   $testcmd = '/usr/local/bin/connectivity_test'
 
-  if $management_interface {
-    exec { 'connectivity-test-management':
-      command => "${testcmd} -t 70 -i ${management_interface} controller-platform-nfs; /bin/true",
-      require => Anchor['platform::networking'],
-      onlyif => "test ! -f /etc/platform/simplex",
+  if $::personality != 'controller' {
+    if $management_interface {
+      exec { 'connectivity-test-management':
+        command => "${testcmd} -t 70 -i ${management_interface} controller-platform-nfs; /bin/true",
+        require => Anchor['platform::networking'],
+        onlyif => "test ! -f /etc/platform/simplex",
+      }
     }
-  }
 
-  if $infrastructure_interface {
-    exec { 'connectivity-test-infrastructure':
-      command => "${testcmd} -t 120 -i ${infrastructure_interface} controller-nfs; /bin/true",
-      require => Anchor['platform::networking'],
-      onlyif => "test ! -f /etc/platform/simplex",
+    if $infrastructure_interface {
+      exec { 'connectivity-test-infrastructure':
+        command => "${testcmd} -t 120 -i ${infrastructure_interface} controller-nfs; /bin/true",
+        require => Anchor['platform::networking'],
+        onlyif => "test ! -f /etc/platform/simplex",
+      }
     }
   }
 
