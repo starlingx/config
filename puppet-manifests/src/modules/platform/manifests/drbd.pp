@@ -261,38 +261,6 @@ class platform::drbd::extension (
   }
 }
 
-class platform::drbd::extension::upgrade (
-) inherits ::platform::drbd::extension::params {
-
-  $drbd_primary = true
-  $drbd_initial = true
-  $drbd_automount =true
-  $drbd_manage = true
-
-  # ip2_override should be removed in R6. It is required for drbd-extension
-  # when upgrading from R4->R5 only. This is so "on controller-1" is set to
-  # 127.0.0.1 and not 127.0.0.2. drbd-extension is new to R5.
-  #
-  #  on controller-1 {
-  #    address ipv4 127.0.0.1:7793;
-  #  }
-  #
-
-  platform::drbd::filesystem { $resource_name:
-    vg_name    => $vg_name,
-    lv_name    => $lv_name,
-    lv_size    => $lv_size,
-    port       => $port,
-    device     => $device,
-    mountpoint => $mountpoint,
-    manage_override => $drbd_manage,
-    ha_primary_override => $drbd_primary,
-    initial_setup_override => $drbd_initial,
-    automount_override => $drbd_automount,
-    ip2_override => $::platform::drbd::params::ip1,
-  }
-}
-
 class platform::drbd::patch_vault::params (
   $service_enabled = false,
   $device = '/dev/drbd6',
@@ -423,22 +391,6 @@ class platform::drbd::extension::runtime {
   include ::platform::drbd::extension
 }
 
-class platform::drbd::upgrade {
-  # On upgrading controller-1 (R4->R5) we need to make this new drbd resource
-  # the primary as it does not currently exists controller-0. This code MUST
-  # be removed in R6.
-
-  class { '::drbd':
-    wfc_timeout => 1,
-    degr_wfc_timeout => 1,
-    service_enable => true,
-    service_ensure => 'running'
-  }
-
-  include ::platform::drbd::params
-  include ::platform::drbd::extension::upgrade
-
-}
 
 class platform::drbd::patch_vault::runtime {
   include ::platform::drbd::params

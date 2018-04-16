@@ -89,9 +89,3 @@ class platform::mtce::runtime {
     stage => post
   }
 }
-
-class platform::mtce::upgrade {
-  # configure a mtce user that added in release 5
-  # to be removed in release 6
-  include ::platform::mtce::agent
-}

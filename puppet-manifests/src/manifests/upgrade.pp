@@ -18,11 +18,5 @@ include ::platform::amqp::upgrade
 include ::openstack::keystone::upgrade
 include ::openstack::client::upgrade
 
-include ::platform::mtce::upgrade
-
 include ::openstack::murano::upgrade
 include ::openstack::ironic::upgrade
-
-include ::openstack::nova::upgrade
-
-include ::platform::drbd::upgrade

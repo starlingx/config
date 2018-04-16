@@ -46,23 +46,6 @@ class Health(object):
 
         return unprovisioned_hosts, provisioned_hosts
 
-    def _check_controller_0_manifests(self, controller_0):
-        """
-        Checks that controller-0 has all it's manifests
-        During config_controller some manifests are not generated,
-        in particular the interfaces manifest will be missing.
-        Upgrade abort-reinstall will fail if all the manifests are not present
-        so we check for the manifest here.
-        """
-        controller_0_mgmt_ip = controller_0['mgmt_ip']
-        network_manifest_path = os.path.join(
-            tsc.PACKSTACK_PATH,
-            'manifests',
-            constants.CONTROLLER,
-            "%s_interfaces.pp" % controller_0_mgmt_ip
-        )
-        return os.path.isfile(network_manifest_path)
-
     def _check_hosts_enabled(self, hosts):
         """Checks that each host is enabled and unlocked"""
         offline_host_list = []
@@ -323,17 +306,6 @@ class Health(object):
             LOG.exception(e)
             output += _('No imported load found. Unable to test further\n')
             return health_ok, output
-
-        # Check that controller-0 has been locked and unlocked
-        # As this should only happen in lab scenarios, we only display a
-        # message in cases were the check fails
-        controller_0 = self._dbapi.ihost_get_by_hostname(
-            constants.CONTROLLER_0_HOSTNAME)
-        if not self._check_controller_0_manifests(controller_0):
-            output += _('Missing manifests for %s. '
-                        'Lock and Unlock to resolve\n') \
-                      % constants.CONTROLLER_0_HOSTNAME
-            health_ok = False
 
         upgrade_version = imported_load.software_version
         if imported_load.required_patches:

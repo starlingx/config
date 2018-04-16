@@ -348,11 +348,11 @@ class openstack::keystone::upgrade (
     } 
 
     
-    # Panko is a new non-optional service in 18.xx.
-    # Ensure its service account and endpoints are created
-    include ::panko::keystone::auth
+    # Add service account and endpoints for any new R6 services...
+    # include ::<new service>::keystone::auth
+    # No new services yet...
 
-    # Always remove the upgrade token file after all 18.xx
+    # Always remove the upgrade token file after all new
     # services have been added
     file { $upgrade_token_file :
       ensure => absent,

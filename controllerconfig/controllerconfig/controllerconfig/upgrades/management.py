@@ -280,7 +280,7 @@ def abort_upgrade(from_load, to_load, upgrade):
         os.path.join(tsc.CGCS_PATH, "ironic", to_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", to_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", to_load),
-        os.path.join(tsc.PLATFORM_PATH, "packstack", to_load),
+        os.path.join(tsc.PLATFORM_PATH, "puppet", to_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", to_load),
         os.path.join(tsc.CGCS_PATH, "ceilometer", to_load),
         os.path.join(tsc.CONFIG_PATH, 'upgrades')
@@ -352,7 +352,7 @@ def complete_upgrade(from_load, to_load):
         os.path.join(tsc.CGCS_PATH, "ironic", from_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", from_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", from_load),
-        os.path.join(tsc.PLATFORM_PATH, "packstack", from_load),
+        os.path.join(tsc.PLATFORM_PATH, "puppet", from_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", from_load),
     ]
 

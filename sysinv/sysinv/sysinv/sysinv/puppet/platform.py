@@ -18,8 +18,8 @@ from . import base
 
 HOSTNAME_INFRA_SUFFIX = '-infra'
 
-NOVA_UPGRADE_LEVEL_NEWTON = 'newton'
-NOVA_UPGRADE_LEVELS = {'17.06': NOVA_UPGRADE_LEVEL_NEWTON}
+NOVA_UPGRADE_LEVEL_PIKE = 'pike'
+NOVA_UPGRADE_LEVELS = {'18.03': NOVA_UPGRADE_LEVEL_PIKE}
 
 
 class PlatformPuppet(base.BasePuppet):
@@ -192,14 +192,10 @@ class PlatformPuppet(base.BasePuppet):
                           constants.UPGRADE_COMPLETED]
         # we don't need compatibility mode after we activate
         if upgrade.state in upgrade_states:
-            config.update({
-                'neutron::server::vhost_user_enabled': True
-            })
             return config
 
         upgrade_load_id = upgrade.to_load
 
-        # TODO: update the nova upgrade level for Pike
         host_upgrade = self.dbapi.host_upgrade_get_by_host(host['id'])
         if host_upgrade.target_load == upgrade_load_id:
             from_load = self.dbapi.load_get(upgrade.from_load)

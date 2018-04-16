@@ -680,8 +680,3 @@ class openstack::nova::compute::runtime {
     stage => post
   }
 }
-
-
-class openstack::nova::upgrade {
-  include ::nova::keystone::auth_placement
-}
