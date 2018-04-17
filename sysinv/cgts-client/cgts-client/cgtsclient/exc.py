@@ -19,7 +19,7 @@ class BaseException(Exception):
         self.message = message
 
     def __str__(self):
-        return self.message or self.__class__.__doc__
+        return str(self.message) or self.__class__.__doc__
 
 
 class CommandError(BaseException):
@@ -46,8 +46,8 @@ class HTTPException(ClientException):
         self.details = details
 
     def __str__(self):
-        return self.details or "%s (HTTP %s)" % (self.__class__.__name__,
-                                                 self.code)
+        return str(self.details) or "%s (HTTP %s)" % (self.__class__.__name__,
+                                                      self.code)
 
 
 class HTTPMultipleChoices(HTTPException):
