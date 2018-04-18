@@ -118,13 +118,19 @@ class openstack::ceilometer::collector {
     notification_workers  => $::platform::params::eng_workers_by_2,
   }
 
+  if $::platform::params::system_type == 'All-in-one' {
+    $batch_timeout = 25
+  } else {
+    $batch_timeout = 5
+  }
+
   # FIXME(mpeters): generic parameter can be moved to the puppet module
   ceilometer_config {
     'DEFAULT/csv_location': value => "${ceilometer_directory_csv}";
     'DEFAULT/csv_location_strict': value => true;
     'service_credentials/interface': value => 'internalURL';
     'notification/batch_size': value => 100;
-    'notification/batch_timeout': value => 5;
+    'notification/batch_timeout': value => $batch_timeout;
   }
 }
 
