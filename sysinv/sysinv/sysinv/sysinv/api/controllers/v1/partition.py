@@ -263,6 +263,7 @@ class PartitionController(rest.RestController):
 
         # replace ihost_uuid and partition_uuid with corresponding
         patch_obj = jsonpatch.JsonPatch(patch)
+        ihost = None
         for p in patch_obj:
             if p['path'] == '/ihost_uuid':
                 p['path'] = '/forihostid'
@@ -271,7 +272,10 @@ class PartitionController(rest.RestController):
                 p['value'] = ihost.id
 
         # Perform checks based on the current vs.requested modifications.
-        _partition_pre_patch_checks(rpc_partition, patch_obj)
+        if not ihost:
+            ihost = pecan.request.dbapi.ihost_get(rpc_partition.forihostid)
+            LOG.info("from partition get ihost=%s" % ihost.hostname)
+        _partition_pre_patch_checks(rpc_partition, patch_obj, ihost)
 
         try:
             partition = Partition(**jsonpatch.apply_patch(
@@ -350,10 +354,10 @@ def _check_host(partition, ihost, idisk):
                                          (idisk.uuid,ihost.hostname))
 
 
-def _partition_pre_patch_checks(partition_obj, patch_obj):
+def _partition_pre_patch_checks(partition_obj, patch_obj, host_obj):
     """Check current vs. updated parameters."""
     # Reject operation if we are upgrading the system.
-    cutils._check_upgrade(pecan.request.dbapi)
+    cutils._check_upgrade(pecan.request.dbapi, host_obj)
     for p in patch_obj:
         if p['path'] == '/size_mib':
             if not cutils.is_int_like(p['value']):
@@ -610,11 +614,10 @@ def _semantic_checks(operation, partition):
 
 def _create(partition, iprofile=None, applyprofile=None):
     # Reject operation if we are upgrading the system.
-    cutils._check_upgrade(pecan.request.dbapi)
-
-    # Get host.
     ihostid = partition.get('forihostid') or partition.get('ihost_uuid')
     ihost = pecan.request.dbapi.ihost_get(ihostid)
+    cutils._check_upgrade(pecan.request.dbapi, ihost)
+
     if uuidutils.is_uuid_like(ihostid):
         forihostid = ihost['id']
     else:
@@ -673,12 +676,10 @@ def _create(partition, iprofile=None, applyprofile=None):
 
 
 def _delete(partition):
-    # Reject operation if we are upgrading the system.
-    cutils._check_upgrade(pecan.request.dbapi)
-
-    # Get host.
+    # Reject operation if we are upgrading the system unless it is a new host.
     ihostid = partition.get('forihostid') or partition.get('ihost_uuid')
     ihost = pecan.request.dbapi.ihost_get(ihostid)
+    cutils._check_upgrade(pecan.request.dbapi, ihost)
 
     # Semantic Checks.
     _semantic_checks(constants.PARTITION_CMD_DELETE, partition)

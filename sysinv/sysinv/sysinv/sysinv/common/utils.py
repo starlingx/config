@@ -1561,12 +1561,26 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
                   cc_gtwy_addr.address, mgmt_iface_id))
 
 
-def _check_upgrade(dbapi):
-    """If there's an upgrade in place, reject the operation."""
-    if dbapi.software_upgrade_get_list():
-        raise wsme.exc.ClientSideError(
-            _("ERROR: Disk partition operations are not allowed during a "
-              "software upgrade. Try again after the upgrade is completed."))
+def _check_upgrade(dbapi, host_obj=None):
+    """ Check whether partition operation may be allowed.
+
+        If there is an upgrade in place, reject the operation if the
+        host was not created after upgrade start.
+    """
+    try:
+        upgrade = dbapi.software_upgrade_get_one()
+    except exception.NotFound:
+        return
+
+    if host_obj:
+        if host_obj.created_at > upgrade.created_at:
+            LOG.info("New host %s created after upgrade, allow partition" %
+                     host_obj.hostname)
+            return
+
+    raise wsme.exc.ClientSideError(
+        _("ERROR: Disk partition operations are not allowed during a "
+          "software upgrade. Try again after the upgrade is completed."))
 
 
 def disk_wipe(device):
