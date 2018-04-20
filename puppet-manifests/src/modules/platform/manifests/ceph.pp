@@ -31,6 +31,7 @@ class platform::ceph::params(
   $rgw_gc_processor_max_time = '300',
   $rgw_gc_processor_period = '300',
   $configure_ceph_mon_info = false,
+  $ceph_config_ready_path = '/var/run/.ceph_started',
 ) { }
 
 
@@ -51,6 +52,23 @@ class platform::ceph
       "mon.${mon_2_host}/mon_addr":  value => $mon_2_addr;
       "mon/mon clock drift allowed": value => ".1";
     }
+  }
+
+  class { '::platform::ceph::post':
+    stage => post
+  }
+}
+
+
+class platform::ceph::post {
+  include ::platform::ceph::params
+  # Enable ceph process recovery after all configuration is done
+  file { $::platform::ceph::params::ceph_config_ready_path:
+    ensure => present,
+    content => '',
+    owner => 'root',
+    group => 'root',
+    mode => '0644',
   }
 }
 
