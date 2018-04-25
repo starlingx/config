@@ -196,9 +196,11 @@ class CephPuppet(openstack.OpenstackBasePuppet):
     def _get_ceph_mon_config(self, host):
         ceph_mon = self._get_host_ceph_mon(host)
 
+        mon_lv_size = None
         if ceph_mon:
             mon_lv_size = ceph_mon.ceph_mon_gib
-        else:
+
+        if mon_lv_size is None:
             mon_lv_size = constants.SB_CEPH_MON_GIB
 
         return {
