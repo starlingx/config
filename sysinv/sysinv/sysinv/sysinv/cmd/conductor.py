@@ -30,11 +30,14 @@ from sysinv.openstack.common import service
 
 from sysinv.common import service as sysinv_service
 from sysinv.conductor import manager
+from sysinv import sanity_coverage
 
 CONF = cfg.CONF
 
 
 def main():
+    if sanity_coverage.flag_file_exists():
+        sanity_coverage.start()
     # Pase config file and command line options, then start logging
     sysinv_service.prepare_service(sys.argv)
 

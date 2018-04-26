@@ -26,6 +26,7 @@ from oslo_config import cfg
 from oslo_log import log
 from sysinv.common import service as sysinv_service
 from sysinv.common import wsgi_service
+from sysinv import sanity_coverage
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
@@ -62,6 +63,8 @@ def sysinv_pxe():
 
 
 def main():
+    if sanity_coverage.flag_file_exists():
+        sanity_coverage.start()
     # Parse config file and command line options
     sysinv_service.prepare_service(sys.argv)
 
