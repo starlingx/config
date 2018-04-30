@@ -27,6 +27,7 @@ develop-eggs
 .venv
 .*.swp
 .coverage
+bandit.xml
 cover
 AUTHORS
 ChangeLog
