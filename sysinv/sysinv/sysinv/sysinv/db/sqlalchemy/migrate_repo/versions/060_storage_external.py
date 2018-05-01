@@ -5,12 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import uuid
-from datetime import datetime
-
-from migrate import ForeignKeyConstraint
-from sqlalchemy import Integer, DateTime, Boolean, String
-from sqlalchemy import Column, MetaData, Table, ForeignKey, select
+from sqlalchemy import Integer, DateTime
+from sqlalchemy import Column, MetaData, Table, ForeignKey
 
 from sysinv.openstack.common import log
 

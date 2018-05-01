@@ -5,7 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import json
-from sqlalchemy import Column, MetaData, Table
+from sqlalchemy import MetaData
+from sqlalchemy import Table
 
 
 def _populate_shared_services_capabilities(system_table):

@@ -4,12 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import os
-import subprocess
-
-from sysinv.common import exception
-from sysinv.common import constants
-
 from . import openstack
 
 

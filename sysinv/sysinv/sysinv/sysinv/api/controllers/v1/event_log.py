@@ -25,7 +25,6 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils as api_utils
 from sysinv.common import exception
 from sysinv import objects
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 

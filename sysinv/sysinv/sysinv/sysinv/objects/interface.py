@@ -12,7 +12,6 @@ from sysinv.common import constants
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
-from sqlalchemy.orm.collections import InstrumentedList
 from sqlalchemy.orm import exc
 
 from sysinv.openstack.common import log

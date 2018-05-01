@@ -20,7 +20,6 @@
 
 """Sysinv test utilities."""
 
-from sysinv.common import states
 from sysinv.common import constants
 from sysinv.openstack.common import jsonutils as json
 from sysinv.db import api as db_api

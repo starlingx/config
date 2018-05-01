@@ -19,21 +19,17 @@
 #
 
 
-import jsonpatch
 import netaddr
-import six
 import uuid
 
 import pecan
 from pecan import rest
 
-import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
-from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import exception

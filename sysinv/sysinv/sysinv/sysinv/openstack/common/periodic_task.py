@@ -19,7 +19,7 @@ import time
 from oslo_config import cfg
 import six
 
-from sysinv.openstack.common.gettextutils import _  # noqa
+from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import timeutils
 

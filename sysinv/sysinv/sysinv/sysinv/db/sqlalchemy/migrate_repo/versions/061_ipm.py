@@ -8,8 +8,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Integer, DateTime, String
-from sqlalchemy import Column, MetaData, Table, select
+from sqlalchemy import Column, MetaData, Table
 
 from sysinv.openstack.common import log
 from sysinv.common import constants

@@ -25,10 +25,8 @@ Unit Tests for :py:class:`sysinv.conductor.rpcapi.ConductorAPI`.
 
 from oslo_config import cfg
 
-from sysinv.common import states
 from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.db import api as dbapi
-from sysinv import objects
 from sysinv.openstack.common import context
 from sysinv.openstack.common import jsonutils as json
 from sysinv.openstack.common import rpc

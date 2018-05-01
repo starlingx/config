@@ -19,7 +19,6 @@
 """Database setup and migration commands."""
 
 from oslo_config import cfg
-from stevedore import driver
 
 from sysinv.common import utils
 

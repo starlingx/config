@@ -5,9 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from migrate.changeset import UniqueConstraint
 from sqlalchemy import Enum, Integer, String, DateTime
-from sqlalchemy import Column, MetaData, Table, ForeignKey
+from sqlalchemy import Column, MetaData, Table
 from sqlalchemy.dialects import postgresql
 import json
 

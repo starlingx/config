@@ -20,12 +20,7 @@
 
 from keystonemiddleware import auth_token as keystone_auth_token
 from oslo_config import cfg
-from pecan import hooks
-from webob import exc
-
 from sysinv.api.middleware import auth_token
-from sysinv.common import policy
-
 
 OPT_GROUP_NAME = 'keystone_authtoken'
 

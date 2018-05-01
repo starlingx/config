@@ -35,7 +35,6 @@ from sysinv.common import exception
 from sysinv.common.utils import memoized
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
-from sqlalchemy.orm.exc import NoResultFound
 
 LOG = log.getLogger(__name__)
 

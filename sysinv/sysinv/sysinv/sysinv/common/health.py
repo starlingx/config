@@ -6,11 +6,8 @@
 import os
 import subprocess
 
-import tsconfig.tsconfig as tsc
-
 from controllerconfig import backup_restore
 
-from fm_api import constants as fm_constants
 from fm_api import fm_api
 
 from sysinv.common import ceph

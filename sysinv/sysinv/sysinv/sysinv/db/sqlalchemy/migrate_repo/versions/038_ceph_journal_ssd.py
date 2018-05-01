@@ -8,7 +8,6 @@
 import uuid
 from datetime import datetime
 
-from migrate import ForeignKeyConstraint
 from sqlalchemy import Integer, DateTime
 from sqlalchemy import Column, MetaData, String, Table, ForeignKey, select
 

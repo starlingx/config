@@ -4,7 +4,6 @@
 #
 
 import os
-import hashlib
 import pecan
 from pecan import expose
 from pecan import rest

@@ -23,7 +23,6 @@
 Client side of the agent RPC API.
 """
 
-from sysinv.common import constants
 from sysinv.objects import base as objects_base
 import sysinv.openstack.common.rpc.proxy
 from sysinv.openstack.common import log

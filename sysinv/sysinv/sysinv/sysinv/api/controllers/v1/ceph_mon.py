@@ -34,7 +34,6 @@ from sysinv.api.controllers.v1 import controller_fs as controller_fs_utils
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
-from sysinv.api.controllers.v1.utils import SBApiHelper as api_helper
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils

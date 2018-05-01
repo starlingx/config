@@ -11,26 +11,13 @@
 
 """ inventory idisk Utilities and helper functions."""
 
-import errno
-import json
-import netaddr
 import os
-from os import listdir
-from os.path import isfile, join
 import pyudev
-import random
 import re
-import shlex
-import shutil
-import signal
-import six
-import socket
 import subprocess
 import sys
-import tempfile
 
 
-from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.common import constants
 from sysinv.conductor import rpcapi as conductor_rpcapi

@@ -5,8 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sqlalchemy import Integer, String
-from sqlalchemy import Column, MetaData, Table
+from sqlalchemy import Column
+from sqlalchemy import MetaData
+from sqlalchemy import String
+from sqlalchemy import Table
 
 from sysinv.openstack.common import log
 

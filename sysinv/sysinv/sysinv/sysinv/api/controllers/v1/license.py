@@ -20,13 +20,11 @@
 #
 
 import os
-from tsconfig.tsconfig import CONFIG_PATH
 import pecan
 from pecan import expose
 from pecan import rest
 from platform_util.license import license
 
-import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
@@ -35,7 +33,6 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import utils as cutils
-from sysinv.common import constants
 
 from sysinv.openstack.common import log
 

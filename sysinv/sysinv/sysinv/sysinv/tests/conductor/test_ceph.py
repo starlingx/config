@@ -21,8 +21,6 @@ from sysinv.tests.db import base
 from sysinv.tests.db import utils
 from sysinv.common import exception
 
-import pytest
-
 
 class UpdateCephCluster(base.DbTestCase):
 

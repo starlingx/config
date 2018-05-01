@@ -10,7 +10,6 @@
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
-from sysinv.common import exception
 
 
 class HostUpgrade(base.SysinvObject):

@@ -24,7 +24,6 @@ import uuid
 import pecan
 import wsme
 import wsmeext.pecan as wsme_pecan
-from netaddr import *
 import os
 from oslo_utils._i18n import _
 from pecan import rest

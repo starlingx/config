@@ -8,7 +8,6 @@
 
 from sqlalchemy import Column, MetaData, String, Table, UniqueConstraint
 from sqlalchemy import Boolean, Integer, Enum, Text, ForeignKey, DateTime
-from sqlalchemy import Index
 from sqlalchemy.dialects import postgresql
 
 ENGINE = 'InnoDB'

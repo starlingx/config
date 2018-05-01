@@ -21,7 +21,6 @@
 
 
 import jsonpatch
-import re
 import six
 
 import pecan
@@ -31,7 +30,6 @@ import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
-from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import disk as disk_api
@@ -47,9 +45,6 @@ from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 from sysinv.openstack.common.rpc import common as rpc_common
 from sysinv.openstack.common import uuidutils
-
-from fm_api import constants as fm_constants
-from fm_api import fm_api
 
 LOG = log.getLogger(__name__)
 

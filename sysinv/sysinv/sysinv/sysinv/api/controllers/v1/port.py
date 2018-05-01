@@ -19,13 +19,11 @@
 #
 
 
-import jsonpatch
 import six
 
 import pecan
 from pecan import rest
 
-import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 

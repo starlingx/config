@@ -21,17 +21,13 @@
 #
 
 """Test class for Sysinv ManagerService."""
-import mox
 
 from sysinv.common import exception
-from sysinv.common import states
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
-from sysinv import objects
 from sysinv.openstack.common import context
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
-from sysinv.openstack.common.db.exception import DBDuplicateEntry
 
 
 class ManagerTestCase(base.DbTestCase):

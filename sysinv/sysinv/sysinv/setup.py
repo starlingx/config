@@ -16,8 +16,6 @@
 
 import setuptools
 
-from sysinv.openstack.common import setup as common_setup
-
 project = 'sysinv'
 
 setuptools.setup(

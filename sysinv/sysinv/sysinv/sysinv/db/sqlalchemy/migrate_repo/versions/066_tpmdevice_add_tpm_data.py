@@ -7,7 +7,6 @@
 
 from sqlalchemy import Column, MetaData, Table
 from sqlalchemy import Integer, LargeBinary, Text
-from sqlalchemy.dialects import postgresql
 
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'

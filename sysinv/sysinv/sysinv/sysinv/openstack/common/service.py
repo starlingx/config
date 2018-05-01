@@ -32,7 +32,7 @@ from eventlet import event
 from oslo_config import cfg
 
 # from sysinv.openstack.common import eventlet_backdoor
-from sysinv.openstack.common.gettextutils import _  # noqa
+from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import importutils
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import threadgroup
@@ -133,7 +133,7 @@ class ServiceLauncher(Launcher):
         status = None
         signo = 0
 
-        LOG.debug(_('Full set of CONF:'))
+        LOG.debug('Full set of CONF:')
         CONF.log_opt_values(LOG, std_logging.DEBUG)
 
         try:
@@ -154,7 +154,7 @@ class ServiceLauncher(Launcher):
                     rpc.cleanup()
                 except Exception:
                     # We're shutting down, so it doesn't matter at this point.
-                    LOG.exception(_('Exception during rpc cleanup.'))
+                    LOG.exception('Exception during rpc cleanup.')
 
         return status, signo
 
@@ -199,7 +199,7 @@ class ProcessLauncher(object):
         # dies unexpectedly
         self.readpipe.read()
 
-        LOG.info(_('Parent process has died unexpectedly, exiting'))
+        LOG.info('Parent process has died unexpectedly, exiting')
 
         sys.exit(1)
 
@@ -236,7 +236,7 @@ class ProcessLauncher(object):
         except SystemExit as exc:
             status = exc.code
         except BaseException:
-            LOG.exception(_('Unhandled exception'))
+            LOG.exception('Unhandled exception')
             status = 2
         finally:
             launcher.stop()
@@ -269,7 +269,7 @@ class ProcessLauncher(object):
             # start up quickly but ensure we don't fork off children that
             # die instantly too quickly.
             if time.time() - wrap.forktimes[0] < wrap.workers:
-                LOG.info(_('Forking too fast, sleeping'))
+                LOG.info('Forking too fast, sleeping')
                 time.sleep(1)
 
             wrap.forktimes.pop(0)

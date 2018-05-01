@@ -11,7 +11,6 @@
 
 """ Inventory disk partition utilities and helper functions."""
 
-import json
 import math
 import parted
 import pyudev

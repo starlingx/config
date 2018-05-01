@@ -7,8 +7,7 @@
 
 from migrate.changeset import UniqueConstraint
 from sqlalchemy import Column, MetaData, Table
-from sqlalchemy import Enum, String, Integer
-from sqlalchemy.dialects import postgresql
+from sqlalchemy import String, Integer
 
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'

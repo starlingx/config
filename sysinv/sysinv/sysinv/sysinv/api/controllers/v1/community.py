@@ -28,7 +28,6 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common.db import exception as Exception
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 

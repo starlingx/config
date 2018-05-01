@@ -4,8 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
-from sysinv.common import utils
 from sysinv.common import service_parameter
 
 from . import base

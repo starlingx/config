@@ -52,7 +52,6 @@ import netaddr
 
 from oslo_config import cfg
 
-from ipaddr import IPAddress as ip_address
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.openstack.common import log as logging

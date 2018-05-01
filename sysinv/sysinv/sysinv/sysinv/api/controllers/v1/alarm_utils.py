@@ -4,8 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from fm_api import constants
-
 from sysinv.openstack.common import log, uuidutils
 from sysinv.common import exception
 import pecan

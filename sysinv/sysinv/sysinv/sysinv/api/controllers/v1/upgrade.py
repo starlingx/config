@@ -28,8 +28,6 @@ from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 
-import tsconfig.tsconfig as tsc
-
 LOG = log.getLogger(__name__)
 
 

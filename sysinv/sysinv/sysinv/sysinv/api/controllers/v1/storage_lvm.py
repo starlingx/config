@@ -48,10 +48,7 @@ from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
 from sysinv.openstack.common.gettextutils import _
 
-from netaddr import IPAddress, IPNetwork
-
 import controller_fs as controller_fs_api
-import storage_backend as StorageBackend
 
 LOG = log.getLogger(__name__)
 

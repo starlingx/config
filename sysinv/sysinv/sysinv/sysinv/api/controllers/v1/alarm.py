@@ -23,7 +23,6 @@ from sysinv.api.controllers.v1 import utils as api_utils
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common import log
 from sysinv.api.controllers.v1 import alarm_utils
 from sysinv.api.controllers.v1.query import Query

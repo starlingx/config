@@ -7,7 +7,6 @@
 
 from sqlalchemy import Column, MetaData, Table
 from sqlalchemy import String
-import tsconfig.tsconfig as tsconfig
 from sysinv.common import constants
 
 

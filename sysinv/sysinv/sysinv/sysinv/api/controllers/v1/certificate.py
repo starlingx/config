@@ -27,8 +27,6 @@ import wsme
 import wsmeext.pecan as wsme_pecan
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-from fm_api import constants as fm_constants
-from fm_api import fm_api
 from pecan import expose, rest
 from sysinv import objects
 from sysinv.api.controllers.v1 import base

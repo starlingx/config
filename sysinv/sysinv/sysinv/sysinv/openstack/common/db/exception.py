@@ -16,7 +16,7 @@
 
 """DB related custom exceptions."""
 
-from sysinv.openstack.common.gettextutils import _  # noqa
+from sysinv.openstack.common.gettextutils import _
 
 
 class DBError(Exception):

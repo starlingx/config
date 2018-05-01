@@ -11,18 +11,11 @@
 
 """ inventory numa node Utilities and helper functions."""
 
-import errno
-import json
-import netaddr
 import os
 from os import listdir
 from os.path import isfile, join
-import random
 import re
-import subprocess
 
-
-from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 import tsconfig.tsconfig as tsc

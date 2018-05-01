@@ -7,7 +7,6 @@
 import json
 
 from sysinv.common import constants
-from sysinv.common import exception
 
 from . import base
 

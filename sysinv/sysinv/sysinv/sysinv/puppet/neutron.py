@@ -4,8 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import six
-
 from sysinv.common import constants
 from sysinv.common import utils
 

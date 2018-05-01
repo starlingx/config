@@ -5,7 +5,6 @@
 #
 
 
-import datetime
 import pecan
 from pecan import rest
 
@@ -13,7 +12,6 @@ import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
-from sysinv.api.controllers.v1 import alarm_utils
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
@@ -21,10 +19,8 @@ from sysinv.api.controllers.v1.query import Query
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils as api_utils
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 

@@ -19,7 +19,6 @@
 #
 
 
-import jsonpatch
 import six
 
 import pecan

@@ -19,7 +19,6 @@ import threading
 from operator import attrgetter
 
 from sysinv.common import constants
-from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)

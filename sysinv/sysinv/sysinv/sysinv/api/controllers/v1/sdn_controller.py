@@ -18,8 +18,6 @@
 # Copyright (c) 2016 Wind River Systems, Inc.
 #
 
-
-import jsonpatch
 import socket
 import pecan
 from pecan import rest

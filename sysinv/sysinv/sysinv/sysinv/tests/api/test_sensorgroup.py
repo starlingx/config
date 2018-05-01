@@ -3,7 +3,6 @@ from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 from sysinv.api.controllers.v1 import hwmon_api
 from sysinv.api.controllers.v1 import sensorgroup
-from sysinv.common import constants
 
 
 class sensorgroupTestCase(base.FunctionalTest):

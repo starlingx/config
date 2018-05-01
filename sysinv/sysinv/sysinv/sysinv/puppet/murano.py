@@ -5,7 +5,6 @@
 #
 
 from . import openstack
-from sysinv.common import constants
 
 
 class MuranoPuppet(openstack.OpenstackBasePuppet):

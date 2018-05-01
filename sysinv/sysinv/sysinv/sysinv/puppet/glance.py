@@ -8,7 +8,6 @@ from oslo_utils import strutils
 from urlparse import urlparse
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 from . import openstack
 

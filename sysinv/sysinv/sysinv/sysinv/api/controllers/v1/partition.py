@@ -6,7 +6,6 @@
 
 import jsonpatch
 import math
-import re
 import six
 
 import pecan

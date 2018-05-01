@@ -23,7 +23,6 @@
 import jsonpatch
 import pecan
 import subprocess
-import six
 
 from pecan import expose
 from pecan import rest
@@ -37,10 +36,6 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
-from sysinv.api.controllers.v1 import sm_api
-from sysinv.api.controllers.v1 import storage_ceph
-from sysinv.api.controllers.v1 import storage_lvm
-from sysinv.api.controllers.v1 import storage_file
 from sysinv.api.controllers.v1.utils import SBApiHelper as api_helper
 from sysinv.common import constants
 from sysinv.common import exception
@@ -49,8 +44,12 @@ from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.rpc.common import Timeout
 from oslo_serialization import jsonutils
+
+from sysinv.api.controllers.v1 import storage_ceph  # noqa
+from sysinv.api.controllers.v1 import storage_lvm   # noqa
+from sysinv.api.controllers.v1 import storage_file  # noqa
+
 
 LOG = log.getLogger(__name__)
 

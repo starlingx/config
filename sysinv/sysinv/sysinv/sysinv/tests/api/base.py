@@ -29,7 +29,6 @@ from sysinv.api import acl
 from sysinv.db import api as dbapi
 from sysinv.tests import base
 from sysinv.common import context as sysinv_context
-from oslo_concurrency import lockutils
 from sysinv.common import utils as cutils
 
 

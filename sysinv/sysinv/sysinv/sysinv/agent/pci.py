@@ -11,25 +11,12 @@
 
 """ inventory pci Utilities and helper functions."""
 
-import errno
 import glob
-import json
-import netaddr
 import os
-import random
-import re
 import shlex
-import shutil
-import signal
-import six
-import socket
 import subprocess
-import tempfile
-import time
-
 
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 

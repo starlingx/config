@@ -25,7 +25,6 @@ from wsme import types as wtypes
 
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import link
-from sysinv.openstack.common.gettextutils import _
 
 
 class Collection(base.APIBase):

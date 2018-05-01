@@ -5,10 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from migrate.changeset import UniqueConstraint
-from sqlalchemy import Enum, Integer, String, DateTime
-from sqlalchemy import Column, MetaData, Table, ForeignKey
-from sqlalchemy.dialects import postgresql
+from sqlalchemy import MetaData, Table
 from sysinv.openstack.common import log
 
 import json

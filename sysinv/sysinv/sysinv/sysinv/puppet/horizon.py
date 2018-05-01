@@ -5,7 +5,7 @@
 #
 
 from . import openstack
-from sysinv.common import constants
+
 from sysinv.common import exception
 
 
