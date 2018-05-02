@@ -31,8 +31,8 @@ load-plugins=
 # We are disabling (R)efactor
 # We are probably disabling (W)arning
 # We are not disabling (F)atal, (E)rror
-#disable=C,R,W
-disable=C,R
+disable=C,R,W
+#disable=C,R
 
 
 [REPORTS]
