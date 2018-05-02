@@ -421,6 +421,27 @@ class SBApiHelper(object):
         except exception.StorageBackendNotFoundByName:
             existing_backend = None
 
+        # The "shared_services" of an external backend can't have any internal
+        # backend, vice versa. Note: This code needs to be revisited when
+        # "non_shared_services" external backend (e.g. emc) is added into
+        # storage-backend.
+        if operation in [constants.SB_API_OP_CREATE, constants.SB_API_OP_MODIFY]:
+            current_bk_svcs = []
+            backends = pecan.request.dbapi.storage_backend_get_list()
+            for bk in backends:
+                if backend_type == constants.SB_TYPE_EXTERNAL:
+                    if bk.as_dict()['backend'] != backend_type:
+                        current_bk_svcs += SBApiHelper.getListFromServices(bk.as_dict())
+                else:
+                    if bk.as_dict()['backend'] == constants.SB_TYPE_EXTERNAL:
+                        current_bk_svcs += SBApiHelper.getListFromServices(bk.as_dict())
+
+            new_bk_svcs = SBApiHelper.getListFromServices(storage_backend_dict)
+            for svc in new_bk_svcs:
+                if svc in current_bk_svcs:
+                    raise wsme.exc.ClientSideError("Service (%s) already has "
+                                                   "a backend." % svc)
+
         # Deny any change while a backend is configuring
         backends = pecan.request.dbapi.storage_backend_get_list()
         for bk in backends:
