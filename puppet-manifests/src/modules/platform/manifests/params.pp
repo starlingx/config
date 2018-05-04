@@ -19,6 +19,7 @@ class platform::params (
   $system_mode = undef,
   $system_type = undef,
   $system_name = undef,
+  $platform_cpu_count = undef,
   $vswitch_type = undef,
   $security_profile = undef,
 ) {
@@ -34,44 +35,46 @@ class platform::params (
   $phys_core_count = 0 + $::physical_core_count
   $plat_res_mem = 0 + $::platform_res_mem
 
-
   # Engineering parameters common to openstack services:
 
   # max number of workers
   $eng_max_workers = 20
   # min number of workers
   $eng_min_workers = 1 
+  # min platform core count
+  $platform_default_min_cpu_count = 2
   # total system memory per worker
   $eng_worker_mb = 2000
   # memory headroom per worker (e.g., buffers, cached)
   $eng_overhead_mb = 1000
-  # number of workers we can support based on memory
-  if $system_type == 'All-in-one' {
-      # Controller memory available for AIO
-      # Consistent with sysinv get_platform_reserved_memory()  
-      $eng_controller_mem = 10500
-      if $system_mode == 'simplex' or ($phys_core_count <= 8 and $plat_res_mem < 14500) or str2bool($::is_virtual) {
-          $small_footprint = true
-      } else {
-	  # For AIO duplex, keep $eng_workers at 3 for now
-          $small_footprint = false
-      }
-  } else {
-      $small_footprint = false
-      $eng_controller_mem = $::memorysize_mb
-  }
 
-  $eng_workers_mem = floor($eng_controller_mem) / ($eng_worker_mb + $eng_overhead_mb)
+  notice("DEBUG: Platform cpu count obtained from sysinv DB is $platform_cpu_count.")
 
   # number of workers per service
-  if $small_footprint { 
-    # Limit eng_workers and its derivatives to 2 and 1 respectively for simplex, Xeon-D and AIO in virtual box.
-    $eng_workers = 2
+  if $system_type == 'All-in-one' {
+    $small_footprint = true
+
+    # Set eng_workers for AIO based on the number of platform cores, not exceeding 2 for
+    # AIO simplex, Xeon-D and virtual box and not exceeding 3 for AIO duplex.
+    # All eng_workers derivatives are set to 1 for AIO.
+    # Services can add an additional worker if it is deemed necessary in their own puppet files.
+    if ($platform_cpu_count <= $platform_default_min_cpu_count) {
+      $eng_workers = $platform_cpu_count
+    } else {
+      if $system_mode == 'simplex' or ($phys_core_count <= 8 and $plat_res_mem < 14500) or str2bool($::is_virtual) {
+        $eng_workers = $platform_default_min_cpu_count
+      } else {
+        $eng_workers = $platform_default_min_cpu_count + 1
+      }
+    }
     $eng_workers_by_2 = $eng_min_workers
     $eng_workers_by_4 = $eng_min_workers
     $eng_workers_by_5 = $eng_min_workers
     $eng_workers_by_6 = $eng_min_workers
   } else {
+    # number of workers we can support based on memory
+    $small_footprint = false
+    $eng_workers_mem = floor($::memorysize_mb) / ($eng_worker_mb + $eng_overhead_mb)
     $eng_workers = min($eng_max_workers, $eng_workers_mem, max($phys_core_count, 2))
     $eng_workers_by_2 = min($eng_max_workers, $eng_workers_mem, max($phys_core_count/2, 2))
     $eng_workers_by_4 = min($eng_max_workers, $eng_workers_mem, max($phys_core_count/4, 2))

@@ -372,6 +372,12 @@ class PlatformPuppet(base.BasePuppet):
                 system.system_type,
         })
 
+        cpu_count = self._get_platform_cpu_count(host)
+        config.update({
+            'platform::params::platform_cpu_count':
+                cpu_count,
+        })
+
         return config
 
     def _get_host_ntp_config(self, host):
@@ -720,3 +726,8 @@ class PlatformPuppet(base.BasePuppet):
                            trap_list})
 
         return config
+
+    def _get_platform_cpu_count(self, host):
+        cpus = self._get_host_cpu_list(host, constants.PLATFORM_FUNCTION, True)
+        return len(cpus)
+
