@@ -32,13 +32,18 @@ define platform::haproxy::proxy (
     if $https_enabled {
         $ssl_option = 'ssl crt /etc/ssl/private/server-cert.pem'
         $proto = 'X-Forwarded-Proto:\ https'
+        # The value of max-age matches lighttpd.conf, and should be
+        # maintained for consistency
+        $hsts_option = 'Strict-Transport-Security:\ max-age=63072000;\ includeSubDomains'
     } else {
       $ssl_option = ' '
       $proto = 'X-Forwarded-Proto:\ http'
+      $hsts_option = undef
     }
   } else {
       $ssl_option = ' '
       $proto = undef
+      $hsts_option = undef
   }
 
   if $public_ip_address {
@@ -69,6 +74,7 @@ define platform::haproxy::proxy (
       'default_backend' => "${name}-internal",
       'reqadd' => $proto,
       'timeout' => $real_client_timeout,
+      'rspadd' => $hsts_option,
     },
   }
 
