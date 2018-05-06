@@ -3157,7 +3157,7 @@ class ConductorManager(service.PeriodicService):
                 values.update({key: ipart.get(key)})
 
         # If the report from the manage-partitions script is lost
-        # (althoug the partition was created successfully)
+        # (although the partition was created successfully)
         # the partition goes into an error state.
         # In such a case, the agent should report the correct info,
         # so we should allow the transition from and error state

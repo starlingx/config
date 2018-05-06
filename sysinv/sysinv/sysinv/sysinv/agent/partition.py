@@ -11,8 +11,6 @@
 
 """ Inventory disk partition utilities and helper functions."""
 
-import math
-import parted
 import pyudev
 import subprocess
 import sys
@@ -42,7 +40,8 @@ class PartitionOperator(object):
         :returns: list of partition info
         """
         sgdisk_part_info = []
-        fields = ['part_number', 'type_guid', 'type_name', 'uuid']
+        fields = ['part_number', 'device_node', 'type_guid', 'type_name',
+                  'uuid', 'start_mib', 'end_mib', 'size_mib']
         sgdisk_command = '{} {}'.format('/usr/bin/partition_info.sh',
                                         device_path)
 
@@ -79,51 +78,27 @@ class PartitionOperator(object):
             LOG.debug("Format of disk node %s is not GPT." % device_node)
             return None
 
-        try:
-            device = parted.getDevice(device_node)
-            disk = parted.newDisk(device)
-        except Exception as e:
-            LOG.warn("No partition info for disk %s - %s" % (device_path, e))
-            return None
-
         ipartitions = []
 
         sgdisk_partitions = self.get_sgdisk_info(device_path)
         LOG.debug("PARTED sgdisk_part_info: %s" % str(sgdisk_partitions))
 
-        partitions = disk.partitions
-        LOG.debug("PARTED %s partitions: %s" % (device_node, str(partitions)))
-
-        for partition in partitions:
-            part_device_node = partition.path
+        for partition in sgdisk_partitions:
+            partition_number = partition.get('part_number')
+            size_mib = partition.get('size_mib')
+            if 'nvme' in device_node:
+                part_device_node = '{}p{}'.format(device_node,
+                                                  partition_number)
+            else:
+                part_device_node = '{}{}'.format(device_node, partition_number)
             part_device_path = '{}-part{}'.format(device_path,
-                                                  partition.number)
-            LOG.debug("PARTED part_device_path: %s" % part_device_path)
-            size_mib = partition.getSize()
-            LOG.debug("PARTED partition size: %s" % size_mib)
-            start_mib = math.ceil(float(partition.geometry.start) / 2048)
-            LOG.debug("PARTED partition start: %s" % start_mib)
-            end_mib = math.ceil(float(partition.geometry.end) / 2048)
-            LOG.debug("PARTED partition end %s" % end_mib)
+                                                  partition_number)
+            start_mib = partition.get('start_mib')
+            end_mib = partition.get('end_mib')
 
-            sgdisk_partition = next((
-                part for part in sgdisk_partitions
-                if part['part_number'] == partition.number),
-                None)
-
-            part_type_guid = None
-            part_uuid = None
-            part_type_name = None
-            if sgdisk_partition:
-                if 'type_guid' in sgdisk_partition:
-                    part_type_guid = sgdisk_partition.get('type_guid').lower()
-                if 'type_name' in sgdisk_partition:
-                    part_type_name = sgdisk_partition.get(
-                        'type_name').replace('.', ' ')
-                if 'uuid' in sgdisk_partition:
-                    part_uuid = sgdisk_partition.get('uuid').lower()
-                LOG.debug("PARTED part_type_guid: %s" % part_type_guid)
-                LOG.debug("PARTED part_uuid: %s" % part_uuid)
+            part_type_guid = partition.get('type_guid').lower()
+            part_type_name = partition.get('type_name').replace('.', ' ')
+            part_uuid = partition.get('uuid').lower()
 
             part_attrs = {
                 'device_node': part_device_node,

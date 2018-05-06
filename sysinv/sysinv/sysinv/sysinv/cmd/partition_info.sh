@@ -17,6 +17,8 @@ verbose=0
 # Hardcoded strings in the sgdisk command.
 part_type_guid_str="Partition GUID code"
 part_guid_str="Partition unique GUID"
+part_first_sector_str="First sector"
+part_last_sector_str="Last sector"
 
 # Logging function.
 wlog() {
@@ -46,6 +48,7 @@ wlog() {
 
 device_path=$1 && shift
 part_numbers=( `parted -s $device_path print | awk '$1 == "Number" {i=1; next}; i {print $1}'` )
+sector_size=$(blockdev --getss $device_path)
 
 for part_number in "${part_numbers[@]}";
 do
@@ -55,11 +58,15 @@ do
     part_type_guid=$(echo "$sgdisk_part_info" | grep "$part_type_guid_str" | awk '{print $4;}')
     part_type_name=$(echo "$sgdisk_part_info" | grep "$part_type_guid_str" | awk -F '[()]' '{print $2}' | tr ' ' '.')
     part_guid=$(echo "$sgdisk_part_info" | grep "$part_guid_str"| awk '{print $4;}')
+    part_start_mib=$(($(echo "$sgdisk_part_info" | grep "$part_first_sector_str" | awk '{print $3;}') * $sector_size / (1024*1024)))
+    part_end_mib=$((($(echo "$sgdisk_part_info" | grep "$part_last_sector_str" | awk '{print $3;}') * $sector_size / (1024*1024)) + 1))
+    part_size_mib=$((part_end_mib-part_start_mib))
+    part_device_node=$(realpath $device_path)$part_number
     if [ $part_type_name == "Unknown" ]; then
         part_type_name=$(echo "$sgdisk_part_info" | grep "$part_name_str" | awk -F\' '{print $2;}' | tr ' ' '.')
     fi
 
-    line+="$part_number $part_type_guid $part_type_name $part_guid;"
+    line+="$part_number $part_device_node $part_type_guid $part_type_name $part_guid $part_start_mib $part_end_mib $part_size_mib;"
 done
 
 echo $line

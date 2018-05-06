@@ -106,6 +106,7 @@ class StoragePuppet(base.BasePuppet):
                 partition = {
                     'current_uuid': p.uuid,
                     'ihost_uuid': p.ihost_uuid,
+                    'start_mib': p.start_mib,
                     'new_size_mib': p.size_mib,
                     'part_device_path': p.device_path,
                     'req_guid': p.type_guid,

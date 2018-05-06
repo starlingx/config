@@ -1358,16 +1358,19 @@ def skip_udev_partition_probe(function):
         :param   device_node: dev node or path of the device
         :returns decorated function
         """
-        device_node = kwargs['device_node']
-        with open(device_node, 'r') as f:
-            fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
-            try:
-                return function(*args, **kwargs)
-            finally:
-                # Since events are asynchronous we have to wait for udev
-                # to pick up the change.
-                time.sleep(0.1)
-                fcntl.flock(f, fcntl.LOCK_UN)
+        device_node = kwargs.get('device_node', None)
+        if device_node:
+            with open(device_node, 'r') as f:
+                fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                try:
+                    return function(*args, **kwargs)
+                finally:
+                    # Since events are asynchronous we have to wait for udev
+                    # to pick up the change.
+                    time.sleep(0.1)
+                    fcntl.flock(f, fcntl.LOCK_UN)
+        else:
+            return function(*args, **kwargs)
     return wrapper
 
 
