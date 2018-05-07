@@ -730,4 +730,3 @@ class PlatformPuppet(base.BasePuppet):
     def _get_platform_cpu_count(self, host):
         cpus = self._get_host_cpu_list(host, constants.PLATFORM_FUNCTION, True)
         return len(cpus)
-
