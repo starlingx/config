@@ -69,6 +69,9 @@ def do_load_import(cc, args):
     if not os.path.isabs(args.isopath):
         args.isopath = os.path.abspath(args.isopath)
 
+    if not os.path.isabs(args.sigpath):
+        args.sigpath = os.path.abspath(args.sigpath)
+
     # Here we pass the path_to_iso to the API
     # The API will perform any required actions to import the provided iso
     patch = {'path_to_iso': args.isopath, 'path_to_sig': args.sigpath}
