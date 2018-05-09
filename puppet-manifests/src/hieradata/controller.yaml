@@ -355,6 +355,8 @@ cinder::ceilometer::notification_driver: 'messaging'
 cinder::scheduler::enabled: false
 cinder::volume::enabled: false
 
+cinder::backup::posix::backup_posix_path: '/opt/backups'
+
 
 # heat
 heat::use_syslog: true

@@ -474,6 +474,16 @@ class platform::sm
         command => "sm-provision service cinder-volume",
       }
 
+      exec { 'Configure OpenStack - Cinder Backup':
+        command => "sm-configure service_instance cinder-backup cinder-backup \"config=/etc/cinder/cinder.conf,user=root,amqp_server_port=${amqp_server_port}\"",
+      } ->
+      exec { 'Provision OpenStack - Cinder Backup (service-group-member)':
+        command => "sm-provision service-group-member cloud-services cinder-backup",
+      } ->
+      exec { 'Provision OpenStack - Cinder Backup (service)':
+        command => "sm-provision service cinder-backup",
+      }
+
       if 'lvm' in $cinder_backends {
           # Cinder DRBD
           exec { 'Configure Cinder LVM in SM (service-group-member drbd-cinder)':
@@ -552,6 +562,14 @@ class platform::sm
       exec { 'Deprovision OpenStack - Cinder Volume (service)':
         path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
         command => "sm-deprovision service cinder-volume",
+      } ->
+      exec { 'Deprovision OpenStack - Cinder Backup (service-group-member)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => "sm-deprovision service-group-member cloud-services cinder-backup",
+      } ->
+      exec { 'Deprovision OpenStack - Cinder Backup (service)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => "sm-deprovision service cinder-backup",
       }
   }
 

@@ -195,6 +195,8 @@ class openstack::cinder
   include ::openstack::cinder::config
   include ::openstack::cinder::backends
 
+  include ::openstack::cinder::backup
+
   # TODO(mpeters): move to puppet module formal parameters
   cinder_config {
     'DEFAULT/my_ip': value => $controller_address;
@@ -229,6 +231,13 @@ class openstack::cinder::config::default(
 class openstack::cinder::config
   inherits ::openstack::cinder::params {
     include ::openstack::cinder::config::default
+}
+
+class openstack::cinder::backup
+  inherits ::openstack::cinder::params {
+
+  # For now only support file backend backup
+  include ::cinder::backup::posix
 }
 
 
