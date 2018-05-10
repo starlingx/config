@@ -4408,6 +4408,14 @@ class HostController(rest.RestController):
         if not personality:
             return
 
+        if personality == constants.COMPUTE and utils.is_aio_duplex_system():
+            if utils.get_compute_count() >= constants.AIO_DUPLEX_MAX_COMPUTES:
+                msg = _("All-in-one Duplex is restricted to "
+                        "%s computes.") % constants.AIO_DUPLEX_MAX_COMPUTES
+                raise wsme.exc.ClientSideError(msg)
+            else:
+                return
+
         if (utils.SystemHelper.get_product_build() ==
                     constants.TIS_AIO_BUILD):
             msg = _("Personality [%s] for host is not compatible "

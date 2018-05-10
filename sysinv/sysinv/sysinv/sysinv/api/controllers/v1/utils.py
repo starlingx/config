@@ -375,6 +375,17 @@ def get_distributed_cloud_role(dbapi=None):
     return system.distributed_cloud_role
 
 
+def is_aio_duplex_system():
+    return get_system_mode() == constants.SYSTEM_MODE_DUPLEX and \
+           SystemHelper.get_product_build() == constants.TIS_AIO_BUILD
+
+
+def get_compute_count(dbapi=None):
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    return len(dbapi.ihost_get_by_personality(constants.COMPUTE))
+
+
 class SBApiHelper(object):
     """ API Helper Class for manipulating Storage Backends.
 
