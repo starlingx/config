@@ -104,6 +104,7 @@ class isystem(Base):
     region_name = Column(Text)
     service_project_name = Column(Text)
     distributed_cloud_role = Column(String(255))
+    security_feature = Column(String(255))
 
 
 class ihost(Base):

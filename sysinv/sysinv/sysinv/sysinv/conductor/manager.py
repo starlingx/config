@@ -237,12 +237,17 @@ class ConductorManager(service.PeriodicService):
         if tsc.security_profile is not None:
             security_profile = tsc.security_profile
 
+        security_feature = constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS
+        if tsc.security_feature is not None:
+            security_feature = tsc.security_feature
+
         system = self.dbapi.isystem_create({
             'name': uuidutils.generate_uuid(),
             'system_mode': mode,
             'software_version': cutils.get_sw_version(),
             'capabilities': {},
-            'security_profile': security_profile
+            'security_profile': security_profile,
+            'security_feature': security_feature
         })
 
         # Populate the default system tables, referencing the newly created
@@ -1001,10 +1006,11 @@ class ConductorManager(service.PeriodicService):
                 (CONF.sysinv_api_port, host_uuid)
             install_opts += ['-u', notify_url]
 
+        system = self.dbapi.isystem_get_one()
+
         # This version check MUST be present. The -s option
         # (security profile) does not exist 17.06 and below.
         if sw_version != tsc.SW_VERSION_1706:
-            system = self.dbapi.isystem_get_one()
             secprofile = system.security_profile
             # ensure that the securtiy profile selection is valid
             if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
@@ -1030,6 +1036,12 @@ class ConductorManager(service.PeriodicService):
             tboot = host.get('tboot')
             if tboot is not None and tboot != "":
                 install_opts += ['-T', tboot]
+
+        # This version check MUST be present. The -k option
+        # (extra_kernel_args) does not exist 18.03 and below.
+        if sw_version != tsc.SW_VERSION_1706 and \
+           sw_version != tsc.SW_VERSION_1803:
+            install_opts += ['-k', system.security_feature]
 
         if host['mgmt_mac']:
             dashed_mac = host["mgmt_mac"].replace(":", "-")
@@ -6608,6 +6620,18 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['openstack::aodh::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_security_feature_config(self, context):
+        """Update the kernel options configuration"""
+        personalities = constants.PERSONALITIES
+        config_uuid = self._config_update_hosts(context, personalities, reboot=True)
+
+        config_dict = {
+            'personalities': personalities,
+            'classes': ['platform::grub::runtime']
+        }
+
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
 
     def _update_emc_state(self):
         emc_state_param = self._get_emc_state()

@@ -27,6 +27,8 @@ include ::platform::mtce
 include ::platform::sysinv
 include ::platform::ceph
 include ::platform::devices
+include ::platform::grub
+
 
 include ::openstack::client
 include ::openstack::neutron

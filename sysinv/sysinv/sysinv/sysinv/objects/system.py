@@ -34,6 +34,7 @@ class System(base.SysinvObject):
             'region_name': utils.str_or_none,
             'service_project_name': utils.str_or_none,
             'distributed_cloud_role': utils.str_or_none,
+            'security_feature': utils.str_or_none,
              }
 
     @base.remotable_classmethod

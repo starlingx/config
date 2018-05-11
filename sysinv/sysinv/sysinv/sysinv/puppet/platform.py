@@ -87,7 +87,7 @@ class PlatformPuppet(base.BasePuppet):
             'platform::params::controller_upgrade': False,
             'platform::params::config_path': tsconfig.CONFIG_PATH,
             'platform::params::security_profile': system.security_profile,
-
+            'platform::params::security_feature': system.security_feature,
             'platform::config::params::timezone': system.timezone,
             'platform::params::vswitch_type': self._vswitch_type(),
         }

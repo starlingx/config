@@ -703,6 +703,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_system_mode_config'))
 
+    def update_security_feature_config(self, context):
+        """Synchronously, have the conductor update the security_feature
+        configuration.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('update_security_feature_config'))
+
     def update_oam_config(self, context):
         """Synchronously, have the conductor update the OAM configuration.
 

@@ -108,10 +108,30 @@ class System(base.APIBase):
     service_project_name = wtypes.text
     "The service project name of the isystem"
 
+    security_feature = wtypes.text
+    "Kernel arguments associated with exnabled spectre/meltdown fix features"
+
     def __init__(self, **kwargs):
         self.fields = objects.system.fields.keys()
+
         for k in self.fields:
-            setattr(self, k, kwargs.get(k))
+            # Translate any special internal representation of data to its
+            # customer facing form
+            if k == 'security_feature':
+                # look up which customer-facing-security-feature-string goes
+                # with the kernel arguments tracked in sysinv
+                kernel_args = kwargs.get(k)
+                translated_string = kernel_args
+
+                for user_string, args_string in \
+                  constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS.iteritems():
+                    if args_string == kernel_args:
+                        translated_string = user_string
+                        break
+                setattr(self, k, translated_string)
+            else:
+                # No translation required
+                setattr(self, k, kwargs.get(k))
 
     @classmethod
     def convert_with_links(cls, rpc_isystem, expand=True):
@@ -121,7 +141,7 @@ class System(base.APIBase):
                           'contact', 'location', 'software_version',
                           'created_at', 'updated_at', 'timezone',
                           'region_name', 'service_project_name',
-                          'distributed_cloud_role']
+                          'distributed_cloud_role', 'security_feature']
 
         fields = minimum_fields if not expand else None
 
@@ -347,7 +367,6 @@ class SystemController(rest.RestController):
         :param isystem_uuid: UUID of a isystem.
         :param patch: a json PATCH document to apply to this isystem.
         """
-
         rpc_isystem = objects.system.get_by_uuid(pecan.request.context,
                                                  isystem_uuid)
         system_dict = rpc_isystem.as_dict()
@@ -420,6 +439,10 @@ class SystemController(rest.RestController):
                 vswitch_type = p['value']
                 patch.remove(p)
 
+            if p['path'] == '/security_feature':
+                security_feature = p['value']
+                patch.remove(p)
+
         try:
             patched_system = jsonpatch.apply_patch(system_dict,
                                                    jsonpatch.JsonPatch(patch))
@@ -471,6 +494,17 @@ class SystemController(rest.RestController):
                                                  " as %s" % vswitch_type))
             patched_system['capabilities']['vswitch_type'] = vswitch_type
 
+        if 'security_feature' in updates:
+            # Security feature string must be translated from user values to
+            # kernel options
+            if security_feature in \
+              constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS:
+                security_feature_value = constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS[security_feature]
+                patched_system['security_feature'] = security_feature_value
+            else:
+                raise wsme.exc.ClientSideError(_("Unexpected value %s specified for "
+                                                 "security_feature" % security_feature))
+
         # Update only the fields that have changed
         name = ""
         contact = ""
@@ -479,6 +513,7 @@ class SystemController(rest.RestController):
         timezone = ""
         capabilities = {}
         distributed_cloud_role = ""
+        security_feature = ""
 
         for field in objects.system.fields:
             if rpc_isystem[field] != patched_system[field]:
@@ -497,6 +532,8 @@ class SystemController(rest.RestController):
                     capabilities = rpc_isystem[field]
                 if field == 'distributed_cloud_role':
                     distributed_cloud_role = rpc_isystem[field]
+                if field == 'security_feature':
+                    security_feature = rpc_isystem[field]
 
         delta = rpc_isystem.obj_what_changed()
         delta_handle = list(delta)
@@ -533,6 +570,11 @@ class SystemController(rest.RestController):
         if distributed_cloud_role and change_dc_role:
             LOG.info("update distributed cloud role to %s" % distributed_cloud_role)
             pecan.request.rpcapi.update_distributed_cloud_role(
+                pecan.request.context)
+
+        if 'security_feature' in delta_handle:
+            LOG.info("update security_feature %s" % security_feature)
+            pecan.request.rpcapi.update_security_feature_config(
                 pecan.request.context)
 
         return System.convert_with_links(rpc_isystem)

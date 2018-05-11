@@ -151,6 +151,14 @@ class platform::config::file {
     }
   }
 
+  if $::platform::params::security_feature {
+    file_line { "${platform_conf} security_feature":
+      path   => $platform_conf,
+      line   => "security_feature=\"${::platform::params::security_feature}\"",
+      match  => '^security_feature=*',
+    }
+  }
+
 }
 
 

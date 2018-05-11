@@ -29,6 +29,7 @@ include ::platform::lldp
 include ::platform::amqp::rabbitmq
 include ::platform::postgresql::server
 include ::platform::haproxy::server
+include ::platform::grub
 
 include ::platform::patching
 include ::platform::patching::api

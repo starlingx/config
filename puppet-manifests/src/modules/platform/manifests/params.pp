@@ -22,6 +22,7 @@ class platform::params (
   $platform_cpu_count = undef,
   $vswitch_type = undef,
   $security_profile = undef,
+  $security_feature = undef,
 ) {
   $ipv4 = 4
   $ipv6 = 6

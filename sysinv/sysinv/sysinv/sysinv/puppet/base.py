@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -26,6 +26,7 @@ class BasePuppet(object):
     CONFIG_WORKDIR = '/tmp/config'
     DEFAULT_REGION_NAME = 'RegionOne'
     DEFAULT_SERVICE_PROJECT_NAME = 'services'
+    DEFAULT_KERNEL_OPTIONS = constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS
 
     SYSTEM_CONTROLLER_SERVICES = [
         'keystone',
@@ -192,6 +193,13 @@ class BasePuppet(object):
         except NoResultFound:
             pass
         return service_parameters
+
+    def _get_security_feature(self):
+        if self.dbapi is None:
+            return self.DEFAULT_KERNEL_OPTIONS
+
+        system = self._get_system()
+        return system.security_feature
 
     @staticmethod
     def _service_parameter_lookup_one(service_parameters, section, name,

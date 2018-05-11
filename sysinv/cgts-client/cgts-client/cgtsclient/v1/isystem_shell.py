@@ -18,7 +18,8 @@ from cgtsclient import exc
 def _print_isystem_show(isystem):
     fields = ['name', 'system_type', 'system_mode', 'description', 'location',
               'contact', 'timezone', 'software_version', 'uuid',
-              'created_at', 'updated_at', 'region_name', 'service_project_name']
+              'created_at', 'updated_at', 'region_name', 'service_project_name',
+              'security_feature']
     if isystem.capabilities.get('region_config'):
         fields.append('shared_services')
         setattr(isystem, 'shared_services',
@@ -83,6 +84,12 @@ def do_show(cc, args):
            metavar='<vswitch_type>',
            choices=['ovs-dpdk'],
            help='The vswitch type for the system')
+@utils.arg('-S', '--security_feature',
+           metavar='<security_feature>',
+           choices=['spectre_meltdown_v1', 'spectre_meltdown_all'],
+           help='Use spectre_meltdown_v1 for spectre/meltdown v1 fixes, or spectre_meltdown_all to use all fixes')
+
+
 def do_modify(cc, args):
     """Modify system attributes."""
     isystems = cc.isystem.list()
@@ -129,7 +136,7 @@ def do_modify(cc, args):
         print 'Please follow the admin guide to complete the reconfiguration.'
 
     field_list = ['name', 'system_mode', 'description', 'location', 'contact',
-                  'timezone', 'sdn_enabled', 'https_enabled', 'vswitch_type']
+                  'timezone', 'sdn_enabled', 'https_enabled', 'vswitch_type', 'security_feature']
 
     # use field list as filter
     user_fields = dict((k, v) for (k, v) in vars(args).items()
