@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014-2017 Wind River Systems, Inc.
+Copyright (c) 2014-2018 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -74,21 +74,6 @@ def prompt_for(prompt_text, default_input, validator):
             print "Invalid choice"
 
     return user_input
-
-
-def check_for_ssh_parent():
-    """Determine if current process is started from a ssh session"""
-    command = ('pstree -s %d' % (os.getpid()))
-    try:
-        cmd_output = subprocess.check_output(command, shell=True)
-        if "ssh" in cmd_output:
-            print textwrap.fill(
-                "WARNING: Command should only be run from the console. "
-                "Continuing with this terminal may cause loss of connectivity "
-                "and configuration failure", 80)
-            print
-    except subprocess.CalledProcessError:
-        return
 
 
 def is_interface_up(interface_name):

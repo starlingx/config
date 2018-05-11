@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014-2017 Wind River Systems, Inc.
+# Copyright (c) 2014-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -883,3 +883,16 @@ def progress(steps, step, action, result, newline=False):
 def touch(fname):
     with open(fname, 'a'):
         os.utime(fname, None)
+
+
+def is_ssh_parent():
+    """Determine if current process is started from a ssh session"""
+    command = ('pstree -s %d' % (os.getpid()))
+    try:
+        cmd_output = subprocess.check_output(command, shell=True)
+        if "ssh" in cmd_output:
+            return True
+        else:
+            return False
+    except subprocess.CalledProcessError:
+        return False
