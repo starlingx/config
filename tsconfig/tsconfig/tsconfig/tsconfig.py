@@ -13,6 +13,7 @@ import logging
 SW_VERSION = ""
 SW_VERSION_1610 = '16.10'
 SW_VERSION_1706 = '17.06'
+SW_VERSION_1803 = '18.03'
 
 nodetype = None
 subfunctions = []
@@ -30,6 +31,7 @@ system_type = None
 system_mode = None
 security_profile = None
 distributed_cloud_role = None
+security_feature = None
 
 PLATFORM_CONF_PATH = '/etc/platform'
 PLATFORM_CONF_FILE = os.path.join(PLATFORM_CONF_PATH, 'platform.conf')
@@ -139,6 +141,10 @@ def _load():
         global distributed_cloud_role
         if config.has_option('platform_conf', 'distributed_cloud_role'):
             distributed_cloud_role = config.get('platform_conf', 'distributed_cloud_role')
+
+        global security_feature
+        if config.has_option('platform_conf', 'security_feature'):
+            security_feature = config.get('platform_conf', 'security_feature')
 
     except ConfigParser.Error:
         logging.exception("Failed to read platform.conf")
