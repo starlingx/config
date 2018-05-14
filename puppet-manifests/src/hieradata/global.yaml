@@ -89,3 +89,22 @@ nova::placement::os_interface: 'internal'
 ceilometer::telemetry_secret: ''
 ceilometer::use_syslog: true
 ceilometer::log_facility: 'local2'
+
+# collectd: configuration
+platform::collectd::params::interval: 30
+platform::collectd::params::timeout: 2
+platform::collectd::params::read_threads: 5
+platform::collectd::params::write_threads: 5
+platform::collectd::params::max_read_interval: 86400
+platform::collectd::params::write_queue_limit_high: 1000000
+platform::collectd::params::write_queue_limit_low: 800000
+platform::collectd::params::server_addrs: ['controller']
+platform::collectd::params::server_port: 25826
+platform::collectd::params::collectd_d_dir: '/etc/collectd.d'
+
+# collectd: module named plugins
+platform::collectd::params::module_path: '/opt/collectd/extensions/python'
+platform::collectd::params::plugins: ['fm_notifier','mtce_notifier']
+platform::collectd::params::mtce_notifier_port: 2101
+platform::collectd::params::log_traces: true
+platform::collectd::params::encoding: "utf-8"

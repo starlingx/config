@@ -24,6 +24,7 @@ include ::platform::remotelogging
 include ::platform::mtce
 include ::platform::sysinv
 include ::platform::grub
+include ::platform::collectd
 
 include ::platform::ceph
 include ::platform::ceph::monitor

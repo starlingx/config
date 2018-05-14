@@ -491,20 +491,6 @@ class openstack::nova::storage (
   exec { 'mount /dev/nova-local/instances_lv':
     unless  => 'mount | grep -q /etc/nova/instances',
     command => 'mount -t ext4 /dev/nova-local/instances_lv /etc/nova/instances',
-  } ->
-  exec { "Update nova-local monitoring state to ${local_monitor_state}":
-    command   => "rmon_resource_notify --resource-name nova-local --resource-type lvg --resource-state ${local_monitor_state} --volume-group nova-local",
-    logoutput => true,
-    tries     => 2,
-    try_sleep => 1,
-    returns   => [ 0, 1 ],
-  } ->
-  exec { 'Enable instance_lv monitoring':
-    command   => "rmon_resource_notify --resource-name /etc/nova/instances --resource-type mount --resource-state enabled --device /dev/mapper/nova--local-instances_lv --mount-point /etc/nova/instances",
-    logoutput => true,
-    tries     => 2,
-    try_sleep => 1,
-    returns   => [ 0, 1 ],
   }
 }
 

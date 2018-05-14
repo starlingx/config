@@ -52,6 +52,19 @@ platform::mtce::agent::params::heartbeat_period: 100
 platform::mtce::agent::params::heartbeat_failure_threshold: 10
 platform::mtce::agent::params::heartbeat_degrade_threshold: 6
 
+# influxdb configuration for collectd
+platform::influxdb::params::bind_address: ':25826'
+platform::influxdb::params::database: 'collectd'
+platform::influxdb::params::typesdb: '/usr/share/collectd/types.db'
+platform::influxdb::params::batch_size: 1000
+platform::influxdb::params::batch_pending: 5
+platform::influxdb::params::batch_timeout: '2s'
+platform::influxdb::params::read_buffer: 0
+
+# influxdb log ratation file
+platform::influxdb::logrotate::params::log_file_name: '/var/log/influxdb/influxdb.log'
+platform::influxdb::logrotate::params::log_file_size: '20M'
+platform::influxdb::logrotate::params::log_file_rotate: 10
 
 # postgresql
 postgresql::globals::needs_initdb: false

@@ -53,6 +53,10 @@ include ::platform::ceph
 include ::platform::ceph::monitor
 include ::platform::ceph::rgw
 
+include ::platform::influxdb
+include ::platform::influxdb::logrotate
+include ::platform::collectd
+
 include ::openstack::client
 include ::openstack::keystone
 include ::openstack::keystone::api

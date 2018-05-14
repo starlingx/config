@@ -724,16 +724,6 @@ class openstack::cinder::post
       require => Class['openstack::cinder'],
     }
   }
-
-  if $is_node_cinder_lvm {
-    exec { "Update cinder-volumes monitoring state to enabled":
-      command   => "rmon_resource_notify --resource-name cinder-volumes --resource-type lvg --resource-state enabled --volume-group cinder-volume",
-      logoutput => true,
-      tries     => 2,
-      try_sleep => 1,
-      returns   => [ 0, 1 ],
-    }
-  }
 }
 
 
