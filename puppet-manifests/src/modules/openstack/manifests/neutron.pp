@@ -172,8 +172,8 @@ class openstack::neutron::server {
   include ::neutron::keystone::authtoken
 
   class { '::neutron::server':
-    api_workers => $::platform::params::eng_workers,
-    rpc_workers => $::platform::params::eng_workers,
+    api_workers => $::platform::params::eng_workers_by_2,
+    rpc_workers => $::platform::params::eng_workers_by_2,
     sync_db => $::platform::params::init_database,
   }
 
