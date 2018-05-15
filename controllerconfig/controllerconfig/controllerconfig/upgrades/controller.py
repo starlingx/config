@@ -1077,7 +1077,7 @@ def extract_data_from_archive(archive, staging_dir, from_release, to_release):
     """Extracts the data from the archive to the staging directory"""
     tmp_platform_path = os.path.join(staging_dir, "opt", "platform")
     tmp_puppet_path = os.path.join(tmp_platform_path, "puppet",
-                                   from_release)
+                                   from_release, "hieradata")
     tmp_sysinv_path = os.path.join(tmp_platform_path, "sysinv", from_release)
     tmp_keyring_path = os.path.join(tmp_platform_path, ".keyring",
                                     from_release)
@@ -1097,7 +1097,7 @@ def extract_data_from_archive(archive, staging_dir, from_release, to_release):
 
     os.symlink(tmp_platform_path, PLATFORM_PATH)
 
-    extract_relative_directory(archive, "puppet", tmp_puppet_path)
+    extract_relative_directory(archive, "hieradata", tmp_puppet_path)
     extract_relative_directory(archive, ".keyring", tmp_keyring_path)
     extract_relative_directory(archive, "config/pxelinux.cfg",
                                tmp_pxelinux_path)
