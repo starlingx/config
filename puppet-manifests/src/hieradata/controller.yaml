@@ -115,6 +115,12 @@ haproxy::defaults_options:
   maxconn: '8000'
 
 
+# memcached
+# disable UDP listener to prevent DOS attack
+platform::memcached::params::udp_port: 0
+platform::memcached::params::max_connections: 8192
+platform::memcached::params::max_memory: 782
+
 # ceph
 ceph::public_addr: '127.0.0.1:5001'
 

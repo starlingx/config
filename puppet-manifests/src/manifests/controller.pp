@@ -43,6 +43,8 @@ include ::platform::sysinv::conductor
 include ::platform::mtce
 include ::platform::mtce::agent
 
+include ::platform::memcached
+
 include ::platform::nfv
 include ::platform::nfv::api
 
