@@ -54,7 +54,6 @@ IPV6_ADDRESS_MODES = [IPV6_DISABLED,
                       IPV6_LINK_LOCAL,
                       IPV6_POOL]
 
-
 # sysinv-vim-mtce definitions
 # Host Actions:
 UNLOCK_ACTION = 'unlock'
@@ -130,6 +129,10 @@ AVAILABILITY_AVAILABLE = 'available'
 AVAILABILITY_OFFLINE = 'offline'
 AVAILABILITY_ONLINE = 'online'
 AVAILABILITY_DEGRADED = 'degraded'
+
+DB_SUPPRESS_STATUS = 1
+DB_MGMT_AFFECTING = 2
+DB_DEGRADE_AFFECTING = 3
 
 # States
 ADMIN_UNLOCKED = 'unlocked'

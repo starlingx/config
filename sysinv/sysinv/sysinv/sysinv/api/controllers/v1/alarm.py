@@ -22,6 +22,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils as api_utils
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.common import constants
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.api.controllers.v1 import alarm_utils
@@ -87,6 +88,9 @@ class Alarm(base.APIBase):
     mgmt_affecting = wtypes.text
     "Whether the alarm prevents software management actions"
 
+    degrade_affecting = wtypes.text
+    "Wheter the alarm prevents filesystem resize actions"
+
     links = [link.Link]
     "A list containing a self link and associated community string links"
 
@@ -99,12 +103,14 @@ class Alarm(base.APIBase):
     def convert_with_links(cls, rpc_ialarm, expand=True):
         if isinstance(rpc_ialarm, tuple):
             ialarms = rpc_ialarm[0]
-            suppress_status = rpc_ialarm[1]
-            mgmt_affecting = rpc_ialarm[2]
+            suppress_status = rpc_ialarm[constants.DB_SUPPRESS_STATUS]
+            mgmt_affecting = rpc_ialarm[constants.DB_MGMT_AFFECTING]
+            degrade_affecting = rpc_ialarm[constants.DB_DEGRADE_AFFECTING]
         else:
             ialarms = rpc_ialarm
             suppress_status = rpc_ialarm.suppression_status
             mgmt_affecting = rpc_ialarm.mgmt_affecting
+            degrade_affecting = rpc_ialarm.degrade_affecting
 
         if not expand:
             ialarms['service_affecting'] = str(ialarms['service_affecting'])
@@ -114,7 +120,7 @@ class Alarm(base.APIBase):
         if not expand:
             ialm.unset_fields_except(['uuid', 'alarm_id', 'entity_instance_id',
                                       'severity', 'timestamp', 'reason_text',
-                                      'mgmt_affecting '])
+                                      'mgmt_affecting ', 'degrade_affecting'])
 
         ialm.entity_instance_id = \
             alarm_utils.make_display_id(ialm.entity_instance_id, replace=False)
@@ -123,6 +129,9 @@ class Alarm(base.APIBase):
 
         ialm.mgmt_affecting = str(
             not fm_api.FaultAPIs.alarm_allowed(ialm.severity, mgmt_affecting))
+
+        ialm.degrade_affecting = str(
+            not fm_api.FaultAPIs.alarm_allowed(ialm.severity, degrade_affecting))
 
         return ialm
 
@@ -245,6 +254,7 @@ class AlarmController(rest.RestController):
         kwargs["include_suppress"] = include_suppress
 
         if marker:
+
             marker_obj = objects.alarm.get_by_uuid(pecan.request.context,
                                                    marker)
             ialm = pecan.request.dbapi.ialarm_get_list(limit, marker_obj,

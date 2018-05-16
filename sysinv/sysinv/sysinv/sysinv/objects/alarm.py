@@ -6,6 +6,7 @@
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
+from sysinv.common import constants
 
 
 class Alarm(base.SysinvObject):
@@ -31,6 +32,7 @@ class Alarm(base.SysinvObject):
         'masked': utils.str_or_none,
         'suppression_status': utils.str_or_none,
         'mgmt_affecting': utils.str_or_none,
+        'degrade_affecting': utils.str_or_none,
          }
 
     @staticmethod
@@ -39,10 +41,12 @@ class Alarm(base.SysinvObject):
 
         if isinstance(db_server, tuple):
             db_server_fields = db_server[0]
-            db_suppress_status = db_server[1]
-            db_mgmt_affecting = db_server[2]
+            db_suppress_status = db_server[constants.DB_SUPPRESS_STATUS]
+            db_mgmt_affecting = db_server[constants.DB_MGMT_AFFECTING]
+            db_degrade_affecting = db_server[constants.DB_DEGRADE_AFFECTING]
             db_server_fields['suppression_status'] = db_suppress_status
             db_server_fields['mgmt_affecting'] = db_mgmt_affecting
+            db_server_fields['degrade_affecting'] = db_degrade_affecting
         else:
             db_server_fields = db_server
 

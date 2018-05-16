@@ -1131,6 +1131,16 @@ def add_alarm_mgmt_affecting_by_event_suppression(query):
     return query
 
 
+def add_alarm_degrade_affecting_by_event_suppression(query):
+    """Adds a degrade_affecting attribute from event_suppression to query.
+
+    :param query: Initial query.
+    :return: Modified query.
+    """
+    query = query.add_columns(models.EventSuppression.degrade_affecting)
+    return query
+
+
 class Connection(api.Connection):
     """SqlAlchemy connection."""
 
@@ -4494,6 +4504,7 @@ class Connection(api.Connection):
 
         query = add_alarm_filter_by_event_suppression(query, include_suppress=True)
         query = add_alarm_mgmt_affecting_by_event_suppression(query)
+        query = add_alarm_degrade_affecting_by_event_suppression(query)
 
         try:
             result = query.one()
@@ -4511,6 +4522,7 @@ class Connection(api.Connection):
             query = query.join(models.EventSuppression,
                                models.ialarm.alarm_id == models.EventSuppression.alarm_id)
             query = add_alarm_mgmt_affecting_by_event_suppression(query)
+            query = add_alarm_degrade_affecting_by_event_suppression(query)
 
         try:
             result = query.one()
@@ -4538,6 +4550,7 @@ class Connection(api.Connection):
             query = query.filter(models.ialarm.alarm_type.contains(alarm_type))
         query = add_alarm_filter_by_event_suppression(query, include_suppress)
         query = add_alarm_mgmt_affecting_by_event_suppression(query)
+        query = add_alarm_degrade_affecting_by_event_suppression(query)
         if limit is not None:
             query = query.limit(limit)
         alarm_list = []
@@ -4556,6 +4569,7 @@ class Connection(api.Connection):
         query = model_query(models.ialarm)
         query = add_alarm_filter_by_event_suppression(query, include_suppress)
         query = add_alarm_mgmt_affecting_by_event_suppression(query)
+        query = add_alarm_degrade_affecting_by_event_suppression(query)
 
         return _paginate_query(models.ialarm, limit, marker,
                                sort_key, sort_dir, query)

@@ -37,11 +37,12 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import health
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
-
+from fm_api import constants as fm_constants
 
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
@@ -356,14 +357,31 @@ def _check_controller_state():
         if (chost.administrative != constants.ADMIN_UNLOCKED or
                 chost.availability != constants.AVAILABILITY_AVAILABLE or
                 chost.operational != constants.OPERATIONAL_ENABLED):
-            raise wsme.exc.ClientSideError(
-                _("This operation requires controllers to be %s, %s, %s. "
-                  "Current status is %s, %s, %s" %
-                  (constants.ADMIN_UNLOCKED, constants.OPERATIONAL_ENABLED,
-                   constants.AVAILABILITY_AVAILABLE,
-                   chost.administrative, chost.operational,
-                   chost.availability))
-            )
+
+            # A node can become degraded due to not free space available in a FS
+            # and thus block the resize operation. If the only alarm that degrades
+            # a controller node is a filesystem alarm, we shouldn't block the resize
+            # as the resize itself will clear the degrade.
+            health_helper = health.Health(pecan.request.dbapi)
+            degrade_alarms = health_helper.get_alarms_degrade(
+                alarm_ignore_list=[fm_constants.FM_ALARM_ID_FS_USAGE],
+                entity_instance_id_filter="controller-")
+            allowed_resize = False
+            if (not degrade_alarms and
+                    chost.availability == constants.AVAILABILITY_DEGRADED):
+                allowed_resize = True
+
+            if not allowed_resize:
+                alarm_explanation = ""
+                if degrade_alarms:
+                    alarm_explanation = "Check alarms with the following IDs: %s" % str(degrade_alarms)
+                raise wsme.exc.ClientSideError(
+                    _("This operation requires controllers to be %s, %s, %s. "
+                    "Current status is %s, %s, %s. %s." %
+                    (constants.ADMIN_UNLOCKED, constants.OPERATIONAL_ENABLED,
+                    constants.AVAILABILITY_AVAILABLE,
+                    chost.administrative, chost.operational,
+                    chost.availability, alarm_explanation)))
 
     return True
 

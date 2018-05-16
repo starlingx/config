@@ -1046,6 +1046,7 @@ class EventSuppression(Base):
     suppression_status = Column('suppression_status', String(255))
     set_for_deletion = Column('set_for_deletion', Boolean)
     mgmt_affecting = Column('mgmt_affecting', String(255))
+    degrade_affecting = Column('degrade_affecting', String(255))
 
 
 class Routes(Base):

@@ -123,7 +123,7 @@ class Health(object):
         for db_alarm in db_alarms:
             if isinstance(db_alarm, tuple):
                 alarm = db_alarm[0]
-                mgmt_affecting = db_alarm[2]
+                mgmt_affecting = db_alarm[constants.DB_MGMT_AFFECTING]
             else:
                 alarm = db_alarm
                 mgmt_affecting = db_alarm.mgmt_affecting
@@ -136,6 +136,30 @@ class Health(object):
                 success = False
 
         return success, allowed, affecting
+
+    def get_alarms_degrade(self, alarm_ignore_list=[],
+            entity_instance_id_filter=""):
+        """Return all the alarms that cause the degrade"""
+        db_alarms = self._dbapi.ialarm_get_all(include_suppress=True)
+        degrade_alarms = []
+
+        for db_alarm in db_alarms:
+            if isinstance(db_alarm, tuple):
+                alarm = db_alarm[0]
+                degrade_affecting = db_alarm[constants.DB_DEGRADE_AFFECTING]
+            else:
+                alarm = db_alarm
+                degrade_affecting = db_alarm.degrade_affecting
+            # Ignore alarms that are part of the ignore list sent as parameter
+            # and also filter the alarms bases on entity instance id.
+            # If multiple alarms with the same ID exist, we only return the ID
+            # one time.
+            if not fm_api.FaultAPIs.alarm_allowed(alarm.severity, degrade_affecting):
+                if (entity_instance_id_filter in alarm.entity_instance_id and
+                        alarm.alarm_id not in alarm_ignore_list and
+                        alarm.alarm_id not in degrade_alarms):
+                    degrade_alarms.append(alarm.alarm_id)
+        return degrade_alarms
 
     def _check_ceph(self):
         """Checks the ceph health status"""

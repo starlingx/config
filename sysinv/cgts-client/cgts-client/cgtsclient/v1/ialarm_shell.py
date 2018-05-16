@@ -21,7 +21,7 @@ def _display_fault(fault):
     fields = ['uuid', 'alarm_id', 'alarm_state', 'entity_type_id', 'entity_instance_id',
               'timestamp', 'severity', 'reason_text', 'alarm_type',
               'probable_cause', 'proposed_repair_action', 'service_affecting',
-              'suppression', 'suppression_status', 'mgmt_affecting']
+              'suppression', 'suppression_status', 'mgmt_affecting', 'degrade_affecting']
     data = dict([(f, getattr(fault, f, '')) for f in fields])
     cgts_utils.print_dict(data, wrap=72)
 
@@ -57,6 +57,9 @@ def do_alarm_delete(cc, args={}):
 @utils.arg('--mgmt_affecting',
            action='store_true',
            help='Include management affecting status in output')
+@utils.arg('--degrade_affecting',
+           action='store_true',
+           help='Include degrade affecting status in output')
 def do_alarm_list(cc, args={}):
     '''List all active alarms.'''
 
@@ -70,6 +73,9 @@ def do_alarm_list(cc, args={}):
     if args.mgmt_affecting:
         include_mgmt_affecting = True
 
+    include_degrade_affecting = False
+    if args.degrade_affecting:
+        include_degrade_affecting = True
     faults = cc.ialarm.list(q=options.cli_to_array(args.query), include_suppress=include_suppress)
     for f in faults:
         cgts_utils.normalize_field_data(f, ['entity_type_id', 'entity_instance_id',
@@ -109,6 +115,14 @@ def do_alarm_list(cc, args={}):
         fields.insert(4, 'mgmt_affecting')
         # for best results, ensure width ratios add up to 1 (=100%)
         formatterSpec['mgmt_affecting'] = .08
+        formatterSpec['reason_text'] -= .05
+        formatterSpec['severity'] -= .03
+
+    if include_degrade_affecting:
+        field_labels.insert(5, 'Degrade Affecting')
+        fields.insert(5, 'degrade_affecting')
+        # for best results, ensure width ratios add up to 1 (=100%)
+        formatterSpec['degrade_affecting'] = .08
         formatterSpec['reason_text'] -= .05
         formatterSpec['severity'] -= .03
 
