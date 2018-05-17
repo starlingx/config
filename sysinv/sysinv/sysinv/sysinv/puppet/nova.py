@@ -410,17 +410,11 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
                     # (sysinv used device_id, nova uses product_id)
                     value = value.replace("device_id", "product_id")
 
-                    if p == constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_USER:
-                        aliases = value.rstrip(';').split(';')
-                        for alias_str in aliases:
-                            alias = dict((str(k), str(v)) for k, v in
-                                         (x.split('=') for x in
-                                          alias_str.split(',')))
-                            alias_config.append(alias)
-                    else:
+                    aliases = value.rstrip(';').split(';')
+                    for alias_str in aliases:
                         alias = dict((str(k), str(v)) for k, v in
                                      (x.split('=') for x in
-                                      value.split(',')))
+                                      alias_str.split(',')))
                         alias_config.append(alias)
 
         return alias_config
