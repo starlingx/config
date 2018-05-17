@@ -1035,6 +1035,15 @@ def get_network_type_list(interface):
         return []
 
 
+def is_pci_network_types(networktypelist):
+    """
+    Check if the network type consists of the combined PCI passthrough
+    and SRIOV network types.
+    """
+    return (len(constants.PCI_NETWORK_TYPES) == len(networktypelist) and
+            all(i in networktypelist for i in constants.PCI_NETWORK_TYPES))
+
+
 def get_primary_network_type(interface):
     """
     An interface can be associated with up to 2 network types but it can only
@@ -1051,6 +1060,10 @@ def get_primary_network_type(interface):
     networktypes = get_network_type_list(interface)
     if len(networktypes) > 1:
         networktypes = [n for n in networktypes if n != constants.NETWORK_TYPE_DATA]
+    # If the network type is the combined PCI passthrough and SRIOV then
+    # return pci-sriov as the primary network type
+    if is_pci_network_types(networktypes):
+        return constants.NETWORK_TYPE_PCI_SRIOV
     if len(networktypes) > 1:
         raise exception.CannotDeterminePrimaryNetworkType(
             iface=interface['uuid'], types=interface['networktype'])

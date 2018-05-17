@@ -714,6 +714,10 @@ class InterfaceCpeEthernet(InterfaceTestCase):
                               'group0-data1')
         self._create_ethernet('pthru', constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                               'group0-ext0')
+        self._create_ethernet('ptsriov',
+                              constants.NETWORK_TYPE_PCI_PASSTHROUGH + ',' +
+                              constants.NETWORK_TYPE_PCI_SRIOV,
+                              'group0-ext0')
         port, iface = (
             self._create_ethernet('slow', constants.NETWORK_TYPE_DATA,
                                   'group0-ext1'))

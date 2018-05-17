@@ -460,8 +460,9 @@ class InterfaceController(rest.RestController):
             elif '/sriov_numvfs' in p['path']:
                 temp_interface['sriov_numvfs'] = p['value']
         # If network type is not pci-sriov, reset the sriov-numvfs to zero
-        if temp_interface['sriov_numvfs'] is not None and \
-           temp_interface['networktype'] != constants.NETWORK_TYPE_PCI_SRIOV:
+        if (temp_interface['sriov_numvfs'] is not None and
+                temp_interface['networktype'] is not None and
+                constants.NETWORK_TYPE_PCI_SRIOV not in temp_interface['networktype']):
             temp_interface['sriov_numvfs'] = None
         _check_interface_sriov(temp_interface.as_dict(), ihost)
 
@@ -810,7 +811,9 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
     if 'networktype' in interface.keys() and interface['networktype'] == constants.NETWORK_TYPE_NONE:
         return interface
 
-    if ('networktype' in interface.keys() and interface['networktype'] == constants.NETWORK_TYPE_PCI_SRIOV and
+    networktypelist = cutils.get_network_type_list(interface)
+    if ('networktype' in interface.keys() and
+            constants.NETWORK_TYPE_PCI_SRIOV in networktypelist and
             'sriov_numvfs' not in interface.keys()):
 
         raise wsme.exc.ClientSideError(_("A network type of pci-sriov must specify "
@@ -819,12 +822,13 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
     if ('sriov_numvfs' in interface.keys() and interface['sriov_numvfs']
             is not None and int(interface['sriov_numvfs']) > 0 and
             ('networktype' not in interface.keys() or
-            interface['networktype'] != constants.NETWORK_TYPE_PCI_SRIOV)):
+             constants.NETWORK_TYPE_PCI_SRIOV not in interface['networktype'])):
 
         raise wsme.exc.ClientSideError(_("Number of SR-IOV VFs is specified but network "
             "type is not pci-sriov."))
 
-    if ('networktype' in interface.keys() and interface['networktype'] == constants.NETWORK_TYPE_PCI_SRIOV and
+    if ('networktype' in interface.keys() and
+            constants.NETWORK_TYPE_PCI_SRIOV in networktypelist and
             'sriov_numvfs' in interface.keys()):
 
         if interface['sriov_numvfs'] is None:
@@ -893,8 +897,10 @@ def _check_network_type_validity(networktypelist):
 
 
 def _check_network_type_count(networktypelist):
-    if networktypelist and len(networktypelist) != 1:
-        msg = _("Network type list may only contain at most one type")
+    if (networktypelist and len(networktypelist) != 1 and
+            not cutils.is_pci_network_types(networktypelist)):
+        msg = _("Network type list may only contain at most one type, "
+                "except for PCI network types.")
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -966,7 +972,12 @@ def _check_network_type_transition(interface, existing_interface):
     networktype = cutils.get_primary_network_type(interface)
     existing_networktype = cutils.get_primary_network_type(existing_interface)
     if networktype == existing_networktype:
-        return
+        if networktype == constants.NETWORK_TYPE_PCI_SRIOV:
+            if (len(cutils.get_network_type_list(interface)) ==
+                    len(cutils.get_network_type_list(existing_interface))):
+                return
+        else:
+            return
     if networktype and existing_networktype:
         msg = _("The network type of an interface cannot be changed without "
                 "first being reset back to '%s'." %

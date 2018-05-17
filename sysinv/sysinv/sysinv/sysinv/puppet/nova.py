@@ -574,7 +574,9 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         devices = []
         for iface in self.context['interfaces'].values():
             network_type = utils.get_primary_network_type(iface)
-            if network_type == constants.NETWORK_TYPE_PCI_PASSTHROUGH:
+            networktypes = utils.get_network_type_list(iface)
+            if (network_type == constants.NETWORK_TYPE_PCI_PASSTHROUGH or
+                    utils.is_pci_network_types(networktypes)):
                 port = interface.get_interface_port(self.context, iface)
                 device = {
                     'address': port['pciaddr'],
