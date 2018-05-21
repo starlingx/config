@@ -76,6 +76,7 @@ from sysinv.common import service
 from sysinv.common import utils as cutils
 from sysinv.common.retrying import retry
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
 from sysinv.conductor import openstack
 from sysinv.db import api as dbapi
@@ -149,6 +150,8 @@ class ConductorManager(service.PeriodicService):
         self.fm_api = None
         self.fm_log = None
         self._ceph = None
+        self._ceph_api = ceph.CephWrapper(
+            endpoint='http://localhost:5001/api/v0.1/')
 
         self._openstack = None
         self._api_token = None
@@ -8606,6 +8609,31 @@ class ConductorManager(service.PeriodicService):
         controller_0 = self.dbapi.ihost_get_by_hostname(
             constants.CONTROLLER_0_HOSTNAME)
 
+        # TODO: This code is only useful for supporting R5 to R6 upgrades.
+        #       Remove in future release.
+        # update crushmap and remove cache-tier on upgrade
+        if from_version == tsc.SW_VERSION_1803:
+            ceph_backend = StorageBackendConfig.get_backend(self.dbapi, constants.CINDER_BACKEND_CEPH)
+            if ceph_backend and ceph_backend.state == constants.SB_STATE_CONFIGURED:
+                try:
+                    response, body = self._ceph_api.osd_crush_rule_rm("cache_tier_ruleset",
+                                                                      body='json')
+                    if response.ok:
+                        LOG.info("Successfully removed cache_tier_ruleset "
+                                 "[ceph osd crush rule rm cache_tier_ruleset]")
+                        try:
+                            response, body = self._ceph_api.osd_crush_remove("cache-tier",
+                                                                             body='json')
+                            if response.ok:
+                                LOG.info("Successfully removed cache_tier "
+                                         "[ceph osd crush remove cache-tier]")
+                        except exception.CephFailure:
+                            LOG.warn("Failed to remove bucket cache-tier from crushmap")
+                            pass
+                except exception.CephFailure:
+                    LOG.warn("Failed to remove rule cache-tier from crushmap")
+                    pass
+
         if state in [constants.UPGRADE_ABORTING,
                 constants.UPGRADE_ABORTING_ROLLBACK]:
             if upgrade.state != constants.UPGRADE_ABORT_COMPLETING:
@@ -9338,12 +9366,10 @@ class ConductorManager(service.PeriodicService):
         response = self._openstack.cinder_prepare_db_for_volume_restore(context)
         return response
 
-    # TODO: remove this function after 1st 17.x release
-    #
     def get_software_upgrade_status(self, context):
         """
-        Software upgrade status is needed by ceph-manager to set require_jewel_osds
-        flag when upgrading from 16.10 to 17.x
+        Software upgrade status is needed by ceph-manager to take ceph specific
+        upgrade actions
         """
         upgrade = {
             'from_version': None,

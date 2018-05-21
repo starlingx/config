@@ -1463,21 +1463,19 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_ceph_object_pool_name'))
 
-    # TODO: remove this function after 1st 17.x release
-    #
     def get_software_upgrade_status(self, context):
         """
-        Software upgrade status is needed by ceph-manager to set
-        require_jewel_osds flag when upgrading from 16.10 to 17.x
+        Software upgrade status is needed by ceph-manager to take ceph specific
+        upgrade actions
 
         This rpcapi function is added to signal that conductor's
         get_software_upgrade_status function is used by an RPC client
 
-        ceph-manager however doesn't call rpcapi.get_software_upgrade_status
-        and instead it uses oslo_messaging to construct a call on
-        conductor's topic for this function. The reason is that sysinv
-        is using an old version of openstack common and messaging libraries
-        incompatible with the one used by ceph-manager.
+        ceph-manager however doesn't call rpcapi.get_software_upgrade_status and
+        instead it uses oslo_messaging to construct a call on conductor's topic
+        for this function. The reason is that sysinv is using an old version of
+        openstack common and messaging libraries incompatible with the one used
+        by ceph-manager.
         """
         return self.call(context,
                          self.make_msg('get_software_upgrade_status'))
