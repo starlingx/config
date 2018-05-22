@@ -55,6 +55,8 @@ class dcorch (
   $network_remote_port         = 9696,
   $patching_bind_port          = 25491,
   $patching_remote_port        = 5491,
+  $identity_bind_port          = 25000,
+  $identity_remote_port        = 5000,
 ) {
 
   include dcorch::params
@@ -146,6 +148,11 @@ class dcorch (
     'patching/bind_port' : value => $patching_bind_port;
     'patching/remote_host' : value => '0.0.0.0';
     'patching/remote_port' : value => $patching_remote_port;
+
+    'identity/bind_host' : value => $proxy_bind_host;
+    'identity/bind_port' : value => $identity_bind_port;
+    'identity/remote_host' : value => $proxy_remote_host;
+    'identity/remote_port' : value => $identity_remote_port;
   }
 
   dcorch_api_paste_ini {

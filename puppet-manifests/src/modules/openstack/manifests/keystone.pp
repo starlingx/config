@@ -21,7 +21,15 @@ class openstack::keystone (
 
   include ::platform::params
 
-  if !$::platform::params::region_config {
+  # In the case of a classical Multi-Region deployment, apply the Keystone
+  # controller configuration for Primary Region ONLY
+  # (i.e. on which region_config is False), since Keystone is a Shared service
+  #
+  # In the case of a Distributed Cloud deployment, apply the Keystone
+  # controller configuration for each SubCloud, since Keystone is also
+  # a localized service.
+  if (!$::platform::params::region_config or 
+      $::platform::params::distributed_cloud_role == 'subcloud')  {
     include ::platform::amqp::params
     include ::platform::network::mgmt::params
     include ::platform::drbd::cgcs::params
@@ -166,9 +174,18 @@ class openstack::keystone::bootstrap(
   $keystone_key_repo_path = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
   $eng_workers = $::platform::params::eng_workers
   $bind_host = '0.0.0.0'
-
+  
+  # In the case of a classical Multi-Region deployment, apply the Keystone
+  # controller configuration for Primary Region ONLY
+  # (i.e. on which region_config is False), since Keystone is a Shared service
+  #
+  # In the case of a Distributed Cloud deployment, apply the Keystone
+  # controller configuration for each SubCloud, since Keystone is also
+  # a localized service.
   if ($::platform::params::init_keystone and
-      !$::platform::params::region_config) {
+      (!$::platform::params::region_config or 
+       $::platform::params::distributed_cloud_role == 'subcloud'))  {
+
     include ::keystone::db::postgresql
 
     Class[$name] -> Class['::openstack::client']

@@ -13,6 +13,7 @@ class platform::dcorch::params (
   $cinder_api_proxy_port = 28776,
   $cinder_enable_ports   = false,
   $patch_api_proxy_port = 25491,
+  $identity_api_proxy_port = 25000,
 ) {
   include ::platform::params
 
@@ -73,6 +74,10 @@ class platform::dcorch::firewall
       service_name => 'dcorch-patch-api-proxy',
       ports => $patch_api_proxy_port,
     }
+    platform::firewall::rule { 'dcorch-identity-api-proxy':
+      service_name => 'dcorch-identity-api-proxy',
+      ports => $identity_api_proxy_port,
+    }
   }
 }
 
@@ -107,6 +112,11 @@ class platform::dcorch::haproxy
       server_name => 's-dcorch-patch-api-proxy',
       public_port => $patch_api_proxy_port,
       private_port => $patch_api_proxy_port,
+    }
+    platform::haproxy::proxy { 'dcorch-identity-api-proxy':
+      server_name => 's-dcorch-identity-api-proxy',
+      public_port => $identity_api_proxy_port,
+      private_port => $identity_api_proxy_port,
     }
   }
 }

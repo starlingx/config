@@ -9,6 +9,4 @@ export OS_USER_DOMAIN_NAME=<%= @admin_user_domain %>
 export OS_PROJECT_DOMAIN_NAME=<%= @admin_project_domain %>
 export OS_IDENTITY_API_VERSION=<%= @identity_api_version %>
 export OS_REGION_NAME=<%= @identity_region %>
-<%- if @keystone_identity_region != @identity_region -%>
 export OS_KEYSTONE_REGION_NAME=<%= @keystone_identity_region %>
-<%- end -%>

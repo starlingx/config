@@ -366,8 +366,10 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
         config_ksuser = True
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
         service_config = None
+        # If we are in Region config and Cinder is a shared service
+        # then don't configure an account for Cinder
         if self._region_config():
-            if self.get_region_name() == self._keystone_region_name():
+            if self.SERVICE_TYPE in self._get_shared_services():
                 service_config = self._get_service_config(self.SERVICE_NAME)
                 config_ksuser = False
             else:

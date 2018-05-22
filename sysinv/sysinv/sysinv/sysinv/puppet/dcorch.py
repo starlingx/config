@@ -31,6 +31,8 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
     CINDER_SERVICE_PORT = 28776
     PATCHING_SERVICE_PORT = 25491
     PATCHING_SERVICE_PATH = ''
+    IDENTITY_SERVICE_PORT = 25000
+    IDENTITY_SERVICE_PATH = 'v3'
 
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
@@ -84,6 +86,9 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::patching_proxy_internal_url':
                 self.get_proxy_internal_url(self.PATCHING_SERVICE_PORT,
                                             self.PATCHING_SERVICE_PATH),
+            'dcorch::keystone::auth::identity_proxy_internal_url':
+                self.get_proxy_internal_url(self.IDENTITY_SERVICE_PORT,
+                                            self.IDENTITY_SERVICE_PATH),
             'dcorch::keystone::auth::neutron_proxy_public_url':
                 self.get_proxy_public_url(self.NETWORKING_SERVICE_PORT,
                                           self.NETWORKING_SERVICE_PATH),
@@ -102,6 +107,9 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::patching_proxy_public_url':
                 self.get_proxy_public_url(self.PATCHING_SERVICE_PORT,
                                           self.PATCHING_SERVICE_PATH),
+            'dcorch::keystone::auth::identity_proxy_public_url':
+                self.get_proxy_internal_url(self.IDENTITY_SERVICE_PORT,
+                                            self.IDENTITY_SERVICE_PATH),
             'dcorch::keystone::auth::region': self.get_region_name(),
             'dcorch::keystone::auth::auth_name': ksuser,
             'dcorch::keystone::auth::service_name': self.SERVICE_NAME,

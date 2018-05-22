@@ -49,6 +49,8 @@ class PatchingPuppet(openstack.OpenstackBasePuppet):
             'patching::api::keystone_tenant': self._get_service_tenant_name(),
             'patching::api::keystone_auth_uri': patch_keystone_auth_uri,
             'patching::api::keystone_identity_uri': patch_keystone_identity_uri,
+            'patching::api::keystone_region_name':
+                self._get_service_region_name(self.SERVICE_NAME),
 
             'patching::api::keystone_user_domain':
                 self._get_service_user_domain_name(),

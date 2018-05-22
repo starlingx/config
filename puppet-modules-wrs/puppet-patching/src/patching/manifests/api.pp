@@ -17,6 +17,7 @@ class patching::api (
   $keystone_auth_uri          = false,
   $keystone_auth_version      = false,
   $keystone_identity_uri      = false,
+  $keystone_region_name       = 'RegionOne',
   $auth_type                  = 'password',
   $service_port               = '5000',
   $package_ensure             = 'latest',
@@ -54,9 +55,10 @@ class patching::api (
       'keystone_authtoken/auth_type':        value => $auth_type;
       'keystone_authtoken/project_name':     value => $keystone_tenant;
       'keystone_authtoken/username':         value => $keystone_user;
-      'keystone_authtoken/user_domain_name':    value => $keystone_user_domain;
+      'keystone_authtoken/user_domain_name': value => $keystone_user_domain;
       'keystone_authtoken/project_domain_name': value => $keystone_project_domain;
-      'keystone_authtoken/password':    value => $keystone_password, secret => true;
+      'keystone_authtoken/region_name':      value => $keystone_region_name;
+      'keystone_authtoken/password':         value => $keystone_password, secret => true;
     }
 
     if $keystone_auth_admin_prefix {

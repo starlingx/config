@@ -31,6 +31,14 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
     DEFAULT_DOMAIN_NAME = 'Default'
 
+    def _region_config(self):
+        # A wrapper over the Base region_config check.
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            return False
+        else:
+            return super(KeystonePuppet, self)._region_config()
+
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
         admin_username = self.get_admin_user_name()
@@ -81,7 +89,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'keystone::endpoint::public_url': self.get_public_url(),
             'keystone::endpoint::internal_url': self.get_internal_url(),
             'keystone::endpoint::admin_url': self.get_admin_url(),
-            'keystone::endpoint::region': self._endpoint_region_name(),
+            'keystone::endpoint::region': self._region_name(),
 
             'keystone::roles::admin::admin': admin_username,
 
@@ -94,9 +102,9 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'openstack::client::params::identity_region': self._region_name(),
             'openstack::client::params::identity_auth_url': self.get_auth_url(),
             'openstack::client::params::keystone_identity_region':
-                self.get_region_name(),
-            'openstack::client::params::auth_region': self.get_region_name(),
-
+                self._identity_specific_region_name(),
+            'openstack::client::params::auth_region':
+                self._identity_specific_region_name(),
             'openstack::keystone::params::api_version': self.SERVICE_PATH,
             'openstack::keystone::params::identity_uri':
                 self.get_identity_uri(),
@@ -107,7 +115,8 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             # The region in which the identity server can be found
             # and it could be different than the region where the
             # system resides
-            'openstack::keystone::params::region_name': self.get_region_name(),
+            'openstack::keystone::params::region_name':
+                self._identity_specific_region_name(),
             'openstack::keystone::params::service_create':
                 self._to_create_services(),
 
@@ -125,11 +134,12 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
         admin_password = self._get_keyring_password(self.ADMIN_SERVICE,
                                                     self.ADMIN_USER)
         db_connection = self._format_database_connection(self.SERVICE_NAME)
-        return {
+        config = {
             'keystone::admin_password': admin_password,
             'keystone::roles::admin::password': admin_password,
             'keystone::database_connection': db_connection,
         }
+        return config
 
     def _get_service_parameter_config(self):
         service_parameters = self._get_service_parameter_configs(
@@ -233,10 +243,14 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
                 pass
         return password_rule
 
-    def _endpoint_region_name(self):
-        if (self._distributed_cloud_role() ==
-                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-            return constants.SYSTEM_CONTROLLER_REGION
+    def _identity_specific_region_name(self):
+        """
+        Returns the Identity Region name based on the System mode:
+            If Multi-Region then Keystone is shared: return Primary Region
+            Else: Local Region
+        """
+        if (self._region_config()):
+            return self.get_region_name()
         else:
             return self._region_name()
 

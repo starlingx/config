@@ -106,11 +106,12 @@ include ::openstack::ironic::api
 
 include ::platform::dcmanager
 include ::platform::dcmanager::manager 
-include ::platform::dcmanager::api
 
 include ::platform::dcorch
 include ::platform::dcorch::engine
 include ::platform::dcorch::api_proxy
+include ::platform::dcmanager::api
+
 include ::platform::dcorch::snmp
 
 include ::platform::sm

@@ -27,18 +27,22 @@ class dcorch::keystone::auth (
   $public_url                    = 'http://127.0.0.1:8118/v1.0',
   $admin_url                     = 'http://127.0.0.1:8118/v1.0',
   $internal_url                  = 'http://127.0.0.1:8118/v1.0',
+  
   $neutron_proxy_internal_url    = 'http://127.0.0.1:29696',
   $nova_proxy_internal_url       = 'http://127.0.0.1:28774/v2.1',
   $sysinv_proxy_internal_url     = 'http://127.0.0.1:26385/v1',
   $cinder_proxy_internal_url_v2  = 'http://127.0.0.1:28776/v2/%(tenant_id)s',
   $cinder_proxy_internal_url_v3  = 'http://127.0.0.1:28776/v3/%(tenant_id)s',
   $patching_proxy_internal_url   = 'http://127.0.0.1:25491',
+  $identity_proxy_internal_url   = 'http://127.0.0.1:25000/v3',
+
   $neutron_proxy_public_url      = 'http://127.0.0.1:29696',
   $nova_proxy_public_url         = 'http://127.0.0.1:28774/v2.1',
   $sysinv_proxy_public_url       = 'http://127.0.0.1:26385/v1',
   $cinder_proxy_public_url_v2    = 'http://127.0.0.1:28776/v2/%(tenant_id)s',
   $cinder_proxy_public_url_v3    = 'http://127.0.0.1:28776/v3/%(tenant_id)s',
   $patching_proxy_public_url     = 'http://127.0.0.1:25491',
+  $identity_proxy_public_url     = 'http://127.0.0.1:25000/v3',
 ) {
   if $::platform::params::distributed_cloud_role =='systemcontroller' {
     keystone::resource::service_identity { 'dcorch':
@@ -114,6 +118,15 @@ class dcorch::keystone::auth (
       public_url   =>  $patching_proxy_public_url,
       admin_url    =>  $patching_proxy_internal_url,
       internal_url =>  $patching_proxy_internal_url
+    }
+    keystone_endpoint { "${region}/keystone::identity" :
+      ensure       =>  "present",
+      name         =>  "keystone",
+      type         =>  "identity",
+      region       =>  $region,
+      public_url   =>  $identity_proxy_public_url,
+      admin_url    =>  $identity_proxy_internal_url,
+      internal_url =>  $identity_proxy_internal_url
     }
   }
 }

@@ -379,11 +379,21 @@ class platform::sm
   }
 
   if $region_config {
-      exec { 'Deprovision OpenStack - Keystone (service-group-member)':
-        command => "sm-deprovision service-group-member cloud-services keystone",
-      } ->
-      exec { 'Deprovision OpenStack - Keystone (service)':
-        command => "sm-deprovision service keystone",
+      # In a default Multi-Region configuration, Keystone is running as a
+      # shared service in the Primary Region so need to deprovision that
+      # service in all non-Primary Regions. 
+      # However in the case of Distributed Cloud Multi-Region configuration,
+      # each Subcloud is running its own Keystone
+      if $::platform::params::distributed_cloud_role =='subcloud' {
+        $configure_keystone = true
+      } else {
+        exec { 'Deprovision OpenStack - Keystone (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services keystone",
+        } ->
+        exec { 'Deprovision OpenStack - Keystone (service)':
+          command => "sm-deprovision service keystone",
+        }
+        $configure_keystone = false
       }
 
       if $glance_region_name != $region_2_name {
@@ -413,10 +423,14 @@ class platform::sm
          }
       }
   } else {
-      exec { 'Configure OpenStack - Keystone':
-        command => "sm-configure service_instance keystone keystone \"config=/etc/keystone/keystone.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},os_auth_url=${os_auth_url}, \"",
-      }
+      $configure_keystone = true
       $configure_glance = true
+  }
+
+  if $configure_keystone {
+    exec { 'Configure OpenStack - Keystone':
+        command => "sm-configure service_instance keystone keystone \"config=/etc/keystone/keystone.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},os_auth_url=${os_auth_url}, \"",
+    }
   }
 
   if $configure_glance {
@@ -1174,6 +1188,12 @@ class platform::sm
     exec { 'Provision DCOrch-Snmp in SM (service dcorch-snmp)':
        command => "sm-provision service dcorch-snmp",
     } ->
+    exec { 'Provision DCOrch-Identity-Api-Proxy (service-group-member dcorch-identity-api-proxy)':
+       command => "sm-provision service-group-member distributed-cloud-services dcorch-identity-api-proxy",
+    } ->
+    exec { 'Provision DCOrch-Identity-Api-Proxy in SM (service dcorch-identity-api-proxy)':
+       command => "sm-provision service dcorch-identity-api-proxy",
+    } ->
     exec { 'Provision DCOrch-Sysinv-Api-Proxy (service-group-member dcorch-sysinv-api-proxy)':
        command => "sm-provision service-group-member distributed-cloud-services dcorch-sysinv-api-proxy",
     } ->
@@ -1209,6 +1229,9 @@ class platform::sm
     } ->
     exec { 'Configure OpenStack - DCOrch-Snmp':
       command => "sm-configure service_instance dcorch-snmp dcorch-snmp \"\"",
+    } ->
+    exec { 'Configure OpenStack - DCOrch-identity-api-proxy':
+      command => "sm-configure service_instance dcorch-identity-api-proxy dcorch-identity-api-proxy \"\"",
     } ->
     exec { 'Configure OpenStack - DCOrch-sysinv-api-proxy':
       command => "sm-configure service_instance dcorch-sysinv-api-proxy dcorch-sysinv-api-proxy \"\"",

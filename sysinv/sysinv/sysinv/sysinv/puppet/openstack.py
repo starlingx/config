@@ -139,7 +139,7 @@ class OpenstackBasePuppet(base.BasePuppet):
         return self._operator.keystone.get_identity_uri()
 
     def _keystone_region_name(self):
-        return self._operator.keystone.get_region_name()
+        return self._operator.keystone._identity_specific_region_name()
 
     def _get_service_region_name(self, service):
         if self._region_config():

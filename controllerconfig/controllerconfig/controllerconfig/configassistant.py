@@ -3488,12 +3488,6 @@ class ConfigAssistant():
     def apply_bootstrap_manifest(self):
         filename = None
         try:
-            if (self.system_dc_role ==
-                    sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-                filename = os.path.join(constants.HIERADATA_WORKDIR,
-                                        'systemcontroller.yaml')
-                utils.create_system_controller_config(filename)
-
             utils.apply_manifest(self.controller_address_0,
                                  sysinv_constants.CONTROLLER,
                                  'bootstrap',
