@@ -57,6 +57,7 @@ Requires: puppet-stdlib
 Requires: puppet-sysctl
 Requires: puppet-vcsrepo
 Requires: puppet-xinetd
+Requires: puppet-etcd
 
 # 3rdparty puppet modules
 Requires: puppet-boolean
