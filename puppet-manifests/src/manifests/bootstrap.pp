@@ -13,6 +13,7 @@ include ::platform::ldap::bootstrap
 include ::platform::drbd::bootstrap
 include ::platform::postgresql::bootstrap
 include ::platform::amqp::bootstrap
+include ::platform::etcd::bootstrap
 
 include ::openstack::keystone::bootstrap
 include ::openstack::client::bootstrap

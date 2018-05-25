@@ -97,6 +97,9 @@ class platform::sm
   $rabbitmq_server = '/usr/lib/rabbitmq/bin/rabbitmq-server'
   $rabbitmqctl     = '/usr/lib/rabbitmq/bin/rabbitmqctl'
 
+  include ::platform::kubernetes::params
+  $kubernetes_enabled             = $::platform::kubernetes::params::enabled
+
   ############ NFS Parameters ################
 
   # Platform NFS network is over the management network
@@ -831,6 +834,12 @@ class platform::sm
     command => "sm-configure service_instance platform-export-fs platform-export-fs \"fsid=0,directory=${platform_fs_directory},options=rw,sync,no_root_squash,no_subtree_check,clientspec=${platform_nfs_subnet_url},unlock_on_stop=true\"",
   }
 
+  # etcd
+  exec { 'Configure ETCD':
+    command => "sm-configure service_instance etcd etcd \"config=/etc/etcd/etcd.conf,user=root\"",
+  }
+
+
   if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
       exec { 'Configure Platform NFS':
         command => "sm-configure service_instance platform-nfs-ip platform-nfs-ip \"ip=${platform_nfs_ip_param_ip},cidr_netmask=${platform_nfs_ip_param_mask},nic=${mgmt_ip_interface},arp_count=7,dc=yes\"",
@@ -944,6 +953,24 @@ class platform::sm
     } ->
     exec { 'Provision drbd-patch-vault (service)':
       command => "sm-provision service drbd-patch-vault",
+    }
+  }
+  
+  # Configure ETCD for Kubernetes
+  if $kubernetes_enabled {    
+    exec { 'Provision ETCD (service-group-member)': 
+        command => "sm-provision service-group-member controller-services etcd",
+    } ->
+    exec { 'Provision ETCD (service)':
+      command => "sm-provision service etcd",
+    } 
+  }
+  else {
+    exec { 'Deprovision ETCD (service-group-member)':
+      command => "sm-deprovision service-group-member controller-services etcd",
+    } ->
+    exec { 'Deprovision ETCD (service)':
+      command => "sm-deprovision service etcd",
     }
   }
 

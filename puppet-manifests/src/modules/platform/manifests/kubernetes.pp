@@ -2,6 +2,7 @@ class platform::kubernetes::params (
   $enabled = false,
   $pod_network_cidr = undef,
   $apiserver_advertise_address = undef,
+  $etcd_endpoint = undef,
 ) { }
 
 class platform::kubernetes::kubeadm {
@@ -124,6 +125,7 @@ class platform::kubernetes::master
     include ::platform::kubernetes::kubeadm
     include ::platform::kubernetes::master::init
 
+    Class['::platform::etcd'] -> Class[$name]
     Class['::platform::docker::config'] -> Class[$name]
     Class['::platform::kubernetes::kubeadm'] ->
     Class['::platform::kubernetes::master::init']

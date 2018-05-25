@@ -17,6 +17,7 @@ LOG = logging.getLogger(__name__)
 
 class KubernetesPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for kubernetes configuration"""
+    ETCD_SERVICE_PORT = '2379'
 
     def get_system_config(self):
         config = {}
@@ -27,6 +28,8 @@ class KubernetesPuppet(base.BasePuppet):
                      '192.168.0.0/16',
                  'platform::kubernetes::params::apiserver_advertise_address':
                      self._get_management_address(),
+                 'platform::kubernetes::params::etcd_endpoint':
+                     self._get_etcd_endpoint(),
                  })
 
         return config
@@ -63,3 +66,9 @@ class KubernetesPuppet(base.BasePuppet):
                             'Failed to generate bootstrap token')
 
         return config
+
+    def _get_etcd_endpoint(self):
+        addr = self._format_url_address(self._get_management_address())
+        protocol = "http"
+        url = "%s://%s:%s" % (protocol, str(addr), str(self.ETCD_SERVICE_PORT))
+        return url
