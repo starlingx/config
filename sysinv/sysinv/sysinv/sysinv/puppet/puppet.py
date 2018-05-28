@@ -47,6 +47,7 @@ from . import platform
 from . import storage
 from . import device
 from . import service_parameter
+from . import kubernetes
 
 
 LOG = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ class PuppetOperator(object):
         self.sysinv = inventory.SystemInventoryPuppet(self)
         self.device = device.DevicePuppet(self)
         self.ironic = ironic.IronicPuppet(self)
+        self.kubernetes = kubernetes.KubernetesPuppet(self)
         self.service_parameter = service_parameter.ServiceParamPuppet(self)
 
     @property
@@ -217,6 +219,7 @@ class PuppetOperator(object):
             config.update(self.panko.get_system_config())
             config.update(self.dcmanager.get_system_config())
             config.update(self.dcorch.get_system_config())
+            config.update(self.kubernetes.get_system_config())
             # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_system_config())
 

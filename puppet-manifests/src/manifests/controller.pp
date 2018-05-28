@@ -30,6 +30,7 @@ include ::platform::amqp::rabbitmq
 include ::platform::postgresql::server
 include ::platform::haproxy::server
 include ::platform::grub
+include ::platform::kubernetes::master
 
 include ::platform::patching
 include ::platform::patching::api

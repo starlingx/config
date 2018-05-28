@@ -414,6 +414,10 @@ def main():
             do_provision = True
         elif sys.argv[arg] == "--allow-ssh":
             allow_ssh = True
+        elif sys.argv[arg] == "--kubernetes":
+            # This is a temporary flag for use during development. Once things
+            # are stable, we will remove it and make kubernetes the default.
+            options['kubernetes'] = True
         else:
             print "Invalid option. Use --help for more information."
             exit(1)

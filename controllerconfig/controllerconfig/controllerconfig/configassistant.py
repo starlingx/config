@@ -300,7 +300,7 @@ def get_tboot_info():
 class ConfigAssistant():
     """Allow user to do the initial configuration."""
 
-    def __init__(self, labmode=False, **kwargs):
+    def __init__(self, labmode=False, kubernetes=False, **kwargs):
         """Constructor
 
         The values assigned here are used as the defaults if the user does not
@@ -308,6 +308,8 @@ class ConfigAssistant():
         """
 
         self.labmode = labmode
+        # Temporary flag to be removed once kubernetes installs are the default
+        self.kubernetes = kubernetes
 
         self.config_uuid = "install"
 
@@ -3643,7 +3645,8 @@ class ConfigAssistant():
                         'vswitch_type': str(self.vswitch_type),
                         'shared_services': str(self.shared_services),
                         'sdn_enabled': self.enable_sdn,
-                        'https_enabled': self.enable_https}
+                        'https_enabled': self.enable_https,
+                        'kubernetes_enabled': self.kubernetes}
 
         system_type = utils.get_system_type()
 
