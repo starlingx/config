@@ -52,6 +52,8 @@ class platform::kubernetes::master
   if $enabled {
     include ::platform::kubernetes::master::init
 
+    Class['::platform::docker::config'] -> Class[$name]
+ 
     $repo_file = "[kubernetes]
       name=Kubernetes
       baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
@@ -86,12 +88,6 @@ class platform::kubernetes::master
     } ->
     exec { "update kernel parameters for iptables":
       command => "sysctl --system",
-    } ->
-
-    # Start docker - will move to another manifest.
-    service { 'docker':
-      ensure => 'running',
-      enable => true,
     } ->
 
     # Update kubelet configuration. Should probably just patch the kubelet

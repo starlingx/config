@@ -5,6 +5,8 @@ class platform::ceph::params(
   $authentication_type = 'none',
   $mon_lv_name = 'ceph-mon-lv',
   $mon_lv_size = 0,
+  $mon_fs_type = 'ext4',
+  $mon_fs_options = ' ',
   $mon_mountpoint = '/var/lib/ceph/mon',
   $mon_0_host = undef,
   $mon_0_ip = undef,
@@ -88,6 +90,8 @@ class platform::ceph::monitor
       lv_name    => $mon_lv_name,
       lv_size    => $mon_lv_size,
       mountpoint => $mon_mountpoint,
+      fs_type    => $mon_fs_type,
+      fs_options => $mon_fs_options,
     } -> Class['::ceph']
 
     file { "/etc/pmon.d/ceph.conf":

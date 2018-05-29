@@ -5269,6 +5269,8 @@ class ConductorManager(service.PeriodicService):
                         'platform::filesystem::img_conversions::runtime',
                     constants.FILESYSTEM_NAME_SCRATCH:
                         'platform::filesystem::scratch::runtime',
+                    constants.FILESYSTEM_NAME_DOCKER:
+                        'platform::filesystem::docker::runtime',
                     constants.FILESYSTEM_NAME_DATABASE:
                         'platform::drbd::pgsql::runtime',
                     constants.FILESYSTEM_NAME_CGCS:
@@ -6062,6 +6064,8 @@ class ConductorManager(service.PeriodicService):
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
         region_config = system.capabilities.get('region_config', False)
+        kubernetes_config = system.capabilities.get('kubernetes_enabled', False)
+
         LOG.info("Local  Region Name: %s" % system.region_name)
         # handle region mode case
         if region_config:
@@ -6357,6 +6361,22 @@ class ConductorManager(service.PeriodicService):
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_EXTENSION],
             'replicated': True,
+        }
+        LOG.info("Creating FS:%s:%s %d" % (
+            data['name'], data['logical_volume'], data['size']))
+        self.dbapi.controller_fs_create(data)
+
+        if kubernetes_config:
+            docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
+        else:
+            docker_lv_size = constants.DEFAULT_DOCKER_STOR_SIZE
+
+        data = {
+            'name': constants.FILESYSTEM_NAME_DOCKER,
+            'size': docker_lv_size,
+            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                constants.FILESYSTEM_NAME_DOCKER],
+            'replicated': False,
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -8651,13 +8671,16 @@ class ConductorManager(service.PeriodicService):
     def get_controllerfs_lv_sizes(self, context):
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
+
         lvdisplay_command = 'lvdisplay --columns --options lv_size,lv_name ' \
                             '--units g --noheading --nosuffix ' \
                             '/dev/cgts-vg/pgsql-lv /dev/cgts-vg/backup-lv ' \
                             '/dev/cgts-vg/cgcs-lv ' \
                             '/dev/cgts-vg/img-conversions-lv ' \
                             '/dev/cgts-vg/scratch-lv ' \
-                            '/dev/cgts-vg/extension-lv '
+                            '/dev/cgts-vg/extension-lv '\
+                            '/dev/cgts-vg/docker-lv '
+
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                 tsc.system_type != constants.TIS_AIO_BUILD):
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/patch-vault-lv '

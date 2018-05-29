@@ -1,5 +1,4 @@
 class platform::filesystem::params (
-  $fs_type = 'ext4',
   $vg_name = 'cgts-vg',
 ) {}
 
@@ -8,6 +7,8 @@ define platform::filesystem (
   $lv_name,
   $lv_size,
   $mountpoint,
+  $fs_type,
+  $fs_options
 ) {
   include ::platform::filesystem::params
   $vg_name = $::platform::filesystem::params::vg_name
@@ -25,7 +26,8 @@ define platform::filesystem (
   # create filesystem
   filesystem { $device:
     ensure  => present,
-    fs_type => 'ext4',
+    fs_type => $fs_type,
+    options => $fs_options,
   } ->
 
   file { $mountpoint:
@@ -41,7 +43,7 @@ define platform::filesystem (
     ensure => 'mounted',
     device => "${device}",
     options => 'defaults',
-    fstype => $::platform::filesystem::params::fs_type,
+    fstype => $fs_type,
   } ->
 
   # The above mount resource doesn't actually remount devices that were already present in /etc/fstab, but were
@@ -86,7 +88,9 @@ class platform::filesystem::backup::params (
   $lv_name = 'backup-lv',
   $lv_size = '5',
   $mountpoint = '/opt/backups',
-  $devmapper = '/dev/mapper/cgts--vg-backup--lv'
+  $devmapper = '/dev/mapper/cgts--vg-backup--lv',
+  $fs_type = 'ext4',
+  $fs_options = ' '
 ) {}
 
 class platform::filesystem::backup
@@ -96,15 +100,18 @@ class platform::filesystem::backup
     lv_name => $lv_name,
     lv_size => $lv_size,
     mountpoint => $mountpoint,
+    fs_type => $fs_type,
+    fs_options => $fs_options
   }
 }
-
 
 class platform::filesystem::scratch::params (
   $lv_size = '8',
   $lv_name = 'scratch-lv',
   $mountpoint = '/scratch',
-  $devmapper = '/dev/mapper/cgts--vg-scratch--lv'
+  $devmapper = '/dev/mapper/cgts--vg-scratch--lv',
+  $fs_type = 'ext4',
+  $fs_options = ' '
 ) { }
 
 class platform::filesystem::scratch
@@ -114,15 +121,39 @@ class platform::filesystem::scratch
     lv_name => $lv_name,
     lv_size => $lv_size,
     mountpoint => $mountpoint,
+    fs_type => $fs_type,
+    fs_options => $fs_options
   }
 }
 
+class platform::filesystem::docker::params (
+  $lv_size = '1',
+  $lv_name = 'docker-lv',
+  $mountpoint = '/var/lib/docker',
+  $devmapper = '/dev/mapper/cgts--vg-docker--lv',
+  $fs_type = 'xfs',
+  $fs_options = '-n ftype=1',
+) { }
+
+class platform::filesystem::docker
+  inherits ::platform::filesystem::docker::params {
+
+  platform::filesystem { $lv_name:
+    lv_name => $lv_name,
+    lv_size => $lv_size,
+    mountpoint => $mountpoint,
+    fs_type => $fs_type,
+    fs_options => $fs_options
+  }
+}
 
 class platform::filesystem::img_conversions::params (
   $lv_size = '8',
   $lv_name = 'img-conversions-lv',
   $mountpoint = '/opt/img-conversions',
-  $devmapper = '/dev/mapper/cgts--vg-img--conversions--lv'
+  $devmapper = '/dev/mapper/cgts--vg-img--conversions--lv',
+  $fs_type = 'ext4',
+  $fs_options = ' '
 ) {}
 
 class platform::filesystem::img_conversions
@@ -134,6 +165,8 @@ class platform::filesystem::img_conversions
     lv_name    => $lv_name,
     lv_size    => $lv_size,
     mountpoint => $mountpoint,
+    fs_type    => $fs_type,
+    fs_options => $fs_options
   }
 }
 
@@ -141,6 +174,7 @@ class platform::filesystem::img_conversions
 class platform::filesystem::controller {
   include ::platform::filesystem::backup
   include ::platform::filesystem::scratch
+  include ::platform::filesystem::docker
   include ::platform::filesystem::img_conversions
 }
 
@@ -166,6 +200,21 @@ class platform::filesystem::scratch::runtime {
   $lv_name = $::platform::filesystem::scratch::params::lv_name
   $lv_size = $::platform::filesystem::scratch::params::lv_size
   $devmapper = $::platform::filesystem::scratch::params::devmapper
+
+  platform::filesystem::resize { $lv_name:
+    lv_name => $lv_name,
+    lv_size => $lv_size,
+    devmapper => $devmapper,
+  }
+}
+
+
+class platform::filesystem::docker::runtime {
+
+  include ::platform::filesystem::docker::params
+  $lv_name = $::platform::filesystem::docker::params::lv_name
+  $lv_size = $::platform::filesystem::docker::params::lv_size
+  $devmapper = $::platform::filesystem::docker::params::devmapper
 
   platform::filesystem::resize { $lv_name:
     lv_name => $lv_name,

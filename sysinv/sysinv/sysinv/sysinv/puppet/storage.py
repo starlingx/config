@@ -66,6 +66,11 @@ class StoragePuppet(base.BasePuppet):
                     'platform::drbd::patch_vault::params::lv_size':
                         controller_fs.size,
                 })
+            elif controller_fs.name == constants.FILESYSTEM_NAME_DOCKER:
+                config.update({
+                    'platform::filesystem::docker::params::lv_size':
+                        controller_fs.size
+                })
 
         return config
 
