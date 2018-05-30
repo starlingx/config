@@ -16,11 +16,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
 
-import copy
 import jsonpatch
 
 import pecan
@@ -131,6 +130,10 @@ class ControllerFs(base.APIBase):
         # never expose the isystem_id attribute
         controller_fs.isystem_id = wtypes.Unset
 
+        # we display the cgcs file system as glance to the customer
+        if controller_fs.name == constants.FILESYSTEM_NAME_CGCS:
+            controller_fs.name = constants.FILESYSTEM_DISPLAY_NAME_CGCS
+
         # never expose the isystem_id attribute, allow exposure for now
         # controller_fs.forisystemid = wtypes.Unset
         controller_fs.links = [
@@ -223,7 +226,7 @@ def _check_relative_controller_multi_fs(controller_fs_new_list):
         raise wsme.exc.ClientSideError(_("backup size of %d is "
                                          "insufficient. "
                                          "Minimum backup size of %d is "
-                                         "required based upon cgcs size %d "
+                                         "required based upon glance size %d "
                                          "and database size %d. "
                                          "Rejecting modification "
                                          "request." %
@@ -279,7 +282,7 @@ def _check_controller_multi_fs(controller_fs_new_list,
         if ceph_mon_gib_new:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), cgcs, img-conversions, "
+                "(doubled for upgrades), glance, img-conversions, "
                 "scratch, backup, extension and ceph-mon exceeds "
                 "growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
@@ -287,7 +290,7 @@ def _check_controller_multi_fs(controller_fs_new_list,
         else:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), cgcs, img-conversions, scratch, "
+                "(doubled for upgrades), glance, img-conversions, scratch, "
                 "backup and extension exceeds growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
             )
@@ -333,7 +336,7 @@ def _check_relative_controller_fs(controller_fs_new, controller_fs_list):
                                          "insufficient. "
                                          "Minimum backup size of %d is "
                                          "required based on upon "
-                                         "cgcs=%d and database=%d and "
+                                         "glance=%d and database=%d and "
                                          "backup overhead of %d. "
                                          "Rejecting modification "
                                          "request." %
@@ -596,7 +599,7 @@ def _check_controller_fs(controller_fs_new=None,
         if ceph_mon_gib_new:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), cgcs, img-conversions, "
+                "(doubled for upgrades), glance, img-conversions, "
                 "scratch, backup, extension and ceph-mon exceeds "
                 "growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
@@ -604,7 +607,7 @@ def _check_controller_fs(controller_fs_new=None,
         else:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), cgcs, img-conversions, scratch, "
+                "(doubled for upgrades), glance, img-conversions, scratch, "
                 "backup and extension exceeds growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
             )
@@ -761,138 +764,7 @@ class ControllerFsController(rest.RestController):
                          body=[ControllerFsPatchType])
     def patch(self, controller_fs_uuid, patch):
         """Update the current controller_fs configuration."""
-
-        if self._from_isystems:
-            raise exception.OperationNotPermitted
-
-        rpc_controller_fs = objects.controller_fs.get_by_uuid(
-            pecan.request.context, controller_fs_uuid)
-
-        # Determine the action type from the patch request.
-        action = None
-
-        for p in patch:
-            if p['path'] == '/action':
-                value = p['value']
-                patch.remove(p)
-                if value == constants.INSTALL_ACTION:
-                    action = value
-                LOG.info("Removed action from patch %s" % patch)
-                break
-
-        patch_obj = jsonpatch.JsonPatch(patch)
-        if action == constants.INSTALL_ACTION:
-            state_rel_path = ['/uuid', '/id', '/forisystemid', '/isystem_uuid']
-        else:
-            state_rel_path = ['/uuid', '/id', '/forisystemid', '/isystem_uuid',
-                              '/state']
-        if any(p['path'] in state_rel_path for p in patch_obj):
-            raise wsme.exc.ClientSideError(_("The following fields can not be "
-                                             "modified: %s" %
-                                             state_rel_path))
-
-        for p in patch_obj:
-            if p['path'] == '/isystem_uuid':
-                isystem = objects.system.get_by_uuid(pecan.request.context,
-                                                     p['value'])
-                p['path'] = '/forisystemid'
-                p['value'] = isystem.id
-                break
-
-        LOG.info("Modifying filesystem '%s'" % rpc_controller_fs['name'])
-
-        # If a drbd sync is in progress do not allow modification of replicated
-        # filesystems until it is completed.
-        if rpc_controller_fs['replicated'] and utils.is_drbd_fs_syncing():
-            raise wsme.exc.ClientSideError(
-                _(
-                    "A drbd sync operation is currently in progress. "
-                    "Retry again later.")
-            )
-
-        controller_fs_orig = copy.deepcopy(rpc_controller_fs)
-
-        try:
-            controller_fs_new = ControllerFs(**jsonpatch.apply_patch(
-                rpc_controller_fs.as_dict(),
-                patch_obj))
-
-        except utils.JSONPATCH_EXCEPTIONS as e:
-            raise exception.PatchError(patch=patch, reason=e)
-
-        controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
-
-        # Update only the fields that have changed
-        for field in objects.controller_fs.fields:
-            if rpc_controller_fs[field] != controller_fs_new.as_dict()[field]:
-                rpc_controller_fs[field] = controller_fs_new.as_dict()[field]
-
-        filesystem_name = controller_fs_new.name
-
-        reinstall_required = False
-        reboot_required = False
-
-        LOG.info("ControllerFs reinstall_required: %s reboot_required: %s"
-                 " updated_filesystems : %s" %
-                 (reinstall_required, reboot_required, filesystem_name))
-
-        if not cutils.is_int_like(controller_fs_new.size):
-            raise wsme.exc.ClientSideError(
-                _("%s size must be an integer." % controller_fs_new.size))
-
-        if controller_fs_new.size == controller_fs_orig.size:
-            raise wsme.exc.ClientSideError(
-                _(
-                    "The Filesystem size was not modified. Enter a new size.")
-            )
-
-        if controller_fs_new.name not in constants.SUPPORTED_FILEYSTEM_LIST:
-            raise wsme.exc.ClientSideError(
-                _('"%s" is not a valid filesystem.' % controller_fs_new.name))
-
-        cgtsvg_growth_gib = _check_controller_multi_fs_data(
-            pecan.request.context, [controller_fs_new], [filesystem_name])
-
-        if action != constants.INSTALL_ACTION:
-            # We do not allow a drbd resize if another one is in progress
-            if utils.is_drbd_fs_resizing():
-                raise wsme.exc.ClientSideError(
-                    _(
-                        "A resize file system operation is currently in "
-                        "progress. Retry again later.")
-                )
-            else:
-                if _check_controller_state():
-                    _check_controller_fs(
-                        controller_fs_new=controller_fs_new.as_dict(),
-                        cgtsvg_growth_gib=cgtsvg_growth_gib,
-                        controller_fs_list=controller_fs_list)
-                    if controller_fs_new.replicated:
-                        rpc_controller_fs['state'] = \
-                            constants.CONTROLLER_FS_RESIZING_IN_PROGRESS
-
-        try:
-            rpc_controller_fs.save()
-
-            if action != constants.INSTALL_ACTION:
-                # perform rpc to conductor to perform config apply
-                pecan.request.rpcapi.update_storage_config(
-                    pecan.request.context,
-                    update_storage=False,
-                    reinstall_required=reinstall_required,
-                    reboot_required=reboot_required,
-                    filesystem_list=[filesystem_name]
-                )
-
-            return ControllerFs.convert_with_links(rpc_controller_fs)
-
-        except Exception as e:
-            msg = _("Failed to update the Filesystem size")
-            if e == exception.HTTPNotFound:
-                msg = _("ControllerFs update failed: controller_fs_new %s : "
-                        " patch %s"
-                        % (controller_fs_new.as_dict(), patch))
-            raise wsme.exc.ClientSideError(msg)
+        raise exception.OperationNotPermitted
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(types.uuid, [ControllerFsPatchType])
@@ -903,8 +775,6 @@ class ControllerFsController(rest.RestController):
         if self._from_isystems and not isystem_uuid:
             raise exception.InvalidParameterValue(_(
                 "System id not specified."))
-
-        patch_obj_list = jsonpatch.JsonPatch(patch)
 
         # Validate input filesystem names
         controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
@@ -933,33 +803,38 @@ class ControllerFsController(rest.RestController):
             p_obj_list = jsonpatch.JsonPatch(p_list)
             for p_obj in p_obj_list:
                 if p_obj['path'] == '/name':
-                    fs_name = p_obj['value']
+                    fs_display_name = p_obj['value']
+                    if fs_display_name == constants.FILESYSTEM_DISPLAY_NAME_CGCS:
+                        fs_name = constants.FILESYSTEM_NAME_CGCS
+                    else:
+                        fs_name = fs_display_name
                 elif p_obj['path'] == '/size':
                     size = p_obj['value']
 
-            if fs_name not in valid_fs_list.keys():
+            if fs_name not in valid_fs_list.keys() or fs_display_name == constants.FILESYSTEM_NAME_CGCS:
                 msg = _("ControllerFs update failed: invalid filesystem "
-                        "'%s' " % fs_name)
+                        "'%s' " % fs_display_name)
                 raise wsme.exc.ClientSideError(msg)
             elif not cutils.is_int_like(size):
                 msg = _("ControllerFs update failed: filesystem '%s' "
-                        "size must be an integer " % fs_name)
+                        "size must be an integer " % fs_display_name)
                 raise wsme.exc.ClientSideError(msg)
             elif int(size) <= int(valid_fs_list[fs_name]):
                 msg = _("ControllerFs update failed: size for filesystem '%s' "
-                        "should be bigger than %s " % (fs_name, valid_fs_list[fs_name]))
+                        "should be bigger than %s " % (
+                            fs_display_name, valid_fs_list[fs_name]))
                 raise wsme.exc.ClientSideError(msg)
             elif (fs_name == constants.FILESYSTEM_NAME_CGCS and
-               StorageBackendConfig.get_backend(pecan.request.dbapi,
-                                                constants.CINDER_BACKEND_CEPH)):
+                  StorageBackendConfig.get_backend(pecan.request.dbapi,
+                                                   constants.CINDER_BACKEND_CEPH)):
                 if force_resize:
                     LOG.warn("Force resize ControllerFs: %s, though Ceph "
-                             "storage backend is configured" % fs_name)
+                             "storage backend is configured" % fs_display_name)
                 else:
                     raise wsme.exc.ClientSideError(
                         _("ControllerFs %s size is not modifiable as Ceph is "
                           "configured. Update size via Ceph Storage Pools." %
-                          fs_name))
+                          fs_display_name))
 
             if fs_name in constants.SUPPORTED_REPLICATED_FILEYSTEM_LIST:
                 if utils.is_drbd_fs_resizing():
@@ -976,7 +851,11 @@ class ControllerFsController(rest.RestController):
             for p_list in patch:
                 p_obj_list = jsonpatch.JsonPatch(p_list)
                 for p_obj in p_obj_list:
-                    if p_obj['path'] == '/name' and p_obj['value'] == fs['name']:
+                    if p_obj['path'] == '/name':
+                        if p_obj['value'] == constants.FILESYSTEM_DISPLAY_NAME_CGCS:
+                            p_obj['value'] = constants.FILESYSTEM_NAME_CGCS
+
+                    if p_obj['value'] == fs['name']:
                         try:
                             controller_fs_list_new += [ControllerFs(
                                       **jsonpatch.apply_patch(fs.as_dict(), p_obj_list))]
@@ -1028,47 +907,4 @@ class ControllerFsController(rest.RestController):
     @wsme_pecan.wsexpose(ControllerFs, body=ControllerFs)
     def post(self, controllerfs):
         """Create a new controller_fs."""
-
-        if self._from_isystems:
-            raise exception.OperationNotPermitted
-
-        controller_fs_new = controllerfs.as_dict()
-        controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
-        fs_name = controller_fs_new['name']
-
-        LOG.info('Create controller fs "%s".' % fs_name)
-
-        for fs in controller_fs_list:
-            if fs['name'] == fs_name:
-                raise wsme.exc.ClientSideError(
-                    _('Filesystem "%s" already exists.' % fs_name))
-
-        if not cutils.is_int_like(controller_fs_new['size']):
-            raise wsme.exc.ClientSideError(
-                _("%s size must be an integer." % controller_fs_new['size']))
-
-        if fs_name not in constants.SUPPORTED_FILEYSTEM_LIST:
-            raise wsme.exc.ClientSideError(
-                _('"%s" is not a valid filesystem.' % fs_name))
-
-        if (controller_fs_new['logical_volume']
-                not in constants.SUPPORTED_LOGICAL_VOLUME_LIST):
-            raise wsme.exc.ClientSideError(
-                _("%s is not a valid logical volume." %
-                  controller_fs_new['logical_volume']))
-
-        if (fs_name in constants.SUPPORTED_REPLICATED_FILEYSTEM_LIST and not
-                controller_fs_new['replicated']):
-            raise wsme.exc.ClientSideError(
-                _('Filesystem "%s" must be replicated.' % fs_name))
-
-        try:
-            rpc_controller_fs = pecan.request.dbapi.controller_fs_create(
-                controller_fs_new)
-
-            return ControllerFs.convert_with_links(rpc_controller_fs)
-
-        except Exception as e:
-            msg = _('Failed to create the Filesystem "%s".' % fs_name)
-            LOG.error("%s with exception %s" % (msg, e))
-            raise wsme.exc.ClientSideError(msg)
+        raise exception.OperationNotPermitted
