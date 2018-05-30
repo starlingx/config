@@ -1,0 +1,18 @@
+[Unit]
+Description=storageconfig service
+After=syslog.target network.target remote-fs.target sw-patch.service
+After=opt-platform.service sysinv-agent.service
+After=network-online.target
+Before=config.service
+
+[Service]
+Type=simple
+ExecStart=/etc/init.d/storage_config start
+ExecStop=
+ExecReload=
+StandardOutput=syslog+console
+StandardError=syslog+console
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

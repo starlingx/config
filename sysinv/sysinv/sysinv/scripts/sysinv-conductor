@@ -1,0 +1,362 @@
+#!/bin/sh
+#
+# Copyright (c) 2013-2014, 2016 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#
+# Support: www.windriver.com
+#
+# Purpose: This resource agent manages 
+#
+#     .... the CGCS Platform Host System Inventory Conductor Service
+#
+# RA Spec:
+#
+# http://www.opencf.org/cgi-bin/viewcvs.cgi/specs/ra/resource-agent-api.txt?rev=HEAD
+#
+#######################################################################
+# Initialization:
+
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+
+process="sysinv"
+service="-conductor"
+binname="${process}${service}"
+
+#######################################################################
+
+# Fill in some defaults if no values are specified
+OCF_RESKEY_binary_default=${binname}
+OCF_RESKEY_dbg_default="false"
+OCF_RESKEY_pid_default="/var/run/${binname}.pid"
+OCF_RESKEY_config_default="/etc/sysinv/sysinv.conf"
+
+
+: ${OCF_RESKEY_binary=${OCF_RESKEY_binary_default}}
+: ${OCF_RESKEY_dbg=${OCF_RESKEY_dbg_default}}
+: ${OCF_RESKEY_pid=${OCF_RESKEY_pid_default}}
+: ${OCF_RESKEY_config=${OCF_RESKEY_config_default}}
+
+mydaemon="/usr/bin/${OCF_RESKEY_binary}"
+
+#######################################################################
+
+usage() {
+    cat <<UEND
+
+usage: $0 (start|stop|status|reload|monitor|validate-all|meta-data)
+
+$0 manages the Platform's System Inventory Conductor (sysinv-conductor) process as an HA resource
+
+   The 'start' .....  operation starts the sysinv-conductor service in the active state.
+   The 'stop' ......  operation stops the sysinv-conductor service.
+   The 'reload' ....  operation stops and then starts the sysinv-conductor service.
+   The 'status' ....  operation checks the status of the sysinv-conductor service.
+   The 'monitor' .... operation indicates the in-service status of the sysinv-conductor service.
+   The 'validate-all' operation reports whether the parameters are valid.
+   The 'meta-data' .. operation reports the sysinv-conductor's meta-data information.
+
+UEND
+}
+
+#######################################################################
+
+meta_data() {
+   if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+      ocf_log info "${binname}:meta_data"
+   fi
+
+cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="sysinv-conductor">
+<version>1.0</version>
+
+<longdesc lang="en">
+This 'sysinv-conductor' is an OCF Compliant Resource Agent that manages start, stop
+and in-service monitoring of the Conductor RPC Process in the Wind River
+Systems High Availability (HA) Carrier Grade Communication Server (CGCS) Platform.
+</longdesc>
+
+<shortdesc lang="en">
+Manages the CGCS Inventory (sysinv-conductor) process in the WRS HA CGCS Platform.
+</shortdesc>
+
+
+<parameters>
+
+<parameter name="dbg" unique="0" required="0">
+<longdesc lang="en">
+dbg = false  ... info, warn and err logs sent to output stream (default) 
+dbg = true   ... Additional debug logs are also sent to the output stream
+</longdesc>
+<shortdesc lang="en">Service Debug Control Option</shortdesc>
+<content type="boolean" default="${OCF_RESKEY_dbg_default}"/>
+</parameter>
+
+</parameters>
+
+
+<actions>
+<action name="start"        timeout="10s" />
+<action name="stop"         timeout="10s" />
+<action name="monitor"      timeout="10s" interval="10m" />
+<action name="meta-data"    timeout="10s" />
+<action name="validate-all" timeout="10s" />
+</actions>
+</resource-agent>
+END
+   return ${OCF_SUCCESS}
+}
+
+sysinv_conductor_validate() {
+
+    local rc
+
+    proc="${binname}:validate"
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    check_binary ${OCF_RESKEY_binary}
+    check_binary sysinv-api
+    check_binary nova-api
+    check_binary pidof
+
+    if [ ! -f ${OCF_RESKEY_config} ] ; then
+        ocf_log err "${OCF_RESKEY_binary} ini file missing (${OCF_RESKEY_config})"
+        return ${OCF_ERR_CONFIGURED}
+    fi
+
+    return ${OCF_SUCCESS}
+}
+
+sysinv_conductor_status() {
+    local pid
+    local rc
+
+    proc="${binname}:status"
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    if [ ! -f $OCF_RESKEY_pid ]; then
+        ocf_log info "${binname}:Sysinv Conductor (sysinv-conductor) is not running"
+        return $OCF_NOT_RUNNING
+    else
+        pid=`cat $OCF_RESKEY_pid`
+    fi
+
+    ocf_run -warn kill -s 0 $pid
+    rc=$?
+    if [ $rc -eq 0 ]; then
+        return $OCF_SUCCESS
+    else
+        ocf_log info "${binname}:Old PID file found, but Sysinv Conductor (sysinv-conductor)is not running"
+        rm -f $OCF_RESKEY_pid
+        return $OCF_NOT_RUNNING
+    fi
+}
+
+sysinv_conductor_monitor () {
+    local rc
+    proc="${binname}:monitor"
+
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    sysinv_conductor_status
+    rc=$?
+    return ${rc}
+}
+
+sysinv_conductor_start () {
+    local rc
+
+    proc="${binname}:start"
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    # If running then issue a ping test
+    if [ -f ${OCF_RESKEY_pid} ] ; then
+        sysinv_conductor_status
+        rc=$?
+        if [ $rc -ne ${OCF_SUCCESS} ] ; then
+            ocf_log err "${proc} ping test failed (rc=${rc})"
+            sysinv_conductor_stop
+        else
+            return ${OCF_SUCCESS}
+        fi
+    fi
+
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        RUN_OPT_DEBUG="--debug"
+    else
+        RUN_OPT_DEBUG=""
+    fi
+
+    su ${OCF_RESKEY_user} -s /bin/sh -c "${OCF_RESKEY_binary} --config-file=${OCF_RESKEY_config} ${RUN_OPT_DEBUG}"' >> /dev/null 2>&1 & echo $!' > $OCF_RESKEY_pid
+    rc=$?
+    if [ ${rc} -ne ${OCF_SUCCESS} ] ; then
+        ocf_log err "${proc} failed ${mydaemon} daemon (rc=$rc)"
+        return ${OCF_ERR_GENERIC}
+    else
+        if [ -f ${OCF_RESKEY_pid} ] ; then
+            pid=`cat ${OCF_RESKEY_pid}`
+            ocf_log info "${proc} running with pid ${pid}"
+        else
+            ocf_log info "${proc} with no pid file"
+        fi
+    fi
+
+    # Record success or failure and return status
+    if [ ${rc} -eq $OCF_SUCCESS ] ; then
+        ocf_log info "Inventory Conductor Service (${OCF_RESKEY_binary}) started (pid=${pid})"
+    else
+        ocf_log err "Inventory Service (${OCF_RESKEY_binary}) failed to start (rc=${rc})"
+        rc=${OCF_NOT_RUNNING}
+    fi
+
+    return ${rc}
+}
+
+sysinv_conductor_confirm_stop() {
+    local my_bin
+    local my_processes
+
+    my_binary=`which ${OCF_RESKEY_binary}`
+    my_processes=`pgrep -l -f "^(python|/usr/bin/python|/usr/bin/python2) ${my_binary}([^\w-]|$)"`
+
+    if [ -n "${my_processes}" ]
+    then
+        ocf_log info "About to SIGKILL the following: ${my_processes}"
+        pkill -KILL -f "^(python|/usr/bin/python|/usr/bin/python2) ${my_binary}([^\w-]|$)"
+    fi
+}
+
+sysinv_conductor_stop () {
+    local rc
+    local pid
+
+    proc="${binname}:stop" 
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    sysinv_conductor_status
+    rc=$?
+    if [ $rc -eq $OCF_NOT_RUNNING ]; then
+        ocf_log info "${proc} Sysinv Conductor (sysinv-conductor) already stopped"
+        sysinv_conductor_confirm_stop
+        return ${OCF_SUCCESS}
+    fi
+
+    # Try SIGTERM
+    pid=`cat $OCF_RESKEY_pid`
+    ocf_run kill -s TERM $pid
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        ocf_log err "${proc} Sysinv Conductor (sysinv-conductor) couldn't be stopped"
+        sysinv_conductor_confirm_stop
+        exit $OCF_ERR_GENERIC
+    fi
+
+    # stop waiting
+    shutdown_timeout=15
+    if [ -n "$OCF_RESKEY_CRM_meta_timeout" ]; then
+        shutdown_timeout=$((($OCF_RESKEY_CRM_meta_timeout/1000)-5))
+    fi
+    count=0
+    while [ $count -lt $shutdown_timeout ]; do
+        sysinv_conductor_status
+        rc=$?
+        if [ $rc -eq $OCF_NOT_RUNNING ]; then
+            break
+        fi
+        count=`expr $count + 1`
+        sleep 1
+        ocf_log info "${proc} Sysinv Conductor (sysinv-conductor) still hasn't stopped yet. Waiting ..."
+    done
+
+    sysinv_conductor_status
+    rc=$?
+    if [ $rc -ne $OCF_NOT_RUNNING ]; then
+        # SIGTERM didn't help either, try SIGKILL
+        ocf_log info "${proc} Sysinv Conductor (sysinv-conductor) failed to stop after ${shutdown_timeout}s \
+          using SIGTERM. Trying SIGKILL ..."
+        ocf_run kill -s KILL $pid
+    fi
+    sysinv_conductor_confirm_stop
+
+    ocf_log info "${proc} Sysinv Conductor (sysinv-conductor) stopped."
+
+    rm -f $OCF_RESKEY_pid
+
+    return $OCF_SUCCESS
+
+}
+
+sysinv_conductor_reload () {
+    local rc
+
+    proc="${binname}:reload"
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    sysinv_conductor_stop
+    rc=$?
+    if [ $rc -eq ${OCF_SUCCESS} ] ; then
+        #sleep 1
+        sysinv_conductor_start
+        rc=$?
+        if [ $rc -eq ${OCF_SUCCESS} ] ; then
+            ocf_log info "System Inventory (${OCF_RESKEY_binary}) process restarted"
+        fi
+    fi
+
+    if [ ${rc} -ne ${OCF_SUCCESS} ] ; then
+        ocf_log info "System Inventory (${OCF_RESKEY_binary}) process failed to restart (rc=${rc})"
+    fi
+
+    return ${rc}
+}
+
+case ${__OCF_ACTION} in
+    meta-data)   meta_data
+                 exit ${OCF_SUCCESS}
+                 ;;
+    usage|help)  usage
+                 exit ${OCF_SUCCESS}
+                 ;;
+esac
+
+# Anything except meta-data and help must pass validation
+sysinv_conductor_validate || exit $?
+
+if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+    ocf_log info "${binname}:${__OCF_ACTION} action"
+fi
+
+case ${__OCF_ACTION} in
+
+    start)        sysinv_conductor_start
+                  ;;
+    stop)         sysinv_conductor_stop
+                  ;;
+    status)       sysinv_conductor_status
+                  ;;
+    reload)       sysinv_conductor_reload
+                  ;;
+    monitor)      sysinv_conductor_monitor
+                  ;;
+    validate-all) sysinv_conductor_validate
+                  ;;
+    *)            usage
+                  exit ${OCF_ERR_UNIMPLEMENTED}
+                  ;;
+esac

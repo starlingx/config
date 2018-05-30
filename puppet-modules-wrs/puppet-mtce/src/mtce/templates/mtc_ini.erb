@@ -1,0 +1,23 @@
+; Packstack managed Maintenance Configuration
+[agent]                       ; Agent Configuration
+keystone_auth_username = <%= @auth_username %> ; mtce auth username
+keystone_auth_pw       = <%= @auth_pw %> ; mtce auth password
+keystone_auth_project  = <%= @auth_project %> ; mtce auth project
+keystone_user_domain   = <%= @auth_user_domain %> ; mtce user domain
+keystone_project_domain = <%= @auth_project_domain %> ; mtce project domain
+keystone_auth_host = <%= @auth_host %> ; keystone auth url
+keystone_auth_uri = <%= @auth_uri %> ; keystone auth uri
+keystone_auth_port = <%= @auth_port %> ; keystone auth port
+keystone_region_name = <%= @auth_region %> ; keystone region
+keyring_directory = <%= @keyring_directory %> ; keyring directory
+ceilometer_port = <%= @ceilometer_port %> ; ceilometer rest api port
+multicast = <%= @mtce_multicast %>          ; Heartbeat Multicast Address
+heartbeat_period = <%= @heartbeat_period %> ; Heartbeat period in milliseconds
+heartbeat_failure_threshold = <%= @heartbeat_failure_threshold %> ; Heartbeat failure threshold count.
+heartbeat_degrade_threshold = <%= @heartbeat_degrade_threshold %> ; Heartbeat degrade threshold count.
+
+[timeouts]
+compute_boot_timeout = <%= @compute_boot_timeout %> ; The max time (seconds) that Mtce waits for the mtcAlive
+controller_boot_timeout = <%= @controller_boot_timeout %> ; message after which it will time out and fail the host.
+
+

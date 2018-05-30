@@ -1,0 +1,206 @@
+#!/bin/bash
+#
+# Copyright (c) 2013-2015 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
+# chkconfig: 2345 80 80
+#
+
+### BEGIN INIT INFO
+# Provides:		storage_config
+# Short-Description: 	Storage node config agent
+# Default-Start:	2 3 4 5
+# Default-Stop:		0 1 6
+### END INIT INFO
+
+. /usr/bin/tsconfig
+. /etc/platform/platform.conf
+
+PLATFORM_DIR=/opt/platform
+CONFIG_DIR=$CONFIG_PATH
+VOLATILE_CONFIG_PASS="/var/run/.config_pass"
+VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
+DELAY_SEC=600
+IMA_POLICY=/etc/ima.policy
+
+fatal_error()
+{
+    cat <<EOF
+*****************************************************
+*****************************************************
+$1
+*****************************************************
+*****************************************************
+EOF
+    touch $VOLATILE_CONFIG_FAIL
+    logger "Error: $1"
+    echo "Pausing for 5 seconds..."
+    sleep 5
+    exit 1
+}
+
+get_ip()
+{
+    local host=$1
+
+    # Try the DNS queries for up to ${DELAY_SEC}
+    START=$SECONDS
+    let -i UNTIL=${SECONDS}+${DELAY_SEC}
+    while [ ${UNTIL} -ge ${SECONDS} ]
+    do
+        # Because dnsmasq can resolve both a hostname to both an IPv4 and an IPv6
+        # address in certain situations, and the last address is the IPv6, which
+        # would be the management, this is preferred over the IPv4 pxeboot address,
+        # so take the last address only.
+        ipaddr=$(dig +short ANY $host|tail -1)
+        if [[ "$ipaddr" =~ ^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$ ]]
+        then
+            let -i DURATION=$SECONDS-$START
+            logger -t $0 -p info "DNS query resolved to $ipaddr (took ${DURATION} secs)"
+            echo $ipaddr
+            return
+        fi
+        if [[ "$ipaddr" =~ ^[0-9a-z]*\:[0-9a-z\:]*$ ]]
+        then
+            let -i DURATION=$SECONDS-$START
+            logger -t $0 -p info "DNS query resolved to $ipaddr (took ${DURATION} secs)"
+            echo $ipaddr
+            return
+        fi
+        logger -t $0 -p warn "DNS query failed for $host"
+        sleep 5
+    done
+    let -i DURATION=$SECONDS-$START
+    logger -t $0 -p warn "DNS query failed after max retries for $host (${DURATION} secs)"
+}
+
+
+start()
+{
+    if [ -f /etc/platform/installation_failed ] ; then
+        fatal_error "/etc/platform/installation_failed flag is set. Aborting."
+    fi
+
+    echo "Configuring storage node..."
+
+    ######  SECURITY PROFILE (EXTENDED) #################
+    # If we are in Extended Security Profile mode,      #
+    # then before anything else, we need to load the    #
+    # IMA Policy so that all configuration operations   #
+    # can be measured and appraised                     #
+    #####################################################
+    if [ "${security_profile}" = "extended" ]
+    then
+        IMA_LOAD_PATH=/sys/kernel/security/ima/policy
+        if [ -f ${IMA_LOAD_PATH} ]; then
+            echo "Loading IMA Policy"
+            # Best effort operation only, if policy is
+            # malformed then audit logs will indicate this,
+            # and customer will need to load policy manually
+            cat $IMA_POLICY > ${IMA_LOAD_PATH}
+            [ $? -eq 0 ] || logger -t $0 -p warn "IMA Policy could not be loaded, see audit.log"
+        else
+            # the securityfs mount should have been
+            # created had the IMA module loaded properly.
+            # This is therefore a fatal error
+            fatal_error "${IMA_LOAD_PATH} not available. Aborting."
+        fi
+    fi
+
+    HOST=$(hostname)
+    if [ -z "$HOST" -o "$HOST" = "localhost" ]
+    then
+        fatal_error "Host undefined. Unable to perform config"
+    fi
+
+    IPADDR=$(get_ip $HOST)
+    if [ -z "$IPADDR" ]
+    then
+        fatal_error "Unable to get IP from host: $HOST"
+    fi
+
+    /usr/local/bin/connectivity_test -t ${DELAY_SEC} -i ${IPADDR} controller-platform-nfs
+    if [ $? -ne 0 ]
+    then
+         # 'controller-platform-nfs' is not available from management address
+         fatal_error "Unable to contact active controller (controller-platform-nfs) from management address"
+    fi
+
+    # Write the hostname to file so it's persistent
+    echo $HOST > /etc/hostname
+
+    # Mount the platform filesystem
+    mkdir -p $PLATFORM_DIR
+    nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR
+    if [ $? -ne 0 ]
+    then
+        fatal_error "Unable to mount $PLATFORM_DIR"
+    fi
+
+    # Check whether our installed load matches the active controller
+    CONTROLLER_UUID=`curl -sf http://controller/feed/rel-${SW_VERSION}/install_uuid`
+    if [ $? -ne 0 ]
+    then
+        fatal_error "Unable to retrieve installation uuid from active controller"
+    fi
+
+    if [ "$INSTALL_UUID" != "$CONTROLLER_UUID" ]
+    then
+        fatal_error "This node is running a different load than the active controller and must be reinstalled"
+    fi
+
+    # banner customization always returns 0, success:
+    /usr/sbin/install_banner_customization
+
+    cp $CONFIG_DIR/hosts /etc/hosts
+    if [ $? -ne 0 ]
+    then
+        umount $PLATFORM_DIR
+        fatal_error "Unable to copy $CONFIG_DIR/hosts"
+    fi
+
+    # Apply the puppet manifest
+    HOST_HIERA=${PUPPET_PATH}/hieradata/${IPADDR}.yaml
+    if [ -f ${HOST_HIERA} ]; then
+        echo "$0: Running puppet manifest apply"
+        puppet-manifest-apply.sh ${PUPPET_PATH}/hieradata ${IPADDR} storage
+        RC=$?
+        if [ $RC -ne 0 ];
+        then
+            umount $PLATFORM_DIR
+            fatal_error "Failed to run the puppet manifest (RC:$RC)"
+        fi
+    else
+        umount $PLATFORM_DIR
+        fatal_error "Host configuration not yet available for this node ($(hostname)=${IPADDR}); aborting configuration."
+    fi
+
+    # Unmount
+    umount $PLATFORM_DIR
+
+    touch $VOLATILE_CONFIG_PASS
+}
+
+stop ()
+{
+    # Nothing to do
+    return
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
+
+exit 0

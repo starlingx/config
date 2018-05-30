@@ -1,0 +1,18 @@
+% This file managed by Puppet
+% Template Path: rabbitmq/templates/rabbitmq.config
+[
+  {rabbit, [
+    {tcp_listen_options,
+    <%= @rabbit_tcp_listen_options %>
+    },
+    {disk_free_limit, <%= @disk_free_limit %>},
+    {heartbeat, <%= @heartbeat %>},
+    {tcp_listen_options, <%= @tcp_listen_options %>},
+    {default_user, <<"<%= @default_user %>">>},
+    {default_pass, <<"<%= @default_pass %>">>}
+  ]},
+  {kernel, [
+    
+  ]}
+].
+% EOF

@@ -1,0 +1,13 @@
+Metadata-Version: 1.1
+Name: sysinv-agent
+Version: 1.0
+Summary: CGCS Host Inventory Init Package
+Home-page: 
+Author: Windriver
+Author-email: info@windriver.com
+License: Apache-2.0
+
+Description: CGCS Host Inventory Init Package
+
+        
+Platform: UNKNOWN

@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# Copyright (c) 2013-2014 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+sudo -u postgres psql -U postgres template1 -c "CREATE USER admin with PASSWORD 'admin';"
+sudo -u postgres psql -U postgres template1 -c "CREATE DATABASE cgtsdb;"
+sudo -u postgres psql -U postgres template1 -c "GRANT ALL PRIVILEGES ON DATABASE cgtsdb to admin;"
+
+#mkdir -p /etc/sysinv
+#cat > /etc/sysinv/sysinv.conf << EOF
+#[DEFAULT]
+#[database]
+#connection=postgresql://admin:admin@192.168.204.3/cgtsdb
+#EOF
+
+export OS_USERNAME=admin
+export OS_TENANT_NAME=admin
+export OS_PASSWORD=7594879b7c1d42f9
+export OS_AUTH_URL=http://192.168.204.3:35357/v2.0/
+export CGTS_URL=http://192.168.204.3:6385
+
+/usr/bin/sysinv-dbsync
+/usr/bin/sysinv-api &

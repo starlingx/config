@@ -1,0 +1,52 @@
+#!/bin/bash
+#
+# Copyright (c) 2017 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
+# This script provides an example in-service patching restart,
+# triggering a restart of the patching daemons themselves
+#
+
+#
+# The patching subsystem provides a patch-functions bash source file
+# with useful function and variable definitions.
+#
+. /etc/patching/patch-functions
+
+#
+# We can now check to see what type of node we're on, if it's locked, etc,
+# and act accordingly
+#
+
+#
+# Declare an overall script return code
+#
+declare -i GLOBAL_RC=$PATCH_STATUS_OK
+
+
+if is_controller
+then
+    processes_to_restart="sysinv-conductor sysinv-api"
+    /usr/local/sbin/patch-restart-processes ${processes_to_restart}
+    if [ $? != 0 ] ; then
+        loginfo "patching restart failed"
+        loginfo "... process-restart ${processes_to_restart}"
+        exit ${PATCH_STATUS_FAILED}
+    fi
+fi
+
+processes_to_restart="sysinv-agent"
+/usr/local/sbin/patch-restart-processes ${processes_to_restart}
+if [ $? != 0 ] ; then
+    loginfo "patching restart failed"
+    loginfo "... process-restart ${processes_to_restart}"
+    exit ${PATCH_STATUS_FAILED}
+fi
+
+#
+# Exit the script with the overall return code
+#
+exit $GLOBAL_RC

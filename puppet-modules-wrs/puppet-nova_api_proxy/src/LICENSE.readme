@@ -1,0 +1,6 @@
+The license source is:
+
+https://github.com/openstack/puppet-nova/blob/stable/juno/LICENSE. 
+
+Similarly, the sources for puppet-nova_api_proxy come from that external
+project.

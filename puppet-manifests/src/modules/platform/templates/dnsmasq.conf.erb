@@ -1,0 +1,121 @@
+# Only listen on the following interfaces
+<%- if @pxeboot_interface != nil -%>
+interface=<%= @pxeboot_interface %>
+<%- end -%>
+interface=<%= @mgmt_interface %>
+<%- if @infra_interface != nil -%>
+interface=<%= @infra_interface %>
+<%- end -%>
+<%- if @ironic_tftp_interface != nil -%>
+interface=<%= @ironic_tftp_interface %>
+<%- end -%>
+bind-interfaces
+
+# Serve addresses from the pxeboot subnet
+dhcp-range=set:pxeboot,<%= @pxeboot_subnet_start %>,<%= @pxeboot_subnet_end %>,<%= @pxeboot_subnet_netmask %>,1h
+
+# Serve addresses from the management subnet
+dhcp-range=set:mgmt,<%= @mgmt_subnet_start %>,static,<%= @mgmt_subnet_netmask %>,1d
+
+<%- if @mgmt_subnet_version == 4 -%>
+<%- if @mgmt_gateway_address != nil -%>
+dhcp-option=tag:mgmt,option:router,<%= @mgmt_gateway_address %>
+<%- else -%>
+# Use the floating controller address as the default route
+dhcp-option=tag:mgmt,option:router,<%= @mgmt_controller_address %>
+<%- end -%>
+<%- end -%>
+
+# Provide DNS services on the floating pxeboot address
+dhcp-option=tag:pxeboot,option:dns-server,<%= @pxeboot_controller_address %>
+
+<%- if @mgmt_subnet_version == 4 -%>
+# Provide DNS services on the floating management address
+dhcp-option=tag:mgmt,option:dns-server,<%= @mgmt_controller_address %>
+dhcp-option=tag:mgmt,option:mtu,<%= @mgmt_network_mtu %>
+<%- else -%>
+dhcp-option=tag:mgmt,option6:dns-server,[<%= @mgmt_controller_address %>]
+<%- end -%>
+
+<%- if @infra_interface != nil -%>
+# Serve addresses from the infrastructure subnet
+dhcp-range=set:infra,<%= @infra_subnet_start %>,static,<%= @infra_subnet_netmask %>,1d
+
+# Provide DNS services on the floating infrastructure address
+<%- if @infra_subnet_version == 4 -%>
+dhcp-option=tag:infra,option:dns-server
+dhcp-option=tag:infra,option:router
+dhcp-option=tag:infra,option:mtu,<%= @infra_network_mtu %>
+<%- else -%>
+dhcp-option=tag:infra,option6:dns-server
+<%- end -%>
+<%- end -%>
+
+# Provide private option 224 as install_uuid
+dhcp-option=224,<%= @install_uuid %>
+dhcp-option=option6:224,<%= @install_uuid %>
+
+# Configure PXE boot
+
+# Enable UEFI support
+# We use a different bootloader if the client is configured
+# to UEFI vs BIOS (Legacy)
+#           Type   Architecture Name
+#           ----   -----------------
+#             0    Intel x86PC
+#             1    NEC/PC98
+#             2    EFI Itanium
+#             3    DEC Alpha
+#             4    Arc x86
+#             5    Intel Lean Client
+#             6    EFI IA32
+#             7    EFI BC (EFI Byte Code)
+#             8    EFI Xscale
+#             9    EFI x86-64
+#
+dhcp-match=set:efi,option:client-arch,2
+dhcp-match=set:efi,option:client-arch,6
+dhcp-match=set:efi,option:client-arch,7
+dhcp-match=set:efi,option:client-arch,8
+dhcp-match=set:efi,option:client-arch,9
+dhcp-match=set:bios,option:client-arch,0
+dhcp-match=set:bios,option:client-arch,1
+dhcp-match=set:bios,option:client-arch,3
+dhcp-match=set:bios,option:client-arch,4
+dhcp-match=set:bios,option:client-arch,5
+
+# TFTP support
+enable-tftp
+tftp-max=200
+<%- if @pxeboot_interface != nil -%>
+tftp-root=/pxeboot,<%= @pxeboot_interface %>
+<%- else -%>
+tftp-root=/pxeboot,<%= @mgmt_interface %>
+<%- end -%>
+<%- if @ironic_tftp_interface != nil -%>
+tftp-root=<%= @ironic_tftpboot_dir %>,<%= @ironic_tftp_interface %>
+<%- end -%>
+
+dhcp-boot=tag:bios,tag:pxeboot,pxelinux.0,<%= @pxeboot_hostname %>,<%= @pxeboot_controller_address %>
+dhcp-boot=tag:bios,tag:mgmt,pxelinux.0,<%= @mgmt_hostname %>,<%= @mgmt_controller_address %>
+
+dhcp-boot=tag:efi,tag:pxeboot,EFI/grubx64.efi,<%= @pxeboot_hostname %>,<%= @pxeboot_controller_address %>
+dhcp-boot=tag:efi,tag:mgmt,EFI/grubx64.efi,<%= @mgmt_hostname %>,<%= @mgmt_controller_address %>
+
+# Do not forward queries for plain names (no dots)
+domain-needed
+local=//
+port=53
+bogus-priv
+clear-on-reload
+user=root
+
+# Invoke this script for each lease
+dhcp-script=/usr/bin/sysinv-dnsmasq-lease-update
+
+# Dynamic files are located on a replicated filesystem
+dhcp-hostsfile=<%= @config_path %>/dnsmasq.hosts
+dhcp-leasefile=<%= @config_path %>/dnsmasq.leases
+addn-hosts=<%= @config_path %>/dnsmasq.addn_hosts
+# File for distributed cloud subcloud ip translation
+addn-hosts=<%= @config_path %>/dnsmasq.addn_hosts_dc

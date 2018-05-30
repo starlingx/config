@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:complexType name="Processor">
+    <xs:attribute type="xs:byte" name="index" />
+    <xs:attribute type="xs:byte" name="numberOfCores" />
+  </xs:complexType>
+  <xs:complexType name="CPUProfile">
+    <xs:sequence>
+      <xs:element name="processor" minOccurs="1">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element type="xs:byte" name="numberOfProcessor" />
+            <xs:element type="xs:byte" name="coresPerProcessor" />
+            <xs:element type="xs:boolean" name="hyperThreading" minOccurs="0" maxOccurs="1" />
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="platformCores" minOccurs="1">
+        <xs:complexType>
+          <xs:sequence minOccurs="1" maxOccurs="unbounded">
+            <xs:element name="processor" type="Processor" />
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="vswitchCores" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence minOccurs="1" maxOccurs="unbounded">
+            <xs:element name="processor" type="Processor" />
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="sharedCores" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence minOccurs="1" maxOccurs="unbounded">
+            <xs:element name="processor" type="Processor" />
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="name" use="required" />
+  </xs:complexType>
+  <xs:complexType name="memoryAllocation">
+      <xs:sequence minOccurs="1" maxOccurs="unbounded">
+        <xs:element name="processor" type="processorMemory" />
+      </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="processorMemory">
+	<xs:attribute type="xs:nonNegativeInteger" name="index" use="required" />
+	<xs:attribute type="xs:nonNegativeInteger" name="size" use="required" />
+  </xs:complexType>
+  <xs:complexType name="MemoryProfile">
+    <xs:sequence>
+      <xs:element type="xs:byte" name="numberOfProcessor" />
+      <xs:element name="platformReservedMiB" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
+      <xs:element name="vmHugePages2M" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
+      <xs:element name="vmHugePages1G" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
+	</xs:sequence>
+    <xs:attribute type="xs:string" name="name" use="required" />
+  </xs:complexType>
+  <xs:simpleType name="TxPolicy">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="layer3+4" />
+      <xs:enumeration value="layer2+3" />
+      <xs:enumeration value="layer2" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:complexType name="AeModePolicy">
+    <xs:attribute name="txPolicy" type="TxPolicy" />
+  </xs:complexType>
+  <xs:complexType name="AeMode">
+    <xs:choice minOccurs="1" maxOccurs="1">
+      <xs:element name="activeStandby" />
+      <xs:element name="balanced" type="AeModePolicy" />
+      <xs:element name="ieee802.3ad" type="AeModePolicy" />
+    </xs:choice>
+  </xs:complexType>
+  <xs:simpleType name="Ipv4Mode">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="disabled" />
+      <xs:enumeration value="static" />
+      <xs:enumeration value="dhcp" />
+      <xs:enumeration value="pool" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Ipv6Mode">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="disabled" />
+      <xs:enumeration value="static" />
+      <xs:enumeration value="auto" />
+      <xs:enumeration value="link-local" />
+      <xs:enumeration value="pool" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="interface">
+    <xs:attribute name="name" type="xs:string" use="required" />
+  </xs:complexType>
+  <xs:complexType name="interfaces">
+    <xs:sequence minOccurs="1" maxOccurs="unbounded">
+	  <xs:element type="interface" name="interface" >
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="providerNetwork">
+    <xs:attribute name="name" type="xs:string" use="required" />
+  </xs:complexType>
+  <xs:complexType name="providerNetworks">
+    <xs:sequence maxOccurs="unbounded" minOccurs="0">
+	  <xs:element type="providerNetwork" name="providerNetwork" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="IpPool">
+    <xs:attribute name="name" use="required">
+    </xs:attribute>
+  </xs:complexType>
+  <xs:complexType name="ipv4">
+    <xs:sequence>
+      <xs:element name="pool" type="IpPool" minOccurs="0" maxOccurs="1">
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="mode" type="Ipv4Mode" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="ipv6">
+    <xs:sequence>
+      <xs:element name="pool" type="IpPool" minOccurs="0" maxOccurs="1">
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="mode" type="Ipv6Mode" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="dataNetwork">
+    <xs:sequence>
+      <xs:element name="providerNetworks" type="providerNetworks" minOccurs="1" maxOccurs="unbounded">
+      </xs:element>
+      <xs:element name="ipv4" type="ipv4" minOccurs="1" maxOccurs="1">
+	  </xs:element>
+	  <xs:element name="ipv6" type="ipv6" minOccurs="1" maxOccurs="1">
+	  </xs:element>
+      <xs:element name="routes" type="routes" minOccurs="0" maxOccurs="1">
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="externalNetwork">
+  </xs:complexType>
+
+  <xs:complexType name="pciPassthrough">
+    <xs:sequence>
+      <xs:element name="providerNetworks" type="providerNetworks" minOccurs="1" maxOccurs="unbounded">
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="pciSriov">
+    <xs:sequence>
+      <xs:element name="providerNetworks" type="providerNetworks" minOccurs="1" maxOccurs="unbounded">
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="virtualFunctions" type="xs:nonNegativeInteger" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="route">
+    <xs:attribute name="network" type="xs:string" />
+    <xs:attribute name="metric" type="xs:integer" />
+    <xs:attribute name="gateway" type="xs:string" />
+  </xs:complexType>
+  <xs:complexType name="routes">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="route" type="route">
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:simpleType name="pciAddress">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-fA-F]{1,4}[:][0-9a-fA-F]{1,2}[:][0-9a-fA-F]{1,2}[.][0-9a-fA-F]" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="pciClass">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Ethernet controller" />
+      <xs:enumeration value="Network controller" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:complexType name="ethernetInterface">
+	<xs:sequence>
+        <xs:element name="port" minOccurs="1" maxOccurs="1">
+          <xs:complexType>
+            <xs:attribute name="name" use="optional" />
+            <xs:attribute name="pciAddress" type="pciAddress" use="optional" />
+            <xs:attribute name="class"  type="pciClass" use="required" />
+            <xs:attribute name="device" use="required" />
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="networks" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:choice minOccurs="1" maxOccurs="2">
+                <xs:element name="dataNetwork" type="dataNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="infraNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="mgmtNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="oamNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="pciPassthrough" type="pciPassthrough" maxOccurs="1">
+                </xs:element>
+                <xs:element name="pciSriov" type="pciSriov" maxOccurs="1">
+                </xs:element>
+              </xs:choice>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+	</xs:sequence>
+	<xs:attribute name="ifName" type="xs:string" use="required" />
+    <xs:attribute name="mtu" type="xs:positiveInteger" use="required" />
+  </xs:complexType>
+
+  <xs:simpleType name="VlanId">
+    <xs:restriction base="xs:short">
+      <xs:minInclusive value="1" />
+      <xs:maxInclusive value="4094" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:complexType name="vlanInterface">
+	<xs:sequence>
+      <xs:element name="networks">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:choice minOccurs="1" maxOccurs="2">
+                <xs:element name="mgmtNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="oamNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="dataNetwork" type="dataNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="infraNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+              </xs:choice>
+            </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+	</xs:sequence>
+	<xs:attribute name="ifName" type="xs:string" use="required" />
+    <xs:attribute name="interface" type="xs:string" use="required" />
+	<xs:attribute name="vlanId" type="VlanId" use="required"/>
+    <xs:attribute name="mtu" type="xs:positiveInteger" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="aeInterface">
+	<xs:sequence>
+        <xs:element name="networks" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:choice minOccurs="1" maxOccurs="2">
+                <xs:element name="mgmtNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="oamNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="dataNetwork" type="dataNetwork" maxOccurs="1">
+                </xs:element>
+                <xs:element name="infraNetwork" type="externalNetwork" maxOccurs="1">
+                </xs:element>
+              </xs:choice>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="interfaces" type="interfaces">
+      </xs:element>
+      <xs:element name="aeMode" type="AeMode" minOccurs="1" maxOccurs="1">
+      </xs:element>
+	</xs:sequence>
+	<xs:attribute name="ifName" type="xs:string" use="required" />
+    <xs:attribute name="mtu" type="xs:positiveInteger" use="required" />
+  </xs:complexType>
+  <xs:complexType name="InterfaceProfile">
+    <xs:choice maxOccurs="unbounded">
+	  <xs:element type="ethernetInterface" name="ethernetInterface">
+	  </xs:element>
+	  <xs:element type="vlanInterface" name="vlanInterface">
+	  </xs:element>
+	  <xs:element type="aeInterface" name="aeInterface">
+	  </xs:element>
+    </xs:choice>
+    <xs:attribute type="xs:string" name="name" use="required" />
+  </xs:complexType>
+
+  <xs:simpleType name="volumeFunction">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="osd" />
+      <xs:enumeration value="journal" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:complexType name="Disk">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute type="xs:string" name="path" use="required" />
+        <xs:attribute type="xs:positiveInteger" name="size" use="required" />
+        <xs:attribute type="volumeFunction" name="volumeFunc" use="optional" />
+        <xs:attribute type="xs:positiveInteger" name="journalSize" use="optional" />
+        <xs:attribute type="xs:string" name="journalLocation" use="optional" />
+        <xs:attribute type="xs:string" name="tier" use="optional" />
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="StorageProfile">
+    <xs:sequence maxOccurs="unbounded">
+      <xs:element type="Disk" name="disk" minOccurs="0" />
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="name" use="required" />
+  </xs:complexType>
+
+  <xs:simpleType name="Lvm_vg_name">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="nova-local" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Instance_backing">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="lvm" />
+      <xs:enumeration value="image" />
+      <xs:enumeration value="remote" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:complexType name="Lvg">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute type="Lvm_vg_name" name="lvm_vg_name" use="required" />
+        <xs:attribute type="Instance_backing" name="instance_backing" use="required" />
+        <xs:attribute type="xs:positiveInteger" name="instances_lv_size_mib" use="optional" />
+        <xs:attribute type="xs:positiveInteger" name="concurrent_disk_operations" use="required" />
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="LocalStorageProfile">
+    <xs:sequence maxOccurs="unbounded">
+      <xs:element type="Disk" name="disk" minOccurs="0" />
+      <xs:element type="Lvg" name="lvg" minOccurs="0" />
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="name" use="required" />
+  </xs:complexType>
+
+  <xs:element name="profiles">
+    <xs:complexType>
+      <xs:choice maxOccurs="unbounded">
+        <xs:element name="cpuProfile" type="CPUProfile" maxOccurs="unbounded" minOccurs="0" nillable="true" />
+        <xs:element name="memoryProfile" type="MemoryProfile" maxOccurs="unbounded" minOccurs="0" nillable="true" />
+        <xs:element name="interfaceProfile" type="InterfaceProfile" maxOccurs="unbounded" minOccurs="0" nillable="true" />
+        <xs:element name="storageProfile" type="StorageProfile" maxOccurs="unbounded" minOccurs="0" nillable="true" />
+        <xs:element name="localstorageProfile" type="LocalStorageProfile" maxOccurs="unbounded" minOccurs="0" nillable="true" />
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

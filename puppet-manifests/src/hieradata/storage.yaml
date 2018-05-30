@@ -1,0 +1,7 @@
+# storage specific configuration data
+---
+
+# ceilometer
+ceilometer::agent::polling::central_namespace: false
+ceilometer::agent::polling::compute_namespace: false
+ceilometer::agent::polling::ipmi_namespace: true

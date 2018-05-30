@@ -1,0 +1,15 @@
+[Unit]
+Description=TIS compute config gate
+After=sw-patch.service computeconfig.service
+Before=serial-getty@ttyS0.service getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/wait_for_compute_config_init.sh
+ExecStop=
+ExecReload=
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+

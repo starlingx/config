@@ -1,0 +1,160 @@
+#! /bin/sh
+#
+# Copyright (c) 2013-2014 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
+# chkconfig: 2345 75 25
+#
+### BEGIN INIT INFO
+# Provides:          invinit
+# Default-Start:     3 5
+# Default-Stop:      0 1 2 6
+# Short-Description: Maintenance daemon 
+### END INIT INFO
+
+. /etc/init.d/functions
+. /etc/build.info
+
+
+
+PLATFORM_CONF="/etc/platform/platform.conf"
+NODETYPE=""
+DAEMON_NAME="sysinv-agent"
+SYSINVAGENT="/usr/bin/${DAEMON_NAME}"
+SYSINV_CONF_DIR="/etc/sysinv"
+SYSINV_LOG_DIR="/var/log/sysinv"
+SYSINV_CONF_FILE="${SYSINV_CONF_DIR}/sysinv.conf"
+
+daemon_pidfile="/var/run/${DAEMON_NAME}.pid"
+
+if [ -f ${PLATFORM_CONF} ] ; then
+    NODETYPE=`cat ${PLATFORM_CONF} | grep nodetype | cut -f2 -d'='`
+else
+    logger "$0: ${PLATFORM_CONF} is missing"
+    exit 1
+fi
+
+if [ ! -e "${SYSINVAGENT}" ] ; then
+    logger "$0: ${SYSINVAGENT} is missing"
+    exit 1
+fi
+
+RETVAL=0
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin
+export PATH
+
+case "$1" in
+    start)
+        if [ "$NODETYPE" = "compute" ] ; then
+        # if [ "$NODETYPE" = "compute" ] || [ "$NODETYPE" = "controller" ] ; then
+            echo -n "Setting up config for ${DAEMON_NAME}:"
+            
+            if [ -f ${SYSINV_CONF_FILE} ] ; then
+                logger "$0: ${SYSINV_CONF_FILE} already exists"
+                RETVAL=0
+            else
+                mkdir /mnt/sysinv
+                timeout 10s nfs-mount controller-platform-nfs:/opt/platform/sysinv/${SW_VERSION} /mnt/sysinv
+                if [ $? -ne 0 ] ; then
+                    logger "$0: Failed: nfs-mount controller-platform-nfs:/opt/platform/sysinv/${SW_VERSION} /mnt/sysinv"
+                fi
+                mkdir -p $SYSINV_CONF_DIR
+                cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE}
+                RETVAL=$?
+                if [ $? -ne 0 ] ; then
+                   logger "$0: Failed: cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE}"
+                fi
+
+                timeout 5s umount /mnt/sysinv
+                rmdir /mnt/sysinv
+            fi
+
+            if [ ${RETVAL} -eq 0 ] ; then
+                echo "OK"
+                mkdir -p ${SYSINV_LOG_DIR}
+            else
+                echo "FAIL"
+            fi
+
+            echo -n "Installing virtio_net driver: "
+            timeout 5s modprobe virtio_net
+            RETVAL=$?
+            if [ ${RETVAL} -eq 0 ] ; then
+                echo "OK"
+                mkdir -p ${SYSINV_LOG_DIR}
+            else
+                echo "FAIL"
+            fi
+
+            if [ -e ${daemon_pidfile} ] ; then
+                echo "Killing existing process before starting new"
+                pid=`cat ${daemon_pidfile}`
+                kill -TERM $pid
+                rm -f ${daemon_pidfile}
+            fi
+
+            echo -n "Starting ${DAEMON_NAME}: "
+            /bin/sh -c "${SYSINVAGENT}"' >> /dev/null 2>&1 & echo $!' > ${daemon_pidfile}
+            RETVAL=$?
+            if [ $RETVAL -eq 0 ] ; then
+                echo "OK"
+                touch /var/lock/subsys/${DAEMON_NAME}
+            else
+                echo "FAIL"
+            fi
+        fi
+        ;;
+
+    stop)
+        if [ "$NODETYPE" = "compute" ] ; then
+        # if [ "$NODETYPE" = "compute" ] || [ "$NODETYPE" = "controller" ] ; then
+            echo -n "Stopping ${DAEMON_NAME}: "
+            if [ -e ${daemon_pidfile} ] ; then
+                pid=`cat ${daemon_pidfile}`
+                kill -TERM $pid
+                rm -f ${daemon_pidfile}
+                rm -f /var/lock/subsys/${DAEMON_NAME}
+                echo "OK"
+            else
+                echo "FAIL"
+            fi
+        fi
+        ;;
+
+    restart)
+        $0 stop
+        sleep 1
+        $0 start
+        ;;
+
+    status)
+        if [ -e ${daemon_pidfile} ] ; then
+            pid=`cat ${daemon_pidfile}`
+            ps -p $pid | grep -v "PID TTY" >> /dev/null 2>&1
+            if [ $? -eq 0 ] ; then
+               echo "${DAEMON_NAME} is running"
+               RETVAL=0
+            else
+               echo "${DAEMON_NAME} is not running"
+               RETVAL=1
+            fi
+        else
+            echo "${DAEMON_NAME} is not running ; no pidfile"
+            RETVAL=1
+        fi
+        ;;
+
+    condrestart)
+        [ -f /var/lock/subsys/$DAEMON_NAME ] && $0 restart
+        ;;
+
+    *)
+        echo "usage: $0 { start | stop | status | restart | condrestart | status }"
+        ;;
+esac
+
+exit $RETVAL

@@ -1,0 +1,10 @@
+#!/bin/sh
+#
+# Copyright (c) 2013-2014 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+# update sysinv MOTD if motd.system content present
+
+[ -f /etc/sysinv/motd.system ] && cat /etc/sysinv/motd.system || true

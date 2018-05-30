@@ -1,0 +1,476 @@
+# controller specific configuration data
+---
+
+# platform
+
+# Default hostname required for initial bootstrap of controller-0.
+# Configured hostname will override this value.
+platform::params::hostname: 'controller-0'
+
+# Default controller hostname maps to the loopback address
+# NOTE: Puppet doesn't support setting multiple IPs for the host resource,
+#       therefore setup an alias for the controller against localhost and
+#       then specify the IPv6 localhost as a separate entry.
+#       The IPv6 entry is required for LDAP clients to connect to the LDAP
+#       server when there are no IPv4 addresses configured, which occurs
+#       during the bootstrap phase.
+platform::config::params::hosts:
+  localhost:
+    ip: '127.0.0.1'
+    host_aliases:
+      - localhost.localdomain
+      - controller
+  controller:
+    ip: '::1'
+
+# default parameters, runtime management network configured will override
+platform::network::mgmt::params::subnet_version: 4
+platform::network::mgmt::params::controller0_address: 127.0.0.1
+platform::network::mgmt::params::controller1_address: 127.0.0.2
+
+# default parameters, runtime values will be based on selected link
+platform::drbd::params::link_speed: 10000
+platform::drbd::params::link_util: 40
+platform::drbd::params::num_parallel: 1
+platform::drbd::params::rtt_ms: 0.2
+
+# Default LDAP configuration required for bootstrap of controller-0
+platform::ldap::params::server_id: '001'
+platform::ldap::params::provider_uri: 'ldap://controller-1'
+
+# FIXME(mpeters): remove packstack specific variable
+# workaround until openstack credentials module is updated to not reference
+# hiera data
+CONFIG_ADMIN_USER_DOMAIN_NAME: Default
+CONFIG_ADMIN_PROJECT_DOMAIN_NAME: Default
+
+
+# mtce
+platform::mtce::agent::params::compute_boot_timeout: 720
+platform::mtce::agent::params::controller_boot_timeout: 1200
+platform::mtce::agent::params::heartbeat_period: 100
+platform::mtce::agent::params::heartbeat_failure_threshold: 10
+platform::mtce::agent::params::heartbeat_degrade_threshold: 6
+
+
+# postgresql
+postgresql::globals::needs_initdb: false
+postgresql::server::service_enable: false
+postgresql::server::ip_mask_deny_postgres_user: '0.0.0.0/32'
+postgresql::server::ip_mask_allow_all_users: '0.0.0.0/0'
+postgresql::server::pg_hba_conf_path: "/etc/postgresql/pg_hba.conf"
+postgresql::server::pg_ident_conf_path: "/etc/postgresql/pg_ident.conf"
+postgresql::server::postgresql_conf_path: "/etc/postgresql/postgresql.conf"
+postgresql::server::listen_addresses: "*"
+postgresql::server::ipv4acls: ['host all all samenet md5']
+postgresql::server::log_line_prefix: 'db=%d,user=%u '
+
+
+# rabbitmq
+rabbitmq::repos_ensure: false
+rabbitmq::admin_enable: false
+rabbitmq::package_provider: 'yum'
+rabbitmq::default_host: 'controller'
+
+
+# drbd
+drbd::service_enable: false
+drbd::service_ensure: 'stopped'
+
+
+# haproxy
+haproxy::merge_options: true
+
+platform::haproxy::params::global_options:
+  log:
+    - '127.0.0.1:514 local1 info'
+  user: 'haproxy'
+  group: 'wrs_protected'
+  chroot: '/var/lib/haproxy'
+  pidfile: '/var/run/haproxy.pid'
+  maxconn: '4000'
+  daemon: ''
+  stats: 'socket /var/lib/haproxy/stats'
+  ca-base: '/etc/ssl/certs'
+  crt-base: '/etc/ssl/private'
+  ssl-default-bind-ciphers: 'kEECDH+aRSA+AES:kRSA+AES:+AES256:!RC4-SHA:!kEDH:!ECDHE-RSA-AES128-SHA:!ECDHE-RSA-AES256-SHA:!LOW:!EXP:!MD5:!aNULL:!eNULL'
+  ssl-default-bind-options: 'no-sslv3 no-tlsv10'
+
+haproxy::defaults_options:
+  log: 'global'
+  mode: 'http'
+  stats: 'enable'
+  option:
+    - 'httplog'
+    - 'dontlognull'
+    - 'forwardfor'
+  retries: '3'
+  timeout:
+    - 'http-request 10s'
+    - 'queue 10m'
+    - 'connect 10s'
+    - 'client 90s'
+    - 'server 90s'
+    - 'check 10s'
+  maxconn: '8000'
+
+
+# ceph
+ceph::public_addr: '127.0.0.1:5001'
+
+
+# sysinv
+sysinv::journal_max_size: 51200
+sysinv::journal_min_size: 1024
+sysinv::journal_default_size: 1024
+
+sysinv::api::enabled: false
+sysinv::api::keystone_tenant: 'services'
+sysinv::api::keystone_user: 'sysinv'
+sysinv::api::keystone_user_domain: 'Default'
+sysinv::api::keystone_project_domain: 'Default'
+
+sysinv::conductor::enabled: false
+
+
+# keystone
+keystone::service::enabled: false
+keystone::token_provider: 'fernet'
+keystone::max_token_size: 255,
+keystone::debug: false
+keystone::service_name: 'openstack-keystone'
+keystone::enable_ssl: false
+keystone::use_syslog: true
+keystone::log_facility: 'local2'
+keystone::database_idle_timeout: 60
+keystone::database_max_pool_size: 1
+keystone::database_max_overflow: 50
+keystone::enable_bootstrap: false
+keystone::sync_db: false
+keystone::enable_proxy_headers_parsing: true
+keystone::log_file: /dev/null
+
+keystone::endpoint::default_domain: 'Default'
+keystone::endpoint::version: 'v3'
+keystone::endpoint::region: 'RegionOne'
+keystone::endpoint::admin_url: 'http://127.0.0.1:5000'
+
+keystone::ldap::identity_driver: 'sql'
+keystone::ldap::assignment_driver: 'sql'
+
+keystone::security_compliance::unique_last_password_count: 2
+keystone::security_compliance::password_regex: '^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()<>{}+=_\\\[\]\-?|~`,.;:]).{7,}$'
+keystone::security_compliance::password_regex_description: 'Password must have a minimum length of 7 characters, and must contain at least 1 upper case, 1 lower case, 1 digit, and 1 special character'
+
+keystone::roles::admin::email: 'admin@localhost'
+keystone::roles::admin::admin_tenant: 'admin'
+
+openstack::client::params::identity_auth_url: 'http://localhost:5000/v3'
+
+# glance
+glance::api::enabled: false
+glance::api::pipeline: 'keystone'
+glance::api::database_max_pool_size: 1
+glance::api::database_max_overflow: 10
+glance::api::verbose: false
+glance::api::debug: false
+glance::api::use_syslog: true
+glance::api::log_facility: 'local2'
+glance::api::log_file: '/dev/null'
+glance::api::multi_store: true
+glance::api::cinder_catalog_info: 'volume:cinder:internalURL'
+glance::api::graceful_shutdown: true
+glance::api::enable_proxy_headers_parsing: true
+glance::api::image_cache_dir: '/opt/cgcs/glance/image-cache'
+glance::api::cache_raw_conversion_dir: '/opt/img-conversions/glance'
+glance::api::scrubber_datadir: '/opt/cgcs/glance/scrubber'
+
+glance::registry::enabled: false
+glance::registry::database_max_pool_size: 1
+glance::registry::database_max_overflow: 10
+glance::registry::verbose: false
+glance::registry::debug: false
+glance::registry::use_syslog: true
+glance::registry::log_facility: 'local2'
+glance::registry::log_file: '/dev/null'
+glance::registry::graceful_shutdown: true
+
+glance::backend::rbd::multi_store: true
+glance::backend::rbd::rbd_store_user: glance
+
+glance::backend::file::multi_store: true
+glance::backend::file::filesystem_store_datadir: '/opt/cgcs/glance/images/'
+
+glance::notify::rabbitmq::notification_driver: 'messagingv2'
+
+# nova
+nova::conductor::enabled: false
+nova::scheduler::enabled: false
+nova::consoleauth::enabled: false
+nova::vncproxy::enabled: false
+nova::serialproxy::enabled: false
+
+nova::scheduler::filter::ram_weight_multiplier: 0.0
+nova::scheduler::filter::disk_weight_multiplier: 0.0
+nova::scheduler::filter::io_ops_weight_multiplier: -5.0
+nova::scheduler::filter::pci_weight_multiplier: 0.0
+nova::scheduler::filter::soft_affinity_weight_multiplier: 0.0
+nova::scheduler::filter::soft_anti_affinity_weight_multiplier: 0.0
+
+nova::cron::archive_deleted_rows::hour: '*/12'
+nova::cron::archive_deleted_rows::destination: '/dev/null'
+
+nova::api::enabled: false
+nova::api::enable_proxy_headers_parsing: true
+# nova-api runs on an internal 18774 port and api proxy runs on 8774
+nova::api::osapi_compute_listen_port: 18774
+nova::api::allow_resize_to_same_host: true
+
+nova::network::neutron::default_floating_pool: 'public'
+
+nova_api_proxy::config::enabled: false
+nova_api_proxy::config::eventlet_pool_size: 256
+
+# this will trigger simple_setup for cell_v2
+nova::db::sync_api::cellv2_setup: true
+
+# neutron
+neutron::core_plugin: 'neutron.plugins.ml2.plugin.Ml2Plugin'
+neutron::service_plugins:
+  - 'router'
+neutron::allow_overlapping_ips: true
+neutron::vlan_transparent: true
+neutron::pnet_audit_enabled: true
+
+neutron::server::enabled: false
+neutron::server::database_idle_timeout: 60
+neutron::server::database_max_pool_size: 1
+neutron::server::database_max_overflow: 64
+neutron::server::enable_proxy_headers_parsing: true
+neutron::server::network_scheduler_driver: 'neutron.scheduler.dhcp_agent_scheduler.WeightScheduler'
+neutron::server::router_scheduler_driver: 'neutron.scheduler.l3_host_agent_scheduler.HostBasedScheduler'
+
+neutron::server::notifications::endpoint_type: 'internal'
+
+neutron::plugins::ml2::type_drivers:
+  - managed_flat
+  - managed_vlan
+  - managed_vxlan
+neutron::plugins::ml2::tenant_network_types:
+  - vlan
+  - vxlan
+neutron::plugins::ml2::mechanism_drivers:
+  - openvswitch
+  - sriovnicswitch
+  - l2population
+neutron::plugins::ml2::enable_security_group: true
+neutron::plugins::ml2::ensure_default_security_group: false
+neutron::plugins::ml2::notify_interval: 10
+neutron::plugins::ml2::firewall_driver: 'neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver'
+
+neutron::bgp::bgp_speaker_driver: 'neutron_dynamic_routing.services.bgp.agent.driver.ryu.driver.RyuBgpDriver'
+
+neutron::services::bgpvpn::service_providers:
+  - 'BGPVPN:DynamicRoutingBGPVPNDriver:networking_bgpvpn.neutron.services.service_drivers.neutron_dynamic_routing.dr.DynamicRoutingBGPVPNDriver:default'
+
+
+# ceilometer
+ceilometer::metering_time_to_live: 86400
+
+ceilometer::api::enabled: false
+ceilometer::api::service_name: 'openstack-ceilometer-api'
+
+ceilometer::db::database_idle_timeout: 60
+ceilometer::db::database_max_pool_size: 1
+ceilometer::db::database_max_overflow: 10
+
+ceilometer::collector::enabled: false
+ceilometer::collector::meter_dispatchers: ['database']
+
+ceilometer::agent::notification::enabled: false
+ceilometer::agent::notification::disable_non_metric_meters: false
+
+ceilometer::agent::polling::central_namespace: true
+ceilometer::agent::polling::compute_namespace: false
+ceilometer::agent::polling::ipmi_namespace: true
+
+ceilometer::expirer::minute: 1
+ceilometer::expirer::hour: '*'
+ceilometer::expirer::monthday: '*'
+
+
+# aodh
+aodh::use_syslog: true
+aodh::log_facility: 'local2'
+aodh::database_idle_timeout: 60
+aodh::database_max_pool_size: 1
+aodh::database_max_overflow: 10
+aodh::alarm_history_time_to_live: 86400
+
+aodh::auth::auth_endpoint_type: 'internalURL'
+
+aodh::db::sync::user: 'root'
+
+aodh::api::enabled: false
+aodh::api::service_name: 'openstack-aodh-api'
+aodh::api::enable_proxy_headers_parsing: true
+
+aodh::notifier::enabled: false
+aodh::evaluator::enabled: false
+aodh::listener::enabled: false
+
+# panko
+openstack::panko::params::event_time_to_live: 86400
+
+panko::api::enabled: false
+panko::api::service_name: 'openstack-panko-api'
+panko::api::enable_proxy_headers_parsing: true
+
+panko::db::database_idle_timeout: 60
+panko::db::database_max_pool_size: 1
+panko::db::database_max_overflow: 10
+
+panko::logging::use_syslog: true
+panko::logging::syslog_log_facility: 'local2'
+
+# cinder
+cinder::use_syslog: true
+cinder::log_facility: 'local2'
+cinder::database_idle_timeout: 60
+cinder::database_max_pool_size: 1
+cinder::database_max_overflow: 50
+cinder::rpc_response_timeout: 180
+cinder::backend_host: 'controller'
+cinder::image_conversion_dir: '/opt/img-conversions/cinder'
+
+
+cinder::api::nova_catalog_info: 'compute:nova:internalURL'
+cinder::api::nova_catalog_admin_info: 'compute:nova:adminURL'
+cinder::api::enable_proxy_headers_parsing: true
+
+cinder::ceilometer::notification_driver: 'messaging'
+
+cinder::scheduler::enabled: false
+cinder::volume::enabled: false
+
+
+# heat
+heat::use_syslog: true
+heat::log_facility: 'local6'
+heat::database_idle_timeout: 60
+heat::database_max_pool_size: 1
+heat::database_max_overflow: 15
+heat::enable_proxy_headers_parsing: true
+heat::heat_clients_insecure: true
+
+heat::api::enabled: false
+heat::api_cfn::enabled: false
+heat::api_cloudwatch::enabled: false
+
+heat::engine::enabled: false
+heat::engine::deferred_auth_method: 'trusts'
+# trusts_delegated_roles is set to empty list so all users can use heat
+heat::engine::trusts_delegated_roles: []
+heat::engine::action_retry_limit: 1
+heat::engine::max_resources_per_stack: -1
+heat::engine::convergence_engine: false
+
+heat::keystone::domain::domain_name: 'heat'
+
+heat::keystone::auth_cfn::configure_user: false
+heat::keystone::auth_cfn::configure_user_role: false
+
+# Murano
+murano::db::postgresql::encoding: 'UTF8'
+murano::use_syslog: true
+murano::log_facility: 'local2'
+murano::debug: 'False'
+murano::engine::manage_service: true
+murano::engine::enabled: false
+openstack::murano::params::tcp_listen_options: '[binary,
+                          {packet,raw},
+                          {reuseaddr,true},
+                          {backlog,128},
+                          {nodelay,true},
+                          {linger,{true,0}},
+                          {exit_on_close,false},
+                          {keepalive,true}]'
+openstack::murano::params::rabbit_tcp_listen_options:
+         '[binary,
+         {packet,        raw},
+         {reuseaddr,     true},
+         {backlog,       128},
+         {nodelay,       true},
+         {linger,        {true, 0}},
+         {exit_on_close, false}]'
+
+# SSL parameters
+# this cipher list is taken from any cipher that is supported by rabbitmq and
+# is currently in either lighttpd or haproxy's cipher lists
+# constructed on 2017-04-05
+openstack::murano::params::rabbit_cipher_list: ["AES128-GCM-SHA256",
+                         "AES128-SHA",
+                         "AES128-SHA256",
+                         "AES256-GCM-SHA384",
+                         "AES256-SHA",
+                         "AES256-SHA256",
+                         "DHE-DSS-AES128-GCM-SHA256",
+                         "DHE-DSS-AES128-SHA256",
+                         "DHE-DSS-AES256-GCM-SHA384",
+                         "DHE-DSS-AES256-SHA256",
+                         "DHE-RSA-AES128-GCM-SHA256",
+                         "DHE-RSA-AES128-SHA256",
+                         "DHE-RSA-AES256-GCM-SHA384",
+                         "DHE-RSA-AES256-SHA256",
+                         "ECDH-ECDSA-AES128-GCM-SHA256",
+                         "ECDH-ECDSA-AES128-SHA256",
+                         "ECDH-ECDSA-AES256-GCM-SHA384",
+                         "ECDH-ECDSA-AES256-SHA384",
+                         "ECDHE-ECDSA-AES128-GCM-SHA256",
+                         "ECDHE-ECDSA-AES128-SHA256",
+                         "ECDHE-ECDSA-AES256-GCM-SHA384",
+                         "ECDHE-ECDSA-AES256-SHA384",
+                         "ECDHE-RSA-AES128-GCM-SHA256",
+                         "ECDHE-RSA-AES128-SHA",
+                         "ECDHE-RSA-AES128-SHA256",
+                         "ECDHE-RSA-AES256-GCM-SHA384",
+                         "ECDHE-RSA-AES256-SHA",
+                         "ECDHE-RSA-AES256-SHA384",
+                         "ECDH-RSA-AES128-GCM-SHA256",
+                         "ECDH-RSA-AES128-SHA256",
+                         "ECDH-RSA-AES256-GCM-SHA384",
+                         "ECDH-RSA-AES256-SHA384"]
+
+# Magnum
+magnum::logging::use_syslog: true
+magnum::logging::log_facility: 'local2'
+magnum::logging::debug: 'False'
+magnum::db::postgresql::encoding: 'UTF8'
+magnum::notification_driver: 'messagingv2'
+magnum::conductor::enabled: false
+magnum::password_symbols: '23456789,ABCDEFGHJKLMNPQRSTUVWXYZ,abcdefghijkmnopqrstuvwxyz,!@#$%^&*()<>{}+'
+magnum::certificates::cert_manager_type: 'x509keypair'
+magnum::clients::endpoint_type: 'internalURL'
+
+# Ironic
+ironic::use_syslog: true
+ironic::logging::log_facility: 'local2'
+ironic::db::postgresql::encoding: 'UTF8'
+ironic::logging::debug: false
+ironic::api::enabled: false
+ironic::conductor::enabled: false
+ironic::conductor::enabled_drivers: ['pxe_ipmitool','pxe_ipmitool_socat']
+ironic::conductor::automated_clean: true
+ironic::conductor::default_boot_option: 'local'
+ironic::drivers::pxe::images_path: '/opt/img-conversions/ironic/images/'
+ironic::drivers::pxe::instance_master_path: '/opt/img-conversions/ironic/master_images'
+
+# Dcorch
+dcorch::use_syslog: true
+dcorch::log_facility: 'local2'
+dcorch::debug: false
+
+# Dcmanager
+dcmanager::use_syslog: true
+dcmanager::log_facility: 'local2'
+dcmanager::debug: false

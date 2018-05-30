@@ -1,0 +1,49 @@
+;[DNS]
+;NAMESERVER_1=8.8.8.8
+;NAMESERVER_2=8.8.4.4
+;NAMESERVER_3=
+
+;[NTP]
+;NTP_SERVER_1=0.pool.ntp.org
+;NTP_SERVER_2=1.pool.ntp.org
+;NTP_SERVER_3=2.pool.ntp.org
+
+;LOGICAL_INTERFACE_<number>
+;  LAG_INTERFACE   <Y/N>    
+;  LAG_MODE        One of 1) Active-backup policy
+;                         2) Balanced XOR policy
+;                         4) 802.3ad (LACP) policy
+;                  Interface for pxebooting can only be LACP
+;  INTERFACE_MTU   <mtu size>
+;  INTERFACE_LINK_CAPACITY <Mbps>
+;  INTERFACE_PORTS <comma separated list of ethernet interfaces>
+                        
+[LOGICAL_INTERFACE_1]
+LAG_INTERFACE=N
+;LAG_MODE=
+INTERFACE_MTU=1500
+INTERFACE_LINK_CAPACITY=1000
+INTERFACE_PORTS=eth1
+
+[LOGICAL_INTERFACE_2]
+LAG_INTERFACE=N
+;LAG_MODE=
+INTERFACE_MTU=1500
+;INTERFACE_LINK_CAPACITY=
+INTERFACE_PORTS=eth0
+
+[OAM_NETWORK]
+IP_ADDRESS=10.10.10.20
+CIDR=10.10.10.0/24
+GATEWAY=10.10.10.1
+LOGICAL_INTERFACE=LOGICAL_INTERFACE_2
+
+[AUTHENTICATION]
+ADMIN_PASSWORD=Li69nux*
+
+[VERSION]
+RELEASE = 18.03
+
+[SYSTEM]
+SYSTEM_TYPE=All-in-one
+SYSTEM_MODE=simplex

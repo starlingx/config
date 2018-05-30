@@ -1,0 +1,461 @@
+#!/bin/bash
+#
+# Copyright (c) 2013-2017 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
+# chkconfig: 2345 80 80
+#
+
+### BEGIN INIT INFO
+# Provides:		controller_config
+# Short-Description: 	Controller node config agent
+# Default-Start:	2 3 4 5
+# Default-Stop:		0 1 6
+### END INIT INFO
+
+. /usr/bin/tsconfig
+. /etc/platform/platform.conf
+
+PLATFORM_DIR=/opt/platform
+VAULT_DIR=$PLATFORM_DIR/.keyring/${SW_VERSION}/python_keyring
+CONFIG_DIR=$CONFIG_PATH
+VOLATILE_CONFIG_PASS="/var/run/.config_pass"
+VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
+COMPLETED="/etc/platform/.initial_config_complete"
+INITIAL_MANIFEST_APPLY_FAILED="/etc/platform/.initial_manifest_apply_failed"
+DELAY_SEC=70
+CONTROLLER_UPGRADE_STARTED_FILE="$(basename ${CONTROLLER_UPGRADE_STARTED_FLAG})"
+PUPPET_DOWNLOAD=/tmp/puppet.download
+IMA_POLICY=/etc/ima.policy
+
+fatal_error()
+{
+    cat <<EOF
+*****************************************************
+*****************************************************
+$1
+*****************************************************
+*****************************************************
+EOF
+    # Don't set the .config_fail flag if the config
+    # complete flag is not set first.
+    if [ -e $COMPLETED ]
+    then
+        touch $VOLATILE_CONFIG_FAIL
+    fi
+
+    if [ -e /usr/bin/logger ]
+    then
+        logger "Error: $1"
+    fi
+
+    echo "Pausing for 5 seconds..."
+    sleep 5
+
+    if [ -d ${PUPPET_DOWNLOAD} ]; then
+        rm -rf ${PUPPET_DOWNLOAD}
+    fi
+
+    exit 1
+}
+
+exit_error()
+{
+    cat <<EOF
+*****************************************************
+*****************************************************
+$1
+*****************************************************
+*****************************************************
+EOF
+    if [ -e /usr/bin/logger ]
+    then
+        logger "Exit error: $1"
+    fi
+
+    echo "Pausing for 5 seconds..."
+    sleep 5
+    exit 1
+}
+
+get_ip()
+{
+    local host=$1
+
+    # Check /etc/hosts for the hostname
+    local ipaddr=$(cat /etc/hosts | awk -v host=$host '$2 == host {print $1}')
+    if [ -n "$ipaddr" ]
+    then
+        echo $ipaddr
+        return
+    fi
+
+    # Try the DNS query
+    # Because dnsmasq can resolve both a hostname to both an IPv4 and an IPv6
+    # address in certain situations, and the last address is the IPv6, which
+    # would be the management, this is preferred over the IPv4 pxeboot address,
+    # so take the last address only.
+    ipaddr=$(dig +short ANY $host|tail -1)
+    if [[ "$ipaddr" =~ ^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$ ]]
+    then
+        echo $ipaddr
+        return
+    fi
+    if [[ "$ipaddr" =~ ^[0-9a-z]*\:[0-9a-z\:]*$ ]]
+    then
+        echo $ipaddr
+        return
+    fi
+}
+
+mount_platform_dir()
+{
+    if [ -e "${PLATFORM_SIMPLEX_FLAG}" ]
+    then
+        systemctl start drbd.service
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to start drbd.service"
+        fi
+
+        # The drbd-platform FS may already be "up", so we won't check for errors
+        drbdadm up drbd-platform 2>/dev/null
+
+        drbdadm primary drbd-platform
+        if [ $? -ne 0 ]
+        then
+            drbdadm down drbd-platform
+            systemctl stop drbd.service
+            fatal_error "Failed to make drbd-platform primary"
+        fi
+
+        mount $PLATFORM_DIR
+        if [ $? -ne 0 ]
+        then
+            drbdadm secondary drbd-platform
+            drbdadm down drbd-platform
+            systemctl stop drbd.service
+            fatal_error "Unable to mount $PLATFORM_DIR"
+        fi
+    else
+        mkdir -p $PLATFORM_DIR
+        nfs-mount controller-platform-nfs:$PLATFORM_DIR $PLATFORM_DIR
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to mount $PLATFORM_DIR"
+        fi
+    fi
+}
+
+umount_platform_dir()
+{
+    if [ -e "${PLATFORM_SIMPLEX_FLAG}" ]
+    then
+        umount $PLATFORM_DIR
+        drbdadm secondary drbd-platform
+        drbdadm down drbd-platform
+        systemctl stop drbd.service
+    else
+        umount $PLATFORM_DIR
+    fi
+}
+
+start()
+{
+    if [ -f /etc/platform/installation_failed ] ; then
+        fatal_error "/etc/platform/installation_failed flag is set. Aborting."
+    fi
+
+    ######  SECURITY PROFILE (EXTENDED) #################
+    # If we are in Extended Security Profile mode,      #
+    # then before anything else, we need to load the    #
+    # IMA Policy so that all configuration operations   #
+    # can be measured and appraised                     #
+    #####################################################
+    if [ "${security_profile}" = "extended" ]
+    then
+        IMA_LOAD_PATH=/sys/kernel/security/ima/policy
+        if [ -f ${IMA_LOAD_PATH} ]; then
+            echo "Loading IMA Policy"
+            # Best effort operation only, if policy is
+            # malformed then audit logs will indicate this,
+            # and customer will need to load policy manually
+            cat $IMA_POLICY > ${IMA_LOAD_PATH}
+            [ $? -eq 0 ] || logger -t $0 -p warn "IMA Policy could not be loaded, see audit.log"
+        else
+            # the securityfs mount should have been
+            # created had the IMA module loaded properly.
+            # This is therefore a fatal error
+            fatal_error "${IMA_LOAD_PATH} not available. Aborting."
+        fi
+    fi
+
+    # If hostname is undefined or localhost, something is wrong
+    HOST=$(hostname)
+    if [ -z "$HOST" -o "$HOST" = "localhost" ]
+    then
+        fatal_error "Host undefined. Unable to perform config"
+    fi
+
+    if [ $HOST != "controller-0" -a $HOST != "controller-1" ]
+    then
+        fatal_error "Invalid hostname for controller node: $HOST"
+    fi
+
+    IPADDR=$(get_ip $HOST)
+    if [ -z "$IPADDR" ]
+    then
+        fatal_error "Unable to get IP from host: $HOST"
+    fi
+
+    if [ -f ${INITIAL_MANIFEST_APPLY_FAILED} ]
+    then
+        fatal_error "Initial manifest application failed; Host must be re-installed."
+    fi
+
+    echo "Configuring controller node..."
+
+    if [ ! -e "${PLATFORM_SIMPLEX_FLAG}" ]
+    then
+        # try for DELAY_SEC seconds to reach controller-platform-nfs
+        /usr/local/bin/connectivity_test -t ${DELAY_SEC} -i ${IPADDR} controller-platform-nfs
+        if [ $? -ne 0 ]
+        then
+            # 'controller-platform-nfs' is not available, just exit
+            exit_error "Unable to contact active controller (controller-platform-nfs). Boot will continue."
+        fi
+
+        # Check whether our installed load matches the active controller
+        CONTROLLER_UUID=`curl -sf http://controller/feed/rel-${SW_VERSION}/install_uuid`
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to retrieve installation uuid from active controller"
+        fi
+        INSTALL_UUID=`cat /www/pages/feed/rel-${SW_VERSION}/install_uuid`
+        if [ "$INSTALL_UUID" != "$CONTROLLER_UUID" ]
+        then
+            fatal_error "This node is running a different load than the active controller and must be reinstalled"
+        fi
+    fi
+
+    mount_platform_dir
+
+    # Cleanup from any previous config runs
+    if [ -e $VOLATILE_CONFIG_FAIL ]
+    then
+        rm -f $VOLATILE_CONFIG_FAIL
+    fi
+    if [ -e $VOLATILE_CONFIG_PASS ]
+    then
+        rm -f $VOLATILE_CONFIG_PASS
+    fi
+
+    if [ -e $CONFIG_DIR/server-cert.pem ]
+    then
+        cp $CONFIG_DIR/server-cert.pem /etc/ssl/private/server-cert.pem
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/server-cert.pem"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/iptables.rules ]
+    then
+        cp $CONFIG_DIR/iptables.rules /etc/platform/iptables.rules
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/iptables.rules"
+        fi
+    fi
+
+    # Keep the /opt/branding directory to preserve any new files and explicitly copy over any required files
+    if [ -e $CONFIG_DIR/branding/horizon-region-exclusions.csv ]
+    then
+        cp $CONFIG_DIR/branding/horizon-region-exclusions.csv /opt/branding
+    fi
+    rm -rf /opt/branding/*.tgz
+    cp $CONFIG_DIR/branding/*.tgz /opt/branding 2>/dev/null
+
+    # banner customization always returns 0, success:
+    /usr/sbin/install_banner_customization
+
+    cp $CONFIG_DIR/hosts /etc/hosts
+    if [ $? -ne 0 ]
+    then
+        fatal_error "Unable to copy $CONFIG_DIR/hosts"
+    fi
+
+    hostname > /etc/hostname
+    if [ $? -ne 0 ]
+    then
+        fatal_error "Unable to write /etc/hostname"
+    fi
+
+    # Our PXE config files are located in the config directory. Create a
+    # symbolic link if it is not already created.
+    if [ ! -L /pxeboot/pxelinux.cfg ]
+    then
+        ln -sf $CONFIG_DIR/pxelinux.cfg /pxeboot/pxelinux.cfg
+    fi
+
+    # Upgrade related checks
+    if [ ! -e "${PLATFORM_SIMPLEX_FLAG}" ]
+    then
+        VOLATILE_ETC_PLATFORM_MOUNT=$VOLATILE_PATH/etc_platform
+        mkdir $VOLATILE_ETC_PLATFORM_MOUNT
+        nfs-mount controller-platform-nfs:/etc/platform $VOLATILE_ETC_PLATFORM_MOUNT
+        if [ $? -eq 0 ]
+        then
+            # Generate Rollback flag if necessary
+            if [ -f $VOLATILE_ETC_PLATFORM_MOUNT/.upgrade_rollback ]
+            then
+                touch $UPGRADE_ROLLBACK_FLAG
+            fi
+            # Check whether we are upgrading controller-1.
+            UPGRADE_CONTROLLER=0
+            if [ -f $VOLATILE_ETC_PLATFORM_MOUNT/.upgrade_controller_1 ]
+            then
+                if [ -f $VOLATILE_ETC_PLATFORM_MOUNT/.upgrade_controller_1_fail ]
+                then
+                    exit_error "Controller-1 upgrade previously failed. Upgrade must be aborted."
+                fi
+
+                if [ -f $VOLATILE_ETC_PLATFORM_MOUNT/$CONTROLLER_UPGRADE_STARTED_FILE ]
+                then
+                    touch $VOLATILE_ETC_PLATFORM_MOUNT/.upgrade_controller_1_fail
+                    exit_error "Controller-1 data migration already in progress. Upgrade must be aborted"
+                fi
+
+                touch $VOLATILE_ETC_PLATFORM_MOUNT/$CONTROLLER_UPGRADE_STARTED_FILE
+
+                UPGRADE_CONTROLLER=1
+            fi
+            # Check whether software versions match on the two controllers
+            MATE_SW_VERSION=`grep sw_version $VOLATILE_ETC_PLATFORM_MOUNT/platform.conf | awk -F\= '{print $2}'`
+            if [ $SW_VERSION != $MATE_SW_VERSION ]
+            then
+                echo "Controllers are running different software versions"
+                echo "SW_VERSION: $SW_VERSION  MATE_SW_VERSION: $MATE_SW_VERSION"
+                # This environment variable allows puppet manifests to behave
+                # differently when the controller software versions do not match.
+                export CONTROLLER_SW_VERSIONS_MISMATCH=true
+            fi
+            umount $VOLATILE_ETC_PLATFORM_MOUNT
+            rmdir $VOLATILE_ETC_PLATFORM_MOUNT
+
+            if [ $UPGRADE_CONTROLLER -eq 1 ]
+            then
+                #R3 Removed
+                umount_platform_dir
+                echo "Upgrading controller-1. This will take some time..."
+                /usr/bin/upgrade_controller $MATE_SW_VERSION $SW_VERSION
+                exit $?
+            fi
+        else
+            umount_platform_dir
+            rmdir $VOLATILE_ETC_PLATFORM_MOUNT
+            fatal_error "Unable to mount /etc/platform"
+        fi
+    fi
+
+    mkdir -p /etc/postgresql/
+    cp -p $CONFIG_DIR/postgresql/*.conf /etc/postgresql/
+    if [ $? -ne 0 ]
+    then
+        fatal_error "Unable to copy .conf files to /etc/postgresql"
+    fi
+
+    # Copy the hieradata and the staging secured vault
+
+    rm -rf ${PUPPET_DOWNLOAD}
+    cp -R $PUPPET_PATH ${PUPPET_DOWNLOAD}
+    if [ $? -ne 0 ]
+    then
+        umount_platform_dir
+        fatal_error "Failed to copy puppet directory $PUPPET_PATH"
+    fi
+
+    cp -RL $VAULT_DIR /tmp
+    if [ $? -ne 0 ]
+    then
+        umount_platform_dir
+        fatal_error "Failed to copy vault directory $VAULT_DIR"
+    fi
+
+    # Unmount
+    umount_platform_dir
+
+    # Apply the puppet manifest
+    HOST_HIERA=${PUPPET_DOWNLOAD}/hieradata/${IPADDR}.yaml
+    if [ -f ${HOST_HIERA} ]; then
+        echo "$0: Running puppet manifest apply"
+	puppet-manifest-apply.sh ${PUPPET_DOWNLOAD}/hieradata ${IPADDR} controller
+	RC=$?
+	if [ $RC -ne 0 ];
+	then
+            fatal_error "Failed to run the puppet manifest (RC:$RC)"
+            if [ ! -f ${COMPLETED} ]
+            then
+                # The initial manifest application failed. We need to remember
+                # this so we don't attempt to reapply them after a reboot.
+                # Many of our manifests do not support being run more than
+                # once with the $COMPLETED flag unset.
+                touch $INITIAL_MANIFEST_APPLY_FAILED
+                fatal_error "Failed to run the puppet manifest (RC:$RC); Host must be re-installed."
+            else
+                fatal_error "Failed to run the puppet manifest (RC:$RC)"
+            fi
+	fi
+    else
+        fatal_error "Host configuration not yet available for this node ($(hostname)=${IPADDR}); aborting configuration."
+    fi
+
+    # Cleanup ${PUPPET_DOWNLOAD} and the secured vault
+    rm -rf ${PUPPET_DOWNLOAD}
+    rm -rf /tmp/python_keyring
+
+    if [ ! -e "${PLATFORM_SIMPLEX_FLAG}" ]
+    then
+        # The second controller is now configured - remove the simplex flag on
+        # the mate controller.
+        mkdir /tmp/mateflag
+        nfs-mount controller-platform-nfs:/etc/platform /tmp/mateflag
+        if [ $? -eq 0 ]
+        then
+            rm -f /tmp/mateflag/simplex
+            umount /tmp/mateflag
+            rmdir /tmp/mateflag
+        else
+            echo "Unable to mount /etc/platform"
+        fi
+    fi
+
+    touch $COMPLETED
+    touch $VOLATILE_CONFIG_PASS
+
+}
+
+stop ()
+{
+    # Nothing to do
+    return
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
+
+exit 0
+

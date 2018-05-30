@@ -1,0 +1,30 @@
+% This file managed by Puppet
+% Template Path: rabbitmq/templates/rabbitmq.config
+[
+  {ssl, [{versions, ['<%= @tlsv2 %>', '<%= @tlsv1 %>']}]},
+  {rabbit, [
+    {tcp_listen_options,
+    <%= @rabbit_tcp_listen_options %>
+    },
+    {tcp_listeners, []},
+    {ssl_listeners, [{"<%= @ssl_interface %>", <%= @ssl_port %>}]},
+    {ssl_options, [
+                   {cacertfile,"<%= @kombu_ssl_ca_certs %>"},
+                   {certfile,"<%= @kombu_ssl_certfile %>"},
+                   {keyfile,"<%= @kombu_ssl_keyfile %>"},
+                   {verify,verify_none},
+                   {fail_if_no_peer_cert,<%= @fail_if_no_peer_cert %>}
+                   ,{versions, ['<%= @tlsv2 %>', '<%= @tlsv1 %>']}
+                   ,{ciphers,<%= @rabbit_cipher_list %>}
+                  ]},
+    {disk_free_limit, <%= @disk_free_limit %>},
+    {heartbeat, <%= @heartbeat %>},
+    {tcp_listen_options, <%= @tcp_listen_options %>},
+    {default_user, <<"<%= @default_user %>">>},
+    {default_pass, <<"<%= @default_pass %>">>}
+  ]},
+  {kernel, [
+    
+  ]}
+].
+% EOF

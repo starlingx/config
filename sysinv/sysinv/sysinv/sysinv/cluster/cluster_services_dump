@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2014 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+"""
+ Cluster Services Watch
+"""
+
+import sysinv.cluster.cluster_services_api as cluster_services_api
+
+
+def main():
+    host_names = ["controller-0", "controller-1"]
+
+    cluster_services_api.get_cluster_controller_services(host_names, True)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,805 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+#
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
+#
+# Copyright (c) 2017-2018 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+
+"""
+Manage Disk partitions on this host and provide inventory updates
+"""
+
+import json
+import re
+import os
+import parted
+import shutil
+import socket
+import subprocess
+import time
+
+import sys
+from collections import defaultdict
+
+from oslo_config import cfg
+
+from sysinv.common import constants
+from sysinv.common import service as sysinv_service
+
+from sysinv.openstack.common import context
+from sysinv.openstack.common import log
+from sysinv.common import utils
+from sysinv.openstack.common.gettextutils import _
+from sysinv.conductor import rpcapi as conductor_rpcapi
+
+CONF = cfg.CONF
+LOG = log.getLogger(__name__)
+
+# time between loops when waiting for partition to stabilize
+# from transitory states.
+# Lower is better.
+# At this moment, 0.3 seconds was found to give consistent
+# results in running over 100 consecutive tests.
+PARTITION_LOOP_WAIT_TIME = 0.3
+
+
+def _sectors_to_MiB(value, sector_size):
+    """Transform <value> sectors to MiB and return."""
+    return value * sector_size / (1024 ** 2)
+
+
+def _MiB_to_sectors(value, sector_size):
+    """Transform <value> MiBs to sectors and return."""
+    return value * (1024 ** 2) / sector_size
+
+
+def _command(arguments, **kwargs):
+    """Execute a command and capture stdout, stderr & return code."""
+    # TODO: change this to debug level log, but until proven stable
+    # leave as info level log
+    LOG.info("Executing command: '%s'" % " ".join(arguments))
+    process = subprocess.Popen(
+        arguments,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        **kwargs)
+    out, err = process.communicate()
+    return out, err, process.returncode
+
+
+def _get_available_space(disk_device_path):
+    """Obtain a disk's available space, in MiB."""
+    # Obtain parted device and parted disk for the given disk device path.
+    try:
+        device = parted.getDevice(disk_device_path)
+        disk = parted.newDisk(device)
+    except Exception as e:
+        print "No partition info for disk %s - %s" % (disk_device_path, e)
+        return
+
+    sector_size_bytes = device.sectorSize
+
+    total_available = 0
+    free_spaces = disk.getFreeSpacePartitions()
+
+    for free_space in free_spaces:
+        total_available += free_space.geometry.length
+
+    total_available = _sectors_to_MiB(total_available, sector_size_bytes)
+
+    # Keep 2 MiB for partition table.
+    if total_available >= 2:
+        total_available = total_available - 2
+    else:
+        total_available = 0
+
+    return total_available
+
+
+def _gpt_table_present(device_node):
+    """Check if a disk's partition table format is GPT or not.
+    :param   device_node: the disk's device node
+    :returns False: the format is not GPT
+              True:  the format is GPT
+    """
+    output, _, _ = _command(["udevadm", "settle", "-E", device_node])
+    output, _, _ = _command(["parted", "-s", device_node, "print"])
+    if not re.search('Partition Table: gpt', output):
+        print "Format of disk node %s is not GPT, returning" % device_node
+        return False
+
+    return True
+
+
+def _get_disk_device_path(part_device_path):
+    """Obtain the device path of a disk from a partition's device path.
+    :param   part_device_path: the partition's device path
+    :returns the device path of the disk on which the partition resides
+    """
+    return re.match('(/dev/disk/by-path/(.+))-part([0-9]+)',
+                    part_device_path).group(1)
+
+
+def _get_partition_number(part_device_path):
+    """Obtain the number of a partition.
+    :param    part_device_path: the partition's device path
+    :returns  the partition's number
+    """
+    return re.match('.*?([0-9]+)$', part_device_path).group(1)
+
+
+def _partition_exists(disk, part_device_path):
+    """Check if a partition exists.
+    :param   disk: the pyparted disk object
+    :param   part_device_path: the partition's device path
+    :returns True:  the partition exists
+              False: the partition doesn't exist
+    """
+    part_number = _get_partition_number(part_device_path)
+    partitions = disk.partitions
+
+    for part in partitions:
+        if part.number == int(part_number):
+            return True
+
+    return False
+
+
+# While doing changes to partitions, there are brief moments when 
+# the partition is in a transitory state and it is not mapped by
+# the udev. 
+# This is due to the fact that "udevadm settle" command is event 
+# based and when we call it we have no guarantee that the event
+# from the previous commands actually reached udev yet.
+# To guard against such timing issues, we must wait for a partition
+# to become "stable". We define the stable state as a number of 
+# consecutive successful calls to access the partition, with a
+# small delay between them.
+def _wait_for_partition(device_path, max_retry_count=10,
+                        loop_wait_time=1, success_objective=3):
+
+    success_count = 0
+    for step in range(1, max_retry_count):
+        _, _, retcode = _command([
+                'ls', str(device_path)])
+        if retcode == 0:
+            success_count += 1
+        else:
+            success_count = 0
+            LOG.warning("Partition/Device %s not present in the system. Retrying" %
+			str(device_path))
+
+        if success_count == success_objective:
+            LOG.debug("Partition %s deemed stable" % str(device_path))
+            break
+
+        time.sleep(loop_wait_time)
+    else:
+        raise IOError("Partition %s not present in OS" % str(device_path))
+
+
+def _create_partition(device, disk, start, size, type_code, sector_size):
+    """Create a partition.
+    :param   device: the pyparted device object
+    :param   disk: the pyparted disk object
+    :param   start: the start of the partition, in sectors
+    :param   size: the size of the partition, in sectors
+    :param   type_code: the type GUID of the partition
+    :returns pyparted partition object
+    """
+    print "Create partition starting from %s of size %s" % (start, size)
+    geometry = parted.Geometry(device=device, start=start, length=size)
+    partition = parted.Partition(disk=disk, type=parted.PARTITION_NORMAL,
+                                 geometry=geometry)
+
+    try:
+        disk.addPartition(partition=partition,
+                          constraint=device.optimalAlignedConstraint)
+
+        # Prior to committing, we need to wipe the LVM data from this
+        # partition so that if the LVM global filter is not set correctly
+        # we will have stale LVM info polluting the system
+        _wipe_partition(device.path, start, size, sector_size)
+
+        # committing makes this present to the system
+        disk.commit()
+    except Exception as e:
+        LOG.error("Error creating the desired partition of %s MiB on %s.- %s" %
+                  (_sectors_to_MiB(size, device.sectorSize), device.path, e))
+
+    if partition.number > 0:
+        output, _, _ = _command([
+            'sgdisk',
+            '--typecode={part_number}:{type_code}'.format(
+                part_number=partition.number, type_code=type_code),
+            '--change-name={part_number}:{part_name}'.format(
+                part_number=partition.number,
+                part_name=constants.PARTITION_NAME_PV),
+            device.path])
+    return partition
+
+
+def _delete_partition(disk_device_path, part_number):
+    """Delete a partition.
+    :param   disk_device_path: the device path of the disk on which the
+             partition resides
+    :param   part_number: the partition number
+    """
+    # Obtain the parted device and the parted disk for the given disk device
+    # path.
+    try:
+        device = parted.getDevice(disk_device_path)
+        disk = parted.newDisk(device)
+    except Exception as e:
+        print "No partition info for disk %s - %s" % (disk_device_path, e)
+        return
+
+    partitions = disk.partitions
+
+    # Delete the partition with the specified number.
+    for part in partitions:
+        if part.number == int(part_number):
+            try:
+                disk.deletePartition(part)
+                disk.commit()
+                break
+            except parted.PartitionException as e:
+                LOG.error(_("Error deleting partition %s of %s: %s") %
+                           (part_number, disk_device_path, str(e.message)))
+    else:
+        LOG.info("There was no %s partition on disk %s." %
+                 (part_number, disk_device_path))
+
+
+def _resize_partition(disk_device_path, part_number, new_part_size_mib,
+                      type_guid):
+    """Modify a partition.
+    :param   disk_device_path: the device path of the disk on which the
+             partition resides
+    :param   part_number: the partition number
+    :param   new_part_size_mib: the new size for the partition, in MiB
+    :param   type_guid: the type GUID for the partition
+    """
+    try:
+        device = parted.getDevice(disk_device_path)
+        disk = parted.newDisk(device)
+    except Exception as e:
+        LOG.exception("No partition info for disk %s - %s" % (disk_device_path, e))
+        return
+
+    partitions = disk.partitions
+
+    # Resize the partition with the specified number.
+    for part in partitions:
+        if part.number == int(part_number):
+            break
+
+    new_part_size_s = _MiB_to_sectors(new_part_size_mib, device.sectorSize)
+
+    geom = parted.Geometry(device=device,
+                           start=part.geometry.start,
+                           length=new_part_size_s)
+    constraint = parted.Constraint(exactGeom=geom)
+    try:
+        disk.maximizePartition(partition=part, constraint=constraint)
+        disk.commit()
+    except parted.PartitionException as e:
+        LOG.error(_("Error resizing partition %s of %s: %s") %
+                   (part_number, disk_device_path, str(e.message)))
+    except parted.IOException as e:
+        # An IOException usually means that the partition is in
+        # a transitory state. We should wait for the partition
+        # to stabilize and then try to commit the changes again
+        LOG.error(_("IOError resizing partition %s of %s: %s") %
+                   (part_number, disk_device_path, str(e.message)))
+        _wait_for_partition(disk_device_path,
+                            loop_wait_time=PARTITION_LOOP_WAIT_TIME)
+        disk.commit()
+
+    return part
+
+
+def _send_inventory_update(partition_update):
+    """Send update to the sysinv conductor."""
+
+    # If this is controller-1, in an upgrade, don't send update.
+    sw_mismatch = os.environ.get('CONTROLLER_SW_VERSIONS_MISMATCH', None)
+    hostname = socket.gethostname()
+    if sw_mismatch and hostname == constants.CONTROLLER_1_HOSTNAME:
+        print "Don't send information to N-1 sysinv conductor, return."
+        return
+
+    ctxt = context.get_admin_context()
+    rpcapi = conductor_rpcapi.ConductorAPI(
+        topic=conductor_rpcapi.MANAGER_TOPIC)
+
+    max_tries = 2
+    num_of_try = 0
+
+    while num_of_try < max_tries:
+        try:
+            num_of_try = num_of_try + 1
+            rpcapi.update_partition_information(ctxt, partition_update)
+            break
+        except Exception as ex:
+            print "Exception trying to contact sysinv conductor: %s: %s " % \
+                (type(ex).__name__, ex.value)
+            if num_of_try < max_tries and "Timeout" in type(ex).__name__:
+                print "Could not contact sysinv conductor, try one more time.."
+                continue
+            else:
+                print "Quit trying to send extra info to the conductor, " \
+                      "sysinv agent will provide this info later..."
+
+
+def _wipe_partition(disk_node, start_in_sectors, size_in_sectors, sector_size):
+    """Clear the locations within the partition where an LVM header may
+    exist. """
+
+    # clear LVM and header and additional formatting data of this partition
+    # (i.e. DRBD)
+    # note: dd outputs to stderr, not stdout
+    _, err_output, _ = _command(
+        ['dd', 'bs={sector_size}'.format(sector_size=sector_size), 'if=/dev/zero',
+         'of={part_id}'.format(part_id=disk_node), 'oflag=direct',
+         'count=34', 'seek={part_end}'.format(part_end=start_in_sectors)])
+
+    # TODO: change this to debug level log, but until proven stable
+    # leave as info level log
+    LOG.info("Zero-out beginning of partition. Output:  %s" % err_output)
+
+    seek_end = start_in_sectors + size_in_sectors - 34
+
+    # format the last 1MB of the partition
+    # note: dd outputs to stderr, not stdout
+    _, err_output, _ = _command(
+        ['dd', 'bs={sector_size}'.format(sector_size=sector_size), 'if=/dev/zero',
+         'of={part_id}'.format(part_id=disk_node), 'oflag=direct',
+         'count=34', 'seek={part_end}'.format(part_end=seek_end)])
+
+    # TODO: change this to debug level log, but until proven stable
+    # leave as info level log
+    LOG.info("Zero-out end of partition. Output:  %s" % err_output)
+    LOG.info("Partition details: %s" %
+                {"disk_node": disk_node, "start_in_sectors": start_in_sectors,
+                 "size_in_sectors": size_in_sectors, "sector_size": sector_size,
+                 "part_end": seek_end})
+
+def create_partitions(data, mode, pfile):
+    """Process data for creating (a) partition(s) and send the update back to
+       the sysinv conductor.
+    """
+    if mode in ['create-only', 'send-only']:
+        json_array = []
+
+        if mode == 'send-only':
+            with open(pfile) as inputfile:
+                payload = json.load(inputfile)
+
+                for p in payload:
+                    _send_inventory_update(p)
+            return
+
+    print data
+
+    json_body = json.loads(data)
+    for p in json_body:
+        disk_device_path = p.get('disk_device_path')
+        part_device_path = p.get('part_device_path')
+        if _gpt_table_present(disk_device_path):
+            size_mib = p.get('req_size_mib')
+            type_code = p.get('req_guid')
+            # Obtain parted device and parted disk for the given disk device
+            # path.
+            try:
+                device = parted.getDevice(disk_device_path)
+                disk = parted.newDisk(device)
+            except Exception as e:
+                print "No partition info for disk %s - %s" % (disk_device_path,
+                                                              e)
+                return
+
+            if _partition_exists(disk, part_device_path):
+                print "Partition %s already exists, returning." %\
+                    part_device_path
+                continue
+
+            # Convert to sectors.
+            sector_size_bytes = device.sectorSize
+
+            size = _MiB_to_sectors(size_mib, sector_size_bytes)
+
+            print "Desired size in sectors: %s" % size
+
+            # If we only allow to add and remove partition to/from the end,
+            # then there should only be a max of two free regions (1MiB at
+            # the beginning and the rest of the available disk, if any).
+            free_spaces = disk.getFreeSpacePartitions()
+
+            if len(free_spaces) > 2:
+                print ("Disk %s is fragmented. Partition creation aborted." %
+                       disk_device_path)
+
+            free_space = free_spaces[-1]
+
+            # Free space in sectors.
+            start = free_space.geometry.start
+
+            # If this is the 1st partition, allocate an extra 1MiB.
+            if not len(disk.partitions):
+                print "First partition, use an extra MiB"
+                start = _MiB_to_sectors(1, sector_size_bytes)
+
+            response = {
+                'uuid': p.get('req_uuid'),
+                'ihost_uuid': p.get('ihost_uuid')
+            }
+
+            try:
+                part = _create_partition(device, disk, start, size, type_code, sector_size_bytes)
+                part_device_path = '{}-part{}'.format(disk_device_path,
+                                                      part.number)
+
+                output, _, _ = _command(["udevadm", "settle", "-E", disk_device_path])
+
+                disk_available_mib = _get_available_space(disk_device_path)
+                response.update({
+                    'start_mib': _sectors_to_MiB(start, sector_size_bytes),
+                    'end_mib': _sectors_to_MiB(start + size,
+                                               sector_size_bytes),
+                    'size_mib': part.getSize(),
+                    'device_path': part_device_path,
+                    'type_guid': p.get('req_guid'),
+                    'type_name': constants.PARTITION_NAME_PV,
+                    'available_mib': disk_available_mib,
+                    'status': constants.PARTITION_READY_STATUS})
+            except parted.PartitionException:
+                response.update({'status': constants.PARTITION_ERROR_STATUS})
+        else:
+            response = {
+                'uuid': p.get('req_uuid'),
+                'ihost_uuid': p.get('ihost_uuid'),
+                'status': constants.PARTITION_ERROR_STATUS_GPT
+            }
+
+        if mode == 'create-only':
+            json_array.append(response)
+        else:
+            # Send results back to the conductor.
+            _send_inventory_update(response)
+
+    if mode == 'create-only':
+        with open(pfile, 'w') as outfile:
+            json.dump(json_array, outfile)
+
+
+class fix_global_filter():
+    """ Some drbd metadata processing commands execute LVM commands.
+        Therefore, our backing device has to be visible to LVM.
+    """
+    def __init__(self, device_path):
+        self.device_path = device_path
+        self.lvm_conf_file = "/etc/lvm/lvm.conf"
+        self.lvm_conf_backup_file = "/etc/lvm/lvm.conf.bck-manage-partitions"
+        self.lvm_conf_temp_file = "/etc/lvm/lvm.conf.tmp-manage-partitions"
+
+    def __enter__(self):
+        # Backup existing config file
+        shutil.copy(self.lvm_conf_file, self.lvm_conf_backup_file)
+
+        # Prepare a new config file.
+        with open(self.lvm_conf_file, "r") as lvm_conf:
+            with open(self.lvm_conf_temp_file, "w") as lvm_new_conf:
+                for line in lvm_conf:
+                    m = re.search('^\s*global_filter\s*=\s*(.*)', line)
+                    if m:
+                        global_filter = eval(m.group(1))
+                        global_filter = [v for v in global_filter if v != "r|.*|"]
+                        global_filter.append("a|%s|" % self.device_path)
+                        global_filter.append("r|.*|")
+                        new_line = 'global_filter = ' + '[ "' + '", "'.join(global_filter) + '" ]\n'
+                        lvm_new_conf.write(new_line)
+                    else:
+                        lvm_new_conf.write(line)
+
+        # Replace old config with new one.
+        os.rename(self.lvm_conf_temp_file, self.lvm_conf_file)
+
+        # Wait for LVM to reload its config.
+        _wait_for_partition(self.device_path,
+                            loop_wait_time=PARTITION_LOOP_WAIT_TIME)
+        for try_ in range(1, 10):
+            output, _, ret_code = _command(["pvs", self.device_path])
+            if ret_code == 0:
+                break
+            else:
+                time.sleep(1)
+
+    def __exit__(self, type, value, traceback):
+        # We are done, restore previous config.
+        os.rename(self.lvm_conf_backup_file, self.lvm_conf_file)
+
+
+class DrbdFailureException(BaseException):
+    """ Custom exception to allow DRBD config fallback"""
+    pass
+
+
+def modify_partitions(data, mode, pfile):
+    """Process data for modifying (a) partition(s) and send the update back to
+       the sysinv conductor.
+    """
+    json_body = json.loads(data)
+    for p in json_body:
+        # Get the partition's device path.
+        part_device_path = p.get('part_device_path')
+        disk_device_path = _get_disk_device_path(part_device_path)
+        device = parted.getDevice(disk_device_path)
+        new_part_size_mib = p.get('new_size_mib')
+        type_guid = p.get('req_guid')
+        if _gpt_table_present(disk_device_path):
+            # Separate the partition number from the disk's device path.
+            part_number = _get_partition_number(part_device_path)
+
+            response = {
+                'uuid': p.get('current_uuid'),
+                'ihost_uuid': p.get('ihost_uuid')
+            }
+
+            try:
+                # Check if we have a DRBD partition
+                is_drbd = False
+                cmd_template = None
+                metadata_dump = None
+                _, _, _ = _command(
+                    ["udevadm", "settle", "-E", str(part_device_path)])
+                _wait_for_partition(part_device_path,
+                                    loop_wait_time=PARTITION_LOOP_WAIT_TIME)
+                output, _, _ = _command([
+                    'wipefs', '--parsable', str(part_device_path)])
+                for line in output.splitlines():
+                    values = line.split(',')
+                    if len(values) and values[-1] == 'drbd':
+                        is_drbd = True
+                        LOG.info("Partition %s has drbd "
+                                 "metadata!" % part_device_path)
+
+                if is_drbd:
+                    # Steps based on:
+                    # https://docs.linbit.com/doc/users-guide-84/s-resizing/
+
+                    # Check if drbd is configured and get a template
+                    # command to use for correctly accessing this device.
+                    # E.g. "drbdmeta 4 v08 <part_device_path> internal dump-md
+                    output, _, _ = _command(['drbdadm', '-d', 'dump-md', 'all'])
+                    for line in output.splitlines():
+                        if part_device_path in line:
+                            # We found our command, remove 'dump-md' action,
+                            # we will add our own actions later.
+                            cmd_template = line.replace('dump-md', '').split()
+                            break
+                    else:
+                        # drbd meta should not be present on devices that are
+                        # not configured. Ignore it.
+                        is_drbd = False
+
+                if is_drbd:
+                    # Make sure that metadata is clean - no operation are in flight.
+                    output, err, err_code = _command(cmd_template + ['apply-al'])
+                    if err_code:
+                        raise Exception("Failed cleaning metadata. stdout: '%s', "
+                                        "stderr: '%s', return code: '%s'" %
+                                        (output, err, err_code))
+                    # Backup metadata
+                    metadata_dump, _, _ = _command(cmd_template + ['dump-md'])
+                    if err_code:
+                        raise DrbdFailureException(
+                                "Failed getting metadata. stdout: '%s', "
+                                "stderr: '%s', return code: '%s'" %
+                                (metadata_dump, err, err_code))
+
+                    TMP_FILE = "/run/drbd-meta.dump"
+                    with open(TMP_FILE, "w") as f:
+                        for line in metadata_dump.splitlines():
+                            f.write("%s\n" % line)
+
+                # Resize the partition.
+                part = _resize_partition(disk_device_path, part_number,
+                                         new_part_size_mib, type_guid)
+
+                _command(["udevadm", "settle", "-E", str(part_device_path)])
+
+                if is_drbd:
+                    with fix_global_filter(part_device_path):
+                        # Initialize metadata area of resized partition
+                        # (metadata is located at the end of partition).
+                        output, err, err_code = _command(cmd_template + ['create-md',
+                                                                         '--force'])
+                        if err_code:
+                            raise DrbdFailureException(
+                                    "Failed to create metadata. stdout: '%s', "
+                                    "stderr: '%s', return code: '%s'" %
+                                    (output, err, err_code))
+
+                        # Overwrite empty with backed-up meta
+                        new_output, err, err_code = _command(cmd_template + ['restore-md',
+                                                                             TMP_FILE,
+                                                                             '--force'])
+                        if err_code:
+                            raise DrbdFailureException(
+                                    "Failed to restore metadata. stdout: '%s', "
+                                    "stderr: '%s', return code: '%s', "
+                                    "meta: %s" % (output, err, err_code,
+                                                  "\n".join(new_output)))
+
+                if not is_drbd:
+                    # We may have a local PV, resize it.
+                    output, err, err_code = _command(['pvresize', part_device_path])
+                    if err_code not in [0, 5]:
+                        raise Exception("Pvresize failure. stdout: '%s', "
+                                        "stderr: '%s', return code: '%s', " %
+                                        (output, err, err_code))
+
+                disk_available_mib = _get_available_space(disk_device_path)
+                response.update({
+                    'start_mib': _sectors_to_MiB(part.geometry.start,
+                                                 device.sectorSize),
+                    'end_mib': _sectors_to_MiB(part.geometry.end,
+                                               device.sectorSize),
+                    'size_mib': part.getSize(),
+                    'device_path': part_device_path,
+                    'available_mib': disk_available_mib,
+                    'type_name': constants.PARTITION_NAME_PV,
+                    'status': constants.PARTITION_READY_STATUS})
+            except DrbdFailureException as e:
+                if not os.path.exists('/etc/platform/simplex'):
+                    LOG.error("Partition modification failed due to DRBD "
+                              "cmd failure, recreating DRBD volume from scratch"
+                              "Details: %s", str(e))
+                    _, _, _ = _command(['wipefs', '-a', part_device_path])
+                    output, err, err_code = _command(cmd_template + ['create-md',
+                                                                     '--force'])
+                    if err_code:
+                        LOG.exception(
+                                "Failed creating new metadata. stdout: '%s', "
+                                "stderr: '%s', return code: '%s', " %
+                                (output, err, err_code))
+                        response.update({'status': constants.PARTITION_ERROR_STATUS})
+                else:
+                    # We avoid wiping data if we have a single controller!
+                    LOG.exception("Partition modification failed: %s", str(e))
+                    response.update({'status': constants.PARTITION_ERROR_STATUS})
+
+            except Exception as e:
+                LOG.exception("Partition modification failed: %s", str(e))
+                response.update({'status': constants.PARTITION_ERROR_STATUS})
+
+            # Send results back to the conductor.
+            _send_inventory_update(response)
+
+
+def delete_partitions(data, mode, pfile):
+    """Process data for deleting (a) partition(s) and send the update back to
+       the sysinv conductor.
+    """
+    json_body = json.loads(data)
+    for p in json_body:
+        # Get the partition's device path.
+        part_device_path = p.get('part_device_path')
+        disk_device_path = _get_disk_device_path(part_device_path)
+        if _gpt_table_present(disk_device_path):
+            # Separate the partition number from the disk's device path.
+            part_number = _get_partition_number(part_device_path)
+
+            response = {
+                'uuid': p.get('current_uuid'),
+                'ihost_uuid': p.get('ihost_uuid')
+            }
+
+            try:
+                # Delete the partition.
+                print "Delete partition %s from %s" % (disk_device_path,
+                                                       part_number)
+                _delete_partition(disk_device_path, part_number)
+                disk_available_mib = _get_available_space(disk_device_path)
+                response.update({'available_mib': disk_available_mib,
+                                 'status': constants.PARTITION_DELETED_STATUS})
+            except parted.PartitionException:
+                response.update({'status': constants.PARTITION_ERROR_STATUS})
+        else:
+            response = {
+                'uuid': p.get('req_uuid'),
+                'ihost_uuid': p.get('ihost_uuid'),
+                'status': constants.PARTITION_ERROR_STATUS_GPT
+            }
+
+        # Now that the partition is deleted, make sure that we purge it from the
+        # LVM cache. Otherwise, if this partition is recreated and the LVM
+        # global_filter has a view of it, it will become present from an LVM
+        # perspective
+        output, _, _ = _command(["pvscan", "--cache"])
+
+        # Send results back to the conductor.
+        _send_inventory_update(response)
+
+
+def check_partitions(data, mode, pfile):
+    """Check/create missing disk partitions
+    """
+    json_body = json.loads(data)
+    disks = defaultdict(list)
+    for p in json_body:
+        disk_device_path = p.get('disk_device_path')
+        if not _gpt_table_present(disk_device_path):
+            utils.disk_wipe(disk_device_path)
+            utils.execute('parted', disk_device_path, 'mklabel', 'gpt')
+
+        disks[disk_device_path].append(p)
+
+    for partitions in disks.values():
+        # Filter out any partitions without a start_mib
+        sortable_partitions = filter(lambda p: p.get('start_mib') != None, 
+                                     partitions)
+
+        device = parted.getDevice(partitions[0].get('disk_device_path'))
+        disk = parted.newDisk(device)
+
+        for p in sorted(sortable_partitions,
+                        lambda p, q: p.get('start_mib') - q.get('start_mib')):
+            if _partition_exists(disk, p.get('device_path')):
+                print 'Partition {} already exists on disk {}'.format(
+                    p.get('device_path'), device.path)
+                continue
+            _ = _create_partition(
+                device, disk,
+                _MiB_to_sectors(p.get('start_mib'), device.sectorSize),
+                _MiB_to_sectors(p.get('size_mib'), device.sectorSize),
+                p.get('type_guid'), device.sectorSize)
+            _, _, _ = _command(
+                ["udevadm", "settle", "-E", p.get('disk_device_path')])
+            disk = parted.newDisk(device)
+
+
+def add_action_parsers(subparsers):
+    for action in ['delete', 'modify', 'create', 'check']:
+        parser = subparsers.add_parser(action)
+        parser.add_argument('-m', '--mode',
+                            choices=['create-only', 'send-only'])
+        parser.add_argument('-f', '--pfile')
+        parser.add_argument('data')
+        parser.set_defaults(func=globals()[action + '_partitions'])
+
+
+CONF.register_cli_opt(
+    cfg.SubCommandOpt('action',
+                      title='Action options',
+                      help='Available partition management options',
+                      handler=add_action_parsers))
+
+
+def main(argv):
+    sysinv_service.prepare_service(argv)
+    global LOG
+    LOG = log.getLogger("manage-partitions")
+
+    if CONF.action.name in ['delete', 'modify', 'create', 'check']:
+        msg = (_("Called partition '%(action)s' with '%(mode)s' '%(pfile)s' "
+                 "and '%(data)s'") %
+               {"action": CONF.action.name,
+                "mode": CONF.action.mode,
+                "pfile": CONF.action.pfile,
+                "data": CONF.action.data})
+        LOG.info(msg)
+        print msg
+        CONF.action.func(CONF.action.data, CONF.action.mode, CONF.action.pfile)
+    else:
+        LOG.error(_("Unknown action: %(action)") % {"action":
+                                                    CONF.action.name})
+
+
+if __name__ == "__main__":
+    main(sys.argv)

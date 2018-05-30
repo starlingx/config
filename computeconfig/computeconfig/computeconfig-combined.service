@@ -1,0 +1,21 @@
+[Unit]
+Description=computeconfig service
+After=syslog.target network.service remote-fs.target
+After=sw-patch.service
+After=affine-platform.sh.service compute-huge.sh.service
+After=controllerconfig.service config.service
+After=goenabled.service
+After=sysinv-agent.service
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/etc/init.d/compute_config start
+ExecStop=
+ExecReload=
+StandardOutput=syslog+console
+StandardError=syslog+console
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

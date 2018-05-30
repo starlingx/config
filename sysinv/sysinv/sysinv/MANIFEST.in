@@ -1,0 +1,26 @@
+include AUTHORS
+include ChangeLog
+exclude .gitignore
+exclude .gitreview
+
+global-exclude *.pyc
+
+# Added the following includes to allow the package to be built from a
+# source tree instead of a git repository tarball
+include .testr.conf
+include CONTRIBUTING.rst
+include LICENSE
+include README.rst
+include babel.cfg
+include openstack-common.conf
+include requirements.txt
+include test-requirements.txt
+include tox.ini
+include contrib/*
+graft doc
+graft etc
+include sysinv/db/sqlalchemy/migrate_repo/migrate.cfg
+include sysinv/openstack/common/config/generator.py
+include sysinv/tests/policy.json
+include sysinv/tests/db/sqlalchemy/test_migrations.conf
+graft tools

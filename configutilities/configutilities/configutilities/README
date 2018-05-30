@@ -1,0 +1,76 @@
+Copyright © 2017 Wind River Systems, Inc.
+
+SPDX-License-Identifier: Apache-2.0
+-----------------------------------------------------------------------
+
+
+Titanium Cloud Configuration Utilities
+---------------------------------------
+
+To facilitate various aspects of Titanium Cloud installation and
+configuration, utilities have been created to generate and validate
+configuration and setup files which are utilized by the system.
+
+
+Installing the Configuration Utilities
+--------------------------------------
+
+This tarball includes several utilities which can be used to aid in the
+configuration of Titanium Cloud.  Note that these are optional tools which are run prior
+to installation, and not run on the target system.
+
+To install the utilities on a Linux machine follow these steps:
+
+1.  Ensure you have the tools necessary to install new python packages (pip and setuptools)
+    If you do not, you must install them using the appropriate commands for
+    your version of linux, such as:
+        sudo apt-get install python-pip  # e.g. for Ubuntu or Debian
+
+2.  The config_gui tool makes use of external tools which must be
+    installed as follows:
+
+        if using Ubuntu/Debian:
+            sudo apt-get install python-wxgtk2.8 python-wxtools
+
+        if using Fedora:
+            sudo yum install wxPython python-setuptools
+
+        if using CentOS/RedHat, the appropriate rpm can be obtained from EPEL
+            sudo yum install epel-release
+            sudo yum install wxPython
+
+            Note, if epel-release is not available, it can be obtained as such (specific to
+            your version)
+                wget http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
+                sudo rpm -Uvh epel-release-6*.rpm
+                sudo yum install wxPython
+
+3.  Copy wrs-configutilities-3.0.0.tgz to the python install directory
+    (i.e. /usr/lib/python2.7/dist-packages or /usr/lib/python2.7/site-packages)
+
+4.  Cd to this python install directory
+
+5.  Untar the file: 
+        sudo tar xfv wrs-configutilities-3.0.0.tgz
+
+6.  Cd configutilities
+
+7.  Run setup:  
+        sudo python setup.py install
+
+
+Using the Configuration Utilities
+---------------------------------
+
+There are two tools installed: config_validator and config_gui.
+
+config_validator is a commandline tool which takes a 'controller configuration
+input' file of the INI type and does preliminary analysis to ensure its validity.
+It can be called as follows: 
+    config_validator --system-config <filename>
+
+config_gui is a GUI-based tool which provides tools for creating a 'controller 
+configuration input' INI file and/or a 'bulk host' XML file.  It can be launched 
+by calling 'config_gui' from the command line and will walk you through the process
+of generating the desired configuration files.
+

@@ -1,0 +1,15 @@
+[Unit]
+Description=Titanium Cloud System Inventory Agent
+After=nfscommon.service sw-patch.service
+After=network-online.target systemd-udev-settle.service
+Before=pmon.service
+
+[Service]
+Type=forking
+RemainAfterExit=yes
+ExecStart=/etc/init.d/sysinv-agent start
+ExecStop=/etc/init.d/sysinv-agent stop
+PIDFile=/var/run/sysinv-agent.pid
+
+[Install]
+WantedBy=multi-user.target
