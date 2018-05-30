@@ -1,0 +1,6 @@
+!.distro
+.distro/centos7/rpmbuild/RPMS
+.distro/centos7/rpmbuild/SRPMS
+.distro/centos7/rpmbuild/BUILD
+.distro/centos7/rpmbuild/BUILDROOT
+.distro/centos7/rpmbuild/SOURCES/tsconfig*tar.gz

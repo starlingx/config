@@ -1,0 +1,48 @@
+. /etc/build.info
+
+#
+# Keep the following path and flag declarations in sync with tsconfig.py
+#
+
+# Platform configuration paths and files
+
+PLATFORM_CONF_PATH=/etc/platform
+PLATFORM_CONF_FILE=${PLATFORM_CONF_PATH}/platform.conf
+PLATFORM_SIMPLEX_FLAG=${PLATFORM_CONF_PATH}/simplex
+
+VOLATILE_PATH=/var/run
+PLATFORM_PATH=/opt/platform
+CONFIG_PATH=${PLATFORM_PATH}/config/${SW_VERSION}
+# TODO(mpeters) remove the PACKSTACK_PATH
+PACKSTACK_PATH=${PLATFORM_PATH}/packstack/${SW_VERSION}
+PUPPET_PATH=${PLATFORM_PATH}/puppet/${SW_VERSION}
+CGCS_PATH=/opt/cgcs
+
+# Compute configuration flags
+
+# Set after the first application of compute manifests
+INITIAL_COMPUTE_CONFIG_COMPLETE=${PLATFORM_CONF_PATH}/.initial_compute_config_complete
+# Set after each application of compute manifests
+VOLATILE_COMPUTE_CONFIG_COMPLETE=${VOLATILE_PATH}/.compute_config_complete
+# Set to prevent starting compute services (used in combined node upgrade)
+VOLATILE_DISABLE_COMPUTE_SERVICES=${VOLATILE_PATH}/.disable_compute_services
+
+# Upgrade flags
+
+# Set on controller-0 to force controller-1 to do an upgrade after install.
+CONTROLLER_UPGRADE_FLAG=${PLATFORM_CONF_PATH}/.upgrade_controller_1
+# Set on controller-0 (by controller-1) to indicate a completed upgrade.
+CONTROLLER_UPGRADE_COMPLETE_FLAG=${PLATFORM_CONF_PATH}/.upgrade_controller_1_complete
+# Set on controller-0 (by controller-1) to indicate a failed upgrade data migration
+CONTROLLER_UPGRADE_FAIL_FLAG=${PLATFORM_CONF_PATH}/.upgrade_controller_1_fail
+# Set on controller-1 to indicate we are rolling back the upgrade
+UPGRADE_ROLLBACK_FLAG=${PLATFORM_CONF_PATH}/.upgrade_rollback
+# Set on controller-1 to indicate we are aborting the upgrade
+UPGRADE_ABORT_FILE=.upgrade_abort
+UPGRADE_ABORT_FLAG=${CONFIG_PATH}/${UPGRADE_ABORT_FILE}
+# Set on controller-0 (by controller-1) to indicate that data migration has started
+CONTROLLER_UPGRADE_STARTED_FLAG=${PLATFORM_CONF_PATH}/.upgrade_controller_1_started
+
+# Backup / Restore flags
+BACKUP_IN_PROGRESS_FLAG=${PLATFORM_CONF_PATH}/.backup_in_progress
+RESTORE_IN_PROGRESS_FLAG=${PLATFORM_CONF_PATH}/.restore_in_progress

@@ -1,0 +1,3 @@
+SRC_DIR="tsconfig"
+COPY_LIST_TO_TAR="scripts"
+TIS_PATCH_VER=8
