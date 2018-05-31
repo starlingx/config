@@ -313,6 +313,7 @@ class PuppetOperator(object):
             config.update(self.device.get_host_config(host))
             config.update(self.nova.get_host_config(host))
             config.update(self.neutron.get_host_config(host))
+            config.update(self.kubernetes.get_host_config(host))
             config.update(self.ldap.get_host_config(host))
             # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_host_config(host))

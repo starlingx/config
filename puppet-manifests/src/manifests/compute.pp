@@ -29,6 +29,7 @@ include ::platform::ceph
 include ::platform::devices
 include ::platform::grub
 include ::platform::collectd
+include ::platform::kubernetes::worker
 
 include ::openstack::client
 include ::openstack::neutron

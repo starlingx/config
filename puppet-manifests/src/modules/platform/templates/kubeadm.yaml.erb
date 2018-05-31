@@ -1,0 +1,6 @@
+apiVersion: kubeadm.k8s.io/v1alpha1
+kind: MasterConfiguration
+api:
+  advertiseAddress: <%= @apiserver_advertise_address %>
+networking:
+  podSubnet: <%= @pod_network_cidr %>
