@@ -1866,7 +1866,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'capabilities': 'Text',
         }
         for col, coltype in storage_backend_cols.items():
-            self.assertTrue(isinstance(ceph_mon.c[col].type,
+            self.assertTrue(isinstance(storage_backend.c[col].type,
                                        getattr(sqlalchemy.types, coltype)))
             # Assert deletion of the i_storconfig table
         self.assertTableNotExists(engine, 'storage_lvm')
@@ -1882,7 +1882,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'id': 'Integer',
         }
         for col, coltype in storage_file_cols.items():
-            self.assertTrue(isinstance(ceph_file.c[col].type,
+            self.assertTrue(isinstance(storage_file.c[col].type,
                                        getattr(sqlalchemy.types, coltype)))
             # Assert deletion of the i_storconfig table
         self.assertTableNotExists(engine, 'storage_file')

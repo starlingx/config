@@ -26,33 +26,6 @@ CONF = cfg.CONF
 LOG = log.getLogger(__name__)
 
 
-# TODO(mpeters): packstack removal - upgrade support
-def gen_upgrade_manifests(from_release, to_release):
-    mydbapi = dbapi.get_instance()
-    mypackstack = packstack.PackstackOperator(mydbapi)
-
-    LOG.info("Creating upgrade manifests for controller-1")
-    host = mydbapi.ihost_get_by_hostname(constants.CONTROLLER_1_HOSTNAME)
-    mypackstack.create_controller_upgrade_manifests(host,
-                                                    from_release,
-                                                    to_release)
-
-
-# TODO(mpeters): packstack removal - upgrade support
-def gen_manifests():
-    mydbapi = dbapi.get_instance()
-    mypackstack = packstack.PackstackOperator(mydbapi)
-
-    hostname = constants.CONTROLLER_1_HOSTNAME
-    if system_mode == constants.SYSTEM_MODE_SIMPLEX:
-        hostname = constants.CONTROLLER_0_HOSTNAME
-
-    LOG.info("Creating manifests for %s" % hostname)
-    host = mydbapi.ihost_get_by_hostname(hostname)
-    # This will also generate manifests for any subfunctions if present
-    mypackstack.update_host_manifests(host)
-
-
 def update_controller_state():
     mydbapi = dbapi.get_instance()
 
@@ -83,12 +56,8 @@ def update_controller_state():
 
 
 def add_action_parsers(subparsers):
-    for action in ['gen_upgrade_manifests', 'gen_manifests',
-                   'update_controller_state']:
+    for action in ['update_controller_state']:
         parser = subparsers.add_parser(action)
-        if action == 'gen_upgrade_manifests':
-            parser.add_argument('from_release')
-            parser.add_argument('to_release')
         parser.set_defaults(func=globals()[action])
 
 
@@ -103,20 +72,11 @@ def main():
     # Parse config file and command line options, then start logging
     service.prepare_service(sys.argv)
 
-    if CONF.action.name in ['gen_manifests',
-                            'update_controller_state']:
+    if CONF.action.name in ['update_controller_state']:
         msg = (_("Called '%(action)s'") %
                {"action": CONF.action.name})
         LOG.info(msg)
         CONF.action.func()
-    elif CONF.action.name in ['gen_upgrade_manifests']:
-        msg = (_("Called '%(action)s'") %
-               {"action": CONF.action.name,
-                "to_release": CONF.action.to_release,
-                "from_release": CONF.action.from_release}
-               )
-        LOG.info(msg)
-        CONF.action.func(CONF.action.from_release, CONF.action.to_release)
     else:
         LOG.error(_("Unknown action: %(action)") % {"action":
                                                     CONF.action.name})

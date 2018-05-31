@@ -7,7 +7,7 @@
 
 import uuid
 from datetime import datetime
-
+from sqlalchemy import Integer
 from sqlalchemy import Column, MetaData, Table
 
 from sysinv.openstack.common import log

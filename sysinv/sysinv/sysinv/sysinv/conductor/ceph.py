@@ -448,7 +448,7 @@ class CephOperator(object):
                         ": {0}. reason: {1}").format(name, response.reason)
                 e = exception.CephFailure(reason=msg)
                 LOG.error(e)
-                self.delete_osd_pool(pool_name)
+                self.delete_osd_pool(name)
                 raise e
 
         else:
