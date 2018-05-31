@@ -8,6 +8,7 @@ Packager: Wind River <info@windriver.com>
 URL: unknown
 Source0: %{name}-%{version}.tar.gz
 
+BuildRequires: git
 BuildRequires: python-setuptools
 Requires: python-httplib2
 Requires: python-prettytable
