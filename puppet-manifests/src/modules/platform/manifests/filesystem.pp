@@ -138,12 +138,16 @@ class platform::filesystem::docker::params (
 class platform::filesystem::docker
   inherits ::platform::filesystem::docker::params {
 
-  platform::filesystem { $lv_name:
-    lv_name => $lv_name,
-    lv_size => $lv_size,
-    mountpoint => $mountpoint,
-    fs_type => $fs_type,
-    fs_options => $fs_options
+  include ::platform::kubernetes::params
+
+  if $::platform::kubernetes::params::enabled {
+    platform::filesystem { $lv_name:
+      lv_name => $lv_name,
+      lv_size => $lv_size,
+      mountpoint => $mountpoint,
+      fs_type => $fs_type,
+      fs_options => $fs_options
+    }
   }
 }
 

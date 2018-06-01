@@ -6368,19 +6368,17 @@ class ConductorManager(service.PeriodicService):
 
         if kubernetes_config:
             docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
-        else:
-            docker_lv_size = constants.DEFAULT_DOCKER_STOR_SIZE
 
-        data = {
-            'name': constants.FILESYSTEM_NAME_DOCKER,
-            'size': docker_lv_size,
-            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                constants.FILESYSTEM_NAME_DOCKER],
-            'replicated': False,
-        }
-        LOG.info("Creating FS:%s:%s %d" % (
-            data['name'], data['logical_volume'], data['size']))
-        self.dbapi.controller_fs_create(data)
+            data = {
+                'name': constants.FILESYSTEM_NAME_DOCKER,
+                'size': docker_lv_size,
+                'logical_volume': constants.FILESYSTEM_LV_DICT[
+                    constants.FILESYSTEM_NAME_DOCKER],
+                'replicated': False,
+            }
+            LOG.info("Creating FS:%s:%s %d" % (
+                data['name'], data['logical_volume'], data['size']))
+            self.dbapi.controller_fs_create(data)
 
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                 tsc.system_type != constants.TIS_AIO_BUILD):
