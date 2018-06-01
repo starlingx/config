@@ -86,10 +86,12 @@ from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.common import health
 
 
 LOG = log.getLogger(__name__)
 KEYRING_BM_SERVICE = "BM"
+ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER = "-1003"
 
 
 def _get_controller_address(hostname):
@@ -4621,6 +4623,33 @@ class HostController(rest.RestController):
                               constants.CONTROLLER_1_HOSTNAME,
                               constants.STORAGE_0_HOSTNAME))
 
+        if not force:
+            # sm-lock-pre-check
+            node_name = hostupdate.displayid
+            response = sm_api.lock_pre_check(node_name, timeout=30)
+            if response:
+                error_code = response.get('error_code')
+                if ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER == error_code:
+                    impact_svc_list = response.get('impact_service_list')
+                    svc_list = ','.join(impact_svc_list)
+                    if len(impact_svc_list) > 1:
+                        msg = _("Services {svc_list} are only running on "
+                                "{host}, locking {host} will result "
+                                "service outage. If lock {host} is required, "
+                                "please use \"force lock\" command.").format(
+                            svc_list=svc_list, host=node_name)
+                    else:
+                        msg = _("Service {svc_list} is only running on "
+                                "{host}, locking {host} will result "
+                                "service outage. If lock {host} is required, "
+                                "please use \"force lock\" command.").format(
+                            svc_list=svc_list, host=node_name)
+
+                    raise wsme.exc.ClientSideError(msg)
+                elif "0" != error_code:
+                    raise wsme.exc.ClientSideError(
+                        _("%s" % response['error_details']))
+
     def check_unlock_controller(self, hostupdate):
         """Pre unlock semantic checks for controller"""
         LOG.info("%s ihost check_unlock_controller" % hostupdate.displayid)
@@ -4988,10 +5017,20 @@ class HostController(rest.RestController):
 
                 if (ihost_ctr.availability ==
                         constants.AVAILABILITY_DEGRADED):
-                    raise wsme.exc.ClientSideError(
-                        _("%s has degraded availability status. "
-                          "Standby controller must be in available status.") %
-                        (ihost_ctr.hostname))
+                    health_helper = health.Health(pecan.request.dbapi)
+                    degrade_alarms = health_helper.get_alarms_degrade(
+                        alarm_ignore_list=[
+                            fm_constants.FM_ALARM_ID_HA_SERVICE_GROUP_STATE,
+                            fm_constants.FM_ALARM_ID_HA_SERVICE_GROUP_REDUNDANCY,
+                            fm_constants.FM_ALARM_ID_HA_NODE_LICENSE,
+                            fm_constants.FM_ALARM_ID_HA_COMMUNICATION_FAILURE
+                        ],
+                        entity_instance_id_filter=ihost_ctr.hostname)
+                    if degrade_alarms:
+                        raise wsme.exc.ClientSideError(
+                            _("%s has degraded availability status. "
+                              "Standby controller must be in available status.") %
+                            (ihost_ctr.hostname))
 
                 if constants.COMPUTE in ihost_ctr.subfunctions:
                     if (ihost_ctr.subfunction_oper !=
