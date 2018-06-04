@@ -2087,6 +2087,39 @@ class HostController(rest.RestController):
             self._api_token = None
             pass  # VIM audit will pickup
 
+    @staticmethod
+    def _check_host_delete_during_upgrade():
+        """ Determine whether host delete is allowed during upgrade
+
+            returns: boolean False if not allowed
+        """
+
+        upgrade = None
+        try:
+            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            return True
+
+        if upgrade:
+            loads = pecan.request.dbapi.load_get_list()
+            to_load = cutils.get_imported_load(loads)
+
+            active_controller = utils.HostHelper.get_active_controller()
+            host_upgrade = objects.host_upgrade.get_by_host_id(
+                pecan.request.context, active_controller.id)
+
+            if ((host_upgrade.target_load != to_load.id) or
+                    (host_upgrade.software_load != to_load.id)):
+                LOG.info("_check_host_delete_during_upgrade %s sw=%s "
+                         "target=%s load=%s" %
+                         (active_controller.hostname,
+                          host_upgrade.target_load,
+                          host_upgrade.software_load,
+                          to_load.id))
+                return False
+
+        return True
+
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, unicode, status_code=204)
     def delete(self, ihost_id):
@@ -2114,6 +2147,10 @@ class HostController(rest.RestController):
                 host = ihost.hostname
 
             raise exception.HostLocked(action=constants.DELETE_ACTION, host=host)
+
+        if not self._check_host_delete_during_upgrade():
+            raise wsme.exc.ClientSideError(_(
+                "host-delete rejected: not allowed at this upgrade stage"))
 
         personality = ihost.personality
         # allow deletion of unprovisioned locked disabled & offline storage hosts
@@ -2397,6 +2434,12 @@ class HostController(rest.RestController):
                     _("Host %s must be locked and "
                       "all osds must be down.")
                     % (rpc_ihost.hostname))
+
+        if upgrade.state in [constants.UPGRADE_STARTED]:
+            LOG.info("host-upgrade check upgrade_refresh %s" %
+                     rpc_ihost.hostname)
+            force = body.get('force', False) is True
+            self._semantic_check_upgrade_refresh(upgrade, rpc_ihost, force)
 
         # Update the target load for this host
         self._update_load(uuid, body, new_target_load)
@@ -3717,19 +3760,20 @@ class HostController(rest.RestController):
         new_hw = []
         disks = pecan.request.dbapi.idisk_get_by_ihost(host.id)
         new_disks = [x.uuid for x in disks
-                     if x.created_at > upgrade_created_at]
+                     if x.created_at and (x.created_at > upgrade_created_at)]
         if new_disks:
             new_hw.append(('disks', host.hostname, new_disks))
 
         interfaces = pecan.request.dbapi.iinterface_get_by_ihost(host.id)
-        new_interfaces = [x.uuid for x in interfaces
-                          if x.created_at > upgrade_created_at]
+        new_interfaces = [
+            x.uuid for x in interfaces
+            if x.created_at and (x.created_at > upgrade_created_at)]
         if new_interfaces:
             new_hw.append(('interfaces', host.hostname, new_interfaces))
 
         stors = pecan.request.dbapi.istor_get_by_ihost(host.id)
         new_stors = [x.uuid for x in stors
-                     if x.created_at > upgrade_created_at]
+                     if x.created_at and (x.created_at > upgrade_created_at)]
         if new_stors:
             new_hw.append(('stors', host.hostname, new_stors))
 
@@ -4713,6 +4757,11 @@ class HostController(rest.RestController):
         elif personality == constants.STORAGE:
             self.check_lock_storage(hostupdate)
 
+        subfunctions_set = \
+            set(hostupdate.ihost_patch[constants.SUBFUNCTIONS].split(','))
+        if constants.COMPUTE in subfunctions_set:
+            self.check_lock_compute(hostupdate)
+
         hostupdate.notify_vim = True
         hostupdate.notify_mtce = True
 
@@ -5352,6 +5401,54 @@ class HostController(rest.RestController):
                         msg = _("Cannot lock a storage node when ceph pools are not empty "
                                 "and replication is lost. This may result in data loss. ")
                         raise wsme.exc.ClientSideError(msg)
+
+    def check_lock_compute(self, hostupdate, force=False):
+        """Pre lock semantic checks for compute"""
+
+        LOG.info("%s host check_lock_compute" % hostupdate.displayid)
+        if force:
+            return
+
+        upgrade = None
+        try:
+            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            return
+
+        upgrade_state = upgrade.state
+        system = pecan.request.dbapi.isystem_get_one()
+        system_mode = system.system_mode
+        system_type = system.system_type
+        hostname = hostupdate.ihost_patch.get('hostname')
+
+        if system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            return
+
+        if upgrade_state in [
+                constants.UPGRADE_STARTING,
+                constants.UPGRADE_STARTED,
+                constants.UPGRADE_DATA_MIGRATION,
+                constants.UPGRADE_DATA_MIGRATION_COMPLETE,
+                constants.UPGRADE_DATA_MIGRATION_FAILED]:
+            if system_type == constants.TIS_AIO_BUILD:
+                if hostname == constants.CONTROLLER_1_HOSTNAME:
+                    # Allow AIO-DX lock of controller-1
+                    return
+            raise wsme.exc.ClientSideError(
+                _("Rejected: Can not lock %s with compute function "
+                  "at this upgrade stage '%s'.") %
+                (hostupdate.displayid, upgrade_state))
+
+        if upgrade_state in [constants.UPGRADE_UPGRADING_CONTROLLERS]:
+            if system_type == constants.TIS_AIO_BUILD:
+                # Allow lock for AIO-DX controller-0 after upgrading
+                # controller-1. Allow lock for AIO-DX controllers.
+                if hostname == constants.CONTROLLER_0_HOSTNAME:
+                    return
+            raise wsme.exc.ClientSideError(
+                _("Rejected: Can not lock %s with compute function "
+                  "at this upgrade stage '%s'.") %
+                (hostupdate.displayid, upgrade_state))
 
     def check_unlock_interfaces(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""
