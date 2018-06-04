@@ -8669,6 +8669,7 @@ class ConductorManager(service.PeriodicService):
     def get_controllerfs_lv_sizes(self, context):
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
+        kubernetes_config = system.capabilities.get('kubernetes_enabled', False)
 
         lvdisplay_command = 'lvdisplay --columns --options lv_size,lv_name ' \
                             '--units g --noheading --nosuffix ' \
@@ -8676,8 +8677,10 @@ class ConductorManager(service.PeriodicService):
                             '/dev/cgts-vg/cgcs-lv ' \
                             '/dev/cgts-vg/img-conversions-lv ' \
                             '/dev/cgts-vg/scratch-lv ' \
-                            '/dev/cgts-vg/extension-lv '\
-                            '/dev/cgts-vg/docker-lv '
+                            '/dev/cgts-vg/extension-lv '
+
+        if kubernetes_config:
+            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/docker-lv '
 
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                 tsc.system_type != constants.TIS_AIO_BUILD):
