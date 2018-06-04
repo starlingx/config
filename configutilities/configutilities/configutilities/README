@@ -43,7 +43,7 @@ To install the utilities on a Linux machine follow these steps:
             your version)
                 wget http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
                 sudo rpm -Uvh epel-release-6*.rpm
-                sudo yum install wxPython
+                sudo yum install wxPython python-pip
 
 3.  Copy wrs-configutilities-3.0.0.tgz to the python install directory
     (i.e. /usr/lib/python2.7/dist-packages or /usr/lib/python2.7/site-packages)
