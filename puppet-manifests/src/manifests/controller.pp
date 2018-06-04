@@ -34,6 +34,7 @@ include ::platform::etcd
 include ::platform::docker
 include ::platform::dockerdistribution
 include ::platform::kubernetes::master
+include ::platform::helm
 
 include ::platform::patching
 include ::platform::patching::api

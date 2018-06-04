@@ -122,8 +122,8 @@ class platform::kubernetes::master
   inherits ::platform::kubernetes::params {
 
   if $enabled {
-    include ::platform::kubernetes::kubeadm
-    include ::platform::kubernetes::master::init
+    contain ::platform::kubernetes::kubeadm
+    contain ::platform::kubernetes::master::init
 
     Class['::platform::etcd'] -> Class[$name]
     Class['::platform::docker::config'] -> Class[$name]
@@ -163,8 +163,8 @@ class platform::kubernetes::worker
   inherits ::platform::kubernetes::params {
 
   if $enabled {
-    include ::platform::kubernetes::kubeadm
-    include ::platform::kubernetes::worker::init
+    contain ::platform::kubernetes::kubeadm
+    contain ::platform::kubernetes::worker::init
 
     Class['::platform::kubernetes::kubeadm'] ->
     Class['::platform::kubernetes::worker::init']
