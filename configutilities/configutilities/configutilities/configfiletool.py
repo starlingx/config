@@ -754,7 +754,7 @@ class SYSTEMPage(ConfigPage):
 
     def set_fields(self):
         self.fields['use_mode'] = Field(
-            text="Configure as an all-in-one system",
+            text="Configure as an All-in-one system",
             type=TYPES.checkbox,
             transient=True,
             shows=["SYSTEM_MODE"]
