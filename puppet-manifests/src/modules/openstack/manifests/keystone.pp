@@ -6,6 +6,7 @@ class openstack::keystone::params(
   $auth_uri,
   $host_url,
   $region_name = undef,
+  $system_controller_region = undef,
   $service_name = 'openstack-keystone',
   $token_expiration = 3600,
   $service_create = false,
@@ -157,6 +158,7 @@ class openstack::keystone::api
   if ($::openstack::keystone::params::service_create and
       $::platform::params::init_keystone) {
     include ::keystone::endpoint
+    include ::openstack::keystone::endpointgroup
 
     # Cleanup the endpoints created at bootstrap if they are not in
     # the subcloud region.
@@ -248,6 +250,60 @@ class openstack::keystone::bootstrap(
 
 class openstack::keystone::reload {
   platform::sm::restart {'keystone': }
+}
+
+
+class openstack::keystone::endpointgroup
+  inherits ::openstack::keystone::params {
+  include ::platform::params
+  include ::openstack::client
+
+  # $::platform::params::init_keystone should be checked by the caller.
+  # as this class should be only invoked when initializing keystone.
+  # i.e. is_initial_config_primary is true is expected.
+
+  if ($::platform::params::distributed_cloud_role =='systemcontroller') {
+    $reference_region = $::openstack::keystone::params::region_name
+    $system_controller_region = $::openstack::keystone::params::system_controller_region
+    $os_username = $::openstack::client::params::admin_username
+    $identity_region = $::openstack::client::params::identity_region
+    $keystone_region = $::openstack::client::params::keystone_identity_region
+    $keyring_file = $::openstack::client::credentials::params::keyring_file
+    $auth_url = $::openstack::client::params::identity_auth_url
+    $os_project_name = $::openstack::client::params::admin_project_name
+    $api_version = 3
+
+    file { "/etc/keystone/keystone-${reference_region}-filter.conf":
+      ensure  => present,
+      owner   => 'root',
+      group   => 'keystone',
+      mode    => '0640',
+      content => template('openstack/keystone-defaultregion-filter.erb'),
+    } ->
+    file { "/etc/keystone/keystone-${system_controller_region}-filter.conf":
+      ensure  => present,
+      owner   => 'root',
+      group   => 'keystone',
+      mode    => '0640',
+      content => template('openstack/keystone-systemcontroller-filter.erb'),
+    } ->
+    exec { 'endpointgroup-${reference_region}-command':
+      cwd => '/etc/keystone',
+      logoutput => true,
+      provider => shell,
+      require => [ Class['openstack::keystone::api'], Class['::keystone::endpoint'] ],
+      command => template('openstack/keystone-defaultregion.erb'),
+      path =>  ['/usr/bin/', '/bin/', '/sbin/', '/usr/sbin/'],
+    }  ->
+    exec { 'endpointgroup-${system_controller_region}-command':
+      cwd => '/etc/keystone',
+      logoutput => true,
+      provider => shell,
+      require => [ Class['openstack::keystone::api'], Class['::keystone::endpoint'] ],
+      command => template('openstack/keystone-systemcontroller.erb'),
+      path =>  ['/usr/bin/', '/bin/', '/sbin/', '/usr/sbin/'],
+    }
+  }
 }
 
 
@@ -383,9 +439,8 @@ class openstack::keystone::upgrade (
       sync_db             => false,
       default_domain      => undef,
       default_transport_url   => $::platform::amqp::params::transport_url,
-    } 
+    }
 
-    
     # Add service account and endpoints for any new R6 services...
     # include ::<new service>::keystone::auth
     # No new services yet...

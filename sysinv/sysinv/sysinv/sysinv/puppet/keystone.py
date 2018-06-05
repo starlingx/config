@@ -117,6 +117,8 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             # system resides
             'openstack::keystone::params::region_name':
                 self._identity_specific_region_name(),
+            'openstack::keystone::params::system_controller_region':
+                constants.SYSTEM_CONTROLLER_REGION,
             'openstack::keystone::params::service_create':
                 self._to_create_services(),
 

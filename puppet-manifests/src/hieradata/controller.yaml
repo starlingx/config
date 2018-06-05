@@ -176,6 +176,7 @@ keystone::log_file: /dev/null
 keystone::endpoint::default_domain: 'Default'
 keystone::endpoint::version: 'v3'
 keystone::endpoint::region: 'RegionOne'
+keystone::endpoint::system_controller_region: 'SystemController'
 keystone::endpoint::admin_url: 'http://127.0.0.1:5000'
 
 keystone::ldap::identity_driver: 'sql'

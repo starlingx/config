@@ -17,7 +17,7 @@ class dcmanager::keystone::auth (
   $auth_name            = 'dcmanager',
   $auth_domain,
   $email                = 'dcmanager@localhost',
-  $tenant               = 'services',
+  $tenant               = 'admin',
   $region               = 'SystemController',
   $service_description  = 'DCManagerService',
   $service_name         = undef,
