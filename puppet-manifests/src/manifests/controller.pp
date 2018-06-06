@@ -31,6 +31,7 @@ include ::platform::postgresql::server
 include ::platform::haproxy::server
 include ::platform::grub
 include ::platform::docker
+include ::platform::dockerdistribution
 include ::platform::kubernetes::master
 
 include ::platform::patching
