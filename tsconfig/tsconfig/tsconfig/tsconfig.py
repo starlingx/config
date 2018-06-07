@@ -210,5 +210,10 @@ CONTROLLER_UPGRADE_STARTED_FLAG = os.path.join(
 # Backup / Restore flags
 BACKUP_IN_PROGRESS_FLAG = os.path.join(
     PLATFORM_CONF_PATH, '.backup_in_progress')
+# Set while a restore is running to prevent another restore being started
 RESTORE_IN_PROGRESS_FLAG = os.path.join(
     PLATFORM_CONF_PATH, '.restore_in_progress')
+# Mark that restore_system was run on controller-0. Will be deleted
+# once controller-0 is restored completely
+RESTORE_SYSTEM_FLAG = os.path.join(
+    CONFIG_PATH, '.restore_system')
