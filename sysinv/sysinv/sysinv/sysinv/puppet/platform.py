@@ -4,17 +4,17 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import copy
+import itertools
 import os
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.openstack.common import log as logging
+from sysinv.common import utils
 
 from tsconfig import tsconfig
 
 from . import base
-
-LOG = logging.getLogger(__name__)
 
 HOSTNAME_INFRA_SUFFIX = '-infra'
 
@@ -65,6 +65,8 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_sysctl_config(host))
         config.update(self._get_host_drbd_config(host))
         config.update(self._get_host_upgrade_config(host))
+        config.update(self._get_host_cpu_config(host))
+        config.update(self._get_host_hugepage_config(host))
         return config
 
     def _get_static_software_config(self):
@@ -478,6 +480,159 @@ class PlatformPuppet(base.BasePuppet):
             config.update({
                 'platform::drbd::params::cpumask': drbd_cpumask
             })
+        return config
+
+    def _get_host_cpu_config(self, host):
+        config = {}
+        if constants.COMPUTE in utils.get_personalities(host):
+            host_cpus = self._get_host_cpu_list(host, threads=True)
+            if not host_cpus:
+                return config
+
+            host_cpus = sorted(host_cpus, key=lambda c: c.cpu)
+            n_cpus = len(host_cpus)
+            host_cpu_list = [c.cpu for c in host_cpus]
+
+            platform_cpus = self._get_host_cpu_list(
+                host, function=constants.PLATFORM_FUNCTION, threads=True)
+            platform_cpus = sorted(platform_cpus, key=lambda c: c.cpu)
+            platform_cpu_list = \
+                "%s" % ','.join([str(c.cpu) for c in platform_cpus])
+
+            vswitch_cpus = self._get_host_cpu_list(
+                host, constants.VSWITCH_FUNCTION, threads=True)
+            vswitch_cpus = sorted(vswitch_cpus, key=lambda c: c.cpu)
+            vswitch_cpu_list = \
+                "%s" % ','.join([str(c.cpu) for c in vswitch_cpus])
+
+            # rcu_nocbs = all cores - platform cores
+            rcu_nocbs = copy.deepcopy(host_cpu_list)
+            for i in [int(s) for s in platform_cpu_list.split(',')]:
+                rcu_nocbs.remove(i)
+
+            # change the CPU list to ranges
+            rcu_nocbs_ranges = ""
+            for key, group in itertools.groupby(enumerate(rcu_nocbs),
+                                                lambda (x, y): y - x):
+                group = list(group)
+                rcu_nocbs_ranges += "%s-%s," % (group[0][1], group[-1][1])
+            rcu_nocbs_ranges = rcu_nocbs_ranges.rstrip(',')
+
+            # non-vswitch CPUs = all cores - vswitch cores
+            non_vswitch_cpus = host_cpu_list
+            for i in [int(s) for s in vswitch_cpu_list.split(',')]:
+                non_vswitch_cpus.remove(i)
+
+            # change the CPU list to ranges
+            non_vswitch_cpus_ranges = ""
+            for key, group in itertools.groupby(enumerate(non_vswitch_cpus),
+                                                lambda (x, y): y - x):
+                group = list(group)
+                non_vswitch_cpus_ranges += "\"%s-%s\"," % (group[0][1], group[-1][1])
+
+            cpu_options = ""
+            if constants.LOWLATENCY in host.subfunctions:
+                vswitch_cpu_list_with_quotes = \
+                    "\"%s\"" % ','.join([str(c.cpu) for c in vswitch_cpus])
+                config.update({
+                    'platform::compute::pmqos::low_wakeup_cpus':
+                        vswitch_cpu_list_with_quotes,
+                    'platform::compute::pmqos::hight_wakeup_cpus':
+                        non_vswitch_cpus_ranges.rstrip(',')})
+                vswitch_cpu_list = rcu_nocbs_ranges
+                cpu_options += "nohz_full=%s " % vswitch_cpu_list
+
+            cpu_options += "isolcpus=%s rcu_nocbs=%s kthread_cpus=%s " \
+                "irqaffinity=%s" % (vswitch_cpu_list,
+                                    rcu_nocbs_ranges,
+                                    platform_cpu_list,
+                                    platform_cpu_list)
+            config.update({
+                'platform::compute::grub::params::n_cpus': n_cpus,
+                'platform::compute::grub::params::cpu_options': cpu_options,
+            })
+        return config
+
+    def _get_host_hugepage_config(self, host):
+        config = {}
+        if constants.COMPUTE in utils.get_personalities(host):
+            host_memory = self.dbapi.imemory_get_by_ihost(host.id)
+
+            memory_numa_list = self._get_numa_index_list(host_memory)
+
+            hugepages_2Ms = []
+            hugepages_1Gs = []
+            vswitch_2M_pages = []
+            vswitch_1G_pages = []
+            vm_4K_pages = []
+            vm_2M_pages = []
+            vm_1G_pages = []
+
+            for node, memory_list in memory_numa_list.items():
+
+                memory = memory_list[0]
+                vswitch_2M_page = 0
+                vswitch_1G_page = 0
+
+                vm_hugepages_nr_2M = memory.vm_hugepages_nr_2M_pending \
+                    if memory.vm_hugepages_nr_2M_pending is not None \
+                    else memory.vm_hugepages_nr_2M
+                vm_hugepages_nr_1G = memory.vm_hugepages_nr_1G_pending \
+                    if memory.vm_hugepages_nr_1G_pending is not None \
+                    else memory.vm_hugepages_nr_1G
+                vm_hugepages_nr_4K = memory.vm_hugepages_nr_4K \
+                    if memory.vm_hugepages_nr_4K is not None else 0
+
+                total_hugepages_2M = vm_hugepages_nr_2M
+                total_hugepages_1G = vm_hugepages_nr_1G
+
+                if memory.avs_hugepages_size_mib == constants.MIB_2M:
+                    total_hugepages_2M += memory.avs_hugepages_nr
+                    vswitch_2M_page += memory.avs_hugepages_nr
+                elif memory.avs_hugepages_size_mib == constants.MIB_1G:
+                    total_hugepages_1G += memory.avs_hugepages_nr
+                    vswitch_1G_page += memory.avs_hugepages_nr
+
+                vswitch_2M_pages.append(vswitch_2M_page)
+                vswitch_1G_pages.append(vswitch_1G_page)
+
+                hugepages_2M = "\"node%d:%dkB:%d\"" % (
+                    node, constants.MIB_2M * 1024, total_hugepages_2M)
+                hugepages_1G = "\"node%d:%dkB:%d\"" % (
+                    node, constants.MIB_1G * 1024, total_hugepages_1G)
+                hugepages_2Ms.append(hugepages_2M)
+                hugepages_1Gs.append(hugepages_1G)
+
+                vm_4K_pages.append(vm_hugepages_nr_4K)
+                vm_2M_pages.append(vm_hugepages_nr_2M)
+                vm_1G_pages.append(vm_hugepages_nr_1G)
+
+            nr_hugepages_2Ms = "(%s)" % ' '.join(hugepages_2Ms)
+            nr_hugepages_1Gs = "(%s)" % ' '.join(hugepages_1Gs)
+
+            vswitch_2M = "\"%s\"" % ','.join([str(i) for i in vswitch_2M_pages])
+            vswitch_1G = "\"%s\"" % ','.join([str(i) for i in vswitch_1G_pages])
+            vm_4K = "\"%s\"" % ','.join([str(i) for i in vm_4K_pages])
+            vm_2M = "\"%s\"" % ','.join([str(i) for i in vm_2M_pages])
+            vm_1G = "\"%s\"" % ','.join([str(i) for i in vm_1G_pages])
+
+            config.update({
+                'platform::compute::hugepage::params::nr_hugepages_2M':
+                    nr_hugepages_2Ms,
+                'platform::compute::hugepage::params::nr_hugepages_1G':
+                    nr_hugepages_1Gs,
+                'platform::compute::hugepage::params::vswitch_2M_pages':
+                    vswitch_2M,
+                'platform::compute::hugepage::params::vswitch_1G_pages':
+                    vswitch_1G,
+                'platform::compute::hugepage::params::vm_4K_pages':
+                    vm_4K,
+                'platform::compute::hugepage::params::vm_2M_pages':
+                    vm_2M,
+                'platform::compute::hugepage::params::vm_1G_pages':
+                    vm_1G,
+            })
+
         return config
 
     def _get_drbd_link_speed(self):

@@ -305,9 +305,9 @@ class HostStatesController(rest.RestController):
                              (cpu.uuid, values))
                     pecan.request.dbapi.icpu_update(cpu.uuid, values)
 
-        # perform inservice apply if this is a controller in simplex state
-        if utils.is_host_simplex_controller(ihost):
-            pecan.request.rpcapi.update_cpu_config(pecan.request.context)
+        # perform inservice apply
+        pecan.request.rpcapi.update_cpu_config(pecan.request.context,
+                                               host_uuid)
 
         return self._get_host_cpus_collection(ihost.uuid)
 
@@ -3479,6 +3479,46 @@ class HostController(rest.RestController):
                     pecan.request.dbapi.imemory_update(m.uuid, values)
 
     @staticmethod
+    def _update_vm_4k_pages(ihost):
+        """
+        Update VM 4K huge pages.
+        """
+        ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
+
+        for node in ihost_inodes:
+            mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
+            for m in mems:
+                if m.hugepages_configured:
+                    vm_hugepages_nr_2M = m.vm_hugepages_nr_2M_pending \
+                        if m.vm_hugepages_nr_2M_pending is not None \
+                        else m.vm_hugepages_nr_2M
+                    vm_hugepages_nr_1G = m.vm_hugepages_nr_1G_pending \
+                        if m.vm_hugepages_nr_1G_pending is not None \
+                        else m.vm_hugepages_nr_1G
+
+                    vm_hugepages_4K = \
+                        (m.node_memtotal_mib - m.platform_reserved_mib)
+                    vm_hugepages_4K -= \
+                        (m.avs_hugepages_nr * m.avs_hugepages_size_mib)
+                    vm_hugepages_4K -= \
+                        (constants.MIB_2M * vm_hugepages_nr_2M)
+                    vm_hugepages_4K -=  \
+                        (constants.MIB_1G * vm_hugepages_nr_1G)
+                    vm_hugepages_4K = \
+                        (constants.NUM_4K_PER_MiB * vm_hugepages_4K)
+
+                    # Clip 4K pages
+                    min_4K = 32 * constants.Ki / 4
+                    if vm_hugepages_4K < min_4K:
+                        vm_hugepages_4K = 0
+
+                    value = {'vm_hugepages_nr_4K': vm_hugepages_4K}
+                    LOG.info("Set VM 4K pages for host (%s) node (%d) pages "
+                             "(%d)" % (ihost['hostname'], node['id'],
+                                       vm_hugepages_4K))
+                    pecan.request.dbapi.imemory_update(m.uuid, value)
+
+    @staticmethod
     def _semantic_mtc_check_action(hostupdate, action):
         """
         Perform semantic checks with patch action vs current state
@@ -4738,6 +4778,9 @@ class HostController(rest.RestController):
 
         if align_2M_memory or align_1G_memory:
             self._align_pending_memory(ihost, align_2M_memory, align_1G_memory)
+
+        # calculate the VM 4K huge pages for nova
+        self._update_vm_4k_pages(ihost)
 
         if cutils.is_virtual() or cutils.is_virtual_compute(ihost):
             mib_platform_reserved_no_io = mib_reserved

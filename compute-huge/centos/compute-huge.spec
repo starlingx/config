@@ -35,7 +35,6 @@ Initial compute node hugepages and reserved cpus configuration
 # compute init scripts
 install -d -m 755 %{buildroot}%{local_etc_initd}
 install -p -D -m 755 affine-platform.sh %{buildroot}%{local_etc_initd}/affine-platform.sh
-install -p -D -m 755 compute-huge.sh %{buildroot}%{local_etc_initd}/compute-huge.sh
 
 # utility scripts
 install -p -D -m 755 cpumap_functions.sh %{buildroot}%{local_etc_initd}/cpumap_functions.sh
@@ -53,7 +52,6 @@ install -p -D -m 755 bin/topology %{buildroot}%{local_bindir}/topology
 # compute config data
 install -d -m 755 %{buildroot}%{local_etc_nova}
 install -p -D -m 755 compute_reserved.conf %{buildroot}%{local_etc_nova}/compute_reserved.conf
-install -p -D -m 755 compute_hugepages_total.conf %{buildroot}%{local_etc_nova}/compute_hugepages_total.conf
 
 # goenabled check
 install -d -m 755 %{buildroot}%{local_etc_goenabledd}
@@ -62,11 +60,9 @@ install -p -D -m 755 compute-huge-goenabled.sh %{buildroot}%{local_etc_goenabled
 # systemd services
 install -d -m 755 %{buildroot}%{_unitdir}
 install -p -D -m 664 affine-platform.sh.service %{buildroot}%{_unitdir}/affine-platform.sh.service
-install -p -D -m 664 compute-huge.sh.service %{buildroot}%{_unitdir}/compute-huge.sh.service
 
 %post
 /bin/systemctl enable affine-platform.sh.service >/dev/null 2>&1
-/bin/systemctl enable compute-huge.sh.service >/dev/null 2>&1
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -79,7 +75,5 @@ rm -rf $RPM_BUILD_ROOT
 %{local_etc_initd}/*
 %{local_etc_goenabledd}/*
 %config(noreplace) %{local_etc_nova}/compute_reserved.conf
-%config(noreplace) %{local_etc_nova}/compute_hugepages_total.conf
 
-%{_unitdir}/compute-huge.sh.service
 %{_unitdir}/affine-platform.sh.service

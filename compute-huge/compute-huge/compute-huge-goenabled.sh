@@ -17,7 +17,7 @@ source "/etc/init.d/log_functions.sh"
 source "/usr/bin/tsconfig"
 
 if [ -e ${VOLATILE_COMPUTE_CONFIG_COMPLETE} -a ! -f ${COMPUTE_HUGE_GOENABLED} ]; then
-    log_error "compute-huge.sh CPU configuration check failed. Failing goenabled check."
+    log_error "Compute manifest CPU configuration check failed. Failing goenabled check."
     exit 1
 fi
 

@@ -151,6 +151,7 @@ class AgentManager(service.PeriodicService):
         self._notify_subfunctions_alarm_raise = False
         self._tpmconfig_rpc_failure = False
         self._tpmconfig_host_first_apply = False
+        self._first_grub_update = False
 
     def start(self):
         super(AgentManager, self).start()
@@ -315,6 +316,16 @@ class AgentManager(service.PeriodicService):
                 subprocess.check_call(restart_cmd, shell=True)
             except subprocess.CalledProcessError as e:
                 LOG.error("subprocess error: (%d)", e.returncode)
+
+    def _force_grub_update(self):
+        """ Force update the grub on the first AIO controller after the initial
+            config is completed
+        """
+        if (not self._first_grub_update and
+                os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)):
+            self._first_grub_update = True
+            return True
+        return False
 
     def periodic_tasks(self, context, raise_on_error=False):
         """ Periodic tasks are run at pre-specified intervals. """
@@ -712,11 +723,13 @@ class AgentManager(service.PeriodicService):
             LOG.exception("Sysinv Agent uncaught exception updating inuma.")
             pass
 
+        force_grub_update = self._force_grub_update()
         try:
             # may get duplicate key if already sent on earlier init
             rpcapi.icpus_update_by_ihost(icontext,
                                          ihost['uuid'],
-                                         icpus)
+                                         icpus,
+                                         force_grub_update)
         except RemoteError as e:
             LOG.error("icpus_update_by_ihost RemoteError exc_type=%s" %
                       e.exc_type)
@@ -731,19 +744,21 @@ class AgentManager(service.PeriodicService):
             pass
 
         imemory = self._inode_operator.inodes_get_imemory()
-        try:
-            # may get duplicate key if already sent on earlier init
-            rpcapi.imemory_update_by_ihost(icontext,
-                                           ihost['uuid'],
-                                           imemory)
-        except RemoteError as e:
-            LOG.error("imemory_update_by_ihost RemoteError exc_type=%s" %
-                      e.exc_type)
-            # Allow the audit to update
-            pass
-        except:
-            LOG.exception("Sysinv Agent exception updating imemory conductor.")
-            pass
+        if imemory:
+            try:
+                # may get duplicate key if already sent on earlier init
+                rpcapi.imemory_update_by_ihost(icontext,
+                                               ihost['uuid'],
+                                               imemory)
+            except RemoteError as e:
+                LOG.error("imemory_update_by_ihost RemoteError exc_type=%s" %
+                          e.exc_type)
+                # Allow the audit to update
+                pass
+            except:
+                LOG.exception("Sysinv Agent exception updating imemory "
+                              "conductor.")
+                pass
 
         idisk = self._idisk_operator.idisk_get()
         try:
@@ -1283,7 +1298,9 @@ class AgentManager(service.PeriodicService):
         try:
             # runtime manifests can not be applied without the initial
             # configuration applied
-            if not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+            force = config_dict.get('force', False)
+            if (not force and
+                    not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)):
                 return
 
             personalities = config_dict.get('personalities')

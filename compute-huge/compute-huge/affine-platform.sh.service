@@ -1,7 +1,7 @@
 [Unit]
 Description=Titanium Cloud Affine Platform
 After=syslog.service network.service dbus.service sw-patch.service
-Before=compute-huge.sh.service
+Before=computeconfig.service
 
 [Service]
 Type=oneshot
