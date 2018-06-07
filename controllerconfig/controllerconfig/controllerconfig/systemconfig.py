@@ -286,9 +286,7 @@ def show_help():
            "--restore-images <name>  Restore images from backup file with the "
            "given name,\n"
            "                         full path required\n"
-           "--restore-compute        Restore controller-0 compute function for"
-           " All-In-One\n"
-           "                         system, controller-0 will reboot\n"
+           "--restore-complete       Complete restore of controller-0"
            "--allow-ssh              Allow configuration to be executed in "
            "ssh\n"
            % sys.argv[0])
@@ -324,7 +322,7 @@ def main():
     do_backup = False
     do_system_restore = False
     do_images_restore = False
-    do_compute_restore = False
+    do_complete_restore = False
     do_clone = False
     do_non_interactive = False
     do_provision = False
@@ -374,8 +372,8 @@ def main():
                 print "--restore-images requires the filename of the backup"
                 exit(1)
             do_images_restore = True
-        elif sys.argv[arg] == "--restore-compute":
-            do_compute_restore = True
+        elif sys.argv[arg] == "--restore-complete":
+            do_complete_restore = True
         elif sys.argv[arg] == "--archive-dir":
             arg += 1
             if arg < len(sys.argv):
@@ -426,7 +424,7 @@ def main():
     if [do_backup,
             do_system_restore,
             do_images_restore,
-            do_compute_restore,
+            do_complete_restore,
             do_clone,
             do_default_config,
             do_non_interactive].count(True) > 1:
@@ -436,7 +434,7 @@ def main():
     if answerfile and [do_backup,
                        do_system_restore,
                        do_images_restore,
-                       do_compute_restore,
+                       do_complete_restore,
                        do_clone,
                        do_default_config,
                        do_non_interactive].count(True) > 0:
@@ -474,8 +472,8 @@ def main():
         elif do_images_restore:
             backup_restore.restore_images(backup_name)
             print "\nImages restore complete"
-        elif do_compute_restore:
-            backup_restore.restore_compute()
+        elif do_complete_restore:
+            backup_restore.restore_complete()
         elif do_clone:
             clone.clone(backup_name, archive_dir)
             print "\nCloning complete"

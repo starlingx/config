@@ -3933,6 +3933,20 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError('%s' % msg)
 
     @staticmethod
+    def _semantic_check_restore_complete(ihost):
+        """
+        During a restore procedure, checks compute nodes can be unlocked
+        only after running "config_controller --restore-complete"
+        """
+        if os.path.isfile(tsc.RESTORE_SYSTEM_FLAG):
+            raise wsme.exc.ClientSideError(
+                _("Cannot unlock host %s. Please restore any volumes "
+                  "and then complete the restore procedure by running "
+                  "'config_controller --restore-complete' first. "
+                  "Please refer to system admin guide for more details.") %
+                (ihost['hostname']))
+
+    @staticmethod
     def _handle_ttys_dcd_change(ihost, ttys_dcd):
         """
         Handle serial line carrier detection enable or disable request.
@@ -4829,6 +4843,9 @@ class HostController(rest.RestController):
                 _("Can not unlock an unconfigured host %s. Please "
                   "configure host and wait for Availability State "
                   "'online' prior to unlock." % hostupdate.displayid))
+
+        # Check whether a restore was properly completed
+        self._semantic_check_restore_complete(ihost)
 
         # sdn configuration check
         self._semantic_check_sdn_attributes(ihost)

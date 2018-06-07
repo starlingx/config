@@ -45,7 +45,7 @@ RESTORE_RERUN_REQUIRED = "restore-rerun-required"
 # Backup/restore related constants
 backup_in_progress = tsconfig.BACKUP_IN_PROGRESS_FLAG
 restore_in_progress = tsconfig.RESTORE_IN_PROGRESS_FLAG
-restore_compute_ready = '/var/run/.restore_compute_ready'
+restore_system_ready = tsconfig.RESTORE_SYSTEM_FLAG
 restore_patching_complete = '/etc/platform/.restore_patching_complete'
 node_is_patched = '/var/run/node_is_patched'
 keyring_permdir = os.path.join('/opt/platform/.keyring', tsconfig.SW_VERSION)
@@ -691,6 +691,12 @@ def restore_cinder_config(archive):
         restore_cinder_file(
             archive, cinder_permdir + '/iscsi-target',
             'saveconfig.json')
+        # Also create a copy of the original file as the volume
+        # restore procedure changes this file and breaks the
+        # valid nova settings.
+        shutil.copyfile(
+            cinder_permdir + '/iscsi-target/saveconfig.json',
+            cinder_permdir + '/iscsi-target/saveconfig.json.bck')
 
 
 def backup_cinder_size(cinder_permdir):
@@ -1378,19 +1384,54 @@ def create_restore_runtime_config(filename):
     utils.create_manifest_runtime_config(filename, config)
 
 
-def restore_compute():
+def overwrite_iscsi_target_config():
     """
+    Overwrite the current iscsi target config file with the one
+    from the backup archive.
+    """
+
+    if not os.path.exists(
+            cinder_permdir + '/iscsi-target/saveconfig.json'):
+        LOG.info("Restore: Missing current saveconfig.json file")
+        return
+
+    if not os.path.exists(
+            cinder_permdir + '/iscsi-target/saveconfig.json.bck'):
+        LOG.info("Restore: Missing backup saveconfig.json file")
+        return
+
+    os.remove(cinder_permdir + '/iscsi-target/saveconfig.json')
+    shutil.copyfile(
+        cinder_permdir + '/iscsi-target/saveconfig.json.bck',
+        cinder_permdir + '/iscsi-target/saveconfig.json')
+
+    os.remove(cinder_permdir + '/iscsi-target/saveconfig.json.bck')
+    subprocess.call(["targetctl", "restore"], stdout=DEVNULL, stderr=DEVNULL)
+
+
+def restore_complete():
+    """
+    Restore proper ISCSI configuration file after cinder restore.
     Enable compute functionality for AIO system.
     :return: True if compute-config-complete is executed
     """
     if utils.get_system_type() == sysinv_constants.TIS_AIO_BUILD:
-        if not os.path.isfile(restore_compute_ready):
+        if not os.path.isfile(restore_system_ready):
             print textwrap.fill(
-                "--restore-compute can only be run "
+                "--restore-complete can only be run "
                 "after restore-system has completed "
                 "successfully", 80
             )
             return False
+
+        # The iscsi target config file must be overwritten with the
+        # original file from the backup archive.
+        # This is due to the cinder restore process actually changing
+        # this file. These changes cause VMs that were present at
+        # backup time to not boot up properly anymore.
+        # The original icsci config file has the proper settings so
+        # we use use that.
+        overwrite_iscsi_target_config()
 
         print ("\nApplying compute manifests for %s. " %
                (utils.get_controller_hostname()))
@@ -1400,6 +1441,7 @@ def restore_compute():
 
         # show in-progress log on console every 30 seconds
         # until self reboot or timeout
+        os.remove(restore_system_ready)
         time.sleep(30)
         for i in range(1, 10):
             print("compute manifest apply in progress ... ")
@@ -1407,14 +1449,18 @@ def restore_compute():
 
         raise RestoreFail("Timeout running compute manifests, "
                           "reboot did not occur")
-        return True
 
     else:
-        print textwrap.fill(
-            "--restore-compute option is only applicable to "
-            "the All-In-One system type. Command not executed", 80
-        )
-        return False
+        if not os.path.isfile(restore_system_ready):
+            print textwrap.fill(
+                "--restore-complete can only be run "
+                "after restore-system has completed "
+                "successfully", 80
+            )
+            return False
+        overwrite_iscsi_target_config()
+        os.remove(restore_system_ready)
+        return True
 
 
 def restore_system(backup_file, clone=False):
@@ -1833,13 +1879,12 @@ def restore_system(backup_file, clone=False):
 
     fmApi.set_fault(fault)
 
-    # Operational check for controller-0 in AIO system.
-    if (utils.get_system_type() == sysinv_constants.TIS_AIO_BUILD and
-            utils.get_controller_hostname() ==
+    # Mark system restore as complete
+    if (utils.get_controller_hostname() ==
             sysinv_constants.CONTROLLER_0_HOSTNAME):
         # Create the flag file that permits the
-        # restore_compute command option.
-        utils.touch(restore_compute_ready)
+        # restore_complete command option.
+        utils.touch(restore_system_ready)
 
     return RESTORE_COMPLETE
 
