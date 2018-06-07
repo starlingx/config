@@ -1,4 +1,4 @@
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -400,7 +400,11 @@ class BaseTestCase(dbbase.DbTestCase):
 
     @puppet.puppet_context
     def _update_context(self):
-        self.context = self.operator.interface._create_interface_context(self.host)
+        self.context = \
+            self.operator.interface._create_interface_context(self.host)
+
+        # Update the puppet context with generated interface context
+        self.operator.context.update(self.context)
 
     def _setup_context(self):
         self._setup_configuration()
@@ -1363,166 +1367,6 @@ class InterfaceTestCase(BaseTestCase):
         return port, iface
 
 
-class InterfaceVswitchTestCase(BaseTestCase):
-    def _setup_configuration(self):
-        # Create a single port/interface for basic function testing
-        self._create_test_common()
-        self._create_test_host(constants.COMPUTE)
-        self.port, self.iface = (
-            self._create_ethernet_test('data0',
-                                       constants.NETWORK_TYPE_DATA))
-
-    def _update_context(self):
-        # ensure DB entries are updated prior to updating the context which
-        # will re-read the entries from the DB.
-        self.host.save(self.admin_context)
-        self.port.save(self.admin_context)
-        self.iface.save(self.admin_context)
-        super(InterfaceVswitchTestCase, self)._update_context()
-
-    def setUp(self):
-        super(InterfaceVswitchTestCase, self).setUp()
-        self._setup_context()
-
-    def test_needs_vswitch_config_false_on_controller(self):
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.CONTROLLER
-        self._update_context()
-        needed = interface.needs_vswitch_config(self.context, self.iface)
-        self.assertFalse(needed)
-
-    def test_needs_vswitch_config_true_on_compute(self):
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        needed = interface.needs_vswitch_config(self.context, self.iface)
-        self.assertTrue(needed)
-
-    def test_needs_vswitch_config_false_for_platform(self):
-        vlan = self._create_vlan_test('infra0',
-                                      constants.NETWORK_TYPE_INFRA, 1)
-        self.host['personality'] = constants.COMPUTE
-        self._update_context()
-        needed = interface.needs_vswitch_config(self.context, vlan)
-        self.assertFalse(needed)
-
-    def test_get_vswitch_ethernet_command(self):
-        cmd = interface.get_vswitch_ethernet_command(self.context, self.iface)
-        expected = ("ethernet add %(port_uuid)s %(iface_uuid)s %(mtu)s\n" %
-                    {'port_uuid': self.port['uuid'],
-                     'iface_uuid': self.iface['uuid'],
-                     'mtu': self.iface['imtu']})
-        self.assertEqual(expected, cmd)
-
-    def test_get_vswitch_ethernet_command_slow_data(self):
-        self.port['dpdksupport'] = False
-        self._update_context()
-        cmd = interface.get_vswitch_ethernet_command(self.context, self.iface)
-        expected = (
-            "port add avp-provider %(uuid)s %(mac)s 0 %(mtu)s %(ifname)s\n" %
-            {'uuid': self.iface['uuid'],
-             'mtu': self.iface['imtu'],
-             'mac': interface._set_local_admin_bit(self.iface['imac']),
-             'ifname': self.port['name'] + '-avp'})
-        self.assertEqual(expected, cmd)
-
-    def test_get_vswitch_vlan_command(self):
-        vlan = self._create_vlan_test(
-            'data1', constants.NETWORK_TYPE_DATA, 1, self.iface)
-        self._update_context()
-        cmd = interface.get_vswitch_vlan_command(self.context, vlan)
-        expected = ("vlan add %(lower_uuid)s %(vlan_id)s %(uuid)s %(mtu)s\n" %
-                    {'lower_uuid': self.iface['uuid'],
-                     'vlan_id': vlan['vlan_id'],
-                     'uuid': vlan['uuid'],
-                     'mtu': vlan['imtu']})
-        self.assertEqual(expected, cmd)
-
-    def test_get_vswitch_vlan_command_for_platform(self):
-        vlan = self._create_vlan_test(
-            'infra', constants.NETWORK_TYPE_INFRA, 1, self.iface)
-        self._update_context()
-        cmd = interface.get_vswitch_vlan_command(self.context, vlan)
-        expected = (
-            "vlan add %(lower_uuid)s %(vlan_id)s %(uuid)s %(mtu)s host\n" %
-            {'lower_uuid': self.iface['uuid'],
-             'vlan_id': vlan['vlan_id'],
-             'uuid': vlan['uuid'],
-             'mtu': vlan['imtu']})
-        self.assertEqual(expected, cmd)
-
-    def test_get_vswitch_address_command(self):
-        address = self.context['addresses'].get(self.iface['ifname'])[0]
-        cmd = interface.get_vswitch_address_command(self.iface, address)
-        expected = (
-            "interface add addr %(iface_uuid)s %(address)s/%(prefix)s\n" %
-            {'iface_uuid': self.iface['uuid'],
-             'address': address['address'],
-             'prefix': address['prefix']})
-        self.assertEqual(expected, cmd)
-
-    def test_get_vswitch_route_command(self):
-        route = self.context['routes'].get(self.iface['ifname'])[0]
-        cmd = interface.get_vswitch_route_command(self.iface, route)
-        expected = (
-            "route append %(network)s/%(prefix)s %(iface_uuid)s %(gateway)s "
-            "%(metric)s\n" %
-            {'iface_uuid': self.iface['uuid'],
-             'network': route['network'],
-             'gateway': route['gateway'],
-             'prefix': route['prefix'],
-             'metric': route['metric']})
-        self.assertEqual(expected, cmd)
-
-    def test_get_vswitch_bond_options_balanced(self):
-        bond = self._create_bond_test('data1', constants.NETWORK_TYPE_DATA)
-        self._update_context()
-        bond['aemode'] = 'balanced'
-        options = interface.get_vswitch_bond_options(bond)
-        expected = {'distribution': 'hash-mac',
-                    'protection': 'loadbalance',
-                    'monitor': 'link-state'}
-        self.assertEqual(options, expected)
-
-    def test_get_vswitch_bond_options_8023ad(self):
-        bond = self._create_bond_test('data1', constants.NETWORK_TYPE_DATA)
-        self._update_context()
-        bond['aemode'] = '802.3ad'
-        options = interface.get_vswitch_bond_options(bond)
-        expected = {'distribution': 'hash-mac',
-                    'protection': '802.3ad',
-                    'monitor': 'link-state'}
-        self.assertEqual(options, expected)
-
-    def test_get_vswitch_bond_options_active_backup(self):
-        bond = self._create_bond_test('data1', constants.NETWORK_TYPE_DATA)
-        self._update_context()
-        bond['aemode'] = 'active_backup'
-        options = interface.get_vswitch_bond_options(bond)
-        expected = {'distribution': 'none',
-                    'protection': 'failover',
-                    'monitor': 'link-state'}
-        self.assertEqual(options, expected)
-
-    def test_get_vswitch_bond_commands(self):
-        bond = self._create_bond_test('data1', constants.NETWORK_TYPE_DATA)
-        self._update_context()
-        bond['aemode'] = '802.3ad'
-        options = interface.get_vswitch_bond_options(bond)
-        attributes = {'uuid': bond['uuid'],
-                      'mtu': bond['imtu']}
-        attributes.update(options)
-        for index, lower_ifname in enumerate(bond['uses']):
-            lower_iface = self.context['interfaces'][lower_ifname]
-            attributes['member%s_uuid' % index] = lower_iface['uuid']
-        expected = (
-            "ae add %(uuid)s %(mtu)s %(protection)s %(distribution)s %(monitor)s\n"
-            "ae attach member %(uuid)s %(member0_uuid)s\n"
-            "ae attach member %(uuid)s %(member1_uuid)s\n" %
-            attributes)
-        cmds = interface.get_vswitch_bond_commands(self.context, bond)
-        self.assertEqual(cmds, expected)
-
-
 class InterfaceHostTestCase(BaseTestCase):
     def _setup_configuration(self):
         # Personality is set to compute to avoid issues due to missing OAM
@@ -1558,27 +1402,13 @@ class InterfaceHostTestCase(BaseTestCase):
         class_name = self.__class__.__name__
         return os.path.join(hiera_directory, class_name) + ".yaml"
 
-    def _create_vswitch_directory(self):
-        vswitch_path = os.path.join(os.environ['VIRTUAL_ENV'], 'vswitch')
-        if not os.path.exists(vswitch_path):
-            os.mkdir(vswitch_path, 0o755)
-        return vswitch_path
-
-    def _get_vswitch_filename(self, vswitch_directory):
-        class_name = self.__class__.__name__
-        return os.path.join(vswitch_directory, class_name) + ".cmds"
-
     def test_generate_interface_config(self):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
-        vswitch_directory = self._create_vswitch_directory()
-        vswitch_filename = self._get_vswitch_filename(vswitch_directory)
         with open(config_filename, 'w') as config_file:
             config = self.operator.interface.get_host_config(self.host)
             self.assertIsNotNone(config)
             yaml.dump(config, config_file, default_flow_style=False)
-        with open(vswitch_filename, 'w') as commands:
-            commands.write(config['cgcs_vswitch::vswitch_commands'])
 
     def test_create_interface_context(self):
         context = self.operator.interface._create_interface_context(self.host)
@@ -1612,7 +1442,7 @@ class InterfaceHostTestCase(BaseTestCase):
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_data_interfaces)
             if interface.is_data_interface(self.context, iface) != expected:
-                print("iface %s is %sa vswitch interface" % (
+                print("iface %s is %sa data interface" % (
                     iface['ifname'], ('not ' if expected else '')))
                 self.assertFalse(True)
 
@@ -1671,19 +1501,6 @@ class InterfaceHostTestCase(BaseTestCase):
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in expected_configured)
             actual = interface.needs_interface_config(self.context, iface)
-            if expected != actual:
-                print("iface %s is %sconfigured" % (
-                    iface['ifname'], ('not ' if expected else '')))
-                self.assertFalse(True)
-
-    def test_needs_vswitch_config(self):
-        expected_configured = []
-        if interface.is_compute_subfunction(self.context):
-            expected_configured += (self.expected_data_interfaces +
-                                    self.expected_slow_interfaces)
-        for iface in self.interfaces:
-            expected = bool(iface['ifname'] in expected_configured)
-            actual = interface.needs_vswitch_config(self.context, iface)
             if expected != actual:
                 print("iface %s is %sconfigured" % (
                     iface['ifname'], ('not ' if expected else '')))

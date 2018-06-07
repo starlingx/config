@@ -48,6 +48,8 @@ from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 
+VALID_VSWITCH_TYPES = [constants.VSWITCH_TYPE_OVS_DPDK]
+
 
 class System(base.APIBase):
     """API representation of a system.
@@ -353,6 +355,8 @@ class SystemController(rest.RestController):
         change_https = False
         change_sdn = False
         change_dc_role = False
+        vswitch_type = None
+
         # prevent description field from being updated
         for p in jsonpatch.JsonPatch(patch):
             if p['path'] == '/software_version':
@@ -412,6 +416,10 @@ class SystemController(rest.RestController):
                 distributed_cloud_role = p['value']
                 patch.remove(p)
 
+            if p['path'] == '/vswitch_type':
+                vswitch_type = p['value']
+                patch.remove(p)
+
         try:
             patched_system = jsonpatch.apply_patch(system_dict,
                                                    jsonpatch.JsonPatch(patch))
@@ -453,6 +461,15 @@ class SystemController(rest.RestController):
             else:
                 raise wsme.exc.ClientSideError(_("distributed_cloud_role is already set "
                                                  " as %s" % rpc_isystem['distributed_cloud_role']))
+
+        if 'vswitch_type' in updates:
+            if vswitch_type not in VALID_VSWITCH_TYPES:
+                raise wsme.exc.ClientSideError(_("unsupported vswitch_type: %s"
+                                                 % vswitch_type))
+            if vswitch_type == rpc_isystem['capabilities']['vswitch_type']:
+                raise wsme.exc.ClientSideError(_("vswitch_type is already set"
+                                                 " as %s" % vswitch_type))
+            patched_system['capabilities']['vswitch_type'] = vswitch_type
 
         # Update only the fields that have changed
         name = ""
@@ -502,11 +519,15 @@ class SystemController(rest.RestController):
                 pecan.request.context)
         if capabilities:
             if change_sdn:
-                LOG.info("update sdn capabilities to %s" % capabilities)
+                LOG.info("update sdn to %s" % capabilities)
                 pecan.request.rpcapi.update_sdn_enabled(pecan.request.context)
             if change_https:
-                LOG.info("update capabilities / https to %s" % capabilities)
+                LOG.info("update https to %s" % capabilities)
                 pecan.request.rpcapi.configure_system_https(
+                  pecan.request.context)
+            if vswitch_type:
+                LOG.info("update vswitch_type to %s" % capabilities)
+                pecan.request.rpcapi.update_vswitch_type(
                   pecan.request.context)
 
         if distributed_cloud_role and change_dc_role:

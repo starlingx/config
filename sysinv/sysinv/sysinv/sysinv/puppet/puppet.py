@@ -40,6 +40,7 @@ from . import networking
 from . import neutron
 from . import nfv
 from . import nova
+from . import ovs
 from . import panko
 from . import patching
 from . import platform
@@ -89,6 +90,7 @@ class PuppetOperator(object):
         self.neutron = neutron.NeutronPuppet(self)
         self.nfv = nfv.NfvPuppet(self)
         self.nova = nova.NovaPuppet(self)
+        self.ovs = ovs.OVSPuppet(self)
         self.panko = panko.PankoPuppet(self)
         self.patching = patching.PatchingPuppet(self)
         self.platform = platform.PlatformPuppet(self)
@@ -215,6 +217,7 @@ class PuppetOperator(object):
             config.update(self.panko.get_system_config())
             config.update(self.dcmanager.get_system_config())
             config.update(self.dcorch.get_system_config())
+            # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_system_config())
 
             filename = 'system.yaml'
@@ -274,6 +277,7 @@ class PuppetOperator(object):
             config = {}
             config.update(self.platform.get_host_config(host, config_uuid))
             config.update(self.interface.get_host_config(host))
+            config.update(self.ovs.get_host_config(host))
             config.update(self.networking.get_host_config(host))
             config.update(self.storage.get_host_config(host))
             config.update(self.ldap.get_host_config(host))
@@ -283,6 +287,7 @@ class PuppetOperator(object):
             config.update(self.device.get_host_config(host))
             config.update(self.nova.get_host_config(host))
             config.update(self.neutron.get_host_config(host))
+            # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_host_config(host))
 
             self._write_host_config(host, config)
@@ -298,14 +303,16 @@ class PuppetOperator(object):
             config = {}
             config.update(self.platform.get_host_config(host, config_uuid))
             config.update(self.interface.get_host_config(host))
+            config.update(self.ovs.get_host_config(host))
             config.update(self.networking.get_host_config(host))
             config.update(self.storage.get_host_config(host))
             config.update(self.ceph.get_host_config(host))
             config.update(self.device.get_host_config(host))
             config.update(self.nova.get_host_config(host))
             config.update(self.neutron.get_host_config(host))
-            config.update(self.service_parameter.get_host_config(host))
             config.update(self.ldap.get_host_config(host))
+            # service_parameter must be last to permit overrides
+            config.update(self.service_parameter.get_host_config(host))
 
             self._write_host_config(host, config)
         except Exception:
@@ -323,8 +330,9 @@ class PuppetOperator(object):
             config.update(self.networking.get_host_config(host))
             config.update(self.storage.get_host_config(host))
             config.update(self.ceph.get_host_config(host))
-            config.update(self.service_parameter.get_host_config(host))
             config.update(self.ldap.get_host_config(host))
+            # service_parameter must be last to permit overrides
+            config.update(self.service_parameter.get_host_config(host))
 
             self._write_host_config(host, config)
         except Exception:

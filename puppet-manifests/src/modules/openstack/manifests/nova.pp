@@ -136,6 +136,7 @@ class openstack::nova::compute (
   $migration_key_type,
   $pci_pt_whitelist = [],
   $pci_sriov_whitelist = undef,
+  $compute_monitors,
   $iscsi_initiator_name = undef,
 ) inherits ::openstack::nova::params {
   include ::nova::pci
@@ -145,6 +146,7 @@ class openstack::nova::compute (
   include ::platform::network::infra::params
   include ::nova::keystone::auth
   include ::nova::keystone::authtoken
+  include ::nova::compute::neutron
 
   include ::openstack::nova::sshd
 
@@ -268,8 +270,6 @@ class openstack::nova::compute (
       $libvirt_images_type = "default"
   }
 
-  $compute_monitors = "cpu.virt_driver"
-
   class { '::nova::compute::libvirt':
     libvirt_virt_type => $libvirt_virt_type,
     vncserver_listen => $libvirt_vnc_bind_host,
@@ -334,11 +334,6 @@ class openstack::nova::compute (
       path => '/etc/libvirt/qemu.conf',
       line => 'cgroup_controllers = [ "cpu", "cpuacct" ]',
       match => '^cgroup_controllers = .*',
-  }
-
-  class { '::nova::compute::neutron':
-    libvirt_vif_driver => 'nova.virt.libvirt.vif.LibvirtGenericVIFDriver',
-    libvirt_qemu_dpdk_options => 'type=secondary,prefix=vs,channels=4,cpu=0',
   }
 
   # The pci_passthrough option in the nova::compute class is not sufficient.

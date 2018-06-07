@@ -12,14 +12,15 @@ from cgtsclient import exc
 
 CREATION_ATTRIBUTES = ['ihost_uuid', 'memtotal_mib', 'memavail_mib',
                        'platform_reserved_mib', 'hugepages_configured',
-                       'avs_hugepages_size_mib', 'avs_hugepages_reqd',
-                       'avs_hugepages_nr', 'avs_hugepages_avail',
+                       'vswitch_hugepages_size_mib', 'vswitch_hugepages_reqd',
+                       'vswitch_hugepages_nr', 'vswitch_hugepages_avail',
                        'vm_hugepages_nr_2M_pending', 'vm_hugepages_nr_1G_pending',
                        'vm_hugepages_nr_2M', 'vm_hugepages_avail_2M',
                        'vm_hugepages_nr_1G', 'vm_hugepages_avail_1G',
                        'vm_hugepages_avail_1G', 'vm_hugepages_use_1G',
                        'vm_hugepages_possible_2M', 'vm_hugepages_possible_1G',
                        'capabilities', 'numa_node', 'minimum_platform_reserved_mib']
+
 
 class imemory(base.Resource):
     def __repr__(self):

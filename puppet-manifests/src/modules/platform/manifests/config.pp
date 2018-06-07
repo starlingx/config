@@ -72,10 +72,12 @@ class platform::config::file {
     }
   }
 
-  file_line { "${platform_conf} vswitch_type":
-    path   => $platform_conf,
-    line   => "vswitch_type=${::platform::params::vswitch_type}",
-    match  => '^vswitch_type=',
+  if $::platform::params::vswitch_type {
+    file_line { "${platform_conf} vswitch_type":
+      path  => $platform_conf,
+      line  => "vswitch_type=${::platform::params::vswitch_type}",
+      match => '^vswitch_type=',
+    }
   }
 
   if $::platform::params::system_type {

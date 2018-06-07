@@ -3143,10 +3143,6 @@ class HostController(rest.RestController):
         Perform semantic checks against data interfaces to ensure validity of
         the node configuration prior to unlocking it.
         """
-        vswitch_type = utils.get_vswitch_type()
-        if vswitch_type != constants.VSWITCH_TYPE_AVS:
-            return
-
         ihost_iinterfaces = (
             pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid']))
         data_interface_configured = False
@@ -3172,10 +3168,6 @@ class HostController(rest.RestController):
         controller will be confused on won't know how to map the VXLAN VTEP
         endpoints.
         """
-        vswitch_type = utils.get_vswitch_type()
-        if vswitch_type != constants.VSWITCH_TYPE_AVS:
-            return
-
         sdn_enabled = utils.get_sdn_enabled()
         if not sdn_enabled:
             return
@@ -3431,7 +3423,7 @@ class HostController(rest.RestController):
             memtotal = m.node_memtotal_mib
             allocated = m.platform_reserved_mib
             if m.hugepages_configured:
-                allocated += m.avs_hugepages_nr * m.avs_hugepages_size_mib
+                allocated += m.vswitch_hugepages_nr * m.vswitch_hugepages_size_mib
             if m.vm_hugepages_nr_2M_pending is not None:
                 allocated += constants.MIB_2M * m.vm_hugepages_nr_2M_pending
                 pending_2M_memory = True
@@ -3499,7 +3491,7 @@ class HostController(rest.RestController):
                     vm_hugepages_4K = \
                         (m.node_memtotal_mib - m.platform_reserved_mib)
                     vm_hugepages_4K -= \
-                        (m.avs_hugepages_nr * m.avs_hugepages_size_mib)
+                        (m.vswitch_hugepages_nr * m.vswitch_hugepages_size_mib)
                     vm_hugepages_4K -= \
                         (constants.MIB_2M * vm_hugepages_nr_2M)
                     vm_hugepages_4K -=  \

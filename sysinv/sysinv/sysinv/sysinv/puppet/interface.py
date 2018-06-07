@@ -12,18 +12,16 @@ import uuid
 from netaddr import IPAddress
 from netaddr import IPNetwork
 
-from netaddr import EUI
-from netaddr import mac_unix
-
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
+from sysinv.conductor import openstack
 from sysinv.openstack.common import log
+
 from . import base
 
 
 LOG = log.getLogger(__name__)
-MAC_ADDRESS_UL_BIT_VALUE = 2
 
 PLATFORM_NETWORK_TYPES = [constants.NETWORK_TYPE_PXEBOOT,
                           constants.NETWORK_TYPE_MGMT,
@@ -58,6 +56,16 @@ ADDRESS_CONFIG_RESOURCE = 'platform::addresses::address_config'
 
 class InterfacePuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for interface configuration"""
+
+    def __init__(self, *args, **kwargs):
+        super(InterfacePuppet, self).__init__(*args, **kwargs)
+        self._openstack = None
+
+    @property
+    def openstack(self):
+        if not self._openstack:
+            self._openstack = openstack.OpenStackOperator(self.dbapi)
+        return self._openstack
 
     def get_host_config(self, host):
         """
@@ -125,7 +133,7 @@ class InterfacePuppet(base.BasePuppet):
             'networks': self._get_network_type_index(),
             'gateways': self._get_gateway_index(),
             'floatingips': self._get_floating_ip_index(),
-            'providernets': {},
+            'providernets': self._get_provider_networks(host),
         }
         return context
 
@@ -305,6 +313,18 @@ class InterfacePuppet(base.BasePuppet):
             })
 
         return floating_ips
+
+    def _get_provider_networks(self, host):
+        # TODO(alegacy): this will not work as intended for upgrades of AIO-SX
+        # and -DX.  The call to get_providernetworksdict will return an empty
+        # dictionary because the neutron endpoint is not available yet.  Since
+        # we do not currently support SDN/OVS over upgrades we will need to
+        # deal with this in a later commit.
+        pnets = {}
+        if (self.openstack and
+                constants.COMPUTE in utils.get_personalities(host)):
+            pnets = self.openstack.get_providernetworksdict(quiet=True)
+        return pnets
 
 
 def is_platform_network_type(iface):
@@ -733,28 +753,13 @@ def needs_interface_config(context, iface):
         if is_a_mellanox_device(context, iface):
             # Check for Mellanox data interfaces. We must set the MTU sizes of
             # Mellanox data interfaces in case it is not the default.  Normally
-            # data interfaces are owned by AVS, they are not managed through
+            # data interfaces are owned by DPDK, they are not managed through
             # Linux but in the Mellanox case, the interfaces are still visible
             # in Linux so in case one needs to set jumbo frames, it has to be
             # set in Linux as well. We only do this for combined nodes or
             # non-controller nodes.
             return True
     elif is_pci_interface(iface):
-        return True
-    return False
-
-
-def needs_vswitch_config(context, iface):
-    """
-    Determine whether an interface needs to be configured as a vswitch
-    interface.  This is true if the interface is a data interface, is required
-    by a platform interface (i.e., a platform VLAN over a data interface), is
-    required by a data interface (i.e., a data AE member, a VLAN lower
-    interface).
-    """
-    if not is_compute_subfunction(context):
-        return False
-    elif is_data_interface(context, iface):
         return True
     return False
 
@@ -999,167 +1004,6 @@ def generate_network_config(context, config, iface):
         config[ROUTE_CONFIG_RESOURCE].update({
             route_config['name']: route_config
         })
-
-
-class CustomMacDialect(mac_unix):
-    word_fmt = '%.2x'
-
-
-def _set_local_admin_bit(value):
-    """
-    Assert the locally administered bit in the MAC address in order to avoid
-    conflicting with the real port that this interface is associated with.
-    """
-    mac = EUI(value, dialect=CustomMacDialect)
-    mac.__setitem__(0, (mac.words[0] | MAC_ADDRESS_UL_BIT_VALUE))
-    return str(mac)
-
-
-def get_vswitch_ethernet_command(context, iface):
-    """
-    Produce the cli command to add a single ethernet interface to vswitch.
-    """
-    port = get_interface_port(context, iface)
-    attributes = {'ifname': get_interface_os_ifname(context, iface) + '-avp',
-                  'port_uuid': port['uuid'],
-                  'iface_uuid': iface['uuid'],
-                  'mtu': iface['imtu']}
-    if is_dpdk_compatible(context, iface):
-        command = ("ethernet add %(port_uuid)s %(iface_uuid)s "
-                   "%(mtu)s\n" % attributes)
-    else:
-        # Set the locally administered bit on the MAC address because to run
-        # providernet connectivity tests we will need to originate packets from
-        # this interface.  Since the other end of the interface is the actual
-        # avp interface in the linux kernel it will get confused if we are
-        # sending it packets originated from its' MAC address.
-        attributes.update({'mac': _set_local_admin_bit(iface['imac']),
-                           'numa': 0})
-        command = ("port add avp-provider %(iface_uuid)s %(mac)s %(numa)s "
-                   "%(mtu)s %(ifname)s\n" % attributes)
-    return command
-
-
-def get_vswitch_vlan_command(context, iface):
-    """
-    Produce the cli command to add a vlan ethernet interface to vswitch.
-    """
-    lower_iface = get_lower_interface(context, iface)
-    attributes = {'lower_uuid': lower_iface['uuid'],
-                  'vlan_id': iface['vlan_id'],
-                  'iface_uuid': iface['uuid'],
-                  'mtu': iface['imtu']}
-    command = ("vlan add %(lower_uuid)s %(vlan_id)s %(iface_uuid)s %(mtu)s" %
-               attributes)
-    if is_platform_interface(context, iface):
-        # If this is a platform VLAN than mark it as a host interface to
-        # prevent the vswitch bridge input handler from intercepting packets
-        # destined to the interface MAC.  That intercept exists for providernet
-        # connectivity tests but those are not necessary on platform VLAN
-        # interfaces.
-        command += " host"
-    return command + "\n"
-
-
-def get_vswitch_bond_options(iface):
-    """
-    Return a dictionary of vswitch bond attributes based on the interface
-    configuration.
-    """
-    monitor_mode = 'link-state'
-
-    ae_mode = iface['aemode']
-    if ae_mode in BALANCED_AE_MODES:
-        distribution_mode = 'hash-mac'
-        protection_mode = 'loadbalance'
-    elif ae_mode in LACP_AE_MODES:
-        distribution_mode = 'hash-mac'
-        protection_mode = '802.3ad'
-    else:
-        protection_mode = 'failover'
-        distribution_mode = 'none'
-
-    return {'distribution': distribution_mode,
-            'protection': protection_mode,
-            'monitor': monitor_mode}
-
-
-def get_vswitch_bond_commands(context, iface):
-    """
-    Produce the cli command to add a aggregated ethernet interface to vswitch.
-    """
-
-    attributes = {'uuid': iface['uuid'],
-                  'mtu': iface['imtu']}
-    attributes.update(get_vswitch_bond_options(iface))
-
-    # Setup the AE interface
-    commands = ("ae add %(uuid)s %(mtu)s %(protection)s %(distribution)s "
-                "%(monitor)s\n" % attributes)
-
-    # Add all lower interfaces as AE member interfaces
-    for lower_ifname in iface['uses']:
-        lower_iface = context['interfaces'][lower_ifname]
-        commands += ("ae attach member %s %s\n" %
-                     (iface['uuid'], lower_iface['uuid']))
-
-    return commands
-
-
-def get_vswitch_interface_commands(context, iface):
-    """
-    Produce the cli command to add a single interface to vswitch.
-    """
-    if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
-        return get_vswitch_ethernet_command(context, iface)
-    elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
-        return get_vswitch_bond_commands(context, iface)
-    elif iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-        return get_vswitch_vlan_command(context, iface)
-
-
-def get_vswitch_address_command(iface, address):
-    """
-    Produce the cli command required to create an interface address.
-    """
-    attributes = {'iface_uuid': iface['uuid'],
-                  'address': address['address'],
-                  'prefix': address['prefix']}
-    return ('interface add addr %(iface_uuid)s %(address)s/%(prefix)s\n' %
-            attributes)
-
-
-def get_vswitch_route_command(iface, route):
-    """
-    Produce the vswitch cli command required to create a route table entry for
-    a given interface.
-    """
-    attributes = {'iface_uuid': iface['uuid'],
-                  'network': route['network'],
-                  'prefix': route['prefix'],
-                  'gateway': route['gateway'],
-                  'metric': route['metric']}
-    return ('route append %(network)s/%(prefix)s %(iface_uuid)s %(gateway)s '
-            '%(metric)s\n' % attributes)
-
-
-def get_vswitch_commands(context, iface):
-    """
-    Produce the vswitch cli commands required for configuring the logical
-    interfaces in vswitch for this particular interface.
-    """
-    commands = get_vswitch_interface_commands(context, iface)
-
-    networktype = utils.get_primary_network_type(iface)
-    if networktype in DATA_NETWORK_TYPES:
-        # Add complementary commands (if needed)
-        for address in context['addresses'].get(iface['ifname'], []):
-            if address['networktype'] == networktype:
-                commands += get_vswitch_address_command(iface, address)
-        for route in context['routes'].get(iface['ifname'], []):
-            commands += get_vswitch_route_command(iface, route)
-
-    return commands
 
 
 def find_interface_by_type(context, networktype):

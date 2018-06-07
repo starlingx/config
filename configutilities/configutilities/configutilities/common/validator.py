@@ -710,7 +710,7 @@ class ConfigValidator(object):
             self.vswitch_type = self.conf.get('NETWORK',
                                               'VSWITCH_TYPE').upper()
         else:
-            self.vswitch_type = 'AVS'
+            self.vswitch_type = 'OVS-DPDK'
 
         if self.vswitch_type == 'NUAGE_VRS':
             metadata_proxy_shared_secret = self.conf.get(
@@ -755,10 +755,10 @@ class ConfigValidator(object):
             raise ConfigFail(
                 "The Region Names must be unique.")
         # validate VSWITCH_TYPE configuration
-        if self.vswitch_type == 'AVS':
+        if self.vswitch_type == 'OVS-DPDK':
             if self.conf.has_option('SHARED_SERVICES', 'NEUTRON_SERVICE_NAME'):
                 raise ConfigFail(
-                    "When VSWITCH_TYPE is AVS, NEUTRON service must "
+                    "When VSWITCH_TYPE is OVS-DPDK, NEUTRON service must "
                     "only be configured in REGION_2_SERVICES.")
             neutron_group = 'REGION_2_SERVICES'
             neutron_region_name = region_2_name

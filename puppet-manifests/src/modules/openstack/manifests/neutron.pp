@@ -4,9 +4,9 @@ class openstack::neutron::params (
   $region_name = undef,
   $service_name = 'openstack-neutron',
   $bgp_router_id = undef,
-  $l3_agent_enabled = true,
   $service_create = false,
-  $configure_endpoint = true
+  $configure_endpoint = true,
+  $tunnel_csum = undef,
 ) { }
 
 class openstack::neutron
@@ -20,7 +20,6 @@ class openstack::neutron
   class { '::neutron':
     rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
     default_transport_url => $::platform::amqp::params::transport_url,
-    pnet_audit_enabled => $::platform::params::sdn_enabled ? { true => false, default => true },
   }
 }
 
@@ -139,8 +138,8 @@ class openstack::neutron::bgp
 
 
 class openstack::neutron::sfc (
-  $sfc_drivers = undef,
-  $flowclassifier_drivers = undef,
+  $sfc_drivers = 'ovs',
+  $flowclassifier_drivers = 'ovs',
   $sfc_quota_flow_classifier = undef,
   $sfc_quota_port_chain = undef,
   $sfc_quota_port_pair_group = undef,
@@ -197,9 +196,6 @@ class openstack::neutron::agents
   if str2bool($::disable_compute_services) {
     $pmon_ensure = absent
 
-    class {'::neutron::agents::vswitch':
-      service_ensure => stopped,
-    }
     class {'::neutron::agents::l3':
       enabled => false
     }
@@ -212,6 +208,9 @@ class openstack::neutron::agents
     class {'::neutron::agents::ml2::sriov':
       enabled => false
     }
+    class {'::neutron::agents::ml2::ovs':
+      enabled => false
+    }
   } else {
     $pmon_ensure = link
 
@@ -219,12 +218,21 @@ class openstack::neutron::agents
       metadata_workers => $::platform::params::eng_workers_by_4
     }
 
-    class { '::neutron::agents::l3':
-      enabled => $l3_agent_enabled,
-    }
-
     include ::neutron::agents::dhcp
+    include ::neutron::agents::l3
     include ::neutron::agents::ml2::sriov
+    include ::neutron::agents::ml2::ovs
+  }
+
+  if $::platform::params::vswitch_type =~ '^ovs' {
+    # Ensure bridges and addresses are configured before agent is started
+    Platform::Vswitch::Ovs::Bridge<||> ~> Service['neutron-ovs-agent-service']
+    Platform::Vswitch::Ovs::Address<||> ~> Service['neutron-ovs-agent-service']
+
+    # Enable/disable tunnel checksum
+    neutron_agent_ovs {
+      'agent/tunnel_csum': value => $tunnel_csum;
+    }
   }
 
   file { "/etc/pmon.d/neutron-dhcp-agent.conf":

@@ -35,12 +35,12 @@ neutron::logging::log_dir: false
 neutron::logging::verbose: false
 neutron::logging::debug: false
 
-neutron::core_plugin: 'ml2'
+neutron::core_plugin: 'neutron.plugins.ml2.plugin.Ml2Plugin'
 neutron::service_plugins:
   - 'router'
 neutron::allow_overlapping_ips: true
 neutron::vlan_transparent: true
-neutron::pnet_audit_enabled: true
+neutron::pnet_audit_enabled: false
 
 neutron::verbose: false
 neutron::root_helper: 'sudo'

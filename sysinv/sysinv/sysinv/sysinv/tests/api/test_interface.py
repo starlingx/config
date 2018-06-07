@@ -1596,7 +1596,8 @@ class TestCpePost(InterfaceTestCase):
 
     # Expected error: Unexpected interface network type list data
     @mock.patch.object(api_if_v1, '_neutron_providernet_extension_supported')
-    def test_create_invalid_non_avs(self, mock_providernet_extension_supported):
+    def test_create_invalid_non_vswitch(self,
+                                        mock_providernet_extension_supported):
         mock_providernet_extension_supported.return_value = False
         self._create_ethernet('data0',
                               networktype=constants.NETWORK_TYPE_DATA,

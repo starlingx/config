@@ -293,10 +293,10 @@ class imemory(Base):
 
     hugepages_configured = Column(Boolean, default=False)
 
-    avs_hugepages_size_mib = Column(Integer)
-    avs_hugepages_reqd = Column(Integer)
-    avs_hugepages_nr = Column(Integer)
-    avs_hugepages_avail = Column(Integer)
+    vswitch_hugepages_size_mib = Column(Integer)
+    vswitch_hugepages_reqd = Column(Integer)
+    vswitch_hugepages_nr = Column(Integer)
+    vswitch_hugepages_avail = Column(Integer)
 
     vm_hugepages_nr_2M_pending = Column(Integer)
     vm_hugepages_nr_1G_pending = Column(Integer)

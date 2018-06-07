@@ -94,17 +94,17 @@ class Memory(base.APIBase):
     hugepages_configured = wtypes.text
     "Represent whether huge pages are configured"
 
-    avs_hugepages_size_mib = int
-    "Represent the imemory avs huge pages size in MiB"
+    vswitch_hugepages_size_mib = int
+    "Represent the imemory vswitch huge pages size in MiB"
 
-    avs_hugepages_reqd = int
-    "Represent the imemory avs required number of hugepages"
+    vswitch_hugepages_reqd = int
+    "Represent the imemory vswitch required number of hugepages"
 
-    avs_hugepages_nr = int
-    "Represent the imemory avs number of hugepages"
+    vswitch_hugepages_nr = int
+    "Represent the imemory vswitch number of hugepages"
 
-    avs_hugepages_avail = int
-    "Represent the imemory avs number of hugepages available"
+    vswitch_hugepages_avail = int
+    "Represent the imemory vswitch number of hugepages available"
 
     vm_hugepages_nr_2M_pending = int
     "Represent the imemory vm number of hugepages pending (2M pages)"
@@ -182,9 +182,9 @@ class Memory(base.APIBase):
         if not expand:
             memory.unset_fields_except(['uuid', 'memtotal_mib', 'memavail_mib',
                 'platform_reserved_mib', 'hugepages_configured',
-                'avs_hugepages_size_mib', 'avs_hugepages_nr',
-                'avs_hugepages_reqd',
-                'avs_hugepages_avail',
+                'vswitch_hugepages_size_mib', 'vswitch_hugepages_nr',
+                'vswitch_hugepages_reqd',
+                'vswitch_hugepages_avail',
                 'vm_hugepages_nr_2M',
                 'vm_hugepages_nr_1G', 'vm_hugepages_use_1G',
                 'vm_hugepages_nr_2M_pending',
@@ -576,10 +576,10 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
             mem_alloc += int(rpc_port['vm_hugepages_nr_1G']) * 1000
         LOG.debug("vm total=%s" % (mem_alloc))
 
-        avs_hp_size = rpc_port['avs_hugepages_size_mib']
-        avs_hp_nr = rpc_port['avs_hugepages_nr']
-        mem_alloc += avs_hp_size * avs_hp_nr
-        LOG.debug("avs_hp_nr=%s avs_hp_size=%s" % (avs_hp_nr, avs_hp_size))
+        vs_hp_size = rpc_port['vswitch_hugepages_size_mib']
+        vs_hp_nr = rpc_port['vswitch_hugepages_nr']
+        mem_alloc += vs_hp_size * vs_hp_nr
+        LOG.debug("vs_hp_nr=%s vs_hp_size=%s" % (vs_hp_nr, vs_hp_size))
         LOG.debug("memTotal %s mem_alloc %s" % (node_memtotal_mib, mem_alloc))
 
         # Initial configuration defaults mem_alloc to consume 100% of 2M pages,

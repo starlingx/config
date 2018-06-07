@@ -1744,7 +1744,7 @@ class ConductorManager(service.PeriodicService):
             mtu = constants.DEFAULT_MTU
             port = None
             # ignore port if no MAC address present, this will
-            # occur for data port after they are configured via AVS
+            # occur for data port after they are configured via DPDK driver
             if not inic['mac']:
                 continue
             try:
@@ -6645,11 +6645,6 @@ class ConductorManager(service.PeriodicService):
 
         # Apply Neutron manifest on Controller(this
         # will update the SNAT rules for the SDN controllers)
-        # Ideally we would also like to apply the vswitch manifest
-        # on Compute so as to write the vswitch.ini however AVS
-        # cannot resync on the fly, so mark the Compute node as
-        # config-out-of-date
-
         self._config_update_hosts(context, [constants.COMPUTE], reboot=True)
 
         config_uuid = self._config_update_hosts(context,
@@ -6677,6 +6672,30 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
         personalities = [constants.COMPUTE]
+        self._config_update_hosts(context, personalities, reboot=True)
+
+    def update_vswitch_type(self, context):
+        """Update the system vswitch type.
+
+        :param context: an admin context.
+        """
+        LOG.info("update_vswitch_type")
+
+        personalities = [constants.CONTROLLER]
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::sysctl::controller::runtime',
+                        'platform::nfv::runtime',
+                        'openstack::neutron::server::runtime']
+        }
+        config_uuid = self._config_update_hosts(context, personalities)
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+        if tsc.system_type == constants.TIS_AIO_BUILD:
+            personalities = [constants.CONTROLLER]
+        else:
+            personalities = [constants.COMPUTE]
+
         self._config_update_hosts(context, personalities, reboot=True)
 
     def _update_hosts_file(self, hostname, address, active=True):

@@ -65,8 +65,6 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
 
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
-        sdn_l3_mode_enabled = self._get_sdn_l3_mode_enabled()
-
         config = {
             'neutron::server::notifications::auth_url':
                 self._keystone_identity_uri(),
@@ -85,8 +83,6 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
 
             'neutron::agents::metadata::metadata_ip':
                 self._get_management_address(),
-            'neutron::agents::vswitch::sdn_manage_external_networks':
-                not sdn_l3_mode_enabled,
 
             'neutron::keystone::authtoken::auth_url':
                 self._keystone_identity_uri(),
@@ -113,8 +109,6 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
 
             'openstack::neutron::params::region_name':
                 self.get_region_name(),
-            'openstack::neutron::params::l3_agent_enabled':
-                not sdn_l3_mode_enabled,
             'openstack::neutron::params::service_create':
                 self._to_create_services(),
         }
@@ -163,33 +157,19 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
                 controller_config
         }
 
-    def _get_sdn_l3_mode_enabled(self):
-        try:
-            sdn_l3_mode = self.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_NETWORK,
-                section=constants.SERVICE_PARAM_SECTION_NETWORK_DEFAULT,
-                name=constants.SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS)
-            if not sdn_l3_mode:
-                return False
-            allowed_vals = constants.SERVICE_PLUGINS_SDN
-            return (any(sp in allowed_vals
-                        for sp in sdn_l3_mode.value.split(',')))
-        except:
-            return False
-
     def get_host_config(self, host):
-        interface_mappings = []
+        device_mappings = []
         for iface in self.context['interfaces'].values():
             if (utils.get_primary_network_type(iface) ==
                     constants.NETWORK_TYPE_PCI_SRIOV):
                 port = interface.get_interface_port(self.context, iface)
                 providernets = interface.get_interface_providernets(iface)
                 for net in providernets:
-                    interface_mappings.append("%s:%s" % (net, port['name']))
+                    device_mappings.append("%s:%s" % (net, port['name']))
 
         config = {
             'neutron::agents::ml2::sriov::physical_device_mappings':
-                interface_mappings,
+                device_mappings,
         }
 
         if host.personality == constants.CONTROLLER:

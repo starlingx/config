@@ -74,9 +74,8 @@ install -m 644 -p -D scripts/sysinv-conductor.service %{buildroot}%{_unitdir}/sy
 
 install -d -m 755 %{buildroot}%{local_bindir}
 install -p -D -m 755 sysinv/cmd/partition_info.sh %{buildroot}%{local_bindir}/partition_info.sh
-
-install -d -m 755 %{buildroot}%{local_bindir}
 install -p -D -m 755 sysinv/cmd/manage-partitions %{buildroot}%{local_bindir}/manage-partitions
+install -p -D -m 755 sysinv/cmd/query_pci_id %{buildroot}%{local_bindir}/query_pci_id
 
 %clean
 echo "CLEAN CALLED"
