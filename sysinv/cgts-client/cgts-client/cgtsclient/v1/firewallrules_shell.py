@@ -46,7 +46,7 @@ def do_firewall_rules_install(cc, args):
         response = cc.firewallrules.import_firewall_rules(fw_file)
         error = response.get('error')
         if error:
-            print "Firewall rules install failed: %s" % error
+            raise exc.CommandError("%s" % error)
         else:
             _print_firewallrules_show(response.get('firewallrules'))
     except exc.HTTPNotFound:
