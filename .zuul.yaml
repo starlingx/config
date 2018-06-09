@@ -1,0 +1,10 @@
+---
+- project:
+    check:
+      jobs:
+        - openstack-tox-linters:
+            voting: false
+    gate:
+      jobs:
+        - openstack-tox-linters:
+            voting: false
