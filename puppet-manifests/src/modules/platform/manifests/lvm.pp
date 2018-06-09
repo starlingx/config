@@ -104,6 +104,11 @@ class platform::lvm::controller::runtime {
 
 class platform::lvm::compute::vgs {
   include ::platform::lvm::vg::nova_local
+  include ::platform::kubernetes::params
+
+  if $::platform::kubernetes::params::enabled {
+    include ::platform::lvm::vg::cgts_vg
+  }
 }
 
 class platform::lvm::compute

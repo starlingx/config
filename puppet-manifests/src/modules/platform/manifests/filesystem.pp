@@ -8,19 +8,30 @@ define platform::filesystem (
   $lv_size,
   $mountpoint,
   $fs_type,
-  $fs_options
+  $fs_options,
+  $fs_use_all = false,
 ) {
   include ::platform::filesystem::params
   $vg_name = $::platform::filesystem::params::vg_name
 
   $device = "/dev/${vg_name}/${lv_name}"
 
+  if !$fs_use_all {
+    $size = "${lv_size}G"
+    $fs_size_is_minsize = true
+  }
+  else {
+    # use all available space
+    $size = undef
+    $fs_size_is_minsize = false
+  } 
+  
   # create logical volume
   logical_volume { $lv_name:
       ensure          => present,
       volume_group    => $vg_name,
-      size            => "${lv_size}G",
-      size_is_minsize => true,
+      size            => $size,
+      size_is_minsize => $fs_size_is_minsize,
   } ->
 
   # create filesystem
@@ -52,6 +63,7 @@ define platform::filesystem (
   exec { "mount $device":
     unless => "mount | awk '{print \$3}' | grep -Fxq $mountpoint",
     command => "mount $mountpoint",
+    path => "/usr/bin"
   }
 }
 
@@ -133,6 +145,7 @@ class platform::filesystem::docker::params (
   $devmapper = '/dev/mapper/cgts--vg-docker--lv',
   $fs_type = 'xfs',
   $fs_options = '-n ftype=1',
+  $fs_use_all = false
 ) { }
 
 class platform::filesystem::docker
@@ -146,7 +159,8 @@ class platform::filesystem::docker
       lv_size => $lv_size,
       mountpoint => $mountpoint,
       fs_type => $fs_type,
-      fs_options => $fs_options
+      fs_options => $fs_options,
+      fs_use_all => $fs_use_all
     }
   }
 }
@@ -174,6 +188,21 @@ class platform::filesystem::img_conversions
   }
 }
 
+
+class platform::filesystem::compute {
+
+  include ::platform::kubernetes::params
+
+  if $::platform::kubernetes::params::enabled {
+    class {'platform::filesystem::docker::params' :
+      fs_use_all => true
+    } ->
+    class {'platform::filesystem::docker' :
+    }
+
+    Class['::platform::lvm::vg::cgts_vg'] -> Class['::platform::filesystem::docker']
+  }
+}
 
 class platform::filesystem::controller {
   include ::platform::filesystem::backup

@@ -139,16 +139,7 @@ class platform::kubernetes::worker::params (
 class platform::kubernetes::worker::init
   inherits ::platform::kubernetes::worker::params {
 
-  # Start docker - will move to another manifest.
-  service { 'docker':
-    ensure => 'running',
-    enable => true,
-  } ->
-  # A seperate enable is required since we have modified the service resource
-  # to never enable services.
-  exec { 'enable-docker':
-    command => '/usr/bin/systemctl enable docker.service',
-  } ->
+  Class['::platform::docker::config'] -> Class[$name]
 
   # Configure the worker node. Only do this once, so check whether the
   # kubelet.conf file has already been created (by the join).
