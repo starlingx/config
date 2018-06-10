@@ -167,6 +167,8 @@ PACKSTACK_PATH = PLATFORM_PATH + "/packstack/" + SW_VERSION + "/"
 PUPPET_PATH = PLATFORM_PATH + "/puppet/" + SW_VERSION + "/"
 CGCS_PATH = "/opt/cgcs"
 KEYRING_PATH = PLATFORM_PATH + "/.keyring/" + SW_VERSION
+EXTENSION_PATH = "/opt/extension"
+PLATFORM_CEPH_CONF_PATH = CONFIG_PATH + 'ceph-config'
 
 # Compute configuration flags
 
