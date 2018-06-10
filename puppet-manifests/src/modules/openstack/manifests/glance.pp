@@ -11,6 +11,8 @@ class openstack::glance::params (
   $configured_registry_host = '0.0.0.0',
   $glance_cached = false,
   $glance_delete_interval = 6,
+  $rbd_store_pool = 'images',
+  $rbd_store_ceph_conf = '/etc/ceph/ceph.conf',
 ) { }
 
 
@@ -105,10 +107,6 @@ class openstack::glance
     if 'file' in $enabled_backends {
       include ::glance::backend::file
     }
-
-    if 'rbd' in $enabled_backends {
-      include ::glance::backend::rbd
-    }
   }
 }
 
@@ -170,6 +168,13 @@ class openstack::glance::api
       workers               => $api_workers,
       sync_db   => $::platform::params::init_database,
       show_image_direct_url => $show_image_direct_url,
+    }
+
+    if 'rbd' in $enabled_backends {
+        class { '::glance::backend::rbd':
+          rbd_store_pool       => $rbd_store_pool,
+          rbd_store_ceph_conf  => $rbd_store_ceph_conf,
+        }
     }
 
     include ::openstack::glance::firewall

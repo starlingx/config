@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+import os
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -463,6 +464,7 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
         ceph_type_configs = {}
 
         is_service_enabled = False
+        is_ceph_external = False
         for storage_backend in self.dbapi.storage_backend_get_list():
             if (storage_backend.backend == constants.SB_TYPE_LVM and
                 (storage_backend.services and
@@ -529,6 +531,37 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
 
                 ceph_backend_configs.update({storage_backend.name: ceph_backend})
                 ceph_type_configs.update({storage_backend.name: ceph_backend_type})
+            elif storage_backend.backend == constants.SB_TYPE_CEPH_EXTERNAL:
+                is_ceph_external = True
+                ceph_ext_obj = self.dbapi.storage_ceph_external_get(
+                    storage_backend.id)
+                ceph_external_backend = {
+                    'backend_enabled': False,
+                    'backend_name': ceph_ext_obj.name,
+                    'rbd_pool':
+                        storage_backend.capabilities.get('cinder_pool'),
+                    'rbd_ceph_conf': constants.CEPH_CONF_PATH + os.path.basename(ceph_ext_obj.ceph_conf),
+                }
+                ceph_external_backend_type = {
+                    'type_enabled': False,
+                    'type_name': "{0}-{1}".format(
+                        ceph_ext_obj.name,
+                        constants.CINDER_BACKEND_CEPH_EXTERNAL),
+                    'backend_name': ceph_ext_obj.name
+                }
+
+                if (storage_backend.services and
+                        constants.SB_SVC_CINDER in storage_backend.services):
+                    is_service_enabled = True
+                    ceph_external_backend['backend_enabled'] = True
+                    ceph_external_backend_type['type_enabled'] = True
+                    enabled_backends.append(
+                        ceph_external_backend['backend_name'])
+
+                ceph_backend_configs.update(
+                    {storage_backend.name: ceph_external_backend})
+                ceph_type_configs.update(
+                    {storage_backend.name: ceph_external_backend_type})
 
         # Update the params for the external SANs
         config.update(self._get_service_parameter_config(is_service_enabled,
@@ -536,6 +569,7 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
         config.update({
             'openstack::cinder::params::service_enabled': is_service_enabled,
             'openstack::cinder::params::enabled_backends': enabled_backends,
+            'openstack::cinder::params::is_ceph_external': is_ceph_external,
             'openstack::cinder::backends::ceph::ceph_backend_configs':
                 ceph_backend_configs,
             'openstack::cinder::api::backends::ceph_type_configs':
@@ -727,6 +761,10 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
                  constants.SB_SVC_CINDER in storage_backend.services)):
                 return True
             elif (storage_backend.backend == constants.SB_TYPE_CEPH and
+                  (storage_backend.services and
+                   constants.SB_SVC_CINDER in storage_backend.services)):
+                return True
+            elif (storage_backend.backend == constants.SB_TYPE_CEPH_EXTERNAL and
                   (storage_backend.services and
                    constants.SB_SVC_CINDER in storage_backend.services)):
                 return True

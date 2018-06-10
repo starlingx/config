@@ -19,6 +19,7 @@ class openstack::cinder::params (
   $cinder_vg_name = 'cinder-volumes',
   $drbd_resource = 'drbd-cinder',
   $iscsi_ip_address = undef,
+  $is_ceph_external = false,
   # Flag files
   $initial_cinder_config_flag = "${::platform::params::config_path}/.initial_cinder_config_complete",
   $initial_cinder_lvm_config_flag = "${::platform::params::config_path}/.initial_cinder_lvm_config_complete",
@@ -67,7 +68,7 @@ class openstack::cinder::params (
       $is_node_cinder_lvm = false
     }
 
-    if 'ceph' in $enabled_backends {
+    if 'ceph' in $enabled_backends or $is_ceph_external {
       # Check if this is the first time we ever configure Ceph on this system
       if str2bool($::is_controller_active) and str2bool($::is_initial_cinder_ceph_config) {
         $is_initial_cinder_ceph = true
@@ -260,7 +261,7 @@ class openstack::cinder::backends
     include ::openstack::cinder::lvm
   }
 
-  if 'ceph' in $enabled_backends {
+  if 'ceph' in $enabled_backends or $is_ceph_external {
     include ::openstack::cinder::backends::ceph
   }
 
@@ -462,7 +463,8 @@ define openstack::cinder::backend::ceph(
   $backend_enabled = false,
   $backend_name,
   $rbd_user = 'cinder',
-  $rbd_pool
+  $rbd_pool,
+  $rbd_ceph_conf = '/etc/ceph/ceph.conf'
 ) {
 
   if $backend_enabled {
@@ -470,6 +472,7 @@ define openstack::cinder::backend::ceph(
       backend_host => '$host',
       rbd_pool => $rbd_pool,
       rbd_user => $rbd_user,
+      rbd_ceph_conf => $rbd_ceph_conf,
     }
   } else {
     cinder_config {
@@ -728,8 +731,9 @@ class openstack::cinder::post
 
 
 class openstack::cinder::reload {
-  platform::sm::restart {'cinder-volume': }
   platform::sm::restart {'cinder-scheduler': }
+  platform::sm::restart {'cinder-volume': }
+  platform::sm::restart {'cinder-backup': }
   platform::sm::restart {'cinder-api': }
 }
 

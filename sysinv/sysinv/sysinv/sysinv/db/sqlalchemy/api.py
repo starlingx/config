@@ -752,11 +752,13 @@ def add_storage_backend_filter(query, value):
     """
     if value in constants.SB_SUPPORTED:
         return query.filter(or_(models.StorageCeph.backend == value,
+                                models.StorageCephExternal.backend == value,
                                 models.StorageFile.backend == value,
                                 models.StorageLvm.backend == value,
                                 models.StorageExternal.backend == value))
     elif uuidutils.is_uuid_like(value):
         return query.filter(or_(models.StorageCeph.uuid == value,
+                                models.StorageCephExternal.uuid == value,
                                 models.StorageFile.uuid == value,
                                 models.StorageLvm.uuid == value,
                                 models.StorageExternal.uuid == value))
@@ -767,6 +769,7 @@ def add_storage_backend_filter(query, value):
 def add_storage_backend_name_filter(query, value):
     """ Add a name based storage_backend filter to a query. """
     return query.filter(or_(models.StorageCeph.name == value,
+                            models.StorageCephExternal.name == value,
                             models.StorageFile.name == value,
                             models.StorageLvm.name == value,
                             models.StorageExternal.name == value))
@@ -3935,6 +3938,8 @@ class Connection(api.Connection):
     def storage_backend_create(self, values):
         if values['backend'] == constants.SB_TYPE_CEPH:
             backend = models.StorageCeph()
+        elif values['backend'] == constants.SB_TYPE_CEPH_EXTERNAL:
+            backend = models.StorageCephExternal()
         elif values['backend'] == constants.SB_TYPE_FILE:
             backend = models.StorageFile()
         elif values['backend'] == constants.SB_TYPE_LVM:
@@ -4009,6 +4014,8 @@ class Connection(api.Connection):
 
         if result['backend'] == constants.SB_TYPE_CEPH:
             return objects.storage_ceph.from_db_object(result)
+        elif result['backend'] == constants.SB_TYPE_CEPH_EXTERNAL:
+            return objects.storage_ceph_external.from_db_object(result)
         elif result['backend'] == constants.SB_TYPE_FILE:
             return objects.storage_file.from_db_object(result)
         elif result['backend'] == constants.SB_TYPE_LVM:
@@ -4039,6 +4046,9 @@ class Connection(api.Connection):
 
         if backend_type == constants.SB_TYPE_CEPH:
             return self._storage_backend_get_list(models.StorageCeph, limit,
+                                                  marker, sort_key, sort_dir)
+        elif backend_type == constants.SB_TYPE_CEPH_EXTERNAL:
+            return self._storage_backend_get_list(models.StorageCephExternal, limit,
                                                   marker, sort_key, sort_dir)
         elif backend_type == constants.SB_TYPE_FILE:
             return self._storage_backend_get_list(models.StorageFile, limit,
@@ -4091,6 +4101,8 @@ class Connection(api.Connection):
 
             if result.backend == constants.SB_TYPE_CEPH:
                 return self._storage_backend_update(models.StorageCeph, storage_backend_id, values)
+            elif result.backend == constants.SB_TYPE_CEPH_EXTERNAL:
+                return self._storage_backend_update(models.StorageCephExternal, storage_backend_id, values)
             elif result.backend == constants.SB_TYPE_FILE:
                 return self._storage_backend_update(models.StorageFile, storage_backend_id, values)
             elif result.backend == constants.SB_TYPE_LVM:
@@ -4239,6 +4251,34 @@ class Connection(api.Connection):
     @objects.objectify(objects.storage_lvm)
     def storage_lvm_destroy(self, storage_lvm_id):
         return self._storage_backend_destroy(models.StorageLvm, storage_lvm_id)
+
+    @objects.objectify(objects.storage_ceph_external)
+    def storage_ceph_external_create(self, values):
+        backend = models.StorageCephExternal()
+        return self._storage_backend_create(backend, values)
+
+    @objects.objectify(objects.storage_ceph_external)
+    def storage_ceph_external_get(self, storage_ceph_external_id):
+        return self._storage_backend_get_by_cls(models.StorageCephExternal,
+                                                storage_ceph_external_id)
+
+    @objects.objectify(objects.storage_ceph_external)
+    def storage_ceph_external_get_list(self, limit=None, marker=None,
+                                       sort_key=None, sort_dir=None):
+        return self._storage_backend_get_list(models.StorageCephExternal, limit,
+                                              marker,
+                                              sort_key, sort_dir)
+
+    @objects.objectify(objects.storage_ceph_external)
+    def storage_ceph_external_update(self, storage_ceph_external_id, values):
+        return self._storage_backend_update(models.StorageCephExternal,
+                                            storage_ceph_external_id,
+                                            values)
+
+    @objects.objectify(objects.storage_ceph_external)
+    def storage_ceph_external_destroy(self, storage_ceph_external_id):
+        return self._storage_backend_destroy(models.StorageCephExternal,
+                                             storage_ceph_external_id)
 
     def _drbdconfig_get(self, server):
         query = model_query(models.drbdconfig)

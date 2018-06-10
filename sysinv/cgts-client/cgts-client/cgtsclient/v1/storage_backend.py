@@ -13,6 +13,7 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ceph_mon as ceph_mon_utils
 from cgtsclient.v1 import storage_ceph  # noqa
+from cgtsclient.v1 import storage_ceph_external  # noqa
 from cgtsclient.v1 import storage_external  # noqa
 from cgtsclient.v1 import storage_file  # noqa
 from cgtsclient.v1 import storage_lvm  # noqa
@@ -104,9 +105,10 @@ def backend_show(cc, backend_name_or_uuid):
         raise exc.CommandError("Backend %s is not found."
                                % backend_name_or_uuid)
 
-    backend_client = getattr(cc, 'storage_' + db_backend.backend)
+    backend_type = db_backend.backend.replace('-', '_')
+    backend_client = getattr(cc, 'storage_' + backend_type)
     backend_obj = backend_client.get(db_backend.uuid)
-    extra_fields = getattr(eval('storage_' + db_backend.backend),
+    extra_fields = getattr(eval('storage_' + backend_type),
                            'DISPLAY_ATTRIBUTES')
     _show_backend(backend_obj, extra_fields)
 
@@ -120,13 +122,14 @@ def _display_next_steps():
 
 
 def backend_add(cc, backend, args):
+    backend = backend.replace('-', '_')
 
     # add ceph mons to controllers
     if backend == constants.SB_TYPE_CEPH:
         ceph_mon_utils.ceph_mon_add(cc, args)
 
     # allowed storage_backend fields
-    allowed_fields = ['name', 'services', 'confirmed']
+    allowed_fields = ['name', 'services', 'confirmed', 'ceph_conf']
 
     # allowed backend specific backends
     if backend in constants.SB_SUPPORTED:
@@ -158,7 +161,6 @@ def backend_add(cc, backend, args):
 # BACKEND MODIFY
 
 def backend_modify(cc, args):
-
     db_backends = cc.storage_backend.list()
     backend_entry = next(
         (b for b in db_backends
@@ -170,7 +172,7 @@ def backend_modify(cc, args):
                                % args.backend_name_or_uuid)
 
     # filter out arg noise: Only relevant fields
-    allowed_fields = ['services']
+    allowed_fields = ['services', 'ceph_conf']
 
     # filter the args.passed to backend creation
     fields = dict((k, v) for (k, v) in vars(args).items()
@@ -183,8 +185,9 @@ def backend_modify(cc, args):
 
     # non-capability, backend specific attributes
     backend = backend_entry.backend
+
     if backend in constants.SB_SUPPORTED:
-        backend_attrs = getattr(eval('storage_' + backend),
+        backend_attrs = getattr(eval('storage_' + backend.replace("-", "_")),
                                 'PATCH_ATTRIBUTES')
         allowed_fields += backend_attrs
         for k, v in attr_dict.iteritems():
@@ -205,8 +208,9 @@ def backend_modify(cc, args):
                   'op': 'replace'})
 
     try:
-        backend_client = getattr(cc, 'storage_' + backend)
+        backend_client = getattr(cc, 'storage_' + backend.replace("-", "_"))
         backend_entry = backend_client.update(backend_entry.uuid, patch)
+
     except exc.HTTPNotFound:
         raise exc.CommandError('Storage %s not found: %s'
                                % (backend,

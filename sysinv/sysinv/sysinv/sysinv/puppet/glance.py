@@ -4,12 +4,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import os
+
 from oslo_utils import strutils
 from urlparse import urlparse
 from sysinv.common import constants
 from sysinv.common import exception
-
+from sysinv.openstack.common import log as logging
 from . import openstack
+
+LOG = logging.getLogger(__name__)
 
 
 class GlancePuppet(openstack.OpenstackBasePuppet):
@@ -55,6 +59,8 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
         pipeline = constants.GLANCE_DEFAULT_PIPELINE
         registry_host = constants.GLANCE_LOCAL_REGISTRY
         remote_registry_region_name = None
+        rbd_store_pool = None
+        rbd_store_ceph_conf = None
 
         is_service_enabled = False
         for storage_backend in self.dbapi.storage_backend_get_list():
@@ -70,6 +76,18 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
                 is_service_enabled = True
                 enabled_backends.append(constants.GLANCE_BACKEND_RBD)
                 stores.append(constants.GLANCE_BACKEND_RBD)
+                # For internal ceph backend, the default "images" glance pool
+                # and default "/etc/ceph/ceph.conf" config file will be used.
+            elif (storage_backend.backend == constants.SB_TYPE_CEPH_EXTERNAL and
+                  (storage_backend.services and
+                   constants.SB_SVC_GLANCE in storage_backend.services)):
+                is_service_enabled = True
+                enabled_backends.append(constants.GLANCE_BACKEND_RBD)
+                stores.append(constants.GLANCE_BACKEND_RBD)
+                ceph_ext_obj = self.dbapi.storage_ceph_external_get(
+                    storage_backend.id)
+                rbd_store_pool = storage_backend.capabilities.get('glance_pool')
+                rbd_store_ceph_conf = constants.CEPH_CONF_PATH + os.path.basename(ceph_ext_obj.ceph_conf)
 
         if self.get_glance_cached_status():
             stores.append(constants.GLANCE_BACKEND_GLANCE)
@@ -150,6 +168,12 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
             'openstack::glance::params::glance_cached':
                 self.get_glance_cached_status(),
         }
+
+        if rbd_store_pool and rbd_store_ceph_conf:
+            config.update({'openstack::glance::params::rbd_store_pool':
+                               rbd_store_pool,
+                           'openstack::glance::params::rbd_store_ceph_conf':
+                               rbd_store_ceph_conf,})
         return config
 
     def get_secure_system_config(self):

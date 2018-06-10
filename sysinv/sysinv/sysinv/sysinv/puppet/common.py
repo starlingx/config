@@ -31,6 +31,7 @@ REPORT_DISK_PARTITON_CONFIG = 'manage_disk_partitions'
 REPORT_LVM_BACKEND_CONFIG = 'lvm_config'
 REPORT_EXTERNAL_BACKEND_CONFIG = 'external_config'
 REPORT_CEPH_BACKEND_CONFIG = 'ceph_config'
+REPORT_CEPH_EXTERNAL_BACKEND_CONFIG = 'ceph_external_config'
 REPORT_CEPH_SERVICES_CONFIG = 'ceph_services'
 
 

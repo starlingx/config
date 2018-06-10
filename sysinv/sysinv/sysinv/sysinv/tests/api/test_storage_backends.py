@@ -42,6 +42,7 @@ test_storage_ceph.HIERA_DATA = {
     constants.SB_SVC_CINDER: ['test_cparam3'],
     constants.SB_SVC_GLANCE: ['test_gparam3'],
     constants.SB_SVC_SWIFT: ['test_sparam1'],
+    constants.SB_SVC_NOVA: ['test_nparam1'],
 }
 
 orig_set_backend_data = SBApiHelper.set_backend_data

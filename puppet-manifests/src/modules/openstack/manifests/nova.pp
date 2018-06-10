@@ -392,6 +392,8 @@ class openstack::nova::storage (
   $instance_backing = 'image',
   $instances_lv_size = 0,
   $concurrent_disk_operations = 2,
+  $images_rbd_pool = 'ephemeral',
+  $images_rbd_ceph_conf = '/etc/ceph/ceph.conf'
 ) {
   $adding_pvs_str = join($adding_pvs," ")
   $removing_pvs_str = join($removing_pvs," ")
@@ -403,26 +405,29 @@ class openstack::nova::storage (
     'image': {
       $images_type = 'default'
       $images_volume_group = absent
-      $images_rbd_pool = absent
       $round_to_extent = false
       $local_monitor_state = 'disabled'
       $instances_lv_size_real = 'max'
+      $images_rbd_pool_real = absent
+      $images_rbd_ceph_conf_real = absent
     }
     'lvm': {
       $images_type = 'lvm'
       $images_volume_group = 'nova-local'
-      $images_rbd_pool = absent
       $round_to_extent = true
       $local_monitor_state = 'enabled'
       $instances_lv_size_real = $instances_lv_size
+      $images_rbd_pool_real = absent
+      $images_rbd_ceph_conf_real = absent
     }
     'remote': {
       $images_type = 'rbd'
       $images_volume_group = absent
-      $images_rbd_pool = 'ephemeral'
       $round_to_extent = false
       $local_monitor_state = 'disabled'
       $instances_lv_size_real = 'max'
+      $images_rbd_pool_real = $images_rbd_pool
+      $images_rbd_ceph_conf_real = $images_rbd_ceph_conf
     }
     default: {
       fail("Unsupported instance backing: ${instance_backing}")
@@ -444,7 +449,8 @@ class openstack::nova::storage (
   nova_config {
       "libvirt/images_type": value => $images_type;
       "libvirt/images_volume_group": value => $images_volume_group;
-      "libvirt/images_rbd_pool": value => $images_rbd_pool;
+      "libvirt/images_rbd_pool": value => $images_rbd_pool_real;
+      "libvirt/images_rbd_ceph_conf": value => $images_rbd_ceph_conf_real;
   } ->
   exec { 'umount /etc/nova/instances':
     command => 'umount /etc/nova/instances; true',

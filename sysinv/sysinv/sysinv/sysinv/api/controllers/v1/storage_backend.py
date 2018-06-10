@@ -46,10 +46,10 @@ from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import uuidutils
 from oslo_serialization import jsonutils
 
-from sysinv.api.controllers.v1 import storage_ceph  # noqa
-from sysinv.api.controllers.v1 import storage_lvm   # noqa
-from sysinv.api.controllers.v1 import storage_file  # noqa
-
+from sysinv.api.controllers.v1 import storage_ceph           # noqa
+from sysinv.api.controllers.v1 import storage_lvm            # noqa
+from sysinv.api.controllers.v1 import storage_file           # noqa
+from sysinv.api.controllers.v1 import storage_ceph_external  # noqa
 
 LOG = log.getLogger(__name__)
 
@@ -482,8 +482,8 @@ class StorageBackendController(rest.RestController):
         # update
         return _patch(storage_backend_uuid, patch)
 
-        rpc_storage_backend = objects.storage_backend.get_by_uuid(pecan.request.context,
-                                                                  storage_backend_uuid)
+        rpc_storage_backend = objects.storage_backend.get_by_uuid(
+            pecan.request.context, storage_backend_uuid)
         # action = None
         for p in patch:
             # if '/action' in p['path']:
@@ -539,8 +539,10 @@ class StorageBackendController(rest.RestController):
 #
 
 def _create(storage_backend):
-    # Get and call the specific backend create function based on the backend provided
-    backend_create = getattr(eval('storage_' + storage_backend['backend']), '_create')
+    # Get and call the specific backend create function based on the backend
+    # provided.
+    backend_create = getattr(eval('storage_' + storage_backend['backend']),
+                             '_create')
     new_backend = backend_create(storage_backend)
 
     return new_backend
@@ -551,9 +553,11 @@ def _create(storage_backend):
 #
 
 def _patch(storage_backend_uuid, patch):
-    rpc_storage_backend = objects.storage_backend.get_by_uuid(pecan.request.context,
-                                                              storage_backend_uuid)
+    rpc_storage_backend = objects.storage_backend.get_by_uuid(
+        pecan.request.context, storage_backend_uuid)
 
-    # Get and call the specific backend patching function based on the backend provided
-    backend_patch = getattr(eval('storage_' + rpc_storage_backend.backend), '_patch')
+    # Get and call the specific backend patching function based on the backend
+    # provided.
+    backend_patch = getattr(eval('storage_' + rpc_storage_backend.backend),
+                            '_patch')
     return backend_patch(storage_backend_uuid, patch)

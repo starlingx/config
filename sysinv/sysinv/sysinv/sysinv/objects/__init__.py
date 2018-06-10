@@ -84,6 +84,7 @@ from sysinv.objects import tpmdevice
 from sysinv.objects import storage_file
 from sysinv.objects import storage_external
 from sysinv.objects import storage_tier
+from sysinv.objects import storage_ceph_external
 
 
 def objectify(klass):
@@ -177,6 +178,7 @@ certificate = certificate.Certificate
 storage_file = storage_file.StorageFile
 storage_external = storage_external.StorageExternal
 storage_tier = storage_tier.StorageTier
+storage_ceph_external = storage_ceph_external.StorageCephExternal
 
 __all__ = (system,
            cluster,
@@ -242,6 +244,7 @@ __all__ = (system,
            storage_file,
            storage_external,
            storage_tier,
+           storage_ceph_external,
            # alias objects for RPC compatibility
            ihost,
            ilvg,

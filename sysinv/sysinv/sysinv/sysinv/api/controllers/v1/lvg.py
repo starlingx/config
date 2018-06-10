@@ -660,19 +660,28 @@ def _check(op, lvg):
                                float(allowed_min_mib) / 1024,
                                float(allowed_max_mib) / 1024)))
 
-                # remote instance backing only available for ceph only cinder
-                # backend. for Titanium Cloud that is initially configured as
-                # lvm backend ephemeral storage on lvm backend
+                # Instances backed by remote ephemeral storage can only be
+                # used on systems that have a Ceph (internal or external)
+                # backend.
                 if ((lvg_caps.get(constants.LVG_NOVA_PARAM_BACKING) ==
                      constants.LVG_NOVA_BACKING_REMOTE) and
                         not StorageBackendConfig.has_backend_configured(
                             pecan.request.dbapi,
-                            constants.CINDER_BACKEND_CEPH,
-                            pecan.request.rpcapi)):
+                            constants.SB_TYPE_CEPH,
+                            service=constants.SB_SVC_NOVA,
+                            check_only_defaults=False,
+                            rpcapi=pecan.request.rpcapi) and
+                        not StorageBackendConfig.has_backend_configured(
+                            pecan.request.dbapi,
+                            constants.SB_TYPE_CEPH_EXTERNAL,
+                            service=constants.SB_SVC_NOVA,
+                            check_only_defaults=False,
+                            rpcapi=pecan.request.rpcapi)):
                     raise wsme.exc.ClientSideError(
                         _('Invalid value for instance_backing. Instances '
                           'backed by remote ephemeral storage can only be '
-                          'used on systems that have a Ceph Cinder backend.'))
+                          'used on systems that have a Ceph (internal or '
+                          'external) backend.'))
 
             if (lvg['lvm_cur_lv'] > 1):
                 raise wsme.exc.ClientSideError(

@@ -3398,7 +3398,7 @@ class ConductorManager(service.PeriodicService):
         personalities = [db_host.personality]
         config_uuid = self._config_update_hosts(context,
                                                 personalities,
-                                                host_uuid=host_uuid,
+                                                host_uuids=[host_uuid],
                                                 reboot=False)
         config_dict = {
             "host_uuids": host_uuid,
@@ -3412,7 +3412,7 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context,
                                             config_uuid,
                                             config_dict,
-                                            host_uuid=host_uuid)
+                                            host_uuids=[host_uuid])
 
     def ipartition_update_by_ihost(self, context,
                                    ihost_uuid, ipart_dict_array):
@@ -4399,7 +4399,7 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['openstack::keystone::endpoint::runtime']
                 }
                 self._config_apply_runtime_manifest(
-                    context, config_uuid, config_dict, host_uuid=active_host.uuid)
+                    context, config_uuid, config_dict, host_uuids=[active_host.uuid])
 
             # apply filesystem config changes if all controllers at target
             standby_config_target_flipped = None
@@ -5475,66 +5475,194 @@ class ConductorManager(service.PeriodicService):
 
     def update_ceph_config(self, context, sb_uuid, services):
         """Update the manifests for Cinder Ceph backend"""
-        personalities = [constants.CONTROLLER]
 
-        # Update service table
-        self.update_service_table_for_cinder()
+        if (constants.SB_SVC_CINDER in services or
+                constants.SB_SVC_GLANCE in services):
+            personalities = [constants.CONTROLLER]
 
-        # TODO(oponcea): Uncomment when SM supports in-service config reload
-        # ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        # valid_ctrls = [ctrl for ctrl in ctrls if
-        #                ctrl.administrative == constants.ADMIN_UNLOCKED and
-        #                ctrl.availability == constants.AVAILABILITY_AVAILABLE]
-        host = utils.HostHelper.get_active_controller(self.dbapi)
-        classes = ['platform::partitions::runtime',
-                   'platform::lvm::controller::runtime',
-                   'platform::haproxy::runtime',
-                   'openstack::keystone::endpoint::runtime',
-                   'platform::filesystem::img_conversions::runtime',
-                   'platform::ceph::controller::runtime',
-                   ]
-        if constants.SB_SVC_GLANCE in services:
-            classes.append('openstack::glance::api::runtime')
-        if constants.SB_SVC_CINDER in services:
-            classes.append('openstack::cinder::runtime')
-        classes.append('platform::sm::norestart::runtime')
-        config_dict = {"personalities": personalities,
-                       "host_uuids": host.uuid,
-                       # "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
-                       "classes": classes,
-                       puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
-                       }
+            # Update service table
+            self.update_service_table_for_cinder()
 
-        # TODO(oponcea) once sm supports in-service config reload always
-        # set reboot=False
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        if utils.is_host_simplex_controller(active_controller):
-            reboot = False
+            # TODO(oponcea): Uncomment when SM supports in-service config reload
+            # ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            # valid_ctrls = [ctrl for ctrl in ctrls if
+            #                ctrl.administrative == constants.ADMIN_UNLOCKED and
+            #                ctrl.availability == constants.AVAILABILITY_AVAILABLE]
+            host = utils.HostHelper.get_active_controller(self.dbapi)
+            classes = ['platform::partitions::runtime',
+                       'platform::lvm::controller::runtime',
+                       'platform::haproxy::runtime',
+                       'openstack::keystone::endpoint::runtime',
+                       'platform::filesystem::img_conversions::runtime',
+                       'platform::ceph::controller::runtime',
+                       ]
+            if constants.SB_SVC_GLANCE in services:
+                classes.append('openstack::glance::api::runtime')
+            if constants.SB_SVC_CINDER in services:
+                classes.append('openstack::cinder::runtime')
+            classes.append('platform::sm::norestart::runtime')
+            config_dict = {"personalities": personalities,
+                           "host_uuids": host.uuid,
+                           # "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
+                           "classes": classes,
+                           puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
+                           }
+
+            # TODO(oponcea) once sm supports in-service config reload always
+            # set reboot=False
+            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+            if utils.is_host_simplex_controller(active_controller):
+                reboot = False
+            else:
+                reboot = True
+
+            # Set config out-of-date for controllers
+            config_uuid = self._config_update_hosts(context,
+                                                    personalities,
+                                                    reboot=reboot)
+
+            # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
+            # Once sm supports in-service config reload, allways set config_uuid=config_uuid
+            # in _config_apply_runtime_manifest and remove code bellow.
+            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+            if utils.is_host_simplex_controller(active_controller):
+                new_uuid = config_uuid
+            else:
+                new_uuid = str(uuid.uuid4())
+
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid=new_uuid,
+                                                config_dict=config_dict)
+
+            # Update initial task states
+            values = {'state': constants.SB_STATE_CONFIGURING,
+                      'task': constants.SB_TASK_APPLY_MANIFESTS}
+            self.dbapi.storage_ceph_update(sb_uuid, values)
         else:
-            reboot = True
+            values = {'state': constants.SB_STATE_CONFIGURED,
+                      'task': None}
+            self.dbapi.storage_ceph_update(sb_uuid, values)
 
-        # Set config out-of-date for controllers
-        config_uuid = self._config_update_hosts(context,
-                                                personalities,
-                                                reboot=reboot)
+        if constants.SB_SVC_NOVA in services:
+            hosts_uuid = self.hosts_with_nova_local(constants.LVG_NOVA_BACKING_REMOTE)
+            if hosts_uuid:
+                personalities = [constants.CONTROLLER, constants.COMPUTE]
+                self._config_update_hosts(context,
+                                          personalities,
+                                          host_uuids=hosts_uuid,
+                                          reboot=True)
 
-        # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
-        # Once sm supports in-service config reload, allways set config_uuid=config_uuid
-        # in _config_apply_runtime_manifest and remove code bellow.
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        if utils.is_host_simplex_controller(active_controller):
-            new_uuid = config_uuid
+    def hosts_with_nova_local(self, backing_type):
+        """Returns a list of hosts with certain backing type of nova_local"""
+        hosts_uuid = []
+        hosts = self.dbapi.ihost_get_list()
+        for host in hosts:
+            if ((host.personality and host.personality == constants.COMPUTE) or
+                    (host.subfunctions and constants.COMPUTE in host.subfunctions)):
+                ilvgs = self.dbapi.ilvg_get_by_ihost(host['uuid'])
+                for lvg in ilvgs:
+                    if (lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL and
+                          lvg['capabilities'].get(constants.LVG_NOVA_PARAM_BACKING) ==
+                          backing_type):
+                        hosts_uuid.append(host['uuid'])
+        return hosts_uuid
+
+    def update_ceph_external_config(self, context, sb_uuid, services):
+        """Update the manifests for Cinder/Glance External Ceph backend"""
+
+        if (constants.SB_SVC_CINDER in services or
+                constants.SB_SVC_GLANCE in services):
+            personalities = [constants.CONTROLLER]
+
+            # Update service table
+            self.update_service_table_for_cinder()
+
+            ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            valid_ctrls = [ctrl for ctrl in ctrls if
+                           (ctrl.administrative == constants.ADMIN_LOCKED and
+                            ctrl.availability == constants.AVAILABILITY_ONLINE) or
+                           (ctrl.administrative == constants.ADMIN_UNLOCKED and
+                            ctrl.operational == constants.OPERATIONAL_ENABLED)]
+
+            classes = ['platform::partitions::runtime',
+                       'platform::lvm::controller::runtime',
+                       'platform::haproxy::runtime',
+                       'openstack::keystone::endpoint::runtime',
+                       'platform::filesystem::img_conversions::runtime',
+                       ]
+
+            if constants.SB_SVC_GLANCE in services:
+                classes.append('openstack::glance::api::runtime')
+            if constants.SB_SVC_CINDER in services:
+                classes.append('openstack::cinder::runtime')
+            classes.append('platform::sm::norestart::runtime')
+
+            report_config = puppet_common.REPORT_CEPH_EXTERNAL_BACKEND_CONFIG
+
+            config_dict = {"personalities": personalities,
+                           "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
+                           "classes": classes,
+                           puppet_common.REPORT_STATUS_CFG: report_config,}
+
+            # TODO(oponcea) once sm supports in-service config reload always
+            # set reboot=False
+            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+            if utils.is_host_simplex_controller(active_controller):
+                reboot = False
+            else:
+                if constants.SB_SVC_CINDER in services:
+                    # If it is the first time to start cinder service and it
+                    # is not a simplex configuration, then set reboot to false
+                    if StorageBackendConfig.is_service_enabled(
+                            self.dbapi,
+                            constants.SB_SVC_CINDER,
+                            filter_unconfigured=True,
+                            filter_shared=True):
+                        reboot = False
+                    else:
+                        reboot = True
+                else:
+                    reboot = False
+
+            # Set config out-of-date for controllers
+            config_uuid = self._config_update_hosts(context,
+                                                    personalities,
+                                                    reboot=reboot)
+
+            tasks = {}
+            for ctrl in valid_ctrls:
+                tasks[ctrl.hostname] = constants.SB_TASK_APPLY_MANIFESTS
+
+            # Update initial task states
+            values = {'state': constants.SB_STATE_CONFIGURING,
+                      'task': str(tasks)}
+
+            self.dbapi.storage_ceph_external_update(sb_uuid, values)
+
+            # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
+            # Once sm supports in-service config reload, allways set config_uuid=config_uuid
+            # in _config_apply_runtime_manifest and remove code bellow.
+            if reboot:
+                new_uuid = str(uuid.uuid4())
+            else:
+                new_uuid = config_uuid
+
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid=new_uuid,
+                                                config_dict=config_dict)
         else:
-            new_uuid = str(uuid.uuid4())
+            values = {'state': constants.SB_STATE_CONFIGURED,
+                      'task': None}
+            self.dbapi.storage_ceph_external_update(sb_uuid, values)
 
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid=new_uuid,
-                                            config_dict=config_dict)
-
-        # Update initial task states
-        values = {'state': constants.SB_STATE_CONFIGURING,
-                  'task': constants.SB_TASK_APPLY_MANIFESTS}
-        self.dbapi.storage_ceph_update(sb_uuid, values)
+        if constants.SB_SVC_NOVA in services:
+            hosts_uuid = self.hosts_with_nova_local(constants.LVG_NOVA_BACKING_REMOTE)
+            if hosts_uuid:
+                personalities = [constants.CONTROLLER, constants.COMPUTE]
+                self._config_update_hosts(context,
+                                          personalities,
+                                          host_uuids=hosts_uuid,
+                                          reboot=True)
 
     def update_ceph_services(self, context, sb_uuid):
         """Update service configs for Ceph tier pools."""
@@ -5656,6 +5784,20 @@ class ConductorManager(service.PeriodicService):
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
                 self.report_ceph_config_failure(host_uuid, error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
+        elif reported_cfg == puppet_common.REPORT_CEPH_EXTERNAL_BACKEND_CONFIG:
+            host_uuid = iconfig['host_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                self.report_ceph_external_config_success(context, host_uuid)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Configuration has failed
+                self.report_ceph_external_config_failure(
+                    host_uuid, error, constants.SB_TYPE_CEPH_EXTERNAL)
             else:
                 args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
                 LOG.error("No match for sysinv-agent manifest application reported! "
@@ -5927,6 +6069,87 @@ class ConductorManager(service.PeriodicService):
         #                                   constants.SB_TYPE_EXTERNAL,
         #                                   reason)
 
+    def report_ceph_external_config_success(self, context, host_uuid):
+        """ Callback for Sysinv Agent
+
+        Configuring Ceph External was successful, finalize operation.
+        The Agent calls this if Ceph manifests are applied correctly.
+        Both controllers have to get their manifests applied before accepting
+        the entire operation as successful.
+        """
+        LOG.info("Ceph manifests success on host: %s" % host_uuid)
+
+        ## As we can have multiple external_ceph backends, need to find the one
+        ## that is in configuring state.
+        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
+            self.dbapi, target=constants.SB_TYPE_CEPH_EXTERNAL)
+
+        if ceph_conf:
+            # For NOVA, if nova.conf needs to be updated on compute nodes, the
+            # task should be set to what? constants.SB_TASK_RECONFIG_COMPUTE?
+
+            config_done = True
+            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+            if not utils.is_host_simplex_controller(active_controller):
+                ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+                for host in ctrls:
+                    if host.uuid == host_uuid:
+                        break
+                else:
+                    LOG.error("Host %s is not a controller?" % host_uuid)
+                    return
+                tasks = eval(ceph_conf.get('task', '{}'))
+                if tasks:
+                    tasks[host.hostname] = None
+                else:
+                    tasks = {host.hostname: None}
+
+                for h in ctrls:
+                    if tasks[h.hostname]:
+                        config_done = False
+                        break
+
+            if config_done:
+                values = {'state': constants.SB_STATE_CONFIGURED,
+                          'task': None}
+                # The VIM needs to know when a cinder backend was added.
+                services = utils.SBApiHelper.getListFromServices(ceph_conf.as_dict())
+                if constants.SB_SVC_CINDER in services:
+                    self._update_vim_config(context)
+
+                # Clear alarm, if any
+                self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                                   constants.CINDER_BACKEND_CEPH)
+            else:
+                values = {'task': str(tasks)}
+
+            self.dbapi.storage_backend_update(ceph_conf.uuid, values)
+
+    def report_ceph_external_config_failure(self, host_uuid, error):
+        """ Callback for Sysinv Agent
+
+        Configuring External Ceph backend failed, set backend to err and raise alarm
+        The agent calls this if Ceph manifests failed to apply
+        """
+
+        args = {'host': host_uuid, 'error': error}
+        LOG.error("Ceph external manifests failed on host: %(host)s. Error: %(error)s" % args)
+
+        ## As we can have multiple external_ceph backends, need to find the one
+        ## that is in configuring state.
+        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
+            self.dbapi, target=constants.SB_TYPE_CEPH_EXTERNAL)
+
+        # Set ceph backend to error state
+        values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
+        self.dbapi.storage_backend_update(ceph_conf.uuid, values)
+
+        # Raise alarm
+        reason = "Ceph external configuration failed to apply on host: %(host)s" % args
+        self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                           constants.CINDER_BACKEND_CEPH,
+                                           reason)
+
     def report_ceph_config_success(self, context, host_uuid):
         """ Callback for Sysinv Agent
 
@@ -5937,7 +6160,7 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.info("Ceph manifests success on host: %s" % host_uuid)
         ceph_conf = StorageBackendConfig.get_backend(self.dbapi,
-                                                    constants.CINDER_BACKEND_CEPH)
+                                                     constants.CINDER_BACKEND_CEPH)
 
         # Only update the state/task if the backend hasn't been previously
         # configured. Subsequent re-applies of the runtime manifest that need to
@@ -6814,7 +7037,7 @@ class ConductorManager(service.PeriodicService):
             personalities = [constants.CONTROLLER, constants.COMPUTE]
             config_uuid = self._config_update_hosts(context,
                                                     personalities,
-                                                    host_uuid=host_uuid)
+                                                    host_uuids=[host_uuid])
             config_dict = {
                 "personalities": personalities,
                 "host_uuids": [host_uuid],
@@ -6823,7 +7046,7 @@ class ConductorManager(service.PeriodicService):
             self._config_apply_runtime_manifest(context, config_uuid,
                                                 config_dict,
                                                 force=force,
-                                                host_uuid=host_uuid)
+                                                host_uuids=[host_uuid])
 
     def _update_resolv_file(self, context, config_uuid, personalities):
         """Generate and update the resolv.conf files on the system"""
@@ -7411,12 +7634,12 @@ class ConductorManager(service.PeriodicService):
             if host.personality and host.personality in personalities:
                 self._update_host_config_reinstall(context, host)
 
-    def _config_update_hosts(self, context, personalities, host_uuid=None,
+    def _config_update_hosts(self, context, personalities, host_uuids=None,
                              reboot=False):
         """"Update the hosts configuration status for all hosts affected
         :param context: request context.
         :param personalities: list of affected host personalities
-        :parm host_uuid (optional): host whose config_target will be updated
+        :parm host_uuids (optional): hosts whose config_target will be updated
         :param reboot (optional): indicates if a reboot is required to apply
         :                         update
         :return The UUID of the configuration generation
@@ -7434,10 +7657,10 @@ class ConductorManager(service.PeriodicService):
         else:
             config_uuid = self._config_clear_reboot_required(config_uuid)
 
-        if not host_uuid:
+        if not host_uuids:
             hosts = self.dbapi.ihost_get_list()
         else:
-            hosts = [self.dbapi.ihost_get(host_uuid)]
+            hosts = [self.dbapi.ihost_get(host_uuid) for host_uuid in host_uuids]
 
         for host in hosts:
             if host.personality and host.personality in personalities:
@@ -7447,7 +7670,7 @@ class ConductorManager(service.PeriodicService):
         return config_uuid
 
     def _config_update_puppet(self, config_uuid, config_dict, force=False,
-                              host_uuid=None):
+                              host_uuids=None):
         """Regenerate puppet hiera data files for each affected host that is
            provisioned. If host_uuid is provided, only that host's puppet
            hiera data file will be regenerated.
@@ -7455,10 +7678,10 @@ class ConductorManager(service.PeriodicService):
         host_updated = False
 
         personalities = config_dict['personalities']
-        if not host_uuid:
+        if not host_uuids:
             hosts = self.dbapi.ihost_get_list()
         else:
-            hosts = [self.dbapi.ihost_get(host_uuid)]
+            hosts = [self.dbapi.ihost_get(host_uuid) for host_uuid in host_uuids]
 
         for host in hosts:
             if host.personality in personalities:
@@ -7506,15 +7729,18 @@ class ConductorManager(service.PeriodicService):
         self._config_update_puppet(config_uuid, config_dict)
 
         rpcapi = agent_rpcapi.AgentAPI()
-        rpcapi.iconfig_update_file(context,
-                                   iconfig_uuid=config_uuid,
-                                   iconfig_dict=config_dict)
+        try:
+            rpcapi.iconfig_update_file(context,
+                                       iconfig_uuid=config_uuid,
+                                       iconfig_dict=config_dict)
+        except Exception as e:
+            LOG.info("Error: %s" % str(e))
 
     def _config_apply_runtime_manifest(self,
                                        context,
                                        config_uuid,
                                        config_dict,
-                                       host_uuid=None,
+                                       host_uuids=None,
                                        force=False):
 
         """Apply manifests on all hosts affected by the supplied personalities.
@@ -7525,7 +7751,7 @@ class ConductorManager(service.PeriodicService):
         # is not set. If host_uuid is set only update hiera data for that host
         self._config_update_puppet(config_uuid,
                                    config_dict,
-                                   host_uuid=host_uuid,
+                                   host_uuids=host_uuids,
                                    force=force)
 
         config_dict.update({'force': force})
@@ -9165,6 +9391,64 @@ class ConductorManager(service.PeriodicService):
             LOG.error("iptables-restore failed, output: %s" % e.output)
             LOG.exception(e)
             return False
+
+    def distribute_ceph_external_config(self, context, ceph_conf_filename):
+        """Notify agent to distribute Ceph configuration file for external
+           cluster.
+        """
+        LOG.debug("ceph_conf_file: %s" % ceph_conf_filename)
+
+        # Retriving the ceph config file that is stored in the /opt/platform/config
+        # during the file upload stage.
+        opt_ceph_conf_file = os.path.join(tsc.PLATFORM_CEPH_CONF_PATH,
+                                          ceph_conf_filename)
+        if not os.path.exists(opt_ceph_conf_file):
+            raise exception.SysinvException(
+                _("Could not find the uploaded ceph config file %s in %s")
+                % (ceph_conf_filename, tsc.PLATFORM_CEPH_CONF_PATH))
+
+        try:
+            f = open(opt_ceph_conf_file, "r")
+            f.seek(0, os.SEEK_SET)
+            contents = f.read()
+        except IOError:
+            msg = _("Failed to read ceph config file from %s " %
+                    tsc.PLATFORM_CEPH_CONF_PATH)
+            raise exception.SysinvException(msg)
+
+        ceph_conf_file = os.path.join(constants.CEPH_CONF_PATH,
+                                      ceph_conf_filename)
+
+        personalities = [constants.CONTROLLER, constants.COMPUTE]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            'personalities': personalities,
+            'file_names': [ceph_conf_file],
+            'file_content': contents,
+        }
+        self._config_update_file(context, config_uuid, config_dict)
+
+    def store_ceph_external_config(self, context, contents, ceph_conf_filename):
+        """Store the uploaded external ceph config file in /opt/platform/config
+        """
+        ## Once this directory is created at installation time, we can
+        ## remove this code.
+        if not os.path.exists(tsc.PLATFORM_CEPH_CONF_PATH):
+            os.makedirs(tsc.PLATFORM_CEPH_CONF_PATH)
+        opt_ceph_conf_file = os.path.join(tsc.PLATFORM_CEPH_CONF_PATH,
+                                          ceph_conf_filename)
+
+        if os.path.exists(opt_ceph_conf_file):
+            raise exception.SysinvException(_(
+                "Same external ceph config file already exists."))
+
+        try:
+            with open(opt_ceph_conf_file, 'w+') as f:
+                f.write(contents)
+        except IOError:
+            msg = _("Failed to write ceph config file in %s " %
+                    tsc.PLATFORM_CEPH_CONF_PATH)
+            raise exception.SysinvException(msg)
 
     def update_firewall_config(self, context, ip_version, contents):
         """Notify agent to configure firewall rules with the supplied data.

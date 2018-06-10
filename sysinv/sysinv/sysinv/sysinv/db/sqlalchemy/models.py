@@ -937,6 +937,18 @@ class StorageExternal(StorageBackend):
     }
 
 
+class StorageCephExternal(StorageBackend):
+    __tablename__ = 'storage_ceph_external'
+
+    id = Column(Integer, ForeignKey('storage_backend.id'), primary_key=True,
+                nullable=False)
+    ceph_conf = Column(JSONEncodedDict)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'ceph-external',
+    }
+
+
 class CephMon(Base):
     __tablename__ = 'ceph_mon'
 

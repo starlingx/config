@@ -2508,6 +2508,50 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def storage_ceph_external_create(self, values):
+        """Create a new external ceph storage backend.
+
+        :param forihostid: the external ceph belongs to this isystem
+        :param values: A dict containing several items used to identify
+                       and track the external_ceph.
+        :returns: An external storage_ceph.
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_external_get(self, storage_ceph_id):
+        """Return an external ceph storage.
+
+        :param storage_ceph_id: The id or uuid of the external_ceph storage.
+        :returns: An external storage_ceph.
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_external_get_list(self, limit=None, marker=None,
+                                      sort_key=None, sort_dir=None):
+        """Return a list of external ceph storage backends.
+
+        :param limit: Maximum number of external ceph storage backends to
+                      return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_external_update(self, stor_ceph_ext_id, values):
+        """Update properties of an external ceph storage backend.
+
+        :param stor_ceph_ext_id: The id or uuid of a ceph storage backend.
+        :param values: Dict of values to update.
+                       {
+                        'ceph_conf': '/opt/extension/ceph/3p_ceph1.conf'
+                       }
+        :returns: An external ceph storage backend.
+        """
+
+    @abc.abstractmethod
     def drbdconfig_create(self, values):
         """Create a new drbdconfig for an isystem
 

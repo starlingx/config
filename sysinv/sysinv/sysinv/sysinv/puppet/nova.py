@@ -4,9 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import json
 import os
 import re
-import json
 import shutil
 import subprocess
 
@@ -480,7 +480,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
 
         global_filter, update_filter = self._get_lvm_global_filter(host)
 
-        return {
+        values = {
             'openstack::nova::storage::final_pvs': final_pvs,
             'openstack::nova::storage::adding_pvs': adding_pvs,
             'openstack::nova::storage::removing_pvs': removing_pvs,
@@ -490,8 +490,28 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             'openstack::nova::storage::instances_lv_size':
                 "%sm" % instances_lv_size,
             'openstack::nova::storage::concurrent_disk_operations':
-                concurrent_disk_operations,
-        }
+                concurrent_disk_operations,}
+
+        # If NOVA is a service on a ceph-external backend, use the ephemeral_pool
+        # and ceph_conf file that are stored in that DB entry.
+        # If NOVA is not on any ceph-external backend, it must be on the internal
+        # ceph backend with default "ephemeral" pool and default "/etc/ceph/ceph.conf"
+        # config file
+        sb_list = self.dbapi.storage_backend_get_list_by_type(
+            backend_type=constants.SB_TYPE_CEPH_EXTERNAL)
+        if sb_list:
+            for sb in sb_list:
+                if constants.SB_SVC_NOVA in sb.services:
+                    ceph_ext_obj = self.dbapi.storage_ceph_external_get(sb.id)
+                    images_rbd_pool = sb.capabilities.get('ephemeral_pool')
+                    images_rbd_ceph_conf = \
+                        constants.CEPH_CONF_PATH + os.path.basename(ceph_ext_obj.ceph_conf)
+
+                    values.update({'openstack::nova::storage::images_rbd_pool':
+                                   images_rbd_pool,
+                                   'openstack::nova::storage::images_rbd_ceph_conf':
+                                   images_rbd_ceph_conf,})
+        return values
 
     # TODO(oponcea): Make lvm global_filter generic
     def _get_lvm_global_filter(self, host):

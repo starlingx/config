@@ -259,6 +259,13 @@ class platform::drbd::extension (
     mountpoint => $mountpoint,
     resync_after => $resync_after,
   }
+
+  file { "${mountpoint}/ceph":
+    ensure => 'directory',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0775',
+  }
 }
 
 class platform::drbd::patch_vault::params (

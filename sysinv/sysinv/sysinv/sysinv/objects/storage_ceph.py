@@ -24,7 +24,7 @@ class StorageCeph(storage_backend.StorageBackend):
         'ephemeral_pool_gib': utils.int_or_none,
         'object_pool_gib': utils.int_or_none,
         'object_gateway': utils.bool_or_none,
-        'tier_id': int,
+        'tier_id': utils.int_or_none,
         'tier_name': utils.str_or_none,
         'tier_uuid': utils.str_or_none,
     }, **storage_backend.StorageBackend.fields)

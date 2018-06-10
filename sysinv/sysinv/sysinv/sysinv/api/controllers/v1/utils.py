@@ -465,11 +465,12 @@ class SBApiHelper(object):
             existing_backends_by_type = set(bk['backend'] for bk in backends)
 
             if (backend_type in existing_backends_by_type and
-                    backend_type != constants.SB_TYPE_CEPH):
+                    backend_type not in [constants.SB_TYPE_CEPH, constants.SB_TYPE_CEPH_EXTERNAL]):
                 msg = _("Only one %s backend is supported." % backend_type)
                 raise wsme.exc.ClientSideError(msg)
 
-            elif (backend_type not in existing_backends_by_type and
+            elif (backend_type != constants.SB_TYPE_CEPH_EXTERNAL and
+                      backend_type not in existing_backends_by_type and
                       backend_name != constants.SB_DEFAULT_NAMES[backend_type]):
                 msg = _("The primary %s backend must use the default name: %s."
                         % (backend_type,
@@ -490,9 +491,10 @@ class SBApiHelper(object):
                 raise wsme.exc.ClientSideError(msg)
         else:
             for ctrl in ctrls:
-                if ctrl.availability != constants.AVAILABILITY_AVAILABLE:
+                if ctrl.availability not in [constants.AVAILABILITY_AVAILABLE,
+                                             constants.AVAILABILITY_DEGRADED]:
                     msg = _("Storage backend operations require both controllers "
-                            "to be enabled and available.")
+                            "to be enabled and available/degraded.")
                     raise wsme.exc.ClientSideError(msg)
 
         if existing_backend and operation == constants.SB_API_OP_CREATE:

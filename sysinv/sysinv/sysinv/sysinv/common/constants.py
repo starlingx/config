@@ -308,32 +308,40 @@ VENDOR_ID_LIO = 'LIO-ORG'
 SB_TYPE_FILE = 'file'
 SB_TYPE_LVM = 'lvm'
 SB_TYPE_CEPH = 'ceph'
+SB_TYPE_CEPH_EXTERNAL = 'ceph-external'
 SB_TYPE_EXTERNAL = 'external'
 
-SB_SUPPORTED = [SB_TYPE_FILE, SB_TYPE_LVM, SB_TYPE_CEPH, SB_TYPE_EXTERNAL]
+SB_SUPPORTED = [SB_TYPE_FILE,
+                SB_TYPE_LVM,
+                SB_TYPE_CEPH,
+                SB_TYPE_CEPH_EXTERNAL,
+                SB_TYPE_EXTERNAL]
 
 # Storage backend default names
 SB_DEFAULT_NAME_SUFFIX = "-store"
 SB_DEFAULT_NAMES = {
-    SB_TYPE_FILE:SB_TYPE_FILE + SB_DEFAULT_NAME_SUFFIX,
+    SB_TYPE_FILE: SB_TYPE_FILE + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_LVM: SB_TYPE_LVM + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_CEPH: SB_TYPE_CEPH + SB_DEFAULT_NAME_SUFFIX,
-    SB_TYPE_EXTERNAL:'shared_services'
+    SB_TYPE_CEPH_EXTERNAL: SB_TYPE_CEPH_EXTERNAL + SB_DEFAULT_NAME_SUFFIX,
+    SB_TYPE_EXTERNAL: 'shared_services'
 }
 
 # Storage backends services
 SB_SVC_CINDER = 'cinder'
 SB_SVC_GLANCE = 'glance'
-SB_SVC_NOVA = 'nova'  # usage reporting only
+SB_SVC_NOVA = 'nova'
 SB_SVC_SWIFT = 'swift'
 
 SB_FILE_SVCS_SUPPORTED = [SB_SVC_GLANCE]
 SB_LVM_SVCS_SUPPORTED = [SB_SVC_CINDER]
-SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT]  # supported primary tier svcs
+SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT, SB_SVC_NOVA]  # supported primary tier svcs
+SB_CEPH_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE, SB_SVC_NOVA]
 SB_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE]
 
 # Storage backend: Service specific backend nomenclature
 CINDER_BACKEND_CEPH = SB_TYPE_CEPH
+CINDER_BACKEND_CEPH_EXTERNAL = SB_TYPE_CEPH_EXTERNAL
 CINDER_BACKEND_LVM = SB_TYPE_LVM
 GLANCE_BACKEND_FILE = SB_TYPE_FILE
 GLANCE_BACKEND_RBD = 'rbd'
@@ -351,8 +359,14 @@ SB_TIER_CEPH_SECONDARY_SVCS = [SB_SVC_CINDER]  # supported secondary tier svcs
 SB_TIER_STATUS_DEFINED = 'defined'
 SB_TIER_STATUS_IN_USE = 'in-use'
 
+# File name reserved for internal ceph cluster.
+SB_TYPE_CEPH_CONF_FILENAME = "ceph.conf"
+
 # Glance images path when it is file backended
 GLANCE_IMAGE_PATH = tsc.CGCS_PATH + "/" + SB_SVC_GLANCE + "/images"
+
+# Path for Ceph (internal and external) config files
+CEPH_CONF_PATH = "/etc/ceph/"
 
 # Requested storage backend API operations
 SB_API_OP_CREATE = "create"
@@ -367,8 +381,10 @@ SB_STATE_CONFIG_ERR = 'configuration-failed'
 # Storage backend tasks
 SB_TASK_NONE = None
 SB_TASK_APPLY_MANIFESTS = 'applying-manifests'
+SB_TASK_APPLY_CONFIG_FILE = 'applying-config-file'
 SB_TASK_RECONFIG_CONTROLLER = 'reconfig-controller'
 SB_TASK_PROVISION_STORAGE = 'provision-storage'
+SB_TASK_PROVISION_SERVICES = 'provision-services'
 SB_TASK_RECONFIG_COMPUTE = 'reconfig-compute'
 SB_TASK_RESIZE_CEPH_MON_LV = 'resize-ceph-mon-lv'
 SB_TASK_ADD_OBJECT_GATEWAY = 'add-object-gateway'

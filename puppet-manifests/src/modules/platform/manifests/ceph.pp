@@ -236,7 +236,6 @@ class platform::ceph::haproxy
   }
 }
 
-
 class platform::ceph::rgw
   inherits ::platform::ceph::params {
 

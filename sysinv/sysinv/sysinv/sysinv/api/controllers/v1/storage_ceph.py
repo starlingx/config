@@ -58,6 +58,7 @@ HIERA_DATA = {
     constants.SB_SVC_CINDER: [],
     constants.SB_SVC_GLANCE: [],
     constants.SB_SVC_SWIFT: [],
+    constants.SB_SVC_NOVA: [],
 }
 
 
@@ -431,6 +432,11 @@ def _discover_and_validate_swift_hiera_data(caps_dict):
     pass
 
 
+def _discover_and_validate_nova_hiera_data(caps_dict):
+    # Currently there is no backend specific hiera_data for this backend
+    pass
+
+
 def _check_backend_ceph(req, storage_ceph, confirmed=False):
     # check for the backend parameters
     capabilities = storage_ceph.get('capabilities', {})
@@ -529,6 +535,31 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
               "to execute this operation for the %s "
               "backend.") % (_options_str, replication,
                              constants.SB_TYPE_CEPH))
+
+
+def check_and_update_services(storage_ceph):
+    req_services = api_helper.getListFromServices(storage_ceph)
+
+    ## If glance/nova is already a service on an external ceph backend, remove it from there
+    check_svcs = [constants.SB_SVC_GLANCE, constants.SB_SVC_NOVA]
+    check_data = {constants.SB_SVC_GLANCE: ['glance_pool'],
+                  constants.SB_SVC_NOVA: ['ephemeral_pool']}
+    for s in check_svcs:
+        if s in req_services:
+            sb_list = pecan.request.dbapi.storage_backend_get_list()
+
+            if sb_list:
+                for sb in sb_list:
+                    if (sb.backend == constants.SB_TYPE_CEPH_EXTERNAL and
+                            s in sb.get('services')):
+                        services = api_helper.getListFromServices(sb)
+                        services.remove(s)
+                        cap = sb.capabilities
+                        for k in check_data[s]:
+                            cap.pop(k, None)
+                        values = {'services': ','.join(services),
+                                  'capabilities': cap,}
+                        pecan.request.dbapi.storage_backend_update(sb.uuid, values)
 
 
 def _apply_backend_changes(op, sb_obj):
@@ -632,6 +663,8 @@ def _create(storage_ceph):
     _check_backend_ceph(constants.SB_API_OP_CREATE,
                         storage_ceph,
                         storage_ceph.pop('confirmed', False))
+
+    check_and_update_services(storage_ceph)
 
     # Conditionally update the DB based on any previous create attempts. This
     # creates the StorageCeph object.
@@ -903,6 +936,7 @@ def _patch(storceph_uuid, patch):
         storceph_uuid)
 
     object_gateway_install = False
+    add_nova_only = False
     patch_obj = jsonpatch.JsonPatch(patch)
     for p in patch_obj:
         if p['path'] == '/capabilities':
@@ -975,6 +1009,11 @@ def _patch(storceph_uuid, patch):
                 storceph_config.object_gateway = True
                 storceph_config.task = constants.SB_TASK_ADD_OBJECT_GATEWAY
                 object_gateway_install = True
+            if ((set(api_helper.getListFromServices(storceph_config.as_dict())) -
+                 set(api_helper.getListFromServices(ostorceph.as_dict())) ==
+                    set([constants.SB_SVC_NOVA])) and
+                    (delta == set(['services']))):
+                add_nova_only = True
         elif d == 'capabilities':
             # Go through capabilities parameters and check
             # if any values changed
@@ -1065,10 +1104,12 @@ def _patch(storceph_uuid, patch):
 
     LOG.info("SYS_I new     storage_ceph: %s " % rpc_storceph.as_dict())
     try:
+        check_and_update_services(rpc_storceph.as_dict())
+
         rpc_storceph.save()
 
-        if (not quota_only_update or
-                storceph_config.state == constants.SB_STATE_CONFIG_ERR):
+        if ((not quota_only_update and not add_nova_only) or
+                (storceph_config.state == constants.SB_STATE_CONFIG_ERR)):
             # Enable the backend changes:
             _apply_backend_changes(constants.SB_API_OP_MODIFY,
                                    rpc_storceph)

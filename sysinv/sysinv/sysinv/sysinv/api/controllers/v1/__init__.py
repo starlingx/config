@@ -73,6 +73,7 @@ from sysinv.api.controllers.v1 import storage_lvm
 from sysinv.api.controllers.v1 import storage_file
 from sysinv.api.controllers.v1 import storage_external
 from sysinv.api.controllers.v1 import storage_tier
+from sysinv.api.controllers.v1 import storage_ceph_external
 from sysinv.api.controllers.v1 import system
 from sysinv.api.controllers.v1 import trapdest
 from sysinv.api.controllers.v1 import upgrade
@@ -167,6 +168,9 @@ class V1(base.APIBase):
 
     storage_tier = [link.Link]
     "Links to the storage tier resource"
+
+    storage_ceph_external = [link.Link]
+    "Links to the storage exteral ceph resource"
 
     ceph_mon = [link.Link]
     "Links to the ceph mon resource"
@@ -459,6 +463,16 @@ class V1(base.APIBase):
                                                bookmark=True)
                            ]
 
+        v1.storage_ceph_external = [
+            link.Link.make_link('self',
+                                pecan.request.host_url,
+                                'storage_ceph_external', ''),
+            link.Link.make_link('bookmark',
+                                pecan.request.host_url,
+                                'storage_ceph_external', '',
+                                bookmark=True)
+        ]
+
         v1.ceph_mon = [link.Link.make_link('self',
                                            pecan.request.host_url,
                                            'ceph_mon', ''),
@@ -733,6 +747,8 @@ class Controller(rest.RestController):
     storage_external = storage_external.StorageExternalController()
     storage_ceph = storage_ceph.StorageCephController()
     storage_tiers = storage_tier.StorageTierController()
+    storage_ceph_external = \
+        storage_ceph_external.StorageCephExternalController()
     ceph_mon = ceph_mon.CephMonController()
     drbdconfig = drbdconfig.drbdconfigsController()
     ialarms = alarm.AlarmController()

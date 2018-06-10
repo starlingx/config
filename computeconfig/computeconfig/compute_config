@@ -224,6 +224,16 @@ start()
                 fatal_error "Unable to mount $PLATFORM_DIR (RC:$RC)"
             fi
         fi
+
+        # Copy over external_ceph config files
+        if [ -e $CONFIG_DIR/ceph-config ]
+        then
+            cp $CONFIG_DIR/ceph-config/*.conf /etc/ceph/
+            if [ $? -ne 0 ]
+            then
+                fatal_error "Unable to copy ceph-external config files"
+            fi
+        fi
     fi
 
     if [ "$nodetype" = "compute" ]

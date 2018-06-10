@@ -62,6 +62,12 @@ class StorageBackendConfig(object):
             storage_externals = api.storage_external_get_list()
             if storage_externals:
                 return storage_externals[0]
+        elif target == constants.SB_TYPE_CEPH_EXTERNAL:
+            # Support multiple ceph external backends
+            storage_ceph_externals = api.storage_ceph_external_get_list()
+            if storage_ceph_externals:
+                return storage_ceph_externals[0]
+
         return None
 
     @staticmethod
@@ -119,12 +125,30 @@ class StorageBackendConfig(object):
         return None
 
     @staticmethod
-    def has_backend_configured(dbapi, target, rpcapi=None):
+    def get_configuring_target_backend(api, target):
+        """Get the primary backend that is configuring. """
+
+        backend_list = api.storage_backend_get_list()
+        for backend in backend_list:
+            if backend.state == constants.SB_STATE_CONFIGURING and \
+                   backend.backend == target:
+                # At this point we can have but only max 1 configuring backend
+                # at any moment
+                return backend
+
+        # it is normal there isn't one being configured
+        return None
+
+    @staticmethod
+    def has_backend_configured(dbapi, target, service=None,
+                               check_only_defaults=True, rpcapi=None):
+        """ Check is a backend is configured. """
         # If cinder is a shared service on another region and
         # we want to know if the ceph backend is configured,
         # send a rpc to conductor which sends a query to the primary
         system = dbapi.isystem_get_one()
         shared_services = system.capabilities.get('shared_services', None)
+        configured = False
         if (shared_services is not None and
                 constants.SERVICE_TYPE_VOLUME in shared_services and
                 target == constants.SB_TYPE_CEPH and
@@ -135,10 +159,19 @@ class StorageBackendConfig(object):
             backend_list = dbapi.storage_backend_get_list()
             for backend in backend_list:
                 if backend.state == constants.SB_STATE_CONFIGURED and \
-                       backend.backend == target and \
-                       backend.name == constants.SB_DEFAULT_NAMES[target]:
-                    return True
-            return False
+                       backend.backend == target:
+                    configured = True
+                    break
+
+        # Supplementary semantics
+        if configured:
+            if check_only_defaults and \
+                    backend.name != constants.SB_DEFAULT_NAMES[target]:
+                configured = False
+            if service and service not in backend.services:
+                configured = False
+
+        return configured
 
     @staticmethod
     def has_backend(api, target):

@@ -817,6 +817,18 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        sb_uuid=sb_uuid,
                                        services=services))
 
+    def update_ceph_external_config(self, context, sb_uuid, services):
+        """Synchronously, have the conductor update External Ceph on a controller
+
+        :param context: request context
+        :param sb_uuid: uuid of the storage backed to apply the external ceph config
+        :param services: list of services using Ceph.
+        """
+        return self.call(context,
+                         self.make_msg('update_ceph_external_config',
+                                       sb_uuid=sb_uuid,
+                                       services=services))
+
     def update_external_cinder_config(self, context):
         """Synchronously, have the conductor update Cinder Exernal(shared)
            on a controller.
@@ -1483,6 +1495,32 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('update_firewall_config',
                                        ip_version=ip_version,
                                        contents=contents))
+
+    def distribute_ceph_external_config(self, context, ceph_conf_filename):
+        """Synchronously, have the conductor update the Ceph configuration
+        file for external cluster.
+
+        :param context: request context.
+        :param ceph_conf_filename: Ceph conf file
+
+        """
+        return self.call(context,
+                         self.make_msg('distribute_ceph_external_config',
+                                       ceph_conf_filename=ceph_conf_filename))
+
+    def store_ceph_external_config(self, context, contents, ceph_conf_filename):
+        """Synchronously, have the conductor to write the ceph config file content
+        to /opt/platform/config
+
+        :param context: request context.
+        :param contents: file content of the Ceph conf file
+        :param ceph_conf_filename: Ceph conf file
+
+        """
+        return self.call(context,
+                         self.make_msg('store_ceph_external_config',
+                                       contents=contents,
+                                       ceph_conf_filename=ceph_conf_filename))
 
     def update_partition_information(self, context, partition_data):
         """Synchronously, have the conductor update partition information.

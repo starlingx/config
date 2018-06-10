@@ -271,6 +271,16 @@ start()
         fi
     fi
 
+    # Copy over external_ceph config files
+    if [ -e $CONFIG_DIR/ceph-config ]
+    then
+        cp $CONFIG_DIR/ceph-config/*.conf /etc/ceph/
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy ceph-external config files"
+        fi
+    fi
+
     # Keep the /opt/branding directory to preserve any new files and explicitly copy over any required files
     if [ -e $CONFIG_DIR/branding/horizon-region-exclusions.csv ]
     then

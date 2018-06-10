@@ -172,7 +172,7 @@ def do_host_lvg_delete(cc, args):
            metavar='<hostname or id>',
            help="Name or ID of the host [REQUIRED]")
 @utils.arg('lvgnameoruuid',
-           metavar='<lvm name or uuid>',
+           metavar='<lvg name or uuid>',
            help="Name or UUID of lvg [REQUIRED]")
 @utils.arg('-b', '--instance_backing',
            metavar='<instance backing>',

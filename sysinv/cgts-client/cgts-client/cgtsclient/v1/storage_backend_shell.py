@@ -60,7 +60,7 @@ def do_storage_backend_show(cc, args):
 
 @utils.arg('backend',
            metavar='<backend>',
-           choices=['ceph', 'file', 'lvm', 'external'],
+           choices=['ceph', 'ceph-external', 'file', 'lvm', 'external'],
            help='The storage backend to add [REQUIRED]')
 @utils.arg('-s', '--services',
            metavar='<services>',
@@ -73,6 +73,10 @@ def do_storage_backend_show(cc, args):
            metavar='<tier_uuid>',
            help=('Optional storage tier uuid for additional backends (ceph '
                  'only)'))
+@utils.arg('-c', '--ceph_conf',
+           metavar='<ceph_conf>',
+           help='Location of the Ceph configuration file used for provisioning'
+                ' an external backend.')
 @utils.arg('--confirmed',
            action='store_true',
            help='Provide acknowledgement that the operation should continue as'
@@ -82,8 +86,8 @@ def do_storage_backend_show(cc, args):
            nargs='*',
            default=[],
            help="Required backend/service parameters to apply.")
-# Parameters specific to Ceph monitors, these should be moved to system ceph-mon-add
-# when that command is available
+# Parameters specific to Ceph monitors, these should be moved to system
+# ceph-mon-add when that command is available.
 @utils.arg('--ceph-mon-gib',
            metavar='<ceph-mon-gib>',
            help='The ceph-mon-lv size in GiB')
@@ -102,6 +106,10 @@ def do_storage_backend_add(cc, args):
            metavar='<services>',
            help=('Optional string of comma separated services to add/update. '
                  'Valid values are: "cinder, glance, swift"'))
+@utils.arg('-c', '--ceph_conf',
+           metavar='<ceph_conf>',
+           help=('Location of the Ceph configuration file used for provisioning'
+                 ' an external backend.'))
 @utils.arg('attributes',
            metavar='<parameter=value>',
            nargs='*',

@@ -68,6 +68,7 @@ from cgtsclient.v1 import sm_service_nodes
 from cgtsclient.v1 import sm_servicegroup
 from cgtsclient.v1 import storage_backend
 from cgtsclient.v1 import storage_ceph
+from cgtsclient.v1 import storage_ceph_external
 from cgtsclient.v1 import storage_external
 from cgtsclient.v1 import storage_file
 from cgtsclient.v1 import storage_lvm
@@ -145,3 +146,5 @@ class Client(http.HTTPClient):
         self.license = license.LicenseManager(self)
         self.certificate = certificate.CertificateManager(self)
         self.storage_tier = storage_tier.StorageTierManager(self)
+        self.storage_ceph_external = \
+            storage_ceph_external.StorageCephExternalManager(self)
