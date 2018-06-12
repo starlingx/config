@@ -93,74 +93,11 @@ class openstack::horizon
     $magnum_enabled = 'False'
   }
 
-  include ::horizon::params
-  file { '/etc/openstack-dashboard/horizon-config.ini':
-    content => template('openstack/horizon-params.erb'),
-    ensure  => present,
-    mode    => '0644',
-    owner   => 'root',
-    group   => $::horizon::params::apache_group,
-  }
-
   if str2bool($::is_initial_config) {
     exec { 'Stop lighttpd':
       command => "systemctl stop lighttpd; systemctl disable lighttpd",
       require => User['www']
     }
-  }
-
-  $is_django_debug = 'False'
-  $bind_host = $::platform::network::mgmt::params::subnet_version ? {
-    6       => '::0',
-    default => '0.0.0.0',
-    # TO-DO(mmagr): Add IPv6 support when hostnames are used
-  }
-
-  if $::platform::params::region_config {
-    $horizon_keystone_url = "${keystone_auth_uri}/${keystone_api_version}"
-    $region_2_name = $::platform::params::region_2_name
-    $region_openstack_host = $openstack_host
-    file { '/etc/openstack-dashboard/region-config.ini':
-      content => template('openstack/horizon-region-config.erb'),
-      ensure  => present,
-      mode    => '0644',
-    }
-  } else {
-    $horizon_keystone_url = "http://${$keystone_host_url}:5000/${keystone_api_version}"
-
-    file { '/etc/openstack-dashboard/region-config.ini':
-      ensure  => absent,
-    }
-  }
-
-  class {'::horizon':
-    secret_key            => $secret_key,
-    keystone_url          => $horizon_keystone_url,
-    keystone_default_role => '_member_',
-    server_aliases        => [$controller_address, $::fqdn, 'localhost'],
-    allowed_hosts         => '*',
-    hypervisor_options    => {'can_set_mount_point' => false, },
-    django_debug          => $is_django_debug,
-    file_upload_temp_dir  => '/var/tmp',
-    listen_ssl            => $horizon_ssl,
-    horizon_cert          => $horizon_cert,
-    horizon_key           => $horizon_key,
-    horizon_ca            => $horizon_ca,
-    neutron_options       => {
-      'enable_lb'       => $neutron_enable_lb,
-      'enable_firewall' => $neutron_enable_firewall,
-      'enable_vpn'      => $neutron_enable_vpn
-    },
-    configure_apache     => false,
-    compress_offline     => false,
-  }
-
-  # hack for memcached, for now we bind to localhost on ipv6
-  # https://bugzilla.redhat.com/show_bug.cgi?id=1210658
-  $memcached_bind_host = $::platform::network::mgmt::params::subnet_version ? {
-    6       => 'localhost6',
-    default => '0.0.0.0',
-    # TO-DO(mmagr): Add IPv6 support when hostnames are used
   }
 
   if str2bool($::selinux) {
@@ -170,17 +107,86 @@ class openstack::horizon
     }
   }
 
-  # Run clearsessions daily at the 40 minute mark
-  cron { 'clearsessions':
-    ensure  => 'present',
-    command => '/usr/bin/horizon-clearsessions',
-    environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-    minute  => '40',
-    hour    => '*/24',
-    user    => 'root',
-  }
+  # Horizon is not used in distributed cloud subclouds
+  if $::platform::params::distributed_cloud_role != 'subcloud'  {
 
-  include ::openstack::horizon::firewall
+    include ::horizon::params
+    file { '/etc/openstack-dashboard/horizon-config.ini':
+      content => template('openstack/horizon-params.erb'),
+      ensure  => present,
+      mode    => '0644',
+      owner   => 'root',
+      group   => $::horizon::params::apache_group,
+    }
+
+
+    $is_django_debug = 'False'
+    $bind_host = $::platform::network::mgmt::params::subnet_version ? {
+      6       => '::0',
+      default => '0.0.0.0',
+      # TO-DO(mmagr): Add IPv6 support when hostnames are used
+    }
+
+    if $::platform::params::region_config {
+      $horizon_keystone_url = "${keystone_auth_uri}/${keystone_api_version}"
+      $region_2_name = $::platform::params::region_2_name
+      $region_openstack_host = $openstack_host
+      file { '/etc/openstack-dashboard/region-config.ini':
+        content => template('openstack/horizon-region-config.erb'),
+        ensure  => present,
+        mode    => '0644',
+      }
+    } else {
+      $horizon_keystone_url = "http://${$keystone_host_url}:5000/${keystone_api_version}"
+
+      file { '/etc/openstack-dashboard/region-config.ini':
+        ensure  => absent,
+      }
+    }
+
+    class {'::horizon':
+      secret_key            => $secret_key,
+      keystone_url          => $horizon_keystone_url,
+      keystone_default_role => '_member_',
+      server_aliases        => [$controller_address, $::fqdn, 'localhost'],
+      allowed_hosts         => '*',
+      hypervisor_options    => {'can_set_mount_point' => false, },
+      django_debug          => $is_django_debug,
+      file_upload_temp_dir  => '/var/tmp',
+      listen_ssl            => $horizon_ssl,
+      horizon_cert          => $horizon_cert,
+      horizon_key           => $horizon_key,
+      horizon_ca            => $horizon_ca,
+      neutron_options       => {
+        'enable_lb'       => $neutron_enable_lb,
+        'enable_firewall' => $neutron_enable_firewall,
+        'enable_vpn'      => $neutron_enable_vpn
+      },
+      configure_apache     => false,
+      compress_offline     => false,
+    }
+
+    # hack for memcached, for now we bind to localhost on ipv6
+    # https://bugzilla.redhat.com/show_bug.cgi?id=1210658
+    $memcached_bind_host = $::platform::network::mgmt::params::subnet_version ? {
+      6       => 'localhost6',
+      default => '0.0.0.0',
+      # TO-DO(mmagr): Add IPv6 support when hostnames are used
+    }
+
+
+    # Run clearsessions daily at the 40 minute mark
+    cron { 'clearsessions':
+      ensure  => 'present',
+      command => '/usr/bin/horizon-clearsessions',
+      environment => 'PATH=/bin:/usr/bin:/usr/sbin',
+      minute  => '40',
+      hour    => '*/24',
+      user    => 'root',
+    }
+
+    include ::openstack::horizon::firewall
+  }
 }
 
 

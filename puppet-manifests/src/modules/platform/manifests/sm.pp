@@ -389,6 +389,15 @@ class platform::sm
       # each Subcloud is running its own Keystone
       if $::platform::params::distributed_cloud_role =='subcloud' {
         $configure_keystone = true
+
+        # Deprovision Horizon when running as a subcloud
+        exec { 'Deprovision OpenStack - Horizon (service-group-member)':
+          command => "sm-deprovision service-group-member web-services horizon",
+        } ->
+        exec { 'Deprovision OpenStack - Horizon (service)':
+          command => "sm-deprovision service horizon",
+        }
+
       } else {
         exec { 'Deprovision OpenStack - Keystone (service-group-member)':
           command => "sm-deprovision service-group-member cloud-services keystone",
