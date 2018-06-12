@@ -18,10 +18,6 @@ import threading
 
 from operator import attrgetter
 
-# from vswitchclient import client
-# from vswitchclient import constants as vs_constants
-# from vswitchclient import exc
-
 from sysinv.common import constants
 from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.openstack.common import log as logging
@@ -193,8 +189,6 @@ class LLDPOperator(object):
     def __init__(self, **kwargs):
         self._lock = threading.Lock()
         self.client = ""
-        # self.client = client.Client(vs_constants.VSWITCHCLIENT_VERSION,
-        #                            vs_constants.VSWITCHCLIENT_URL)
         self.agents = []
         self.neighbours = []
         self.current_neighbours = []
@@ -461,10 +455,6 @@ class LLDPOperator(object):
     def _execute_lldp_request(self, callable, snat=None):
         try:
             return self._do_request(callable)
-        # except exc.CommunicationError as e:
-        #     LOG.debug("vswitch communication error: %s", str(e))
-        # except exc.HTTPException as e:
-        #    LOG.debug("vswitch HTTP exception: %s", str(e))
         except Exception as e:
             LOG.error("Failed to execute LLDP request: %s", str(e))
 
@@ -547,20 +537,6 @@ class LLDPOperator(object):
 
         LOG.error("vswitch_lldp_agent_list is not implemented.")
         return []
-        """
-        lldp_agents = []
-        agents = self._execute_lldp_request(self.client.lldp.agents)
-        if not agents:
-            return lldp_agents
-        for agent in agents:
-            agent_attrs = self.vswitch_lldp_get_attrs(agent)
-            agent_attrs.update({
-                "status":
-                self.vswitch_lldp_get_status(agent["admin-status"])})
-            agent = Agent(**agent_attrs)
-            lldp_agents.append(agent)
-        return lldp_agents
-        """
 
 
     def vswitch_lldp_neighbour_list(self):
@@ -571,17 +547,6 @@ class LLDPOperator(object):
 
         LOG.error("vswitch_lldp_neighbour_ist s not implemented.")
         return []
-        """
-        lldp_neighbours = []
-        neighbours = self._execute_lldp_request(self.client.lldp.neighbours)
-        if not neighbours:
-            return lldp_neighbours
-        for neighbour in neighbours:
-            neighbour_attrs = self.vswitch_lldp_get_attrs(neighbour)
-            neighbour = Neighbour(**neighbour_attrs)
-            lldp_neighbours.append(neighbour)
-        return lldp_neighbours
-        """
 
 
     def lldp_agents_list(self, do_compute=False):
@@ -692,11 +657,3 @@ class LLDPOperator(object):
         if do_compute:
             attrs = {"system-name": newname}
             LOG.error("lldp_update_systemname failed due to lack of vswitch")
-            """
-            try:
-                self._do_request(lambda: self.client.lldp.update(attrs))
-            except exc.CommunicationError as e:
-                LOG.debug("vswitch communication error: %s", str(e))
-            except exc.HTTPException as e:
-                LOG.debug("vswitch HTTP exception: %s", str(e))
-            """
