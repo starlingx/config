@@ -1290,6 +1290,7 @@ class AgentManager(service.PeriodicService):
                                  self._ihost_personality))
 
         permissions = iconfig_dict.get('permissions')
+        nobackup = iconfig_dict.get('nobackup')
         if not permissions:
             permissions = constants.CONFIG_FILE_PERMISSION_DEFAULT
 
@@ -1311,8 +1312,9 @@ class AgentManager(service.PeriodicService):
                              iconfig_dict['file_content']))
 
                 if os.path.isfile(file_name):
-                    if not os.path.isfile(file_name_sysinv):
-                        shutil.copy2(file_name, file_name_sysinv)
+                    if not nobackup:
+                        if not os.path.isfile(file_name_sysinv):
+                            shutil.copy2(file_name, file_name_sysinv)
 
                     # Remove resolv.conf file. It may have been created as a
                     # symlink by the volatile configuration scripts.
@@ -1324,9 +1326,10 @@ class AgentManager(service.PeriodicService):
                     f_content = file_content
 
                 os.umask(0)
-                with os.fdopen(os.open(file_name, os.O_CREAT | os.O_WRONLY,
+                if f_content is not None:
+                    with os.fdopen(os.open(file_name, os.O_CREAT | os.O_WRONLY,
                                permissions), 'wb') as f:
-                    f.write(f_content)
+                        f.write(f_content)
 
             self._update_config_applied(iconfig_uuid)
             self._report_config_applied(context)

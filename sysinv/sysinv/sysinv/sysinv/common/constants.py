@@ -1142,11 +1142,14 @@ SYSINV_GRPNAME = "sysinv"
 CERT_TYPE_SSL = 'ssl'
 SSL_CERT_DIR = "/etc/ssl/private/"
 SSL_CERT_FILE = "server-cert.pem"  # pem with PK and cert
+# self signed pem to get started
+SSL_CERT_SS_FILE = "self-signed-server-cert.pem"
 CERT_MURANO_DIR = "/etc/ssl/private/murano-rabbit"
 CERT_FILE = "cert.pem"
 CERT_KEY_FILE = "key.pem"
 CERT_CA_FILE = "ca-cert.pem"
 SSL_PEM_FILE = os.path.join(SSL_CERT_DIR, SSL_CERT_FILE)
+SSL_PEM_SS_FILE = os.path.join(SSL_CERT_DIR, SSL_CERT_SS_FILE)
 SSL_PEM_FILE_SHARED = os.path.join(tsc.CONFIG_PATH, SSL_CERT_FILE)
 
 MURANO_CERT_KEY_FILE = os.path.join(CERT_MURANO_DIR, CERT_KEY_FILE)

@@ -5199,7 +5199,10 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context.
         """
         personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
+        system = self.dbapi.isystem_get_one()
+
+        if system.capabilities.get('https_enabled', False):
+            self._config_selfsigned_certificate(context)
 
         config_dict = {
             "personalities": personalities,
@@ -5209,12 +5212,13 @@ class ConductorManager(service.PeriodicService):
                         'openstack::nova::api::runtime',
                         'openstack::heat::engine::runtime']
         }
+
+        config_uuid = self._config_update_hosts(context, personalities)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        system = self.dbapi.isystem_get_one()
         if not system.capabilities.get('https_enabled', False):
             self._destroy_tpm_config(context)
-            self._destroy_certificates()
+            self._destroy_certificates(context)
 
     def update_oam_config(self, context):
         """Update the OAM network configuration"""
@@ -9573,7 +9577,7 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def _destroy_certificates(self):
+    def _destroy_certificates(self, context):
         """Delete certificates."""
         LOG.info("_destroy_certificates clear ssl/tpm certificates")
 
@@ -9582,6 +9586,18 @@ class ConductorManager(service.PeriodicService):
             if certificate.certtype in [
                constants.CERT_MODE_SSL, constants.CERT_MODE_TPM]:
                 self.dbapi.certificate_destroy(certificate.uuid)
+
+        personalities = [constants.CONTROLLER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            'personalities': personalities,
+            'file_names': [constants.SSL_PEM_FILE],
+            'file_content': None,
+            'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
+            'nobackup': True,
+        }
+        self._config_update_file(context, config_uuid, config_dict)
 
     def _destroy_tpm_config(self, context, tpm_obj=None):
         """Delete a tpmconfig."""
@@ -9771,6 +9787,7 @@ class ConductorManager(service.PeriodicService):
                 'personalities': personalities,
                 'file_names': [constants.SSL_PEM_FILE],
                 'file_content': file_content,
+                'nobackup': True,
                 'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
             }
             self._config_update_file(context, config_uuid, config_dict)
@@ -9855,5 +9872,48 @@ class ConductorManager(service.PeriodicService):
             msg = "config_certificate unexpected mode=%s" % mode
             LOG.warn(msg)
             raise exception.SysinvException(_(msg))
+
+        return signature
+
+    def _config_selfsigned_certificate(self, context):
+        """
+        This code is invoked when https is enabled
+        to install a self signed certificate to get started
+
+        :param context: an admin context.
+
+        """
+
+        mode = constants.CERT_MODE_SSL
+        passphrase = None
+        certificate_file = constants.SSL_PEM_SS_FILE
+
+        with open(certificate_file) as pemfile:
+            pem_contents = pemfile.read()
+
+        LOG.info("_config_selfsigned_certificate mode=%s file=%s" % (mode, certificate_file))
+
+        private_bytes, public_bytes, signature = \
+            self._extract_keys_from_pem(mode, pem_contents, passphrase)
+
+        personalities = [constants.CONTROLLER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+        file_content = private_bytes + public_bytes
+        config_dict = {
+            'personalities': personalities,
+            'file_names': [constants.SSL_PEM_FILE],
+            'file_content': file_content,
+            'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
+            'nobackup': True,
+        }
+        self._config_update_file(context, config_uuid, config_dict)
+
+        # copy the certificate to shared directory
+        with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
+                               os.O_CREAT | os.O_WRONLY,
+                               constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
+                               'wb') as f:
+            f.write(file_content)
 
         return signature
