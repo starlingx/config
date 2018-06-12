@@ -25,6 +25,8 @@ include ::platform::mtce
 include ::platform::sysinv
 include ::platform::grub
 include ::platform::collectd
+include ::platform::filesystem::storage
+include ::platform::docker
 
 include ::platform::ceph
 include ::platform::ceph::monitor
