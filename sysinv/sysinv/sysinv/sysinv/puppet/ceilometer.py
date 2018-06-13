@@ -21,15 +21,10 @@ class CeilometerPuppet(openstack.OpenstackBasePuppet):
         }
 
     def get_secure_static_config(self):
-        dbpass = self._get_database_password(self.SERVICE_NAME)
         kspass = self._get_service_password(self.SERVICE_NAME)
 
         return {
-            'ceilometer::db::postgresql::password': dbpass,
-
             'ceilometer::keystone::auth::password': kspass,
-            'ceilometer::keystone::authtoken::password': kspass,
-
             'ceilometer::agent::auth::auth_password': kspass,
         }
 
@@ -37,26 +32,9 @@ class CeilometerPuppet(openstack.OpenstackBasePuppet):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
         config = {
-            'ceilometer::keystone::auth::public_url': self.get_public_url(),
-            'ceilometer::keystone::auth::internal_url': self.get_internal_url(),
-            'ceilometer::keystone::auth::admin_url': self.get_admin_url(),
             'ceilometer::keystone::auth::auth_name': ksuser,
             'ceilometer::keystone::auth::region': self._region_name(),
             'ceilometer::keystone::auth::tenant': self._get_service_tenant_name(),
-
-            'ceilometer::keystone::authtoken::auth_url':
-                self._keystone_identity_uri(),
-            'ceilometer::keystone::authtoken::auth_uri':
-                self._keystone_auth_uri(),
-            'ceilometer::keystone::authtoken::user_domain_name':
-                self._get_service_user_domain_name(),
-            'ceilometer::keystone::authtoken::project_domain_name':
-                self._get_service_project_domain_name(),
-            'ceilometer::keystone::authtoken::project_name':
-                self._get_service_tenant_name(),
-            'ceilometer::keystone::authtoken::region_name':
-                self._keystone_region_name(),
-            'ceilometer::keystone::authtoken::username': ksuser,
 
             'ceilometer::agent::auth::auth_url':
                 self._keystone_auth_uri(),

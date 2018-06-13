@@ -26,6 +26,7 @@ from . import common
 from . import dcmanager
 from . import dcorch
 from . import glance
+from . import gnocchi
 from . import heat
 from . import horizon
 from . import interface
@@ -79,6 +80,7 @@ class PuppetOperator(object):
         self.dcmanager = dcmanager.DCManagerPuppet(self)
         self.dcorch = dcorch.DCOrchPuppet(self)
         self.glance = glance.GlancePuppet(self)
+        self.gnocchi = gnocchi.GnocchiPuppet(self)
         self.heat = heat.HeatPuppet(self)
         self.horizon = horizon.HorizonPuppet(self)
         self.interface = interface.InterfacePuppet(self)
@@ -130,8 +132,8 @@ class PuppetOperator(object):
             config.update(self.nova.get_static_config())
             config.update(self.neutron.get_static_config())
             config.update(self.glance.get_static_config())
+            config.update(self.gnocchi.get_static_config())
             config.update(self.cinder.get_static_config())
-            config.update(self.ceilometer.get_static_config())
             config.update(self.aodh.get_static_config())
             config.update(self.heat.get_static_config())
             config.update(self.magnum.get_static_config())
@@ -173,6 +175,7 @@ class PuppetOperator(object):
             config.update(self.neutron.get_secure_static_config())
             config.update(self.horizon.get_secure_static_config())
             config.update(self.glance.get_secure_static_config())
+            config.update(self.gnocchi.get_secure_static_config())
             config.update(self.cinder.get_secure_static_config())
             config.update(self.ceilometer.get_secure_static_config())
             config.update(self.aodh.get_secure_static_config())
@@ -208,6 +211,7 @@ class PuppetOperator(object):
             config.update(self.neutron.get_system_config())
             config.update(self.horizon.get_system_config())
             config.update(self.glance.get_system_config())
+            config.update(self.gnocchi.get_system_config())
             config.update(self.cinder.get_system_config())
             config.update(self.ceilometer.get_system_config())
             config.update(self.aodh.get_system_config())
@@ -241,8 +245,8 @@ class PuppetOperator(object):
             config.update(self.nova.get_secure_system_config())
             config.update(self.neutron.get_secure_system_config())
             config.update(self.glance.get_secure_system_config())
+            config.update(self.gnocchi.get_secure_system_config())
             config.update(self.cinder.get_secure_system_config())
-            config.update(self.ceilometer.get_secure_system_config())
             config.update(self.aodh.get_secure_system_config())
             config.update(self.heat.get_secure_system_config())
             config.update(self.magnum.get_secure_system_config())

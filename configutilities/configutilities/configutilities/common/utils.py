@@ -40,7 +40,9 @@ EXPECTED_SERVICE_NAME_AND_TYPE = (
      "AODH_SERVICE_NAME": "aodh",
      "AODH_SERVICE_TYPE": "alarming",
      "PANKO_SERVICE_NAME": "panko",
-     "PANKO_SERVICE_TYPE": "event"})
+     "PANKO_SERVICE_TYPE": "event",
+     "GNOCCHI_SERVICE_NAME": "gnocchi",
+     "GNOCCHI_SERVICE_TYPE": "metric"})
 
 
 def is_valid_vlan(vlan):

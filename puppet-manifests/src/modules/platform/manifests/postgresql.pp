@@ -198,9 +198,9 @@ class platform::postgresql::upgrade
   }
 
   include ::aodh::db::postgresql
-  include ::ceilometer::db::postgresql
   include ::cinder::db::postgresql
   include ::glance::db::postgresql
+  include ::gnocchi::db::postgresql
   include ::heat::db::postgresql
   include ::murano::db::postgresql
   include ::magnum::db::postgresql

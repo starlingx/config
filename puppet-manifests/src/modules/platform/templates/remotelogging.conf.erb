@@ -18,12 +18,8 @@ rewrite r_rewrite_set{
   set("<%= @system_name %> aodh-notifier.log ${HOST}", value("HOST") condition(filter(f_aodhnotifier)));
   set("<%= @system_name %> auth.log ${HOST}", value("HOST") condition(filter(f_auth)));
   set("<%= @system_name %> bash.log ${HOST}", value("HOST") condition(filter(f_bash)));
-  set("<%= @system_name %> ceilometer-agent-central.log ${HOST}", value("HOST") condition(filter(f_ceilometeragentcentral)));
   set("<%= @system_name %> ceilometer-agent-notification.log ${HOST}", value("HOST") condition(filter(f_ceilometeragentnotification)));
-  set("<%= @system_name %> ceilometer-alarm-evaluator.log ${HOST}", value("HOST") condition(filter(f_ceilometeralarmevaluator)));
-  set("<%= @system_name %> ceilometer-alarm-notifier.log ${HOST}", value("HOST") condition(filter(f_ceilometeralarmnotifier)));
-  set("<%= @system_name %> ceilometer-api.log ${HOST}", value("HOST") condition(filter(f_ceilometerapi)));
-  set("<%= @system_name %> ceilometer-collector.log ${HOST}", value("HOST") condition(filter(f_ceilometercollector)));
+  set("<%= @system_name %> ceilometer-upgrade.log ${HOST}", value("HOST") condition(filter(f_ceilometerupgrade)));
   set("<%= @system_name %> cinder-api.log ${HOST}", value("HOST") condition(filter(f_cinderapi)));
   set("<%= @system_name %> cinder-scheduler.log ${HOST}", value("HOST") condition(filter(f_cinderscheduler)));
   set("<%= @system_name %> cinder-volume.log ${HOST}", value("HOST") condition(filter(f_cindervolume)));
@@ -99,6 +95,8 @@ rewrite r_rewrite_set{
   set("<%= @system_name %> user.log ${HOST}", value("HOST") condition(filter(f_user)));
   set("<%= @system_name %> uucp.log ${HOST}", value("HOST") condition(filter(f_uucp)));
   set("<%= @system_name %> snmp-api.log ${HOST}", value("HOST") condition(filter(f_snmpat)));
+  set("<%= @system_name %> api.log ${HOST}", value("HOST") condition(filter(f_gnocchiapi)));
+  set("<%= @system_name %> metricd.log ${HOST}", value("HOST") condition(filter(f_gnocchimetricd)));
   # Most logs write log level to the message field. some writes it to the PRIORITY field
   # The priority field is not sent remotely. This is because tcp/udp destinations don't
   # work well with templates, which we use to write the priority field to log files on the

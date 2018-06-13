@@ -721,6 +721,13 @@ class REG2SERVICESPage2(ConfigPage):
             text="Placement user password",
             type=TYPES.string, initial="")
 
+        self.fields['GNOCCHI_USER_NAME'] = Field(
+            text="GNOCCHI username",
+            type=TYPES.string, initial="gnocchi")
+        self.fields['GNOCCHI_PASSWORD'] = Field(
+            text="GNOCCHI user password",
+            type=TYPES.string, initial="")
+
     def validate_page(self):
         self.prev.validate_page()
         super(REG2SERVICESPage2, self).validate_page()

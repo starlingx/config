@@ -15,6 +15,11 @@ class openstack::ceilometer {
     rabbit_qos_prefetch_count => 100,
   }
 
+  if ($::openstack::ceilometer::params::service_create and
+      $::platform::params::init_keystone) {
+    include ::ceilometer::keystone::auth
+  }
+
   include ::ceilometer::agent::auth
   include ::platform::params
   include ::openstack::ceilometer::params
@@ -29,8 +34,12 @@ class openstack::ceilometer {
     'oslo_messaging_rabbit/rpc_conn_pool_size': value => 10;
     'oslo_messaging_rabbit/socket_timeout': value => 1.00;
     'compute/resource_update_interval': value => 60;
-    'service_credentials/os_endpoint_type': value => 'internalURL';
     'DEFAULT/region_name_for_services':  value => $::openstack::ceilometer::params::region_name;
+  }
+
+  oslo::cache { 'ceilometer_config':
+    enabled => true,
+    backend => 'dogpile.cache.memory',
   }
 
   if $::platform::params::region_config {
@@ -58,14 +67,8 @@ class openstack::ceilometer {
 }
 
 
-class openstack::ceilometer::collector {
+class openstack::ceilometer::agent::notification {
   include ::platform::params
-
-  if $::platform::params::init_database {
-    include ::ceilometer::db::postgresql
-  }
-  include ::ceilometer::keystone::authtoken
-  include ::ceilometer::expirer
 
   $cgcs_fs_directory    = '/opt/cgcs'
   $ceilometer_directory = "${cgcs_fs_directory}/ceilometer"
@@ -96,22 +99,6 @@ class openstack::ceilometer::collector {
     owner   => 'root',
     group   => 'root',
     mode    => '0640',
-  }
-
-  class { '::ceilometer::db':
-    sync_db => $::platform::params::init_database,
-  }
-
-  include ::openstack::panko::params
-  if $::openstack::panko::params::service_enabled {
-    $event_dispatcher  = ['panko']
-  } else {
-    $event_dispatcher  = undef
-  }
-
-  class { '::ceilometer::collector':
-    collector_workers => $::platform::params::eng_workers_by_2,
-    event_dispatchers => $event_dispatcher
   }
 
   class { '::ceilometer::agent::notification':
@@ -175,69 +162,5 @@ class openstack::ceilometer::polling {
     enabled => $agent_enable,
     central_namespace => $central_namespace,
     compute_namespace => $compute_namespace,
-  }
-}
-
-
-class openstack::ceilometer::firewall
-  inherits ::openstack::ceilometer::params {
-
-  platform::firewall::rule { 'ceilometer-api':
-    service_name => 'ceilometer',
-    ports        => $api_port,
-  }
-}
-
-
-class openstack::ceilometer::haproxy
-  inherits ::openstack::ceilometer::params {
-
-  platform::haproxy::proxy { 'ceilometer-restapi':
-    server_name => 's-ceilometer',
-    public_port => $api_port,
-    private_port => $api_port,
-  }
-}
-
-
-class openstack::ceilometer::api
-  inherits ::openstack::ceilometer::params {
-
-  include ::platform::params
-  $api_workers = $::platform::params::eng_workers_by_2
-
-  include ::platform::network::mgmt::params
-  $api_host = $::platform::network::mgmt::params::controller_address
-  $url_host = $::platform::network::mgmt::params::controller_address_url
-
-  if ($::openstack::ceilometer::params::service_create and
-      $::platform::params::init_keystone) {
-    include ::ceilometer::keystone::auth
-  }
-
-  file { '/usr/share/ceilometer/ceilometer-api.conf':
-    ensure  => file,
-    content => template('openstack/ceilometer-api.conf.erb'),
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0640',
-  } ->
-  class { '::ceilometer::api':
-    host => $api_host,
-    api_workers => $api_workers,
-    enable_proxy_headers_parsing => true,
-  }
-
-  include ::openstack::ceilometer::firewall
-  include ::openstack::ceilometer::haproxy
-}
-
-
-class openstack::ceilometer::runtime {
-  include ::platform::amqp::params
-
-  class { '::ceilometer':
-    rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
-    default_transport_url => $::platform::amqp::params::transport_url,
   }
 }

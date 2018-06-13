@@ -82,9 +82,12 @@ include ::openstack::nova::network
 include ::openstack::nova::controller
 include ::openstack::nova::placement
 
+include ::openstack::gnocchi
+include ::openstack::gnocchi::api
+include ::openstack::gnocchi::metricd
+
 include ::openstack::ceilometer
-include ::openstack::ceilometer::api
-include ::openstack::ceilometer::collector
+include ::openstack::ceilometer::agent::notification
 include ::openstack::ceilometer::polling
 
 include ::openstack::aodh

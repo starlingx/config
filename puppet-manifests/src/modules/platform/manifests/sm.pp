@@ -646,14 +646,6 @@ class platform::sm
     command => "sm-configure service_instance nova-novnc nova-novnc \"config=/etc/nova/nova.conf,user=root,console_port=${novnc_console_port}\"",
   }
 
-  exec { 'Configure OpenStack - Ceilometer Collector':
-    command => "sm-configure service_instance ceilometer-collector ceilometer-collector \"config=/etc/ceilometer/ceilometer.conf\"",
-  }
-
-  exec { 'Configure OpenStack - Ceilometer API':
-    command => "sm-configure service_instance ceilometer-api ceilometer-api \"config=/etc/ceilometer/ceilometer.conf\"",
-  }
-
   exec { 'Configure OpenStack - Ceilometer Agent Notification':
     command => "sm-configure service_instance ceilometer-agent-notification ceilometer-agent-notification \"config=/etc/ceilometer/ceilometer.conf\"",
   }
@@ -712,6 +704,36 @@ class platform::sm
       }
   }
 
+  # Gnocchi
+  if $::openstack::gnocchi::params::service_enabled {
+
+    exec { 'Configure OpenStack - Gnocchi API':
+      command => "sm-configure service_instance gnocchi-api gnocchi-api \"config=/etc/gnocchi/gnocchi.conf\"",
+    }
+
+    exec { 'Configure OpenStack - Gnocchi metricd':
+      command => "sm-configure service_instance gnocchi-metricd gnocchi-metricd \"config=/etc/gnocchi/gnocchi.conf\"",
+    }
+  } else {
+      exec { 'Deprovision OpenStack - Gnocchi API (service-group-member)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => "sm-deprovision service-group-member cloud-services gnocchi-api",
+      } ->
+      exec { 'Deprovision OpenStack - Gnocchi API (service)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => "sm-deprovision service gnocchi-api",
+      }
+
+      exec { 'Deprovision OpenStack - Gnocchi metricd (service-group-member)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => "sm-deprovision service-group-member cloud-services gnocchi-metricd",
+      } ->
+      exec { 'Deprovision OpenStack - Gnocchi metricd (service)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => "sm-deprovision service gnocchi-metricd",
+      }
+  }
+  
   # AODH
   if $::openstack::aodh::params::service_enabled {
 

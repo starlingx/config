@@ -292,18 +292,6 @@ neutron::services::bgpvpn::service_providers:
 
 
 # ceilometer
-ceilometer::metering_time_to_live: 86400
-
-ceilometer::api::enabled: false
-ceilometer::api::service_name: 'openstack-ceilometer-api'
-
-ceilometer::db::database_idle_timeout: 60
-ceilometer::db::database_max_pool_size: 1
-ceilometer::db::database_max_overflow: 10
-
-ceilometer::collector::enabled: false
-ceilometer::collector::meter_dispatchers: ['database']
-
 ceilometer::agent::notification::enabled: false
 ceilometer::agent::notification::disable_non_metric_meters: false
 
@@ -311,9 +299,17 @@ ceilometer::agent::polling::central_namespace: true
 ceilometer::agent::polling::compute_namespace: false
 ceilometer::agent::polling::ipmi_namespace: true
 
-ceilometer::expirer::minute: 1
-ceilometer::expirer::hour: '*'
-ceilometer::expirer::monthday: '*'
+# Do not create endpoints for ceilometer as ceilometer-api is removed
+ceilometer::keystone::auth::configure_endpoint: false
+
+
+# gnocchi
+gnocchi::api::enabled: false
+gnocchi::api::service_name: 'openstack-gnocchi-api'
+gnocchi::api::enable_proxy_headers_parsing: true
+gnocchi::metricd::enabled: false
+gnocchi::storage::file::file_basepath: '/opt/cgcs/ceilometer/data'
+gnocchi::db::sync::user: 'root'
 
 
 # aodh

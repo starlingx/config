@@ -9,11 +9,11 @@
 # All Rights Reserved.
 #
 
-from ceilometerclient.common import utils
-from ceilometerclient.v2 import options
+from cgtsclient.common import utils
 from cgtsclient.common import utils as cgts_utils
 from cgtsclient.common import wrapping_formatters
 from cgtsclient import exc
+from cgtsclient.v1 import options
 
 
 def _display_fault(fault):

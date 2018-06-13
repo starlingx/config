@@ -543,13 +543,6 @@ def _validate_hbs_degrade_threshold(name, value):
                     SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_MAX)
 
 
-# Validate range of Performance Monitoring Metering 'time to live" value
-def _validate_metering_time_to_live_range(name, value):
-    _validate_range(name, value,
-                    SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE_MIN,
-                    SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE_MAX)
-
-
 # Validate range of Performance Monitoring Event 'time to live" value
 def _validate_event_time_to_live_range(name, value):
     _validate_range(name, value,
@@ -1337,25 +1330,6 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD: 'platform::mtce::params::heartbeat_degrade_threshold',
 }
 
-# Ceilometer Metering TTL range from 1 hour to 1 year
-SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE_MIN = 3600
-SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE_MAX = 31536000
-
-# Ceilometer Service Parameters
-CEILOMETER_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE,
-]
-
-CEILOMETER_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE:
-        _validate_metering_time_to_live_range,
-}
-
-CEILOMETER_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE:
-        'ceilometer::metering_time_to_live',
-}
-
 # Panko Event TTL range from 1 hour to 1 year
 SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE_MIN = 3600
 SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE_MAX = 31536000
@@ -1546,13 +1520,6 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: NOVA_PCI_ALIAS_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: NOVA_PCI_ALIAS_PARAMETER_RESOURCE,
             SERVICE_PARAM_DATA_FORMAT: NOVA_PCI_ALIAS_PARAMETER_DATA_FORMAT,
-        },
-    },
-    constants.SERVICE_TYPE_CEILOMETER: {
-        constants.SERVICE_PARAM_SECTION_CEILOMETER_DATABASE: {
-            SERVICE_PARAM_MANDATORY: CEILOMETER_PARAMETER_MANDATORY,
-            SERVICE_PARAM_VALIDATOR: CEILOMETER_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: CEILOMETER_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_PANKO: {

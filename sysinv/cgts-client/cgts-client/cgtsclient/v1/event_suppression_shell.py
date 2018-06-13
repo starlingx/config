@@ -8,9 +8,9 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # All Rights Reserved.
 #
-from ceilometerclient.v2 import options
 from cgtsclient.common import utils
 from cgtsclient.common import wrapping_formatters
+from cgtsclient.v1 import options
 
 
 def _get_display_config(includeUUID):

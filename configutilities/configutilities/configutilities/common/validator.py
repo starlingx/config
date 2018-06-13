@@ -782,7 +782,7 @@ class ConfigValidator(object):
                 self.conf.get('REGION_2_SERVICES', 'CREATE') == 'Y'):
             password_fields = [
                 'NOVA', 'CEILOMETER', 'PATCHING', 'SYSINV', 'HEAT',
-                'HEAT_ADMIN', 'PLACEMENT'
+                'HEAT_ADMIN', 'PLACEMENT', 'AODH', 'PANKO', 'GNOCCHI'
             ]
             for pw in password_fields:
                 if not self.conf.has_option('REGION_2_SERVICES',
@@ -943,6 +943,12 @@ class ConfigValidator(object):
         panko_password = get_optional(self.conf, 'REGION_2_SERVICES',
                                       'PANKO_PASSWORD')
 
+        # validate gnocchi service name and type
+        gnocchi_user_name = self.conf.get('REGION_2_SERVICES',
+                                          'GNOCCHI_USER_NAME')
+        gnocchi_password = get_optional(self.conf, 'REGION_2_SERVICES',
+                                        'GNOCCHI_PASSWORD')
+
         if self.conf.has_option('REGION_2_SERVICES', 'USER_DOMAIN_NAME'):
             user_domain = self.conf.get('REGION_2_SERVICES',
                                         'USER_DOMAIN_NAME')
@@ -1048,6 +1054,9 @@ class ConfigValidator(object):
             self.cgcs_conf.set('cREGION', 'MTCE_PASSWORD', mtce_password)
             self.cgcs_conf.set('cREGION', 'PANKO_USER_NAME', panko_user_name)
             self.cgcs_conf.set('cREGION', 'PANKO_PASSWORD', panko_password)
+            self.cgcs_conf.set('cREGION', 'GNOCCHI_USER_NAME',
+                               gnocchi_user_name)
+            self.cgcs_conf.set('cREGION', 'GNOCCHI_PASSWORD', gnocchi_password)
 
             self.cgcs_conf.set('cREGION', 'USER_DOMAIN_NAME',
                                user_domain)

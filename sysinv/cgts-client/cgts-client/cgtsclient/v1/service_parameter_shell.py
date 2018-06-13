@@ -8,9 +8,9 @@
 # All Rights Reserved.
 #
 
-from ceilometerclient.v2 import options
 from cgtsclient.common import utils
 from cgtsclient import exc
+from cgtsclient.v1 import options
 
 
 def _print_service_parameter_show(obj):

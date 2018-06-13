@@ -7,8 +7,8 @@
 # -*- encoding: utf-8 -*-
 #
 
-from ceilometerclient.v2 import options
 from cgtsclient.common import base
+from cgtsclient.v1 import options
 
 
 class ServiceParameter(base.Resource):

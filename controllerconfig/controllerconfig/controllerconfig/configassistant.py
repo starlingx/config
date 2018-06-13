@@ -500,6 +500,8 @@ class ConfigAssistant():
         self.aodh_ks_password = ""
         self.panko_ks_user_name = ""
         self.panko_ks_password = ""
+        self.gnocchi_ks_user_name = ""
+        self.gnocchi_ks_password = ""
         self.mtce_ks_user_name = ""
         self.mtce_ks_password = ""
         self.nfv_ks_user_name = ""
@@ -2783,6 +2785,14 @@ class ConfigAssistant():
                     'cREGION', 'PANKO_PASSWORD')
                 self.add_password_for_validation('PANKO_PASSWORD',
                                                  self.panko_ks_password)
+
+                self.gnocchi_ks_user_name = config.get(
+                    'cREGION', 'GNOCCHI_USER_NAME')
+                self.gnocchi_ks_password = config.get(
+                    'cREGION', 'GNOCCHI_PASSWORD')
+                self.add_password_for_validation('GNOCCHI_PASSWORD',
+                                                 self.gnocchi_ks_password)
+
                 self.mtce_ks_user_name = config.get(
                     'cREGION', 'MTCE_USER_NAME')
                 self.mtce_ks_password = config.get(
@@ -3360,6 +3370,10 @@ class ConfigAssistant():
                             self.panko_ks_user_name)
                     f.write("PANKO_PASSWORD=%s\n" %
                             self.panko_ks_password)
+                    f.write("GNOCCHI_USER_NAME=%s\n" %
+                            self.gnocchi_ks_user_name)
+                    f.write("GNOCCHI_PASSWORD=%s\n" %
+                            self.gnocchi_ks_password)
                     f.write("MTCE_USER_NAME=%s\n" %
                             self.mtce_ks_user_name)
                     f.write("MTCE_PASSWORD=%s\n" %
@@ -3834,6 +3848,14 @@ class ConfigAssistant():
                   'capabilities': capabilities}
         client.sysinv.sm_service.service_create(**values)
 
+        # gnocchi service config
+        capabilities = {'user_name': self.gnocchi_ks_user_name}
+        values = {'name': "gnocchi",
+                  'enabled': True,
+                  'region_name': self.region_2_name,
+                  'capabilities': capabilities}
+        client.sysinv.sm_service.service_create(**values)
+
         # mtc service config
         capabilities = {'user_name': self.mtce_ks_user_name}
         values = {'name': "mtce",
@@ -3898,6 +3920,9 @@ class ConfigAssistant():
 
         keyring.set_password('panko', constants.DEFAULT_SERVICE_PROJECT_NAME,
                              self.panko_ks_password)
+
+        keyring.set_password('gnocchi', constants.DEFAULT_SERVICE_PROJECT_NAME,
+                             self.gnocchi_ks_password)
 
         keyring.set_password('mtce', constants.DEFAULT_SERVICE_PROJECT_NAME,
                              self.mtce_ks_password)

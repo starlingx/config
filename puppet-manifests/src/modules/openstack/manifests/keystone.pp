@@ -276,6 +276,11 @@ class openstack::keystone::endpoint::runtime {
       include ::panko::keystone::auth
     }
 
+    include ::openstack::gnocchi::params
+    if $::openstack::gnocchi::params::service_enabled {
+      include ::gnocchi::keystone::auth
+    }
+
     include ::openstack::cinder::params
     if $::openstack::cinder::params::service_enabled {
       include ::cinder::keystone::auth

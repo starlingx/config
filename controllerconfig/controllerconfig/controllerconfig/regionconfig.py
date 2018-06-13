@@ -54,7 +54,8 @@ EXPECTED_USERS = [
     ('REGION_2_SERVICES', 'NFV', 'vim'),
     ('REGION_2_SERVICES', 'AODH', 'aodh'),
     ('REGION_2_SERVICES', 'MTCE', 'mtce'),
-    ('REGION_2_SERVICES', 'PANKO', 'panko')]
+    ('REGION_2_SERVICES', 'PANKO', 'panko'),
+    ('REGION_2_SERVICES', 'GNOCCHI', 'gnocchi')]
 
 EXPECTED_SHARED_SERVICES_NEUTRON_USER = ('SHARED_SERVICES', 'NEUTRON',
                                          'neutron')
@@ -108,11 +109,6 @@ EXPECTED_REGION2_ENDPOINTS = [
      'http://{}:8000/v1/',
      'http://{}:8000/v1/',
      'Openstack Cloudformation Service'),
-    ('CEILOMETER_SERVICE_NAME', 'CEILOMETER_SERVICE_TYPE',
-     'http://{}:8777',
-     'http://{}:8777',
-     'http://{}:8777',
-     'Openstack Metering Service'),
     ('NFV_SERVICE_NAME', 'NFV_SERVICE_TYPE',
      'http://{}:4545',
      'http://{}:4545',
@@ -128,6 +124,11 @@ EXPECTED_REGION2_ENDPOINTS = [
      'http://{}:8977',
      'http://{}:8977',
      'OpenStack Event Service'),
+    ('GNOCCHI_SERVICE_NAME', 'GNOCCHI_SERVICE_TYPE',
+     'http://{}:8041',
+     'http://{}:8041',
+     'http://{}:8041',
+     'OpenStack Metric Service'),
 ]
 
 EXPECTED_NEUTRON_ENDPOINT = (

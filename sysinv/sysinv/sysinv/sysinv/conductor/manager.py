@@ -475,11 +475,6 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD,
          'value': constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_DEFAULT,
          },
-        {'service': constants.SERVICE_TYPE_CEILOMETER,
-         'section': constants.SERVICE_PARAM_SECTION_CEILOMETER_DATABASE,
-         'name': constants.SERVICE_PARAM_NAME_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE,
-         'value': constants.SERVICE_PARAM_CEILOMETER_DATABASE_METERING_TIME_TO_LIVE_DEFAULT,
-         },
         {'service': constants.SERVICE_TYPE_PANKO,
          'section': constants.SERVICE_PARAM_SECTION_PANKO_DATABASE,
          'name': constants.SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE,
@@ -6824,13 +6819,6 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "classes": ['openstack::nova::compute::runtime']
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-            elif service == constants.SERVICE_TYPE_CEILOMETER:
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['openstack::ceilometer::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 

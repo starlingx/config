@@ -41,6 +41,7 @@ Requires: puppet-magnum
 Requires: puppet-ironic
 Requires: puppet-panko
 Requires: puppet-memcached
+Requires: puppet-gnocchi
 
 # Puppetlabs puppet modules
 Requires: puppet-concat
