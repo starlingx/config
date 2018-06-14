@@ -1,9 +1,12 @@
 apiVersion: kubeadm.k8s.io/v1alpha1
 kind: MasterConfiguration
 api:
-    advertiseAddress: <%= @apiserver_advertise_address %>
+  advertiseAddress: <%= @apiserver_advertise_address %>
 etcd:
-    endpoints:
-    - <%= @etcd_endpoint %>
+  endpoints:
+  - <%= @etcd_endpoint %>
+apiServerCertSANs:
+- "<%= @apiserver_advertise_address %>"
+- "127.0.0.1"
 networking:
   podSubnet: <%= @pod_network_cidr %>

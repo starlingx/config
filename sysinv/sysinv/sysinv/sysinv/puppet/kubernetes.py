@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import os
 import subprocess
 
 from sysinv.common import constants
@@ -34,10 +35,35 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
+    def get_secure_system_config(self):
+        config = {}
+        if self._kubernetes_enabled():
+            # This is retrieving the certificates that 'kubeadm init'
+            # generated. We will want to change this to generate the
+            # certificates ourselves, store in hiera and then feed those
+            # back into 'kubeadm init'.
+            if os.path.exists('/etc/kubernetes/pki/ca.crt'):
+                # Store required certificates in configuration.
+                with open('/etc/kubernetes/pki/ca.crt', 'r') as f:
+                    ca_crt = f.read()
+                with open('/etc/kubernetes/pki/ca.key', 'r') as f:
+                    ca_key = f.read()
+                with open('/etc/kubernetes/pki/sa.key', 'r') as f:
+                    sa_key = f.read()
+                with open('/etc/kubernetes/pki/sa.pub', 'r') as f:
+                    sa_pub = f.read()
+                config.update(
+                    {'platform::kubernetes::params::ca_crt': ca_crt,
+                     'platform::kubernetes::params::ca_key': ca_key,
+                     'platform::kubernetes::params::sa_key': sa_key,
+                     'platform::kubernetes::params::sa_pub': sa_pub,
+                     })
+        return config
+
     def get_host_config(self, host):
         config = {}
         if self._kubernetes_enabled():
-            if constants.COMPUTE in host.subfunctions:
+            if host.personality == constants.COMPUTE:
                 create_node = False
                 try:
                     # Check if this host has already been configured as a

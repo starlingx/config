@@ -255,6 +255,7 @@ class PuppetOperator(object):
             config.update(self.panko.get_secure_system_config())
             config.update(self.dcmanager.get_secure_system_config())
             config.update(self.dcorch.get_secure_system_config())
+            config.update(self.kubernetes.get_secure_system_config())
 
             filename = 'secure_system.yaml'
             self._write_config(filename, config)

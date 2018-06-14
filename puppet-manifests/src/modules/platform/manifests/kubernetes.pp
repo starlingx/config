@@ -3,6 +3,10 @@ class platform::kubernetes::params (
   $pod_network_cidr = undef,
   $apiserver_advertise_address = undef,
   $etcd_endpoint = undef,
+  $ca_crt = undef,
+  $ca_key = undef,
+  $sa_key = undef,
+  $sa_pub = undef,
 ) { }
 
 class platform::kubernetes::kubeadm {
@@ -76,9 +80,10 @@ class platform::kubernetes::kubeadm {
 class platform::kubernetes::master::init
   inherits ::platform::kubernetes::params {
 
-  # This init only needs to be done once. Only controller-0 is supported for
-  # now...
+  include ::platform::params
+
   if str2bool($::is_initial_config_primary) {
+    # For initial controller install, configure kubernetes from scratch.
     $resolv_conf = '/etc/resolv.conf'
 
     # Add a DNS server to allow access to kubernetes repo. This will no longer
@@ -100,20 +105,87 @@ class platform::kubernetes::master::init
       logoutput => true,
     } ->
 
-    # Configure calico networking. This is just for prototyping - see the
-    # following for proper deployment:
-    # https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation
-    exec { "configure calico networking":
+    # Configure calico networking using the Kubernetes API datastore. This is
+    # beta functionality and has this limitation:
+    #   Note: Calico networking with the Kubernetes API datastore is beta
+    #   because it does not yet support Calico IPAM. It uses host-local IPAM
+    #   with Kubernetes pod CIDR assignments instead.
+    # See https://docs.projectcalico.org/v3.1/getting-started/kubernetes/
+    # installation/calico for more info.
+    exec { "configure calico RBAC":
       command =>
-        "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f https://docs.projectcalico.org/v3.0/getting-started/kubernetes/installation/hosted/kubeadm/1.7/calico.yaml",
+        "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/rbac-kdd.yaml",
+      logoutput => true,
+    } ->
+    exec { "install calico networking":
+      command =>
+        "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml",
       logoutput => true,
     } ->
 
     # Remove the taint from the master node
     exec { "remove taint from master node":
-      command =>
-        "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint nodes --all node-role.kubernetes.io/master-",
+      command => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-",
       logoutput => true,
+    }
+  } else {
+    if str2bool($::is_initial_config) {
+      # For subsequent controller installs, install kubernetes using the
+      # existing certificates.
+
+      # Create necessary certificate files
+      file { "/etc/kubernetes/pki":
+        ensure => 'directory',
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0755',
+      } ->
+      file { '/etc/kubernetes/pki/ca.crt':
+        ensure  => file,
+        content => "$ca_crt",
+        owner   => 'root',
+        group   => 'root',
+        mode    => '0644',
+      } ->
+      file { '/etc/kubernetes/pki/ca.key':
+        ensure  => file,
+        content => "$ca_key",
+        owner   => 'root',
+        group   => 'root',
+        mode    => '0600',
+      } ->
+      file { '/etc/kubernetes/pki/sa.key':
+        ensure  => file,
+        content => "$sa_key",
+        owner   => 'root',
+        group   => 'root',
+        mode    => '0600',
+      } ->
+      file { '/etc/kubernetes/pki/sa.pub':
+        ensure  => file,
+        content => "$sa_pub",
+        owner   => 'root',
+        group   => 'root',
+        mode    => '0600',
+      } ->
+
+      # Configure the master node.
+      file { "/etc/kubernetes/kubeadm.yaml":
+        ensure  => 'present',
+        replace => true,
+        content => template('platform/kubeadm.yaml.erb'),
+      } ->
+
+      exec { "configure master node":
+        command   => "kubeadm init --config=/etc/kubernetes/kubeadm.yaml",
+        logoutput => true,
+      } ->
+
+      # Remove the taint from the master node
+      exec { "remove taint from master node":
+        command => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-",
+        logoutput => true,
+      }
     }
   }
 }
@@ -153,7 +225,9 @@ class platform::kubernetes::worker::init
 class platform::kubernetes::worker
   inherits ::platform::kubernetes::params {
 
-  if $enabled {
+  # Worker configuration is not required on AIO hosts, since the master
+  # will already be configured and includes support for running pods.
+  if $enabled and $::personality != 'controller' {
     contain ::platform::kubernetes::kubeadm
     contain ::platform::kubernetes::worker::init
 
