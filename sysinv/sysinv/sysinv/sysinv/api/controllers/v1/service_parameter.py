@@ -357,6 +357,28 @@ class ServiceParameterController(rest.RestController):
                 'resource': resource,
             }
             self._check_custom_parameter_syntax(new_record)
+
+            existing = False
+            try:
+                pecan.request.dbapi.service_parameter_get_one(
+                    service, section, name,
+                    personality, resource)
+                existing = True
+            except exception.NotFound:
+                pass
+            except exception.MultipleResults:
+                # We'll check/handle this in the "finally" block
+                existing = True
+            finally:
+                if existing:
+                    msg = _("Service parameter add failed: "
+                            "Parameter already exists: "
+                            "service=%s section=%s name=%s "
+                            "personality=%s resource=%s"
+                            % (service, section, name,
+                               personality, resource))
+                    raise wsme.exc.ClientSideError(msg)
+
             new_records.append(new_record)
 
         svc_params = []
@@ -431,6 +453,25 @@ class ServiceParameterController(rest.RestController):
                 'value': value,
             }
             self._check_parameter_syntax(new_record)
+
+            existing = False
+            try:
+                pecan.request.dbapi.service_parameter_get_one(
+                    service, section, name)
+                existing = True
+            except exception.NotFound:
+                pass
+            except exception.MultipleResults:
+                # We'll check/handle this in the "finally" block
+                existing = True
+            finally:
+                if existing:
+                    msg = _("Service parameter add failed: "
+                            "Parameter already exists: "
+                            "service=%s section=%s name=%s"
+                            % (service, section, name))
+                    raise wsme.exc.ClientSideError(msg)
+
             new_records.append(new_record)
 
         svc_params = []

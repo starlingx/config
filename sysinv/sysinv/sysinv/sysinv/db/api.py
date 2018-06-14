@@ -3712,7 +3712,8 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def service_parameter_get_one(self, service=None, section=None, name=None):
+    def service_parameter_get_one(self, service=None, section=None, name=None,
+                                  personality=None, resource=None):
         """Return a service parameter.
 
         :param service: name of service.

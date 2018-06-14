@@ -6383,7 +6383,8 @@ class Connection(api.Connection):
         return result
 
     @objects.objectify(objects.service_parameter)
-    def service_parameter_get_one(self, service=None, section=None, name=None):
+    def service_parameter_get_one(self, service=None, section=None, name=None,
+                                  personality=None, resource=None):
         query = model_query(models.ServiceParameter)
         if service is not None:
             query = query.filter_by(service=service)
@@ -6391,6 +6392,10 @@ class Connection(api.Connection):
             query = query.filter_by(section=section)
         if name is not None:
             query = query.filter_by(name=name)
+        if personality is not None:
+            query = query.filter_by(personality=personality)
+        if resource is not None:
+            query = query.filter_by(resource=resource)
 
         try:
             result = query.one()
