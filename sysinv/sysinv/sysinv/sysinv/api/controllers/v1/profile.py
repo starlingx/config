@@ -3132,7 +3132,8 @@ def localstorageprofile_apply_to_host(host, profile):
         try:
             pvfields = ['disk_or_part_device_path',
                         'lvm_vg_name']
-                        # 'lvm_pv_name', from Agent: not in profile
+            # 'lvm_pv_name', from Agent: not in profile
+
             pvdict = (dict((k, v) for k, v in pipv.as_dict().iteritems()
                       if k in pvfields and v))
             pvdict['forihostid'] = host_id
