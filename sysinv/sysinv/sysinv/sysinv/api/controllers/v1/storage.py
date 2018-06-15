@@ -603,8 +603,7 @@ def _check_journal_location(journal_location, stor, action):
     # If no journal location is provided by the user.
     else:
         # Check if there is a journal storage designated for the present host.
-        existing_journal_stors = \
-         pecan.request.dbapi.istor_get_by_ihost_function(
+        existing_journal_stors = pecan.request.dbapi.istor_get_by_ihost_function(
             stor['forihostid'], constants.STOR_FUNCTION_JOURNAL)
 
         # If more than one journal stor is assigned to the host, the user

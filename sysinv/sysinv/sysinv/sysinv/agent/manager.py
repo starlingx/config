@@ -391,7 +391,7 @@ class AgentManager(service.PeriodicService):
                 constants.LLDP_TLV_TYPE_DOT3_MAC_STATUS: neighbour.dot3_mac_status,
                 constants.LLDP_TLV_TYPE_DOT3_MAX_FRAME: neighbour.dot3_max_frame,
                 constants.LLDP_TLV_TYPE_DOT3_POWER_MDI: neighbour.dot3_power_mdi,
-               }
+            }
             neighbour_dict_array.append(neighbour_dict)
 
         if neighbour_dict_array:
@@ -425,7 +425,7 @@ class AgentManager(service.PeriodicService):
                 constants.LLDP_TLV_TYPE_DOT1_LAG: agent.dot1_lag,
                 constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES: agent.dot1_vlan_names,
                 constants.LLDP_TLV_TYPE_DOT3_MAX_FRAME: agent.dot3_max_frame,
-               }
+            }
             agent_dict_array.append(agent_dict)
 
         if agent_dict_array:

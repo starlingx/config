@@ -856,18 +856,18 @@ IDENTITY_CONFIG_PARAMETER_RESOURCE = {
 }
 
 HORIZON_AUTH_PARAMETER_OPTIONAL = [
-   constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC,
-   constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES,
+    constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC,
+    constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES,
 ]
 
 HORIZON_AUTH_PARAMETER_VALIDATOR = {
-   constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC:_validate_integer,
-   constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES:_validate_integer,
+    constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC:_validate_integer,
+    constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES:_validate_integer,
 }
 
 HORIZON_AUTH_PARAMETER_RESOURCE = {
-   constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC: 'openstack::horizon::params::lockout_period',
-   constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES: 'openstack::horizon::params::lockout_retries',
+    constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC: 'openstack::horizon::params::lockout_period',
+    constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES: 'openstack::horizon::params::lockout_retries',
 }
 
 # Neutron Service Parameters (optional)

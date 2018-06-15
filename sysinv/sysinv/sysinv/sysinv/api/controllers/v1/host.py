@@ -1300,11 +1300,11 @@ class HostController(rest.RestController):
                       "exists") % ihost_dict['mgmt_mac'])
             # Check DNSMASQ for ip/mac already existing
             # -> node in use by someone else or has already been booted
-            elif not ihost_obj and self._dnsmasq_mac_exists(
-               ihost_dict['mgmt_mac']):
+            elif (not ihost_obj and self._dnsmasq_mac_exists(
+                    ihost_dict['mgmt_mac'])):
                 raise wsme.exc.ClientSideError(
                     _("Host-add Rejected: mgmt_mac %s has already been "
-                      "active") % ihost_dict['mgmt_mac'])
+                    "active") % ihost_dict['mgmt_mac'])
 
             # Use the uuid from the existing host
             ihost_dict['uuid'] = ihost_obj['uuid']

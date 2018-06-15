@@ -22,7 +22,7 @@ def upgrade(migrate_engine):
         meta,
         Column('lockout_time', Integer),
         Column('lockout_retries', Integer),
-     )
+    )
     i_horizon_lockout.create()
 
     # Enhance the services enum to include horizon

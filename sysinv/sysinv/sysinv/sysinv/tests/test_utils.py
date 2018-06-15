@@ -273,8 +273,8 @@ class GenericUtilsTestCase(base.TestCase):
 
     def test_get_shortened_ipv6(self):
         self.assertEquals("abcd:ef01:2345:6789:abcd:ef01:c0a8:fefe",
-                          utils.get_shortened_ipv6(
-                            "abcd:ef01:2345:6789:abcd:ef01:192.168.254.254"))
+                            utils.get_shortened_ipv6(
+                                "abcd:ef01:2345:6789:abcd:ef01:192.168.254.254"))
         self.assertEquals("::1", utils.get_shortened_ipv6(
                                     "0000:0000:0000:0000:0000:0000:0000:0001"))
         self.assertEquals("caca::caca:0:babe:201:102",

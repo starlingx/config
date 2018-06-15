@@ -4178,7 +4178,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.debug("iplatform monitor check system has ceph backend")
                 ihost_capabilities = ihost.capabilities
                 ihost_dict = {
-                   'stor_function': constants.STOR_FUNCTION_MONITOR,
+                    'stor_function': constants.STOR_FUNCTION_MONITOR,
                 }
                 ihost_capabilities.update(ihost_dict)
                 ihost_val = {'capabilities': ihost_capabilities}

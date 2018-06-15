@@ -33,8 +33,8 @@ class DevicePuppet(base.BasePuppet):
             for idx, device in enumerate(qat_c62x_devices):
                 name = 'pci-%s' % device.pciaddr
                 dev = {
-                   'qat_idx': idx,
-                   "device_id": "c62x",
+                    'qat_idx': idx,
+                    "device_id": "c62x",
                 }
                 device_config.update({name: dev})
 
@@ -43,8 +43,8 @@ class DevicePuppet(base.BasePuppet):
             for idx, device in enumerate(qat_dh895xcc_devices):
                 name = 'pci-%s' % device.pciaddr
                 dev = {
-                   'qat_idx': idx,
-                   "device_id": "dh895xcc",
+                    'qat_idx': idx,
+                    "device_id": "dh895xcc",
                 }
                 device_config.update({name: dev})
 

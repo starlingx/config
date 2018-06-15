@@ -2131,7 +2131,7 @@ def _create(interface, from_profile=False):
         except Exception as e:
             LOG.exception("Failed to update AE member MTU: "
                           "new_interface={} mtu={}".format(
-                            new_interface.as_dict(), new_interface['imtu']))
+                                new_interface.as_dict(), new_interface['imtu']))
 
             pecan.request.dbapi.iinterface_destroy(new_interface['uuid'])
             raise e

@@ -793,7 +793,7 @@ def _create(lvg, iprofile=None, applyprofile=None):
                 lvg_caps_dict = {
                         constants.LVG_CINDER_PARAM_LVM_TYPE:
                         constants.LVG_CINDER_LVM_TYPE_THIN
-                    }
+                }
                 # Get the VG type from mate controller if present or set default
                 # as Cinder type must be the same on both controllers.
                 mate_lvg = _get_mate_ctrl_lvg(lvg)

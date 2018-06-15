@@ -2934,7 +2934,7 @@ def _partition_profile_apply_to_host(host, profile):
             return (False,
                     _('Not enough free space on disk {0} for profile '
                       'partitions. At least {1} MiB are required.').format(
-                      disk.device_path, total_part_size))
+                        disk.device_path, total_part_size))
 
         # Check the partition requested by the profile is not already present
         # on the host's disk.
@@ -2944,7 +2944,7 @@ def _partition_profile_apply_to_host(host, profile):
                     disk_part.device_node in profile_partitions_names):
                 return (False,
                         _('Partition {0} already present on disk {1}').format(
-                          disk_part.device_path, disk.device_path))
+                            disk_part.device_path, disk.device_path))
 
         # Check the partitions requested by the profile and the ones already
         # existing on the host are in order.

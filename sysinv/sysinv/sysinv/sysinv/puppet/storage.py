@@ -143,7 +143,7 @@ class StoragePuppet(base.BasePuppet):
                     'type_guid': p.type_guid,
                     'start_mib': p.start_mib,
                     'size_mib': p.size_mib,
-                 }
+                }
                 for d in disks:
                     if d.uuid == p.idisk_uuid:
                         partition.update({

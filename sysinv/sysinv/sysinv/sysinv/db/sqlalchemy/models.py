@@ -350,7 +350,7 @@ class iinterface(Base):
 interfaces_to_interfaces = Table("interfaces_to_interfaces", Base.metadata,
     Column("used_by_id", Integer, ForeignKey("interfaces.id", ondelete='CASCADE'), primary_key=True),
     Column("uses_id", Integer, ForeignKey("interfaces.id", ondelete='CASCADE'), primary_key=True)
-   )
+)
 
 
 class Interfaces(Base):

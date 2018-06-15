@@ -497,9 +497,10 @@ class SystemController(rest.RestController):
         if 'security_feature' in updates:
             # Security feature string must be translated from user values to
             # kernel options
-            if security_feature in \
-              constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS:
-                security_feature_value = constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS[security_feature]
+            if (security_feature in
+                    constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS):
+                security_feature_value = \
+                    constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS[security_feature]
                 patched_system['security_feature'] = security_feature_value
             else:
                 raise wsme.exc.ClientSideError(_("Unexpected value %s specified for "
@@ -561,11 +562,11 @@ class SystemController(rest.RestController):
             if change_https:
                 LOG.info("update https to %s" % capabilities)
                 pecan.request.rpcapi.configure_system_https(
-                  pecan.request.context)
+                    pecan.request.context)
             if vswitch_type:
                 LOG.info("update vswitch_type to %s" % capabilities)
                 pecan.request.rpcapi.update_vswitch_type(
-                  pecan.request.context)
+                    pecan.request.context)
 
         if distributed_cloud_role and change_dc_role:
             LOG.info("update distributed cloud role to %s" % distributed_cloud_role)

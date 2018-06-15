@@ -138,7 +138,7 @@ providernet_list = {
                 "type": "flat",
                 "id": "da9f7bb1-2114-4ffd-8a4c-9ca215d98fa3",
                 "name": "group0-flat"}
-    }
+}
 
 
 class InterfaceTestCase(base.FunctionalTest):

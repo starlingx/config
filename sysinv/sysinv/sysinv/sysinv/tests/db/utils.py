@@ -28,13 +28,13 @@ from sysinv.db import api as db_api
 fake_info = {"foo": "bar"}
 
 ipmi_info = json.dumps(
-        {
-            'ipmi': {
-                "address": "1.2.3.4",
-                "username": "admin",
-                "password": "fake",
-            }
-         })
+            {
+                'ipmi': {
+                    "address": "1.2.3.4",
+                    "username": "admin",
+                    "password": "fake",
+                }
+            })
 
 ssh_info = json.dumps(
         {
@@ -46,7 +46,7 @@ ssh_info = json.dumps(
                 "virt_type": "vbox",
                 "key_filename": "/not/real/file",
             }
-         })
+        })
 
 pxe_info = json.dumps(
         {
