@@ -6951,12 +6951,14 @@ class ConductorManager(service.PeriodicService):
         return drbd_fs_updated
 
     def _config_resize_filesystems(self, context, standby_host):
-        """Resize the filesystems upon completion of storage config. """
+        """Resize the filesystems upon completion of storage config.
+           Retry in case of errors or racing issues when resizing fails."""
 
         LOG.warn("resizing filesytems")
 
         progress = ""
-        with open(os.devnull, "w") as fnull:
+        retry_attempts = 3
+        with open(os.devnull, "w"):
             try:
                 if standby_host:
                     if not self._drbd_connected():
@@ -6967,19 +6969,12 @@ class ConductorManager(service.PeriodicService):
 
                 if not os.path.isfile(CFS_DRBDADM_RECONFIGURED):
                     progress = "drbdadm resize all"
+                    cmd = ["drbdadm", "resize", "all"]
                     if standby_host:
-                        subprocess.check_call(["drbdadm",
-                                               "resize",
-                                               "all"],
-                                               stdout=fnull,
-                                               stderr=fnull)
+                        stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
                     else:
-                        subprocess.check_call(["drbdadm", "--",
-                                               "--assume-peer-has-space",
-                                               "resize",
-                                               "all"],
-                                               stdout=fnull,
-                                               stderr=fnull)
+                        cmd = cmd + ['--assume-peer-has-space']
+                        stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
                     LOG.info("Performed %s" % progress)
                     cutils.touch(CFS_DRBDADM_RECONFIGURED)
 
@@ -6996,10 +6991,8 @@ class ConductorManager(service.PeriodicService):
                              constants.DRBD_PGSQL in self._drbd_fs_sync()))):
                             # database_gib /var/lib/postgresql
                             progress = "resize2fs drbd0"
-                            subprocess.check_call(["resize2fs",
-                                                   "/dev/drbd0"],
-                                                   stdout=fnull,
-                                                   stderr=fnull)
+                            cmd = ["resize2fs", "/dev/drbd0"]
+                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
                             LOG.info("Performed %s" % progress)
                             pgsql_resized = True
 
@@ -7008,10 +7001,8 @@ class ConductorManager(service.PeriodicService):
                              constants.DRBD_CGCS in self._drbd_fs_sync()))):
                             # cgcs_gib /opt/cgcs
                             progress = "resize2fs drbd3"
-                            subprocess.check_call(["resize2fs",
-                                                   "/dev/drbd3"],
-                                                   stdout=fnull,
-                                                   stderr=fnull)
+                            cmd = ["resize2fs", "/dev/drbd3"]
+                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
                             LOG.info("Performed %s" % progress)
                             cgcs_resized = True
 
@@ -7020,10 +7011,8 @@ class ConductorManager(service.PeriodicService):
                              constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
                             # extension_gib /opt/extension
                             progress = "resize2fs drbd5"
-                            subprocess.check_call(["resize2fs",
-                                                   "/dev/drbd5"],
-                                                   stdout=fnull,
-                                                   stderr=fnull)
+                            cmd = ["resize2fs", "/dev/drbd5"]
+                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
                             LOG.info("Performed %s" % progress)
                             extension_resized = True
 
@@ -7033,10 +7022,8 @@ class ConductorManager(service.PeriodicService):
                                  constants.DRBD_PATCH_VAULT in self._drbd_fs_sync()))):
                                 # patch_gib /opt/patch-vault
                                 progress = "resize2fs drbd6"
-                                subprocess.check_call(["resize2fs",
-                                                       "/dev/drbd6"],
-                                                       stdout=fnull,
-                                                       stderr=fnull)
+                                cmd = ["resize2fs", "/dev/drbd6"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
                                 LOG.info("Performed %s" % progress)
                                 patch_resized = True
 
@@ -7062,10 +7049,12 @@ class ConductorManager(service.PeriodicService):
 
                 LOG.info("resizing filesystems completed")
 
-            except subprocess.CalledProcessError:
-                raise exception.SysinvException(_(
-                    "Failed to perform storage resizing: "
-                    "progress %s" % progress))
+            except exception.ProcessExecutionError as ex:
+                LOG.warn("Failed to perform storage resizing (cmd: '%(cmd)s', "
+                         "return code: %(rc)s, stdout: '%(stdout)s).', "
+                         "stderr: '%(stderr)s'" %
+                         {"cmd": " ".join(cmd), "stdout": ex.stdout,
+                          "stderr": ex.stderr, "rc": ex.exit_code})
 
         return True
 
