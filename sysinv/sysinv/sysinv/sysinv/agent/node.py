@@ -19,18 +19,13 @@ from os import listdir
 from os.path import isfile, join
 import random
 import re
-import shlex
-import shutil
-import signal
-import six
-import socket
 import subprocess
-import tempfile
 
 
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
+import tsconfig.tsconfig as tsc
 
 LOG = logging.getLogger(__name__)
 
@@ -96,6 +91,30 @@ class NodeOperator(object):
         # self._get_total_memory_nodes_MiB()
         # self._get_free_memory_MiB()
         # self._get_free_memory_nodes_MiB()
+
+    def _is_strict(self):
+        with open(os.devnull, "w") as fnull:
+            try:
+                output = subprocess.check_output(
+                    ["cat", "/proc/sys/vm/overcommit_memory"],
+                    stderr=fnull)
+                if int(output) == 2:
+                    return True
+            except subprocess.CalledProcessError as e:
+                LOG.info("Failed to check for overcommit, error (%s)",
+                         e.output)
+        return False
+
+    def _is_hugepages_allocated(self):
+        with open(os.devnull, "w") as fnull:
+            try:
+                output = subprocess.check_output(
+                    ["cat", "/proc/sys/vm/nr_hugepages"], stderr=fnull)
+                if int(output) > 0:
+                    return True
+            except subprocess.CalledProcessError as e:
+                LOG.info("Failed to check hugepages, error (%s)", e.output)
+        return False
 
     def convert_range_string_to_list(self, s):
         olist = []
@@ -267,7 +286,7 @@ class NodeOperator(object):
         return [name for name in listdir(dir)
                 if os.path.isdir(join(dir, name))]
 
-    def _set_default_avs_hugesize(self, attr):
+    def _set_default_avs_hugesize(self):
         '''
         Set the default memory size for avs hugepages when it must fallback to
         2MB pages because there are no 1GB pages.  In a virtual environment we
@@ -281,18 +300,10 @@ class NodeOperator(object):
         else:
             avs_hugepages_nr = AVS_REAL_MEMORY_MB / hugepage_size
 
-        memtotal_mib = attr.get('memtotal_mib', 0)
-        memavail_mib = attr.get('memavail_mib', 0)
-        memtotal_mib = memtotal_mib - (hugepage_size * avs_hugepages_nr)
-        memavail_mib = min(memtotal_mib, memavail_mib)
-
         ## Create a new set of dict attributes
         hp_attr = {'avs_hugepages_size_mib': hugepage_size,
                    'avs_hugepages_nr': avs_hugepages_nr,
-                   'avs_hugepages_avail': 0,
-                   'vm_hugepages_use_1G': 'False',
-                   'memtotal_mib': memtotal_mib,
-                   'memavail_mib': memavail_mib}
+                   'avs_hugepages_avail': 0}
         return hp_attr
 
     def _inode_get_memory_hugepages(self):
@@ -303,17 +314,34 @@ class NodeOperator(object):
         '''
 
         imemory = []
-        num_2M_for_1G = 512
-        num_4K_for_2M = 512
+        Ki = 1024
+        SZ_2M_Ki = 2048
+        SZ_1G_Ki = 1048576
+        controller_min_MB = 6000
+        compute_min_MB = 1600
+        compute_min_non0_MB = 500
 
-        re_node_MemFreeInit = re.compile(r'^Node\s+\d+\s+\MemFreeInit:\s+(\d+)')
+        initial_compute_config_completed = \
+            os.path.exists(tsc.INITIAL_COMPUTE_CONFIG_COMPLETE)
+
+        # check if it is initial report before the huge pages are allocated
+        initial_report = not initial_compute_config_completed
+
+        # do not send report if the initial compute config is completed and
+        # the huge pages have not been allocated, i.e.during subsequent
+        # reboot before the manifest allocates the huge pages
+        if (initial_compute_config_completed and
+                not self._is_hugepages_allocated()):
+            return imemory
 
         for node in range(self.num_nodes):
             attr = {}
-            Total_MiB = 0
-            Free_MiB = 0
+            Total_HP_MiB = 0  # Total memory (MiB) currently configured in HPs
+            Free_HP_MiB = 0
 
             # Check AVS and Libvirt memory
+            # Loop through configured hugepage sizes of this node and record
+            # total number and number free
             hugepages = "/sys/devices/system/node/node%d/hugepages" % node
 
             try:
@@ -325,15 +353,14 @@ class NodeOperator(object):
                     # role via size; also from /etc/nova/compute_reserved.conf
                     if sizesplit[1].startswith("1048576kB"):
                         hugepages_role = "avs"
-                        size = int(1048576 / 1024)
+                        size = int(SZ_1G_Ki / Ki)
                     else:
                         hugepages_role = "vm"
-                        size = int(2048 / 1024)
+                        size = int(SZ_2M_Ki / Ki)
 
                     nr_hugepages = 0
                     free_hugepages = 0
 
-                    # files = os.walk(subdir).next()[2]
                     mydir = hugepages + '/' + subdir
                     files = [f for f in listdir(mydir) if isfile(join(mydir, f))]
 
@@ -345,11 +372,11 @@ class NodeOperator(object):
                                 if file.startswith("free_hugepages"):
                                     free_hugepages = int(f.readline())
 
+                    Total_HP_MiB = Total_HP_MiB + int(nr_hugepages * size)
+                    Free_HP_MiB = Free_HP_MiB + int(free_hugepages * size)
+
                     # Libvirt hugepages can now be 1G and 2M, can't only look
                     # at 2M pages
-                    Total_MiB = Total_MiB + int(nr_hugepages * size)
-                    Free_MiB = Free_MiB + int(free_hugepages * size)
-
                     if hugepages_role == "avs":
                         avs_hugepages_nr = AVS_REAL_MEMORY_MB / size
                         hp_attr = {
@@ -359,18 +386,19 @@ class NodeOperator(object):
                                'vm_hugepages_nr_1G':
                                (nr_hugepages - avs_hugepages_nr),
                                'vm_hugepages_avail_1G': free_hugepages,
+                               'vm_hugepages_use_1G': 'True'
                                   }
                     else:
                         if len(subdirs) == 1:
-                            hp_attr = {
-                                   'vm_hugepages_nr_2M': (nr_hugepages - 256),
-                                   'vm_hugepages_avail_2M': free_hugepages,
-                                      }
-                        else:
-                            hp_attr = {
-                                   'vm_hugepages_nr_2M': nr_hugepages,
-                                   'vm_hugepages_avail_2M': free_hugepages,
-                                      }
+                            hp_attr = self._set_default_avs_hugesize()
+                            hp_attr.update({'vm_hugepages_use_1G': 'False'})
+
+                        avs_hugepages_nr = hp_attr.get('avs_hugepages_nr', 0)
+                        hp_attr.update({
+                            'vm_hugepages_avail_2M': free_hugepages,
+                            'vm_hugepages_nr_2M':
+                                (nr_hugepages - avs_hugepages_nr)
+                             })
 
                     attr.update(hp_attr)
 
@@ -378,115 +406,134 @@ class NodeOperator(object):
                 # silently ignore IO errors (eg. file missing)
                 pass
 
-            # Read the total possible number of libvirt (2M and 1G) hugepages,
-            # and total available memory determined by compute-huge.
-            hp_pages_2M = []
-            hp_pages_1G = []
-            tot_memory = []
-            huge_total_attrs = {}
-            hp_total_info = "/etc/nova/compute_hugepages_total.conf"
-            try:
-                with open(hp_total_info, 'r') as infile:
-                    for line in infile:
-                        possible_memorys = line.split("=")
-                        if possible_memorys[0] == 'compute_hp_total_2M':
-                            hp_pages_2M = map(int, possible_memorys[1].split(','))
-                            continue
+            # Get the free and total memory from meminfo for this node
+            re_node_MemTotal = re.compile(r'^Node\s+\d+\s+\MemTotal:\s+(\d+)')
+            re_node_MemFree = re.compile(r'^Node\s+\d+\s+\MemFree:\s+(\d+)')
+            re_node_FilePages = \
+                re.compile(r'^Node\s+\d+\s+\FilePages:\s+(\d+)')
+            re_node_SReclaim = \
+                re.compile(r'^Node\s+\d+\s+\SReclaimable:\s+(\d+)')
+            re_node_CommitLimit = \
+                re.compile(r'^Node\s+\d+\s+\CommitLimit:\s+(\d+)')
+            re_node_Committed_AS = \
+                re.compile(r'^Node\s+\d+\s+\'Committed_AS:\s+(\d+)')
 
-                        elif possible_memorys[0] == 'compute_hp_total_1G':
-                            hp_pages_1G = map(int, possible_memorys[1].split(','))
-                            continue
+            Free_KiB = 0  # Free Memory (KiB) available
+            Total_KiB = 0  # Total Memory (KiB)
+            limit = 0      # only used in strict accounting
+            committed = 0  # only used in strict accounting
 
-                        elif possible_memorys[0] == 'compute_total_MiB':
-                            tot_memory = map(int, possible_memorys[1].split(','))
-                            continue
-
-            except IOError:
-                # silently ignore IO errors (eg. file missing)
-                pass
-
-            huge_total_attrs = {
-                    'vm_hugepages_possible_2M': hp_pages_2M[node],
-                    'vm_hugepages_possible_1G': hp_pages_1G[node],
-                   }
-
-            # The remaining VM pages are allocated to 4K pages
-            vm_hugepages_2M = attr.get('vm_hugepages_nr_2M')
-            vm_hugepages_1G = attr.get('vm_hugepages_nr_1G')
-
-            vm_hugepages_4K = (hp_pages_2M[node] - vm_hugepages_2M)
-            if vm_hugepages_1G:
-                vm_hugepages_4K -= (vm_hugepages_1G * num_2M_for_1G)
-
-            vm_hugepages_4K = vm_hugepages_4K * num_4K_for_2M
-
-            # Clip 4K pages, just like compute-huge.
-            min_4K = 32 * 1024 / 4
-            if vm_hugepages_4K < min_4K:
-                vm_hugepages_4K = 0
-
-            hp_attrs_4K = {
-                    'vm_hugepages_nr_4K': vm_hugepages_4K,
-                   }
-
-            attr.update(huge_total_attrs)
-            attr.update(hp_attrs_4K)
-
-            # Include 4K pages in the displayed VM memtotal.
-            # Since there is no way to track used VM 4K pages, we treat them
-            # as available, but that is bogus.
-            vm_4K_MiB = vm_hugepages_4K * 4 / 1024
-            Total_MiB += vm_4K_MiB
-            Free_MiB += vm_4K_MiB
-            self.total_memory_nodes_MiB.append(Total_MiB)
-            attroverview = {
-                    'numa_node': node,
-                    'memtotal_mib': Total_MiB,
-                    'memavail_mib': Free_MiB,
-                    'hugepages_configured': 'True',
-                   }
-
-            attr.update(attroverview)
-
-            new_attrs = {}
-            if 'avs_hugepages_size_mib' not in attr:
-                ## No 1GB pages were found so borrow from the VM 2MB pool
-                ##
-                ## FIXME:
-                ## It is unfortunate that memory is categorized as VM or
-                ## AVS here on the compute node.  It would have been more
-                ## flexible if memory parameters were collected and sent
-                ## up to the controller without making any decisions about
-                ## what the memory was going to be used for.  That type of
-                ## decision is better left to the controller (or better
-                ## yet, to the user)
-                new_attrs = self._set_default_avs_hugesize(attr)
-            else:
-                new_attrs = {'vm_hugepages_use_1G': 'True'}
-
-            attr.update(new_attrs)
-
-            # Get the total memory of the numa node
-            memTotal_mib = 0
-            meminfo = "/sys/devices/system/node/node%d/meminfo_extra" % node
+            meminfo = "/sys/devices/system/node/node%d/meminfo" % node
             try:
                 with open(meminfo, 'r') as infile:
                     for line in infile:
-                        match = re_node_MemFreeInit.search(line)
+                        match = re_node_MemTotal.search(line)
                         if match:
-                            memTotal_mib = int(match.group(1))
+                            Total_KiB += int(match.group(1))
                             continue
+                        match = re_node_MemFree.search(line)
+                        if match:
+                            Free_KiB += int(match.group(1))
+                            continue
+                        match = re_node_FilePages.search(line)
+                        if match:
+                            Free_KiB += int(match.group(1))
+                            continue
+                        match = re_node_SReclaim.search(line)
+                        if match:
+                            Free_KiB += int(match.group(1))
+                            continue
+                        match = re_node_CommitLimit.search(line)
+                        if match:
+                            limit = int(match.group(1))
+                            continue
+                        match = re_node_Committed_AS.search(line)
+                        if match:
+                            committed = int(match.group(1))
+                            continue
+
+                if self._is_strict():
+                    Free_KiB = limit - committed
+
             except IOError:
                 # silently ignore IO errors (eg. file missing)
                 pass
 
-            memTotal_mib /= 1024
-            if tot_memory[node]:
-                memTotal_mib = tot_memory[node]
-            node_attr = {
-                'node_memtotal_mib': memTotal_mib,
-                 }
-            attr.update(node_attr)
+            # Calculate PSS
+            Pss_MiB = 0
+            if node == 0:
+                cmd = 'cat /proc/*/smaps 2>/dev/null | awk \'/^Pss:/ ' \
+                      '{a += $2;} END {printf "%d\\n", a/1024.0;}\''
+                try:
+                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                            shell=True)
+                    result = proc.stdout.read().strip()
+                    Pss_MiB = int(result)
+                except subprocess.CalledProcessError as e:
+                    LOG.error("Cannot calculate PSS (%s) (%d)", cmd,
+                              e.returncode)
+                except OSError as e:
+                    LOG.error("Failed to execute (%s) OS error (%d)", cmd,
+                              e.errno)
+
+            # need to multiply Total_MiB by 1024 to match compute_huge
+            node_total_kib = Total_HP_MiB * Ki + Free_KiB + Pss_MiB * Ki
+
+            # Read base memory from compute_reserved.conf
+            base_mem_MiB = 0
+            with open('/etc/nova/compute_reserved.conf', 'r') as infile:
+                for line in infile:
+                    if "COMPUTE_BASE_RESERVED" in line:
+                        val = line.split("=")
+                        base_reserves = val[1].strip('\n')[1:-1]
+                        for reserve in base_reserves.split():
+                            reserve = reserve.split(":")
+                            if reserve[0].strip('"') == "node%d" % node:
+                                base_mem_MiB = int(reserve[1].strip('MB'))
+
+            # On small systems, clip memory overhead to more reasonable minimal
+            # settings
+            if (Total_KiB / Ki - base_mem_MiB) < 1000:
+                if node == 0:
+                    base_mem_MiB = compute_min_MB
+                    if tsc.nodetype == 'controller':
+                        base_mem_MiB += controller_min_MB
+                else:
+                    base_mem_MiB = compute_min_non0_MB
+
+            Eng_KiB = node_total_kib - base_mem_MiB * Ki
+
+            vswitch_mem_kib = (attr.get('avs_hugepages_size_mib', 0) *
+                               attr.get('avs_hugepages_nr', 0) * Ki)
+
+            VM_KiB = (Eng_KiB - vswitch_mem_kib)
+
+            max_vm_pages_2M = VM_KiB / SZ_2M_Ki
+            max_vm_pages_1G = VM_KiB / SZ_1G_Ki
+
+            attr.update({
+                'vm_hugepages_possible_2M': max_vm_pages_2M,
+                'vm_hugepages_possible_1G': max_vm_pages_1G,
+            })
+
+            # calculate 100% 2M pages if it is initial report and the huge
+            # pages have not been allocated
+            if initial_report:
+                Total_HP_MiB += int(max_vm_pages_2M * (SZ_2M_Ki / Ki))
+                Free_HP_MiB = Total_HP_MiB
+                attr.update({
+                    'vm_hugepages_nr_2M': max_vm_pages_2M,
+                    'vm_hugepages_avail_2M': max_vm_pages_2M,
+                    'vm_hugepages_nr_1G': 0
+                })
+
+            attr.update({
+                'numa_node': node,
+                'memtotal_mib': Total_HP_MiB,
+                'memavail_mib': Free_HP_MiB,
+                'hugepages_configured': 'True',
+                'node_memtotal_mib': node_total_kib / 1024,
+                   })
 
             imemory.append(attr)
 
@@ -502,7 +549,6 @@ class NodeOperator(object):
         self.total_memory_MiB = 0
 
         re_node_MemTotal = re.compile(r'^Node\s+\d+\s+\MemTotal:\s+(\d+)')
-        re_node_MemFreeInit = re.compile(r'^Node\s+\d+\s+\MemFreeInit:\s+(\d+)')
         re_node_MemFree = re.compile(r'^Node\s+\d+\s+\MemFree:\s+(\d+)')
         re_node_FilePages = re.compile(r'^Node\s+\d+\s+\FilePages:\s+(\d+)')
         re_node_SReclaim = re.compile(r'^Node\s+\d+\s+\SReclaimable:\s+(\d+)')
@@ -534,19 +580,6 @@ class NodeOperator(object):
                             Free_MiB += int(match.group(1))
                             continue
 
-            except IOError:
-                # silently ignore IO errors (eg. file missing)
-                pass
-
-            # WRS kernel customization to exclude kernel overheads
-            meminfo = "/sys/devices/system/node/node%d/meminfo_extra" % node
-            try:
-                with open(meminfo, 'r') as infile:
-                    for line in infile:
-                        match = re_node_MemFreeInit.search(line)
-                        if match:
-                            Total_MiB = int(match.group(1))
-                            continue
             except IOError:
                 # silently ignore IO errors (eg. file missing)
                 pass

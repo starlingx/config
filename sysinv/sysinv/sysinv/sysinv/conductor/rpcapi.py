@@ -282,7 +282,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        inuma_dict_array=inuma_dict_array))
 
     def icpus_update_by_ihost(self, context,
-                              ihost_uuid, icpu_dict_array):
+                              ihost_uuid, icpu_dict_array,
+                              force_grub_update,
+                              ):
         """Create cpus for an ihost with the supplied data.
 
         This method allows records for cpus for ihost to be created.
@@ -290,13 +292,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: an admin context
         :param ihost_uuid: ihost uuid unique id
         :param icpu_dict_array: initial values for cpu objects
+        :param force_grub_update: bool value to force grub update
         :returns: pass or fail
         """
 
         return self.call(context,
                          self.make_msg('icpus_update_by_ihost',
                                        ihost_uuid=ihost_uuid,
-                                       icpu_dict_array=icpu_dict_array))
+                                       icpu_dict_array=icpu_dict_array,
+                                       force_grub_update=force_grub_update))
 
     def imemory_update_by_ihost(self, context,
                                 ihost_uuid, imemory_dict_array):
@@ -834,13 +838,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        status=status,
                                        error=error))
 
-    def update_cpu_config(self, context):
+    def update_cpu_config(self, context, host_uuid):
         """Synchronously, have the conductor update the cpu
         configuration.
 
         :param context: request context.
+        :param host_uuid: host unique uuid
         """
-        return self.call(context, self.make_msg('update_cpu_config'))
+        return self.call(context, self.make_msg('update_cpu_config',
+                                                host_uuid=host_uuid))
 
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):

@@ -206,6 +206,8 @@ REGION_SECONDARY = "External"
 # Hugepage sizes in MiB
 MIB_2M = 2
 MIB_1G = 1024
+Ki = 1024
+NUM_4K_PER_MiB = 256
 
 # Dynamic IO Resident Set Size(RSS) in MiB per socket
 DISK_IO_RESIDENT_SET_SIZE_MIB = 2000

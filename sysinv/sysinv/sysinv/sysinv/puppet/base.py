@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import collections
 import abc
 import itertools
 import netaddr
@@ -213,3 +214,11 @@ class BasePuppet(object):
                 s = "%s-%s" % (rng[0][1], rng[-1][1])
             ranges.append(s)
         return ','.join(ranges)
+
+    def _get_numa_index_list(self, obj):
+        """Create map of objects indexed by numa node"""
+        obj_lists = collections.defaultdict(list)
+        for index, o in enumerate(obj):
+            o["_index"] = index
+            obj_lists[o.numa_node].append(o)
+        return obj_lists

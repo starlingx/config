@@ -2553,7 +2553,8 @@ class ConductorManager(service.PeriodicService):
         LOG.info('%9s : %s' % ('thread_id', t))
 
     def icpus_update_by_ihost(self, context,
-                              ihost_uuid, icpu_dict_array):
+                              ihost_uuid, icpu_dict_array,
+                              force_grub_update=False):
         """Create cpus for an ihost with the supplied data.
 
         This method allows records for cpus for ihost to be created.
@@ -2561,6 +2562,7 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context
         :param ihost_uuid: ihost uuid unique id
         :param icpu_dict_array: initial values for cpu objects
+        :param force_grub_update: bool value to force grub update
         :returns: pass or fail
         """
 
@@ -2626,6 +2628,9 @@ class ConductorManager(service.PeriodicService):
                                         subfunctions=ihost.get('subfunctions'),
                                         reference='current (unchanged)',
                                         sockets=cs, cores=cc, threads=ct)
+                if ihost.administrative == constants.ADMIN_LOCKED and \
+                        force_grub_update:
+                    self.update_cpu_config(context, ihost_uuid)
                 return
 
             self.print_cpu_topology(hostname=ihost.get('hostname'),
@@ -2679,9 +2684,15 @@ class ConductorManager(service.PeriodicService):
                 # info may have already been posted
                 pass
 
-        if (utils.is_host_simplex_controller(ihost) and
-                ihost.administrative == constants.ADMIN_LOCKED):
-            self.update_cpu_config(context)
+        # if it is the first controller wait for the initial config to
+        # be completed
+        if ((utils.is_host_simplex_controller(ihost) and
+                os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)) or
+                (not utils.is_host_simplex_controller(ihost) and
+                 ihost.administrative == constants.ADMIN_LOCKED)):
+            LOG.info("Update CPU grub config, host_uuid (%s), name (%s)"
+                     % (ihost_uuid, ihost.get('hostname')))
+            self.update_cpu_config(context, ihost_uuid)
 
         return
 
@@ -2753,6 +2764,13 @@ class ConductorManager(service.PeriodicService):
                     mem = self.dbapi.imemory_create(forihostid, mem_dict)
                 else:
                     for imem in imems:
+                        # Include 4K pages in the displayed VM memtotal
+                        if imem.vm_hugepages_nr_4K is not None:
+                            vm_4K_mib = \
+                                (imem.vm_hugepages_nr_4K /
+                                 constants.NUM_4K_PER_MiB)
+                            mem_dict['memtotal_mib'] += vm_4K_mib
+                            mem_dict['memavail_mib'] += vm_4K_mib
                         pmem = self.dbapi.imemory_update(imem['uuid'],
                                                          mem_dict)
             except:
@@ -6689,19 +6707,28 @@ class ConductorManager(service.PeriodicService):
             # discard temporary file
             os.remove(hosts_file_temp)
 
-    def update_cpu_config(self, context):
-        """Update the cpu assignment configuration on an AIO system"""
-        LOG.info("update_cpu_config")
+    def update_cpu_config(self, context, host_uuid):
+        """Update the cpu assignment configuration on a host"""
 
-        try:
-            hostname = socket.gethostname()
-            host = self.dbapi.ihost_get(hostname)
-        except Exception as e:
-            LOG.warn("Failed to get local host object: %s", str(e))
-            return
-        command = ['/etc/init.d/compute-huge.sh', 'reload']
-        rpcapi = agent_rpcapi.AgentAPI()
-        rpcapi.execute_command(context, host_uuid=host.uuid, command=command)
+        # only apply the manifest on the host that has compute sub function
+        host = self.dbapi.ihost_get(host_uuid)
+        if constants.COMPUTE in host.subfunctions:
+            force = (not utils.is_host_simplex_controller(host))
+            LOG.info("update_cpu_config, host uuid: (%s), force: (%s)",
+                     host_uuid, str(force))
+            personalities = [constants.CONTROLLER, constants.COMPUTE]
+            config_uuid = self._config_update_hosts(context,
+                                                    personalities,
+                                                    host_uuid=host_uuid)
+            config_dict = {
+                "personalities": personalities,
+                "host_uuids": [host_uuid],
+                "classes": ['platform::compute::grub::runtime']
+            }
+            self._config_apply_runtime_manifest(context, config_uuid,
+                                                config_dict,
+                                                force=force,
+                                                host_uuid=host_uuid)
 
     def _update_resolv_file(self, context, config_uuid, personalities):
         """Generate and update the resolv.conf files on the system"""
@@ -7403,7 +7430,8 @@ class ConductorManager(service.PeriodicService):
                                        context,
                                        config_uuid,
                                        config_dict,
-                                       host_uuid=None):
+                                       host_uuid=None,
+                                       force=False):
 
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuid is set, only update hiera data for that host
@@ -7413,8 +7441,10 @@ class ConductorManager(service.PeriodicService):
         # is not set. If host_uuid is set only update hiera data for that host
         self._config_update_puppet(config_uuid,
                                    config_dict,
-                                   host_uuid=host_uuid)
+                                   host_uuid=host_uuid,
+                                   force=force)
 
+        config_dict.update({'force': force})
         rpcapi = agent_rpcapi.AgentAPI()
         rpcapi.config_apply_runtime_manifest(context,
                                              config_uuid=config_uuid,

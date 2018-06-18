@@ -436,8 +436,7 @@ class CPUController(rest.RestController):
 
             rpc_port.save()
 
-            if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
-               action == constants.APPLY_ACTION):
+            if action == constants.APPLY_ACTION:
                 # perform rpc to conductor to perform config apply
                 pecan.request.rpcapi.update_cpu_config(
                     pecan.request.context)
