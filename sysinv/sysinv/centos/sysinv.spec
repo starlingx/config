@@ -9,9 +9,11 @@ URL: unknown
 Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: python-setuptools
+BuildRequires: python-pbr
 Requires: python-pyudev
 Requires: pyparted
 Requires: python-ipaddr
+Requires: python-pbr
 # Requires: oslo.config
 
 BuildRequires: systemd
