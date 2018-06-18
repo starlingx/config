@@ -30,6 +30,7 @@ from cgtsclient.v1 import event_log
 from cgtsclient.v1 import event_suppression
 from cgtsclient.v1 import firewallrules
 from cgtsclient.v1 import health
+from cgtsclient.v1 import helm
 from cgtsclient.v1 import ialarm
 from cgtsclient.v1 import icommunity
 from cgtsclient.v1 import icpu
@@ -148,3 +149,4 @@ class Client(http.HTTPClient):
         self.storage_tier = storage_tier.StorageTierManager(self)
         self.storage_ceph_external = \
             storage_ceph_external.StorageCephExternalManager(self)
+        self.helm = helm.HelmManager(self)

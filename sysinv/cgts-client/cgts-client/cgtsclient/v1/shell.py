@@ -18,6 +18,7 @@ from cgtsclient.v1 import event_log_shell
 from cgtsclient.v1 import event_suppression_shell
 from cgtsclient.v1 import firewallrules_shell
 from cgtsclient.v1 import health_shell
+from cgtsclient.v1 import helm_shell
 
 from cgtsclient.v1 import ialarm_shell
 from cgtsclient.v1 import icommunity_shell
@@ -111,6 +112,7 @@ COMMAND_MODULES = [
     license_shell,
     certificate_shell,
     storage_tier_shell,
+    helm_shell,
 ]
 
 

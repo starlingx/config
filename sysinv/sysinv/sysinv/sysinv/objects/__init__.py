@@ -36,6 +36,7 @@ from sysinv.objects import drbdconfig
 from sysinv.objects import port_ethernet
 from sysinv.objects import event_log
 from sysinv.objects import event_suppression
+from sysinv.objects import helm_overrides
 from sysinv.objects import host
 from sysinv.objects import host_upgrade
 from sysinv.objects import network_infra
@@ -179,6 +180,7 @@ storage_file = storage_file.StorageFile
 storage_external = storage_external.StorageExternal
 storage_tier = storage_tier.StorageTier
 storage_ceph_external = storage_ceph_external.StorageCephExternal
+helm_overrides = helm_overrides.HelmOverrides
 
 __all__ = (system,
            cluster,
@@ -245,6 +247,7 @@ __all__ = (system,
            storage_external,
            storage_tier,
            storage_ceph_external,
+           helm_overrides,
            # alias objects for RPC compatibility
            ihost,
            ilvg,

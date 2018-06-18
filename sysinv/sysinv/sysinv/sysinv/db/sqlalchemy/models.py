@@ -1635,3 +1635,10 @@ class certificate(Base):
     start_date = Column(DateTime(timezone=False))
     expiry_date = Column(DateTime(timezone=False))
     capabilities = Column(JSONEncodedDict)
+
+
+class HelmOverrides(Base):
+    __tablename__ = 'helm_overrides'
+
+    name = Column(String(255), primary_key=True, unique=True)
+    user_overrides = Column(Text, nullable=True)

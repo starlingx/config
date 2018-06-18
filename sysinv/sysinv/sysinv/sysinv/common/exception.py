@@ -578,6 +578,10 @@ class CertificateAlreadyExists(Conflict):
     message = _("A Certificate with uuid %(uuid)s already exists.")
 
 
+class HelmOverrideAlreadyExists(Conflict):
+    message = _("A HelmOverride with name %(name)s already exists.")
+
+
 class InstanceDeployFailure(Invalid):
     message = _("Failed to deploy instance: %(reason)s")
 
@@ -885,6 +889,10 @@ class TPMDeviceNotFound(NotFound):
 
 class CertificateNotFound(NotFound):
     message = _("No certificate with uuid %(uuid)s")
+
+
+class HelmOverrideNotFound(NotFound):
+    message = _("No helm override with name %(name)s")
 
 
 class CertificateTypeNotFound(NotFound):

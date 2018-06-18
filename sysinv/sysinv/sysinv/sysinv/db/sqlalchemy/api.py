@@ -7436,3 +7436,53 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.CertificateNotFound(uuid)
             query.delete()
+
+    def _helm_override_get(self, name):
+        query = model_query(models.HelmOverrides)
+        query = query.filter_by(name=name)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.HelmOverrideNotFound(name)
+
+    @objects.objectify(objects.helm_overrides)
+    def helm_override_create(self, values):
+
+        overrides = models.HelmOverrides()
+        overrides.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(overrides)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add HelmOverrides %s. "
+                          "Already exists with this name" %
+                          (values['name']))
+                raise exception.HelmOverrideAlreadyExists(name=values['name'])
+            return self._helm_override_get(values['name'])
+
+    @objects.objectify(objects.helm_overrides)
+    def helm_override_get(self, name):
+        return self._helm_override_get(name)
+
+    @objects.objectify(objects.helm_overrides)
+    def helm_override_update(self, name, values):
+        with _session_for_write() as session:
+            query = model_query(models.HelmOverrides, session=session)
+            query = query.filter_by(name=name)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count == 0:
+                raise exception.HelmOverrideNotFound(name)
+            return query.one()
+
+    def helm_override_destroy(self, name):
+        with _session_for_write() as session:
+            query = model_query(models.HelmOverrides, session=session)
+            query = query.filter_by(name=name)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.HelmOverrideNotFound(name)
+            query.delete()

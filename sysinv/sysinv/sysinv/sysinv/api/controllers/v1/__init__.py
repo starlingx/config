@@ -37,6 +37,7 @@ from sysinv.api.controllers.v1 import event_log
 from sysinv.api.controllers.v1 import event_suppression
 from sysinv.api.controllers.v1 import firewallrules
 from sysinv.api.controllers.v1 import health
+from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
 from sysinv.api.controllers.v1 import interface
 from sysinv.api.controllers.v1 import link
@@ -108,6 +109,9 @@ class V1(base.APIBase):
 
     ihosts = [link.Link]
     "Links to the ihosts resource"
+
+    helm_charts = [link.Link]
+    "Links to the helm resource"
 
     inode = [link.Link]
     "Links to the inode resource"
@@ -259,6 +263,14 @@ class V1(base.APIBase):
                                         'ihosts', '',
                                         bookmark=True)
                      ]
+
+        v1.helm_charts = [link.Link.make_link('self', pecan.request.host_url,
+                                              'helm_charts', ''),
+                          link.Link.make_link('bookmark',
+                                              pecan.request.host_url,
+                                              'helm_charts', '',
+                                              bookmark=True)
+                          ]
 
         v1.inode = [link.Link.make_link('self', pecan.request.host_url,
                                         'inode', ''),
@@ -722,6 +734,7 @@ class Controller(rest.RestController):
 
     isystems = system.SystemController()
     ihosts = host.HostController()
+    helm_charts = helm_charts.HelmChartsController()
     inodes = node.NodeController()
     icpus = cpu.CPUController()
     imemorys = memory.MemoryController()
