@@ -139,9 +139,6 @@ class StorageLVM(base.APIBase):
                                           'services',
                                           'capabilities'])
 
-        chosts = pecan.request.dbapi.ihost_get_by_personality(
-            constants.CONTROLLER)
-
         stor_lvm.links =\
             [link.Link.make_link('self', pecan.request.host_url,
                                  'storage_lvm',

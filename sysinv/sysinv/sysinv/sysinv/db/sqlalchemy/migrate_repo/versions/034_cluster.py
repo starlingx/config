@@ -17,11 +17,11 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
-    i_system = Table('i_system',
-                     meta,
-                     Column('id', Integer,
-                            primary_key=True, nullable=False),
-                     mysql_engine=ENGINE, mysql_charset=CHARSET)
+    Table('i_system',
+        meta,
+        Column('id', Integer,
+            primary_key=True, nullable=False),
+        mysql_engine=ENGINE, mysql_charset=CHARSET)
 
     clusters = Table(
         'clusters',

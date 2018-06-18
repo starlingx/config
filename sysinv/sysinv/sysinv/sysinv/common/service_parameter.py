@@ -119,7 +119,7 @@ def _validate_ldap_url(name, value):
 def _validate_ldap_dn(name, value):
     try:
         ldap.dn.str2dn(value)
-    except ldap.DECODING_ERROR as e:
+    except ldap.DECODING_ERROR:
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' must be a valid LDAP DN value" % name))
 

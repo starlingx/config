@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,17 +9,17 @@ from sysinv.common import constants
 from . import openstack
 
 
-class PankoPuppet(openstack.OpenstackBasePuppet):
-    """Class to encapsulate puppet operations for panko configuration"""
+class GnocchiPuppet(openstack.OpenstackBasePuppet):
+    """Class to encapsulate puppet operations for gnocchi configuration"""
 
-    SERVICE_NAME = 'panko'
-    SERVICE_PORT = 8977
+    SERVICE_NAME = 'gnocchi'
+    SERVICE_PORT = 8041
 
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
 
         return {
-            'panko::db::postgresql::user': dbuser,
+            'gnocchi::db::postgresql::user': dbuser,
         }
 
     def get_secure_static_config(self):
@@ -27,53 +27,53 @@ class PankoPuppet(openstack.OpenstackBasePuppet):
         kspass = self._get_service_password(self.SERVICE_NAME)
 
         return {
-            'panko::db::postgresql::password': dbpass,
+            'gnocchi::db::postgresql::password': dbpass,
 
-            'panko::keystone::auth::password': kspass,
-            'panko::keystone::authtoken::password': kspass,
+            'gnocchi::keystone::auth::password': kspass,
+            'gnocchi::keystone::authtoken::password': kspass,
         }
 
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
         config = {
-            'panko::keystone::auth::region':
+            'gnocchi::keystone::auth::region':
                 self._get_service_region_name(self.SERVICE_NAME),
-            'panko::keystone::auth::public_url': self.get_public_url(),
-            'panko::keystone::auth::internal_url': self.get_internal_url(),
-            'panko::keystone::auth::admin_url': self.get_admin_url(),
-            'panko::keystone::auth::auth_name': ksuser,
-            'panko::keystone::auth::tenant': self._get_service_tenant_name(),
+            'gnocchi::keystone::auth::public_url': self.get_public_url(),
+            'gnocchi::keystone::auth::internal_url': self.get_internal_url(),
+            'gnocchi::keystone::auth::admin_url': self.get_admin_url(),
+            'gnocchi::keystone::auth::auth_name': ksuser,
+            'gnocchi::keystone::auth::tenant': self._get_service_tenant_name(),
 
-            'panko::keystone::authtoken::auth_url':
+            'gnocchi::keystone::authtoken::auth_url':
                 self._keystone_identity_uri(),
-            'panko::keystone::authtoken::auth_uri':
+            'gnocchi::keystone::authtoken::auth_uri':
                 self._keystone_auth_uri(),
-            'panko::keystone::authtoken::user_domain_name':
+            'gnocchi::keystone::authtoken::user_domain_name':
                 self._get_service_user_domain_name(),
-            'panko::keystone::authtoken::project_domain_name':
+            'gnocchi::keystone::authtoken::project_domain_name':
                 self._get_service_project_domain_name(),
-            'panko::keystone::authtoken::project_name':
+            'gnocchi::keystone::authtoken::project_name':
                 self._get_service_tenant_name(),
-            'panko::keystone::authtoken::region_name':
+            'gnocchi::keystone::authtoken::region_name':
                 self._keystone_region_name(),
-            'panko::keystone::authtoken::username': ksuser,
+            'gnocchi::keystone::authtoken::username': ksuser,
 
-            'openstack::panko::params::region_name':
+            'openstack::gnocchi::params::region_name':
                 self._get_service_region_name(self.SERVICE_NAME),
-            'openstack::panko::params::service_create':
+            'openstack::gnocchi::params::service_create':
                 self._to_create_services(),
         }
         if (self._distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-            config.update({'openstack::panko::params::service_enabled': False,
-                           'panko::keystone::auth::configure_endpoint': False})
+            config.update({'openstack::gnocchi::params::service_enabled': False,
+                           'gnocchi::keystone::auth::configure_endpoint': False})
 
         return config
 
     def get_secure_system_config(self):
         config = {
-            'panko::db::database_connection':
+            'gnocchi::database_connection':
                 self._format_database_connection(self.SERVICE_NAME),
         }
 

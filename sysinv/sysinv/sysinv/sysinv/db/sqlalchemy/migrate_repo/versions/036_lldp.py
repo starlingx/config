@@ -17,8 +17,8 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
-    ports = Table('ports', meta, autoload=True, autoload_with=migrate_engine)
-    ihost = Table('i_host', meta, autoload=True, autoload_with=migrate_engine)
+    Table('ports', meta, autoload=True, autoload_with=migrate_engine)
+    Table('i_host', meta, autoload=True, autoload_with=migrate_engine)
 
     lldp_agents = Table(
         'lldp_agents',

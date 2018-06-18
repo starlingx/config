@@ -1162,7 +1162,7 @@ class Connection(api.Connection):
             try:
                 session.add(isystem)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 raise exception.SystemAlreadyExists(uuid=values['uuid'])
             return isystem
 
@@ -1223,7 +1223,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                isystem_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
 
@@ -2385,7 +2385,7 @@ class Connection(api.Connection):
             try:
                 session.add(obj)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 LOG.error("Failed to update interface")
 
             return query.one()
@@ -2793,7 +2793,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.partition)
     def partition_update(self, partition_id, values, forihostid=None):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.partition, read_deleted="no")
             if forihostid:
                 query = query.filter_by(forihostid=forihostid)
@@ -2806,7 +2806,7 @@ class Connection(api.Connection):
             return query.one()
 
     def partition_destroy(self, partition_id):
-        with _session_for_write() as session:
+        with _session_for_write():
             # Delete physically since it has unique columns
             if uuidutils.is_uuid_like(partition_id):
                 model_query(models.partition, read_deleted="no"). \
@@ -2831,7 +2831,7 @@ class Connection(api.Connection):
             try:
                 session.add(journal)
                 session.flush()
-            except Exception as e:
+            except Exception:
                 raise
 
             return journal
@@ -3262,7 +3262,7 @@ class Connection(api.Connection):
             try:
                 session.add(itrapdest)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 raise exception.TrapDestAlreadyExists(uuid=values['uuid'])
 
             return itrapdest
@@ -3332,7 +3332,7 @@ class Connection(api.Connection):
             try:
                 session.add(icommunity)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 raise exception.CommunityAlreadyExists(uuid=values['uuid'])
             return icommunity
 
@@ -3465,7 +3465,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                node_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
             # if node_ref['reservation'] is not None:
@@ -3474,7 +3474,7 @@ class Connection(api.Connection):
             # Get node ID, if an UUID was supplied. The ID is
             # required for deleting all ports, attached to the node.
             # if uuidutils.is_uuid_like(server):
-            server_id = node_ref['id']
+            #     server_id = node_ref['id']
             # else:
             #     server_id = server
 
@@ -3552,7 +3552,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                node_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
             # if node_ref['reservation'] is not None:
@@ -3561,7 +3561,7 @@ class Connection(api.Connection):
             # Get node ID, if an UUID was supplied. The ID is
             # required for deleting all ports, attached to the node.
             # if uuidutils.is_uuid_like(server):
-            server_id = node_ref['id']
+            #     server_id = node_ref['id']
             # else:
             #     server_id = server
 
@@ -3586,7 +3586,7 @@ class Connection(api.Connection):
             try:
                 session.add(ntp)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 raise exception.NTPAlreadyExists(uuid=values['uuid'])
             return self._ntp_get(values['uuid'])
 
@@ -3639,7 +3639,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                node_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
             # if node_ref['reservation'] is not None:
@@ -3648,7 +3648,7 @@ class Connection(api.Connection):
             # Get node ID, if an UUID was supplied. The ID is
             # required for deleting all ports, attached to the node.
             # if uuidutils.is_uuid_like(server):
-            server_id = node_ref['id']
+            #     server_id = node_ref['id']
             # else:
             #     server_id = server
 
@@ -4077,7 +4077,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.storage_backend)
     def storage_backend_update(self, storage_backend_id, values):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.StorageBackend, read_deleted="no")
             query = add_storage_backend_filter(query, storage_backend_id)
             try:
@@ -4124,7 +4124,7 @@ class Connection(api.Connection):
             try:
                 session.add(obj)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 LOG.error("Failed to update storage backend")
 
             return query.one()
@@ -4133,7 +4133,7 @@ class Connection(api.Connection):
         return self._storage_backend_destroy(models.StorageBackend, storage_backend_id)
 
     def _storage_backend_destroy(self, cls, storage_backend_id):
-        with _session_for_write() as session:
+        with _session_for_write():
             # Delete storage_backend which should cascade to delete derived backends
             if uuidutils.is_uuid_like(storage_backend_id):
                 model_query(cls, read_deleted="no").\
@@ -4312,7 +4312,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                node_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
             # if node_ref['reservation'] is not None:
@@ -4321,7 +4321,7 @@ class Connection(api.Connection):
             # Get node ID, if an UUID was supplied. The ID is
             # required for deleting all ports, attached to the node.
             # if uuidutils.is_uuid_like(server):
-            server_id = node_ref['id']
+            #     server_id = node_ref['id']
             # else:
             #     server_id = server
 
@@ -4399,7 +4399,7 @@ class Connection(api.Connection):
             query = add_identity_filter(query, server)
 
             try:
-                node_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.ServerNotFound(server=server)
 
@@ -4477,7 +4477,7 @@ class Connection(api.Connection):
             query = model_query(models.Services, session=session)
             query = query.filter_by(name=service)
             try:
-                node_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.ServiceNotFound(service=service)
             query.delete()
@@ -5230,7 +5230,7 @@ class Connection(api.Connection):
             try:
                 session.add(address_pool)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 raise exception.AddressPoolAlreadyExists(uuid=values['uuid'])
             return self._address_pool_get(values['uuid'])
 
@@ -5395,7 +5395,7 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def _sensor_analog_update(self, sensorid, values, hostid=None):
-        with _session_for_write() as session:
+        with _session_for_write():
             # May need to reserve in multi controller system; ref sysinv
             query = model_query(models.SensorsAnalog, read_deleted="no")
 
@@ -5417,7 +5417,7 @@ class Connection(api.Connection):
             return query.one()
 
     def _sensor_analog_destroy(self, sensorid):
-        with _session_for_write() as session:
+        with _session_for_write():
             # Delete port which should cascade to delete SensorsAnalog
             if uuidutils.is_uuid_like(sensorid):
                 model_query(models.Sensors, read_deleted="no").\
@@ -5555,7 +5555,7 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def _sensor_discrete_update(self, sensorid, values, hostid=None):
-        with _session_for_write() as session:
+        with _session_for_write():
             # May need to reserve in multi controller system; ref sysinv
             query = model_query(models.SensorsDiscrete, read_deleted="no")
 
@@ -5577,7 +5577,7 @@ class Connection(api.Connection):
             return query.one()
 
     def _sensor_discrete_destroy(self, sensorid):
-        with _session_for_write() as session:
+        with _session_for_write():
             # Delete port which should cascade to delete SensorsDiscrete
             if uuidutils.is_uuid_like(sensorid):
                 model_query(models.Sensors, read_deleted="no").\
@@ -5659,9 +5659,7 @@ class Connection(api.Connection):
             values['uuid'] = uuidutils.generate_uuid()
         values['host_id'] = int(host_id)
 
-        is_profile = False
         if 'sensor_profile' in values:
-            is_profile = True
             values.pop('sensor_profile')
 
         # The id is null for ae sensors with more than one member
@@ -5705,7 +5703,7 @@ class Connection(api.Connection):
     @objects.objectify(objects.sensor)
     def isensor_get_list(self, limit=None, marker=None,
                          sort_key=None, sort_dir=None):
-        query = model_query(models.Sensors)
+        model_query(models.Sensors)
         return _paginate_query(models.Sensors, limit, marker,
                                sort_key, sort_dir)
 
@@ -5755,7 +5753,7 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def _isensor_update(self, cls, sensor_id, values):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.Sensors)
             query = add_sensor_filter(query, sensor_id)
             try:
@@ -5776,7 +5774,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.sensor)
     def isensor_update(self, isensor_id, values):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.Sensors, read_deleted="no")
             query = add_sensor_filter(query, isensor_id)
             try:
@@ -5799,7 +5797,7 @@ class Connection(api.Connection):
                                             isensor_id, values)
 
     def _isensor_destroy(self, cls, sensor_id):
-        with _session_for_write() as session:
+        with _session_for_write():
             # Delete sensor which should cascade to delete derived sensors
             if uuidutils.is_uuid_like(sensor_id):
                 model_query(cls, read_deleted="no").\
@@ -5888,7 +5886,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.sensorgroup)
     def isensorgroup_update(self, isensorgroup_id, values):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.SensorGroups, read_deleted="no")
             query = add_sensorgroup_filter(query, isensorgroup_id)
             try:
@@ -5939,9 +5937,7 @@ class Connection(api.Connection):
             values['uuid'] = uuidutils.generate_uuid()
         values['host_id'] = int(host_id)
 
-        is_profile = False
         if 'sensorgroup_profile' in values:
-            is_profile = True
             values.pop('sensorgroup_profile')
 
         temp_id = obj.id
@@ -6025,7 +6021,7 @@ class Connection(api.Connection):
             return query.one()
 
     def _isensorgroup_destroy(self, cls, sensorgroup_id):
-        with _session_for_write() as session:
+        with _session_for_write():
             # Delete sensorgroup which should cascade to
             # delete derived sensorgroups
             if uuidutils.is_uuid_like(sensorgroup_id):
@@ -6179,14 +6175,14 @@ class Connection(api.Connection):
             query = add_identity_filter(query, load)
 
             try:
-                node_ref = query.one()
+                query.one()
             except NoResultFound:
                 raise exception.LoadNotFound(load=load)
 
             query.delete()
 
     def set_upgrade_loads_state(self, upgrade, to_state, from_state):
-        with _session_for_write() as session:
+        with _session_for_write():
             self.load_update(upgrade.from_load, {'state': from_state})
             self.load_update(upgrade.to_load, {'state': to_state})
 
@@ -6215,8 +6211,9 @@ class Connection(api.Connection):
             try:
                 session.add(upgrade)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 raise exception.UpgradeAlreadyExists(uuid=values['uuid'])
+
             return self._software_upgrade_get(values['uuid'])
 
     @objects.objectify(objects.software_upgrade)
@@ -6507,7 +6504,7 @@ class Connection(api.Connection):
         with _session_for_write() as session:
             cluster = self._cluster_get(cluster_uuid,
                                         session=session)
-            peers = values.pop('peers', [])
+            values.pop('peers', [])
             cluster.update(values)
             # if peers:
             #     self._peer_update(session, cluster, peers)
@@ -6575,7 +6572,7 @@ class Connection(api.Connection):
             try:
                 session.add(peer)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 raise exception.PeerAlreadyExists(uuid=values['uuid'])
             return self._peer_get(values['uuid'])
 
@@ -6639,7 +6636,7 @@ class Connection(api.Connection):
             try:
                 session.add(lldp_agent)
                 session.flush()
-            except db_exc.DBDuplicateEntry as exc:
+            except db_exc.DBDuplicateEntry:
                 LOG.error("Failed to add lldp agent %s, on host %s:"
                           "already exists" %
                           (values['uuid'],
@@ -6691,7 +6688,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.lldp_agent)
     def lldp_agent_update(self, uuid, values):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.LldpAgents, read_deleted="no")
 
             try:
@@ -6709,7 +6706,7 @@ class Connection(api.Connection):
 
     def lldp_agent_destroy(self, agentid):
 
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.LldpAgents, read_deleted="no")
             query = add_lldp_filter_by_agent(query, agentid)
 
@@ -6831,7 +6828,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_update(self, uuid, values):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.LldpNeighbours, read_deleted="no")
 
             try:
@@ -6848,7 +6845,7 @@ class Connection(api.Connection):
                     err="Multiple entries found for uuid %s" % uuid)
 
     def lldp_neighbour_destroy(self, neighbourid):
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.LldpNeighbours, read_deleted="no")
             query = add_lldp_filter_by_neighbour(query, neighbourid)
             try:
@@ -7038,7 +7035,7 @@ class Connection(api.Connection):
                 raise exception.InvalidParameterValue(
                     err="agent id and neighbour id not specified")
 
-        with _session_for_write() as session:
+        with _session_for_write():
             query = model_query(models.LldpTlvs, read_deleted="no")
 
             if agentid:
@@ -7097,7 +7094,7 @@ class Connection(api.Connection):
         return results
 
     def lldp_tlv_destroy(self, id):
-        with _session_for_write() as session:
+        with _session_for_write():
             model_query(models.LldpTlvs, read_deleted="no").\
                 filter_by(id=id).\
                 delete()

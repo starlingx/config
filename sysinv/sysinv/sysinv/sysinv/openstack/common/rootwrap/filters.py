@@ -101,7 +101,8 @@ class PathFilter(CommandFilter):
     """
 
     def match(self, userargs):
-        command, arguments = userargs[0], userargs[1:]
+        # command = userargs[0]
+        arguments = userargs[1:]
 
         equal_args_num = len(self.args) == len(arguments)
         exec_is_valid = super(PathFilter, self).match(userargs)

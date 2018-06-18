@@ -103,7 +103,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         values = {'cluster_uuid': self.cluster.uuid,
                   'name': 'gold'}
 
-        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add') as mock_tiers_add:
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add'):
             response = self.post_json('/storage_tiers', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
 
@@ -136,7 +136,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         values = {'cluster_uuid': self.cluster.uuid,
                   'name': 'platinum'}
 
-        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add') as mock_tiers_add:
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add'):
             response = self.post_json('/storage_tiers', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
 
@@ -284,7 +284,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         values = {'cluster_uuid': self.cluster.uuid,
                   'name': 'gold'}
 
-        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add') as mock_tiers_add:
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add'):
             response = self.post_json('/storage_tiers', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
 
@@ -375,7 +375,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
                   'name': 'platinum',
                   'status': constants.SB_TIER_STATUS_IN_USE}
 
-        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add') as mock_tiers_add:
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add'):
             response = self.post_json('/storage_tiers', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
 
@@ -471,7 +471,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
                   'name': 'platinum',
                   'status': constants.SB_TIER_STATUS_IN_USE}
 
-        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add') as mock_tiers_add:
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add'):
             response = self.post_json('/storage_tiers', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
 
@@ -497,7 +497,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         self.assertIn('Storage Tier platinum cannot be deleted. It is in-use',
                       response.json['error_message'])
 
-        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tier_delete') as mock_tier_delete:
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tier_delete'):
             response = self.delete('/storage_tiers/%s' % uuid_map['gold'], expect_errors=False)
         self.assertEqual(http_client.NO_CONTENT, response.status_int)
 
@@ -670,7 +670,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
         # Create a second storage tier
         values = {'cluster_uuid': saved_cluster_db_uuid,
                   'name': 'gold'}
-        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add') as mock_tiers_add:
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tiers_add'):
             response = self.post_json('/storage_tiers', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
 

@@ -644,7 +644,7 @@ class InterfaceComputeVlanOverBond(InterfaceTestCase):
         self._create_compute_vlan('data', constants.NETWORK_TYPE_DATA, 5, bond2,
                                   providernetworks='group0-ext0')
 
-        bond3 = self._create_compute_bond('bond3', constants.NETWORK_TYPE_NONE)
+        self._create_compute_bond('bond3', constants.NETWORK_TYPE_NONE)
 
         self._create_ethernet('sriov', constants.NETWORK_TYPE_PCI_SRIOV,
                               'group0-data0', host=self.compute)
@@ -917,7 +917,7 @@ class TestPatch(InterfaceTestCase):
     def test_mtu_smaller_than_users(self):
         port, lower_interface = self._create_ethernet(
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.compute)
-        upper = dbutils.create_test_interface(
+        dbutils.create_test_interface(
             forihostid='2',
             ihost_uuid=self.compute.uuid,
             ifname='data0',
@@ -1344,7 +1344,7 @@ class TestPost(InterfaceTestCase):
         vlan_iface = self._create_compute_vlan(
             'vlan1', constants.NETWORK_TYPE_DATA, 1,
             providernetworks='group0-ext0')
-        vlan_iface2 = self._create_compute_vlan('vlan2',
+        self._create_compute_vlan('vlan2',
             constants.NETWORK_TYPE_DATA, 2,
             lower_iface=vlan_iface, providernetworks='group0-ext1',
             expect_errors=True)
@@ -1354,7 +1354,7 @@ class TestPost(InterfaceTestCase):
     def test_create_data_vlan_over_pxeboot_lag(self):
         bond_iface = self._create_compute_bond(
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT)
-        vlan_iface = self._create_compute_vlan('vlan2',
+        self._create_compute_vlan('vlan2',
             constants.NETWORK_TYPE_DATA, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
             expect_errors=True)
@@ -1364,7 +1364,7 @@ class TestPost(InterfaceTestCase):
     def test_create_data_vlan_over_mgmt_lag(self):
         bond_iface = self._create_compute_bond(
             'mgmt', constants.NETWORK_TYPE_MGMT)
-        vlan_iface = self._create_compute_vlan(
+        self._create_compute_vlan(
             'vlan2', constants.NETWORK_TYPE_DATA, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
             expect_errors=True)
@@ -1374,7 +1374,7 @@ class TestPost(InterfaceTestCase):
     def test_create_mgmt_vlan_over_data_lag(self):
         bond_iface = self._create_compute_bond(
             'data', constants.NETWORK_TYPE_DATA, providernetworks='group0-ext1')
-        vlan_iface = self._create_compute_vlan(
+        self._create_compute_vlan(
             'mgmt', constants.NETWORK_TYPE_MGMT, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
             expect_errors=True)
@@ -1382,7 +1382,7 @@ class TestPost(InterfaceTestCase):
     # Expected message: The management VLAN configured on this system is 2,
     # so the VLAN configured for the mgmt interface must match.
     def test_mgmt_vlan_not_matching_in_network(self):
-        vlan_iface = self._create_compute_vlan(
+        self._create_compute_vlan(
             'vlan2', constants.NETWORK_TYPE_MGMT, 12,
             providernetworks='group0-ext1', expect_errors=True)
 
@@ -1393,7 +1393,7 @@ class TestPost(InterfaceTestCase):
         mgmt_network = dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         values = {'vlan_id': None}
         dbapi.network_update(mgmt_network.uuid, values)
-        vlan_iface = self._create_compute_vlan(
+        self._create_compute_vlan(
             'vlan2', constants.NETWORK_TYPE_MGMT, 12,
             providernetworks='group0-ext1',
             expect_errors=True)
@@ -1401,7 +1401,7 @@ class TestPost(InterfaceTestCase):
     # Expected message:
     #   Provider network(s) not supported for non-data interfaces.
     def test_create_nondata_provider_network(self):
-        bond_iface = self._create_compute_bond(
+        self._create_compute_bond(
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT,
             providernetworks='group0-data0', expect_errors=True)
 
@@ -1479,7 +1479,7 @@ class TestCpePost(InterfaceTestCase):
     def test_create_oam_vlan_over_data_lag(self):
         bond_iface = self._create_bond(
             'data', constants.NETWORK_TYPE_DATA, providernetworks='group0-ext1')
-        vlan_iface = self._create_vlan(
+        self._create_vlan(
             'oam', constants.NETWORK_TYPE_OAM, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
             expect_errors=True)
@@ -1489,7 +1489,7 @@ class TestCpePost(InterfaceTestCase):
     def test_create_infra_vlan_over_data_lag(self):
         bond_iface = self._create_bond(
             'data', constants.NETWORK_TYPE_DATA, providernetworks='group0-ext1')
-        vlan_iface = self._create_vlan(
+        self._create_vlan(
             'infra', constants.NETWORK_TYPE_INFRA, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
             expect_errors=True)
@@ -1663,7 +1663,7 @@ class TestCpePatch(InterfaceTestCase):
     # Expected error: SR-IOV can't be configured on this interface
     def test_invalid_sriov_totalvfs_zero(self):
         interface = dbutils.create_test_interface(forihostid='1')
-        port = dbutils.create_test_ethernet_port(
+        dbutils.create_test_ethernet_port(
             id=1, name='eth1', host_id=1, interface_id=interface.id,
             pciaddr='0000:00:00.11', dev_id=0, sriov_totalvfs=0, sriov_numvfs=1)
         response = self.patch_dict_json(
@@ -1676,7 +1676,7 @@ class TestCpePatch(InterfaceTestCase):
     # Expected error: The interface support a maximum of ___ VFs
     def test_invalid_sriov_exceeded_totalvfs(self):
         interface = dbutils.create_test_interface(forihostid='1')
-        port = dbutils.create_test_ethernet_port(
+        dbutils.create_test_ethernet_port(
             id=1, name='eth1', host_id=1, interface_id=interface.id,
             pciaddr='0000:00:00.11', dev_id=0, sriov_totalvfs=1, sriov_numvfs=1,
             driver=None)
@@ -1690,7 +1690,7 @@ class TestCpePatch(InterfaceTestCase):
     # Expected error: Corresponding port has invalid driver
     def test_invalid_driver_for_sriov(self):
         interface = dbutils.create_test_interface(forihostid='1')
-        port = dbutils.create_test_ethernet_port(
+        dbutils.create_test_ethernet_port(
             id=1, name='eth1', host_id=1, interface_id=interface.id,
             pciaddr='0000:00:00.11', dev_id=0, sriov_totalvfs=1, sriov_numvfs=1,
             driver=None)

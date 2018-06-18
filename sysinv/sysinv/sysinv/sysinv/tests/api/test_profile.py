@@ -151,7 +151,7 @@ class ProfileDeleteTestCase(ProfileTestCase):
         cpuprofile_data = self.get_json(
             '%s' % self._get_path(profile_data['iprofiles'][0]['uuid']))
         self.assertEqual(post_response.json['uuid'], cpuprofile_data['uuid'])
-        response = self.delete(
+        self.delete(
             '%s/%s' % (self._get_path(), post_response.json['uuid']))
 
     def test_delete_interface_success(self):
@@ -161,7 +161,7 @@ class ProfileDeleteTestCase(ProfileTestCase):
         ifprofile_data = self.get_json(
             '%s' % self._get_path(profile_data['iprofiles'][0]['uuid']))
         self.assertEqual(post_response.json['uuid'], ifprofile_data['uuid'])
-        response = self.delete(
+        self.delete(
             '%s/%s' % (self._get_path(), post_response.json['uuid']))
 
     def test_delete_memory_success(self):
@@ -171,7 +171,7 @@ class ProfileDeleteTestCase(ProfileTestCase):
         memprofile_data = self.get_json(
             '%s' % self._get_path(profile_data['iprofiles'][0]['uuid']))
         self.assertEqual(post_response.json['uuid'], memprofile_data['uuid'])
-        response = self.delete(
+        self.delete(
             '%s/%s' % (self._get_path(), post_response.json['uuid']))
 
     def test_delete_storage_success(self):
@@ -182,7 +182,7 @@ class ProfileDeleteTestCase(ProfileTestCase):
         storprofile_data = self.get_json(
             '%s' % self._get_path(profile_data['iprofiles'][0]['uuid']))
         self.assertEqual(post_response.json['uuid'], storprofile_data['uuid'])
-        response = self.delete(
+        self.delete(
             '%s/%s' % (self._get_path(), post_response.json['uuid']))
 
 
@@ -192,7 +192,7 @@ class ProfileShowTestCase(ProfileTestCase):
 
     def test_show_cpu_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_CPU
-        post_response = self.post_json('%s' % self._get_path(), self.profile)
+        self.post_json('%s' % self._get_path(), self.profile)
         list_data = self.get_json('%s' % self._get_path())
         show_data = self.get_json(
             '%s/icpus' % self._get_path(list_data['iprofiles'][0]['uuid']))
@@ -201,7 +201,7 @@ class ProfileShowTestCase(ProfileTestCase):
 
     def test_show_interface_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_INTERFACE
-        post_response = self.post_json('%s' % self._get_path(), self.profile)
+        self.post_json('%s' % self._get_path(), self.profile)
         list_data = self.get_json('%s' % self._get_path())
         show_data = self.get_json('%s/iinterfaces' % self._get_path(
             list_data['iprofiles'][0]['uuid']))
@@ -214,7 +214,7 @@ class ProfileShowTestCase(ProfileTestCase):
     def test_show_memory_success(self, mock_is_virtual):
         mock_is_virtual.return_value = True
         self.profile["profiletype"] = constants.PROFILE_TYPE_MEMORY
-        post_response = self.post_json('%s' % self._get_path(), self.profile)
+        self.post_json('%s' % self._get_path(), self.profile)
         list_data = self.get_json('%s' % self._get_path())
         show_data = self.get_json(
             '%s/imemorys' % self._get_path(list_data['iprofiles'][0]['uuid']))
@@ -228,7 +228,7 @@ class ProfileShowTestCase(ProfileTestCase):
     def test_show_storage_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_STORAGE
         self.profile["ihost_uuid"] = self.compute.uuid
-        post_response = self.post_json('%s' % self._get_path(), self.profile)
+        self.post_json('%s' % self._get_path(), self.profile)
         list_data = self.get_json('%s' % self._get_path())
         profile_uuid = list_data['iprofiles'][0]['uuid']
         show_data = self.get_json(

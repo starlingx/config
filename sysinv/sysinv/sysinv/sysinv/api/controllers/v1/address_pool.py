@@ -293,7 +293,7 @@ class AddressPoolController(rest.RestController):
 
     def _check_name_conflict(self, addrpool):
         try:
-            pool = pecan.request.dbapi.address_pool_get(addrpool['name'])
+            pecan.request.dbapi.address_pool_get(addrpool['name'])
             raise exception.AddressPoolAlreadyExists(name=addrpool['name'])
         except exception.AddressPoolNotFound:
             pass

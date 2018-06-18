@@ -1060,7 +1060,7 @@ class ProfileController(rest.RestController):
             return [{'result': 'Invalid',
                      'type': '', 'name': '',
                      'msg': 'Profile is invalid',
-                     'detail': e.message}]
+                     'detail': error}]
 
         profile_types = ["cpuProfile", "memoryProfile", "interfaceProfile",
                          "storageProfile", "localstorageProfile"]
@@ -1216,7 +1216,7 @@ def _create_cpu_profile(profile_name, profile_node):
                              "thread": thread_id,
                              "allocated_function": core.core_function,
                              'forinodeid': new_node['id']}
-                    new_cpu = pecan.request.dbapi.icpu_create(iprofile_id, cdict)
+                    pecan.request.dbapi.icpu_create(iprofile_id, cdict)
                     cpu_idx = cpu_idx + 1
 
             node_idx = node_idx + 1
@@ -1372,7 +1372,7 @@ def _create_if_profile(profile_name, profile_node):
                 'mtu': ethIf.mtu
             }
 
-            newPort = pecan.request.dbapi.ethernet_port_create(iprofile_id, pdict)
+            pecan.request.dbapi.ethernet_port_create(iprofile_id, pdict)
 
             routes = ethIf.routes
             _create_route(newIf.uuid, newIf.id, routes)
@@ -1545,7 +1545,6 @@ def _create_mem_profile(profile_name, profile_node):
 
     iprofile_id = ihost['id']
 
-    cpu_idx = 0
     node_idx = 0
 
     try:
@@ -1559,7 +1558,7 @@ def _create_mem_profile(profile_name, profile_node):
             mdict['platform_reserved_mib'] = get_mem_size(platform_reserved, node_idx)
             mdict['vm_hugepages_nr_2M_pending'] = get_mem_size(vm_hp_2m, node_idx)
             mdict['vm_hugepages_nr_1G_pending'] = get_mem_size(vm_hp_1g, node_idx)
-            newmemory = pecan.request.dbapi.imemory_create(iprofile_id, mdict)
+            pecan.request.dbapi.imemory_create(iprofile_id, mdict)
 
             node_idx += 1
     except Exception as exc:
@@ -1881,7 +1880,7 @@ def _create_localstorage_profile(profile_name, profile_node):
                       'forihostid': profile_id,
                       'forilvgid': ilvg_pf.id}
 
-            pv_pf = pv_api._create(pvdict, iprofile=True)
+            pv_api._create(pvdict, iprofile=True)
 
     except wsme.exc.ClientSideError as cse:
         pecan.request.dbapi.ihost_destroy(ihost.uuid)
@@ -1990,7 +1989,7 @@ def cpuprofile_copy_data(host, profile):
                              'cpu_model', 'cpu_family', 'capabilities',
                              'forihostid', 'forinodeid']
                 cdict = {k: v for (k, v) in c.as_dict().items() if k in cpufields}
-                new_cpu = pecan.request.dbapi.icpu_create(iprofile_id, cdict)
+                pecan.request.dbapi.icpu_create(iprofile_id, cdict)
 
 
 ROUTE_FIELDS = ['family', 'network', 'prefix', 'gateway', 'metric']
@@ -2045,7 +2044,7 @@ def ifprofile_copy_data(host, profile):
                                         'link_mode', 'bootp', 'pciaddr', 'dev_id',
                                         'host_id', 'interface_id', 'node_id']
                 pdict = {k: v for (k, v) in p.as_dict().items() if k in ethernet_port_fields}
-                newPort = pecan.request.dbapi.ethernet_port_create(iprofile_id, pdict)
+                pecan.request.dbapi.ethernet_port_create(iprofile_id, pdict)
 
     # Generate the uses/used_by relationships
     for i in newIfList:
@@ -2274,7 +2273,7 @@ def localstorageprofile_copy_data(host, profile):
         if ipv.get('pv_type') == constants.PV_TYPE_DISK:
             try:
                 pv_disk = pecan.request.dbapi.idisk_get_by_ipv(ipv.get('uuid'))
-            except Exception as e:
+            except Exception:
                 err_msg = '{} {}'.format("Could not obtain the disk used by "
                                          "physical volume", ipv.get('uuid'))
                 raise wsme.exc.ClientSideError(_(err_msg))
@@ -2285,7 +2284,7 @@ def localstorageprofile_copy_data(host, profile):
             try:
                 pv_part = pecan.request.dbapi.partition_get_by_ipv(
                     ipv.get('uuid'))
-            except Exception as e:
+            except Exception:
                 err_msg = '{} {}'.format("Could not obtain the partition "
                                          "used by physical volume",
                                          ipv.get('uuid'))
@@ -3153,7 +3152,7 @@ def localstorageprofile_apply_to_host(host, profile):
 
         pdata = {'foripvid': ipvPairs[pdisk.foripvid]}
         try:
-            device = device_update_function(disk_or_part_uuid, pdata)
+            device_update_function(disk_or_part_uuid, pdata)
         except:
             raise wsme.exc.ClientSideError(_(
                 "Failed to link storage to device %s" % disk_or_part_uuid))

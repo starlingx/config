@@ -19,11 +19,11 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
-    i_system = Table('i_system',
-                     meta,
-                     Column('id', Integer,
-                            primary_key=True, nullable=False),
-                     mysql_engine=ENGINE, mysql_charset=CHARSET)
+    Table('i_system',
+        meta,
+        Column('id', Integer,
+            primary_key=True, nullable=False),
+        mysql_engine=ENGINE, mysql_charset=CHARSET)
 
     i_host = Table('i_host',
                    meta,
@@ -57,11 +57,11 @@ def upgrade(migrate_engine):
         migrate_engine.execute('ALTER TABLE i_host ALTER COLUMN invprovision TYPE "invprovisionStateEnum" '
                    'USING invprovision::text::"invprovisionStateEnum"')
 
-    i_node = Table('i_node',
-                   meta,
-                   Column('id', Integer,
-                          primary_key=True, nullable=False),
-                   mysql_engine=ENGINE, mysql_charset=CHARSET)
+    Table('i_node',
+        meta,
+        Column('id', Integer,
+            primary_key=True, nullable=False),
+        mysql_engine=ENGINE, mysql_charset=CHARSET)
 
     i_alarm_history = Table(
         'i_alarm_history',

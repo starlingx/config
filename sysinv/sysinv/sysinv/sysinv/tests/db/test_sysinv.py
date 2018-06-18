@@ -212,9 +212,9 @@ class DbNodeTestCase(base.DbTestCase):
         self.assertEqual(ll['backend'], res[2]['backend'])
 
     def test_storage_backend_get_by_isystem_none(self):
-        c = self._create_test_storage_backend_with_ceph()
-        f = self._create_test_storage_backend_with_file()
-        ll = self._create_test_storage_backend_with_lvm()
+        self._create_test_storage_backend_with_ceph()
+        self._create_test_storage_backend_with_file()
+        self._create_test_storage_backend_with_lvm()
         self.assertRaises(exception.ServerNotFound,
                           self.dbapi.storage_backend_get_by_isystem,
                           self.system['id'] + 1)

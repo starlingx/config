@@ -154,11 +154,6 @@ def _check_ntp_data(op, ntp):
 
     MAX_S = 3
 
-    if op == "add":
-        this_ntp_id = 0
-    else:
-        this_ntp_id = ntp['id']
-
     dns_list = pecan.request.dbapi.idns_get_list(ntp['forisystemid'])
 
     if dns_list:

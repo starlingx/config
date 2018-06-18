@@ -84,7 +84,7 @@ def upgrade(migrate_engine):
 
     meta = MetaData()
     meta.bind = migrate_engine
-    conn = migrate_engine.connect()
+    migrate_engine.connect()
 
     # 046_drop_iport.py
     i_port = Table('i_port', meta, autoload=True)
@@ -144,7 +144,7 @@ def upgrade(migrate_engine):
     # String per 048
 
     # 053_add_virtual_interface.py
-    interfaces = Table('interfaces', meta, autoload=True)
+    Table('interfaces', meta, autoload=True)
 
     virtual_interfaces = Table(
         'virtual_interfaces',
@@ -229,15 +229,6 @@ def upgrade(migrate_engine):
                      mysql_engine=ENGINE, mysql_charset=CHARSET,
                      autoload=True)
 
-        pvStateEnum = Enum('unprovisioned',
-                           'adding',
-                           'provisioned',
-                           'removing',
-                           'failed',
-                           'reserve2',
-                           native_enum=False,
-                           name='pvStateEnum')
-
         migrate_engine.execute('ALTER TABLE i_pv DROP CONSTRAINT "pvStateEnum"')
         # In 16.10, as DB changes by PATCH are not supported, we use 'reserve1' instead of
         # 'failed'. Therefore, even though upgrades with PVs in 'failed' state should not
@@ -246,12 +237,8 @@ def upgrade(migrate_engine):
         LOG.info("Migrate pv_state")
         migrate_engine.execute('UPDATE i_pv SET pv_state=\'failed\' WHERE pv_state=\'reserve1\'')
 
-        # pvStateEnum.create(bind=migrate_engine, checkfirst=False)
-        # migrate_engine.execute('ALTER TABLE i_pv ALTER COLUMN pv_state TYPE "pvStateEnum" '
-        #                        'USING pv_state::text::"pvStateEnum"')
         pv_state_col = i_pv.c.pv_state
         pv_state_col.alter(Column('pv_state', String(32)))
-        # pvStateEnum.drop(bind=migrate_engine, checkfirst=False)
 
     # 057_idisk_id_path_wwn.py
     i_idisk = Table('i_idisk', meta, autoload=True)

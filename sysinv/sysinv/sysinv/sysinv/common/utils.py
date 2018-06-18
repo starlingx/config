@@ -871,9 +871,9 @@ def symlink_force(source, link_name):
 def mounted(remote_dir, local_dir):
     local_dir = os.path.abspath(local_dir)
     try:
-        _ = subprocess.check_output(
-                ["/bin/nfs-mount", remote_dir, local_dir],
-                stderr=subprocess.STDOUT)
+        subprocess.check_output(
+            ["/bin/nfs-mount", remote_dir, local_dir],
+            stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
         raise OSError(("mount operation failed: "
                        "command={}, retcode={}, output='{}'").format(
@@ -882,9 +882,9 @@ def mounted(remote_dir, local_dir):
         yield
     finally:
         try:
-            _ = subprocess.check_output(
-                    ["/bin/umount", local_dir],
-                    stderr=subprocess.STDOUT)
+            subprocess.check_output(
+                ["/bin/umount", local_dir],
+                stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             raise OSError(("umount operation failed: "
                            "command={}, retcode={}, output='{}'").format(
@@ -1323,7 +1323,6 @@ def _get_cinder_device_info(dbapi, forihostid):
 
     # TODO (rchurch): get a DB query based on volume group name
     lvgs = dbapi.ilvg_get_by_ihost(forihostid)
-    cinder_vg = None
     for vg in lvgs:
         if vg.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
             pvs = dbapi.ipv_get_by_ihost(forihostid)

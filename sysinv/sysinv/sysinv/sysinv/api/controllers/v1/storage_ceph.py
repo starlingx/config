@@ -641,7 +641,7 @@ def _create(storage_ceph):
 
     # Mark the storage tier as in-use
     try:
-        tier = pecan.request.dbapi.storage_tier_update(
+        pecan.request.dbapi.storage_tier_update(
             storage_ceph_obj.tier_id,
             {'forbackendid': storage_ceph_obj.id,
              'status': constants.SB_TIER_STATUS_IN_USE})

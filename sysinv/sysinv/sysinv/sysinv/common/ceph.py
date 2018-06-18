@@ -651,7 +651,7 @@ class CephApiOperator(object):
 
     def get_monitors_status(self, db_api):
         # first check that the monitors are available in sysinv
-        num_active__monitors = 0
+        num_active_monitors = 0
         num_inv_monitors = 0
         required_monitors = constants.MIN_STOR_MONITORS
         quorum_names = []

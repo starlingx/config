@@ -214,8 +214,8 @@ class AgentManager(service.PeriodicService):
             cmd = '/usr/bin/affine-interrupts.sh %s %s' % \
                     (info['name'], cpulist)
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-            output = proc.communicate()[0]
-            LOG.debug("%s return %d" % (cmd, proc.returncode))
+            proc.communicate()
+            LOG.info("%s return %d" % (cmd, proc.returncode))
             if proc.returncode == 1:
                 LOG.error("Failed to affine %s %s interrupts with %s" %
                           (info['networktype'], info['name'], cpulist))
@@ -1677,7 +1677,7 @@ class AgentManager(service.PeriodicService):
                 stdout = stdout.strip()
                 iscsi_initiator_name = stdout.split('=')[-1]
             LOG.info("iscsi initiator name = %s" % iscsi_initiator_name)
-        except Exception as e:
+        except Exception:
             LOG.error("Failed retrieving iscsi initiator name")
 
         return iscsi_initiator_name

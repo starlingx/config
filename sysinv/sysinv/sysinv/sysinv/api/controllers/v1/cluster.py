@@ -244,7 +244,7 @@ class ClusterController(rest.RestController):
     def _check_name_conflict(self, cluster):
         try:
             pool = pecan.request.dbapi.cluster_get(cluster['name'])
-            raise exception.ClusterAlreadyExists(name=cluster['name'])
+            raise exception.ClusterAlreadyExists(name=pool)
         except exception.ClusterNotFound:
             pass
 

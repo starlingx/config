@@ -1412,8 +1412,7 @@ class HostController(rest.RestController):
         ihost_obj = objects.host.get_by_uuid(pecan.request.context,
                                              ihost_obj.uuid)
 
-        mgmt_network = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_MGMT)
+        pecan.request.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
 
         # Configure the new ihost
         ihost_ret = pecan.request.rpcapi.configure_ihost(pecan.request.context,
@@ -1474,7 +1473,7 @@ class HostController(rest.RestController):
         LOG.info("VIM notify add host add %s subfunctions=%s" % (
             ihost_obj['hostname'], subfunctions))
         try:
-            vim_resp = vim_api.vim_host_add(
+            vim_api.vim_host_add(
                 self._api_token,
                 ihost_obj['uuid'],
                 ihost_obj['hostname'],
@@ -1603,10 +1602,10 @@ class HostController(rest.RestController):
                     if len(ihost_obj) != 1:
                         raise Exception("Unexpected: no/more_than_one host(s) contain(s) a management mac address from local network adapters")
 
-                    result = self._patch(ihost_obj[0]['uuid'],
+                    self._patch(ihost_obj[0]['uuid'],
                         changed_paths, None)
                 else:
-                    result = self._do_post(new_host)
+                    self._do_post(new_host)
 
                 if new_host['power_on'] is not None and new_host['bm_type'] is None:
                     success_str = "%s\n %s Warning: Ignoring <power_on> due to insufficient board management (bm) data." % (success_str, new_host['hostname'])
@@ -1816,7 +1815,6 @@ class HostController(rest.RestController):
 
         self._optimize_delta_handling(delta_handle)
 
-        host_new_state = []
         if 'administrative' in delta or \
                 'operational' in delta:
             self.stage_administrative_update(hostupdate)
@@ -1874,7 +1872,7 @@ class HostController(rest.RestController):
             LOG.info("Notify VIM host action %s action=%s" % (
                 ihost_obj['hostname'], action))
             try:
-                vim_resp = vim_api.vim_host_action(
+                vim_api.vim_host_action(
                     self._api_token,
                     ihost_obj['uuid'],
                     ihost_obj['hostname'],
@@ -2030,7 +2028,7 @@ class HostController(rest.RestController):
             LOG.info("sysinv notify add host add %s subfunctions=%s" %
                      (ihost_obj['hostname'], ihost_obj['subfunctions']))
             try:
-                vim_resp = vim_api.vim_host_add(
+                vim_api.vim_host_add(
                     self._api_token,
                     ihost_obj['uuid'],
                     ihost_obj['hostname'],
@@ -2073,7 +2071,7 @@ class HostController(rest.RestController):
             #    self._api_token.is_expired():
             #     self._api_token = rest_api.get_token()
 
-            vim_resp = vim_api.vim_host_add(
+            vim_api.vim_host_add(
                 self._api_token,
                 ihost['uuid'],
                 ihost['hostname'],
@@ -2173,7 +2171,7 @@ class HostController(rest.RestController):
                 #   self._api_token.is_expired():
                 #    self._api_token = rest_api.get_token()
 
-                vim_resp = vim_api.vim_host_delete(
+                vim_api.vim_host_delete(
                     self._api_token,
                     ihost.uuid,
                     ihost.hostname,
@@ -2293,7 +2291,7 @@ class HostController(rest.RestController):
                 #   self._api_token.is_expired():
                 #    self._api_token = rest_api.get_token()
                 system = pecan.request.dbapi.isystem_get_one()
-                response = patch_api.patch_drop_host(
+                patch_api.patch_drop_host(
                     token=self._api_token,
                     timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
                     hostname=ihost.hostname,
@@ -2324,7 +2322,7 @@ class HostController(rest.RestController):
             return
 
         try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            pecan.request.dbapi.software_upgrade_get_one()
         except exception.NotFound:
             return
 
@@ -4943,7 +4941,7 @@ class HostController(rest.RestController):
             try:
                 ihost_stors = pecan.request.dbapi.ihost_get_by_personality(
                     personality=constants.STORAGE)
-            except Exception as e:
+            except Exception:
                 raise wsme.exc.ClientSideError(
                     _("Can not unlock a compute node until at "
                       "least one storage node is unlocked and enabled."))
@@ -4999,7 +4997,7 @@ class HostController(rest.RestController):
         try:
             if not pecan.request.rpcapi.restore_ceph_config(pecan.request.context):
                 raise Exception()
-        except Exception as e:
+        except Exception:
             raise wsme.exc.ClientSideError(
                 _("Restore Ceph config failed. Retry unlocking storage node."))
 
@@ -5461,9 +5459,7 @@ class HostController(rest.RestController):
                             ila_networktype = [network.strip() for network in ila.networktype.split(",")]
                         if any(network in ila_networktype for network in iif_networktype):
                             idata['imtu'] = ila.imtu
-                            u_interface = \
-                                pecan.request.dbapi.iinterface_update(
-                                    iif.uuid, idata)
+                            pecan.request.dbapi.iinterface_update(iif.uuid, idata)
                             break
 
     def stage_action(self, action, hostupdate):

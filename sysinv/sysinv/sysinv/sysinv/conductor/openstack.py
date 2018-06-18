@@ -704,7 +704,7 @@ class OpenStackOperator(object):
                 if s.name.find(constants.SERVICE_TYPE_CINDER) != -1:
                     endpoint_list += self._get_keystoneclient().endpoints.list(
                                      service=s, region=region1_name)
-        except Exception as e:
+        except Exception:
             LOG.error("Failed to get keystone endpoints for cinder.")
         return endpoint_list
 
@@ -897,7 +897,7 @@ class OpenStackOperator(object):
         try:
             clusters = self._get_magnumclient().clusters.list()
             return len(clusters)
-        except Exception as e:
+        except Exception:
             LOG.error("Unable to get backend list of magnum clusters")
             return 0
 

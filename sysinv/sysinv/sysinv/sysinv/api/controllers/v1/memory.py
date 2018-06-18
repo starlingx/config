@@ -531,7 +531,7 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
         except ValueError:
             raise wsme.exc.ClientSideError((
                 "Platform memory must be a number"))
-        if int(platform_reserved_mib) < 0:
+        if val < 0:
             raise wsme.exc.ClientSideError((
                 "Platform memory must be greater than zero"))
 
@@ -630,7 +630,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         except ValueError:
             raise wsme.exc.ClientSideError(_(
                   "VM huge pages 1G must be a number"))
-        if int(vm_hugepages_nr_1G) < 0:
+        if val < 0:
             raise wsme.exc.ClientSideError(_(
                   "VM huge pages 1G must be greater than or equal to zero"))
 
@@ -645,15 +645,6 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
 
     # Update the number of available huge pages
     num_2M_for_1G = 512
-    if rpc_port['vm_hugepages_nr_2M']:
-        old_nr_2M = int(rpc_port['vm_hugepages_nr_2M'])
-    else:
-        old_nr_2M = 0
-
-    if rpc_port['vm_hugepages_nr_1G']:
-        old_nr_1G = int(rpc_port['vm_hugepages_nr_1G'])
-    else:
-        old_nr_1G = 0
 
     # None == unchanged
     if vm_hugepages_nr_1G is not None:

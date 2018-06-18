@@ -95,7 +95,7 @@ class ContextHook(hooks.PecanHook):
 
         is_admin = policy.check('admin', state.request.headers, creds)
 
-        path = utils.safe_rstrip(state.request.path, '/')
+        utils.safe_rstrip(state.request.path, '/')
         is_public_api = state.request.environ.get('is_public_api', False)
 
         state.request.context = context.RequestContext(

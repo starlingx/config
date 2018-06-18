@@ -50,7 +50,6 @@ class DCManagerPuppet(openstack.OpenstackBasePuppet):
 
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
-        neutron_region_name = self._operator.neutron.get_region_name()
 
         return {
             # The region in which the identity server can be found

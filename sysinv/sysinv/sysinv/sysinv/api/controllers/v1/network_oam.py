@@ -212,7 +212,7 @@ def _check_extoam_data(extoam_orig, extoam, region_config=False):
 
         try:
             utils.is_valid_subnet(subnet)
-        except Exception as e:
+        except Exception:
             raise wsme.exc.ClientSideError(_(
                 "Invalid subnet %s %s."
                 "Please check and configure a valid OAM Subnet."
@@ -415,13 +415,9 @@ class OAMNetworkController(rest.RestController):
                                                      extoam_uuid)
 
         # this is required for cases where action is appended
-        action = None
         for p in patch:
             if '/action' in p['path']:
-                value = p['value']
                 patch.remove(p)
-                if value in (constants.APPLY_ACTION, constants.INSTALL_ACTION):
-                    action = value
                 break
 
         # replace isystem_uuid and iextoam_uuid with corresponding
@@ -439,8 +435,7 @@ class OAMNetworkController(rest.RestController):
         extoam_orig = copy.deepcopy(rpc_extoam)
         for p in patch_obj:
             if p['path'] == '/isystem_uuid':
-                isystem = objects.system.get_by_uuid(pecan.request.context,
-                                                     p['value'])
+                isystem = objects.system.get_by_uuid(pecan.request.context, p['value'])
                 p['path'] = '/forisystemid'
                 p['value'] = isystem.id
 

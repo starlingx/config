@@ -387,6 +387,6 @@ class RouteController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, route_uuid):
         """Delete an IP route."""
-        route = self._get_one(route_uuid)
+        self._get_one(route_uuid)
         pecan.request.dbapi.route_destroy(route_uuid)
         pecan.request.rpcapi.update_route_config(pecan.request.context)

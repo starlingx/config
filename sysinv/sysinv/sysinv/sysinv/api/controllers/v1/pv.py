@@ -934,7 +934,7 @@ def delete_pv(pv_uuid, force=False):
         _update_disk_or_partition('idisk', pv)
 
     elif pv['pv_type'] == constants.PV_TYPE_PARTITION:
-        partition = _update_disk_or_partition('partition', pv)
+        _update_disk_or_partition('partition', pv)
         # If the partition already exists, don't modify its status. Wait
         # for when the PV is actually deleted to do so.
         # If the host hasn't been provisioned yet, then the partition will

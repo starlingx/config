@@ -17,8 +17,6 @@ class AodhPuppet(openstack.OpenstackBasePuppet):
 
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
-        dbpass = self._get_database_password(self.SERVICE_NAME)
-        kspass = self._get_service_password(self.SERVICE_NAME)
 
         return {
             'aodh::db::postgresql::user': dbuser,

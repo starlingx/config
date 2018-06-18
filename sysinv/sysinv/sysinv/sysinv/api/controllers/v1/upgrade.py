@@ -197,7 +197,7 @@ class UpgradeController(rest.RestController):
 
         # There must not already be an upgrade in progress
         try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            pecan.request.dbapi.software_upgrade_get_one()
         except exception.NotFound:
             pass
         else:
@@ -284,8 +284,6 @@ class UpgradeController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "operation rejected: An upgrade is not in progress."))
 
-        from_load = pecan.request.dbapi.load_get(upgrade.from_load)
-        from_version = from_load.software_version
         to_load = pecan.request.dbapi.load_get(upgrade.to_load)
         to_version = to_load.software_version
 

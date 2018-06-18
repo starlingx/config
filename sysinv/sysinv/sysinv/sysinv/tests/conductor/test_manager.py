@@ -233,7 +233,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['install_output'] = 'text'
         ihost['console'] = 'ttyS0,115200'
 
-        res = self.service.configure_ihost(self.context, ihost)
+        self.service.configure_ihost(self.context, ihost)
 
         with open(self.dnsmasq_hosts_file, 'r') as f:
             self.assertEqual(

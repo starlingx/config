@@ -147,22 +147,6 @@ class UserCollection(collection.Collection):
 ##############
 # UTILS
 ##############
-def _check_user_data(op, user):
-    # Get data
-    root_sig = user['root_sig']
-    # iuser_root_sig_list = []
-    # user_root_sig = ""
-
-    MAX_S = 2
-
-    if op == "add":
-        this_user_id = 0
-    else:
-        this_user_id = user['id']
-
-    return user
-
-
 LOCK_NAME = 'UserController'
 
 
@@ -290,7 +274,7 @@ class UserController(rest.RestController):
         except utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
 
-        user = _check_user_data("modify", user.as_dict())
+        user = user.as_dict()
 
         try:
             # Update only the fields that have changed

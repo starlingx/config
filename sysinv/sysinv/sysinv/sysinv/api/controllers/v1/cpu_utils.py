@@ -91,10 +91,7 @@ class HostCpuProfile(CpuProfile):
         if self.number_of_cpu == profile.number_of_cpu and \
                 self.cores_per_cpu == profile.cores_per_cpu:
             return self.check_profile_core_functions(profile)
-        else:
-            errorstring = "Profile is not applicable to host"
-
-        return False
+        return False  # Profile is not applicable to host
 
     def check_profile_core_functions(self, profile):
         platform_cores = 0

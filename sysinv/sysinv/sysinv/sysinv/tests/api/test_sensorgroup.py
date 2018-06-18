@@ -207,5 +207,5 @@ class sensorgroupTestCase(base.FunctionalTest):
         request_relearn = {
             'host_uuid': self.host['uuid'],
         }
-        response = self.post_json('/isensorgroups/relearn', request_relearn)
+        self.post_json('/isensorgroups/relearn', request_relearn)
         mock_hwmon_relearn.assert_called_once()

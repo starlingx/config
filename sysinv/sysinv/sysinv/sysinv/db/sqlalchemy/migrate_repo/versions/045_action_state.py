@@ -28,7 +28,7 @@ def upgrade(migrate_engine):
 
     meta = MetaData()
     meta.bind = migrate_engine
-    conn = migrate_engine.connect()
+    migrate_engine.connect()
 
     i_host = Table('i_host', meta, autoload=True)
     i_host.create_column(Column('action_state', String(255)))

@@ -737,7 +737,6 @@ def _check_interface_vlan_id(op, interface, ihost, from_profile=False):
 
 def _check_interface_name(op, interface, ihost, from_profile=False):
     ihost_id = interface['forihostid']
-    ihost_uuid = interface['ihost_uuid']
     ifname = interface['ifname']
     iftype = interface['iftype']
 
@@ -1138,8 +1137,6 @@ def _check_interface_data(op, interface, ihost, existing_interface):
 
     # Get providernet dict
     all_providernetworks = _neutron_providernet_list()
-    providernetworksdict = _get_providernetworksdict(
-        all_providernetworks, providernetworks)
 
     # Check interface name for validity
     _check_interface_name(op, interface, ihost, existing_interface)
@@ -1420,7 +1417,6 @@ def _check_interface_data(op, interface, ihost, existing_interface):
             constants.NETWORK_TYPE_INFRA in networktypelist):
         host_list = pecan.request.dbapi.ihost_get_by_personality(
             personality=constants.CONTROLLER)
-        marker_obj = None
         infra_on_controller = False
         for h in host_list:
             # find any interface in controller host that is of type infra
@@ -1529,7 +1525,6 @@ def _check_ports(op, interface, ihost, ports):
 
 def _update_address_mode(interface, family, mode, pool):
     interface_id = interface['id']
-    existing_pool = None
     pool_id = pecan.request.dbapi.address_pool_get(pool)['id'] if pool else None
     try:
         ## retrieve the existing value and compare
@@ -1911,7 +1906,7 @@ def _neutron_bind_interface(ihost, interface, test=False):
     vlans = _get_interface_vlans(ihost_uuid, interface)
     try:
         ## Send the request to neutron
-        valid = pecan.request.rpcapi.neutron_bind_interface(
+        pecan.request.rpcapi.neutron_bind_interface(
             pecan.request.context,
             ihost_uuid, interface_uuid, networktype, providernetworks,
             interface['imtu'], vlans=vlans, test=test)
@@ -1934,7 +1929,7 @@ def _neutron_unbind_interface(ihost, interface):
         return
     try:
         ## Send the request to neutron
-        valid = pecan.request.rpcapi.neutron_unbind_interface(
+        pecan.request.rpcapi.neutron_unbind_interface(
             pecan.request.context, ihost_uuid, interface['uuid'])
     except rpc_common.RemoteError as e:
         raise wsme.exc.ClientSideError(str(e.value))

@@ -150,12 +150,10 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             }
         }
 
-        dbuser = self._get_database_username(self.SERVICE_NAME)
         dbpass = self._get_database_password(self.SERVICE_NAME)
         kspass = self._get_service_password(self.SERVICE_NAME)
         kspass_placement = self._get_service_password(self.PLACEMENT_NAME)
 
-        api_dbuser = self._get_database_username(self.SERVICE_API_NAME)
         api_dbpass = self._get_database_password(self.SERVICE_API_NAME)
 
         return {

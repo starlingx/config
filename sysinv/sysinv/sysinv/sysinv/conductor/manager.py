@@ -35,7 +35,6 @@ import glob
 import grp
 import hashlib
 import httplib
-import math
 import os
 import pwd
 import re
@@ -618,7 +617,7 @@ class ConductorManager(service.PeriodicService):
                     ihost_mtc = host.as_dict()
                     ihost_mtc['operation'] = 'modify'
                     ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc)
-                    mtc_response_dict = mtce_api.host_modify(
+                    mtce_api.host_modify(
                              self._api_token, self._mtc_address,
                              self._mtc_port, ihost_mtc,
                              constants.MTC_DEFAULT_TIMEOUT_IN_SECS)
@@ -671,7 +670,7 @@ class ConductorManager(service.PeriodicService):
                     ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc)
                     LOG.info("%s create_ihost update mtce %s " %
                              (ihost.hostname, ihost_mtc))
-                    mtc_response_dict = mtce_api.host_modify(
+                    mtce_api.host_modify(
                              self._api_token, self._mtc_address, self._mtc_port,
                              ihost_mtc,
                              constants.MTC_DEFAULT_TIMEOUT_IN_SECS)
@@ -1961,7 +1960,6 @@ class ConductorManager(service.PeriodicService):
                                          {'ifname': updated_name})
 
             used_by = interface['used_by']
-            vlans = []
             for ifname in used_by:
                 vlan = self.dbapi.iinterface_get(ifname, port['forihostid'])
                 if vlan.get('iftype') != constants.INTERFACE_TYPE_VLAN:
@@ -2626,7 +2624,7 @@ class ConductorManager(service.PeriodicService):
 
             # there has been an update.  Delete db entries and replace.
             for icpu in icpus:
-                cpu = self.dbapi.icpu_destroy(icpu.uuid)
+                self.dbapi.icpu_destroy(icpu.uuid)
 
         # sort the list of cpus by socket and coreid
         cpu_list = sorted(icpu_dict_array, key=self._sort_by_socket_and_coreid)
@@ -2656,7 +2654,7 @@ class ConductorManager(service.PeriodicService):
 
                 cpu_dict.update(data)
 
-                cpu = self.dbapi.icpu_create(forihostid, cpu_dict)
+                self.dbapi.icpu_create(forihostid, cpu_dict)
 
             except exception.NodeNotFound:
                 raise exception.SysinvException(_(
@@ -2743,7 +2741,7 @@ class ConductorManager(service.PeriodicService):
                     ## Set the amount of memory reserved for platform use.
                     mem_dict.update(self._get_platform_reserved_memory(
                             ihost, i['numa_node']))
-                    mem = self.dbapi.imemory_create(forihostid, mem_dict)
+                    self.dbapi.imemory_create(forihostid, mem_dict)
                 else:
                     for imem in imems:
                         # Include 4K pages in the displayed VM memtotal
@@ -2753,13 +2751,13 @@ class ConductorManager(service.PeriodicService):
                                  constants.NUM_4K_PER_MiB)
                             mem_dict['memtotal_mib'] += vm_4K_mib
                             mem_dict['memavail_mib'] += vm_4K_mib
-                        pmem = self.dbapi.imemory_update(imem['uuid'],
+                        self.dbapi.imemory_update(imem['uuid'],
                                                          mem_dict)
             except:
                 ## Set the amount of memory reserved for platform use.
                 mem_dict.update(self._get_platform_reserved_memory(
                         ihost, i['numa_node']))
-                mem = self.dbapi.imemory_create(forihostid, mem_dict)
+                self.dbapi.imemory_create(forihostid, mem_dict)
                 pass
 
         return
@@ -2843,7 +2841,7 @@ class ConductorManager(service.PeriodicService):
         :return:
         """
         try:
-            upgrade = self.dbapi.software_upgrade_get_one()
+            self.dbapi.software_upgrade_get_one()
         except exception.NotFound:
             # Not upgrading. We assume the host versions match
             # If they somehow don't match we've got bigger problems
@@ -3209,7 +3207,6 @@ class ConductorManager(service.PeriodicService):
         partitions = self.dbapi.partition_get_by_ihost(host.id)
         partition4 = next((p for p in partitions if p.device_node == pv4_name), None)
         part_size_mib = float(pv_cgts_vg.lvm_pv_size) / (1024**2) - int(partition4.size_mib)
-        part_size = math.ceil(part_size_mib)
         if part_size_mib > 0:
             LOG.info("%s is not enough for R4 cgts-vg" % pv4_name)
         else:
@@ -3220,8 +3217,6 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Extra cgts partition size: %s device node: %s "
                  "device path: %s" %
                  (part_size_mib, part_device_node, part_device_path))
-
-        part_uuid = uuidutils.generate_uuid()
 
         partition_dict = {
             'idisk_id': disk.id,
@@ -4494,7 +4489,7 @@ class ConductorManager(service.PeriodicService):
                         ihost_mtc['task'] = constants.FORCE_LOCKING
                         LOG.warn("ihost_action override %s" %
                                  ihost_mtc)
-                        mtc_response_dict = mtce_api.host_modify(
+                        mtce_api.host_modify(
                             self._api_token, self._mtc_address, self._mtc_port,
                             ihost_mtc, timeout_in_secs)
 
@@ -4522,13 +4517,13 @@ class ConductorManager(service.PeriodicService):
                     else:
                         val = {'ihost_action': ihost_action_str}
 
-                ihost_u = self.dbapi.ihost_update(ihost.uuid, val)
+                self.dbapi.ihost_update(ihost.uuid, val)
         else:  # Administrative locked already
             task_str = ihost.task or ""
             if (task_str.startswith(constants.FORCE_LOCKING) or
                task_str.startswith(constants.LOCKING)):
                 val = {'task': ""}
-                ihost_u = self.dbapi.ihost_update(ihost.uuid, val)
+                self.dbapi.ihost_update(ihost.uuid, val)
 
         vim_progress_status_str = ihost.get('vim_progress_status') or ""
         if (vim_progress_status_str and
@@ -4542,7 +4537,7 @@ class ConductorManager(service.PeriodicService):
                 vim_progress_status_str += ".."
 
             val = {'vim_progress_status': vim_progress_status_str}
-            ihost_u = self.dbapi.ihost_update(ihost.uuid, val)
+            self.dbapi.ihost_update(ihost.uuid, val)
 
     def _audit_upgrade_status(self):
         """Audit upgrade related status"""
@@ -5415,9 +5410,7 @@ class ConductorManager(service.PeriodicService):
             reboot = True
 
         # Set config out-of-date for controllers
-        config_uuid = self._config_update_hosts(context,
-                                                personalities,
-                                                reboot=reboot)
+        self._config_update_hosts(context, personalities, reboot=reboot)
 
         # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
         # Once sm supports in-service config reload set config_uuid=config_uuid.
@@ -7790,9 +7783,6 @@ class ConductorManager(service.PeriodicService):
 
         if (mtc_response_dict['status'] != 'pass'):
             LOG.error("Failed mtc_host_add=%s" % ihost_mtc_dict)
-        else:
-            # TODO: remove this else
-            LOG.info("Passed mtc_host_add=%s" % ihost_mtc_dict)
 
         return
 
@@ -9177,8 +9167,8 @@ class ConductorManager(service.PeriodicService):
             else:
                 cmd = "ip6tables-restore"
 
-            with open(os.devnull, "w") as fnull:
-                output = subprocess.check_output(
+            with open(os.devnull, "w"):
+                subprocess.check_output(
                     [cmd, "--test", "--noflush", rules_file],
                     stderr=subprocess.STDOUT)
                 return True
@@ -9272,14 +9262,12 @@ class ConductorManager(service.PeriodicService):
                 "ERROR: Failed to install license to redundant storage."))
 
         hostname = subprocess.check_output(["hostname"]).rstrip()
-        if hostname == constants.CONTROLLER_0_HOSTNAME:
-            mate = constants.CONTROLLER_1_HOSTNAME
-        elif hostname == constants.CONTROLLER_1_HOSTNAME:
-            mate = constants.CONTROLLER_0_HOSTNAME
-        elif hostname == 'localhost':
+        validHostnames = [constants.CONTROLLER_0_HOSTNAME,
+                            constants.CONTROLLER_1_HOSTNAME]
+        if hostname == 'localhost':
             raise exception.SysinvException(_(
                 "ERROR: Host undefined. Unable to install license"))
-        else:
+        elif hostname not in validHostnames:
             raise exception.SysinvException(_(
                 "ERROR: Invalid hostname for controller node: %s") % hostname)
 
@@ -9385,7 +9373,6 @@ class ConductorManager(service.PeriodicService):
                         password=passphrase,
                         backend=default_backend())
                 except Exception as e:
-                    msg = "Exception occured e={}".format(e)
                     raise exception.SysinvException(_("Error decrypting PEM "
                         "file: %s" % e))
                 key_file.seek(0)
@@ -9441,7 +9428,7 @@ class ConductorManager(service.PeriodicService):
 
         tpmconfig_dict = {'tpm_path': constants.SSL_CERT_DIR + 'object.tpm'}
         if not tpm:
-            new_tpmconfig = self.dbapi.tpmconfig_create(tpmconfig_dict)
+            self.dbapi.tpmconfig_create(tpmconfig_dict)
 
         tpmconfig_dict.update(
             {'cert_path': constants.SSL_CERT_DIR + 'key.pem',

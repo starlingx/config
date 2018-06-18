@@ -158,11 +158,6 @@ def _check_remotelogging_data(op, remotelogging):
     # Get data
     ip_address = remotelogging['ip_address']
 
-    if op == "add":
-        this_remotelogging_id = 0
-    else:
-        this_remotelogging_id = remotelogging['id']
-
     # Validate ip_address
     if ip_address:
             try:
