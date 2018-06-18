@@ -69,7 +69,6 @@ Requires: puppet-nslcd
 Requires: puppet-nssdb
 Requires: puppet-puppi
 Requires: puppet-vlan
-Requires: puppet-ovs_dpdk
 
 %description
 Platform puppet configuration files and manifests

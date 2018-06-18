@@ -43,9 +43,4 @@ class { '::platform::config::compute::post':
   stage => post,
 }
 
-class { '::ovs_dpdk':
-  stage => post,
-}
-
-
 hiera_include('classes')
