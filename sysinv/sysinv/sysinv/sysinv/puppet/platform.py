@@ -89,6 +89,7 @@ class PlatformPuppet(base.BasePuppet):
             'platform::params::security_profile': system.security_profile,
 
             'platform::config::params::timezone': system.timezone,
+            'platform::params::vswitch_type': self._vswitch_type(),
         }
 
     def _get_hosts_config(self):
@@ -586,12 +587,12 @@ class PlatformPuppet(base.BasePuppet):
                 total_hugepages_2M = vm_hugepages_nr_2M
                 total_hugepages_1G = vm_hugepages_nr_1G
 
-                if memory.avs_hugepages_size_mib == constants.MIB_2M:
-                    total_hugepages_2M += memory.avs_hugepages_nr
-                    vswitch_2M_page += memory.avs_hugepages_nr
-                elif memory.avs_hugepages_size_mib == constants.MIB_1G:
-                    total_hugepages_1G += memory.avs_hugepages_nr
-                    vswitch_1G_page += memory.avs_hugepages_nr
+                if memory.vswitch_hugepages_size_mib == constants.MIB_2M:
+                    total_hugepages_2M += memory.vswitch_hugepages_nr
+                    vswitch_2M_page += memory.vswitch_hugepages_nr
+                elif memory.vswitch_hugepages_size_mib == constants.MIB_1G:
+                    total_hugepages_1G += memory.vswitch_hugepages_nr
+                    vswitch_1G_page += memory.vswitch_hugepages_nr
 
                 vswitch_2M_pages.append(vswitch_2M_page)
                 vswitch_1G_pages.append(vswitch_1G_page)

@@ -34,10 +34,10 @@ class Memory(base.SysinvObject):
 
             'hugepages_configured': utils.str_or_none,
 
-            'avs_hugepages_size_mib': utils.int_or_none,
-            'avs_hugepages_reqd': utils.int_or_none,
-            'avs_hugepages_nr': utils.int_or_none,
-            'avs_hugepages_avail': utils.int_or_none,
+            'vswitch_hugepages_size_mib': utils.int_or_none,
+            'vswitch_hugepages_reqd': utils.int_or_none,
+            'vswitch_hugepages_nr': utils.int_or_none,
+            'vswitch_hugepages_avail': utils.int_or_none,
 
             'vm_hugepages_nr_2M_pending': utils.int_or_none,
             'vm_hugepages_nr_1G_pending': utils.int_or_none,

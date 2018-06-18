@@ -62,18 +62,7 @@ EXTERNAL_OAM_1_ADDRESS=abcd::4
 
 [cNETWORK]
 # Data Network Configuration
-VSWITCH_TYPE=avs
-NEUTRON_L2_PLUGIN=ml2
-NEUTRON_L2_AGENT=vswitch
-NEUTRON_L3_EXT_BRIDGE=provider
-NEUTRON_ML2_MECHANISM_DRIVERS=vswitch,sriovnicswitch
-NEUTRON_ML2_TYPE_DRIVERS=managed_flat,managed_vlan,managed_vxlan
-NEUTRON_ML2_TENANT_NETWORK_TYPES=vlan,vxlan
-NEUTRON_ML2_SRIOV_AGENT_REQUIRED=False
-NEUTRON_HOST_DRIVER=neutron.plugins.wrs.drivers.host.DefaultHostDriver
-NEUTRON_FM_DRIVER=neutron.plugins.wrs.drivers.fm.DefaultFmDriver
-NEUTRON_NETWORK_SCHEDULER=neutron.scheduler.dhcp_host_agent_scheduler.HostChanceScheduler
-NEUTRON_ROUTER_SCHEDULER=neutron.scheduler.l3_host_agent_scheduler.HostChanceScheduler
+VSWITCH_TYPE=ovs-dpdk
 
 [cSECURITY]
 [cREGION]

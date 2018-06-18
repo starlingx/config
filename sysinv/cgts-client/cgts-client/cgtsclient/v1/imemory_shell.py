@@ -12,17 +12,17 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 from cgtsclient.v1 import ihost as ihost_utils
+
 
 def _print_imemory_show(imemory):
     fields = ['memtotal_mib',
               'platform_reserved_mib',
               'memavail_mib',
               'hugepages_configured',
-              'avs_hugepages_size_mib',
-              'avs_hugepages_nr',
-              'avs_hugepages_avail',
+              'vswitch_hugepages_size_mib',
+              'vswitch_hugepages_nr',
+              'vswitch_hugepages_avail',
               'vm_hugepages_nr_4K',
               'vm_hugepages_nr_2M',
               'vm_hugepages_nr_2M_pending',
@@ -36,9 +36,9 @@ def _print_imemory_show(imemory):
               '        Platform     (MiB)',
               '        Available    (MiB)',
               'Huge Pages Configured',
-              'AVS Huge Pages: Size (MiB)',
-              '                Total',
-              '                Available',
+              'vSwitch Huge Pages: Size (MiB)',
+              '                    Total',
+              '                    Available',
               'VM  Pages (4K): Total',
               'VM  Huge Pages (2M): Total',
               '                Total Pending',
@@ -110,9 +110,9 @@ def do_host_memory_list(cc, args):
               'platform_reserved_mib',
               'memavail_mib',
               'hugepages_configured',
-              'avs_hugepages_size_mib',
-              'avs_hugepages_nr',
-              'avs_hugepages_avail',
+              'vswitch_hugepages_size_mib',
+              'vswitch_hugepages_nr',
+              'vswitch_hugepages_avail',
               'vm_hugepages_nr_4K',
               'vm_hugepages_nr_2M',
               'vm_hugepages_avail_2M',
@@ -123,21 +123,21 @@ def do_host_memory_list(cc, args):
               'vm_hugepages_use_1G']
 
     field_labels = ['processor',
-              'mem_total(MiB)',
-              'mem_platform(MiB)',
-              'mem_avail(MiB)',
-              'hugepages(hp)_configured',
-              'avs_hp_size(MiB)',
-              'avs_hp_total',
-              'avs_hp_avail',
-              'vm_total_4K',
-              'vm_hp_total_2M',
-              'vm_hp_avail_2M',
-              'vm_hp_pending_2M',
-              'vm_hp_total_1G',
-              'vm_hp_avail_1G',
-              'vm_hp_pending_1G',
-              'vm_hp_use_1G']
+                    'mem_total(MiB)',
+                    'mem_platform(MiB)',
+                    'mem_avail(MiB)',
+                    'hugepages(hp)_configured',
+                    'vs_hp_size(MiB)',
+                    'vs_hp_total',
+                    'vs_hp_avail',
+                    'vm_total_4K',
+                    'vm_hp_total_2M',
+                    'vm_hp_avail_2M',
+                    'vm_hp_pending_2M',
+                    'vm_hp_total_1G',
+                    'vm_hp_avail_1G',
+                    'vm_hp_pending_1G',
+                    'vm_hp_use_1G']
 
     utils.print_list(imemorys, fields, field_labels, sortby=1)
 

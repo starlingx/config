@@ -117,7 +117,7 @@ class Port(base.APIBase):
     "Represent the interface_id the port belongs to"
 
     dpdksupport = bool
-    "Represent whether or not the port supported AVS acceleration"
+    "Represent whether or not the port supports DPDK acceleration"
 
     host_uuid = types.uuid
     "Represent the UUID of the host the port belongs to"

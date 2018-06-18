@@ -248,17 +248,9 @@ def is_aio_simplex_host_unlocked(host):
             host['invprovision'] != constants.PROVISIONING)
 
 
-# cache the result of the vswitch type to avoid having to query the system
-# for each access to this system attribute
-_vswitch_type = None
-
-
 def get_vswitch_type():
-    global _vswitch_type
-    if _vswitch_type is None:
-        system = pecan.request.dbapi.isystem_get_one()
-        _vswitch_type = system.capabilities.get('vswitch_type')
-    return _vswitch_type
+    system = pecan.request.dbapi.isystem_get_one()
+    return system.capabilities.get('vswitch_type')
 
 
 def get_https_enabled():

@@ -244,7 +244,7 @@ NEUTRON_PROVIDERNET_VXLAN = "vxlan"
 NEUTRON_PROVIDERNET_VLAN = "vlan"
 
 # Supported compute node vswitch types
-VSWITCH_TYPE_AVS = "avs"
+VSWITCH_TYPE_OVS_DPDK = "ovs-dpdk"
 VSWITCH_TYPE_NUAGE_VRS = "nuage_vrs"
 
 # Partition default sizes

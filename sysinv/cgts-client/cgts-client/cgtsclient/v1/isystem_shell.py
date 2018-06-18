@@ -41,7 +41,12 @@ def _print_isystem_show(isystem):
         fields.append('distributed_cloud_role')
         setattr(isystem, 'distributed_cloud_role',
                 isystem.distributed_cloud_role)
-           
+
+    if isystem.capabilities.get('vswitch_type') is not None:
+        fields.append('vswitch_type')
+        setattr(isystem, 'vswitch_type',
+                isystem.capabilities.get('vswitch_type'))
+
     data = dict(list([(f, getattr(isystem, f, '')) for f in fields]))
     utils.print_dict(data)
 
@@ -78,7 +83,10 @@ def do_show(cc, args):
            metavar='<https_enabled>',
            choices=['true', 'false'],
            help='The HTTPS enabled or disabled flag')
-
+@utils.arg('-v', '--vswitch_type',
+           metavar='<vswitch_type>',
+           choices=['ovs-dpdk'],
+           help='The vswitch type for the system')
 def do_modify(cc, args):
     """Modify system attributes."""
 
@@ -126,7 +134,7 @@ def do_modify(cc, args):
         print 'Please follow the admin guide to complete the reconfiguration.'
 
     field_list = ['name', 'system_mode', 'description', 'location', 'contact',
-                  'timezone', 'sdn_enabled','https_enabled']
+                  'timezone', 'sdn_enabled','https_enabled', 'vswitch_type']
 
     # use field list as filter
     user_fields = dict((k, v) for (k, v) in vars(args).items()

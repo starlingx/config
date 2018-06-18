@@ -29,8 +29,8 @@ class platform::ntp (
     onlyif  => "grep -q '^server' /etc/ntp.conf",
   }
 
-  exec { 'systemd-daemon-reload':
-    command     => '/usr/bin/systemctl daemon-reload',
+  exec { 'ntpdate-systemd-daemon-reload':
+    command => '/usr/bin/systemctl daemon-reload',
   }
 
   exec { 'stop-ntpdate':
@@ -57,7 +57,7 @@ class platform::ntp (
   File['ntpdate_tis_override'] ->
   Exec['enable-ntpdate'] ->
   Exec['enable-ntpd'] ->
-  Exec['systemd-daemon-reload'] ->
+  Exec['ntpdate-systemd-daemon-reload'] ->
   Exec['stop-ntpdate'] ->
   Exec['stop-ntpd'] ->
   Exec['start-ntpdate'] ->

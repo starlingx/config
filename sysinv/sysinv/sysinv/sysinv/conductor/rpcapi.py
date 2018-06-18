@@ -1226,6 +1226,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_sdn_enabled'))
 
+    def update_vswitch_type(self, context):
+        """Synchronously, have the conductor update the system vswitch type
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_vswitch_type'))
+
     def configure_keystore_account(self, context, service_name,
                                    username, password):
         """Synchronously, have a conductor configure a ks(keyring) account.

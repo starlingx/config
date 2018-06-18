@@ -29,11 +29,10 @@ import tsconfig.tsconfig as tsc
 
 LOG = logging.getLogger(__name__)
 
-# Defines per-socket AVS memory requirements (in MB) for both real and virtual
-# deployments
-#
-AVS_REAL_MEMORY_MB = 1024
-AVS_VBOX_MEMORY_MB = 512
+# Defines per-socket vswitch memory requirements (in MB) for both real and
+# virtual deployments
+VSWITCH_REAL_MEMORY_MB = 1024
+VSWITCH_VIRTUAL_MEMORY_MB = 512
 
 
 class CPU:
@@ -286,32 +285,32 @@ class NodeOperator(object):
         return [name for name in listdir(dir)
                 if os.path.isdir(join(dir, name))]
 
-    def _set_default_avs_hugesize(self):
-        '''
-        Set the default memory size for avs hugepages when it must fallback to
-        2MB pages because there are no 1GB pages.  In a virtual environment we
-        set a smaller amount of memory because AVS is configured to use a
-        smaller mbuf pool.  In non-virtual environments we use the same amount
-        of memory as we would if 1GB pages were available.
-        '''
+    def _set_default_vswitch_hugesize(self):
+        """
+        Set the default memory size for vswitch hugepages when it must fallback
+        to 2MB pages because there are no 1GB pages.  In a virtual environment
+        we set a smaller amount of memory because vswitch is configured to use
+        a smaller mbuf pool.  In non-virtual environments we use the same
+        amount of memory as we would if 1GB pages were available.
+        """
         hugepage_size = 2
         if utils.is_virtual():
-            avs_hugepages_nr = AVS_VBOX_MEMORY_MB / hugepage_size
+            vswitch_hugepages_nr = VSWITCH_VIRTUAL_MEMORY_MB / hugepage_size
         else:
-            avs_hugepages_nr = AVS_REAL_MEMORY_MB / hugepage_size
+            vswitch_hugepages_nr = VSWITCH_REAL_MEMORY_MB / hugepage_size
 
         ## Create a new set of dict attributes
-        hp_attr = {'avs_hugepages_size_mib': hugepage_size,
-                   'avs_hugepages_nr': avs_hugepages_nr,
-                   'avs_hugepages_avail': 0}
+        hp_attr = {'vswitch_hugepages_size_mib': hugepage_size,
+                   'vswitch_hugepages_nr': vswitch_hugepages_nr,
+                   'vswitch_hugepages_avail': 0}
         return hp_attr
 
     def _inode_get_memory_hugepages(self):
-        '''Collect hugepage info, including avs, and vm.
+        """Collect hugepage info, including vswitch, and vm.
            Collect platform reserved if config.
         :param self
         :returns list of memory nodes and attributes
-        '''
+        """
 
         imemory = []
         Ki = 1024
@@ -339,7 +338,7 @@ class NodeOperator(object):
             Total_HP_MiB = 0  # Total memory (MiB) currently configured in HPs
             Free_HP_MiB = 0
 
-            # Check AVS and Libvirt memory
+            # Check vswitch and libvirt memory
             # Loop through configured hugepage sizes of this node and record
             # total number and number free
             hugepages = "/sys/devices/system/node/node%d/hugepages" % node
@@ -352,7 +351,7 @@ class NodeOperator(object):
                     sizesplit = subdir.split('-')
                     # role via size; also from /etc/nova/compute_reserved.conf
                     if sizesplit[1].startswith("1048576kB"):
-                        hugepages_role = "avs"
+                        hugepages_role = "vswitch"
                         size = int(SZ_1G_Ki / Ki)
                     else:
                         hugepages_role = "vm"
@@ -377,27 +376,27 @@ class NodeOperator(object):
 
                     # Libvirt hugepages can now be 1G and 2M, can't only look
                     # at 2M pages
-                    if hugepages_role == "avs":
-                        avs_hugepages_nr = AVS_REAL_MEMORY_MB / size
+                    if hugepages_role == "vswitch":
+                        vswitch_hugepages_nr = VSWITCH_REAL_MEMORY_MB / size
                         hp_attr = {
-                               'avs_hugepages_size_mib': size,
-                               'avs_hugepages_nr': avs_hugepages_nr,
-                               'avs_hugepages_avail': 0,
+                               'vswitch_hugepages_size_mib': size,
+                               'vswitch_hugepages_nr': vswitch_hugepages_nr,
+                               'vswitch_hugepages_avail': 0,
                                'vm_hugepages_nr_1G':
-                               (nr_hugepages - avs_hugepages_nr),
+                               (nr_hugepages - vswitch_hugepages_nr),
                                'vm_hugepages_avail_1G': free_hugepages,
                                'vm_hugepages_use_1G': 'True'
                                   }
                     else:
                         if len(subdirs) == 1:
-                            hp_attr = self._set_default_avs_hugesize()
+                            hp_attr = self._set_default_vswitch_hugesize()
                             hp_attr.update({'vm_hugepages_use_1G': 'False'})
 
-                        avs_hugepages_nr = hp_attr.get('avs_hugepages_nr', 0)
+                        vswitch_hugepages_nr = hp_attr.get('vswitch_hugepages_nr', 0)
                         hp_attr.update({
                             'vm_hugepages_avail_2M': free_hugepages,
                             'vm_hugepages_nr_2M':
-                                (nr_hugepages - avs_hugepages_nr)
+                                (nr_hugepages - vswitch_hugepages_nr)
                              })
 
                     attr.update(hp_attr)
@@ -503,8 +502,8 @@ class NodeOperator(object):
 
             Eng_KiB = node_total_kib - base_mem_MiB * Ki
 
-            vswitch_mem_kib = (attr.get('avs_hugepages_size_mib', 0) *
-                               attr.get('avs_hugepages_nr', 0) * Ki)
+            vswitch_mem_kib = (attr.get('vswitch_hugepages_size_mib', 0) *
+                               attr.get('vswitch_hugepages_nr', 0) * Ki)
 
             VM_KiB = (Eng_KiB - vswitch_mem_kib)
 

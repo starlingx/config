@@ -831,9 +831,9 @@ def test_region_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(region_config, REGION_CONFIG, None, False)
 
-    # Test detection of neutron in wrong region for AVS VSWITCH_TYPE
+    # Test detection of neutron in wrong region for VSWITCH_TYPE
     region_config = cr.parse_system_config(nuage_vrs_regionfile)
-    region_config.set('NETWORK', 'VSWITCH_TYPE', 'AVS')
+    region_config.set('NETWORK', 'VSWITCH_TYPE', 'ovs-dpdk')
     with pytest.raises(exceptions.ConfigFail):
         cr.create_cgcs_config_file(None, region_config, None, None, None,
                                    validate_only=True)

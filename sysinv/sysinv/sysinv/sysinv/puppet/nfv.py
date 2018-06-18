@@ -26,11 +26,9 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
         system = self._get_system()
 
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            data_port_fault_handling_enabled = False
             single_hypervisor = True
             single_controller = True
         else:
-            data_port_fault_handling_enabled = True
             single_hypervisor = False
             single_controller = False
 
@@ -52,8 +50,6 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 self._get_management_address(),
             'nfv::nfvi::host_listener_host':
                 self._get_management_address(),
-            'nfv::nfvi::infrastructure_rest_api_data_port_fault_handling_enabled':
-                data_port_fault_handling_enabled,
 
             'nfv::nfvi::openstack_username':
                 self._operator.keystone.get_admin_user_name(),

@@ -1,6 +1,10 @@
 # compute specific configuration data
 ---
 
+# vswitch
+vswitch::dpdk::memory_channels: 4
+
+
 # neutron
 neutron::agents::dhcp::interface_driver: 'openvswitch'
 neutron::agents::dhcp::enable_isolated_metadata: true
@@ -10,6 +14,11 @@ neutron::agents::dhcp::root_helper: 'sudo'
 neutron::agents::l3::interface_driver: 'openvswitch'
 neutron::agents::l3::metadata_port: 80
 neutron::agents::l3::agent_mode: 'dvr_snat'
+
+neutron::agents::ml2::ovs::manage_vswitch: false
+neutron::agents::ml2::ovs::datapath_type: 'netdev'
+neutron::agents::ml2::ovs::vhostuser_socket_dir: '/var/run/openvswitch'
+neutron::agents::ml2::ovs::firewall_driver: 'noop'
 
 neutron::agents::ml2::sriov::manage_service: true
 neutron::agents::ml2::sriov::polling_interval: 5
@@ -45,6 +54,10 @@ nova::network::neutron::neutron_project_name: 'services'
 nova::network::neutron::neutron_user_domain_name: 'Default'
 nova::network::neutron::neutron_project_domain_name: 'Default'
 nova::network::neutron::neutron_region_name: RegionOne
+
+nova::compute::neutron::libvirt_vif_driver: 'nova.virt.libvirt.vif.LibvirtGenericVIFDriver'
+
+openstack::nova::compute::compute_monitors: "cpu.virt_driver"
 
 
 # ceilometer

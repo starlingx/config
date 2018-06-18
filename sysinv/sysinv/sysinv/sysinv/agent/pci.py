@@ -463,19 +463,13 @@ class PCIOperator(object):
 
                 try:
                     with open(os.devnull, "w") as fnull:
-                        """
-                        query_pci_id is from dpdk (avs/cgcs-dpdk/files/query_pci_id).
-                        DPDK is removed as part of AVS.
-                        Need add it back later. Then enable this code again.
-                        """
-                        LOG.error("******ERROR: unable to determine DPDK support or not due to lack DPDK package.******")
-                        # subprocess.check_call(["query_pci_id", "-v " + str(vendor),
-                        #                       "-d " + str(device)],
-                        #                      stdout=fnull, stderr=fnull)
-                        # dpdksupport = True
-                        # LOG.debug("DPDK does support NIC "
-                        #          "(vendor: %s device: %s)",
-                        #          vendor, device)
+                        subprocess.check_call(["query_pci_id", "-v " + str(vendor),
+                                               "-d " + str(device)],
+                                              stdout=fnull, stderr=fnull)
+                        dpdksupport = True
+                        LOG.debug("DPDK does support NIC "
+                                  "(vendor: %s device: %s)",
+                                  vendor, device)
                 except subprocess.CalledProcessError as e:
                     dpdksupport = False
                     if e.returncode == '1':

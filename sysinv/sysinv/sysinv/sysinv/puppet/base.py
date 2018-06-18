@@ -16,6 +16,8 @@ from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.common import exception
 
+from . import quoted_str
+
 
 @six.add_metaclass(abc.ABCMeta)
 class BasePuppet(object):
@@ -44,6 +46,10 @@ class BasePuppet(object):
     @property
     def context(self):
         return self._operator.context
+
+    @staticmethod
+    def quoted_str(value):
+        return quoted_str(value)
 
     @staticmethod
     def _generate_random_password(length=16):
@@ -78,6 +84,13 @@ class BasePuppet(object):
 
         system = self._get_system()
         return system.capabilities.get('region_config', False)
+
+    def _vswitch_type(self):
+        if self.dbapi is None:
+            return False
+
+        system = self._get_system()
+        return system.capabilities.get('vswitch_type', None)
 
     def _distributed_cloud_role(self):
         if self.dbapi is None:
@@ -159,6 +172,14 @@ class BasePuppet(object):
             if c.allocated_function == function or not function:
                 cpus.append(c)
         return cpus
+
+    def _get_vswitch_cpu_list(self, host):
+        cpus = self._get_host_cpu_list(host, constants.VSWITCH_FUNCTION)
+        return sorted(cpus, key=lambda c: c.cpu)
+
+    def _get_platform_cpu_list(self, host):
+        cpus = self._get_host_cpu_list(host, constants.PLATFORM_FUNCTION)
+        return sorted(cpus, key=lambda c: c.cpu)
 
     def _get_service_parameters(self, service=None):
         service_parameters = []

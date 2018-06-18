@@ -878,8 +878,6 @@ def _valid_network_types():
     vswitch_type = utils.get_vswitch_type()
     system_mode = utils.get_system_mode()
 
-    if vswitch_type != constants.VSWITCH_TYPE_AVS:
-        valid_types -= set([constants.NETWORK_TYPE_DATA])
     if vswitch_type != constants.VSWITCH_TYPE_NUAGE_VRS:
         valid_types -= set([constants.NETWORK_TYPE_DATA_VRS])
     if system_mode == constants.SYSTEM_MODE_SIMPLEX:
@@ -1200,7 +1198,7 @@ def _check_interface_data(op, interface, ihost, existing_interface):
     # check mode/pool combinations and transitions for validity
     _check_address_mode(op, interface, ihost, existing_interface)
 
-    # Make sure txhashpolicy for data is layer2 ... all that AVS supports
+    # Make sure txhashpolicy for data is layer2
     aemode = interface['aemode']
     txhashpolicy = interface['txhashpolicy']
 
@@ -1821,15 +1819,16 @@ def _neutron_host_extension_supported():
     necessary or not.  If it is not supported then this is an indication that
     we are running against a vanilla openstack installation.
     """
-    return bool(utils.get_vswitch_type() == constants.VSWITCH_TYPE_AVS)
-    ## TODO: Rather than key off of the vswitch type this should be looking at
-    ## the neutron extension list, but because our config file is not setup
-    ## properly to have a different region on a per service basis we cannot.
-    ## The code should like something like this:
-    ##
-    ## extensions = pecan.request.rpcapi.neutron_extension_list(
-    ##     pecan.request.context)
-    ## return bool(constants.NEUTRON_HOST_ALIAS in extensions)
+    return True
+    # TODO: This should be looking at the neutron extension list, but because
+    # our config file is not setup properly to have a different region on a per
+    # service basis we cannot.
+    #
+    # The code should like something like this:
+    #
+    # extensions = pecan.request.rpcapi.neutron_extension_list(
+    #     pecan.request.context)
+    # return bool(constants.NEUTRON_HOST_ALIAS in extensions)
 
 
 def _neutron_providernet_extension_supported():
@@ -1839,15 +1838,16 @@ def _neutron_providernet_extension_supported():
     necessary or not.  If it is not supported then this is an indication that
     we are running against a vanilla openstack installation.
     """
-    return bool(utils.get_vswitch_type() == constants.VSWITCH_TYPE_AVS)
-    ## TODO: Rather than key off of the vswitch type this should be looking at
-    ## the neutron extension list, but because our config file is not setup
-    ## properly to have a different region on a per service basis we cannot.
-    ## The code should like something like this:
-    ##
-    ## extensions = pecan.request.rpcapi.neutron_extension_list(
-    ##    pecan.request.context)
-    ## return bool(constants.NEUTRON_WRS_PROVIDER_ALIAS in extensions)
+    return True
+    # TODO: This should be looking at the neutron extension list, but because
+    # our config file is not setup properly to have a different region on a per
+    # service basis we cannot.
+    #
+    # The code should like something like this:
+    #
+    # extensions = pecan.request.rpcapi.neutron_extension_list(
+    #    pecan.request.context)
+    # return bool(constants.NEUTRON_WRS_PROVIDER_ALIAS in extensions)
 
 
 def _neutron_providernet_list():

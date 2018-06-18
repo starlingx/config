@@ -443,23 +443,7 @@ class ConfigAssistant():
         # HTTPS
         self.enable_https = False
         # Network config
-        self.vswitch_type = "avs"
-        self.neutron_l2_plugin = "ml2"
-        self.neutron_l2_agent = "vswitch"
-        self.neutron_l3_ext_bridge = 'provider'
-        self.neutron_mechanism_drivers = "vswitch,sriovnicswitch,l2population"
-        self.neutron_sriov_agent_required = "y"
-        self.neutron_type_drivers = "managed_flat,managed_vlan,managed_vxlan"
-        self.neutron_network_types = "vlan,vxlan"
-        self.neutron_host_driver = \
-            "neutron.plugins.wrs.drivers.host.DefaultHostDriver"
-        self.neutron_fm_driver = \
-            "neutron.plugins.wrs.drivers.fm.DefaultFmDriver"
-        self.neutron_network_scheduler = \
-            "neutron.scheduler.dhcp_host_agent_scheduler.HostBasedScheduler"
-        self.neutron_router_scheduler = \
-            "neutron.scheduler.l3_host_agent_scheduler.HostBasedScheduler"
-        self.metadata_proxy_shared_secret = ""
+        self.vswitch_type = "ovs-dpdk"
 
         # Authentication config
         self.admin_username = "admin"
@@ -2622,48 +2606,6 @@ class ConfigAssistant():
                 # If any of the network options are missing, use defaults.
                 if config.has_option('cNETWORK', 'VSWITCH_TYPE'):
                     self.vswitch_type = config.get('cNETWORK', 'VSWITCH_TYPE')
-                if config.has_option('cNETWORK', 'NEUTRON_L2_PLUGIN'):
-                    self.neutron_l2_plugin = config.get(
-                        'cNETWORK', 'NEUTRON_L2_PLUGIN')
-                if config.has_option('cNETWORK', 'NEUTRON_L2_AGENT'):
-                    self.neutron_l2_agent = config.get(
-                        'cNETWORK', 'NEUTRON_L2_AGENT')
-                if config.has_option('cNETWORK', 'NEUTRON_L3_EXT_BRIDGE'):
-                    self.neutron_l3_ext_bridge = config.get(
-                        'cNETWORK', 'NEUTRON_L3_EXT_BRIDGE')
-                if config.has_option('cNETWORK',
-                                     'NEUTRON_ML2_MECHANISM_DRIVERS'):
-                    self.neutron_mechanism_drivers = config.get(
-                        'cNETWORK', 'NEUTRON_ML2_MECHANISM_DRIVERS')
-                if config.has_option('cNETWORK',
-                                     'NEUTRON_ML2_TYPE_DRIVERS'):
-                    self.neutron_type_drivers = config.get(
-                        'cNETWORK', 'NEUTRON_ML2_TYPE_DRIVERS')
-                if config.has_option('cNETWORK',
-                                     'NEUTRON_ML2_TENANT_NETWORK_TYPES'):
-                    self.neutron_network_types = config.get(
-                        'cNETWORK', 'NEUTRON_ML2_TENANT_NETWORK_TYPES')
-                if config.has_option('cNETWORK',
-                                     'NEUTRON_ML2_SRIOV_AGENT_REQUIRED'):
-                    self.neutron_sriov_agent_required = config.get(
-                        'cNETWORK', 'NEUTRON_ML2_SRIOV_AGENT_REQUIRED')
-                if config.has_option('cNETWORK', 'NEUTRON_HOST_DRIVER'):
-                    self.neutron_host_driver = config.get(
-                        'cNETWORK', 'NEUTRON_HOST_DRIVER')
-                if config.has_option('cNETWORK', 'NEUTRON_FM_DRIVER'):
-                    self.neutron_fm_driver = config.get(
-                        'cNETWORK', 'NEUTRON_FM_DRIVER')
-                if config.has_option('cNETWORK',
-                                     'NEUTRON_NETWORK_SCHEDULER'):
-                    self.neutron_network_scheduler = config.get(
-                        'cNETWORK', 'NEUTRON_NETWORK_SCHEDULER')
-                if config.has_option('cNETWORK',
-                                     'NEUTRON_ROUTER_SCHEDULER'):
-                    self.neutron_router_scheduler = config.get(
-                        'cNETWORK', 'NEUTRON_ROUTER_SCHEDULER')
-                if self.vswitch_type == "nuage_vrs":
-                    self.metadata_proxy_shared_secret = config.get(
-                        'cNETWORK', 'METADATA_PROXY_SHARED_SECRET')
 
             # Authentication configuration
             if config.has_section('cAUTHENTICATION'):
@@ -3289,31 +3231,6 @@ class ConfigAssistant():
                 f.write("\n[cNETWORK]")
                 f.write("\n# Data Network Configuration\n")
                 f.write("VSWITCH_TYPE=%s\n" % self.vswitch_type)
-                f.write("NEUTRON_L2_PLUGIN=" +
-                        str(self.neutron_l2_plugin) + "\n")
-                f.write("NEUTRON_L2_AGENT=" +
-                        str(self.neutron_l2_agent) + "\n")
-                f.write("NEUTRON_L3_EXT_BRIDGE=" +
-                        str(self.neutron_l3_ext_bridge) + "\n")
-                f.write("NEUTRON_ML2_MECHANISM_DRIVERS=" +
-                        str(self.neutron_mechanism_drivers) + "\n")
-                f.write("NEUTRON_ML2_TYPE_DRIVERS=" +
-                        str(self.neutron_type_drivers) + "\n")
-                f.write("NEUTRON_ML2_TENANT_NETWORK_TYPES=" +
-                        str(self.neutron_network_types) + "\n")
-                f.write("NEUTRON_ML2_SRIOV_AGENT_REQUIRED=" +
-                        str(self.neutron_sriov_agent_required) + "\n")
-                f.write("NEUTRON_HOST_DRIVER=" +
-                        str(self.neutron_host_driver) + "\n")
-                f.write("NEUTRON_FM_DRIVER=" +
-                        str(self.neutron_fm_driver) + "\n")
-                f.write("NEUTRON_NETWORK_SCHEDULER=" +
-                        str(self.neutron_network_scheduler) + "\n")
-                f.write("NEUTRON_ROUTER_SCHEDULER=" +
-                        str(self.neutron_router_scheduler) + "\n")
-                if self.vswitch_type == "nuage_vrs":
-                    f.write("METADATA_PROXY_SHARED_SECRET=" +
-                            str(self.metadata_proxy_shared_secret) + "\n")
 
                 # Security configuration
                 f.write("\n[cSECURITY]")

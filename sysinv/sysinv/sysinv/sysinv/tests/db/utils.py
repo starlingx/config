@@ -179,7 +179,8 @@ def get_test_isystem(**kw):
             'capabilities': kw.get('capabilities',
                                    {"cinder_backend":
                                         constants.CINDER_BACKEND_LVM,
-                                    "vswitch_type": constants.VSWITCH_TYPE_AVS,
+                                    "vswitch_type":
+                                        constants.VSWITCH_TYPE_OVS_DPDK,
                                     "region_config": False,
                                     "sdn_enabled": True,
                                     "shared_services": "[]"}),
@@ -367,10 +368,10 @@ def get_test_imemory(**kw):
 
         'hugepages_configured': kw.get('hugepages_configured', False),
 
-        'avs_hugepages_size_mib': kw.get('avs_hugepages_size_mib', 2),
-        'avs_hugepages_reqd': kw.get('avs_hugepages_reqd'),
-        'avs_hugepages_nr': kw.get('avs_hugepages_nr', 256),
-        'avs_hugepages_avail': kw.get('avs_hugepages_avail', 0),
+        'vswitch_hugepages_size_mib': kw.get('vswitch_hugepages_size_mib', 2),
+        'vswitch_hugepages_reqd': kw.get('vswitch_hugepages_reqd'),
+        'vswitch_hugepages_nr': kw.get('vswitch_hugepages_nr', 256),
+        'vswitch_hugepages_avail': kw.get('vswitch_hugepages_avail', 0),
 
         'vm_hugepages_nr_2M_pending': kw.get('vm_hugepages_nr_2M_pending'),
         'vm_hugepages_nr_1G_pending': kw.get('vm_hugepages_nr_1G_pending'),

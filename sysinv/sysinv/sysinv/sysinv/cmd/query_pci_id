@@ -1,0 +1,61 @@
+#!/usr/bin/python
+#
+# Copyright (c) 2018 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+import sys
+import json
+import subprocess
+from argparse import ArgumentParser
+
+
+def main():
+    ''' The goal of this script is to discover if the supplied PCI device is
+    supported by the vswitch as an accelerated NIC.'''
+
+    parser = ArgumentParser(description="Query vswitch NIC support")
+
+    parser.add_argument("-v", "--vendor", dest="vid",
+                        help="Vendor ID",
+                        type=lambda x: hex(int(x, 0)),
+                        action='store', metavar="HEX",
+                        required=True)
+    parser.add_argument("-d", "--device", dest="did",
+                        help="Device ID",
+                        type=lambda x: hex(int(x, 0)),
+                        action='store', metavar="HEX",
+                        required=True)
+    args = parser.parse_args()
+
+    cmd = 'python /usr/share/openvswitch/scripts/dpdk-pmdinfo.py ' \
+          '-r /usr/sbin/ovs-vswitchd'
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+    out, err = p.communicate()
+    result = out.split('\n')
+
+    for line in result:
+        if not line:
+            continue
+
+        pmd_info = json.loads(line)
+        supported_devices = pmd_info['pci_ids']
+
+        for supported_device in supported_devices:
+            vid = hex(supported_device[0])
+            did = hex(supported_device[1])
+
+            if vid == args.vid and did == args.did:
+                print("Vendor ID: %s Device ID: %s is supported" %
+                     (args.vid, args.did))
+                return 0
+
+    print("Vendor ID: %s Device ID: %s is not supported" %
+         (args.vid, args.did))
+    return 1
+
+
+if __name__ == "__main__":
+    ret = main()
+    sys.exit(ret)
