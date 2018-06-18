@@ -497,6 +497,7 @@ class AgentManager(service.PeriodicService):
         """ Release the lock guarding apply_network_config.sh """
         if lockfd:
             fcntl.flock(lockfd, fcntl.LOCK_UN)
+            os.close(lockfd)
 
     def ihost_inv_get_and_report(self, icontext):
         """Collect data for an ihost.
