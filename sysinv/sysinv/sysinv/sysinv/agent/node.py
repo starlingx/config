@@ -15,6 +15,7 @@ import os
 from os import listdir
 from os.path import isfile, join
 import re
+import subprocess
 
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
