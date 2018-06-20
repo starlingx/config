@@ -24,6 +24,9 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
     SERVICE_PORT = 9292
     SERVICE_KS_USERNAME = 'glance'
 
+    ADMIN_SERVICE = 'CGCS'
+    ADMIN_USER = 'admin'
+
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
 
@@ -39,7 +42,7 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
         dbpass = self._get_database_password(self.SERVICE_NAME)
         kspass = self._get_service_password(self.SERVICE_NAME)
 
-        return {
+        config = {
             'glance::db::postgresql::password': dbpass,
 
             'glance::keystone::auth::password': kspass,
@@ -49,6 +52,15 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
 
             'glance::registry::authtoken::password': kspass,
         }
+
+        # set remote registry admin_password for subcloud
+        admin_password = self._get_keyring_password(self.ADMIN_SERVICE,
+                                                    self.ADMIN_USER)
+        config.update({
+            'glance::api::admin_password': admin_password,
+        })
+
+        return config
 
     def get_system_config(self):
 
@@ -96,6 +108,12 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
             registry_host = self._keystone_auth_address()
             remote_registry_region_name = self._keystone_region_name()
 
+        # update remote registry for subcloud
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            registry_host = self._get_system_controller_host()
+            remote_registry_region_name = constants.SYSTEM_CONTROLLER_REGION
+
         if constants.GLANCE_BACKEND_RBD in enabled_backends:
             default_store = constants.GLANCE_BACKEND_RBD
         else:
@@ -135,6 +153,8 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
                 self._get_service_project_domain_name(),
             'glance::api::authtoken::project_name':
                 self._get_service_tenant_name(),
+            'glance::api::authtoken::region_name':
+                self._api_authtoken_region_name(),
 
             'glance::registry::authtoken::auth_uri':
                 self._keystone_auth_uri(),
@@ -147,6 +167,8 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
                 self._get_service_project_domain_name(),
             'glance::registry::authtoken::project_name':
                 self._get_service_tenant_name(),
+            'glance::registry::authtoken::region_name':
+                self._registry_authtoken_region_name(),
 
             'openstack::glance::params::api_host':
                 self._get_glance_address(),
@@ -174,6 +196,22 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
                                rbd_store_pool,
                            'openstack::glance::params::rbd_store_ceph_conf':
                                rbd_store_ceph_conf,})
+
+        # set remote registry auth_url for subcloud
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            # TODO (aning): with each subcloud has its own keystone, subcloud
+            # no longer knows SystemController's keystone admin url. We need
+            # to have that information in sub cloud config file eventually.
+            # For now it's assumed it's on http and on port 5000
+            api_auth_url = self._format_url_address(
+                self._get_system_controller_host())
+            api_auth_url = 'http://' + api_auth_url + ':5000/v3'
+
+            config.update({
+                'glance::api::auth_url': api_auth_url,
+            })
+
         return config
 
     def get_secure_system_config(self):
@@ -203,6 +241,20 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
         if (self._distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
             return constants.SYSTEM_CONTROLLER_REGION
+        else:
+            return self._region_name()
+
+    def _api_authtoken_region_name(self):
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            return constants.REGION_ONE_NAME
+        else:
+            return self._region_name()
+
+    def _registry_authtoken_region_name(self):
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            return constants.REGION_ONE_NAME
         else:
             return self._region_name()
 

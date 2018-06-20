@@ -189,6 +189,15 @@ class OpenstackBasePuppet(base.BasePuppet):
     def _get_service_project_domain_name(self):
         return self._operator.keystone.get_service_project_domain()
 
+    def _get_system_controller_host(self):
+        sys_controller_network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+        sys_controller_network_addr_pool = self.dbapi.address_pool_get(
+            sys_controller_network.pool_uuid)
+        addr = sys_controller_network_addr_pool.floating_address
+        host = self._format_url_address(addr)
+        return host
+
     @staticmethod
     def _format_keystone_endpoint(protocol, port, address, path):
         url = "%s://%s:%s" % (protocol, str(address), str(port))

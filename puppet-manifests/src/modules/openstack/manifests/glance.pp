@@ -9,6 +9,7 @@ class openstack::glance::params (
   $enabled_backends = [],
   $service_create = false,
   $configured_registry_host = '0.0.0.0',
+  $remote_registry_region_name = undef,
   $glance_cached = false,
   $glance_delete_interval = 6,
   $rbd_store_pool = 'images',
@@ -162,9 +163,17 @@ class openstack::glance::api
     # this speeds up creation of volumes from images
     $show_image_direct_url = ('rbd' in $enabled_backends)
 
+    if ($::platform::params::distributed_cloud_role == 'subcloud') {
+      $api_use_user_token = false
+    } else {
+      $api_use_user_token = true
+    }
+
     class { '::glance::api':
       bind_host             => $api_host,
+      use_user_token        => $api_use_user_token,
       registry_host         => $registry_host,
+      remote_registry_region_name => $remote_registry_region_name,
       workers               => $api_workers,
       sync_db   => $::platform::params::init_database,
       show_image_direct_url => $show_image_direct_url,
