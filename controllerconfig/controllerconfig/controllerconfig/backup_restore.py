@@ -49,6 +49,7 @@ restore_system_ready = tsconfig.RESTORE_SYSTEM_FLAG
 restore_patching_complete = '/etc/platform/.restore_patching_complete'
 node_is_patched = '/var/run/node_is_patched'
 keyring_permdir = os.path.join('/opt/platform/.keyring', tsconfig.SW_VERSION)
+ceph_permdir = os.path.join(tsconfig.CONFIG_PATH, 'ceph-config')
 ldap_permdir = '/var/lib/openldap-data'
 ceilometer_permdir = '/opt/cgcs/ceilometer/' + tsconfig.SW_VERSION
 glance_permdir = '/opt/cgcs/glance'
@@ -288,6 +289,18 @@ def restore_etc_ssl_dir(archive, configpath=constants.CONFIG_WORKDIR):
         # is restored.
         archive.extractall(path='/',
                            members=filter_etc_ssl_private(archive))
+
+
+def restore_ceph_external_config_files(archive, staging_dir):
+    # Restore ceph-config.
+    if file_exists_in_archive(archive, "config/ceph-config"):
+        restore_config_dir(archive, staging_dir, 'ceph-config', ceph_permdir)
+
+        # Copy the file to /etc/ceph.
+        # There might be no files to copy, so don't check the return code.
+        cp_command = ('cp -Rp ' + os.path.join(ceph_permdir, '*') +
+                      ' /etc/ceph/')
+        subprocess.call(cp_command, shell=True)
 
 
 def backup_nova_instances(archive):
@@ -931,6 +944,56 @@ def backup_postgres(archive, staging_dir, cinder_config=False):
         raise BackupFail("Failed to backup database configuration")
 
 
+def set_cinder_volumes_snapshots_status():
+    """Update cinder volumes and cinder snapshots status to error,
+       except for those from an external CEPH backend.
+    """
+
+    # Get all the external ceph backends.
+    get_ext_ceph_backends_cmd = [
+        "sudo", "-u", "postgres", "psql", "-t", "sysinv", "-c",
+        "SELECT NAME FROM STORAGE_BACKEND WHERE BACKEND='ceph-external'"]
+
+    volume_types = None
+    ext_ceph_backends = subprocess.check_output(get_ext_ceph_backends_cmd)
+    ext_ceph_backends = ext_ceph_backends.split()
+    if ext_ceph_backends:
+        ext_ceph_backends = str(ext_ceph_backends).replace(
+            '[', '(').replace(']', ')')
+
+        # Get the volumes type for the external ceph cluster(s).
+        get_volume_types_cmd_string = "SELECT ID FROM " \
+            "VOLUME_TYPES WHERE ID IN (SELECT VOLUME_TYPE_ID FROM " \
+            "VOLUME_TYPE_EXTRA_SPECS WHERE VALUE IN %s)" % ext_ceph_backends
+        get_volume_types_cmd = ["sudo", "-u", "postgres", "psql", "-t",
+                                "cinder", "-c", get_volume_types_cmd_string]
+        volume_types = subprocess.check_output(get_volume_types_cmd)
+        volume_types = volume_types.split()
+
+    # Set the status to 'error' for all volumes and snapshots, except for
+    # those from an external Ceph backend.
+    for stor in ['VOLUMES', 'SNAPSHOTS']:
+        get_stor_string = "SELECT ID FROM %s" % stor
+        if volume_types:
+            volume_types = str(volume_types).replace(
+                '[', '(').replace(']', ')')
+            get_stor_string = "SELECT ID FROM %s WHERE VOLUME_TYPE_ID IS "\
+                "NULL OR VOLUME_TYPE_ID NOT IN %s" % (stor, volume_types)
+
+        stors = subprocess.check_output(
+            ["sudo", "-u", "postgres", "psql", "-t", "cinder", "-c",
+             get_stor_string])
+
+        stors = stors.split()
+        if stors:
+            stors = str(stors).replace('[', '(').replace(']', ')')
+            cmd_string = "UPDATE %s SET STATUS='error' WHERE ID " \
+                         "IN %s" % (stor, stors)
+            cmd = ["sudo", "-u", "postgres", "psql", "-d", "cinder", "-c",
+                   cmd_string]
+            subprocess.check_call(cmd, stdout=DEVNULL, stderr=DEVNULL)
+
+
 def restore_postgres(archive, staging_dir):
     """ Restore postgres configuration """
     try:
@@ -961,18 +1024,7 @@ def restore_postgres(archive, staging_dir):
                                         "psql", "-lqt"]).find('cinder') != -1:
                 # The backing store for cinder volumes and snapshots is not
                 # restored, so their status must be set to error.
-                subprocess.check_call(["sudo",
-                                       "-u", "postgres",
-                                       "psql", "cinder",
-                                       "-c",
-                                       "UPDATE VOLUMES SET STATUS='error'"],
-                                      stdout=DEVNULL, stderr=DEVNULL)
-                subprocess.check_call(["sudo", "-u",
-                                       "postgres", "psql", "cinder",
-                                      "-c",
-                                       "UPDATE SNAPSHOTS SET STATUS='error'"],
-                                      stdout=DEVNULL, stderr=DEVNULL)
-
+                set_cinder_volumes_snapshots_status()
     except (OSError, subprocess.CalledProcessError, tarfile.TarError) as e:
         LOG.error("Failed to restore postgres databases. Error: %s", e)
         raise RestoreFail("Failed to restore database configuration")
@@ -1503,7 +1555,7 @@ def restore_system(backup_file, clone=False):
         os.chdir('/')
 
         step = 1
-        total_steps = 24
+        total_steps = 25
 
         # Step 1: Open archive and verify installed load matches backup
         try:
@@ -1766,7 +1818,13 @@ def restore_system(backup_file, clone=False):
 
         step += 1
 
-        # Step 23: Shutdown file systems
+        # Step 23: Restore external ceph configuration files.
+        restore_ceph_external_config_files(archive, staging_dir)
+        utils.progress(total_steps, step, 'restore CEPH external config',
+                       'DONE', newline)
+        step += 1
+
+        # Step 24: Shutdown file systems
         archive.close()
         shutil.rmtree(staging_dir, ignore_errors=True)
         utils.shutdown_file_systems()
@@ -1774,7 +1832,7 @@ def restore_system(backup_file, clone=False):
                        newline)
         step += 1
 
-        # Step 24: Recover services
+        # Step 25: Recover services
         utils.mtce_restart()
         utils.mark_config_complete()
         time.sleep(120)

@@ -5798,8 +5798,7 @@ class ConductorManager(service.PeriodicService):
                 self.report_ceph_external_config_success(context, host_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
-                self.report_ceph_external_config_failure(
-                    host_uuid, error, constants.SB_TYPE_CEPH_EXTERNAL)
+                self.report_ceph_external_config_failure(host_uuid, error)
             else:
                 args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
                 LOG.error("No match for sysinv-agent manifest application reported! "
