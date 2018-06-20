@@ -553,7 +553,7 @@ def configure_region(config_file, config_type=REGION_CONFIG):
 
     # Bring up management interface to allow us to reach Region 1
     print "Configuring management interface... ",
-    configure_management_interface(region_config)
+    configure_management_interface(region_config, config_type=config_type)
     print "DONE"
 
     # Get token from keystone

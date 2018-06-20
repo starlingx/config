@@ -346,9 +346,16 @@ class ConfigValidator(object):
         # Management network configuration
         mgmt_prefix = NETWORK_PREFIX_NAMES[self.naming_type][MGMT_TYPE]
         self.mgmt_network = Network()
+
+        if self.config_type == SUBCLOUD_CONFIG:
+            min_addresses = 5
+        else:
+            min_addresses = 8
+
         try:
             self.mgmt_network.parse_config(self.conf, self.config_type,
-                                           MGMT_TYPE, min_addresses=8,
+                                           MGMT_TYPE,
+                                           min_addresses=min_addresses,
                                            multicast_addresses=16,
                                            naming_type=self.naming_type)
         except ConfigFail:

@@ -54,9 +54,15 @@ def configure_management_interface(region_config, config_type=REGION_CONFIG):
         naming_type = HP_NAMES
     else:
         naming_type = DEFAULT_NAMES
+
+    if config_type == SUBCLOUD_CONFIG:
+        min_addresses = 5
+    else:
+        min_addresses = 8
     try:
         mgmt_network.parse_config(region_config, config_type, MGMT_TYPE,
-                                  min_addresses=8, naming_type=naming_type)
+                                  min_addresses=min_addresses,
+                                  naming_type=naming_type)
     except ConfigFail:
         raise
     except Exception as e:
