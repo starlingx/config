@@ -157,6 +157,22 @@ class openstack::keystone::api
   if ($::openstack::keystone::params::service_create and
       $::platform::params::init_keystone) {
     include ::keystone::endpoint
+
+    # Cleanup the endpoints created at bootstrap if they are not in
+    # the subcloud region.
+    if ($::platform::params::distributed_cloud_role == 'subcloud' and
+        $::platform::params::region_2_name != 'RegionOne') {
+      Keystone_endpoint["${platform::params::region_2_name}/keystone::identity"] -> Keystone_endpoint["RegionOne/keystone::identity"]
+      keystone_endpoint { "RegionOne/keystone::identity":
+        ensure       => "absent",
+        name         => "keystone",
+        type         => "identity",
+        region       => "RegionOne",
+        public_url   => "http://127.0.0.1:5000/v3",
+        admin_url    => "http://127.0.0.1:5000/v3",
+        internal_url => "http://127.0.0.1:5000/v3"
+      }
+    }
   }
 
   include ::openstack::keystone::firewall

@@ -128,6 +128,22 @@ class platform::sysinv::api
   if ($::platform::sysinv::params::service_create and
       $::platform::params::init_keystone) {
     include ::sysinv::keystone::auth
+
+    # Cleanup the endpoints created at bootstrap if they are not in
+    # the subcloud region.
+    if ($::platform::params::distributed_cloud_role == 'subcloud' and
+        $::platform::params::region_2_name != 'RegionOne') {
+      Keystone_endpoint["${platform::params::region_2_name}/sysinv::platform"] -> Keystone_endpoint["RegionOne/sysinv::platform"]
+      keystone_endpoint { "RegionOne/sysinv::platform":
+        ensure       => "absent",
+        name         => "sysinv",
+        type         => "platform",
+        region       => "RegionOne",
+        public_url   => "http://127.0.0.1:6385/v1",
+        admin_url    => "http://127.0.0.1:6385/v1",
+        internal_url => "http://127.0.0.1:6385/v1"
+      }
+    }
   }
 
   # TODO(mpeters): move to sysinv puppet module parameters
