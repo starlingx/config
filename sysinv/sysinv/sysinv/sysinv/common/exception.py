@@ -1236,3 +1236,7 @@ class IncompleteCephMonNetworkConfig(CephFailure):
     message = _("IP address for controller-0, controller-1 and "
                 "storage-0 must be allocated. Expected: %(targets)s, "
                 "found: %(results)s")
+
+
+class InvalidHelmNamespace(Invalid):
+    message = _("Invalid helm overrides namespace (%(namespace)s) for chart %(chart)s.")

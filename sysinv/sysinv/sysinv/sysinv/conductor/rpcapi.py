@@ -1556,3 +1556,57 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        pem_contents=pem_contents,
                                        config_dict=config_dict,
                                        ))
+
+    def get_helm_chart_namespaces(self, context, chart_name):
+        """Get supported chart namespaces.
+
+        This method retrieves the namespace supported by a given chart.
+
+        :param context: request context.
+        :param chart_name: name of the chart
+        :returns: list of supported namespaces that associated overrides may be
+                  provided.
+        """
+        return self.call(context,
+                         self.make_msg('get_helm_chart_namespaces',
+                                       chart_name=chart_name))
+
+    def get_helm_chart_overrides(self, context, chart_name, cnamespace=None):
+        """Get the overrides for a supported chart.
+
+        :param context: request context.
+        :param chart_name: name of a supported chart
+        :param cnamespace: (optional) namespace
+        :returns: dict of overrides.
+
+        """
+        return self.call(context,
+                         self.make_msg('get_helm_chart_overrides',
+                                       chart_name=chart_name,
+                                       cnamespace=cnamespace))
+
+    def get_helm_application_namespaces(self, context, app_name):
+        """Get supported application namespaces.
+
+        :param app_name: name of the bundle of charts required to support an
+                         application
+        :returns: dict of charts and supported namespaces that associated
+                  overrides may be provided.
+        """
+        return self.call(context,
+                         self.make_msg('get_helm_application_namespaces',
+                                       app_name=app_name))
+
+    def get_helm_application_overrides(self, context, app_name, cnamespace=None):
+        """Get the overrides for a supported set of charts.
+
+        :param context: request context.
+        :param app_name: name of a supported application (set of charts)
+        :param cnamespace: (optional) namespace
+        :returns: dict of overrides.
+
+        """
+        return self.call(context,
+                         self.make_msg('get_helm_application_overrides',
+                                       app_name=app_name,
+                                       cnamespace=cnamespace))

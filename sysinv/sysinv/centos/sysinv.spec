@@ -115,3 +115,4 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/sysinv-rootwrap
 %{_bindir}/sysinv-upgrade
 %{_bindir}/sysinv-puppet
+%{_bindir}/sysinv-helm

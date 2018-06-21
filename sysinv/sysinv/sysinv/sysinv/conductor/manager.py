@@ -90,6 +90,7 @@ from sysinv.openstack.common import uuidutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
+from sysinv.helm import helm
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -176,6 +177,7 @@ class ConductorManager(service.PeriodicService):
         self._openstack = openstack.OpenStackOperator(self.dbapi)
         self._puppet = puppet.PuppetOperator(self.dbapi)
         self._ceph = iceph.CephOperator(self.dbapi)
+        self._helm = helm.HelmOperator(self.dbapi)
 
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
@@ -10009,3 +10011,113 @@ class ConductorManager(service.PeriodicService):
             f.write(file_content)
 
         return signature
+
+    def get_helm_chart_namespaces(self, context, chart_name):
+        """Get supported chart namespaces.
+
+        This method retrieves the namespace supported by a given chart.
+
+        :param context: request context.
+        :param chart_name: name of the chart
+        :returns: list of supported namespaces that associated overrides may be
+                  provided.
+        """
+        return self._helm.get_helm_chart_namespaces(chart_name)
+
+    def get_helm_chart_overrides(self, context, chart_name, cnamespace=None):
+        """Get the overrides for a supported chart.
+
+        This method retrieves overrides for a supported chart. Overrides for
+        all supported namespaces will be returned unless a specific namespace
+        is requested.
+
+        :param context: request context.
+        :param chart_name: name of a supported chart
+        :param cnamespace: (optional) namespace
+        :returns: dict of overrides.
+
+        Example Without a cnamespace parameter:
+        {
+            'kube-system': {
+                'deployment': {
+                    'mode': 'cluster',
+                    'type': 'DaemonSet'
+                },
+            },
+            'openstack': {
+                'pod': {
+                    'replicas': {
+                        'server': 1
+                    }
+                }
+            }
+        }
+
+        Example with a cnamespace parameter: cnamespace='kube-system'
+        {
+            'deployment': {
+                'mode': 'cluster',
+                'type': 'DaemonSet'
+            }
+        }
+        """
+        return self._helm.get_helm_chart_overrides(chart_name,
+                                                   cnamespace)
+
+    def get_helm_application_namespaces(self, context, app_name):
+        """Get supported application namespaces.
+
+        This method retrieves a dict of charts and their supported namespaces
+        for an application.
+
+        :param app_name: name of the bundle of charts required to support an
+                         application
+        :returns: dict of charts and supported namespaces that associated
+                  overrides may be provided.
+        """
+        return self._helm.get_helm_application_namespaces(app_name)
+
+    def get_helm_application_overrides(self, context, app_name, cnamespace):
+        """Get the overrides for a supported set of charts.
+
+        This method retrieves overrides for a set of supported charts that
+        comprise an application. Overrides for all charts and all supported
+        namespaces will be returned unless a specific namespace is requested.
+
+        If a specific namespace is requested, then only charts that that
+        support that specified namespace will be returned.
+
+        :param context: request context.
+        :param app_name: name of a supported application (set of charts)
+        :param cnamespace: (optional) namespace
+        :returns: dict of overrides.
+
+        Example:
+        {
+            'ingress': {
+                'kube-system': {
+                    'deployment': {
+                        'mode': 'cluster',
+                        'type': 'DaemonSet'
+                    },
+                },
+                'openstack': {
+                    'pod': {
+                        'replicas': {
+                            'server': 1
+                        }
+                    }
+                }
+            },
+            'glance': {
+                'openstack': {
+                    'pod': {
+                        'replicas': {
+                            'server': 1
+                        }
+                    }
+                }
+             }
+        }
+        """
+        return self._helm.get_helm_application_overrides(app_name, cnamespace)
