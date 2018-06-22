@@ -10,7 +10,7 @@ from setuptools import setup, find_packages
 setup(
     name='configutilities',
     description='Configuration File Validator',
-    version='3.0.0',
+    version='3.0.1',
     license='Apache-2.0',
     platforms=['any'],
     provides=['configutilities'],

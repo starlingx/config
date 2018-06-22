@@ -1,6 +1,6 @@
 Summary: configutilities
 Name: configutilities
-Version: 3.0.0
+Version: 3.0.1
 Release: %{tis_patch_ver}%{?_tis_dist}
 License: Apache-2.0
 Group: base
