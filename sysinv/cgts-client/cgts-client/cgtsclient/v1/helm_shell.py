@@ -22,37 +22,50 @@ def _print_helm_chart(chart):
     utils.print_dict(ordereddata)
 
 
-def do_helm_chart_list(cc, args):
+def do_helm_override_list(cc, args):
     """List system helm charts."""
     charts = cc.helm.list_charts()
-    utils.print_list(charts, ['name'], ['chart name'], sortby=0)
+    utils.print_list(charts, ['name', 'namespaces'], ['chart name', 'overrides namespaces'], sortby=0)
 
 
 @utils.arg('chart', metavar='<chart name>',
            help="Name of chart")
+@utils.arg('namespace',
+           metavar='<namespace>',
+           help="namespace of chart overrides")
 def do_helm_override_show(cc, args):
     """Show overrides for chart."""
-    chart = cc.helm.get_overrides(args.chart)
-    _print_helm_chart(chart)
+    try:
+        chart = cc.helm.get_overrides(args.chart, args.namespace)
+        _print_helm_chart(chart)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('chart overrides not found: %s:%s' % (
+            args.chart, args.namespace))
 
 
 @utils.arg('chart',
            metavar='<chart name>',
-           nargs='+',
            help="Name of chart")
+@utils.arg('namespace',
+           metavar='<namespace>',
+           help="namespace of chart overrides")
 def do_helm_override_delete(cc, args):
-    """Delete overrides for one or more charts."""
-    for chart in args.chart:
-        try:
-            cc.helm.delete_overrides(chart)
-            print 'Deleted chart %s' % chart
-        except exc.HTTPNotFound:
-            raise exc.CommandError('chart not found: %s' % chart)
+    """Delete overrides for a chart."""
+    try:
+        cc.helm.delete_overrides(args.chart, args.namespace)
+        print 'Deleted chart overrides for %s:%s' % (
+            args.chart, args.namespace)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('chart overrides not found: %s:%s' % (
+            args.chart, args.namespace))
 
 
 @utils.arg('chart',
            metavar='<chart name>',
            help="Name of chart")
+@utils.arg('namespace',
+           metavar='<namespace>',
+           help="namespace of chart overrides")
 @utils.arg('--reuse-values', action='store_true', default=False,
            help='Should we reuse existing helm chart user override values. '
                 'If --reset-values is set this is ignored')
@@ -102,7 +115,9 @@ def do_helm_override_update(cc, args):
     }
 
     try:
-        chart = cc.helm.update_overrides(args.chart, flag, overrides)
+        chart = cc.helm.update_overrides(args.chart, args.namespace,
+                                         flag, overrides)
     except exc.HTTPNotFound:
-        raise exc.CommandError('helm chart not found: %s' % args.chart)
+        raise exc.CommandError('helm chart not found: %s:%s' % (
+            args.chart, args.namespace))
     _print_helm_chart(chart)

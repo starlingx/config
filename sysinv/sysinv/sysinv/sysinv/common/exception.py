@@ -579,7 +579,8 @@ class CertificateAlreadyExists(Conflict):
 
 
 class HelmOverrideAlreadyExists(Conflict):
-    message = _("A HelmOverride with name %(name)s already exists.")
+    message = _("A HelmOverride with name %(name)s and namespace "
+                "%(namespace)s already exists.")
 
 
 class InstanceDeployFailure(Invalid):
@@ -892,7 +893,8 @@ class CertificateNotFound(NotFound):
 
 
 class HelmOverrideNotFound(NotFound):
-    message = _("No helm override with name %(name)s")
+    message = _("No helm override with name %(name)s and namespace "
+                "%(namespace)s")
 
 
 class CertificateTypeNotFound(NotFound):

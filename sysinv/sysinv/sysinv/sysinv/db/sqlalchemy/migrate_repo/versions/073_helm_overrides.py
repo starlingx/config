@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sqlalchemy import DateTime, String, Text
-from sqlalchemy import Column, MetaData, Table
+from sqlalchemy import DateTime, String, Text, Integer
+from sqlalchemy import Column, MetaData, Table, UniqueConstraint
 
 from sysinv.openstack.common import log
 
@@ -32,8 +32,11 @@ def upgrade(migrate_engine):
         Column('created_at', DateTime),
         Column('updated_at', DateTime),
         Column('deleted_at', DateTime),
-        Column('name', String(255), unique=True, index=True),
+        Column('id', Integer, primary_key=True),
+        Column('name', String(255), nullable=False),
+        Column('namespace', String(255), nullable=False),
         Column('user_overrides', Text, nullable=True),
+        UniqueConstraint('name', 'namespace', name='u_name_namespace'),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,

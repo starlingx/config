@@ -1640,5 +1640,8 @@ class certificate(Base):
 class HelmOverrides(Base):
     __tablename__ = 'helm_overrides'
 
-    name = Column(String(255), primary_key=True, unique=True)
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    namespace = Column(String(255), nullable=False)
     user_overrides = Column(Text, nullable=True)
+    UniqueConstraint('name', 'namespace', name='u_name_namespace')

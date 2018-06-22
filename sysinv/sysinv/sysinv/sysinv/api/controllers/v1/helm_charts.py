@@ -30,18 +30,26 @@ class HelmChartsController(rest.RestController):
     @wsme_pecan.wsexpose(wtypes.text)
     def get_all(self):
         """Provides information about the available charts to override."""
-        charts = [{'name': chart} for chart in SYSTEM_CHARTS]
+
+        overrides = pecan.request.dbapi.helm_override_get_all()
+
+        charts = [{'name': chart, 'namespaces': []} for chart in SYSTEM_CHARTS]
+        for chart in charts:
+            namespaces = [x['namespace'] for x in overrides
+                          if x['name'] == chart['name']]
+            chart['namespaces'] = namespaces
         return {'charts': charts}
 
-    @wsme_pecan.wsexpose(wtypes.text, wtypes.text)
-    def get_one(self, name):
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text)
+    def get_one(self, name, namespace):
         """Retrieve information about the given event_log.
 
         :param name: name of helm chart
+        :param namespace: namespace of chart overrides
         """
         try:
             db_chart = objects.helm_overrides.get_by_name(
-                pecan.request.context, name)
+                pecan.request.context, name, namespace)
             overrides = db_chart.user_overrides
         except exception.HelmOverrideNotFound:
             if name in SYSTEM_CHARTS:
@@ -50,32 +58,44 @@ class HelmChartsController(rest.RestController):
                 raise
 
         rpc_chart = {'name': name,
+                     'namespace': namespace,
                      'system_overrides': {},
                      'user_overrides': overrides}
 
         return rpc_chart
 
-    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text)
-    def patch(self, name, flag, values):
+    def validate_name_and_namespace(self, name, namespace):
+        if not name:
+                raise wsme.exc.ClientSideError(_(
+                    "Helm-override-update rejected: name must be specified"))
+        if not namespace:
+            raise wsme.exc.ClientSideError(_(
+                "Helm-override-update rejected: namespace must be specified"))
+
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text, wtypes.text)
+    def patch(self, name, namespace, flag, values):
         """ Update user overrides.
 
         :param name: chart name
+        :param namespace: namespace of chart overrides
         :param flag: one of "reuse" or "reset", describes how to handle
                      previous user overrides
         :param values: a dict of different types of user override values
         """
+        self.validate_name_and_namespace(name, namespace)
 
         try:
             db_chart = objects.helm_overrides.get_by_name(
-                pecan.request.context, name)
+                pecan.request.context, name, namespace)
             db_values = db_chart.user_overrides
         except exception.HelmOverrideNotFound:
             if name in SYSTEM_CHARTS:
                 pecan.request.dbapi.helm_override_create({
                     'name': name,
+                    'namespace': namespace,
                     'user_overrides': ''})
                 db_chart = objects.helm_overrides.get_by_name(
-                    pecan.request.context, name)
+                    pecan.request.context, name, namespace)
             else:
                 raise
         db_values = db_chart.user_overrides
@@ -144,17 +164,20 @@ class HelmChartsController(rest.RestController):
         db_chart.user_overrides = values
         db_chart.save()
 
-        chart = {'name': name, 'user_overrides': values}
+        chart = {'name': name, 'namespace': namespace,
+                 'user_overrides': values}
 
         return chart
 
-    @wsme_pecan.wsexpose(None, unicode, status_code=204)
-    def delete(self, name):
+    @wsme_pecan.wsexpose(None, wtypes.text, wtypes.text, status_code=204)
+    def delete(self, name, namespace):
         """Delete user overrides for a chart
 
         :param name: chart name.
+        :param namespace: namespace of chart overrides
         """
+        self.validate_name_and_namespace(name, namespace)
         try:
-            pecan.request.dbapi.helm_override_destroy(name)
+            pecan.request.dbapi.helm_override_destroy(name, namespace)
         except exception.HelmOverrideNotFound:
             pass

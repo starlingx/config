@@ -7437,13 +7437,14 @@ class Connection(api.Connection):
                 raise exception.CertificateNotFound(uuid)
             query.delete()
 
-    def _helm_override_get(self, name):
+    def _helm_override_get(self, name, namespace):
         query = model_query(models.HelmOverrides)
-        query = query.filter_by(name=name)
+        query = query.filter_by(name=name, namespace=namespace)
         try:
             return query.one()
         except NoResultFound:
-            raise exception.HelmOverrideNotFound(name)
+            raise exception.HelmOverrideNotFound(name=name,
+                                                 namespace=namespace)
 
     @objects.objectify(objects.helm_overrides)
     def helm_override_create(self, values):
@@ -7458,31 +7459,40 @@ class Connection(api.Connection):
                 LOG.error("Failed to add HelmOverrides %s. "
                           "Already exists with this name" %
                           (values['name']))
-                raise exception.HelmOverrideAlreadyExists(name=values['name'])
-            return self._helm_override_get(values['name'])
+                raise exception.HelmOverrideAlreadyExists(
+                    name=values['name'], namespace=values['namespace'])
+            return self._helm_override_get(values['name'],
+                                           values['namespace'])
 
     @objects.objectify(objects.helm_overrides)
-    def helm_override_get(self, name):
-        return self._helm_override_get(name)
+    def helm_override_get(self, name, namespace):
+        return self._helm_override_get(name, namespace)
 
     @objects.objectify(objects.helm_overrides)
-    def helm_override_update(self, name, values):
+    def helm_override_get_all(self):
+        query = model_query(models.HelmOverrides, read_deleted="no")
+        return query.all()
+
+    @objects.objectify(objects.helm_overrides)
+    def helm_override_update(self, name, namespace, values):
         with _session_for_write() as session:
             query = model_query(models.HelmOverrides, session=session)
-            query = query.filter_by(name=name)
+            query = query.filter_by(name=name, namespace=namespace)
 
             count = query.update(values, synchronize_session='fetch')
             if count == 0:
-                raise exception.HelmOverrideNotFound(name)
+                raise exception.HelmOverrideNotFound(name=name,
+                                                     namespace=namespace)
             return query.one()
 
-    def helm_override_destroy(self, name):
+    def helm_override_destroy(self, name, namespace):
         with _session_for_write() as session:
             query = model_query(models.HelmOverrides, session=session)
-            query = query.filter_by(name=name)
+            query = query.filter_by(name=name, namespace=namespace)
 
             try:
                 query.one()
             except NoResultFound:
-                raise exception.HelmOverrideNotFound(name)
+                raise exception.HelmOverrideNotFound(name=name,
+                                                     namespace=namespace)
             query.delete()
