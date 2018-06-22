@@ -976,8 +976,7 @@ class ConfigAssistant():
             print
             print "Specify one of the bonding policies. Possible values are:"
             print "  1) 802.3ad (LACP) policy"
-            if self.system_mode != sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT:
-                print "  2) Active-backup policy"
+            print "  2) Active-backup policy"
 
             user_input = raw_input(
                 "\nManagement interface bonding policy [" +
@@ -989,17 +988,9 @@ class ConfigAssistant():
                     constants.LAG_MODE_8023AD
                 break
             elif user_input == '2':
-                if (self.system_mode ==
-                        sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT):
-                    print textwrap.fill(
-                        "Active-backup bonding policy is not supported "
-                        "for AIO duplex-direct configuration."
-                    )
-                    continue
-                else:
-                    self.lag_management_interface_policy = \
-                        constants.LAG_MODE_ACTIVE_BACKUP
-                    self.lag_management_interface_txhash = None
+                self.lag_management_interface_policy = \
+                    constants.LAG_MODE_ACTIVE_BACKUP
+                self.lag_management_interface_txhash = None
                 break
             elif user_input == "":
                 break

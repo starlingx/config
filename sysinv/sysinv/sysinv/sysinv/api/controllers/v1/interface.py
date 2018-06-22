@@ -1250,9 +1250,7 @@ def _check_interface_data(op, interface, ihost, existing_interface):
 
     # Make sure network type 'mgmt', with if type 'ae',
     # can only be in ae mode 'active_standby' or '802.3ad'
-    valid_mgmt_aemode = ['802.3ad']
-    if utils.get_system_mode() != constants.SYSTEM_MODE_DUPLEX_DIRECT:
-        valid_mgmt_aemode.append('active_standby')
+    valid_mgmt_aemode = ['802.3ad', 'active_standby']
     if (constants.NETWORK_TYPE_MGMT in networktypelist and iftype == 'ae' and
             aemode not in valid_mgmt_aemode):
         msg = _("Device interface with network type {}, and interface "

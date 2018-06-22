@@ -376,9 +376,7 @@ class ConfigValidator(object):
                              (mgmt_prefix, str(self.mgmt_network.cidr)))
 
         if self.mgmt_network.logical_interface.lag_interface:
-            supported_lag_mode = [4]
-            if self.system_mode != SYSTEM_MODE_DUPLEX_DIRECT:
-                supported_lag_mode.append(1)
+            supported_lag_mode = [1, 4]
             if (self.mgmt_network.logical_interface.lag_mode not in
                     supported_lag_mode):
                 raise ConfigFail("Unsupported LAG mode (%d) for %s interface"

@@ -1081,7 +1081,7 @@ class InterfaceTestCase(BaseTestCase):
         config = interface.get_interface_network_config(self.context, bond)
         options = {'up': 'sleep 10',
                    'MACADDR': bond['imac'],
-                   'BONDING_OPTS': 'mode=active-backup miimon=100'}
+                   'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1'}
         expected = self._get_network_config(
             ifname=bond['ifname'], mtu=1500, method='manual', options=options)
         print(expected)

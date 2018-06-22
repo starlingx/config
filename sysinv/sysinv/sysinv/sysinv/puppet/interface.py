@@ -809,7 +809,7 @@ def get_vlan_network_config(context, iface, config):
     return config
 
 
-def get_bond_interface_options(iface):
+def get_bond_interface_options(iface, primary_iface):
     """
     Get the interface config attribute for bonding options
     """
@@ -817,7 +817,9 @@ def get_bond_interface_options(iface):
     tx_hash_policy = iface['txhashpolicy']
     options = None
     if ae_mode in ACTIVE_STANDBY_AE_MODES:
-        options = 'mode=active-backup miimon=100'
+        # Requires the active device in an active_standby LAG
+        # configuration to be determined based on the lowest MAC address
+        options = 'mode=active-backup miimon=100 primary={}'.format(primary_iface['ifname'])
     else:
         options = 'xmit_hash_policy=%s miimon=100' % tx_hash_policy
         if ae_mode in BALANCED_AE_MODES:
@@ -833,12 +835,43 @@ def get_bond_network_config(context, iface, config):
     interface.
     """
     options = {'MACADDR': iface['imac'].rstrip()}
-    bonding_options = get_bond_interface_options(iface)
+    primary_iface = get_primary_bond_interface(context, iface)
+    bonding_options = get_bond_interface_options(iface, primary_iface)
     if bonding_options:
         options['BONDING_OPTS'] = bonding_options
         options['up'] = 'sleep 10'
     config['options'].update(options)
     return config
+
+
+def get_primary_bond_interface(context, iface):
+    """
+    Return the slave interface with the lowest MAC address
+    """
+    slaves = get_bond_interface_slaves(context, iface)
+    sorted_slaves = sorted(slaves, key=slave_sort_key)
+    primary_iface = sorted_slaves[0]
+    return primary_iface
+
+
+def get_bond_interface_slaves(context, iface):
+    """
+    Return the slave interface objects for the corresponding
+    bond interface
+    """
+    slaves = iface['uses']
+    ifaces = []
+    for ifname, iface in six.iteritems(context['interfaces']):
+        if ifname in slaves:
+            ifaces.append(iface)
+    return ifaces
+
+
+def slave_sort_key(iface):
+    """
+    Sort interfaces by lowest MAC address
+    """
+    return int(iface['imac'].replace(':', ''), 16)
 
 
 def get_ethernet_network_config(context, iface, config):
