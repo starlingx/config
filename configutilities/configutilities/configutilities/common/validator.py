@@ -4,10 +4,10 @@ Copyright (c) 2015-2017 Wind River Systems, Inc.
 SPDX-License-Identifier: Apache-2.0
 
 """
-
 from configobjects import DEFAULT_NAMES, NETWORK_PREFIX_NAMES, OAM_TYPE, \
     MGMT_TYPE, Network, REGION_CONFIG, VALID_LINK_SPEED, INFRA_TYPE, \
     DEFAULT_DOMAIN_NAME, HP_NAMES, SUBCLOUD_CONFIG
+from netaddr import IPRange
 from utils import lag_mode_to_str, validate_network_str, \
     check_network_overlap, is_mtu_valid, is_speed_valid, get_service, \
     get_optional
@@ -381,6 +381,33 @@ class ConfigValidator(object):
             raise ConfigFail("%s CIDR %s overlaps with another configured "
                              "network" %
                              (mgmt_prefix, str(self.mgmt_network.cidr)))
+
+        if (self.system_dc_role ==
+                DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            # For Distributed Cloud SystemController, we require the setting
+            # of the IP_START_ADDRESS/IP_END_ADDRESS config settings so as to
+            # raise awareness that some space in MGMT subnet must be set aside
+            # for gateways to reach subclouds.
+
+            if not self.mgmt_network.start_end_in_config:
+                raise ConfigFail("IP_START_ADDRESS and IP_END_ADDRESS required"
+                                 " for %s network as this configuration "
+                                 "requires address space left for gateway "
+                                 "address(es)" % mgmt_prefix)
+            else:
+                # Warn user that some space in the management subnet must
+                # be reserved for the system controller gateway address(es)
+                # used to communicate with the subclouds. - 2 because of
+                # subnet and broadcast addresses.
+                address_range = \
+                    IPRange(str(self.mgmt_network.start_address),
+                            str(self.mgmt_network.end_address)).size
+
+                if address_range >= (self.mgmt_network.cidr.size - 2):
+                    raise ConfigFail(
+                        "Address range for %s network too large, no addresses"
+                        " left for gateway(s), required in this "
+                        "configuration." % mgmt_prefix)
 
         if self.mgmt_network.logical_interface.lag_interface:
             supported_lag_mode = [1, 4]

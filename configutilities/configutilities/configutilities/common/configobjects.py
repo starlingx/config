@@ -123,6 +123,7 @@ class Network(object):
         self.multicast_cidr = None
         self.start_address = None
         self.end_address = None
+        self.start_end_in_config = False
         self.floating_address = None
         self.address_0 = None
         self.address_1 = None
@@ -312,6 +313,7 @@ class Network(object):
                     raise ConfigFail("Address range for %s must contain at "
                                      "least %d addresses." %
                                      (network_name, min_addresses))
+                self.start_end_in_config = True
 
             if floating_address_str or address_0_str or address_1_str:
                 if not floating_address_str:

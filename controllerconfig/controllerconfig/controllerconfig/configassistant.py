@@ -1116,22 +1116,31 @@ class ConfigAssistant():
             except ValidateFail as e:
                 print "{}".format(e)
 
-        while True:
-            user_input = raw_input(
-                "Use entire management subnet [Y/n]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input.lower() == 'y':
-                self.use_entire_mgmt_subnet = True
-                break
-            elif user_input.lower() == 'n':
-                self.use_entire_mgmt_subnet = False
-                break
-            elif user_input == "":
-                break
-            else:
-                print "Invalid choice"
-                continue
+        if (self.system_dc_role !=
+                sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            while True:
+                user_input = raw_input(
+                    "Use entire management subnet [Y/n]: ")
+                if user_input.lower() == 'q':
+                    raise UserQuit
+                elif user_input.lower() == 'y':
+                    self.use_entire_mgmt_subnet = True
+                    break
+                elif user_input.lower() == 'n':
+                    self.use_entire_mgmt_subnet = False
+                    break
+                elif user_input == "":
+                    break
+                else:
+                    print "Invalid choice"
+                    continue
+        else:
+            self.use_entire_mgmt_subnet = False
+            print textwrap.fill(
+                "Configured as Distributed Cloud System Controller,"
+                " disallowing use of entire management subnet.  "
+                "Ensure management ip range does not include System"
+                " Controller gateway address(es)", 80)
 
         if not self.use_entire_mgmt_subnet:
             while True:
@@ -1183,8 +1192,19 @@ class ConfigAssistant():
                         "Address range must contain at least %d addresses. " %
                         min_addresses)
                     continue
-                break
 
+                sc = sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+                if (self.system_dc_role == sc):
+                    # Warn user that some space in the management subnet must
+                    # be reserved for the system controller gateway address(es)
+                    # used to communicate with the subclouds. - 2 because of
+                    # subnet and broadcast addresses.
+                    if address_range.size >= (self.management_subnet.size - 2):
+                        print textwrap.fill(
+                            "Address range too large, no addresses left "
+                            "for System Controller gateway(s). ", 80)
+                        continue
+                break
         while True:
             print
             print textwrap.fill(
