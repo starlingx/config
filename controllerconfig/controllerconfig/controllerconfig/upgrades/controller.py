@@ -1800,18 +1800,10 @@ def simplex_main():
     log.configure()
 
     # Enforce that the command is being run from the console
-    # TODO : R6 Merge this code with the check_for_ssh_parent used by the
-    # system restore
-    command = ('pstree -s %d' % (os.getpid()))
-    try:
-        cmd_output = subprocess.check_output(command, shell=True)
-        if "ssh" in cmd_output:
-            print "This command must be run from the console."
-            exit(1)
-    except subprocess.CalledProcessError as e:
-        LOG.exception(e)
-        print ("Error attempting upgrade. Ensure this command is run from the"
-               " console.")
+    if cutils.is_ssh_parent():
+        print (
+            "Error attempting upgrade. Ensure this command is run from the"
+            " console.")
         exit(1)
 
     if not backup_file:

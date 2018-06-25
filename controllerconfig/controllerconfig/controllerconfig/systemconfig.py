@@ -18,7 +18,7 @@ from configutilities import lag_mode_to_str, Network, validate
 from configutilities import ConfigFail
 from configutilities import DEFAULT_CONFIG, REGION_CONFIG, SUBCLOUD_CONFIG
 from configutilities import MGMT_TYPE, HP_NAMES, DEFAULT_NAMES
-from configassistant import ConfigAssistant, check_for_ssh_parent
+from configassistant import ConfigAssistant
 import backup_restore
 import utils
 import clone
@@ -264,7 +264,7 @@ def show_help():
     print ("Usage: %s\n"
            "Perform system configuration\n"
            "\nThe default action is to perform the initial configuration for "
-           "the system. The following options are also available:\n"
+           "the system.\nThe following options are also available:\n"
            "--config-file <name>     Perform configuration using INI file\n"
            "--backup <name>          Backup configuration using the given "
            "name\n"
@@ -278,9 +278,11 @@ def show_help():
            "--restore-images <name>  Restore images from backup file with the "
            "given name,\n"
            "                         full path required\n"
-           "--restore-compute        Restore controller-0 compute function "
-           "for All-In-One system,\n"
-           "                         controller-0 will reboot\n"
+           "--restore-compute        Restore controller-0 compute function for"
+           " All-In-One\n"
+           "                         system, controller-0 will reboot\n"
+           "--allow-ssh              Allow configuration to be executed in "
+           "ssh\n"
            % sys.argv[0])
 
 
@@ -319,6 +321,7 @@ def main():
     do_non_interactive = False
     do_provision = False
     system_config_file = "/home/wrsroot/system_config"
+    allow_ssh = False
 
     # Disable completion as the default completer shows python commands
     readline.set_completer(no_complete)
@@ -401,6 +404,8 @@ def main():
             exit(1)
         elif sys.argv[arg] == "--provision":
             do_provision = True
+        elif sys.argv[arg] == "--allow-ssh":
+            allow_ssh = True
         else:
             print "Invalid option. Use --help for more information."
             exit(1)
@@ -428,6 +433,16 @@ def main():
 
     log.configure()
 
+    if not do_backup and not do_clone:
+        # Check if that the command is being run from the console
+        if utils.is_ssh_parent():
+            if allow_ssh:
+                print textwrap.fill(constants.SSH_WARNING_MESSAGE, 80)
+                print
+            else:
+                print textwrap.fill(constants.SSH_ERROR_MESSAGE, 80)
+                exit(1)
+
     # Reduce the printk console log level to avoid noise during configuration
     printk_levels = ''
     with open('/proc/sys/kernel/printk', 'r') as f:
@@ -436,9 +451,6 @@ def main():
     temp_printk_levels = '3' + printk_levels[1:]
     with open('/proc/sys/kernel/printk', 'w') as f:
         f.write(temp_printk_levels)
-
-    if not do_backup and not do_clone:
-        check_for_ssh_parent()
 
     try:
         if do_backup:

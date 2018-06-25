@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2017 Wind River Systems, Inc.
+# Copyright (c) 2016-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -91,3 +91,8 @@ DEFAULT_MGMT_ON_LOOPBACK_SUBNET_IPV4 = '127.168.204.0/24'
 
 DEFAULT_REGION_NAME = "RegionOne"
 DEFAULT_SERVICE_PROJECT_NAME = "services"
+
+SSH_WARNING_MESSAGE = "WARNING: Command should only be run from the " \
+                      "console. Continuing with this terminal may cause " \
+                      "loss of connectivity and configuration failure."
+SSH_ERROR_MESSAGE = "ERROR: Command should only be run from the console."

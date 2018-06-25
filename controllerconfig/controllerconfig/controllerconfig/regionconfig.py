@@ -1,5 +1,5 @@
 """
-Copyright (c) 2015-2017 Wind River Systems, Inc.
+Copyright (c) 2015-2018 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -10,13 +10,14 @@ import os
 import sys
 import textwrap
 import time
+import utils
 import uuid
 
 from common import constants
 from common import log
 from common import rest_api_utils as rutils
 from common.exceptions import KeystoneFail
-from configutilities.common import utils
+from configutilities.common import utils as cutils
 from configutilities.common.configobjects import REGION_CONFIG, SUBCLOUD_CONFIG
 from configutilities import ConfigFail
 from configassistant import ConfigAssistant
@@ -397,18 +398,18 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
 
     # Verify that region two endpoints & services match our requirements,
     # optionally creating missing entries
-    public_address = utils.get_optional(region_config, 'CAN_NETWORK',
-                                        'CAN_IP_START_ADDRESS')
+    public_address = cutils.get_optional(region_config, 'CAN_NETWORK',
+                                         'CAN_IP_START_ADDRESS')
     if not public_address:
-        public_address = utils.get_optional(region_config, 'CAN_NETWORK',
-                                            'CAN_IP_FLOATING_ADDRESS')
+        public_address = cutils.get_optional(region_config, 'CAN_NETWORK',
+                                             'CAN_IP_FLOATING_ADDRESS')
     if not public_address:
-        public_address = utils.get_optional(region_config, 'OAM_NETWORK',
-                                            'IP_START_ADDRESS')
+        public_address = cutils.get_optional(region_config, 'OAM_NETWORK',
+                                             'IP_START_ADDRESS')
     if not public_address:
         # AIO-SX configuration
-        public_address = utils.get_optional(region_config, 'OAM_NETWORK',
-                                            'IP_ADDRESS')
+        public_address = cutils.get_optional(region_config, 'OAM_NETWORK',
+                                             'IP_ADDRESS')
     if not public_address:
         public_address = region_config.get('OAM_NETWORK',
                                            'IP_FLOATING_ADDRESS')
@@ -420,17 +421,17 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
         internal_address = region_config.get('MGMT_NETWORK',
                                              'IP_START_ADDRESS')
 
-    internal_infra_address = utils.get_optional(
+    internal_infra_address = cutils.get_optional(
         region_config, 'BLS_NETWORK', 'BLS_IP_START_ADDRESS')
     if not internal_infra_address:
-        internal_infra_address = utils.get_optional(
+        internal_infra_address = cutils.get_optional(
             region_config, 'INFRA_NETWORK', 'IP_START_ADDRESS')
 
     for endpoint in expected_region_2_endpoints:
-        service_name = utils.get_service(region_config, 'REGION_2_SERVICES',
-                                         endpoint[SERVICE_NAME])
-        service_type = utils.get_service(region_config, 'REGION_2_SERVICES',
-                                         endpoint[SERVICE_TYPE])
+        service_name = cutils.get_service(region_config, 'REGION_2_SERVICES',
+                                          endpoint[SERVICE_NAME])
+        service_type = cutils.get_service(region_config, 'REGION_2_SERVICES',
+                                          endpoint[SERVICE_TYPE])
 
         expected_public_url = endpoint[PUBLIC_URL].format(public_address)
 
@@ -669,6 +670,8 @@ def show_help_region():
     print textwrap.fill(
         "Perform region configuration using the region "
         "configuration from CONFIG_FILE.", 80)
+    print ("--allow-ssh              Allow configuration to be executed in "
+           "ssh\n")
 
 
 def show_help_subcloud():
@@ -676,9 +679,12 @@ def show_help_subcloud():
     print textwrap.fill(
         "Perform subcloud configuration using the subcloud "
         "configuration from CONFIG_FILE.", 80)
+    print ("--allow-ssh              Allow configuration to be executed in "
+           "ssh\n")
 
 
 def config_main(config_type=REGION_CONFIG):
+    allow_ssh = False
     if config_type == REGION_CONFIG:
         config_file = "/home/wrsroot/region_config"
     elif config_type == SUBCLOUD_CONFIG:
@@ -694,6 +700,8 @@ def config_main(config_type=REGION_CONFIG):
             else:
                 show_help_subcloud()
             exit(1)
+        elif sys.argv[arg] == "--allow-ssh":
+            allow_ssh = True
         elif arg == len(sys.argv) - 1:
             config_file = sys.argv[arg]
         else:
@@ -702,6 +710,15 @@ def config_main(config_type=REGION_CONFIG):
         arg += 1
 
     log.configure()
+
+    # Check if that the command is being run from the console
+    if utils.is_ssh_parent():
+        if allow_ssh:
+            print textwrap.fill(constants.SSH_WARNING_MESSAGE, 80)
+            print
+        else:
+            print textwrap.fill(constants.SSH_ERROR_MESSAGE, 80)
+            exit(1)
 
     if not os.path.isfile(config_file):
         print "Config file %s does not exist." % config_file
