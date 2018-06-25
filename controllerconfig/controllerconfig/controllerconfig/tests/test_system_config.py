@@ -136,6 +136,27 @@ def test_system_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
 
+    # Test missing pxeboot network when using IPv6 management network
+    system_config = cr.parse_system_config(ipv6_systemfile)
+    system_config.remove_section('PXEBOOT_NETWORK')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test ridiculously sized management network
+    system_config = cr.parse_system_config(ipv6_systemfile)
+    system_config.set('MGMT_NETWORK', 'IP_START_ADDRESS', '1234::b:0:0:0')
+    system_config.set('MGMT_NETWORK', 'IP_END_ADDRESS',
+                      '1234::b:ffff:ffff:ffff')
+    system_config.remove_option('MGMT_NETWORK', 'IP_FLOATING_ADDRESS')
+    system_config.remove_option('MGMT_NETWORK', 'IP_UNIT_0_ADDRESS')
+    system_config.remove_option('MGMT_NETWORK', 'IP_UNIT_1_ADDRESS')
+    cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                               validate_only=True)
+    validate(system_config, DEFAULT_CONFIG, None, False)
+
     # Test using start/end addresses
     system_config = cr.parse_system_config(ipv6_systemfile)
     system_config.set('OAM_NETWORK', 'IP_START_ADDRESS', 'abcd::2')

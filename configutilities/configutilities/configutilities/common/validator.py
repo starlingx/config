@@ -406,6 +406,11 @@ class ConfigValidator(object):
                 "Management VLAN must be configured because "
                 "%s configured." % self.pxeboot_section_name)
 
+        if not self.is_simplex_cpe() and self.mgmt_network.cidr.version == 6 \
+                and not self.pxeboot_network_configured:
+            raise ConfigFail("IPv6 management network cannot be configured "
+                             "because PXEBOOT_NETWORK is not configured.")
+
         mtu = self.mgmt_network.logical_interface.mtu
         if not is_mtu_valid(mtu):
             raise ConfigFail(
