@@ -144,7 +144,6 @@ class openstack::nova::compute (
 
   include ::platform::network::mgmt::params
   include ::platform::network::infra::params
-  include ::nova::keystone::auth
   include ::nova::keystone::authtoken
   include ::nova::compute::neutron
 
@@ -319,10 +318,10 @@ class openstack::nova::compute (
 
     # turn on service tokens
     'service_user/send_service_user_token': value => 'true';
-    'service_user/project_name': value => $::nova::keystone::auth::tenant;
-    'service_user/password': value => $::nova::keystone::auth::password;
-    'service_user/username': value => $::nova::keystone::auth::auth_name;
-    'service_user/region_name': value => $::nova::keystone::auth::region;
+    'service_user/project_name': value => $::nova::keystone::authtoken::project_name;
+    'service_user/password': value => $::nova::keystone::authtoken::password;
+    'service_user/username': value => $::nova::keystone::authtoken::username;
+    'service_user/region_name': value => $::nova::keystone::authtoken::region_name;
     'service_user/auth_url': value => $::nova::keystone::authtoken::auth_url;
     'service_user/user_domain_name': value => $::nova::keystone::authtoken::user_domain_name;
     'service_user/project_domain_name': value => $::nova::keystone::authtoken::project_domain_name;
