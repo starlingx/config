@@ -30,7 +30,7 @@ Summary:          SDK files for %{name}
 Contains SDK files for %{name} package
 
 %prep
-%setup
+%autosetup -n %{name}-%{version} -S git
 
 %build
 %{__python} setup.py build
