@@ -112,14 +112,24 @@ class platform::kubernetes::master::init
     #   with Kubernetes pod CIDR assignments instead.
     # See https://docs.projectcalico.org/v3.1/getting-started/kubernetes/
     # installation/calico for more info.
+    file { "/etc/kubernetes/rbac-kdd.yaml":
+      ensure  => 'present',
+      replace => true,
+      content => template('platform/rbac-kdd.yaml.erb'),
+    } ->
     exec { "configure calico RBAC":
       command =>
-        "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/rbac-kdd.yaml",
+        "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/rbac-kdd.yaml",
       logoutput => true,
+    } ->
+    file { "/etc/kubernetes/calico.yaml":
+      ensure  => 'present',
+      replace => true,
+      content => template('platform/calico.yaml.erb'),
     } ->
     exec { "install calico networking":
       command =>
-        "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml",
+        "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/calico.yaml",
       logoutput => true,
     } ->
 

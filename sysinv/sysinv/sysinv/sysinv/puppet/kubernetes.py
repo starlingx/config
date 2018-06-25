@@ -25,8 +25,11 @@ class KubernetesPuppet(base.BasePuppet):
         if self._kubernetes_enabled():
             config.update(
                 {'platform::kubernetes::params::enabled': True,
+                 # Hardcoding the pod network cidr to a private network that
+                 # does not overlap with our default management network. Will
+                 # eventually be configurable.
                  'platform::kubernetes::params::pod_network_cidr':
-                     '192.168.0.0/16',
+                     '172.16.0.0/16',
                  'platform::kubernetes::params::apiserver_advertise_address':
                      self._get_management_address(),
                  'platform::kubernetes::params::etcd_endpoint':
