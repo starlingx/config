@@ -2559,10 +2559,13 @@ def ifprofile_apply_to_host(host, profile):
             eth_name_available = False
 
     if pci_addr_available:
-        match_express = lambda hport, port: hport.pciaddr == port.pciaddr
-    elif eth_name_available:
-        match_express = lambda hport, port: hport.name == port.name
 
+        def match_express(hport, port):
+            return hport.pciaddr == port.pciaddr
+    elif eth_name_available:
+
+        def match_express(hport, port):
+            return hport.name == port.name
     portPairings = []
     hostPortsUsed = []
 

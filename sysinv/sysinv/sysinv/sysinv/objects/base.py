@@ -401,7 +401,8 @@ class SysinvObject(object):
                     name in self.obj_extra_fields):
                 yield name, getattr(self, name)
 
-    items = lambda self: list(self.iteritems())
+    def items(self):
+        return list(self.iteritems())
 
     def __getitem__(self, name):
         """For backwards-compatibility with dict-based objects.
