@@ -703,7 +703,7 @@ def _set_defaults(interface):
 
 def _check_interface_vlan_id(op, interface, ihost, from_profile=False):
     # Check vlan_id
-    if 'vlan_id' in interface.keys() and interface['vlan_id'] != None:
+    if 'vlan_id' in interface.keys() and interface['vlan_id'] is not None:
         if not str(interface['vlan_id']).isdigit():
             raise wsme.exc.ClientSideError(_("VLAN id is an integer value."))
         elif not from_profile:
@@ -788,7 +788,7 @@ def _check_interface_name(op, interface, ihost, from_profile=False):
 
 def _check_interface_mtu(interface, ihost, from_profile=False):
     # Check imtu
-    if 'imtu' in interface.keys() and interface['imtu'] != None:
+    if 'imtu' in interface.keys() and interface['imtu'] is not None:
         if not str(interface['imtu']).isdigit():
             raise wsme.exc.ClientSideError(_("MTU is an integer value."))
         elif not from_profile and ihost['recordtype'] != 'profile':
@@ -1376,7 +1376,7 @@ def _check_interface_data(op, interface, ihost, existing_interface):
 
     elif (constants.NETWORK_TYPE_NONE not in networktypelist and constants.NETWORK_TYPE_DATA not in networktypelist and
           constants.NETWORK_TYPE_DATA not in existing_networktypelist):
-        if providernetworks != None:
+        if providernetworks is not None:
             msg = _("Provider network(s) not supported "
                     "for non-data interfaces. (%s) (%s)" % (str(networktypelist), str(existing_interface)))
             raise wsme.exc.ClientSideError(msg)
@@ -1427,7 +1427,7 @@ def _check_interface_data(op, interface, ihost, existing_interface):
                     if constants.NETWORK_TYPE_INFRA in hi_networktypelist:
                         infra_on_controller = True
                         break
-            if infra_on_controller == True:
+            if infra_on_controller is True:
                 break
         if not infra_on_controller:
             msg = _("Interface %s does not have associated"

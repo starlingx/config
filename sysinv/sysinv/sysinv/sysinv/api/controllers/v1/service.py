@@ -110,7 +110,7 @@ class Service(base.APIBase):
 def _check_service_data(op, service):
     # Get data
     name = service['name']
-    if not name in constants.ALL_OPTIONAL_SERVICES:
+    if name not in constants.ALL_OPTIONAL_SERVICES:
         raise wsme.exc.ClientSideError(_(
                         "Invalid service name"))
 

@@ -834,7 +834,7 @@ def _create(stor, iprofile=None, create_pv=True):
                                                 create_attrs)
 
     # Create an osd associated with disk.
-    if osd_create == True:
+    if osd_create is True:
         try:
             new_stor = pecan.request.rpcapi.configure_osd_istor(
                 pecan.request.context, new_stor)

@@ -22,7 +22,7 @@ def _populate_rpm_type(idisk_table):
     disks = list(idisk_table.select().where(
                  idisk_table.c.uuid is not None).execute())
     if len(disks) > 0:
-            idisk_table.update().where(idisk_table.c.rpm == None).values(
+            idisk_table.update().where(idisk_table.c.rpm is None).values(
                 {'rpm': constants.DEVICE_TYPE_UNDETERMINED}).execute()
 
 

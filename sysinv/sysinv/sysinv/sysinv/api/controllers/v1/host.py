@@ -1350,8 +1350,7 @@ class HostController(rest.RestController):
                                            delta, changed_paths,
                                            current_ihosts)
 
-        if (not 'capabilities' in ihost_dict) \
-                or not ihost_dict['capabilities']:
+        if ('capabilities' not in ihost_dict or not ihost_dict['capabilities']):
             ihost_dict['capabilities'] = {}
 
         # If this is the first controller being set up,

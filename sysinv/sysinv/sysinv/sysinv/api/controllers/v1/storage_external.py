@@ -308,7 +308,7 @@ def _discover_and_validate_glance_hiera_data(caps_dict):
 def _check_backend_external(req, storage_external, confirmed=False):
     # check if it is running on secondary region
     system = pecan.request.dbapi.isystem_get_one()
-    if system and system.capabilities.get('region_config') != True:
+    if system and system.capabilities.get('region_config') is not True:
         raise wsme.exc.ClientSideError("External backend can only be added on "
                                        "secondary region.")
 

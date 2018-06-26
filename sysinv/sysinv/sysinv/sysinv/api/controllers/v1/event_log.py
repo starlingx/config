@@ -129,13 +129,13 @@ class EventLog(base.APIBase):
 
 
 def _getEventType(alarms=False, logs=False):
-    if alarms == False and logs == False:
+    if alarms is False and logs is False:
         return "ALL"
-    if alarms == True and logs == True:
+    if alarms is True and logs is True:
         return "ALL"
-    if logs == True:
+    if logs is True:
         return "LOG"
-    if alarms == True:
+    if alarms is True:
         return "ALARM"
     return "ALL"
 

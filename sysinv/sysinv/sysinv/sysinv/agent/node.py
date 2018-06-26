@@ -158,7 +158,9 @@ class NodeOperator(object):
                 match = re_processor.search(line)
                 if match:
                     cpu = int(match.group(1))
-                    socket_id = -1; core_id = -1; thread_id = -1
+                    socket_id = -1
+                    core_id = -1
+                    thread_id = -1
                     self.num_cpus += 1
                     continue
 
