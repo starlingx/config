@@ -399,8 +399,7 @@ class PCIOperator(object):
                         "sub-directories".format(pciaddr))
         return results[0]
 
-    def _get_netdev_flags(self, dirpcinet, pci):
-        fflags = dirpcinet + pci + '/' + "flags"
+    def _read_flags(self, fflags):
         try:
             with open(fflags, 'r') as f:
                 hex_str = f.readline().rstrip()
@@ -408,6 +407,22 @@ class PCIOperator(object):
         except:
             flags = None
         return flags
+
+    def _get_netdev_flags(self, dirpcinet, pci):
+        fflags = dirpcinet + pci + '/flags'
+        return self._read_flags(fflags)
+
+    def pci_get_net_flags(self, name):
+        fflags = '/sys/class/net/' + name + '/flags'
+        return self._read_flags(fflags)
+
+    def pci_get_net_names(self):
+        '''build a list of network device names.'''
+        names = []
+        for name in os.listdir('/sys/class/net/'):
+            if os.path.isdir('/sys/class/net/' + name):
+                names.append(name)
+        return names
 
     def pci_get_net_attrs(self, pciaddr):
         ''' For this pciaddr, build a list of network attributes per port '''

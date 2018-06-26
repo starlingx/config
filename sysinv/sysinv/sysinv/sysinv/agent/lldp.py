@@ -402,6 +402,12 @@ class LLDPOperator(object):
 
         return attrs
 
+    def lldpd_has_neighbour(self, name):
+        '''check if the interface has LLDP neighbours'''
+        p = subprocess.check_output(["lldpcli", "-f", "keyvalue", "show",
+                                     "neighbors", "summary", "ports", name])
+        return len(p) > 0
+
     def lldpd_agent_list(self):
         json_obj = json
         lldp_agents = []

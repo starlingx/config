@@ -438,6 +438,55 @@ class AgentManager(service.PeriodicService):
                 self._lldp_operator.lldp_agents_clear()
                 pass
 
+    def synchronized_network_config(func):
+        """ Synchronization decorator to acquire and release
+            network_config_lock.
+        """
+        def wrap(self, *args, **kwargs):
+            try:
+                # Get lock to avoid conflict with apply_network_config.sh
+                lockfd = self._acquire_network_config_lock()
+                return func(self, *args, **kwargs)
+            finally:
+                self._release_network_config_lock(lockfd)
+        return wrap
+
+    @synchronized_network_config
+    def _lldp_enable_and_report(self, context, rpcapi, host_uuid):
+        """ Temporarily enable interfaces and get lldp neighbor information.
+            This method should only be called before
+             INITIAL_CONFIG_COMPLETE_FLAG is set.
+        """
+        link_down = []
+        try:
+            # Turn on interfaces, so that lldpd can show all neighbors
+            for interface in self._ipci_operator.pci_get_net_names():
+                flag = self._ipci_operator.pci_get_net_flags(interface)
+                # If administrative state is down, bring it up momentarily
+                if not (flag & pci.IFF_UP):
+                    subprocess.call(['ip', 'link', 'set', interface, 'up'])
+                    link_down.append(interface)
+                    LOG.info('interface %s enabled to receive LLDP PDUs' % interface)
+            subprocess.call(['lldpcli', 'update'])
+            # delay maximum 30 seconds for lldpd to receive LLDP PDU
+            timeout = 0
+            passed = 0
+            while timeout < 30 and passed < len(link_down):
+                time.sleep(5)
+                timeout = timeout + 5
+                # Count the number of interfaces that have collected LLDP neighbors.
+                m = map(lambda link: self._lldp_operator.lldpd_has_neighbour(link), link_down)
+                passed = reduce(lambda x, y: x + 1 if y else x, m)
+            self.host_lldp_get_and_report(context, rpcapi, host_uuid)
+        except Exception as e:
+            LOG.exception(e)
+            pass
+        finally:
+            # restore interface administrative state
+            for interface in link_down:
+                subprocess.call(['ip', 'link', 'set', interface, 'down'])
+                LOG.info('interface %s disabled after querying LLDP neighbors' % interface)
+
     def platform_update_by_host(self, rpcapi, context, host_uuid, msg_dict):
         """ Update host platform information.
             If this is the first boot (kickstart), then also update the Host
@@ -1077,7 +1126,10 @@ class AgentManager(service.PeriodicService):
                 rpcapi.imemory_update_by_ihost(icontext,
                                                self._ihost_uuid,
                                                imemory)
-                self.host_lldp_get_and_report(icontext, rpcapi, self._ihost_uuid)
+                if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+                    self.host_lldp_get_and_report(icontext, rpcapi, self._ihost_uuid)
+                else:
+                    self._lldp_enable_and_report(icontext, rpcapi, self._ihost_uuid)
             self._agent_throttle += 1
 
             if self._ihost_personality == constants.CONTROLLER:
