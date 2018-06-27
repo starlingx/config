@@ -533,6 +533,15 @@ class ConfigValidator(object):
         infra_prefix = NETWORK_PREFIX_NAMES[self.naming_type][INFRA_TYPE]
         mgmt_prefix = NETWORK_PREFIX_NAMES[self.naming_type][MGMT_TYPE]
         if self.conf.has_section(infra_prefix + '_NETWORK'):
+            if (self.system_dc_role ==
+                    DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+                # Disallow infrastructure network on systemcontroller,
+                # as services located on infrastructure network will not
+                # be reachable by subclouds.
+                raise ConfigFail("%s network not "
+                                 "supported on Distributed Cloud "
+                                 "SystemController." % infra_prefix)
+
             self.infra_network = Network()
             try:
                 self.infra_network.parse_config(self.conf, self.config_type,

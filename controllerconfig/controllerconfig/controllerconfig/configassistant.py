@@ -2300,7 +2300,12 @@ class ConfigAssistant():
                 self.input_dc_selection()
             self.input_pxeboot_config()
             self.input_management_config()
-            self.input_infrastructure_config()
+            if self.system_dc_role != \
+                    sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                # Disallow infrastructure network on systemcontroller,
+                # as services located on infrastructure network will not
+                # be reachable by subclouds.
+                self.input_infrastructure_config()
         self.input_external_oam_config()
         self.input_authentication_config()
 
