@@ -74,6 +74,11 @@ class platform::sm
   $etcd_fs_device               = $::platform::drbd::etcd::params::device
   $etcd_fs_directory            = $::platform::drbd::etcd::params::mountpoint
 
+  include ::platform::drbd::dockerdistribution::params
+  $dockerdistribution_drbd_resource          = $::platform::drbd::dockerdistribution::params::resource_name
+  $dockerdistribution_fs_device              = $::platform::drbd::dockerdistribution::params::device
+  $dockerdistribution_fs_directory           = $::platform::drbd::dockerdistribution::params::mountpoint
+
   include ::openstack::keystone::params
   $keystone_api_version          = $::openstack::keystone::params::api_version
   $keystone_identity_uri         = $::openstack::keystone::params::identity_uri
@@ -340,6 +345,40 @@ class platform::sm
 
   exec { 'Configure Rabbit':
     command => "sm-configure service_instance rabbit rabbit \"server=${rabbitmq_server},ctl=${rabbitmqctl},pid_file=${rabbit_pid},nodename=${rabbit_node_name},mnesia_base=${rabbit_mnesia_base},ip=${mgmt_ip_param_ip}\"",
+  }
+
+  if $kubernetes_enabled {
+    exec { 'Provision Docker Distribution FS in SM (service-group-member dockerdistribution-fs)':
+      command => "sm-provision service-group-member controller-services dockerdistribution-fs",
+    } ->
+    exec { 'Provision Docker Distribution FS in SM (service dockerdistribution-fs)':
+      command => "sm-provision service dockerdistribution-fs",
+    } ->
+    exec { 'Provision Docker Distribution DRBD in SM (service-group-member drbd-dockerdistribution)':
+      command => "sm-provision service-group-member controller-services drbd-dockerdistribution",
+    } ->
+    exec { 'Provision Docker Distribution DRBD in SM (service drbd-dockerdistribution)':
+      command => "sm-provision service drbd-dockerdistribution",
+    } ->
+    exec { 'Configure Docker Distribution DRBD':
+      command => "sm-configure service_instance drbd-dockerdistribution drbd-dockerdistribution:${hostunit} \"drbd_resource=${dockerdistribution_drbd_resource}\"",
+    }->
+    exec { 'Configure Docker Distribution FileSystem':
+      command => "sm-configure service_instance dockerdistribution-fs dockerdistribution-fs \"device=${dockerdistribution_fs_device},directory=${dockerdistribution_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    }
+  } else {
+    exec { 'Deprovision Docker Distribution FS in SM (service-group-member dockerdistribution-fs)':
+      command => "sm-deprovision service-group-member controller-services dockerdistribution-fs",
+    } ->
+    exec { 'Deprovision Docker Distribution FS in SM (service dockerdistribution-fs)':
+      command => "sm-deprovision service dockerdistribution-fs",
+    } ->
+    exec { 'Deprovision Docker Distribution DRBD in SM (service-group-member drbd-dockerdistribution)':
+      command => "sm-deprovision service-group-member controller-services drbd-dockerdistribution",
+    } ->
+    exec { 'Deprovision Docker Distribution DRBD in SM (service drbd-dockerdistribution)':
+      command => "sm-deprovision service drbd-dockerdistribution",
+    }
   }
 
   exec { 'Configure CGCS DRBD':
@@ -885,6 +924,10 @@ class platform::sm
     command => "sm-configure service_instance etcd etcd \"config=/etc/etcd/etcd.conf,user=root\"",
   }
 
+  # Docker Distribution
+  exec { 'Configure Docker Distribution':
+    command => "sm-configure service_instance docker-distribution docker-distribution \"\"",
+  }
 
   if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
       exec { 'Configure Platform NFS':
@@ -1029,6 +1072,16 @@ class platform::sm
     } ->
     exec { 'Deprovision ETCD (service)':
       command => "sm-deprovision service etcd",
+    }
+  }
+
+  # Configure Docker Distribution
+  if $kubernetes_enabled {
+    exec { 'Provision Docker Distribution (service-group-member)':
+        command => "sm-provision service-group-member controller-services docker-distribution",
+    } ->
+    exec { 'Provision Docker Distribution (service)':
+      command => "sm-provision service docker-distribution",
     }
   }
 

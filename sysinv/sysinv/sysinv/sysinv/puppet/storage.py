@@ -76,6 +76,11 @@ class StoragePuppet(base.BasePuppet):
                     'platform::drbd::etcd::params::lv_size':
                         controller_fs.size
                 })
+            elif controller_fs.name == constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
+                config.update({
+                    'platform::drbd::dockerdistribution::params::lv_size':
+                        controller_fs.size
+                })
 
         return config
 

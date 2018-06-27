@@ -5290,6 +5290,8 @@ class ConductorManager(service.PeriodicService):
                         'platform::filesystem::scratch::runtime',
                     constants.FILESYSTEM_NAME_DOCKER:
                         'platform::filesystem::docker::runtime',
+                    constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
+                        'platform::drbd::dockerdistribution::runtime',
                     constants.FILESYSTEM_NAME_DATABASE:
                         'platform::drbd::pgsql::runtime',
                     constants.FILESYSTEM_NAME_CGCS:
@@ -6634,6 +6636,17 @@ class ConductorManager(service.PeriodicService):
                 data_etcd['name'], data_etcd['logical_volume'], data_etcd['size']))
             self.dbapi.controller_fs_create(data_etcd)
 
+            data = {
+                'name': constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION,
+                'size': constants.DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE,
+                'logical_volume': constants.FILESYSTEM_LV_DICT[
+                    constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION],
+                'replicated': True,
+            }
+            LOG.info("Creating FS:%s:%s %d" % (
+                data['name'], data['logical_volume'], data['size']))
+            self.dbapi.controller_fs_create(data)
+
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                 tsc.system_type != constants.TIS_AIO_BUILD):
             data = {
@@ -7125,6 +7138,8 @@ class ConductorManager(service.PeriodicService):
                 fs.append(constants.DRBD_PATCH_VAULT)
             if "drbd-etcd" in row and ("SyncSource" in row or "PausedSyncS" in row):
                 fs.append(constants.DRBD_ETCD)
+            if "drbd-dockerdistribution" in row and ("SyncSource" in row or "PausedSyncS" in row):
+                fs.append(constants.DRBD_DOCKER_DISTRIBUTION)
         return fs
 
     def _drbd_fs_updated(self, context):
@@ -7134,6 +7149,8 @@ class ConductorManager(service.PeriodicService):
 
         drbd_patch_size = 0
         patch_lv_size = 0
+        dockerdistribution_size = 0
+        dockerdistribution_lv_size = 0
         drbd_etcd_size = 0
         etcd_lv_size = 0
 
@@ -7163,6 +7180,8 @@ class ConductorManager(service.PeriodicService):
                     drbd_patch_size = size
                 if 'drbd-etcd' in row:
                     drbd_etcd_size = size
+                if 'drbd-dockerdistribution' in row:
+                    dockerdistribution_size = size
 
         lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
         if lvdisplay_dict.get('pgsql-lv', None):
@@ -7175,9 +7194,11 @@ class ConductorManager(service.PeriodicService):
             patch_lv_size = round(float(lvdisplay_dict['patch-vault-lv']))
         if lvdisplay_dict.get('etcd-lv', None):
             etcd_lv_size = round(float(lvdisplay_dict['etcd-lv']))
+        if lvdisplay_dict.get('dockerdistribution-lv', None):
+            dockerdistribution_lv_size = round(float(lvdisplay_dict['dockerdistribution-lv']))
 
-        LOG.info("drbd-overview: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s", drbd_pgsql_size, drbd_cgcs_size, drbd_extension_size, drbd_patch_size, drbd_etcd_size)
-        LOG.info("lvdisplay: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s", pgsql_lv_size, cgcs_lv_size, extension_lv_size, patch_lv_size, etcd_lv_size)
+        LOG.info("drbd-overview: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", drbd_pgsql_size, drbd_cgcs_size, drbd_extension_size, drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
+        LOG.info("lvdisplay: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", pgsql_lv_size, cgcs_lv_size, extension_lv_size, patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
 
         drbd_fs_updated = []
         if drbd_pgsql_size < pgsql_lv_size:
@@ -7190,6 +7211,8 @@ class ConductorManager(service.PeriodicService):
             drbd_fs_updated.append(constants.DRBD_PATCH_VAULT)
         if drbd_etcd_size < etcd_lv_size:
             drbd_fs_updated.append(constants.DRBD_ETCD)
+        if dockerdistribution_size < dockerdistribution_lv_size:
+            drbd_fs_updated.append(constants.DRBD_DOCKER_DISTRIBUTION)
 
         return drbd_fs_updated
 
@@ -7226,6 +7249,7 @@ class ConductorManager(service.PeriodicService):
                 extension_resized = False
                 patch_resized = False
                 etcd_resized = False
+                dockerdistribution_resized = False
                 loop_timeout = 0
                 drbd_fs_updated = self._drbd_fs_updated(context)
                 if drbd_fs_updated:
@@ -7282,6 +7306,17 @@ class ConductorManager(service.PeriodicService):
                                 LOG.info("Performed %s" % progress)
                                 etcd_resized = True
 
+                        if constants.DRBD_DOCKER_DISTRIBUTION in drbd_fs_updated:
+                            if (not dockerdistribution_resized and
+                                (not standby_host or (standby_host and
+                                 constants.DRBD_DOCKER_DISTRIBUTION in self._drbd_fs_sync()))):
+                                # patch_gib /var/lib/docker-distribution
+                                progress = "resize2fs drbd8"
+                                cmd = ["resize2fs", "/dev/drbd8"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+                                LOG.info("Performed %s" % progress)
+                                dockerdistribution_resized = True
+
                         if not standby_host:
                             break
 
@@ -7296,6 +7331,8 @@ class ConductorManager(service.PeriodicService):
                             elif drbd == constants.DRBD_PATCH_VAULT and not patch_resized:
                                 all_resized = False
                             elif drbd == constants.DRBD_ETCD and not etcd_resized:
+                                all_resized = False
+                            elif drbd == constants.DRBD_DOCKER_DISTRIBUTION and not dockerdistribution_resized:
                                 all_resized = False
 
                         if all_resized:
@@ -9009,6 +9046,7 @@ class ConductorManager(service.PeriodicService):
         if kubernetes_config:
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/docker-lv '
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/etcd-lv'
+            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/dockerdistribution-lv '
 
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                 tsc.system_type != constants.TIS_AIO_BUILD):

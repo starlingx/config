@@ -357,6 +357,50 @@ class platform::drbd::etcd (
   }
 }
 
+class platform::drbd::dockerdistribution::params (
+  $device = '/dev/drbd8',
+  $lv_name = 'dockerdistribution-lv',
+  $lv_size = '1',
+  $mountpoint = '/var/lib/docker-distribution',
+  $port = '7798',
+  $resource_name = 'drbd-dockerdistribution',
+  $vg_name = 'cgts-vg',
+) {}
+
+class platform::drbd::dockerdistribution ()
+  inherits ::platform::drbd::dockerdistribution::params {
+
+  include ::platform::kubernetes::params
+
+  if str2bool($::is_initial_config_primary) {
+    $drbd_primary = true
+    $drbd_initial = true
+    $drbd_automount = true
+    $drbd_manage = true
+  } else {
+    $drbd_primary = undef
+    $drbd_initial = undef
+    $drbd_automount = undef
+    $drbd_manage = undef
+  }
+
+  if $::platform::kubernetes::params::enabled {
+    platform::drbd::filesystem { $resource_name:
+      vg_name    => $vg_name,
+      lv_name    => $lv_name,
+      lv_size    => $lv_size,
+      port       => $port,
+      device     => $device,
+      mountpoint => $mountpoint,
+      resync_after => undef,
+      manage_override => $drbd_manage,
+      ha_primary_override => $drbd_primary,
+      initial_setup_override => $drbd_initial,
+      automount_override => $drbd_automount,
+    }
+  }
+}
+
 class platform::drbd(
   $service_enable = false,
   $service_ensure = 'stopped',
@@ -389,6 +433,7 @@ class platform::drbd(
   include ::platform::drbd::extension
   include ::platform::drbd::patch_vault
   include ::platform::drbd::etcd
+  include ::platform::drbd::dockerdistribution
 
   # network changes need to be applied prior to DRBD resources
   Anchor['platform::networking'] ->
@@ -454,4 +499,9 @@ class platform::drbd::patch_vault::runtime {
 class platform::drbd::etcd::runtime {
   include ::platform::drbd::params
   include ::platform::drbd::etcd
+}
+
+class platform::drbd::dockerdistribution::runtime {
+  include ::platform::drbd::params
+  include ::platform::drbd::dockerdistribution
 }
