@@ -608,7 +608,7 @@ class openstack::nova::api::services
     sync_db => $::platform::params::init_database,
     sync_db_api => $::platform::params::init_database,
     osapi_compute_workers => $::platform::params::eng_workers,
-    metadata_workers => $::platform::params::eng_workers,
+    metadata_workers => $::platform::params::eng_workers_by_2,
   }
 }
 
