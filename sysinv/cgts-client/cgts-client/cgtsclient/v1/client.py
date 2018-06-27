@@ -69,7 +69,6 @@ from cgtsclient.v1 import sm_servicegroup
 from cgtsclient.v1 import health
 from cgtsclient.v1 import remotelogging
 from cgtsclient.v1 import sdn_controller
-from cgtsclient.v1 import tpmconfig
 from cgtsclient.v1 import firewallrules
 from cgtsclient.v1 import partition
 from cgtsclient.v1 import certificate
@@ -141,7 +140,6 @@ class Client(http.HTTPClient):
         self.health = health.HealthManager(self)
         self.remotelogging = remotelogging.RemoteLoggingManager(self)
         self.sdn_controller = sdn_controller.SDNControllerManager(self)
-        self.tpmconfig = tpmconfig.TpmConfigManager(self)
         self.firewallrules = firewallrules.FirewallRulesManager(self)
         self.partition = partition.partitionManager(self)
         self.license = license.LicenseManager(self)

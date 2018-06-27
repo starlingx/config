@@ -55,7 +55,6 @@ from cgtsclient.v1 import license_shell
 from cgtsclient.v1 import health_shell
 from cgtsclient.v1 import remotelogging_shell
 from cgtsclient.v1 import sdn_controller_shell
-from cgtsclient.v1 import tpmconfig_shell
 from cgtsclient.v1 import firewallrules_shell
 from cgtsclient.v1 import partition_shell
 from cgtsclient.v1 import certificate_shell
@@ -108,7 +107,6 @@ COMMAND_MODULES = [
     health_shell,
     remotelogging_shell,
     sdn_controller_shell,
-    tpmconfig_shell,
     firewallrules_shell,
     partition_shell,
     license_shell,

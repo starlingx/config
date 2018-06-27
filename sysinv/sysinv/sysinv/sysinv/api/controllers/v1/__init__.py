@@ -75,7 +75,6 @@ from sysinv.api.controllers.v1 import storage_external
 from sysinv.api.controllers.v1 import storage_tier
 from sysinv.api.controllers.v1 import system
 from sysinv.api.controllers.v1 import trapdest
-from sysinv.api.controllers.v1 import tpmconfig
 from sysinv.api.controllers.v1 import upgrade
 from sysinv.api.controllers.v1 import user
 
@@ -219,9 +218,6 @@ class V1(base.APIBase):
 
     sdn_controller = [link.Link]
     "Links to the SDN controller resource"
-
-    tpmconfig = [link.Link]
-    "Links to the TPM configuration resource"
 
     firewallrules = [link.Link]
     "Links to customer firewall rules"
@@ -688,14 +684,6 @@ class V1(base.APIBase):
                                                  bookmark=True)
                              ]
 
-        v1.tpmconfig = [link.Link.make_link('self',
-                                            pecan.request.host_url,
-                                            'tpmconfig', ''),
-                        link.Link.make_link('bookmark',
-                                            pecan.request.host_url,
-                                            'tpmconfig', '',
-                                            bookmark=True)]
-
         v1.firewallrules = [link.Link.make_link('self',
                                                 pecan.request.host_url,
                                                 'firewallrules', ''),
@@ -771,7 +759,6 @@ class Controller(rest.RestController):
     health = health.HealthController()
     remotelogging = remotelogging.RemoteLoggingController()
     sdn_controller = sdn_controller.SDNControllerController()
-    tpmconfig = tpmconfig.TPMConfigController()
     firewallrules = firewallrules.FirewallRulesController()
     license = license.LicenseController()
 
