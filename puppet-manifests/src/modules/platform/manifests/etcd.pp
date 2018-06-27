@@ -7,7 +7,7 @@ class platform::etcd::params (
   include ::platform::params
 
   $sw_version = $::platform::params::software_version
-  $etcd_basedir = "/opt/cgcs/etcd"
+  $etcd_basedir = "/opt/etcd"
   $etcd_versioned_dir = "${etcd_basedir}/${sw_version}"
 }
 
@@ -69,30 +69,26 @@ class platform::etcd
 
   include ::platform::kubernetes::params
 
-  Class['::platform::drbd::cgcs'] -> Class[$name]
+  Class['::platform::drbd::etcd'] -> Class[$name]
   
   if $::platform::kubernetes::params::enabled {
+    include ::platform::etcd::datadir
     include ::platform::etcd::setup
     include ::platform::etcd::init
 
+    Class['::platform::etcd::datadir'] ->
     Class['::platform::etcd::setup'] ->
     Class['::platform::etcd::init']
 
   }  
 }
 
-class platform::etcd::bootstrap 
+class platform::etcd::datadir 
   inherits ::platform::etcd::params {
 
-  Class['::platform::drbd::cgcs'] -> Class[$name]
+  Class['::platform::drbd::etcd'] -> Class[$name]
 
   if $::platform::params::init_database {
-    file { "${etcd_basedir}":
-        ensure  => 'directory',
-        owner   => 'root',
-        group   => 'root',
-        mode    => '0755',
-    } ->
     file { "${etcd_versioned_dir}":
         ensure  => 'directory',
         owner   => 'root',

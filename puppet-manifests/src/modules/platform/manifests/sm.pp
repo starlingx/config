@@ -69,6 +69,11 @@ class platform::sm
   $patch_fs_device              = $::platform::drbd::patch_vault::params::device
   $patch_fs_directory           = $::platform::drbd::patch_vault::params::mountpoint
 
+  include ::platform::drbd::etcd::params
+  $etcd_drbd_resource           = $::platform::drbd::etcd::params::resource_name
+  $etcd_fs_device               = $::platform::drbd::etcd::params::device
+  $etcd_fs_directory            = $::platform::drbd::etcd::params::mountpoint
+
   include ::openstack::keystone::params
   $keystone_api_version          = $::openstack::keystone::params::api_version
   $keystone_identity_uri         = $::openstack::keystone::params::identity_uri
@@ -369,6 +374,16 @@ class platform::sm
     exec { 'Configure Patch-vault FileSystem':
       command => "sm-configure service_instance patch-vault-fs patch-vault-fs \"rmon_rsc_name=patch-vault-storage,device=${patch_fs_device},directory=${patch_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
     }
+  }
+
+  if $kubernetes_enabled {
+    exec { 'Configure ETCD DRBD':
+      command => "sm-configure service_instance drbd-etcd drbd-etcd:${hostunit} drbd_resource=${etcd_drbd_resource}",
+    }
+
+    exec { 'Configure ETCD DRBD FileSystem':
+      command => "sm-configure service_instance etcd-fs etcd-fs \"device=${etcd_fs_device},directory=${etcd_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    }    
   }
 
   if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
@@ -988,7 +1003,19 @@ class platform::sm
   }
   
   # Configure ETCD for Kubernetes
-  if $kubernetes_enabled {    
+  if $kubernetes_enabled {
+    exec { 'Provision etcd-fs (service-group-member)':
+      command => "sm-provision service-group-member controller-services etcd-fs",
+    } ->
+    exec { 'Provision etcd-fs (service)':
+      command => "sm-provision service etcd-fs",
+    } ->
+    exec { 'Provision drbd-etcd (service-group-member)':
+      command => "sm-provision service-group-member controller-services drbd-etcd",
+    } ->
+    exec { 'Provision drbd-etcd (service)':
+      command => "sm-provision service drbd-etcd",
+    } ->
     exec { 'Provision ETCD (service-group-member)': 
         command => "sm-provision service-group-member controller-services etcd",
     } ->

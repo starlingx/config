@@ -311,6 +311,52 @@ class platform::drbd::patch_vault (
   }
 }
 
+class platform::drbd::etcd::params (
+  #$service_enable = false,
+  $device = '/dev/drbd7',
+  $lv_name = 'etcd-lv',
+  $lv_size = '5',
+  $mountpoint = '/opt/etcd',
+  $port = '7797',
+  $resource_name = 'drbd-etcd',
+  $vg_name = 'cgts-vg',
+) {}
+
+
+class platform::drbd::etcd (
+) inherits ::platform::drbd::etcd::params {
+
+  include ::platform::kubernetes::params
+
+  if str2bool($::is_initial_config_primary) {
+    $drbd_primary = true
+    $drbd_initial = true
+    $drbd_automount = true
+    $drbd_manage = true
+  } else {
+    $drbd_primary = undef
+    $drbd_initial = undef
+    $drbd_automount = undef
+    $drbd_manage = undef
+  }
+
+  if $::platform::kubernetes::params::enabled {
+    platform::drbd::filesystem { $resource_name:
+      vg_name    => $vg_name,
+      lv_name    => $lv_name,
+      lv_size    => $lv_size,
+      port       => $port,
+      device     => $device,
+      mountpoint => $mountpoint,
+      resync_after => undef,
+      manage_override => $drbd_manage,
+      ha_primary_override => $drbd_primary,
+      initial_setup_override => $drbd_initial,
+      automount_override => $drbd_automount,
+    }
+  }
+}
+
 class platform::drbd(
   $service_enable = false,
   $service_ensure = 'stopped',
@@ -342,6 +388,7 @@ class platform::drbd(
   include ::platform::drbd::cgcs
   include ::platform::drbd::extension
   include ::platform::drbd::patch_vault
+  include ::platform::drbd::etcd
 
   # network changes need to be applied prior to DRBD resources
   Anchor['platform::networking'] ->
@@ -402,4 +449,9 @@ class platform::drbd::extension::runtime {
 class platform::drbd::patch_vault::runtime {
   include ::platform::drbd::params
   include ::platform::drbd::patch_vault
+}
+
+class platform::drbd::etcd::runtime {
+  include ::platform::drbd::params
+  include ::platform::drbd::etcd
 }
