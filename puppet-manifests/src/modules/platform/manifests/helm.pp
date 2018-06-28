@@ -24,9 +24,43 @@ class platform::helm
       } ->
 
       exec { 'initialize helm':
-        environment => [ "KUBECONFIG=/etc/kubernetes/admin.conf" ],
+        environment => [ "KUBECONFIG=/etc/kubernetes/admin.conf", "HOME=/home/wrsroot" ],
         command => "helm init --skip-refresh --service-account tiller",
         logoutput => true,
+        user => 'wrsroot',
+        group => 'wrs',
+        require => User['wrsroot']
+      } ->
+
+      file {"/www/pages/helm_charts":
+        path   => "/www/pages/helm_charts",
+        ensure => directory,
+        owner  => "www",
+        require => User['www']
+      } ->
+
+      exec { "restart lighttpd for helm":
+        require => File["/etc/lighttpd/lighttpd.conf"],
+        command => "systemctl restart lighttpd.service",
+        logoutput => true,
+      } ->
+
+      exec { "generate helm repo index":
+        command => "helm repo index /www/pages/helm_charts",
+        logoutput => true,
+        user => 'www',
+        group => 'www',
+        require => User['www']
+      } ->
+
+      exec { "add local starlingx helm repo":
+        before => Exec['Stop lighttpd'],
+        environment => [ "KUBECONFIG=/etc/kubernetes/admin.conf" , "HOME=/home/wrsroot"],
+        command => "helm repo add starlingx http://127.0.0.1/helm_charts",
+        logoutput => true,
+        user => 'wrsroot',
+        group => 'wrs',
+        require => User['wrsroot']
       }
     }
   }
