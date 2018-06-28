@@ -34,8 +34,16 @@ def _print_ilvg_show(ilvg):
 
     data = [(f, getattr(ilvg, f, '')) for f in fields]
 
+    attr = getattr(ilvg, 'capabilities', '')
+
+    if attr:
+        lv_size_mib = attr.pop('instances_lv_size_mib', None)
+        if lv_size_mib:
+            lv_size_gib = float(lv_size_mib) / 1024
+            attr.update({'instances_lv_size_gib': lv_size_gib})
+
     # rename capabilities for display purposes and add to display list
-    data.append(('parameters', getattr(ilvg, 'capabilities', '')))
+    data.append(('parameters', attr))
 
     utils.print_tuple_list(data, labels)
 

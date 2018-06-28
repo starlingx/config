@@ -653,11 +653,12 @@ def _check(op, lvg):
                             (lv_size_mib > allowed_max_mib)):
                         raise wsme.exc.ClientSideError(
                             _('Invalid size provided for '
-                              'instances_lv_size_mib: %d. The valid range, '
-                              'based on the volume group size is %d <= '
-                              'instances_lv_size_mib <= %d.' %
-                              (lvg_caps[constants.LVG_NOVA_PARAM_INST_LV_SZ],
-                               allowed_min_mib, allowed_max_mib)))
+                              'instances_lv_size_gib: %.2f. The valid range, '
+                              'based on the volume group size is %.2f <= '
+                              'instances_lv_size_gib <= %.2f.' %
+                              (float(lvg_caps[constants.LVG_NOVA_PARAM_INST_LV_SZ]) / 1024,
+                               float(allowed_min_mib) / 1024,
+                               float(allowed_max_mib) / 1024)))
 
                 # remote instance backing only available for ceph only cinder
                 # backend. for Titanium Cloud that is initially configured as
