@@ -58,7 +58,7 @@ CREATE DATABASE openstack_citest WITH OWNER openstack_citest;
 
 
 To actually run the tests, in console navigate to
-wrlinux-x/addons/wr-cgcs/layers/cgcs/middleware/sysinv/recipes-common/sysinv/sysinv
+$MY_REPO/stx/stx-config/sysinv/sysinv/sysinv
 
 On your first ever run of tox tests enter:
 tox --recreate -e py27
