@@ -26,6 +26,10 @@ class openstack::aodh
       include ::aodh::db::postgresql
     }
 
+    aodh_config {
+        'service_credentials/interface': value => 'internalURL'
+    }
+
     class { '::aodh':
       rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
       default_transport_url => $::platform::amqp::params::transport_url,
