@@ -120,6 +120,7 @@ include ::platform::dcmanager::api
 
 include ::platform::dcorch::snmp
 
+include ::platform::smapi
 include ::platform::sm
 
 class { '::platform::config::controller::post':

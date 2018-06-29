@@ -386,6 +386,9 @@ class openstack::keystone::endpoint::runtime {
       include ::dcorch::keystone::auth
       include ::dcmanager::keystone::auth
     }
+
+    include ::smapi::keystone::auth
+
   }
 }
 

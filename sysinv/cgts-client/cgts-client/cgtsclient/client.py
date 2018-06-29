@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -30,6 +30,14 @@ def _get_ksclient(**kwargs):
                            auth_url=kwargs.get('auth_url'),
                            insecure=kwargs.get('insecure'),
                            cacert=kwargs.get('os_cacert'))
+
+
+def _get_sm_endpoint(client, **kwargs):
+    """Get an endpoint for smapi using the provided keystone client."""
+    return client.auth_ref.service_catalog.url_for(
+        service_type=kwargs.get('service_name') or 'smapi',
+        endpoint_type=kwargs.get('endpoint_type') or 'public',
+        region_name=kwargs.get('os_region_name') or 'RegionOne')
 
 
 def _get_endpoint(client, **kwargs):
@@ -106,6 +114,7 @@ def get_client(api_version, **kwargs):
                'and token'))
         raise exc.AmbigiousAuthSystem(e)
 
+    smapi_endpoint = _get_sm_endpoint(_ksclient, **ep_kwargs)
     cli_kwargs = {
         'token': token,
         'insecure': kwargs.get('insecure'),
@@ -116,7 +125,7 @@ def get_client(api_version, **kwargs):
         'key_file': kwargs.get('key_file'),
         'auth_ref': auth_ref,
         'auth_url': kwargs.get('os_auth_url'),
-        'smapi_endpoint': 'http:localhost:7777',
+        'smapi_endpoint': smapi_endpoint,
     }
 
     return Client(api_version, endpoint, **cli_kwargs)
