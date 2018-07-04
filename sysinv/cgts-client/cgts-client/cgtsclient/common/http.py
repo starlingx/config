@@ -23,7 +23,7 @@ import socket
 import httplib2
 
 import six
-import six.moves.urllib.parse as urlparse
+import urlparse
 
 try:
     import ssl
@@ -99,10 +99,10 @@ class ServiceCatalog(object):
         if not matching_endpoints:
             raise exceptions.EndpointNotFound()
         elif len(matching_endpoints) > 1:
-            raise exceptions.AmbiguousEndpoints(matching_endpoints)
+            raise exceptions.AmbiguousEndpoints(reason=matching_endpoints)
         else:
             if endpoint_type not in matching_endpoints[0]:
-                raise exceptions.EndpointTypeNotFound(endpoint_type)
+                raise exceptions.EndpointTypeNotFound(reason=endpoint_type)
 
         return matching_endpoints[0][endpoint_type]
 
@@ -407,7 +407,7 @@ class HTTPClient(httplib2.Http):
             if (endpoint['type'] == 'platform' and endpoint.get('region') == self.region_name):
                 if self.endpoint_type not in endpoint:
                     raise exceptions.EndpointTypeNotFound(
-                        self.endpoint_type)
+                        reason=self.endpoint_type)
                 return endpoint[self.endpoint_type]
 
         raise exceptions.EndpointNotFound()
@@ -446,7 +446,7 @@ class HTTPClient(httplib2.Http):
             _class = six.moves.http_client.HTTPConnection
         else:
             msg = 'Unsupported scheme: %s' % parts.scheme
-            raise exceptions.EndpointException(msg)
+            raise exceptions.EndpointException(reason=msg)
 
         return (_class, _args, _kwargs)
 

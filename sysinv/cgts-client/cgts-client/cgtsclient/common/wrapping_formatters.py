@@ -652,8 +652,8 @@ def build_wrapping_formatters(objs, fields, field_labels, format_spec, add_blank
     wrapping_formatters_as_functions = {}
 
     if len(fields) != len(field_labels):
-        raise Exception("Error in buildWrappingFormatters: " +
-                        "len(fields) = {}, len(field_labels) = {}," +
+        raise Exception("Error in buildWrappingFormatters: "
+                        "len(fields) = {}, len(field_labels) = {},"
                         " they must be the same length!".format(len(fields),
                                                                 len(field_labels)))
     field_to_label = {}
@@ -672,8 +672,8 @@ def build_wrapping_formatters(objs, fields, field_labels, format_spec, add_blank
 
     for k in format_spec.keys():
         if k not in fields:
-            raise Exception("Error in buildWrappingFormatters: format_spec " +
-                            "specifies a field {} that is not specified " +
+            raise Exception("Error in buildWrappingFormatters: format_spec "
+                            "specifies a field {} that is not specified "
                             "in fields : {}".format(k, fields))
 
         format_spec_for_k = copy.deepcopy(format_spec[k])

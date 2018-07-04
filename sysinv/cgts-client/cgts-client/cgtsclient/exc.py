@@ -169,6 +169,63 @@ class AmbiguousAuthSystem(ClientException):
     """Could not obtain token and endpoint using provided credentials."""
     pass
 
+
+class CgtsclientException(Exception):
+    """Base Cgts-Client Exception
+
+    To correctly use this class, inherit from it and define
+    a 'message' property. That message will get printf'd
+    with the keyword arguments provided to the constructor.
+
+    """
+    message = "An unknown exception occurred."
+    code = 500
+    headers = {}
+    safe = False
+
+    def __init__(self, message=None, **kwargs):
+        self.kwargs = kwargs
+
+        if 'code' not in self.kwargs:
+            try:
+                self.kwargs['code'] = self.code
+            except AttributeError:
+                pass
+
+        if not message:
+            try:
+                message = self.message % kwargs
+
+            except Exception as e:
+                # kwargs doesn't match a variable in the message
+                # at least get the core message out if something happened
+                message = self.message
+
+        super(CgtsclientException, self).__init__(message)
+
+    def format_message(self):
+        if self.__class__.__name__.endswith('_Remote'):
+            return self.args[0]
+        else:
+            return unicode(self)
+
+
+class AmbiguousEndpoints(CgtsclientException):
+    message = "Endpoints are ambiguous. reason=%(reason)s"
+
+
+class EndpointTypeNotFound(CgtsclientException):
+    message = "The type of the endpoint was not found. reason=%(reason)s"
+
+
+class SslCertificateValidationError(CgtsclientException):
+    message = "Validation of the Ssl certificate failed. reason=%(reason)s"
+
+
+class EndpointException(CgtsclientException):
+    message = "Generic endpoint exception. reason=%(reason)s"
+
+
 # Alias for backwards compatibility
 AmbigiousAuthSystem = AmbiguousAuthSystem
 

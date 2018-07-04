@@ -9,7 +9,6 @@
 
 from cgtsclient.common import base
 from cgtsclient import exc
-from cgtsclient.v1 import icpu as icpu_utils
 
 
 CREATION_ATTRIBUTES = ['numa_node', 'capabilities', 'ihost_uuid']
@@ -51,10 +50,3 @@ class inodeManager(base.Manager):
     def update(self, inode_id, patch):
         path = '/v1/inodes/%s' % inode_id
         return self._update(path, patch)
-
-
-def _get_cpus(cc, ihost, node):
-    cpus = cc.icpu.list(ihost.uuid)
-    cpu_list = [icpu_utils.get_cpu_display_name(p) for p in cpus if
-                p.inode_uuid and p.inode_uuid == node.uuid]
-    node.cpus = cpu_list

@@ -9,7 +9,6 @@
 
 from cgtsclient.common import base
 from cgtsclient import exc
-from cgtsclient.v1 import ipv as ipv_utils
 
 
 CREATION_ATTRIBUTES = ['lvm_vg_name', 'ihost_uuid']
@@ -53,14 +52,6 @@ class ilvgManager(base.Manager):
         path = '/v1/ilvgs/%s' % ilvg_id
 
         return self._update(path, patch)
-
-
-def _get_pvs(cc, ihost, lvg):
-    pvs = cc.ipv.list(ihost.uuid)
-    pv_list = [ipv_utils.get_pv_display_name(pv)
-               for pv in pvs
-               if pv.ilvg_uuid and pv.ilvg_uuid == lvg.uuid]
-    lvg.pvs = pv_list
 
 
 def _find_ilvg(cc, ihost, ilvg):
