@@ -457,7 +457,7 @@ class AgentManager(service.PeriodicService):
             This method should only be called before
              INITIAL_CONFIG_COMPLETE_FLAG is set.
         """
-        link_down = []
+        links_down = []
         try:
             # Turn on interfaces, so that lldpd can show all neighbors
             for interface in self._ipci_operator.pci_get_net_names():
@@ -465,25 +465,27 @@ class AgentManager(service.PeriodicService):
                 # If administrative state is down, bring it up momentarily
                 if not (flag & pci.IFF_UP):
                     subprocess.call(['ip', 'link', 'set', interface, 'up'])
-                    link_down.append(interface)
+                    links_down.append(interface)
                     LOG.info('interface %s enabled to receive LLDP PDUs' % interface)
             subprocess.call(['lldpcli', 'update'])
             # delay maximum 30 seconds for lldpd to receive LLDP PDU
             timeout = 0
-            passed = 0
-            while timeout < 30 and passed < len(link_down):
+            link_wait_for_lldp = True
+            while timeout < 30 and link_wait_for_lldp and links_down:
                 time.sleep(5)
                 timeout = timeout + 5
-                # Count the number of interfaces that have collected LLDP neighbors.
-                m = map(lambda link: self._lldp_operator.lldpd_has_neighbour(link), link_down)
-                passed = reduce(lambda x, y: x + 1 if y else x, m)
+                link_wait_for_lldp = False
+                for link in links_down:
+                    if not self._lldp_operator.lldpd_has_neighbour(link):
+                        link_wait_for_lldp = True
+                        break
             self.host_lldp_get_and_report(context, rpcapi, host_uuid)
         except Exception as e:
             LOG.exception(e)
             pass
         finally:
             # restore interface administrative state
-            for interface in link_down:
+            for interface in links_down:
                 subprocess.call(['ip', 'link', 'set', interface, 'down'])
                 LOG.info('interface %s disabled after querying LLDP neighbors' % interface)
 
@@ -1002,6 +1004,27 @@ class AgentManager(service.PeriodicService):
 
         return rc
 
+    def _is_config_complete(self):
+        """Check if this node has completed config
+
+        This method queries node's config flag file to see if it has
+        complete config.
+        :return: True if the complete flag file exists false otherwise
+        """
+        if not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+            return False
+        subfunctions = self.subfunctions_list_get()
+        if constants.CONTROLLER in subfunctions:
+            if not os.path.isfile(tsc.INITIAL_CONTROLLER_CONFIG_COMPLETE):
+                return False
+        if constants.COMPUTE in subfunctions:
+            if not os.path.isfile(tsc.INITIAL_COMPUTE_CONFIG_COMPLETE):
+                return False
+        if constants.STORAGE in subfunctions:
+            if not os.path.isfile(tsc.INITIAL_STORAGE_CONFIG_COMPLETE):
+                return False
+        return True
+
     @periodic_task.periodic_task(spacing=CONF.agent.audit_interval,
                                  run_immediately=True)
     def _agent_audit(self, context):
@@ -1126,7 +1149,7 @@ class AgentManager(service.PeriodicService):
                 rpcapi.imemory_update_by_ihost(icontext,
                                                self._ihost_uuid,
                                                imemory)
-                if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+                if self._is_config_complete():
                     self.host_lldp_get_and_report(icontext, rpcapi, self._ihost_uuid)
                 else:
                     self._lldp_enable_and_report(icontext, rpcapi, self._ihost_uuid)
