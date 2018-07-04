@@ -32,7 +32,6 @@ class SmPuppet(openstack.OpenstackBasePuppet):
 
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
-        kspass = self._get_service_password(self.SERVICE_NAME)
 
         config = {
             'smapi::keystone::authtoken::username': ksuser,
