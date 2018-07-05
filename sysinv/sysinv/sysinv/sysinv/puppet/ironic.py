@@ -29,7 +29,7 @@ class IronicPuppet(openstack.OpenstackBasePuppet):
             'ironic::keystone::auth::password': kspass,
             'ironic::api::authtoken::password': kspass,
             'ironic::neutron::password': self._get_neutron_password(),
-            'ironic::glance::password' : self._get_glance_password(),
+            'ironic::glance::password': self._get_glance_password(),
             'nova::ironic::common::password': kspass,
 
         }

@@ -370,17 +370,17 @@ class DiskOperator(object):
                 device_id, device_wwn = self.get_device_id_wwn(device)
 
                 attr = {
-                        'device_node'  : device.device_node,
-                        'device_num'   : device.device_number,
-                        'device_type'  : device_type,
-                        'device_path'  : device_path,
-                        'device_id'    : device_id,
-                        'device_wwn'   : device_wwn,
-                        'size_mib'     : size_mib,
+                        'device_node': device.device_node,
+                        'device_num': device.device_number,
+                        'device_type': device_type,
+                        'device_path': device_path,
+                        'device_id': device_id,
+                        'device_wwn': device_wwn,
+                        'size_mib': size_mib,
                         'available_mib': available_mib,
-                        'serial_id'    : serial_id,
-                        'capabilities' : capabilities,
-                        'rpm'          : rotation_rate,
+                        'serial_id': serial_id,
+                        'capabilities': capabilities,
+                        'rpm': rotation_rate,
                        }
 
                 idisk.append(attr)

@@ -32,9 +32,9 @@ def upgrade(migrate_engine):
 
         new_https_enabled_value = False
 
-        if json_dict['https_enabled'] == 'y' :
+        if json_dict['https_enabled'] == 'y':
                 new_https_enabled_value = True
-        elif json_dict['https_enabled'] == 'n' :
+        elif json_dict['https_enabled'] == 'n':
                 new_https_enabled_value = False
 
         json_dict['https_enabled'] = new_https_enabled_value

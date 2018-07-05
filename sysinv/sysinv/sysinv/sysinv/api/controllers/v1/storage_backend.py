@@ -184,7 +184,7 @@ class StorageBackendController(rest.RestController):
     _custom_actions = {
         'detail': ['GET'],
         'summary': ['GET'],
-        'usage' : ['GET']
+        'usage': ['GET']
     }
 
     def __init__(self, from_isystems=False):

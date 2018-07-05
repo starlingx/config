@@ -265,7 +265,7 @@ class ConductorManager(service.PeriodicService):
 
         self.dbapi.drbdconfig_create({
             'forisystemid': system.id,
-            'uuid' : uuidutils.generate_uuid(),
+            'uuid': uuidutils.generate_uuid(),
             'link_util': constants.DRBD_LINK_UTIL_DEFAULT,
             'num_parallel': constants.DRBD_NUM_PARALLEL_DEFAULT,
             'rtt_ms': constants.DRBD_RTT_MS_DEFAULT

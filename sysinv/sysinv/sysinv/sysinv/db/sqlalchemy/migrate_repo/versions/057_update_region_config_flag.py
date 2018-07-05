@@ -30,9 +30,9 @@ def upgrade(migrate_engine):
 
         region_config = False
 
-        if json_dict['region_config'] == 'y' :
+        if json_dict['region_config'] == 'y':
             region_config = True
-        elif json_dict['region_config'] == 'n' :
+        elif json_dict['region_config'] == 'n':
             region_config = False
 
         json_dict['region_config'] = region_config

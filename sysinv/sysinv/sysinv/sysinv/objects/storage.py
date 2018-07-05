@@ -88,7 +88,7 @@ class Storage(base.SysinvObject):
               'uuid': utils.str_or_none,
               'forihostid': int,
               'ihost_uuid': utils.str_or_none,
-              'fortierid' : utils.int_or_none,
+              'fortierid': utils.int_or_none,
               'tier_uuid': utils.str_or_none,
               'tier_name': utils.str_or_none,
               'osdid': utils.int_or_none,
