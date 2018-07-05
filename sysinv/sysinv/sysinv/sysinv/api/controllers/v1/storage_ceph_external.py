@@ -303,7 +303,7 @@ def _discover_and_validate_backend_hiera_data(caps_dict):
 def _check_and_update_services(storage_ceph_ext):
     svcs = api_helper.getListFromServices(storage_ceph_ext)
 
-    ## If glance/nova is already a service on other rbd backend, remove it from there
+    # If glance/nova is already a service on other rbd backend, remove it from there
     check_svcs = [constants.SB_SVC_GLANCE, constants.SB_SVC_NOVA]
     for s in check_svcs:
         if s in svcs:

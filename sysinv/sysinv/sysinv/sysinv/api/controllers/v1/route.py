@@ -41,7 +41,7 @@ from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 
-## Maximum number of equal cost paths for a destination subnet
+# Maximum number of equal cost paths for a destination subnet
 SYSINV_ROUTE_MAX_PATHS = 4
 
 # Defines the list of interface network types that support routes
@@ -90,7 +90,7 @@ class Route(base.APIBase):
         self.fields = objects.route.fields.keys()
         for k in self.fields:
             if not hasattr(self, k):
-                ## Skip fields that we choose to hide
+                # Skip fields that we choose to hide
                 continue
             setattr(self, k, kwargs.get(k, wtypes.Unset))
 
@@ -346,15 +346,15 @@ class RouteController(rest.RestController):
         route = route.as_dict()
         route['uuid'] = str(uuid.uuid4())
         interface_uuid = route.pop('interface_uuid')
-        ## Query parent object references
+        # Query parent object references
         host_id, interface_id = self._get_parent_id(interface_uuid)
-        ## Check for semantic conflicts
+        # Check for semantic conflicts
         self._check_interface_type(interface_id)
         self._check_allowed_routes(interface_id, route)
         self._check_route_conflicts(host_id, route)
         self._check_local_gateway(host_id, route)
         self._check_reachable_gateway(interface_id, route)
-        ## Attempt to create the new route record
+        # Attempt to create the new route record
         result = pecan.request.dbapi.route_create(interface_id, route)
         pecan.request.rpcapi.update_route_config(pecan.request.context)
 

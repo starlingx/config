@@ -1598,7 +1598,7 @@ def _create_storage_profile(profile_name, profile_node):
     for disk in disks:
         dev_path = disk.get('path')
         dev_func = disk.get('volumeFunc')
-        ## Convert from GiB to MiB
+        # Convert from GiB to MiB
         dev_size = int(disk.get('size')) * 1024
         journal_size = int(disk.get('journalSize', '0')) * 1024
         tier = disk.get('tier', constants.SB_TIER_DEFAULT_NAMES[
