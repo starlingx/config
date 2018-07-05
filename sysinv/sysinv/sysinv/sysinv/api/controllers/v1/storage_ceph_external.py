@@ -291,7 +291,7 @@ class StorageCephExternalController(rest.RestController):
             LOG.exception(e)
             return dict(
                     success="",
-                    error=str(e))
+                    error=e.value)
 
         return dict(success="Success: ceph config file is uploaded", error="")
 
@@ -311,7 +311,7 @@ def _check_and_update_services(storage_ceph_ext):
 
             if sb_list:
                 for sb in sb_list:
-                    if (sb.isystem_uuid != storage_ceph_ext.get("isystem_uuid", None) and
+                    if (sb.uuid != storage_ceph_ext.get("uuid", None) and
                         sb.backend in [constants.SB_TYPE_CEPH,
                                        constants.SB_TYPE_CEPH_EXTERNAL] and
                             s in sb.get('services')):
@@ -380,7 +380,7 @@ def _check_backend_ceph_external(storage_ceph_ext):
         backend_name = storage_ceph_ext.get('name')
         backend_list = pecan.request.dbapi.storage_backend_get_list()
         for backend in backend_list:
-            if backend.isystem_uuid != storage_ceph_ext.get("isystem_uuid", None):
+            if backend.uuid != storage_ceph_ext.get("uuid", None):
                 if backend_name in constants.SB_DEFAULT_NAMES.values():
                     msg = _(
                         "The \"%s\" name is reserved for internally managed "
