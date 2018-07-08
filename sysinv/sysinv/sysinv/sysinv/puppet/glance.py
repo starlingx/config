@@ -111,7 +111,7 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
         # update remote registry for subcloud
         if (self._distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-            registry_host = self._get_system_controller_host()
+            registry_host = self._get_system_controller_addr()
             remote_registry_region_name = constants.SYSTEM_CONTROLLER_REGION
 
         if constants.GLANCE_BACKEND_RBD in enabled_backends:
@@ -205,7 +205,7 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
             # to have that information in sub cloud config file eventually.
             # For now it's assumed it's on http and on port 5000
             api_auth_url = self._format_url_address(
-                self._get_system_controller_host())
+                self._get_system_controller_addr())
             api_auth_url = 'http://' + api_auth_url + ':5000/v3'
 
             config.update({
