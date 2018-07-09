@@ -5,6 +5,7 @@ export CINDER_ENDPOINT_TYPE=internalURL
 
 export OS_USERNAME=<%= @admin_username %>
 export OS_PASSWORD=`TERM=linux <%= @keyring_file %> 2>/dev/null`
+export OS_AUTH_TYPE=password
 export OS_AUTH_URL=<%= @identity_auth_url %>
 
 export OS_PROJECT_NAME=<%= @admin_project_name %>
