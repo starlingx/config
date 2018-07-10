@@ -49,6 +49,7 @@ from cgtsclient.v1 import istor
 from cgtsclient.v1 import isystem
 from cgtsclient.v1 import itrapdest
 from cgtsclient.v1 import iuser
+from cgtsclient.v1 import label
 from cgtsclient.v1 import license
 from cgtsclient.v1 import lldp_agent
 from cgtsclient.v1 import lldp_neighbour
@@ -146,3 +147,4 @@ class Client(http.HTTPClient):
         self.storage_ceph_external = \
             storage_ceph_external.StorageCephExternalManager(self)
         self.helm = helm.HelmManager(self)
+        self.label = label.KubernetesLabelManager(self)

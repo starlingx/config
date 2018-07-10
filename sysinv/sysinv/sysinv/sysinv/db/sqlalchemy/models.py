@@ -1606,3 +1606,15 @@ class HelmOverrides(Base):
     namespace = Column(String(255), nullable=False)
     user_overrides = Column(Text, nullable=True)
     UniqueConstraint('name', 'namespace', name='u_name_namespace')
+
+
+class Label(Base):
+    __tablename__ = 'label'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+    host_id = Column(Integer, ForeignKey('i_host.id',
+                                         ondelete='CASCADE'))
+    host = relationship("ihost", lazy="joined", join_depth=1)
+    label = Column(String(255))
+    UniqueConstraint('host_id', 'label', name='u_host_label')

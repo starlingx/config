@@ -43,6 +43,7 @@ from sysinv.objects import interface_ethernet
 from sysinv.objects import interface_virtual
 from sysinv.objects import interface_vlan
 from sysinv.objects import journal
+from sysinv.objects import label
 from sysinv.objects import lldp_agent
 from sysinv.objects import lldp_neighbour
 from sysinv.objects import lldp_tlv
@@ -177,6 +178,7 @@ storage_external = storage_external.StorageExternal
 storage_tier = storage_tier.StorageTier
 storage_ceph_external = storage_ceph_external.StorageCephExternal
 helm_overrides = helm_overrides.HelmOverrides
+label = label.Label
 
 __all__ = (system,
            cluster,
@@ -226,6 +228,7 @@ __all__ = (system,
            host_upgrade,
            network,
            service_parameter,
+           label,
            lldp_agent,
            lldp_neighbour,
            lldp_tlv,

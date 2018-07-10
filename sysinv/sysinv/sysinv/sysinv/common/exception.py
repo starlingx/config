@@ -1139,6 +1139,19 @@ class StorageBackendNotFoundByName(NotFound):
     message = _("StorageBackend %(name)s not found")
 
 
+class HostLabelNotFound(NotFound):
+    message = _("Host label %(uuid)s could not be found.")
+
+
+class HostLabelAlreadyExists(Conflict):
+    message = _("Host label %(label)s already "
+                "exists on this host %(host)s.")
+
+
+class HostLabelNotFoundByKey(NotFound):
+    message = _("Host label %(label)s could not be found.")
+
+
 class PickleableException(Exception):
     """
     Pickleable Exception

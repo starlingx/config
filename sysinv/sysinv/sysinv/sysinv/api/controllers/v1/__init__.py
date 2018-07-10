@@ -36,6 +36,7 @@ from sysinv.api.controllers.v1 import firewallrules
 from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
+from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import interface
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import lldp_agent
@@ -224,6 +225,9 @@ class V1(base.APIBase):
 
     license = [link.Link]
     "Links to the license resource "
+
+    label = [link.Link]
+    "Links to the label resource "
 
     @classmethod
     def convert(self):
@@ -703,6 +707,13 @@ class V1(base.APIBase):
                                           'license', '',
                                           bookmark=True)]
 
+        v1.labels = [link.Link.make_link('self',
+                                         pecan.request.host_url,
+                                         'labels', ''),
+                     link.Link.make_link('bookmark',
+                                         pecan.request.host_url,
+                                         'labels', '',
+                                         bookmark=True)]
         return v1
 
 
@@ -765,6 +776,7 @@ class Controller(rest.RestController):
     sdn_controller = sdn_controller.SDNControllerController()
     firewallrules = firewallrules.FirewallRulesController()
     license = license.LicenseController()
+    labels = label.LabelController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):
