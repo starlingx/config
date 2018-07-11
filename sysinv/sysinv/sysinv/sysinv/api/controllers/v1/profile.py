@@ -2207,7 +2207,6 @@ def _create_device_profile(device, pv_type, iprofile_id):
 def localstorageprofile_copy_data(host, profile):
     """Create nova-local storage profile from host data
 
-       Background: (From CR-CGCS-1216)
        All computes will have nova local storage and is independent of
        the Cinder backend.
 
