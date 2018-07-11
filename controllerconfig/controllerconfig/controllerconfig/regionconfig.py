@@ -434,6 +434,7 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
                                           endpoint[SERVICE_NAME])
         service_type = cutils.get_service(region_config, 'REGION_2_SERVICES',
                                           endpoint[SERVICE_TYPE])
+        service_id = services.get_service_id(service_name, service_type)
 
         expected_public_url = endpoint[PUBLIC_URL].format(public_address)
 
