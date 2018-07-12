@@ -946,52 +946,53 @@ def backup_postgres(archive, staging_dir, cinder_config=False):
 
 def set_cinder_volumes_snapshots_status():
     """Update cinder volumes and cinder snapshots status to error,
-       except for those from an external CEPH backend.
+       except for those from external backends.
     """
 
-    # Get all the external ceph backends.
-    get_ext_ceph_backends_cmd = [
-        "sudo", "-u", "postgres", "psql", "-t", "sysinv", "-c",
-        "SELECT NAME FROM STORAGE_BACKEND WHERE BACKEND='ceph-external'"]
+    # All volumes from external backends should not be put into error.
+    # Only volumes from LVM and internal CEPH backend (all tiers) should be
+    # put into error.
 
-    volume_types = None
-    ext_ceph_backends = subprocess.check_output(get_ext_ceph_backends_cmd)
-    ext_ceph_backends = ext_ceph_backends.split()
-    if ext_ceph_backends:
-        ext_ceph_backends = str(ext_ceph_backends).replace(
-            '[', '(').replace(']', ')')
+    # Possible cinder volumes hosts.
+    volumes_host = ["%@{}#%".format(sysinv_constants.SB_TYPE_CEPH),
+                    "%@{}#%".format(sysinv_constants.SB_TYPE_LVM)]
 
-        # Get the volumes type for the external ceph cluster(s).
-        get_volume_types_cmd_string = "SELECT ID FROM " \
-            "VOLUME_TYPES WHERE ID IN (SELECT VOLUME_TYPE_ID FROM " \
-            "VOLUME_TYPE_EXTRA_SPECS WHERE VALUE IN %s)" % ext_ceph_backends
-        get_volume_types_cmd = ["sudo", "-u", "postgres", "psql", "-t",
-                                "cinder", "-c", get_volume_types_cmd_string]
-        volume_types = subprocess.check_output(get_volume_types_cmd)
-        volume_types = volume_types.split()
+    # Get the cinder volumes host for any secondary storage tiers.
+    storage_tiers_string = "SELECT NAME FROM STORAGE_TIERS WHERE " \
+                           "type='ceph' and NAME!='storage'"
+    storage_tiers_cmd = ["sudo", "-u", "postgres", "psql", "-t", "sysinv",
+                         "-c", storage_tiers_string]
+    storage_tiers = subprocess.check_output(storage_tiers_cmd)
+    storage_tiers = storage_tiers.split()
+    if storage_tiers:
+        for tier in storage_tiers:
+            cinder_volumes_host = "%@{}-{}#%".format(
+                sysinv_constants.SB_TYPE_CEPH, tier)
+            volumes_host.append(cinder_volumes_host)
 
-    # Set the status to 'error' for all volumes and snapshots, except for
-    # those from an external Ceph backend.
-    for stor in ['VOLUMES', 'SNAPSHOTS']:
-        get_stor_string = "SELECT ID FROM %s" % stor
-        if volume_types:
-            volume_types = str(volume_types).replace(
-                '[', '(').replace(']', ')')
-            get_stor_string = "SELECT ID FROM %s WHERE VOLUME_TYPE_ID IS "\
-                "NULL OR VOLUME_TYPE_ID NOT IN %s" % (stor, volume_types)
+    # Get the volumes backed by LVM or internal CEPH.
+    get_volumes_cmd_string = "SELECT ID FROM VOLUMES WHERE HOST LIKE ANY "\
+                             " (ARRAY%s)" % volumes_host
+    get_volumes_cmd = ["sudo", "-u", "postgres", "psql", "-t", "cinder", "-c",
+                       get_volumes_cmd_string]
+    volumes = subprocess.check_output(get_volumes_cmd)
+    volumes = volumes.split()
 
-        stors = subprocess.check_output(
-            ["sudo", "-u", "postgres", "psql", "-t", "cinder", "-c",
-             get_stor_string])
+    # Set the status to error for all the cinder volumes and snapshots backed
+    # by LVM or internal CEPH.
+    if volumes:
+        volumes = str(volumes).replace('[', '(').replace(']', ')')
+        cmd_string = "UPDATE VOLUMES SET STATUS='error' WHERE ID " \
+                     "IN %s" % volumes
+        cmd = ["sudo", "-u", "postgres", "psql", "-d", "cinder", "-c",
+               cmd_string]
+        subprocess.check_call(cmd, stdout=DEVNULL, stderr=DEVNULL)
 
-        stors = stors.split()
-        if stors:
-            stors = str(stors).replace('[', '(').replace(']', ')')
-            cmd_string = "UPDATE %s SET STATUS='error' WHERE ID " \
-                         "IN %s" % (stor, stors)
-            cmd = ["sudo", "-u", "postgres", "psql", "-d", "cinder", "-c",
-                   cmd_string]
-            subprocess.check_call(cmd, stdout=DEVNULL, stderr=DEVNULL)
+        cmd_string = "UPDATE SNAPSHOTS SET STATUS='error' WHERE VOLUME_ID " \
+                     "IN %s" % volumes
+        cmd = ["sudo", "-u", "postgres", "psql", "-d", "cinder", "-c",
+               cmd_string]
+        subprocess.check_call(cmd, stdout=DEVNULL, stderr=DEVNULL)
 
 
 def restore_postgres(archive, staging_dir):
