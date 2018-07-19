@@ -19,7 +19,6 @@ class platform::kubernetes::kubeadm {
     gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
   $iptables_file = "net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1"
-  $kubeadm_conf = '/etc/systemd/system/kubelet.service.d/kubeadm.conf'
 
   # Configure the kubernetes repo to allow us to download docker images for
   # the kubernetes components. This will disappear once we have our own
@@ -46,23 +45,13 @@ class platform::kubernetes::kubeadm {
     command => "sysctl --system",
   } ->
 
-  # Update kubelet configuration. Should probably just patch the kubelet
-  # package to fix these things. Looks like newer versions of the package
-  # have some of these changes already.
-  file_line { "${kubeadm_conf} KUBELET_EXTRA_ARGS":
-    path => $kubeadm_conf,
-    line => 'Environment="KUBELET_EXTRA_ARGS=--cgroup-driver=cgroupfs"',
-    match => '^Environment="KUBELET_EXTRA_ARGS=',
-  } ->
-  file_line { "${kubeadm_conf} KUBELET_NETWORK_ARGS":
-    path => $kubeadm_conf,
-    line => 'Environment="KUBELET_NETWORK_ARGS=--network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin"',
-    match => '^Environment="KUBELET_NETWORK_ARGS=',
-  } ->
-  file_line { "${kubeadm_conf} KUBELET_KUBECONFIG_ARGS":
-    path => $kubeadm_conf,
-    line => 'Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --fail-swap-on=false"',
-    match => '^Environment="KUBELET_KUBECONFIG_ARGS=',
+  # Replace kubelet configuration file.
+  file {'/etc/systemd/system/kubelet.service.d/kubeadm.conf':
+    ensure  => file,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    source  => "puppet:///modules/${module_name}/kubelet-service-conf"
   } ->
 
   # Start kubelet.
@@ -95,8 +84,7 @@ class platform::kubernetes::master::init
 
     # Configure the master node.
     file { "/etc/kubernetes/kubeadm.yaml":
-      ensure => 'present',
-      replace => true,
+      ensure => file,
       content => template('platform/kubeadm.yaml.erb'),
     } ->
 
@@ -104,11 +92,11 @@ class platform::kubernetes::master::init
       command => "kubeadm init --config=/etc/kubernetes/kubeadm.yaml",
       logoutput => true,
     } ->
-    
+
     # Update ownership/permissions for file created by "kubeadm init".
     # We want it readable by sysinv and wrsroot.
     file { "/etc/kubernetes/admin.conf":
-      ensure => 'file',
+      ensure => file,
       owner  => 'root',
       group  => $::platform::params::protected_group_name,
       mode   => '0640',
@@ -117,7 +105,7 @@ class platform::kubernetes::master::init
     # Add a bash profile script to set a k8s env variable
     file {'bash_profile_k8s':
       path    => '/etc/profile.d/kubeconfig.sh',
-      ensure  => present,
+      ensure  => file,
       mode    => '0644',
       source  => "puppet:///modules/${module_name}/kubeconfig.sh"
     } ->
@@ -130,8 +118,7 @@ class platform::kubernetes::master::init
     # See https://docs.projectcalico.org/v3.1/getting-started/kubernetes/
     # installation/calico for more info.
     file { "/etc/kubernetes/rbac-kdd.yaml":
-      ensure  => 'present',
-      replace => true,
+      ensure  => file,
       content => template('platform/rbac-kdd.yaml.erb'),
     } ->
     exec { "configure calico RBAC":
@@ -140,13 +127,18 @@ class platform::kubernetes::master::init
       logoutput => true,
     } ->
     file { "/etc/kubernetes/calico.yaml":
-      ensure  => 'present',
-      replace => true,
+      ensure  => file,
       content => template('platform/calico.yaml.erb'),
     } ->
     exec { "install calico networking":
       command =>
         "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/calico.yaml",
+      logoutput => true,
+    } ->
+
+    # Restrict the kube-dns pod to master nodes
+    exec { "restrict kube-dns to master nodes":
+      command => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment kube-dns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
       logoutput => true,
     } ->
 
@@ -162,7 +154,7 @@ class platform::kubernetes::master::init
 
       # Create necessary certificate files
       file { "/etc/kubernetes/pki":
-        ensure => 'directory',
+        ensure => directory,
         owner  => 'root',
         group  => 'root',
         mode   => '0755',
@@ -198,8 +190,7 @@ class platform::kubernetes::master::init
 
       # Configure the master node.
       file { "/etc/kubernetes/kubeadm.yaml":
-        ensure  => 'present',
-        replace => true,
+        ensure  => file,
         content => template('platform/kubeadm.yaml.erb'),
       } ->
 
@@ -211,7 +202,7 @@ class platform::kubernetes::master::init
       # Update ownership/permissions for file created by "kubeadm init".
       # We want it readable by sysinv and wrsroot.
       file { "/etc/kubernetes/admin.conf":
-        ensure => 'file',
+        ensure => file,
         owner  => 'root',
         group  => $::platform::params::protected_group_name,
         mode   => '0640',
@@ -223,6 +214,13 @@ class platform::kubernetes::master::init
         ensure  => present,
         mode    => '0644',
         source  => "puppet:///modules/${module_name}/kubeconfig.sh"
+      } ->
+
+      # Restrict the kube-dns pod to master nodes. It seems that each time
+      # kubeadm init is run, it undoes any changes to the deployment.
+      exec { "restrict kube-dns to master nodes":
+        command => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment kube-dns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
+        logoutput => true,
       } ->
 
       # Remove the taint from the master node

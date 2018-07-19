@@ -25,7 +25,7 @@ class platform::helm
 
       exec { 'initialize helm':
         environment => [ "KUBECONFIG=/etc/kubernetes/admin.conf", "HOME=/home/wrsroot" ],
-        command => "helm init --skip-refresh --service-account tiller",
+        command => 'helm init --skip-refresh --service-account tiller --node-selectors "node-role.kubernetes.io/master"=""',
         logoutput => true,
         user => 'wrsroot',
         group => 'wrs',
