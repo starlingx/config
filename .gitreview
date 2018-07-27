@@ -1,4 +1,4 @@
 [gerrit]
-host=review.openstack.org
+host=git.starlingx.io
 port=29418
 project=openstack/stx-config.git

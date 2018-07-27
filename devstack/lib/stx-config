@@ -1,0 +1,307 @@
+#!/bin/bash
+#
+# lib/stx-config
+# Functions to control the configuration and operation of the **sysinv** service
+
+# Dependencies:
+#
+# - ``functions`` file
+# - ``DEST``, ``DATA_DIR``, ``STACK_USER`` must be defined
+# - ``SERVICE_{TENANT_NAME|PASSWORD}`` must be defined
+# - ``SERVICE_HOST``
+# - ``KEYSTONE_TOKEN_FORMAT`` must be defined
+
+# ``stack.sh`` calls the entry points in this order:
+#
+# - install_cgtsclient
+# - install_sysinv
+# - configure_sysinv
+# - init_sysinv
+# - start_sysinv
+# - stop_sysinv
+# - cleanup_sysinv
+
+_XTRACE_STX_CONFIG=$(set +o | grep xtrace)
+set -o xtrace
+
+
+# Defaults
+# --------
+
+SYSINV_CLIENT_NAME=cgts-client
+GITDIR["$SYSINV_CLIENT_NAME"]=$DEST/stx-config/sysinv/cgts-client/cgts-client
+GITDIR["sysinv"]=$DEST/stx-config/sysinv/sysinv/sysinv
+#this is sysinv dependence , if stx-update support devstack, we need use depends
+STXUPDATE_REPO=${STXUPDATE_REPO:-${GIT_BASE}/openstack/stx-update.git}
+STXUPDATE_DIR=$DEST/stx-update
+STXUPDATE_BRANCH=${STXUPDATE_BRANCH:-master}
+STXCONFIG_CONTROL=$DEST/stx-config/controllerconfig/controllerconfig
+STXCONFIG_CONFUTILS=$DEST/stx-config/configutilities/configutilities
+GITDIR["tsconfig"]=$STXUPDATE_DIR/tsconfig/tsconfig/
+TSCONFIG_DIR=$STXUPDATE_DIR/tsconfig/
+CGCS_PATCH_DIR=$STXUPDATE_DIR/cgcs-patch/
+STXFAULT_REPO=${STXFAULT_REPO:-${GIT_BASE}/openstack/stx-fault.git}
+STXFAULT_DIR=$DEST/stx-fault
+STXFAULT_BRANCH=${STXFAULT_BRANCH:-master}
+STXUTILS_REPO=${STXUTILS_REPO:-${GIT_BASE}/openstack/stx-utils.git}
+STXUTILS_DIR=$DEST/stx-utils
+STXUTILS_PLATFORM_DIR=$STXUTILS_DIR/middleware/util/recipes-common/platform-util
+STXUTILS_BRANCH=${STXUTILS_BRANCH:-master}
+GITDIR["fm-api"]=$STXFAULT_DIR/fm-api
+#TSCONFIG_DIR=$STXFAULT_DIR/tsconfig
+SYSINV_SERVICE_PROTOCOL=${SYSINV_SERVICE_PROTOCOL:-$SERVICE_PROTOCOL}
+SYSINV_SERVICE_PORT=${SYSINV_SERVICE_PORT:-6385}
+SYSINV_SERVICE_HOST=${SYSINV_SERVICE_HOST:-$SERVICE_HOST}
+SYSINV_DIR=$DEST/stx-config/sysinv/sysinv/sysinv
+SYSINV_ETC_GOENABLEDD=/etc/goenabled.d
+SYSINV_CONF_DIR=/etc/sysinv
+SYSINV_CONF_FILE=$SYSINV_CONF_DIR/sysinv.conf
+SYSINV_API_PASTE_INI=$SYSINV_CONF_DIR/api-paste.ini
+SYSINV_ETC_MOTDD=/etc/motd.d
+SYSINV_OCF_RESOURCED=/urs/lib/ocf/resource.d
+SYSINV_BIN_DIR=$(get_python_exec_prefix)
+SYSINV_API_PORT=$SYSINV_SERVICE_PORT
+SYSINV_AUTH_STRATEGY=${SYSINV_AUTH_STRATEGY:-keystone}
+SYSINV_AUTH_CACHE_DIR=${SYSINV_AUTH_CACHE_DIR:-/var/cache/sysinv}
+PYTHON_SITE_DIR=$(python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())")
+
+# Functions
+# ---------
+
+function cleanup_sysinv {
+    stop_sysinv
+    sudo rm -rf $SYSINV_AUTHO_CACHE_DIR $SYSINV_CONF_DIR
+}
+
+function configure_sysinv {
+    sudo install -d -o $STACK_USER $SYSINV_CONF_DIR
+    cp $SYSINV_DIR/etc/sysinv/sysinv.conf.sample $SYSINV_CONF_FILE
+    iniset $SYSINV_CONF_FILE DEFAULT MTC_INV_LABLE /v1/hosts/
+    iniset $SYSINV_CONF_FILE DEFAULT sysinv_api_port $SYSINV_API_PORT
+    iniset $SYSINV_CONF_FILE DEFAULT use_syslog True
+    iniset $SYSINV_CONF_FILE DEFAULT rabbit_host $RABBIT_HOST
+    iniset $SYSINV_CONF_FILE DEFAULT rabbit_hosts $RABBIT_HOST:5672
+    iniset $SYSINV_CONF_FILE DEFAULT rabbit_port 5672
+    iniset $SYSINV_CONF_FILE DEFAULT verbose True
+    iniset $SYSINV_CONF_FILE DEFAULT sysinv_api_bind_ip $HOST_IP
+    iniset $SYSINV_CONF_FILE DEFAULT auth_strategy $SYSINV_AUTH_STRATEGY
+    iniset $SYSINV_CONF_FILE DEFAULT control_exchange openstack
+    iniset $SYSINV_CONF_FILE DEFAULT rabbit_userid $RABBIT_USERID
+    iniset $SYSINV_CONF_FILE DEFAULT rabbit_virtual_host /
+    iniset $SYSINV_CONF_FILE DEFAULT  api_paste_config $CINDER_API_PASTE_INI
+    iniset $SYSINV_CONF_FILE DEFAULT  debug True
+    iniset $SYSINV_CONF_FILE DEFAULT  rabbit_password $RABBIT_PASSWORD
+    # transport_url is not in config files, so we don't need call iniset_rpc_backend
+    # iniset_rpc_backend sysinv $SYSINV_CONF_FILE
+    iniset $SYSINV_CONF_FILE DEFAULT rabbit_ha_queues False
+    setup_logging $SYSINV_CONF_FILE
+    configure_auth_token_middleware $SYSINV_CONF_FILE sysinv $SYSINV_AUTH_CACHE_DIR/api
+    iniset $SYSINV_CONF_FILE database connection `database_connection_url sysinv`
+}
+
+function create_sysinv_accounts {
+    get_or_create_service "sysinv" "sysinv" "SysInv services"
+    create_service_user "sysinv" "admin"
+    sysinv_api_url="$SYSINV_SERVICE_PROTOCOL://$SYSINV_SERVICE_HOST:$SYSINV_SERVICE_PORT"
+    get_or_create_endpoint \
+    "sysinv" \
+    "$REGION_NAME" \
+    "$sysinv_api_url/v1"
+}
+
+# create_sysinv_cache_dir() - Part of the init_sysinv() process
+function create_sysinv_cache_dir {
+    # Create cache dir
+    sudo mkdir -p $SYSINV_AUTH_CACHE_DIR/api
+    sudo chown $STACK_USER $SYSINV_AUTH_CACHE_DIR/api
+    rm -f $SYSINV_AUTH_CACHE_DIR/api/*
+    sudo mkdir -p $SYSINV_AUTH_CACHE_DIR/registry
+    sudo chown $STACK_USER $SYSINV_AUTH_CACHE_DIR/registry
+    rm -f $SYSINV_AUTH_CACHE_DIR/registry/*
+}
+
+function create_sysinv_user_group {
+    if ! getent group sysinv  >/dev/null; then
+        echo "Creating a group called sysinv"
+        sudo groupadd sysinv
+    fi
+    if ! getent passwd sysinv >/dev/null; then
+        echo "Creating a user called sysinv"
+        sudo mkdir -p /home/sysinv
+        sudo useradd -g sysinv -s /bin/bash -d /home/sysinv -m sysinv
+        echo "Giving user sysinv passwordless sudo privileges"
+        # UEC images ``/etc/sudoers`` does not have a ``#includedir``, add one
+        sudo grep -q "^#includedir.*/etc/sudoers.d" /etc/sudoers ||
+        sudo echo "#includedir /etc/sudoers.d" >> /etc/sudoers
+        # Set up DevStack sudoers
+        TEMPFILE=`mktemp`
+        echo "sysinv ALL=(root) NOPASSWD:ALL" >$TEMPFILE
+        # Some binaries might be under ``/sbin`` or ``/usr/sbin``, so make sure sudo will
+        # see them by forcing ``PATH``
+        echo "Defaults:sysinv secure_path=/sbin:/usr/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin" >> $TEMPFILE
+        echo "Defaults:sysinv !requiretty" >> $TEMPFILE
+        chmod 0440 $TEMPFILE
+        sudo chown root:root $TEMPFILE
+        sudo mv $TEMPFILE /etc/sudoers.d/60_sysinv_sh
+    fi
+}
+
+function init_sysinv {
+    echo "trigger init sysinv"
+    if [[ "$HOST_TOPOLOGY_ROLE" != "subnode" ]]; then
+        # (Re)create  sysinv database
+        echo "recreate_database sysinv and dbsync"
+        recreate_database sysinv
+        $SYSINV_BIN_DIR/sysinv-dbsync --config-file=$SYSINV_CONF_FILE
+    fi
+    create_sysinv_cache_dir
+}
+
+function install_cgtsclient {
+    setup_dev_lib "cgts-client"
+    sudo install -D -m 0644 -o $STACK_USER {${GITDIR["$SYSINV_CLIENT_NAME"]}/tools/,/etc/bash_completion.d/}system.bash_completion
+}
+
+function install_configutilities {
+    pushd $STXCONFIG_CONFUTILS
+    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
+    popd
+}
+
+function install_controllerconfig {
+    pushd $STXCONFIG_CONTROL
+    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
+    popd
+}
+
+function install_fm_api {
+    git_clone $STXFAULT_REPO $STXFAULT_DIR $STXFAULT_BRANCH
+    pushd $STXFAULT_DIR/fm-api
+    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
+    popd
+}
+
+function install_stx_utils {
+    git_clone $STXUTILS_REPO $STXUTILS_DIR $STXUTILS_BRANCH
+    pushd $STXUTILS_PLATFORM_DIR/platform-util/
+    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
+    popd
+}
+
+function install_sysinv {
+    local req_services="key rabbit nova neutron"
+    for srv in $req_services;do
+        if ! is_service_enabled "$srv"; then
+            die $LINENO "$srv should be enabled for SysInv"
+        fi
+    done
+    setup_develop $SYSINV_DIR
+    sudo install -d -m 755 $SYSINV_ETC_GOENABLEDD
+    sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/sysinv_goenabled_check.sh $SYSINV_ETC_GOENABLEDD/sysinv_goenabled_check.sh
+    sudo install -d -m 755  $SYSINV_CONF_DIR
+    sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/policy.json $SYSINV_CONF_DIR/policy.json
+    sudo install -p -D -m 640 $SYSINV_DIR/etc/sysinv/profileSchema.xsd  $SYSINV_CONF_DIR/profileSchema.xsd
+    sudo install -p -D -m 655 $SYSINV_DIR/etc/sysinv/crushmap.bin  $SYSINV_CONF_DIR/crushmap.bin
+    sudo install -d -m 755 $SYSINV_ETC_MOTDD
+    sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/motd-system $SYSINV_ETC_MOTDD/10-system
+    sudo install -d -m 755 $SYSINV_CONF_DIR/upgrades
+    sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/delete_load.sh $SYSINV_CONF_DIR/upgrades/delete_load.sh
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api /usr/lib/ocf/resource.d/platform/sysinv-api
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-conductor /usr/lib/ocf/resource.d/platform/sysinv-conductor
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api.service /usr/lib/systemd/system/sysinv-api.service
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-conductor.service /usr/lib/systemd/system/sysinv-conductor.service
+    sudo install -d -m 755 $SYSINV_BIN_DIR
+    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/partition_info.sh $SYSINV_BIN_DIR/partition_info.sh
+    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/manage-partitions $SYSINV_BIN_DIR/manage-partitions
+    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/query_pci_id $SYSINV_BIN_DIR/query_pci_id
+}
+
+function install_sysinv_depends {
+    install_configutilities
+    install_controllerconfig
+    install_tsconfig
+    install_fm_api
+    install_stx_utils
+}
+
+function install_tsconfig {
+    git_clone $STXUPDATE_REPO $STXUPDATE_DIR $STXUPDATE_BRANCH
+    # no setup.cfg in tsconfig, so we can not use pip install -e
+    # setup_dev_lib "tsconfig"
+    pushd $TSCONFIG_DIR/tsconfig
+    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
+    popd
+    sudo install -d -m 755 $SYSINV_BIN_DIR
+    sudo install -p -D -m 700 $TSCONFIG_DIR/scripts/tsconfig $SYSINV_BIN_DIR/tsconfig
+    pushd $CGCS_PATCH_DIR/cgcs-patch
+    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
+    popd
+    local cgcs_patch_sbindir=/etc/sbin/
+    local cgcs_patch_sysconfdir=/etc/
+    sudo install -m 755 -d ${cgcs_patch_sbindir}
+    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/bash_completion.d
+    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/goenabled.d
+    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/init.d
+    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/logrotate.d
+    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/patching
+    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/patching/patch-scripts
+    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/pmon.d
+    sudo install -m 500 $CGCS_PATCH_DIR/bin/sw-patch-agent ${cgcs_patch_sbindir}/sw-patch-agent
+    #still a lots of bin need to install , but might not need for stx-config
+}
+
+function start_sysinv {
+    if is_service_enabled sysinv-api; then
+        echo "start sysinv-api service"
+        start_sysinv_api
+    fi
+    if is_service_enabled sysinv-cond; then
+        echo "start sysinv-cond service"
+	start_sysinv_conductor
+    fi
+}
+
+function start_sysinv_api {
+    echo "trigger start sysinv api"
+    run_process sysinv-api "$SYSINV_BIN_DIR/sysinv-api --config-file=$SYSINV_CONF_FILE"
+
+    # Get right service port for testing
+    local service_port=$SYSINV_SERVICE_PORT
+    local service_protocol=$SYSINV_SERVICE_PROTOCOL
+    if is_service_enabled tls-proxy; then
+        service_port=$SYSINV_SERVICE_PORT
+        service_protocol="http"
+    fi
+    echo "Waiting for sysinv-api ($SERVICE_HOST:$service_port) to start..."
+    if ! timeout $SERVICE_TIMEOUT sh -c "while ! wget --no-proxy -q -O- $service_protocol://$SERVICE_HOST:$service_port/; do sleep 1; done"; then
+        die $LINENO "sysinv-api did not start"
+    fi
+
+    if is_service_enabled tls-proxy; then
+        start_tls_proxy sysinv '*' $SYSINV_SERVICE_PORT $SERVICE_HOST $SYSINV_SERVICE_PORT
+    fi
+}
+
+function start_sysinv_conductor {
+    echo "trigger start sysinv conductor"
+    # the 1st will fail
+    stop_sysinv_conductor
+    run_process sysinv-cond "$SYSINV_BIN_DIR/sysinv-conductor --config-file=$SYSINV_CONF_FILE"
+    # TODO: Find a way to check whether the conductor has started.
+    # TODO: first run in extra stage will fail, need run second time in test-config
+}
+
+function stop_sysinv {
+    stop_sysinv_api
+    stop_sysinv_conductor
+}
+
+function stop_sysinv_api {
+    stop_process sysinv-api
+}
+
+function stop_sysinv_conductor {
+    stop_process sysinv-cond
+}
+
+$_XTRACE_STX_CONFIG
