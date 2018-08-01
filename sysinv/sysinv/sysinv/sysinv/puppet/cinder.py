@@ -587,6 +587,9 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
         return config
 
     def get_host_config(self, host):
+        if (constants.CONTROLLER not in utils.get_personalities(host)):
+            return {}
+
         cinder_device, cinder_size_gib = utils._get_cinder_device_info(self.dbapi, host.id)
         config = {}
         if cinder_device:
