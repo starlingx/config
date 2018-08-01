@@ -48,6 +48,21 @@ class BasePuppet(object):
     def context(self):
         return self._operator.context
 
+    def get_static_config(self):
+        return {}
+
+    def get_secure_static_config(self):
+        return {}
+
+    def get_system_config(self):
+        return {}
+
+    def get_secure_system_config(self):
+        return {}
+
+    def get_host_config(self, host):
+        return {}
+
     @staticmethod
     def quoted_str(value):
         return quoted_str(value)

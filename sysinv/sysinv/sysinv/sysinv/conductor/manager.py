@@ -1349,7 +1349,7 @@ class ConductorManager(service.PeriodicService):
                     host.action == constants.UNLOCK_ACTION):
 
                 # Update host configuration
-                self._puppet.update_controller_config(host)
+                self._puppet.update_host_config(host)
         else:
             LOG.info("Host %s is not running active load. "
                      "Skipping manifest generation" % host.hostname)
@@ -1436,7 +1436,7 @@ class ConductorManager(service.PeriodicService):
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
                 # Generate host configuration file
-                self._puppet.update_compute_config(host)
+                self._puppet.update_host_config(host)
         else:
             LOG.info("Host %s is not running active load. "
                      "Skipping manifest generation" % host.hostname)
@@ -1477,7 +1477,7 @@ class ConductorManager(service.PeriodicService):
                 self._ceph.configure_osd_pools()
 
                 # Generate host configuration files
-                self._puppet.update_storage_config(host)
+                self._puppet.update_host_config(host)
         else:
             LOG.info("Host %s is not running active load. "
                      "Skipping manifest generation" % host.hostname)
