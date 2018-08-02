@@ -367,6 +367,40 @@ cinder::volume::enabled: false
 
 cinder::backup::posix::backup_posix_path: '/opt/backups'
 
+cinder::policy::policies:
+    enable_consistencygroup_create:
+        key: 'consistencygroup:create'
+        value: ''
+    enable_consistencygroup_delete:
+        key: 'consistencygroup:delete'
+        value: ''
+    enable_consistencygroup_update:
+        key: 'consistencygroup:update'
+        value: ''
+    enable_consistencygroup_get:
+        key: 'consistencygroup:get'
+        value: ''
+    enable_consistencygroup_get_all:
+        key: 'consistencygroup:get_all'
+        value: ''
+    enable_consistencygroup_create_cgsnapshot:
+        key: 'consistencygroup:create_cgsnapshot'
+        value: ''
+    enable_consistencygroup_delete_cgsnapshot:
+        key: 'consistencygroup:delete_cgsnapshot'
+        value: ''
+    enable_consistencygroup_get_cgsnapshot:
+        key: 'consistencygroup:get_cgsnapshot'
+        value: ''
+    enable_consistencygroup_get_all_cgsnapshots:
+        key: 'consistencygroup:get_all_cgsnapshots'
+        value: ''
+    enable_snapshot_export_attributes:
+        key: 'volume_extension:snapshot_export_attributes'
+        value: 'rule:admin_or_owner'
+    enable_snapshot_backup_status_attribute:
+        key: 'volume_extension:snapshot_backup_status_attribute'
+        value: 'rule:admin_or_owner'
 
 # heat
 heat::use_syslog: true
