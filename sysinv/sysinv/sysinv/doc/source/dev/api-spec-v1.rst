@@ -3,7 +3,7 @@ Ironic REST API v1.0 Spec
 =========================
 
 Contents
-#########
+########
 
 - `General Concepts`_
 - `Resource Definitions`_
@@ -11,7 +11,7 @@ Contents
 
 
 General Concepts
-#################
+################
 
 - `Links and Relationships`_
 - Queries_
@@ -24,7 +24,7 @@ General Concepts
 - `Updating Resources`_
 
 Links and Relationships
-------------------------
+-----------------------
 
 Relationships between top level resources are represented as links.  Links take
 the form similar to that of the AtomPub standard and include a 'rel' and 'href'
@@ -47,7 +47,7 @@ A simple example::
   /nodes/?arch=x86_64
 
 State Transitions
-------------------
+-----------------
 
 Some resources have states.  A node is a typical example.  It may have various
 possible states, such as ON, OFF, DEPLOYED, REBOOTING and so on.  States are
@@ -63,7 +63,7 @@ which should not be done in a REST API.
 See: https://code.google.com/p/implementing-rest/wiki/RESTAPIRules
 
 Vendor MIME Types
-------------------
+-----------------
 
 The initial vendor MIME types will represent format and version.  i.e. v1 and
 json.  Future MIME types can be used to get better performance from the API.
@@ -73,7 +73,7 @@ used to return larger documents but minimize the number of HTTP requests need
 to perform some action.
 
 Pagination
------------
+----------
 
 Pagination is designed to return a subset of the larger collection
 while providing a link that can be used to retrieve the next. You should
@@ -113,7 +113,7 @@ Example::
   /nodes?limit=100&marker=1cd5bef6-b2e0-4296-a88f-d98a6c5486f2
 
 SubResource
-------------
+-----------
 
 Sub Resources are resources that only exist within another top level resource.
 Sub resources are not neccessarily useful on their own, but are defined so that
@@ -127,12 +127,12 @@ DriverConfiguration_ with the new parameters directly at:
 /nodes/1/driver_configuration/deploy
 
 Security
----------
+--------
 
 To be Defined
 
 Versioning
------------
+----------
 
 The API uses 2 ways of specifying versions through the use of either a vendor
 MIME type, specified in the version resource and also through a URL that
@@ -143,7 +143,7 @@ default version.  When both URL version and MIME type are specified and
 conflicting the URL version takes precedence.
 
 Updating Resources
--------------------
+------------------
 
 The PATCH HTTP method is used to update a resource in the API. PATCH
 allows clients to do partial updates to a resource, sending only the
@@ -169,7 +169,7 @@ Different types of attributes that exists in the resource will be either
 removed, added or replaced according to the following rules:
 
 Singular attributes
-^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^
 
 An "add" or "replace" operation replaces the value of an existing
 attribute with a new value. Adding new attributes to the root document
@@ -198,7 +198,7 @@ Example, removing an attribute::
 the document but instead will reset it to its default value.*
 
 Multi-valued attributes
-^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
 
 In case of an "add" operation the attribute is added to the collection
 if the it does not exist and merged if a matching attribute is present.
@@ -236,10 +236,10 @@ Example, removing **all** attributes from the collection::
 
 
 Resource Definitions
-#####################
+####################
 
 Top Level Resources
---------------------
+-------------------
 
 - API_
 - Version_
@@ -250,20 +250,20 @@ Top Level Resources
 - Image_
 
 Sub Resources
----------------
+-------------
 
 - DriverConfiguration_
 - MetaData_
 - State_
 
 API
-----
+---
 
 An API resource is returned at the root URL (or entry point) to the API.  From
 here all versions and subsequent resources are discoverable.
 
 Usage
-^^^^^^
+^^^^^
 
 =======  =============  =====================
 Verb     Path           Response
@@ -273,7 +273,7 @@ GET      /              Get the API resource
 
 
 Fields
-^^^^^^^
+^^^^^^
 
 type
     The type of this resource, i.e. api
@@ -288,7 +288,7 @@ default_version
     or in the content-type
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of an API::
 
@@ -321,14 +321,14 @@ JSON structure of an API::
   }
 
 Version
---------
+-------
 
 A version is essentially an API version and contains information on how to use
 this version as well as links to documentation, schemas and the available
 content-types that are supported.
 
 Usage
-^^^^^^
+^^^^^
 
 =======  ===============  =====================
 Verb     Path             Response
@@ -338,7 +338,7 @@ GET      /versions/<id>   Receive a specific version
 =======  ===============  =====================
 
 Fields
-^^^^^^^
+^^^^^^
 
 id
     The ID of the version, also acts as the release number
@@ -358,7 +358,7 @@ this version of the API.  Example below shows chassis, ports, drivers and
 nodes.  Different versions may have more or less resources.
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of a Version::
 
@@ -426,10 +426,10 @@ JSON structure of a Version::
   }
 
 Node
------
+----
 
 Usage
-^^^^^^
+^^^^^
 
 =======  =============  ==========
 Verb     Path           Response
@@ -444,7 +444,7 @@ DELETE   /nodes/<id>    Delete node and all associated ports
 
 
 Fields
-^^^^^^^
+^^^^^^
 
 id
     Unique ID for this node
@@ -472,7 +472,7 @@ driver_configuration
     This node's driver configuration see: DriverConfiguration_
 
 Example
-^^^^^^^^
+^^^^^^^
 JSON structure of a node::
 
 
@@ -562,10 +562,10 @@ JSON structure of a node::
   }
 
 Chassis
---------
+-------
 
 Usage
-^^^^^^
+^^^^^
 
 =======    =============    ==========
 Verb       Path             Response
@@ -581,7 +581,7 @@ DELETE     /chassis/<id>    Delete chassis and remove all associations between
 
 
 Fields
-^^^^^^^
+^^^^^^
 
 id
     Unique ID for this chassis
@@ -595,7 +595,7 @@ nodes
     A link to a collection of nodes associated with this chassis see: Node_
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of a chassis::
 
@@ -628,10 +628,10 @@ JSON structure of a chassis::
     }
 
 Port
------
+----
 
 Usage
-^^^^^^
+^^^^^
 
 =======  =============  ==========
 Verb     Path           Response
@@ -646,7 +646,7 @@ DELETE   /ports/<id>    Delete port and remove all associations between nodes
 
 
 Fields
-^^^^^^^
+^^^^^^
 
 id
     Unique ID for this port
@@ -660,7 +660,7 @@ nodes
     A link to the node this port belongs to see: Node_
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of a port::
 
@@ -693,10 +693,10 @@ JSON structure of a port::
 
 
 Driver
--------
+------
 
 Usage
-^^^^^^
+^^^^^
 
 =======  =============  ==========
 Verb     Path           Response
@@ -706,7 +706,7 @@ GET      /drivers/<id>  Retrieve a specific driver
 =======  =============  ==========
 
 Fields
-^^^^^^^
+^^^^^^
 
 id
     Unique ID for this driver
@@ -724,7 +724,7 @@ optional_fields
     An array containing optional fields for this driver
 
 Example Driver
-^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
 
 JSON structure of a driver::
 
@@ -765,14 +765,14 @@ JSON structure of a driver::
   }
 
 Image
--------
+-----
 
 An Image resource.  This represents a disk image used for booting a Node_.
 Images are not stored within Ironic, instead images are stored in glance and
 can be accessed via this API.
 
 Usage
-^^^^^^
+^^^^^
 
 =======  =============  ==========
 Verb     Path           Response
@@ -782,7 +782,7 @@ GET      /images/<id>   Retrieve a specific image
 =======  =============  ==========
 
 Fields
-^^^^^^^
+^^^^^^
 
 id
     Unique ID for this port
@@ -802,7 +802,7 @@ Tags
     Tags associated with this image
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of an image::
 
@@ -834,7 +834,7 @@ JSON structure of an image::
   }
 
 DriverConfiguration
-------------------------
+-------------------
 
 The Configuration is a sub resource (see: SubResource_) that
 contains information about how to manage a particular node.
@@ -855,7 +855,7 @@ to erase the existing data.
 
 
 driver configuration Usage:
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 =======  ==================================  ================================
 Verb     Path                                Response
@@ -867,7 +867,7 @@ PUT      /nodes/1/driver_configuration       Update a node's driver
 =======  ==================================  ================================
 
 driver configuration / Parameters Usage:
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ======  =============================================  ==================
 Verb     Path                                          Response
@@ -880,7 +880,7 @@ PUT     /nodes/1/driver_configuration/parameters       Update a node's
 
 
 Fields
-^^^^^^^
+^^^^^^
 
 type
     The type of this resource, i.e. driver_configuration, deployment,
@@ -893,7 +893,7 @@ paramters
     see: Driver_
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of a driver_configuration::
 
@@ -926,7 +926,7 @@ JSON structure of a driver_configuration::
   }
 
 State
-------
+-----
 
 States are sub resources (see: SubResource_) that represents the state of
 either a node.  The state of the node is governed by an internal state machine.
@@ -955,7 +955,7 @@ PUT      /nodes/1/state                      Update a node's state
 =======  ==================================  ===========================
 
 Fields
-^^^^^^^
+^^^^^^
 
 current
     The current state (code) that this resource resides in
@@ -966,7 +966,7 @@ started
     The time and date the resource entered the current state
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of a state::
 
@@ -985,7 +985,7 @@ JSON structure of a state::
   }
 
 MetaData
----------
+--------
 
 MetaData is an arbitrary set of key value pairs that a client can set on a
 resource which can be retrieved later. Ironic will not introspect the metadata
@@ -1002,12 +1002,12 @@ PUT      /nodes/1/meta_data   Update a node's meta data
 =======  ===================  ==========
 
 Fields
-^^^^^^^
+^^^^^^
 
 Fields for this resource are arbitrary.
 
 Example
-^^^^^^^^
+^^^^^^^
 
 JSON structure of a meta_data::
 
@@ -1017,7 +1017,7 @@ JSON structure of a meta_data::
   }
 
 VendorPassthru
----------
+--------------
 
 VendorPassthru allow vendors to expose a custom functionality in
 the Ironic API. Ironic will merely relay the message from here to the
@@ -1034,7 +1034,7 @@ POST      /nodes/1/vendor_passthru/<method>  Invoke a specific <method>
 =======  ==================================  ==========================
 
 Example
-^^^^^^^^
+^^^^^^^
 
 Invoking "custom_method"::
 
@@ -1046,7 +1046,7 @@ Invoking "custom_method"::
   }
 
 Areas To Be Defined
-####################
+###################
 
 - Discoverability of Driver State Change Parameters
 - State Change in Drivers
