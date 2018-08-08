@@ -37,9 +37,16 @@ class openstack::ceilometer {
     'DEFAULT/region_name_for_services':  value => $::openstack::ceilometer::params::region_name;
   }
 
-  oslo::cache { 'ceilometer_config':
-    enabled => true,
-    backend => 'dogpile.cache.memory',
+
+  if $::personality == 'controller' {
+    include ::platform::memcached::params
+
+    oslo::cache { 'ceilometer_config':
+      enabled => true,
+      backend => 'dogpile.cache.memcached',
+      memcache_servers => "'${::platform::memcached::params::listen_ip}:${::platform::memcached::params::tcp_port}'",
+      expiration_time => 86400,
+    }
   }
 
   if $::platform::params::region_config {
