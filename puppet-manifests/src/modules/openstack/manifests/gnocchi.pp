@@ -60,7 +60,7 @@ class openstack::gnocchi::metricd
 
     if $metricd_workers > 1 {
       gnocchi_config {
-        'DEFAULT/coordination_url': value => 'file:///opt/cgcs/ceilometer/data/locks';
+        'DEFAULT/coordination_url': value => 'file:///opt/gnocchi/locks';
       }
     }
 

@@ -309,7 +309,7 @@ gnocchi::api::enabled: false
 gnocchi::api::service_name: 'openstack-gnocchi-api'
 gnocchi::api::enable_proxy_headers_parsing: true
 gnocchi::metricd::enabled: false
-gnocchi::storage::file::file_basepath: '/opt/cgcs/ceilometer/data'
+gnocchi::storage::file::file_basepath: '/opt/gnocchi'
 gnocchi::db::sync::user: 'root'
 
 
