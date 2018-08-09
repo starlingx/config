@@ -138,6 +138,27 @@ class platform::filesystem::scratch
   }
 }
 
+class platform::filesystem::gnocchi::params (
+  $lv_size = '5',
+  $lv_name = 'gnocchi-lv',
+  $mountpoint = '/opt/gnocchi',
+  $devmapper = '/dev/mapper/cgts--vg-gnocchi--lv',
+  $fs_type = 'ext4',
+  $fs_options = '-i 8192'
+) { }
+
+class platform::filesystem::gnocchi
+  inherits ::platform::filesystem::gnocchi::params {
+
+  platform::filesystem { $lv_name:
+    lv_name => $lv_name,
+    lv_size => $lv_size,
+    mountpoint => $mountpoint,
+    fs_type => $fs_type,
+    fs_options => $fs_options
+  }
+}
+
 class platform::filesystem::docker::params (
   $lv_size = '1',
   $lv_name = 'docker-lv',
@@ -225,6 +246,7 @@ class platform::filesystem::controller {
   include ::platform::filesystem::scratch
   include ::platform::filesystem::docker
   include ::platform::filesystem::img_conversions
+  include ::platform::filesystem::gnocchi
 }
 
 
@@ -249,6 +271,21 @@ class platform::filesystem::scratch::runtime {
   $lv_name = $::platform::filesystem::scratch::params::lv_name
   $lv_size = $::platform::filesystem::scratch::params::lv_size
   $devmapper = $::platform::filesystem::scratch::params::devmapper
+
+  platform::filesystem::resize { $lv_name:
+    lv_name => $lv_name,
+    lv_size => $lv_size,
+    devmapper => $devmapper,
+  }
+}
+
+
+class platform::filesystem::gnocchi::runtime {
+
+  include ::platform::filesystem::gnocchi::params
+  $lv_name = $::platform::filesystem::gnocchi::params::lv_name
+  $lv_size = $::platform::filesystem::gnocchi::params::lv_size
+  $devmapper = $::platform::filesystem::gnocchi::params::devmapper
 
   platform::filesystem::resize { $lv_name:
     lv_name => $lv_name,

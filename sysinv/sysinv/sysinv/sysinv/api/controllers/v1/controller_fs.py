@@ -73,6 +73,8 @@ class ControllerFs(base.APIBase):
           /scratch (scratch-lv)
     The extension GiB of controller_fs - maps to
           /opt/extension (extension-lv)
+    The gnocchi GiB of controller_fs - maps to
+          /opt/gnocchi (gnocchi-lv)
     """
 
     uuid = types.uuid
@@ -627,7 +629,8 @@ def _check_controller_multi_fs_data(context, controller_fs_list_new,
     lvdisplay_keys = [constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_DATABASE],
                       constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_CGCS],
                       constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_BACKUP],
-                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_SCRATCH]]
+                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_SCRATCH],
+                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_GNOCCHI]]
 
     # On primary region, img-conversions always exists in controller_fs DB table.
     # On secondary region, if both glance and cinder are sharing from the primary

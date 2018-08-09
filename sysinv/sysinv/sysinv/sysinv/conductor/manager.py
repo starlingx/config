@@ -5304,6 +5304,8 @@ class ConductorManager(service.PeriodicService):
                         'platform::drbd::patch_vault::runtime',
                     constants.FILESYSTEM_NAME_ETCD:
                         'platform::drbd::etcd::runtime',
+                    constants.FILESYSTEM_NAME_GNOCCHI:
+                        'platform::filesystem::gnocchi::runtime',
                 }
 
                 puppet_class = None
@@ -6301,6 +6303,7 @@ class ConductorManager(service.PeriodicService):
         # Add the extension storage
         extension_lv_size = constants.DEFAULT_EXTENSION_STOR_SIZE
         scratch_lv_size = cutils.get_controller_fs_scratch_size()
+        gnocchi_lv_size = constants.DEFAULT_GNOCCHI_STOR_SIZE
 
         # Assume Non-region mode where glance is local as default
         glance_local = True
@@ -6328,9 +6331,9 @@ class ConductorManager(service.PeriodicService):
             # Virtual: 120GB disk
             #
             # Min size of the cgts-vg PV is:
-            #   45.0 G - PV for cgts-vg (specified in the kickstart)
+            #   50.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   46.0 G - (for DCSC non-AIO)
+            #   58.0 G - (for DCSC non-AIO)
             #          4 G - /var/log (reserved in kickstart)
             #          4 G - /scratch (reserved in kickstart)
             #          2 G - cgcs_lv (DRBD bootstrap manifest)
@@ -6351,23 +6354,24 @@ class ConductorManager(service.PeriodicService):
             #          1 G - /opt/extension
             #          8 G - /opt/img_conversions
             #          5 G - /opt/backup
+            #          5 G - /opt/gnocchi
             #          1 G - anchor_lv
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
             #        -----
-            #         45 G or 53 G (for DCSC non-AIO)
+            #         50 G or 58 G (for DCSC non-AIO)
             #
             #  vg_free calculation:
-            #         45/53 G - 17 G = 28/36 G
+            #         50/58 G - 17 G = 33/41 G
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
             #    10.0 G - /
-            #    45.0 G - cgts-vg PV
-            # or 53.0 G - (DCSC non-AIO)
+            #    50.0 G - cgts-vg PV
+            # or 58.0 G - (DCSC non-AIO)
             #   -------
-            #    55.5 G => ~56G min size disk
+            #    60.5 G => ~61G min size disk
             # or
-            #    63.5 G => ~64G min size disk
+            #    68.5 G => ~69G min size disk
             #
             # If required disk is size 120G:
             #   1) Standard controller - will use all free space for the PV
@@ -6378,8 +6382,8 @@ class ConductorManager(service.PeriodicService):
             #   2) AIO - will leave unused space for further partitioning
             #       0.5 G - /boot
             #      10.0 G - /
-            #      45.0 G - cgts-vg PV
-            #      64.5 G - unpartitioned free space
+            #      50.0 G - cgts-vg PV
+            #      59.5 G - unpartitioned free space
             #
             #  Min sized "usable" vbox disk is ~75G
             #  Min sized real world disk is 120G
@@ -6393,7 +6397,7 @@ class ConductorManager(service.PeriodicService):
         else:
             vg_free = cutils.get_cgts_vg_free_space()
 
-            if vg_free > 116:
+            if vg_free > 121:
 
                 LOG.info("VG Free : %s ... large disk defaults" % vg_free)
 
@@ -6424,13 +6428,14 @@ class ConductorManager(service.PeriodicService):
                 #          1 G - /opt/extension
                 #         20 G - /opt/img_conversions
                 #         50 G - /opt/backup
+                #          5 G - /opt/gnocchi
                 #          1 G - anchor_lv
                 #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
                 #        -----
-                #        142 G or 150 G (for DCSC non-AIO)
+                #        147 G or 150 G (for DCSC non-AIO)
                 #
                 #  vg_free calculation:
-                #         142/150 G - 25 G = 117/125 G
+                #         147/150 G - 25 G = 121/125 G
                 #
                 #  The absolute minimum disk size for these default settings:
                 #      0.5 G - /boot
@@ -6468,7 +6473,7 @@ class ConductorManager(service.PeriodicService):
                 backup_lv_size = database_storage + \
                     cgcs_lv_size + constants.BACKUP_OVERHEAD
 
-            elif vg_free > 66:
+            elif vg_free > 70:
 
                 LOG.info("VG Free : %s ... small disk defaults" % vg_free)
 
@@ -6499,13 +6504,14 @@ class ConductorManager(service.PeriodicService):
                 #          1 G - /opt/extension
                 #         10 G - /opt/img_conversions
                 #         30 G - /opt/backup
+                #          5 G - /opt/gnocchi
                 #          1 G - anchor_lv
                 #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
                 #        -----
-                #         92 G or 100 G (for DCSC non-AIO)
+                #         99 G or 100 G (for DCSC non-AIO)
                 #
                 #  vg_free calculation:
-                #         92/100 G - 25 G = 67/75 G
+                #         99/100 G - 25 G = 72/75 G
                 #
                 #  The absolute minimum disk size for these default settings:
                 #     0.5 G - /boot
@@ -6581,6 +6587,17 @@ class ConductorManager(service.PeriodicService):
             'size': scratch_lv_size,
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_SCRATCH],
+            'replicated': False,
+        }
+        LOG.info("Creating FS:%s:%s %d" % (
+            data['name'], data['logical_volume'], data['size']))
+        self.dbapi.controller_fs_create(data)
+
+        data = {
+            'name': constants.FILESYSTEM_NAME_GNOCCHI,
+            'size': gnocchi_lv_size,
+            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                constants.FILESYSTEM_NAME_GNOCCHI],
             'replicated': False,
         }
         LOG.info("Creating FS:%s:%s %d" % (
@@ -9043,7 +9060,8 @@ class ConductorManager(service.PeriodicService):
                             '/dev/cgts-vg/cgcs-lv ' \
                             '/dev/cgts-vg/img-conversions-lv ' \
                             '/dev/cgts-vg/scratch-lv ' \
-                            '/dev/cgts-vg/extension-lv '
+                            '/dev/cgts-vg/extension-lv ' \
+                            '/dev/cgts-vg/gnocchi-lv'
 
         if kubernetes_config:
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/docker-lv '

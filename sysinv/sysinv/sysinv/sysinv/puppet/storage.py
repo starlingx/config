@@ -81,6 +81,11 @@ class StoragePuppet(base.BasePuppet):
                     'platform::drbd::dockerdistribution::params::lv_size':
                         controller_fs.size
                 })
+            elif controller_fs.name == constants.FILESYSTEM_NAME_GNOCCHI:
+                config.update({
+                    'platform::filesystem::gnocchi::params::lv_size':
+                        controller_fs.size
+                })
 
         return config
 
