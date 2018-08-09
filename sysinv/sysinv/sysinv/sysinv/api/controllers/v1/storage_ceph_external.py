@@ -321,7 +321,7 @@ def _check_and_update_services(storage_ceph_ext):
                         for k in HIERA_DATA[s]:
                             cap.pop(k, None)
                         values = {'services': ','.join(services),
-                                  'capabilities': cap,}
+                                  'capabilities': cap, }
                         pecan.request.dbapi.storage_backend_update(sb.uuid, values)
 
 

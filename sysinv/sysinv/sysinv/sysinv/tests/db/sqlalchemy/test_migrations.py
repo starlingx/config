@@ -704,7 +704,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'deleted_at': 'DateTime', 'task': 'String', 'location': 'Text',
             'created_at': 'DateTime', 'updated_at': 'DateTime', 'uptime': 'Integer',
             'capabilities': 'Text', 'config_status': 'String', 'config_applied': 'String',
-            'config_target': 'String','forisystemid': 'Integer'
+            'config_target': 'String', 'forisystemid': 'Integer'
         }
         for col, coltype in servers_col.items():
             self.assertTrue(isinstance(servers.c[col].type,
@@ -1241,7 +1241,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         sensors_analog = db_utils.get_table(engine, 'i_sensors_analog')
         sensors_analog_col = {
             'id': 'Integer', 'deleted_at': 'DateTime', 'created_at': 'DateTime',
-            'updated_at': 'DateTime','unit_base': 'String', 'unit_modifier': 'String',
+            'updated_at': 'DateTime', 'unit_base': 'String', 'unit_modifier': 'String',
             'unit_rate': 'String', 't_minor_lower': 'String', 't_minor_upper': 'String',
             't_major_lower': 'String', 't_major_upper': 'String', 't_critical_lower': 'String',
             't_critical_upper': 'String',
@@ -1253,7 +1253,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         pci_devices = db_utils.get_table(engine, 'pci_devices')
         pci_devices_col = {
             'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
-            'created_at': 'DateTime', 'updated_at': 'DateTime','host_id': 'Integer',
+            'created_at': 'DateTime', 'updated_at': 'DateTime', 'host_id': 'Integer',
             'name': 'String', 'pciaddr': 'String', 'pclass_id': 'String',
             'pvendor_id': 'String', 'pdevice_id': 'String', 'pclass': 'String', 'pvendor': 'String',
             'pdevice': 'String', 'psvendor': 'String', 'psdevice': 'String', 'numa_node': 'Integer',
@@ -1267,7 +1267,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         loads = db_utils.get_table(engine, 'loads')
         loads_col = {
             'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
-            'created_at': 'DateTime', 'updated_at': 'DateTime','state': 'String',
+            'created_at': 'DateTime', 'updated_at': 'DateTime', 'state': 'String',
             'software_version': 'String', 'compatible_version': 'String',
             'required_patches': 'String',
         }
@@ -1278,7 +1278,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         software_upgrade = db_utils.get_table(engine, 'software_upgrade')
         software_upgrade_col = {
             'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
-            'created_at': 'DateTime', 'updated_at': 'DateTime','state': 'String',
+            'created_at': 'DateTime', 'updated_at': 'DateTime', 'state': 'String',
             'from_load': 'Integer', 'to_load': 'Integer',
         }
         for col, coltype in software_upgrade_col.items():
@@ -1343,7 +1343,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             self.assertTrue(isinstance(storconfigs.c[col].type,
                                        getattr(sqlalchemy.types, coltype)))
         # make sure the rename worked properly
-        self.assertColumnNotExists(engine, 'i_storconfig','glance_gib')
+        self.assertColumnNotExists(engine, 'i_storconfig', 'glance_gib')
         self.assertColumnExists(engine, 'i_storconfig', 'glance_pool_gib')
 
     def _check_032(self, engine, data):
@@ -1469,7 +1469,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         # Assert data types for 5 new columns in table "i_storconfig"
         storconfigs = db_utils.get_table(engine, 'i_storconfig')
         storconfigs_cols = {
-            'state':'String',
+            'state': 'String',
             'task': 'String',
             'ceph_mon_gib': 'Integer',
             'ceph_mon_dev_ctrl0': 'String',
@@ -1533,7 +1533,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         # Assert data types for all columns in new table "i_horizon_lockout"
         horizon_lockout = db_utils.get_table(engine, 'i_horizon_lockout')
         horizon_lockout_cols = {
-            'lockout_time':'Integer',
+            'lockout_time': 'Integer',
             'lockout_retries': 'Integer',
         }
         for col, coltype in horizon_lockout_cols.items():

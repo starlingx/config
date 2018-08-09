@@ -64,7 +64,7 @@ class IronicPuppet(openstack.OpenstackBasePuppet):
                 'ironic::neutron::api_endpoint': self._operator.neutron.get_internal_url(),
                 'ironic::neutron::auth_url': self._keystone_auth_uri(),
                 'ironic::neutron::project_name': self._get_service_tenant_name(),
-                'ironic::neutron::user_domain_name':self._get_service_user_domain_name(),
+                'ironic::neutron::user_domain_name': self._get_service_user_domain_name(),
                 'ironic::neutron::project_domain_name': self._get_service_project_domain_name(),
                 # Populate Glance credentials
                 'ironic::glance::auth_url': self._keystone_auth_uri(),

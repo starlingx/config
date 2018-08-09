@@ -266,7 +266,7 @@ class UpdateCephCluster(base.DbTestCase):
         peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
         self.assertEqual(
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0',)),})
+            {('group-0', ('storage-0',)), })
 
         storage_1 = self._create_storage_ihost('storage-1')
         self.service._ceph.update_ceph_cluster(storage_1)
@@ -279,7 +279,7 @@ class UpdateCephCluster(base.DbTestCase):
         peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
         self.assertEqual(
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0', 'storage-1')),})
+            {('group-0', ('storage-0', 'storage-1')), })
 
         storage_2 = self._create_storage_ihost('storage-2')
         self.service._ceph.update_ceph_cluster(storage_2)
@@ -401,7 +401,7 @@ class UpdateCephCluster(base.DbTestCase):
         peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
         self.assertEqual(
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0',)),})
+            {('group-0', ('storage-0',)), })
 
         storage_1 = self._create_storage_ihost('storage-1')
         self.service._ceph.update_ceph_cluster(storage_1)
@@ -414,7 +414,7 @@ class UpdateCephCluster(base.DbTestCase):
         peers = self.dbapi.peers_get_all_by_cluster(cluster_uuid)
         self.assertEqual(
             set([(p.name, tuple(sorted(p.hosts))) for p in peers]),
-            {('group-0', ('storage-0', 'storage-1')),})
+            {('group-0', ('storage-0', 'storage-1')), })
 
         storage_2 = self._create_storage_ihost('storage-2')
         self.service._ceph.update_ceph_cluster(storage_2)

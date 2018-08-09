@@ -1352,7 +1352,7 @@ class InterfaceTestCase(BaseTestCase):
 
         port0, iface0 = self._create_sriov_cx3_if_test(ifname0, vf_num)
         port1, iface1 = self._create_sriov_cx3_if_test(
-            ifname1, vf_num, pciaddr=port0['pciaddr'],dev_id=1)
+            ifname1, vf_num, pciaddr=port0['pciaddr'], dev_id=1)
         self._update_context()
 
         expected = "%s-%d;0;0" % (port0['pciaddr'], vf_num)

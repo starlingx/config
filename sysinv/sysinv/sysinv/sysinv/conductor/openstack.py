@@ -855,7 +855,7 @@ class OpenStackOperator(object):
                 ceph_mon_info['ceph-mon-0-ip'] = ceph_mon_ips.get(
                     'ceph-mon-0-ip', '')
                 ceph_mon_info['ceph-mon-1-ip'] = ceph_mon_ips.get(
-                    'ceph-mon-1-ip','')
+                    'ceph-mon-1-ip', '')
                 ceph_mon_info['ceph-mon-2-ip'] = ceph_mon_ips.get(
                     'ceph-mon-2-ip', '')
             else:

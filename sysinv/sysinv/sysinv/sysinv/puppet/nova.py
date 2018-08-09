@@ -490,7 +490,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             'openstack::nova::storage::instances_lv_size':
                 "%sm" % instances_lv_size,
             'openstack::nova::storage::concurrent_disk_operations':
-                concurrent_disk_operations,}
+                concurrent_disk_operations, }
 
         # If NOVA is a service on a ceph-external backend, use the ephemeral_pool
         # and ceph_conf file that are stored in that DB entry.
@@ -510,7 +510,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
                     values.update({'openstack::nova::storage::images_rbd_pool':
                                    images_rbd_pool,
                                    'openstack::nova::storage::images_rbd_ceph_conf':
-                                   images_rbd_ceph_conf,})
+                                   images_rbd_ceph_conf, })
         return values
 
     # TODO(oponcea): Make lvm global_filter generic
@@ -576,7 +576,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
     def _get_shared_pcpu_map(self, host):
         shared_cpus = self._get_host_cpu_list(
             host, function=constants.SHARED_FUNCTION, threads=True)
-        cpu_map = {c.numa_node:c.cpu for c in shared_cpus}
+        cpu_map = {c.numa_node: c.cpu for c in shared_cpus}
         return "\"%s\"" % ','.join(
             "%r:%r" % (node, cpu) for node, cpu in cpu_map.items())
 

@@ -195,7 +195,7 @@ class DbNodeTestCase(base.DbTestCase):
         f = self._create_test_storage_backend_with_file()
         ll = self._create_test_storage_backend_with_lvm()
         res = self.dbapi.storage_backend_get_list(sort_key='backend')
-        self.assertEqual(len(res),3)
+        self.assertEqual(len(res), 3)
         self.assertEqual(c['backend'], res[0]['backend'])
         self.assertEqual(f['backend'], res[1]['backend'])
         self.assertEqual(ll['backend'], res[2]['backend'])
@@ -206,7 +206,7 @@ class DbNodeTestCase(base.DbTestCase):
         ll = self._create_test_storage_backend_with_lvm()
         res = self.dbapi.storage_backend_get_by_isystem(self.system['id'],
                                                         sort_key='backend')
-        self.assertEqual(len(res),3)
+        self.assertEqual(len(res), 3)
         self.assertEqual(c['backend'], res[0]['backend'])
         self.assertEqual(f['backend'], res[1]['backend'])
         self.assertEqual(ll['backend'], res[2]['backend'])
@@ -224,7 +224,7 @@ class DbNodeTestCase(base.DbTestCase):
         f = self._create_test_storage_backend_with_file()
         ll = self._create_test_storage_backend_with_lvm()
         res = self.dbapi.storage_backend_get_list(sort_key='backend')
-        self.assertEqual(len(res),3)
+        self.assertEqual(len(res), 3)
         self.assertEqual(c['backend'], res[0]['backend'])
         self.assertEqual(f['backend'], res[1]['backend'])
         self.assertEqual(ll['backend'], res[2]['backend'])
@@ -281,7 +281,7 @@ class DbNodeTestCase(base.DbTestCase):
     def test_storage_file_get_list(self):
         n = self._create_test_storage_backend_file()
         res = self.dbapi.storage_file_get_list()
-        self.assertEqual(len(res),1)
+        self.assertEqual(len(res), 1)
         self.assertEqual(n['backend'], res[0]['backend'])
         self.assertEqual(n['uuid'], res[0]['uuid'])
 
@@ -326,7 +326,7 @@ class DbNodeTestCase(base.DbTestCase):
     def test_storage_lvm_get_list(self):
         n = self._create_test_storage_backend_lvm()
         res = self.dbapi.storage_lvm_get_list()
-        self.assertEqual(len(res),1)
+        self.assertEqual(len(res), 1)
         self.assertEqual(n['backend'], res[0]['backend'])
         self.assertEqual(n['uuid'], res[0]['uuid'])
 
@@ -373,7 +373,7 @@ class DbNodeTestCase(base.DbTestCase):
     def test_storage_ceph_get_list(self):
         n = self._create_test_storage_backend_ceph()
         res = self.dbapi.storage_ceph_get_list()
-        self.assertEqual(len(res),1)
+        self.assertEqual(len(res), 1)
         self.assertEqual(n['backend'], res[0]['backend'])
         self.assertEqual(n['uuid'], res[0]['uuid'])
 

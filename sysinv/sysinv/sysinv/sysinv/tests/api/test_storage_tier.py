@@ -625,7 +625,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
 
         with nested(mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status'),
                     mock.patch.object(StorageBackendConfig, 'has_backend_configured'),
-                    mock.patch.object(rpcapi.ConductorAPI,'configure_osd_istor')) as (
+                    mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
                         mock_mon_status, mock_backend_configured, mock_osd):
 
             def fake_configure_osd_istor(context, istor_obj):
@@ -691,7 +691,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
 
         with nested(mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status'),
                     mock.patch.object(StorageBackendConfig, 'has_backend_configured'),
-                    mock.patch.object(rpcapi.ConductorAPI,'configure_osd_istor')) as (
+                    mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
                         mock_mon_status, mock_backend_configured, mock_osd):
 
             def fake_configure_osd_istor(context, istor_obj):
@@ -715,7 +715,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
 
         with nested(mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status'),
                     mock.patch.object(StorageBackendConfig, 'has_backend_configured'),
-                    mock.patch.object(rpcapi.ConductorAPI,'configure_osd_istor')) as (
+                    mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
                         mock_mon_status, mock_backend_configured, mock_osd):
 
             def fake_configure_osd_istor(context, istor_obj):
@@ -788,7 +788,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
         values = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
-            'name':'ceph-gold',
+            'name': 'ceph-gold',
             'confirmed': True
         }
         with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses'),
@@ -807,7 +807,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
             'capabilities': {'test_bparam3': 'one',
                              'test_cparam3': 'two'},
             'services': constants.SB_SVC_CINDER,
-            'name':'ceph-gold',
+            'name': 'ceph-gold',
             'tier_uuid': saved_tier_uuid,
             'confirmed': True
         }

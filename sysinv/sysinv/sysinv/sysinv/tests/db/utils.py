@@ -435,7 +435,7 @@ def get_test_stor(**kw):
     stor = {
         'id': kw.get('id', 2),
         'function': kw.get('function'),
-        'idisk_uuid':kw.get('idisk_uuid', 2),
+        'idisk_uuid': kw.get('idisk_uuid', 2),
         'forihostid': kw.get('forihostid', 2),
         'forilvgid': kw.get('forilvgid', 2),
     }
@@ -474,7 +474,7 @@ def get_test_storage_backend(**kw):
         'state': kw.get('state', None),
         'task': kw.get('task', None),
         'services': kw.get('services', None),
-        'capabilities': kw.get('capabilities',{}),
+        'capabilities': kw.get('capabilities', {}),
         'forisystemid': kw.get('forisystemid', None)
     }
     return inv
@@ -490,13 +490,13 @@ def get_test_ceph_storage_backend(**kw):
         'task': kw.get('task', None),
         'services': kw.get('services', None),
         'tier_id': kw.get('tier_id'),
-        'capabilities': kw.get('capabilities',{}),
+        'capabilities': kw.get('capabilities', {}),
         'forisystemid': kw.get('forisystemid', None),
-        'cinder_pool_gib': kw.get('cinder_pool_gib',80),
+        'cinder_pool_gib': kw.get('cinder_pool_gib', 80),
         'glance_pool_gib': kw.get('glance_pool_gib', 10),
         'ephemeral_pool_gib': kw.get('ephemeral_pool_gib', 0),
         'object_pool_gib': kw.get('object_pool_gib', 0),
-        'object_gateway':kw.get('object_gateway', False)
+        'object_gateway': kw.get('object_gateway', False)
     }
     return inv
 
@@ -510,7 +510,7 @@ def get_test_file_storage_backend(**kw):
         'state': kw.get('state', None),
         'task': kw.get('task', None),
         'services': kw.get('services', None),
-        'capabilities': kw.get('capabilities',{}),
+        'capabilities': kw.get('capabilities', {}),
         'forisystemid': kw.get('forisystemid', None)
     }
     return inv
@@ -525,7 +525,7 @@ def get_test_lvm_storage_backend(**kw):
         'state': kw.get('state', None),
         'task': kw.get('task', None),
         'services': kw.get('services', None),
-        'capabilities': kw.get('capabilities',{}),
+        'capabilities': kw.get('capabilities', {}),
         'forisystemid': kw.get('forisystemid', None)
     }
     return inv

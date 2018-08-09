@@ -27,12 +27,12 @@ LOG = logging.getLogger(__name__)
 ETHERNET_PCI_CLASSES = ['ethernet controller', 'network controller']
 
 # Look for other devices we may want to inventory.
-KNOWN_PCI_DEVICES = [{"vendor_id":constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
-                      "device_id":constants.NOVA_PCI_ALIAS_QAT_DH895XCC_PF_DEVICE,
-                      "class_id":constants.NOVA_PCI_ALIAS_QAT_CLASS},
-                      {"vendor_id":constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
-                      "device_id":constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE,
-                      "class_id":constants.NOVA_PCI_ALIAS_QAT_CLASS},
+KNOWN_PCI_DEVICES = [{"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
+                      "device_id": constants.NOVA_PCI_ALIAS_QAT_DH895XCC_PF_DEVICE,
+                      "class_id": constants.NOVA_PCI_ALIAS_QAT_CLASS},
+                      {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
+                      "device_id": constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE,
+                      "class_id": constants.NOVA_PCI_ALIAS_QAT_CLASS},
                      {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS}]
 
 # PCI-SIG 0x06 bridge devices to not inventory.

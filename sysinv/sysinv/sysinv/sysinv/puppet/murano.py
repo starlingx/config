@@ -55,7 +55,7 @@ class MuranoPuppet(openstack.OpenstackBasePuppet):
                 'murano::keystone::auth::auth_name': ksuser,
                 'murano::keystone::auth::region': self._region_name(),
                 'murano::keystone::auth::tenant':
-                    self._get_service_tenant_name(),})
+                    self._get_service_tenant_name(), })
 
         return config
 

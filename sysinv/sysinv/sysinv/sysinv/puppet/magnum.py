@@ -74,7 +74,7 @@ class MagnumPuppet(openstack.OpenstackBasePuppet):
                 'magnum::keystone::authtoken::user_domain_name':
                     self._get_service_user_domain_name(),
                 'magnum::keystone::authtoken::project_domain_name':
-                    self._get_service_project_domain_name(),})
+                    self._get_service_project_domain_name(), })
         return config
 
     def get_secure_system_config(self):

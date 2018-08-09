@@ -464,7 +464,7 @@ def is_valid_hex(num):
 
 def is_valid_pci_device_vendor_id(id):
     """Check if the provided id is a valid 16 bit hexadecimal."""
-    val = id.replace('0x','').strip()
+    val = id.replace('0x', '').strip()
     if not is_valid_hex(id):
         return False
     if (len(val) > 4):
@@ -474,7 +474,7 @@ def is_valid_pci_device_vendor_id(id):
 
 def is_valid_pci_class_id(id):
     """Check if the provided id is a valid 16 bit hexadecimal."""
-    val = id.replace('0x','').strip()
+    val = id.replace('0x', '').strip()
     if not is_valid_hex(id):
         return False
     if (len(val) > 6):

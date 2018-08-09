@@ -195,7 +195,7 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
             config.update({'openstack::glance::params::rbd_store_pool':
                                rbd_store_pool,
                            'openstack::glance::params::rbd_store_ceph_conf':
-                               rbd_store_ceph_conf,})
+                               rbd_store_ceph_conf, })
 
         # set remote registry auth_url for subcloud
         if (self._distributed_cloud_role() ==

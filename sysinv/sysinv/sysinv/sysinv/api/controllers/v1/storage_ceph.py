@@ -179,7 +179,7 @@ class StorageCeph(base.APIBase):
                             v, strict=True)
                     except ValueError as e:
                         raise exception.Invalid(e)
-            setattr(self, k, kwargs.get(k,defaults.get(k)))
+            setattr(self, k, kwargs.get(k, defaults.get(k)))
 
     @classmethod
     def convert_with_links(cls, rpc_storage_ceph, expand=True):
@@ -351,7 +351,7 @@ def _get_options_string(storage_ceph):
         if svc_dict and svc in services:
             svc_str = ""
             for key in svc_dict:
-                svc_str += "\t%s: %s\n" % (key, svc_dict.get(key,None))
+                svc_str += "\t%s: %s\n" % (key, svc_dict.get(key, None))
 
             if len(svc_str) > 0:
                 opt_str += "%s:\n%s" % (svc.title(), svc_str)
@@ -558,7 +558,7 @@ def check_and_update_services(storage_ceph):
                         for k in check_data[s]:
                             cap.pop(k, None)
                         values = {'services': ','.join(services),
-                                  'capabilities': cap,}
+                                  'capabilities': cap, }
                         pecan.request.dbapi.storage_backend_update(sb.uuid, values)
 
 

@@ -63,7 +63,7 @@ class License(base.APIBase):
         self.fields = []
 
         # they are all an API-only attribute
-        for fp in ['name','status','expiry_date']:
+        for fp in ['name', 'status', 'expiry_date']:
             self.fields.append(fp)
             setattr(self, fp, kwargs.get(fp, None))
 
@@ -72,7 +72,7 @@ class License(base.APIBase):
 
         license = License(**rpc_license)
         if not expand:
-            license.unset_fields_except(['name','status',
+            license.unset_fields_except(['name', 'status',
                                          'expiry_date'])
 
         return license
@@ -114,8 +114,8 @@ class LicenseController(rest.RestController):
         licenses = license.get_licenses_info()
 
         return LicenseCollection.convert_with_links(
-            licenses, limit, url=resource_url,expand=expand,
-            sort_key=sort_key,sort_dir=sort_dir)
+            licenses, limit, url=resource_url, expand=expand,
+            sort_key=sort_key, sort_dir=sort_dir)
 
     @wsme_pecan.wsexpose(LicenseCollection, wtypes.text, int, wtypes.text, wtypes.text)
     def get_all(self, marker=None, limit=None, sort_key='id', sort_dir='asc'):

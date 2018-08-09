@@ -117,7 +117,7 @@ class StorageFile(base.APIBase):
 
         # Set the value for any of the field
         for k in self.fields:
-            setattr(self, k, kwargs.get(k,defaults.get(k)))
+            setattr(self, k, kwargs.get(k, defaults.get(k)))
 
     @classmethod
     def convert_with_links(cls, rpc_storage_file, expand=True):
@@ -278,7 +278,7 @@ def _get_options_string(storage_file):
         if svc_dict and svc in services:
             svc_str = ""
             for key in svc_dict:
-                svc_str += "\t%s: %s\n" % (key, svc_dict.get(key,None))
+                svc_str += "\t%s: %s\n" % (key, svc_dict.get(key, None))
 
             if len(svc_str) > 0:
                 opt_str += "%s:\n%s" % (svc.title(), svc_str)
