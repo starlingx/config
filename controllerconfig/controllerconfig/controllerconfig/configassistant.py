@@ -532,7 +532,7 @@ class ConfigAssistant():
         print textwrap.fill(
             "The system date and time must be set now. Note that UTC "
             "time must be used and that the date and time must be set as "
-            "accurately as possible, even if NTP is to be configured "
+            "accurately as possible, even if NTP/PTP is to be configured "
             "later.", 80)
         print
 
