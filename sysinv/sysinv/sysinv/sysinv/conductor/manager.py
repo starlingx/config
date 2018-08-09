@@ -2463,22 +2463,22 @@ class ConductorManager(service.PeriodicService):
         host on the specified numa node."""
         functions = []
         cpu_count = self._get_node_cpu_count(cpu_list, node)
-        ## Determine how many platform cpus need to be reserved
+        # Determine how many platform cpus need to be reserved
         count = self._get_default_platform_cpu_count(
             host, node, cpu_count, hyperthreading)
         for i in range(0, count):
             functions.append(constants.PLATFORM_FUNCTION)
-        ## Determine how many vswitch cpus need to be reserved
+        # Determine how many vswitch cpus need to be reserved
         count = self._get_default_vswitch_cpu_count(
             host, node, cpu_count, hyperthreading)
         for i in range(0, count):
             functions.append(constants.VSWITCH_FUNCTION)
-        ## Determine how many shared cpus need to be reserved
+        # Determine how many shared cpus need to be reserved
         count = self._get_default_shared_cpu_count(
             host, node, cpu_count, hyperthreading)
         for i in range(0, count):
             functions.append(constants.SHARED_FUNCTION)
-        ## Assign the default function to the remaining cpus
+        # Assign the default function to the remaining cpus
         for i in range(0, (cpu_count - len(functions))):
             functions.append(cpu_utils.get_default_function(host))
         return functions
@@ -2723,13 +2723,13 @@ class ConductorManager(service.PeriodicService):
 
             mem_dict.update(i)
 
-            ## Do not allow updates to the amounts of reserved memory.
+            # Do not allow updates to the amounts of reserved memory.
             mem_dict.pop('platform_reserved_mib', None)
 
-            ## numa_node is not stored against imemory table
+            # numa_node is not stored against imemory table
             mem_dict.pop('numa_node', None)
 
-            ## clear the pending hugepage number for unlocked nodes
+            # clear the pending hugepage number for unlocked nodes
             if ihost.administrative == constants.ADMIN_UNLOCKED:
                 mem_dict['vm_hugepages_nr_2M_pending'] = None
                 mem_dict['vm_hugepages_nr_1G_pending'] = None
@@ -2738,7 +2738,7 @@ class ConductorManager(service.PeriodicService):
                 imems = self.dbapi.imemory_get_by_ihost_inode(ihost_uuid,
                                                               inode_uuid)
                 if not imems:
-                    ## Set the amount of memory reserved for platform use.
+                    # Set the amount of memory reserved for platform use.
                     mem_dict.update(self._get_platform_reserved_memory(
                             ihost, i['numa_node']))
                     self.dbapi.imemory_create(forihostid, mem_dict)
@@ -2754,7 +2754,7 @@ class ConductorManager(service.PeriodicService):
                         self.dbapi.imemory_update(imem['uuid'],
                                                          mem_dict)
             except:
-                ## Set the amount of memory reserved for platform use.
+                # Set the amount of memory reserved for platform use.
                 mem_dict.update(self._get_platform_reserved_memory(
                         ihost, i['numa_node']))
                 self.dbapi.imemory_create(forihostid, mem_dict)
@@ -4427,7 +4427,7 @@ class ConductorManager(service.PeriodicService):
                         self._update_alarm_status(context, standby_host)
 
         else:
-            ## Ignore the reboot required bit for active controller when doing the comparison
+            # Ignore the reboot required bit for active controller when doing the comparison
             active_config_target_flipped = None
             if active_host and active_host.config_target:
                 active_config_target_flipped = self._config_flip_reboot_required(active_host.config_target)
@@ -6086,8 +6086,8 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.info("Ceph manifests success on host: %s" % host_uuid)
 
-        ## As we can have multiple external_ceph backends, need to find the one
-        ## that is in configuring state.
+        # As we can have multiple external_ceph backends, need to find the one
+        # that is in configuring state.
         ceph_conf = StorageBackendConfig.get_configuring_target_backend(
             self.dbapi, target=constants.SB_TYPE_CEPH_EXTERNAL)
 
@@ -6142,8 +6142,8 @@ class ConductorManager(service.PeriodicService):
         args = {'host': host_uuid, 'error': error}
         LOG.error("Ceph external manifests failed on host: %(host)s. Error: %(error)s" % args)
 
-        ## As we can have multiple external_ceph backends, need to find the one
-        ## that is in configuring state.
+        # As we can have multiple external_ceph backends, need to find the one
+        # that is in configuring state.
         ceph_conf = StorageBackendConfig.get_configuring_target_backend(
             self.dbapi, target=constants.SB_TYPE_CEPH_EXTERNAL)
 

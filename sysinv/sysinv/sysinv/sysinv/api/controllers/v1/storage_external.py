@@ -369,7 +369,7 @@ def _apply_backend_changes(op, sb_obj):
                 sb_obj.uuid,
                 {'state': constants.SB_STATE_CONFIGURED})
 
-        ## update shared_services
+        # update shared_services
         s_s = utils.get_shared_services()
         shared_services = [] if s_s is None else ast.literal_eval(s_s)
 

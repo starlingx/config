@@ -540,7 +540,7 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
 def check_and_update_services(storage_ceph):
     req_services = api_helper.getListFromServices(storage_ceph)
 
-    ## If glance/nova is already a service on an external ceph backend, remove it from there
+    # If glance/nova is already a service on an external ceph backend, remove it from there
     check_svcs = [constants.SB_SVC_GLANCE, constants.SB_SVC_NOVA]
     check_data = {constants.SB_SVC_GLANCE: ['glance_pool'],
                   constants.SB_SVC_NOVA: ['ephemeral_pool']}

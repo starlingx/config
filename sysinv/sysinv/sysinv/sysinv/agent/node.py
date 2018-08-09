@@ -295,7 +295,7 @@ class NodeOperator(object):
         else:
             vswitch_hugepages_nr = VSWITCH_REAL_MEMORY_MB / hugepage_size
 
-        ## Create a new set of dict attributes
+        # Create a new set of dict attributes
         hp_attr = {'vswitch_hugepages_size_mib': hugepage_size,
                    'vswitch_hugepages_nr': vswitch_hugepages_nr,
                    'vswitch_hugepages_avail': 0}

@@ -243,15 +243,15 @@ class Interface(base.APIBase):
 
         networktype = cutils.get_primary_network_type(rpc_interface.as_dict())
         if networktype and networktype not in address.ALLOWED_NETWORK_TYPES:
-            ## Hide this functionality when the network type does not support
-            ## setting or updating the network type
+            # Hide this functionality when the network type does not support
+            # setting or updating the network type
             interface.ipv4_mode = wtypes.Unset
             interface.ipv6_mode = wtypes.Unset
             interface.ipv4_pool = wtypes.Unset
             interface.ipv6_pool = wtypes.Unset
 
-        ## It is not necessary to show these fields if the interface is not
-        ## configured to allocate addresses from a pool
+        # It is not necessary to show these fields if the interface is not
+        # configured to allocate addresses from a pool
         if interface.ipv4_mode != constants.IPV4_POOL:
             interface.ipv4_pool = wtypes.Unset
         if interface.ipv6_mode != constants.IPV6_POOL:
@@ -475,7 +475,7 @@ class InterfaceController(rest.RestController):
                 ports = p.name
                 break
 
-        ## Process updates
+        # Process updates
         vlan_id = None
         delete_addressing = False
 
@@ -1041,14 +1041,14 @@ def _check_network_type_and_port(interface, ihost,
 
 
 def _check_address_mode(op, interface, ihost, existing_interface):
-    ## Check for valid values:
+    # Check for valid values:
     interface_id = interface['id']
     ipv4_mode = interface.get('ipv4_mode')
     ipv6_mode = interface.get('ipv6_mode')
     object_utils.ipv4_mode_or_none(ipv4_mode)
     object_utils.ipv6_mode_or_none(ipv6_mode)
 
-    ## Check for supported interface network types
+    # Check for supported interface network types
     network_type = cutils.get_primary_network_type(interface)
     if network_type not in address.ALLOWED_NETWORK_TYPES:
         if (ipv4_mode and ipv4_mode != constants.IPV4_DISABLED):
@@ -1058,13 +1058,13 @@ def _check_address_mode(op, interface, ihost, existing_interface):
             raise exception.AddressModeOnlyOnSupportedTypes(
                 types=", ".join(address.ALLOWED_NETWORK_TYPES))
 
-    ## Check for infrastructure specific requirements
+    # Check for infrastructure specific requirements
     if network_type == constants.NETWORK_TYPE_INFRA:
         if ipv4_mode != constants.IPV4_STATIC:
             if ipv6_mode != constants.IPV6_STATIC:
                 raise exception.AddressModeMustBeStaticOnInfra()
 
-    ## Check for valid combinations of mode+pool
+    # Check for valid combinations of mode+pool
     ipv4_pool = interface.get('ipv4_pool')
     ipv6_pool = interface.get('ipv6_pool')
     if ipv4_mode != constants.IPV4_POOL and ipv4_pool:
@@ -1078,7 +1078,7 @@ def _check_address_mode(op, interface, ihost, existing_interface):
         pool = pecan.request.dbapi.address_pool_get(ipv4_pool)
         if pool['family'] != constants.IPV4_FAMILY:
             raise exception.AddressPoolFamilyMismatch()
-        ## Convert to UUID
+        # Convert to UUID
         ipv4_pool = pool['uuid']
         interface['ipv4_pool'] = ipv4_pool
 
@@ -1093,12 +1093,12 @@ def _check_address_mode(op, interface, ihost, existing_interface):
         pool = pecan.request.dbapi.address_pool_get(ipv6_pool)
         if pool['family'] != constants.IPV6_FAMILY:
             raise exception.AddressPoolFamilyMismatch()
-        ## Convert to UUID
+        # Convert to UUID
         ipv6_pool = pool['uuid']
         interface['ipv6_pool'] = ipv6_pool
 
     if existing_interface:
-        ## Check for valid transitions
+        # Check for valid transitions
         existing_ipv4_mode = existing_interface.get('ipv4_mode')
         if ipv4_mode != existing_ipv4_mode:
             if (existing_ipv4_mode == constants.IPV4_STATIC and
@@ -1349,8 +1349,8 @@ def _check_interface_data(op, interface, ihost, existing_interface):
                                 {'ifname': i.ifname, 'network': pn})
                         raise wsme.exc.ClientSideError(msg)
 
-        ## Send the interface and provider network details to neutron for
-        ## additional validation.
+        # Send the interface and provider network details to neutron for
+        # additional validation.
         _neutron_bind_interface(ihost, interface, test=True)
         # Send the shared data interface(s) and provider networks details to
         # neutron for additional validation, if required
@@ -1358,11 +1358,11 @@ def _check_interface_data(op, interface, ihost, existing_interface):
 
     elif (not _neutron_providernet_extension_supported() and
             any(nt in PCI_NETWORK_TYPES for nt in networktypelist)):
-        ## When the neutron implementation is not our own and it does not
-        ## support our provider network extension we still want to do minimal
-        ## validation of the provider network list but we cannot do more
-        ## complex validation because we do not have any additional information
-        ## about the provider networks.
+        # When the neutron implementation is not our own and it does not
+        # support our provider network extension we still want to do minimal
+        # validation of the provider network list but we cannot do more
+        # complex validation because we do not have any additional information
+        # about the provider networks.
         if not providernetworks:
             msg = _("At least one provider network must be selected.")
             raise wsme.exc.ClientSideError(msg)
@@ -1525,7 +1525,7 @@ def _update_address_mode(interface, family, mode, pool):
     interface_id = interface['id']
     pool_id = pecan.request.dbapi.address_pool_get(pool)['id'] if pool else None
     try:
-        ## retrieve the existing value and compare
+        # retrieve the existing value and compare
         existing = pecan.request.dbapi.address_mode_query(
             interface_id, family)
         if existing.mode == mode:
@@ -1537,7 +1537,7 @@ def _update_address_mode(interface, family, mode, pool):
             pecan.request.dbapi.addresses_destroy_by_interface(
                 interface_id, family)
     except exception.AddressModeNotFoundByFamily:
-        ## continue and update DB with new record
+        # continue and update DB with new record
         pass
     updates = {'family': family, 'mode': mode, 'address_pool_id': pool_id}
     pecan.request.dbapi.address_mode_update(interface_id, updates)
@@ -1609,8 +1609,8 @@ def _add_extended_attributes(ihost, interface, attributes):
     interface_data = interface.as_dict()
     networktype = cutils.get_primary_network_type(interface_data)
     if networktype not in address.ALLOWED_NETWORK_TYPES:
-        ## No need to create new address mode records if the interface type
-        ## does not support it
+        # No need to create new address mode records if the interface type
+        # does not support it
         return
     if attributes.get('ipv4_mode'):
         _update_ipv4_address_mode(interface_data,
@@ -1864,7 +1864,7 @@ def _neutron_providernet_list():
 
 def _update_shared_interface_neutron_bindings(ihost, interface, test=False):
     if not _neutron_host_extension_supported():
-        ## No action required if neutron does not support the host extension
+        # No action required if neutron does not support the host extension
         return
     shared_data_interfaces = _get_shared_data_interfaces(ihost, interface)
     for shared_interface in shared_data_interfaces:
@@ -1881,10 +1881,10 @@ def _neutron_bind_interface(ihost, interface, test=False):
     ihost_uuid = ihost['uuid']
     recordtype = ihost['recordtype']
     if recordtype in ['profile']:
-        ## No action required if we are operating on a profile record
+        # No action required if we are operating on a profile record
         return
     if not _neutron_host_extension_supported():
-        ## No action required if neutron does not support the host extension
+        # No action required if neutron does not support the host extension
         return
     networktypelist = []
     if interface['networktype']:
@@ -1903,7 +1903,7 @@ def _neutron_bind_interface(ihost, interface, test=False):
     providernetworks = interface.get('providernetworks', '')
     vlans = _get_interface_vlans(ihost_uuid, interface)
     try:
-        ## Send the request to neutron
+        # Send the request to neutron
         pecan.request.rpcapi.neutron_bind_interface(
             pecan.request.context,
             ihost_uuid, interface_uuid, networktype, providernetworks,
@@ -1920,13 +1920,13 @@ def _neutron_unbind_interface(ihost, interface):
     ihost_uuid = ihost['uuid']
     recordtype = ihost['recordtype']
     if recordtype in ['profile']:
-        ## No action required if we are operating on a profile record
+        # No action required if we are operating on a profile record
         return
     if not _neutron_host_extension_supported():
-        ## No action required if neutron does not support the host extension
+        # No action required if neutron does not support the host extension
         return
     try:
-        ## Send the request to neutron
+        # Send the request to neutron
         pecan.request.rpcapi.neutron_unbind_interface(
             pecan.request.context, ihost_uuid, interface['uuid'])
     except rpc_common.RemoteError as e:
@@ -2030,7 +2030,7 @@ def _create(interface, from_profile=False):
     interface.update({'forihostid': ihost['id'],
                       'ihost_uuid': ihost['uuid']})
 
-    ## Assign an UUID if not already done.
+    # Assign an UUID if not already done.
     if not interface.get('uuid'):
         interface['uuid'] = str(uuid.uuid4())
 

@@ -45,7 +45,7 @@ from fm_api import fm_api
 LOG = log.getLogger(__name__)
 
 
-### UTILS ###
+# UTILS
 def _getIPAddressFromHostname(hostname):
     """ Dual stacked version of gethostbyname
 
