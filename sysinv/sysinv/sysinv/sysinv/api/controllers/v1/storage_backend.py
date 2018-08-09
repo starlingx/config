@@ -122,7 +122,7 @@ class StorageBackend(base.APIBase):
         self.fields.append('confirmed')
 
         for k in self.fields:
-            setattr(self, k, kwargs.get(k,defaults.get(k)))
+            setattr(self, k, kwargs.get(k, defaults.get(k)))
 
     @classmethod
     def convert_with_links(cls, rpc_storage_backend, expand=True):

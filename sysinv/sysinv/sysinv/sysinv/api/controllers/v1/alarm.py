@@ -273,7 +273,8 @@ class AlarmController(rest.RestController):
 
     @wsme_pecan.wsexpose(AlarmCollection, [Query],
                          types.uuid, int, wtypes.text, wtypes.text, bool)
-    def get_all(self, q=[], marker=None, limit=None, sort_key='id', sort_dir='asc',include_suppress=False):
+    def get_all(self, q=[], marker=None, limit=None, sort_key='id',
+            sort_dir='asc', include_suppress=False):
         """Retrieve a list of ialarm.
 
         :param marker: pagination marker for large data sets.

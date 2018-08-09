@@ -351,7 +351,7 @@ def _check_host(partition, ihost, idisk):
     if ihost['id'] != idisk['forihostid']:
         raise wsme.exc.ClientSideError(_("The requested disk (%s) for the partition "
                                          "is not present on host %s.") %
-                                         (idisk.uuid,ihost.hostname))
+                                         (idisk.uuid, ihost.hostname))
 
 
 def _partition_pre_patch_checks(partition_obj, patch_obj, host_obj):

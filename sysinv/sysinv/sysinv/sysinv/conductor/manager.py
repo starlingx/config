@@ -278,7 +278,7 @@ class ConductorManager(service.PeriodicService):
         # set default storage_backend
         values.update({'backend': constants.SB_TYPE_FILE,
                        'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_FILE],
-                       'state':constants.SB_STATE_CONFIGURED,
+                       'state': constants.SB_STATE_CONFIGURED,
                        'task': constants.SB_TASK_NONE,
                        'services': None,
                        'capabilities': {}})
@@ -1665,7 +1665,7 @@ class ConductorManager(service.PeriodicService):
         for interface in iinterfaces:
             if constants.CLONE_ISO_MAC in interface['imac']:
                 LOG.warn("Missing interface [{},{}] on the cloned host"
-                         .format(interface['ifname'],interface['id']))
+                         .format(interface['ifname'], interface['id']))
                 raise exception.SysinvException(_(
                         "Missing interface on the cloned host"))
 
@@ -3845,7 +3845,7 @@ class ConductorManager(service.PeriodicService):
                                     self.dbapi.ipv_update(
                                         pv.uuid,
                                         {'pv_state': constants.PROVISIONED,
-                                         'lvm_pv_name':constants.CINDER_DRBD_DEVICE})
+                                         'lvm_pv_name': constants.CINDER_DRBD_DEVICE})
                                     self.dbapi.ilvg_update(
                                         pv.forilvgid,
                                         {'vg_state': constants.PROVISIONED})
@@ -4030,7 +4030,7 @@ class ConductorManager(service.PeriodicService):
             for ipv in ipvs:
                 if ipv['pv_state'] != constants.PROVISIONED:
                     host_id = ipv['forihostid']
-                    update_hosts_dict(host_id,constants.PV_AUDIT_REQUEST)
+                    update_hosts_dict(host_id, constants.PV_AUDIT_REQUEST)
 
             # Make sure we get at least one good report for PVs & LVGs
             hosts = self.dbapi.ihost_get_list()
@@ -4126,7 +4126,7 @@ class ConductorManager(service.PeriodicService):
         if (iscsi_initiator_name and
                 ihost.iscsi_initiator_name is None):
             LOG.info("%s updating iscsi initiator=%s" %
-                        (ihost.hostname,iscsi_initiator_name))
+                        (ihost.hostname, iscsi_initiator_name))
             val['iscsi_initiator_name'] = iscsi_initiator_name
 
         if val:
@@ -4958,7 +4958,7 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi, constants.SB_TYPE_LVM):
             pools = self._openstack.get_cinder_pools()
             for pool in pools:
-                if getattr(pool,'volume_backend_name','') == constants.CINDER_BACKEND_LVM:
+                if getattr(pool, 'volume_backend_name', '') == constants.CINDER_BACKEND_LVM:
                     return pool.to_dict()
 
         return None
@@ -5612,7 +5612,7 @@ class ConductorManager(service.PeriodicService):
             config_dict = {"personalities": personalities,
                            "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
                            "classes": classes,
-                           puppet_common.REPORT_STATUS_CFG: report_config,}
+                           puppet_common.REPORT_STATUS_CFG: report_config, }
 
             # TODO(oponcea) once sm supports in-service config reload always
             # set reboot=False
@@ -5704,7 +5704,7 @@ class ConductorManager(service.PeriodicService):
 
         self.dbapi.storage_ceph_update(sb_uuid,
             {'state': constants.SB_STATE_CONFIGURING,
-             'task':str({h.hostname: constants.SB_TASK_APPLY_MANIFESTS for h in valid_ctrls})})
+             'task': str({h.hostname: constants.SB_TASK_APPLY_MANIFESTS for h in valid_ctrls})})
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -8750,7 +8750,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.info("Calling nova cleanup")
                 with open(os.devnull, "w") as fnull:
                     try:
-                        subprocess.check_call(["systemctl","start","nova-cleanup"],
+                        subprocess.check_call(["systemctl", "start", "nova-cleanup"],
                                               stdout=fnull,
                                               stderr=fnull)
                     except subprocess.CalledProcessError:
@@ -9116,7 +9116,7 @@ class ConductorManager(service.PeriodicService):
         pools = self._openstack.get_cinder_pools()
         if pools is not None:
             for pool in pools:
-                volume_backend = getattr(pool,'volume_backend_name','')
+                volume_backend = getattr(pool, 'volume_backend_name', '')
                 if volume_backend and volume_backend != constants.CINDER_BACKEND_LVM and \
                    volume_backend != constants.CINDER_BACKEND_CEPH:
                     return True

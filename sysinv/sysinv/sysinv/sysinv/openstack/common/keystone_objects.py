@@ -54,14 +54,14 @@ class Token(object):
         Search the catalog of a service for the administrative url
         Returns: admin url or None on failure
         """
-        return self._get_service_url(service_type, service_name,'admin')
+        return self._get_service_url(service_type, service_name, 'admin')
 
     def get_service_internal_url(self, service_type, service_name):
         """
         Search the catalog of a service for the administrative url
         Returns: admin url or None on failure
         """
-        return self._get_service_url(service_type,service_name, 'internal')
+        return self._get_service_url(service_type, service_name, 'internal')
 
     def get_service_public_url(self, service_type, service_name):
         """

@@ -149,7 +149,7 @@ class TestListServers(base.FunctionalTest):
         for id in xrange(1000):  # there is a limit of 1000 returned by json
             ndict = dbutils.get_test_ihost(id=id, hostname=id, mgmt_mac=id,
                                            forisystemid=self.system.id,
-                                           mgmt_ip="%s.%s.%s.%s" % (id,id,id,id),
+                                           mgmt_ip="%s.%s.%s.%s" % (id, id, id, id),
                                            uuid=uuidutils.generate_uuid())
             s = self.dbapi.ihost_create(ndict)
             ihosts.append(s['uuid'])
@@ -174,7 +174,7 @@ class TestListServers(base.FunctionalTest):
         for id in xrange(100):
             ndict = dbutils.get_test_ihost(id=id, hostname=id, mgmt_mac=id,
                                            forisystemid=self.system.id,
-                                           mgmt_ip="%s.%s.%s.%s" % (id,id,id,id),
+                                           mgmt_ip="%s.%s.%s.%s" % (id, id, id, id),
                                            uuid=uuidutils.generate_uuid())
             ihost = self.dbapi.ihost_create(ndict)
             ihosts.append(ihost['uuid'])
