@@ -10,7 +10,6 @@ class platform::vswitch
   inherits ::platform::vswitch::params {
 
   Class[$name] -> Class['::platform::network']
-  Mount[$hugepage_dir] -> Class[$name]
 
   $enable_unsafe_noiommu_mode = bool2num(!$iommu_enabled)
 
@@ -90,6 +89,8 @@ class platform::vswitch::ovs(
       driver_type => $driver_type,
       before => Service['openvswitch']
     })
+
+    Mount[$hugepage_dir] -> Service['openvswitch']
 
     $dpdk_configs = {
       'other_config:dpdk-hugepage-dir' => { value => $hugepage_dir },
