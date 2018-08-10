@@ -82,6 +82,14 @@ class openstack::ceilometer::agent::notification {
   $ceilometer_directory_csv = "${ceilometer_directory}/csv"
   $ceilometer_directory_versioned = "${ceilometer_directory}/${::platform::params::software_version}"
 
+  file { "/etc/ceilometer/pipeline.yaml":
+    ensure  => 'present',
+    content => template('openstack/pipeline.yaml.erb'),
+    mode    => '0640',
+    owner   => 'root',
+    group   => 'ceilometer',
+    tag     => 'ceilometer-yamls',
+  } ->
   file { "${ceilometer_directory}":
     ensure  => 'directory',
     owner   => 'root',
@@ -101,7 +109,7 @@ class openstack::ceilometer::agent::notification {
     mode    => '0755',
   } ->
   file { "${ceilometer_directory_versioned}/pipeline.yaml":
-    source => '/etc/ceilometer/controller.yaml',
+    source => '/etc/ceilometer/pipeline.yaml',
     ensure  => 'file',
     owner   => 'root',
     group   => 'root',
@@ -129,45 +137,62 @@ class openstack::ceilometer::agent::notification {
 }
 
 
-class openstack::ceilometer::polling {
-  include ::platform::params
+class openstack::ceilometer::polling (
+  $instance_polling_interval       = 600,
+  $instance_cpu_polling_interval   = 30,
+  $instance_disk_polling_interval  = 600,
+  $ipmi_polling_interval           = 600,
+  $ceph_polling_interval           = 600,
+  $image_polling_interval          = 600,
+  $volume_polling_interval         = 600,
+) {
+   include ::platform::params
 
-  if $::personality == 'controller' {
-    $central_namespace = true
-  } else {
-    $central_namespace = false
-  }
+   file { "/etc/ceilometer/polling.yaml":
+     ensure  => 'present',
+     content => template('openstack/polling.yaml.erb'),
+     mode    => '0640',
+     owner   => 'root',
+     group   => 'ceilometer',
+     tag     => 'ceilometer-yamls',
+   }
 
-  if str2bool($::disable_compute_services) {
-    $agent_enable = false
-    $compute_namespace = false
+   if $::personality == 'controller' {
+     $central_namespace = true
+   } else {
+     $central_namespace = false
+   }
 
-    file { '/etc/pmon.d/ceilometer-polling.conf':
-       ensure  => absent,
-    }
-  } else {
-    $agent_enable = true
+   if str2bool($::disable_compute_services) {
+     $agent_enable = false
+     $compute_namespace = false
 
-    if str2bool($::is_compute_subfunction) {
-      $pmon_target = "/etc/ceilometer/ceilometer-polling-compute.conf.pmon"
-      $compute_namespace = true
-    } else {
-      $pmon_target = "/etc/ceilometer/ceilometer-polling.conf.pmon"
-      $compute_namespace = false
-    }
+     file { '/etc/pmon.d/ceilometer-polling.conf':
+        ensure  => absent,
+     }
+   } else {
+     $agent_enable = true
 
-    file { "/etc/pmon.d/ceilometer-polling.conf":
-      ensure => link,
-      target => $pmon_target,
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0640',
-    }
-  }
+     if str2bool($::is_compute_subfunction) {
+       $pmon_target = "/etc/ceilometer/ceilometer-polling-compute.conf.pmon"
+       $compute_namespace = true
+     } else {
+       $pmon_target = "/etc/ceilometer/ceilometer-polling.conf.pmon"
+       $compute_namespace = false
+     }
 
-  class { '::ceilometer::agent::polling':
-    enabled => $agent_enable,
-    central_namespace => $central_namespace,
-    compute_namespace => $compute_namespace,
-  }
+     file { "/etc/pmon.d/ceilometer-polling.conf":
+       ensure => link,
+       target => $pmon_target,
+       owner   => 'root',
+       group   => 'root',
+       mode    => '0640',
+     }
+   }
+
+   class { '::ceilometer::agent::polling':
+     enabled => $agent_enable,
+     central_namespace => $central_namespace,
+     compute_namespace => $compute_namespace,
+   }
 }
