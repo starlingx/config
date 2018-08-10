@@ -1692,7 +1692,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             hostname = socket.gethostname()
-        except:
+        except socket.error:
             LOG.exception("Failed to get local hostname")
             hostname = None
 
@@ -1825,7 +1825,7 @@ class ConductorManager(service.PeriodicService):
                             {'interface_id': new_interface['id'],
                              'bootp': bootp
                              })
-                    except:
+                    except Exception:
                         LOG.exception("Failed to create new interface %s" %
                                       inic['mac'])
                         pass  # at least create the port
@@ -1849,7 +1849,7 @@ class ConductorManager(service.PeriodicService):
                             new_interface = self.dbapi.iinterface_create(
                                 ihost['id'], interface_dict
                             )
-                        except:
+                        except Exception:
                             LOG.exception(
                                 "Failed to create new vlan interface %s" %
                                 inic['mac'])
@@ -1881,11 +1881,11 @@ class ConductorManager(service.PeriodicService):
                         # change. This will update the db to reflect that
                         if port['name'] != inic['pname']:
                             self._update_port_name(port, inic['pname'])
-                    except:
+                    except Exception:
                         LOG.exception("Failed to update port %s" % inic['mac'])
                         pass
 
-                except:
+                except Exception:
                     # adjust for field naming differences between the NIC
                     # dictionary returned by the agent and the Port model
                     port_dict = inic_dict.copy()
@@ -1902,7 +1902,7 @@ class ConductorManager(service.PeriodicService):
                     "Invalid ihost_uuid: host not found: %s") %
                     ihost_uuid)
 
-            except:  # this info may have been posted previously, update ?
+            except Exception:  # this info may have been posted previously, update ?
                 pass
 
             # Set interface ID for management address
@@ -2309,7 +2309,7 @@ class ConductorManager(service.PeriodicService):
                                  "%s on host %s" % (pci_dev_dict, host['id']))
                         dev = self.dbapi.pci_device_create(host['id'],
                                                            pci_dev_dict)
-                except:
+                except Exception:
                     LOG.info("Attempting to create new device "
                              "%s on host %s" % (pci_dev_dict, host['id']))
                     dev = self.dbapi.pci_device_create(host['id'],
@@ -2333,7 +2333,7 @@ class ConductorManager(service.PeriodicService):
                             'driver': pci_dev['driver']}
                         LOG.info("attr: %s" % attr)
                         dev = self.dbapi.pci_device_update(dev['uuid'], attr)
-                    except:
+                    except Exception:
                         LOG.exception("Failed to update port %s" %
                                       dev['pciaddr'])
                         pass
@@ -2342,7 +2342,7 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Invalid host_uuid: host not found: %s") %
                     host_uuid)
-            except:
+            except Exception:
                 pass
 
     def inumas_update_by_ihost(self, context,
@@ -2402,7 +2402,7 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Invalid ihost_uuid: host not found: %s") %
                     ihost_uuid)
-            except:  # this info may have been posted previously, update ?
+            except Exception:  # this info may have been posted previously, update ?
                 pass
 
     def _get_default_platform_cpu_count(self, ihost, node,
@@ -2660,7 +2660,7 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Invalid ihost_uuid: host not found: %s") %
                     ihost_uuid)
-            except:
+            except Exception:
                 # info may have already been posted
                 pass
 
@@ -2753,7 +2753,7 @@ class ConductorManager(service.PeriodicService):
                             mem_dict['memavail_mib'] += vm_4K_mib
                         self.dbapi.imemory_update(imem['uuid'],
                                                          mem_dict)
-            except:
+            except Exception:
                 # Set the amount of memory reserved for platform use.
                 mem_dict.update(self._get_platform_reserved_memory(
                         ihost, i['numa_node']))
@@ -3124,7 +3124,7 @@ class ConductorManager(service.PeriodicService):
                 lvg_dict.update({'vg_state': constants.PROVISIONED})
                 try:
                     self.dbapi.ilvg_create(forihostid, lvg_dict)
-                except:
+                except Exception:
                     LOG.exception("Local Volume Group Creation failed")
 
         # Purge the database records for volume groups that have been
@@ -3141,7 +3141,7 @@ class ConductorManager(service.PeriodicService):
                 if not found:
                     try:
                         self.dbapi.ilvg_destroy(ilvg.id)
-                    except:
+                    except Exception:
                         LOG.exception("Local Volume Group removal failed")
 
         return
@@ -3172,7 +3172,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             self.dbapi.partition_update(db_part.uuid, values)
-        except:
+        except Exception:
             LOG.exception("Updating partition (%s) with values %s failed." %
                           (db_part.uuid, str(values)))
 
@@ -3377,7 +3377,7 @@ class ConductorManager(service.PeriodicService):
         try:
             self._prepare_for_ipv_removal(ipv)
             self.dbapi.ipv_destroy(ipv.id)
-        except:
+        except Exception:
             LOG.exception("Remove ipv for missing %s failed" % storage)
 
     def update_partition_config(self, context, partition):
@@ -3680,7 +3680,7 @@ class ConductorManager(service.PeriodicService):
                         if ipv_update_needed:
                             try:
                                 self.dbapi.ipv_update(ipv['uuid'], pv_dict)
-                            except:
+                            except Exception:
                                 LOG.exception("Update ipv for changed idisk "
                                               "details failed.")
                             break
@@ -3717,7 +3717,7 @@ class ConductorManager(service.PeriodicService):
 
                         try:
                             self.dbapi.ipv_update(ipv['uuid'], pv_dict)
-                        except:
+                        except Exception:
                             LOG.exception("Update ipv for changed partition "
                                            "details failed.")
 
@@ -3786,7 +3786,7 @@ class ConductorManager(service.PeriodicService):
                             self.dbapi.partition_update(
                                 ipv['disk_or_part_uuid'],
                                 {'status': constants.PARTITION_IN_USE_STATUS})
-                    except:
+                    except Exception:
                         LOG.exception("Update ipv with latest info failed")
 
                     if ipv['pv_type'] == constants.PV_TYPE_PARTITION:
@@ -3808,7 +3808,7 @@ class ConductorManager(service.PeriodicService):
                                 pv_dict.update({'disk_or_part_uuid': d.uuid})
                                 try:
                                     self.dbapi.ipv_update(ipv['uuid'], pv_dict)
-                                except:
+                                except Exception:
                                     LOG.exception("Update ipv for changed "
                                                   "idisk uuid failed")
                             break
@@ -3905,7 +3905,7 @@ class ConductorManager(service.PeriodicService):
                 pv = None
                 try:
                     pv = self.dbapi.ipv_create(forihostid, pv_dict)
-                except:
+                except Exception:
                     LOG.exception("PV Volume Creation failed")
 
                 if pv.get('pv_type') == constants.PV_TYPE_PARTITION:
@@ -3914,7 +3914,7 @@ class ConductorManager(service.PeriodicService):
                             pv.disk_or_part_uuid,
                             {'foripvid': pv.id,
                              'status': constants.PARTITION_IN_USE_STATUS})
-                    except:
+                    except Exception:
                         LOG.exception("Updating partition (%s) for ipv id "
                                       "failed (%s)" % (pv.disk_or_part_uuid,
                                                        pv.uuid))
@@ -3922,7 +3922,7 @@ class ConductorManager(service.PeriodicService):
                     try:
                         self.dbapi.idisk_update(pv.disk_or_part_uuid,
                                                 {'foripvid': pv.id})
-                    except:
+                    except Exception:
                         LOG.exception("Updating idisk (%s) for ipv id "
                                       "failed (%s)" % (pv.disk_or_part_uuid,
                                                        pv.uuid))
@@ -3965,7 +3965,7 @@ class ConductorManager(service.PeriodicService):
                         #     # PV before removal.
                         self._prepare_for_ipv_removal(ipv)
                         self.dbapi.ipv_destroy(ipv.id)
-                    except:
+                    except Exception:
                         LOG.exception("Physical Volume removal failed")
                 else:
                     if ipv.pv_state == constants.PROVISIONED:
@@ -3985,7 +3985,7 @@ class ConductorManager(service.PeriodicService):
             if update:
                 try:
                     self.dbapi.ipv_update(ipv['uuid'], update)
-                except:
+                except Exception:
                     LOG.exception("Updating ipv id %s "
                                   "failed" % ipv['uuid'])
 
@@ -4288,7 +4288,7 @@ class ConductorManager(service.PeriodicService):
                     self._openstack.create_neutron_host(context,
                                                         ihost_uuid,
                                                         ihost['hostname'])
-            except:  # TODO: DPENNEY: Needs better exception
+            except Exception:  # TODO: DPENNEY: Needs better exception
                 LOG.exception("Failed in neutron stuff")
 
         ihost_val = {'subfunctions': subfunctions}
@@ -4311,7 +4311,7 @@ class ConductorManager(service.PeriodicService):
             try:
                 mac = mac.rstrip()
                 mac = cutils.validate_and_normalize_mac(mac)
-            except:
+            except Exception:
                 LOG.warn("get_ihost_by_macs invalid mac: %s" % mac)
                 continue
 
@@ -4583,7 +4583,7 @@ class ConductorManager(service.PeriodicService):
                         constants.CONTROLLER_0_HOSTNAME)
                     if not utils.is_host_active_controller(controller_0):
                         vim_api.set_vim_upgrade_state(controller_0, False)
-                except:
+                except Exception:
                     LOG.exception("Unable to set VIM upgrade state to False")
 
     def _audit_install_states(self, hosts):
@@ -7934,7 +7934,7 @@ class ConductorManager(service.PeriodicService):
         try:
             if ihost.get('hostname'):
                 self._generate_dnsmasq_hosts_file()
-        except:
+        except Exception:
             LOG.warning("Failed to remove mgmt ip from dnsmasq.hosts")
 
         if mgmt_ip is None:
@@ -8004,7 +8004,7 @@ class ConductorManager(service.PeriodicService):
         try:
             if ihost.get('hostname'):
                 self._generate_dnsmasq_hosts_file()
-        except:
+        except Exception:
             LOG.warning("Failed to remove infra ip from dnsmasq.hosts")
 
         if infra_ip is None:
@@ -8291,7 +8291,7 @@ class ConductorManager(service.PeriodicService):
             root = ElementTree.fromstring(metadata_file.read())
             metadata_file.close()
 
-        except:
+        except Exception:
             raise exception.SysinvException(_(
                 "Unable to read metadata file"))
 
@@ -8617,7 +8617,7 @@ class ConductorManager(service.PeriodicService):
                     from_version, to_version, i_system)
 
             LOG.info("Finished upgrade preparation")
-        except:
+        except Exception:
             LOG.exception("Upgrade preparation failed")
             with excutils.save_and_reraise_exception():
                 if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
@@ -8670,7 +8670,7 @@ class ConductorManager(service.PeriodicService):
             upgrades_management.activate_upgrade(from_version,
                                                  to_version, i_system)
             LOG.info("Finished upgrade activation")
-        except:
+        except Exception:
             LOG.exception("Upgrade activation failed")
             with excutils.save_and_reraise_exception():
                 # mark the activation as failed. The intention
@@ -8759,7 +8759,7 @@ class ConductorManager(service.PeriodicService):
 
             try:
                 vim_api.set_vim_upgrade_state(controller_0, False)
-            except:
+            except Exception:
                 LOG.exception()
                 raise exception.SysinvException(_(
                     "upgrade-abort rejected: unable to reset VIM upgrade "
@@ -9448,7 +9448,7 @@ class ConductorManager(service.PeriodicService):
                 tpmdevice_dict.update({'host_uuid': tpm_host['uuid']})
                 tpmdevice = self.dbapi.tpmdevice_create(tpm_host['id'],
                                                         tpmdevice_dict)
-            except:
+            except Exception:
                 LOG.exception("Cannot create TPM device for host %s" % host_uuid)
                 return
 

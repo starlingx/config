@@ -151,7 +151,7 @@ class HelmChartsController(rest.RestController):
             # Extract the info we want.
             values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
                                   '\nCOMPUTED VALUES:')[0]
-        except:
+        except exception.SysinvException:
             raise
         finally:
             os.remove(chartfile)

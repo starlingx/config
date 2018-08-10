@@ -2595,7 +2595,7 @@ def ifprofile_apply_to_host(host, profile):
         data = {'interface_id': None}
         try:
             pecan.request.dbapi.ethernet_port_update(p.uuid, data)
-        except:
+        except dbException.DBError:
             raise wsme.exc.ClientSideError(_("Failed to unlink port from interface."))
 
     # Delete all Host's interfaces in reverse order (VLANs, AEs, ethernet, etc)
@@ -2643,13 +2643,13 @@ def ifprofile_apply_to_host(host, profile):
                     data = {'interface_id': None}
                     try:
                         pecan.request.dbapi.ethernet_port_update(p.uuid, data)
-                    except:
+                    except dbException.DBError:
                         LOG.debug(_("Failed to unlink port from interface."))
 
                 for i in host.interfaces:
                     try:
                         interface_api._delete(i.as_dict(), from_profile=True)
-                    except:
+                    except exception.SysinvException:
                         LOG.debug(_("Can not delete host interface: %s" % i.uuid))
 
                 # Restore the previous interfaces
@@ -2845,7 +2845,7 @@ def storprofile_apply_to_host(host, profile):
         pdata = {'foristorid': storPairs[pdisk.foristorid]}
         try:
             pecan.request.dbapi.idisk_update(hdisk.uuid, pdata)
-        except:
+        except dbException.DBError:
             raise wsme.exc.ClientSideError(_("Failed to link storage to disk"))
 
 
@@ -3156,7 +3156,7 @@ def localstorageprofile_apply_to_host(host, profile):
         pdata = {'foripvid': ipvPairs[pdisk.foripvid]}
         try:
             device_update_function(disk_or_part_uuid, pdata)
-        except:
+        except dbException.DBError:
             raise wsme.exc.ClientSideError(_(
                 "Failed to link storage to device %s" % disk_or_part_uuid))
 

@@ -438,7 +438,7 @@ class MemoryController(rest.RestController):
                     inode = objects.node.get_by_uuid(
                                      pecan.request.context, p['value'])
                     p['value'] = inode.id
-                except:
+                except exception.SysinvException:
                     p['value'] = None
 
         try:

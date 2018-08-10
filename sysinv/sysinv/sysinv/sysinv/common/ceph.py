@@ -680,7 +680,7 @@ class CephApiOperator(object):
         if num_inv_monitors >= required_monitors:
             try:
                 quorum_names = self._osd_quorum_names()
-            except:
+            except Exception:
                 # if the cluster is not responding to requests
                 # we set the quorum_names to an empty list , indicating a problem
                 quorum_names = []

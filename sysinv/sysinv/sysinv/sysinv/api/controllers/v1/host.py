@@ -1535,7 +1535,7 @@ class HostController(rest.RestController):
             contents = fileitem.file.read()
             # Generate an array of hosts' attributes to be used in creation
             root = ET.fromstring(contents)
-        except:
+        except Exception:
             return dict(
                 success="",
                 error="No hosts have been added, invalid XML document"
@@ -2212,7 +2212,7 @@ class HostController(rest.RestController):
                     ihost.uuid,
                     ihost.hostname,
                     constants.VIM_DELETE_TIMEOUT_IN_SECS)
-            except:
+            except Exception:
                 LOG.warn(_("No response from vim_api %s " % ihost['uuid']))
                 raise wsme.exc.ClientSideError(_("System rejected delete "
                                                  "request.  Please retry and if problem persists then "

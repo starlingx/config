@@ -1319,8 +1319,8 @@ class Connection(api.Connection):
         try:
             mgmt_mac = mgmt_mac.rstrip()
             mgmt_mac = utils.validate_and_normalize_mac(mgmt_mac)
-        except:
-            raise exception.NodeNotFound(node=mgmt_mac)
+        except exception.SysinvException:
+            raise exception.HostNotFound(node=mgmt_mac)
 
         query = model_query(models.ihost)
         query = add_host_options(query)
@@ -4034,7 +4034,7 @@ class Connection(api.Connection):
         try:
             result = _paginate_query(models.StorageBackend, limit, marker,
                                      sort_key, sort_dir, query)
-        except:
+        except (db_exc.InvalidSortKey, ValueError):
             result = []
 
         return result
@@ -4065,7 +4065,7 @@ class Connection(api.Connection):
             try:
                 result = _paginate_query(models.StorageBackend, limit, marker,
                                      sort_key, sort_dir, query)
-            except:
+            except exception.SysinvException:
                 result = []
 
             return result

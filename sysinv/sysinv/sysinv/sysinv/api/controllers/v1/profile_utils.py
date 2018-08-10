@@ -279,7 +279,7 @@ class EthInterface(Interface):
             sec2 = int(section_list1[1], 16)
             sec3 = int(section_list2[0], 16)
             sec4 = int(section_list2[1], 16)
-        except:
+        except (TypeError, ValueError):
             raise InvalidProfileData(_('pciAddress is not well formatted.'))
 
         result = '{0:04x}:{1:02x}:{2:02x}.{3:01x}'.format(sec1, sec2, sec3, sec4)

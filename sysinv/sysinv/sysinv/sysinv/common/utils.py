@@ -829,7 +829,7 @@ def notify_mtc_and_recv(mtc_address, mtc_port, idict):
         try:
             mtc_response_dict = json.loads(mtc_response)
             LOG.warning("Mtc Response: %s" % mtc_response_dict)
-        except:
+        except Exception:
             LOG.exception("Mtc Response Error: %s" % mtc_response)
             pass
 

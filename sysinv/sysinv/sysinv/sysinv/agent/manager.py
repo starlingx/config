@@ -227,7 +227,7 @@ class AgentManager(service.PeriodicService):
                            topic=conductor_rpcapi.MANAGER_TOPIC)
         try:
             ttys_dcd = rpcapi.get_host_ttys_dcd(context, host_id)
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception getting host ttys_dcd.")
             pass
         if ttys_dcd is not None:
@@ -399,7 +399,7 @@ class AgentManager(service.PeriodicService):
                 rpcapi.lldp_neighbour_update_by_host(context,
                                                      host_uuid,
                                                      neighbour_dict_array)
-            except:
+            except exception.SysinvException:
                 LOG.exception("Sysinv Agent exception updating lldp neighbours.")
                 self._lldp_operator.lldp_neighbours_clear()
                 pass
@@ -433,7 +433,7 @@ class AgentManager(service.PeriodicService):
                 rpcapi.lldp_agent_update_by_host(context,
                                                  host_uuid,
                                                  agent_dict_array)
-            except:
+            except exception.SysinvException:
                 LOG.exception("Sysinv Agent exception updating lldp agents.")
                 self._lldp_operator.lldp_agents_clear()
                 pass
@@ -503,7 +503,7 @@ class AgentManager(service.PeriodicService):
             if os.path.exists(FIRST_BOOT_FLAG):
                 os.remove(FIRST_BOOT_FLAG)
                 LOG.info("Removed %s" % FIRST_BOOT_FLAG)
-        except:
+        except exception.SysinvException:
             # For compatibility with 15.12
             LOG.warn("platform_update_by_host exception host_uuid=%s msg_dict=%s." %
                      (host_uuid, msg_dict))
@@ -664,7 +664,7 @@ class AgentManager(service.PeriodicService):
         # of the agent for the rest of inventory calls
         try:
             rpcapi.load_update_by_host(icontext, ihost['uuid'], tsc.SW_VERSION)
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating load conductor.")
             pass
 
@@ -674,7 +674,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.subfunctions_update_by_ihost(icontext,
                                                 ihost['uuid'],
                                                 subfunctions)
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating subfunctions "
                           "conductor.")
             pass
@@ -714,7 +714,7 @@ class AgentManager(service.PeriodicService):
             LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
                       e.exc_type)
             self._report_to_conductor = False
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating iport conductor.")
             pass
 
@@ -722,7 +722,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.subfunctions_update_by_ihost(icontext,
                                                 ihost['uuid'],
                                                 subfunctions)
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating subfunctions "
                           "conductor.")
             pass
@@ -756,7 +756,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.pci_device_update_by_host(icontext,
                                              ihost['uuid'],
                                              pci_device_dict_array)
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating iport conductor.")
             pass
 
@@ -777,7 +777,7 @@ class AgentManager(service.PeriodicService):
             LOG.exception("Sysinv Agent exception updating inuma e=%s." % e)
             self._report_to_conductor = True
             pass
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent uncaught exception updating inuma.")
             pass
 
@@ -797,7 +797,7 @@ class AgentManager(service.PeriodicService):
             LOG.exception("Sysinv Agent exception updating icpus e=%s." % e)
             self._report_to_conductor = True
             pass
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent uncaught exception updating icpus conductor.")
             pass
 
@@ -813,7 +813,7 @@ class AgentManager(service.PeriodicService):
                           e.exc_type)
                 # Allow the audit to update
                 pass
-            except:
+            except exception.SysinvException:
                 LOG.exception("Sysinv Agent exception updating imemory "
                               "conductor.")
                 pass
@@ -831,7 +831,7 @@ class AgentManager(service.PeriodicService):
                          "Upgrade in progress?")
             else:
                 LOG.exception("Sysinv Agent exception updating idisk conductor.")
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating idisk conductor.")
             pass
 
@@ -844,7 +844,7 @@ class AgentManager(service.PeriodicService):
             # safe to ignore during upgrades
             LOG.warn("Skip updating ipartition conductor. "
                      "Upgrade in progress?")
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating ipartition"
                           " conductor.")
             pass
@@ -854,7 +854,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.ipv_update_by_ihost(icontext,
                                        ihost['uuid'],
                                        ipv)
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating ipv conductor.")
             pass
 
@@ -863,7 +863,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.ilvg_update_by_ihost(icontext,
                                         ihost['uuid'],
                                         ilvg)
-        except:
+        except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating ilvg conductor.")
             pass
 
@@ -873,7 +873,7 @@ class AgentManager(service.PeriodicService):
             try:
                 platform_interfaces = rpcapi.get_platform_interfaces(icontext,
                                                                      ihost['id'])
-            except:
+            except exception.SysinvException:
                 LOG.exception("Sysinv Agent exception getting platform interfaces.")
                 pass
             self._update_interface_irq_affinity(self, platform_interfaces)
@@ -1061,7 +1061,7 @@ class AgentManager(service.PeriodicService):
                         else:
                             LOG.exception("Sysinv Agent exception updating idisk "
                                           "conductor.")
-                    except:
+                    except exception.SysinvException:
                         LOG.exception("Sysinv Agent exception updating idisk "
                                       "conductor.")
                         pass
@@ -1169,7 +1169,7 @@ class AgentManager(service.PeriodicService):
                     else:
                         LOG.exception("Sysinv Agent exception updating idisk "
                                       "conductor.")
-                except:
+                except exception.SysinvException:
                     LOG.exception("Sysinv Agent exception updating idisk"
                                   "conductor.")
                     self._prev_disk = None
@@ -1188,7 +1188,7 @@ class AgentManager(service.PeriodicService):
                         # safe to ignore during upgrades
                         LOG.warn("Skip updating ipartition conductor. "
                                  "Upgrade in progress?")
-                    except:
+                    except exception.SysinvException:
                         LOG.exception("Sysinv Agent exception updating "
                                       "ipartition conductor.")
                         self._prev_partition = None
@@ -1203,7 +1203,7 @@ class AgentManager(service.PeriodicService):
                     rpcapi.ipv_update_by_ihost(icontext,
                                                self._ihost_uuid,
                                                ipv)
-                except:
+                except exception.SysinvException:
                     LOG.exception("Sysinv Agent exception updating ipv"
                                   "conductor.")
                     self._prev_pv = None
@@ -1218,7 +1218,7 @@ class AgentManager(service.PeriodicService):
                     rpcapi.ilvg_update_by_ihost(icontext,
                                                 self._ihost_uuid,
                                                 ilvg)
-                except:
+                except exception.SysinvException:
                     LOG.exception("Sysinv Agent exception updating ilvg"
                                   "conductor.")
                     self._prev_lvg = None
@@ -1567,7 +1567,7 @@ class AgentManager(service.PeriodicService):
         response_dict = {'is_configured': False}  # guilty until proven innocent
         try:
             tpmconfig = rpcapi.get_system_tpmconfig(context)
-        except:
+        except exception.SysinvException:
             pass
         finally:
             if not tpmconfig:
@@ -1583,7 +1583,7 @@ class AgentManager(service.PeriodicService):
                 # that flag (originally set in apply_tpm_config())
                 # would be cleared on Sysinv agent restarts/swacts
                 self._tpmconfig_host_first_apply = True
-        except:
+        except exception.SysinvException:
             # it could be that a TPM configuration was attempted before
             # this controller was provisioned in which case we will
             # raise a failure. However it could also be that the agent

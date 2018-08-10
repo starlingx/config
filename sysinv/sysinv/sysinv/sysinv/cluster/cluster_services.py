@@ -134,5 +134,5 @@ class ClusterServices(object):
             self.__cluster_data = xml.CLUSTER_DATA
             self.__loaded = True
 
-        except:
+        except Exception:
             LOG.error("error:", sys.exc_info()[0])

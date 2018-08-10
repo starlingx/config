@@ -261,7 +261,7 @@ def get_tpm_config():
     tpmconfig = None
     try:
         tpmconfig = pecan.request.dbapi.tpmconfig_get_one()
-    except:
+    except exception.SysinvException:
         pass
     return tpmconfig
 
@@ -283,7 +283,7 @@ def get_sdn_l3_mode_enabled():
         allowed_vals = constants.SERVICE_PLUGINS_SDN
         return (any(sp in allowed_vals
                         for sp in sdn_l3_mode.value.split(',')))
-    except:
+    except exception.SysinvException:
         return False
 
 
@@ -606,7 +606,7 @@ class SBApiHelper(object):
             backend_enable_function(pecan.request.context)
             LOG.info("Configuration of storage %s backend initialized, "
                      "continuing in background." % sb.backend.title())
-        except:
+        except exception.SysinvException:
             LOG.exception("Manifests failed!")
             # Set lvm backend to error so that it can be recreated
             values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}

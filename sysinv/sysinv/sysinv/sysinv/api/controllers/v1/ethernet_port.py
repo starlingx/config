@@ -389,7 +389,7 @@ class EthernetPortController(rest.RestController):
                     interface = objects.interface.get_by_uuid(
                         pecan.request.context, p['value'])
                     p['value'] = interface.id
-                except:
+                except exception.SysinvException:
                     p['value'] = None
 
         try:

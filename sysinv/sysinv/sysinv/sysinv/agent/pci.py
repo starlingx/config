@@ -186,7 +186,7 @@ class PCIOperator(object):
             with open(fnuma_node, 'r') as f:
                 numa_node = f.readline().strip()
                 LOG.debug("ATTR numa_node: %s " % numa_node)
-        except:
+        except Exception:
             LOG.debug("ATTR numa_node unknown for: %s " % pciaddr)
             numa_node = None
         return numa_node
@@ -198,7 +198,7 @@ class PCIOperator(object):
                 sriov_totalvfs = f.readline()
                 LOG.debug("ATTR sriov_totalvfs: %s " % sriov_totalvfs)
                 f.close()
-        except:
+        except Exception:
             LOG.debug("ATTR sriov_totalvfs unknown for: %s " % pciaddr)
             sriov_totalvfs = None
             pass
@@ -211,7 +211,7 @@ class PCIOperator(object):
                 sriov_numvfs = f.readline()
                 LOG.debug("ATTR sriov_numvfs: %s " % sriov_numvfs)
                 f.close()
-        except:
+        except Exception:
             LOG.debug("ATTR sriov_numvfs unknown for: %s " % pciaddr)
             sriov_numvfs = 0
             pass
@@ -226,7 +226,7 @@ class PCIOperator(object):
             lvf = dirpcidev + '/virtfn' + str(i)
             try:
                 sriov_vfs_pci_address.append(os.path.basename(os.readlink(lvf)))
-            except:
+            except Exception:
                 LOG.warning("virtfn link %s non-existent (sriov_numvfs=%s)"
                             % (lvf, sriov_numvfs))
                 pass
@@ -242,7 +242,7 @@ class PCIOperator(object):
                        ]
             driver = str(','.join(str(d) for d in drivers))
 
-        except:
+        except Exception:
             LOG.debug("ATTR driver unknown for: %s " % pciaddr)
             driver = None
             pass
@@ -343,21 +343,21 @@ class PCIOperator(object):
                 try:
                     with open(fvendor, 'r') as f:
                         pvendor_id = f.readline().strip('0x').strip()
-                except:
+                except Exception:
                     LOG.debug("ATTR vendor unknown for: %s " % a)
                     pvendor_id = None
 
                 try:
                     with open(fdevice, 'r') as f:
                         pdevice_id = f.readline().replace('0x', '').strip()
-                except:
+                except Exception:
                     LOG.debug("ATTR device unknown for: %s " % a)
                     pdevice_id = None
 
                 try:
                     with open(fclass, 'r') as f:
                         pclass_id = f.readline().replace('0x', '').strip()
-                except:
+                except Exception:
                     LOG.debug("ATTR class unknown for: %s " % a)
                     pclass_id = None
 
@@ -404,7 +404,7 @@ class PCIOperator(object):
             with open(fflags, 'r') as f:
                 hex_str = f.readline().rstrip()
                 flags = int(hex_str, 16)
-        except:
+        except Exception:
             flags = None
         return flags
 
@@ -452,14 +452,14 @@ class PCIOperator(object):
                 try:
                     with open(fvendor, 'r') as f:
                         vendor = f.readline().strip()
-                except:
+                except Exception:
                     LOG.debug("ATTR vendor unknown for: %s " % a)
                     vendor = None
 
                 try:
                     with open(fdevice, 'r') as f:
                         device = f.readline().strip()
-                except:
+                except Exception:
                     LOG.debug("ATTR device unknown for: %s " % a)
                     device = None
 
@@ -517,7 +517,7 @@ class PCIOperator(object):
                                 if not mac:
                                     LOG.info("ATTR mac could not be determined "
                                              "for slave interface %s" % n)
-                        except:
+                        except Exception:
                             LOG.info("ATTR mac could not be determined, "
                                      "could not open %s" % procnetbonding)
                     else:
@@ -525,14 +525,14 @@ class PCIOperator(object):
                             with open(fmac, 'r') as f:
                                 mac = f.readline().rstrip()
                                 mac = utils.validate_and_normalize_mac(mac)
-                        except:
+                        except Exception:
                             LOG.info("ATTR mac unknown for: %s " % n)
 
                     fmtu = dirpcinet + n + '/' + "mtu"
                     try:
                         with open(fmtu, 'r') as f:
                             mtu = f.readline().rstrip()
-                    except:
+                    except Exception:
                         LOG.debug("ATTR mtu unknown for: %s " % n)
                         mtu = None
 
@@ -554,7 +554,7 @@ class PCIOperator(object):
                                 LOG.error("Invalid port speed = %s for %s " %
                                          (speed, n))
                                 speed = None
-                    except:
+                    except Exception:
                         LOG.warning("ATTR speed unknown for: %s (flags: %s)" % (n, hex(flags)))
                         speed = None
                     # If the administrative state was down, take it back down
@@ -568,7 +568,7 @@ class PCIOperator(object):
                     try:
                         with open(flink_mode, 'r') as f:
                             link_mode = f.readline().rstrip()
-                    except:
+                    except Exception:
                         LOG.debug("ATTR link_mode unknown for: %s " % n)
                         link_mode = None
 
@@ -576,7 +576,7 @@ class PCIOperator(object):
                     try:
                         with open(fdevport, 'r') as f:
                             dev_port = int(f.readline().rstrip(), 0)
-                    except:
+                    except Exception:
                         LOG.debug("ATTR dev_port unknown for: %s " % n)
                         # Kernel versions older than 3.15 used dev_id
                         # (incorrectly) to identify the network devices,
@@ -586,7 +586,7 @@ class PCIOperator(object):
                             fdevid = dirpcinet + n + '/' + "dev_id"
                             with open(fdevid, 'r') as f:
                                 dev_port = int(f.readline().rstrip(), 0)
-                        except:
+                        except Exception:
                             LOG.debug("ATTR dev_id unknown for: %s " % n)
                             dev_port = 0
 

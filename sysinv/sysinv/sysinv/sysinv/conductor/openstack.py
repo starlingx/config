@@ -271,7 +271,7 @@ class OpenStackOperator(object):
         if not aggregates:
             try:
                 aggregates = self._get_novaclient().aggregates.list()
-            except:
+            except Exception:
                 self.nova_client = None  # password may have updated
                 aggregates = self._get_novaclient().aggregates.list()
 
@@ -480,12 +480,12 @@ class OpenStackOperator(object):
                                                   providernet)
 
             ihost_providernets = list(ihost_aggset_provider)
-        except:
+        except Exception:
             LOG.exception("AGG iinterfaces_get failed for %s." % ihost_uuid)
 
         try:
             aggregates = self._get_novaclient().aggregates.list()
-        except:
+        except Exception:
             self.nova_client = None  # password may have updated
             aggregates = self._get_novaclient().aggregates.list()
             pass
@@ -507,7 +507,7 @@ class OpenStackOperator(object):
                     aggregates.append(aggregate)
                     LOG.debug("AGG6 aggregate= %s. aggregates= %s" % (aggregate,
                                                                       aggregates))
-                except:
+                except Exception:
                     # do not continue i, redo as potential race condition
                     LOG.error("AGG6 EXCEPTION aggregate i=%s, aggregates=%s" %
                               (i, aggregates))
@@ -530,7 +530,7 @@ class OpenStackOperator(object):
                         LOG.debug("AGG8 aggregate metadata = %s." % metadata)
                         aggregate = self._get_novaclient().aggregates.set_metadata(
                                                        aggregate.id, metadata)
-                except:
+                except Exception:
                     LOG.error("AGG8 EXCEPTION aggregate")
                     pass
 
@@ -555,7 +555,7 @@ class OpenStackOperator(object):
                         try:
                             metadata = self._get_novaclient().aggregates.add_host(
                                                               i.id, ihost.hostname)
-                        except:
+                        except Exception:
                             LOG.warn("AGG10 EXCEPTION aggregate id = %s ihost= %s."
                                      % (i.id, ihost.hostname))
                             return False

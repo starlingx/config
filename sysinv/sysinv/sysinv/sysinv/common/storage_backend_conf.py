@@ -89,7 +89,7 @@ class StorageBackendConfig(object):
         backends = []
         try:
             backend_list = api.storage_backend_get_list()
-        except:
+        except Exception:
             backend_list = []
 
         for backend in backend_list:

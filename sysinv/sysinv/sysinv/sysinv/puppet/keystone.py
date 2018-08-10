@@ -391,5 +391,5 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
                 msg = ("section '%s' contains no configuration options" % section)
                 raise Exception(msg)
             return dict(rules)
-        except:
+        except Exception:
             raise Exception("Failed to extract password rules from file")

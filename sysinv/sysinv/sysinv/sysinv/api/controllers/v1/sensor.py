@@ -459,7 +459,7 @@ class SensorController(rest.RestController):
                     p['value'] = sensorgroup.id
                     LOG.info("sensorgroup_uuid=%s id=%s" % (p['value'],
                                                             sensorgroup.id))
-                except:
+                except exception.SysinvException:
                     p['value'] = None
 
         try:

@@ -72,8 +72,8 @@ def host_modify(token, address, port, ihost_mtce, timeout, max_retries=1):
             # Note: Even there is a timeout but neither of these "except" got it.
             LOG.warn("WARNING rest_api_request Timeout Error e=%s" % (e))
             raise si_exception.SysInvSignalTimeout
-        except:
-            LOG.warn("WARNING rest_api_request Unexpected Error")
+        except si_exception.SysinvException as e:
+            LOG.warn("WARNING rest_api_request Unexpected Error e=%s" % (e))
 
     return response
 

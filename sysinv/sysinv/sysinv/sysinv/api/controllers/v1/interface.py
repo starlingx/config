@@ -346,7 +346,7 @@ class InterfaceController(rest.RestController):
             try:
                 host = pecan.request.dbapi.ihost_get(ihost)
                 ihost_id = host.uuid
-            except:
+            except exception.SysinvException:
                 raise wsme.exc.ClientSideError(_("Invalid ihost %s" % ihost))
 
         return self._get_interfaces_collection(ihost_id, marker, limit,

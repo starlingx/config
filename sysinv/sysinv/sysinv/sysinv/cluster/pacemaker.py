@@ -89,7 +89,7 @@ class Pacemaker(object):
 
             os.remove(pacemaker_xml_filename)
 
-        except:
+        except Exception:
             if os.path.exists(pacemaker_xml_filename):
                 os.remove(pacemaker_xml_filename)
 
@@ -199,7 +199,7 @@ class Pacemaker(object):
             os.system("/usr/sbin/crm node %s %s" % (action, node_name))
             return True
 
-        except:
+        except Exception:
             LOG.error("error:", sys.exc_info()[0])
             return False
 
@@ -216,7 +216,7 @@ class Pacemaker(object):
                       % (resource_name, node_name, lifetime))
             return True
 
-        except:
+        except Exception:
             os.system("/usr/sbin/crm resource unmigrate %s" % resource_name)
             LOG.error("error:", sys.exc_info()[0])
             return False
