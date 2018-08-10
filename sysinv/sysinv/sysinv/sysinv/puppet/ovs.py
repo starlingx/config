@@ -86,6 +86,10 @@ class OVSPuppet(base.BasePuppet):
         }
 
     def _get_ethernet_device(self, iface):
+        if interface.is_a_mellanox_device(self.context, iface):
+            # Mellanox devices are not bound to the DPDK driver
+            return None
+
         port = interface.get_interface_port(self.context, iface)
 
         pci_addr = self.quoted_str(port.pciaddr)
@@ -98,10 +102,17 @@ class OVSPuppet(base.BasePuppet):
 
         port = interface.get_interface_port(self.context, iface)
 
+        if interface.is_a_mellanox_device(self.context, iface):
+            # Mellanox devices use an ibverbs enumerated device name, therefore
+            # use the MAC address to identify the device.
+            device_name = "class=eth,mac=%s" % iface['imac']
+        else:
+            device_name = str(port.pciaddr)
+
         rxq_count = len(self.context["_ovs_cpus"])
 
         attributes = [
-            "options:dpdk-devargs=%s" % str(port.pciaddr),
+            "options:dpdk-devargs=%s" % device_name,
             "options:n_rxq=%d" % rxq_count,
             "mtu_request=%d" % iface['imtu']
         ]
@@ -123,7 +134,9 @@ class OVSPuppet(base.BasePuppet):
 
         ifname = 'eth%d' % index
 
-        devices.append(self._get_ethernet_device(iface))
+        device = self._get_ethernet_device(iface)
+        if device:
+            devices.append(device)
         interfaces.append(self._get_ethernet_interface(host, iface, ifname))
 
         port = {
@@ -157,7 +170,10 @@ class OVSPuppet(base.BasePuppet):
             lower_iface = self.context['interfaces'][lower_ifname]
             member_ifname = '%s.%d' % (ifname, member)
 
-            devices.append(self._get_ethernet_device(lower_iface))
+            device = self._get_ethernet_device(lower_iface)
+            if device:
+                devices.append(device)
+
             interfaces.append(self._get_ethernet_interface(
                 host, lower_iface, member_ifname))
 
@@ -182,7 +198,10 @@ class OVSPuppet(base.BasePuppet):
 
         lower_iface = interface.get_lower_interface(self.context, iface)
 
-        devices.append(self._get_ethernet_device(lower_iface))
+        device = self._get_ethernet_device(lower_iface)
+        if device:
+            devices.append(device)
+
         interfaces.append(self._get_ethernet_interface(
             host, lower_iface, ifname))
 
