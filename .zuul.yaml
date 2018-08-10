@@ -4,3 +4,18 @@
       jobs:
         - openstack-tox-linters:
             voting: false
+        - sysinv-tox-unittest:
+            voting: false
+
+- job:
+    name: sysinv-tox-unittest
+    parent: tox
+    description: |
+      Run unit test for sysinv
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+      - openstack/stx-integ
+    vars:
+      tox_envlist: py27
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini

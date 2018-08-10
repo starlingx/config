@@ -20,7 +20,6 @@ project = 'sysinv'
 
 setuptools.setup(
     name=project,
-    version='2013.2',
     description='Bare Metal controller',
     classifiers=[
         'Environment :: OpenStack',
