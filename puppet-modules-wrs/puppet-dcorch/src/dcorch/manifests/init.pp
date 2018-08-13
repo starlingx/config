@@ -76,13 +76,17 @@ class dcorch (
 
   file { $::dcorch::params::dcorch_conf:
     ensure  => present,
-    mode    => '0600',
+    mode    => '0640',
+    owner   => 'dcorch',
+    group   => 'dcorch',
     require => Package['dcorch'],
   }
 
   file { $::dcorch::params::dcorch_paste_api_ini:
     ensure  => present,
-    mode    => '0600',
+    mode    => '0640',
+    owner   => 'dcorch',
+    group   => 'dcorch',
     require => Package['dcorch'],
   }
 
