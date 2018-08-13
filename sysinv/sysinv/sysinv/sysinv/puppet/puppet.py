@@ -49,6 +49,7 @@ from . import storage
 from . import device
 from . import service_parameter
 from . import kubernetes
+from . import smapi
 
 
 LOG = logging.getLogger(__name__)
@@ -103,6 +104,7 @@ class PuppetOperator(object):
         self.ironic = ironic.IronicPuppet(self)
         self.kubernetes = kubernetes.KubernetesPuppet(self)
         self.service_parameter = service_parameter.ServiceParamPuppet(self)
+        self.smapi = smapi.SmPuppet(self)
 
     @property
     def context(self):
@@ -143,6 +145,7 @@ class PuppetOperator(object):
             config.update(self.ldap.get_static_config())
             config.update(self.dcmanager.get_static_config())
             config.update(self.dcorch.get_static_config())
+            config.update(self.smapi.get_static_config())
 
             filename = 'static.yaml'
             self._write_config(filename, config)
@@ -186,6 +189,7 @@ class PuppetOperator(object):
             config.update(self.panko.get_secure_static_config())
             config.update(self.dcmanager.get_secure_static_config())
             config.update(self.dcorch.get_secure_static_config())
+            config.update(self.smapi.get_secure_static_config())
 
             filename = 'secure_static.yaml'
             self._write_config(filename, config)
@@ -224,6 +228,7 @@ class PuppetOperator(object):
             config.update(self.dcmanager.get_system_config())
             config.update(self.dcorch.get_system_config())
             config.update(self.kubernetes.get_system_config())
+            config.update(self.smapi.get_system_config())
             # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_system_config())
 
@@ -295,6 +300,7 @@ class PuppetOperator(object):
             config.update(self.device.get_host_config(host))
             config.update(self.nova.get_host_config(host))
             config.update(self.neutron.get_host_config(host))
+            config.update(self.smapi.get_host_config(host))
             # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_host_config(host))
 

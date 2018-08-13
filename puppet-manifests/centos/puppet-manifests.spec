@@ -20,6 +20,7 @@ Requires: puppet-nova_api_proxy
 Requires: puppet-patching
 Requires: puppet-sysinv
 Requires: puppet-sshd
+Requires: puppet-smapi
 
 # Openstack puppet modules
 Requires: puppet-aodh

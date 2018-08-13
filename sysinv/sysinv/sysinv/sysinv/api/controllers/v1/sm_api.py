@@ -1,12 +1,14 @@
 #
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2016-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 import json
+import pecan
 import socket
+from rest_api import get_token
 from rest_api import rest_api_request
-
+from sysinv.common.constants import REGION_ONE_NAME
 from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)
@@ -17,10 +19,15 @@ SM_API_PATH = "http://{host}:{port}".\
     format(host=SM_API_HOST, port=SM_API_PORT)
 
 
+def _get_token():
+    system = pecan.request.dbapi.isystem_get_one()
+    return get_token(system.region_name)
+
 def swact_pre_check(hostname, timeout):
     """
     Sends a Swact Pre-Check command to SM.
     """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/servicenode/%s" % hostname
 
@@ -35,7 +42,7 @@ def swact_pre_check(hostname, timeout):
     api_cmd_payload['oper'] = "unknown"
     api_cmd_payload['avail'] = ""
 
-    response = rest_api_request(None, "PATCH", api_cmd, api_cmd_headers,
+    response = rest_api_request(token, "PATCH", api_cmd, api_cmd_headers,
                                 json.dumps(api_cmd_payload), timeout)
 
     return response
@@ -45,6 +52,7 @@ def lock_pre_check(hostname, timeout):
     """
         Sends a Lock Pre-Check command to SM.
         """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/servicenode/%s" % hostname
 
@@ -59,7 +67,7 @@ def lock_pre_check(hostname, timeout):
     api_cmd_payload['oper'] = "unknown"
     api_cmd_payload['avail'] = ""
 
-    response = rest_api_request(None, "PATCH", api_cmd, api_cmd_headers,
+    response = rest_api_request(token, "PATCH", api_cmd, api_cmd_headers,
                                 json.dumps(api_cmd_payload), timeout)
 
     return response
@@ -69,6 +77,7 @@ def service_list():
     """
     Sends a service list command to SM.
     """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/services"
 
@@ -77,7 +86,7 @@ def service_list():
     api_cmd_headers['Accept'] = "application/json"
     api_cmd_headers['User-Agent'] = "sysinv/1.0"
 
-    response = rest_api_request(None, "GET", api_cmd, api_cmd_headers, None)
+    response = rest_api_request(token, "GET", api_cmd, api_cmd_headers, None)
 
     return response
 
@@ -86,6 +95,7 @@ def service_show(hostname):
     """
     Sends a service show command to SM.
     """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/services/%s" % hostname
 
@@ -94,7 +104,7 @@ def service_show(hostname):
     api_cmd_headers['Accept'] = "application/json"
     api_cmd_headers['User-Agent'] = "sysinv/1.0"
 
-    response = rest_api_request(None, "GET", api_cmd, api_cmd_headers, None)
+    response = rest_api_request(token, "GET", api_cmd, api_cmd_headers, None)
     return response
 
 
@@ -102,6 +112,7 @@ def servicenode_list():
     """
     Sends a service list command to SM.
     """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/nodes"
 
@@ -110,7 +121,7 @@ def servicenode_list():
     api_cmd_headers['Accept'] = "application/json"
     api_cmd_headers['User-Agent'] = "sysinv/1.0"
 
-    response = rest_api_request(None, "GET", api_cmd, api_cmd_headers, None)
+    response = rest_api_request(token, "GET", api_cmd, api_cmd_headers, None)
 
     return response
 
@@ -119,6 +130,7 @@ def servicenode_show(hostname):
     """
     Sends a service show command to SM.
     """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/nodes/%s" % hostname
 
@@ -127,7 +139,7 @@ def servicenode_show(hostname):
     api_cmd_headers['Accept'] = "application/json"
     api_cmd_headers['User-Agent'] = "sysinv/1.0"
 
-    response = rest_api_request(None, "GET", api_cmd, api_cmd_headers, None)
+    response = rest_api_request(token, "GET", api_cmd, api_cmd_headers, None)
 
     return response
 
@@ -136,6 +148,7 @@ def sm_servicegroup_list():
     """
     Sends a service list command to SM.
     """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/sm_sda"
 
@@ -144,7 +157,7 @@ def sm_servicegroup_list():
     api_cmd_headers['Accept'] = "application/json"
     api_cmd_headers['User-Agent'] = "sysinv/1.0"
 
-    response = rest_api_request(None, "GET", api_cmd, api_cmd_headers, None)
+    response = rest_api_request(token, "GET", api_cmd, api_cmd_headers, None)
 
     # rename the obsolete sm_sda to sm_servicegroups
     if isinstance(response, dict):
@@ -158,6 +171,7 @@ def sm_servicegroup_show(hostname):
     """
     Sends a service show command to SM.
     """
+    token = _get_token()
     api_cmd = SM_API_PATH
     api_cmd += "/v1/sm_sda/%s" % hostname
 
@@ -166,6 +180,6 @@ def sm_servicegroup_show(hostname):
     api_cmd_headers['Accept'] = "application/json"
     api_cmd_headers['User-Agent'] = "sysinv/1.0"
 
-    response = rest_api_request(None, "GET", api_cmd, api_cmd_headers, None)
+    response = rest_api_request(token, "GET", api_cmd, api_cmd_headers, None)
 
     return response

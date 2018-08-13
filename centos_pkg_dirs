@@ -16,3 +16,4 @@ puppet-modules-wrs/puppet-patching
 puppet-modules-wrs/puppet-sysinv
 puppet-modules-wrs/puppet-dcorch
 puppet-modules-wrs/puppet-dcmanager
+puppet-modules-wrs/puppet-smapi
