@@ -30,7 +30,7 @@ To install the utilities on a Linux machine follow these steps:
     installed as follows:
 
         if using Ubuntu/Debian:
-            sudo apt-get install python-wxgtk2.8 python-wxtools
+            sudo apt-get install python-wxtools
 
         if using Fedora:
             sudo yum install wxPython python-setuptools
