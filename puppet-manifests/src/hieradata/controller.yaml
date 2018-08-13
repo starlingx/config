@@ -295,6 +295,8 @@ neutron::services::bgpvpn::service_providers:
 # ceilometer
 ceilometer::agent::notification::enabled: false
 ceilometer::agent::notification::disable_non_metric_meters: false
+ceilometer::agent::notification::manage_event_pipeline: true
+ceilometer::agent::notification::event_pipeline_publishers: ['gnocchi://', 'direct://?dispatcher=panko']
 
 ceilometer::agent::polling::central_namespace: true
 ceilometer::agent::polling::compute_namespace: false
