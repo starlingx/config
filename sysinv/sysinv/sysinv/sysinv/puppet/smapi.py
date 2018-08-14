@@ -56,7 +56,7 @@ class SmPuppet(openstack.OpenstackBasePuppet):
 
     def get_host_config(self, host):
         config = {
-            'platform::smapi::params::bind_ip': host.hostname,
+            'platform::smapi::params::bind_ip': host.mgmt_ip,
         }
 
         return config
