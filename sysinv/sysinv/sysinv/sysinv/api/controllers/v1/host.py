@@ -5372,6 +5372,17 @@ class HostController(rest.RestController):
                 if utils.get_https_enabled():
                     self._semantic_check_tpm_config(ihost_ctr)
 
+        # Check: If DRBD is resizing
+        controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
+        for controller_fs in controller_fs_list:
+            if controller_fs['replicated']:
+                if (controller_fs.get('state') ==
+                        constants.CONTROLLER_FS_RESIZING_IN_PROGRESS):
+                    raise wsme.exc.ClientSideError(
+                        _("drbd '%s' is resizing. Wait for the resizing to "
+                          "complete before issuing Swact") %
+                        (controller_fs['name']))
+
         # Check: Valid Swact action: Pre-Swact Check
         response = sm_api.swact_pre_check(hostupdate.ihost_orig['hostname'],
                                           timeout=30)
