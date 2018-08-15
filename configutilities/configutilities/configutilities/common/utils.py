@@ -42,7 +42,10 @@ EXPECTED_SERVICE_NAME_AND_TYPE = (
      "PANKO_SERVICE_NAME": "panko",
      "PANKO_SERVICE_TYPE": "event",
      "GNOCCHI_SERVICE_NAME": "gnocchi",
-     "GNOCCHI_SERVICE_TYPE": "metric"})
+     "GNOCCHI_SERVICE_TYPE": "metric",
+     "FM_SERVICE_NAME": "fm",
+     "FM_SERVICE_TYPE": "faultmanagement",
+})
 
 
 def is_valid_vlan(vlan):

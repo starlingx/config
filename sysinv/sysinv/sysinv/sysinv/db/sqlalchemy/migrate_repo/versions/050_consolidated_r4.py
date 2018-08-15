@@ -279,10 +279,6 @@ def upgrade(migrate_engine):
     # Update the storage_lvm table.
     _update_storage_lvm_device_path(storage_lvm)
 
-    # 061_fm_add_mgmt_affecting.py
-    event_suppression = Table('event_suppression', meta, autoload=True)
-    event_suppression.create_column(Column('mgmt_affecting', String(255)))
-
     # 062_iscsi_initiator_name.py
     i_host = Table('i_host', meta, autoload=True)
     i_host.create_column(Column('iscsi_initiator_name', String(64)))

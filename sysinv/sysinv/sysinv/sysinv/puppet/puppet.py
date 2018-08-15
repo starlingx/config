@@ -25,6 +25,7 @@ from . import cinder
 from . import common
 from . import dcmanager
 from . import dcorch
+from . import fm
 from . import glance
 from . import gnocchi
 from . import heat
@@ -105,6 +106,7 @@ class PuppetOperator(object):
         self.kubernetes = kubernetes.KubernetesPuppet(self)
         self.service_parameter = service_parameter.ServiceParamPuppet(self)
         self.smapi = smapi.SmPuppet(self)
+        self.fm = fm.FmPuppet(self)
 
     @property
     def context(self):
@@ -146,6 +148,7 @@ class PuppetOperator(object):
             config.update(self.dcmanager.get_static_config())
             config.update(self.dcorch.get_static_config())
             config.update(self.smapi.get_static_config())
+            config.update(self.fm.get_static_config())
 
             filename = 'static.yaml'
             self._write_config(filename, config)
@@ -190,6 +193,7 @@ class PuppetOperator(object):
             config.update(self.dcmanager.get_secure_static_config())
             config.update(self.dcorch.get_secure_static_config())
             config.update(self.smapi.get_secure_static_config())
+            config.update(self.fm.get_secure_static_config())
 
             filename = 'secure_static.yaml'
             self._write_config(filename, config)
@@ -229,6 +233,7 @@ class PuppetOperator(object):
             config.update(self.dcorch.get_system_config())
             config.update(self.kubernetes.get_system_config())
             config.update(self.smapi.get_system_config())
+            config.update(self.fm.get_system_config())
             # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_system_config())
 
@@ -261,6 +266,7 @@ class PuppetOperator(object):
             config.update(self.dcmanager.get_secure_system_config())
             config.update(self.dcorch.get_secure_system_config())
             config.update(self.kubernetes.get_secure_system_config())
+            config.update(self.fm.get_secure_system_config())
 
             filename = 'secure_system.yaml'
             self._write_config(filename, config)
@@ -301,6 +307,7 @@ class PuppetOperator(object):
             config.update(self.nova.get_host_config(host))
             config.update(self.neutron.get_host_config(host))
             config.update(self.smapi.get_host_config(host))
+            config.update(self.fm.get_host_config(host))
             # service_parameter must be last to permit overrides
             config.update(self.service_parameter.get_host_config(host))
 

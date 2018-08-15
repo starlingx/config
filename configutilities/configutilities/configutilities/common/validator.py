@@ -992,6 +992,13 @@ class ConfigValidator(object):
         gnocchi_password = get_optional(self.conf, 'REGION_2_SERVICES',
                                         'GNOCCHI_PASSWORD')
 
+        # validate fm service name and type
+        get_service(self.conf, 'REGION_2_SERVICES', 'FM_SERVICE_NAME')
+        get_service(self.conf, 'REGION_2_SERVICES', 'FM_SERVICE_TYPE')
+        fm_user_name = self.conf.get('REGION_2_SERVICES', 'FM_USER_NAME')
+        fm_password = get_optional(self.conf, 'REGION_2_SERVICES',
+                                   'FM_PASSWORD')
+
         if self.conf.has_option('REGION_2_SERVICES', 'USER_DOMAIN_NAME'):
             user_domain = self.conf.get('REGION_2_SERVICES',
                                         'USER_DOMAIN_NAME')
@@ -1100,6 +1107,8 @@ class ConfigValidator(object):
             self.cgcs_conf.set('cREGION', 'GNOCCHI_USER_NAME',
                                gnocchi_user_name)
             self.cgcs_conf.set('cREGION', 'GNOCCHI_PASSWORD', gnocchi_password)
+            self.cgcs_conf.set('cREGION', 'FM_USER_NAME', fm_user_name)
+            self.cgcs_conf.set('cREGION', 'FM_PASSWORD', fm_password)
 
             self.cgcs_conf.set('cREGION', 'USER_DOMAIN_NAME',
                                user_domain)

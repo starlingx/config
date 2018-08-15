@@ -325,6 +325,7 @@ class openstack::keystone::endpoint::runtime {
     include ::sysinv::keystone::auth
     include ::patching::keystone::auth
     include ::nfv::keystone::auth
+    include ::fm::keystone::auth
 
     include ::openstack::aodh::params
     if $::openstack::aodh::params::service_enabled {

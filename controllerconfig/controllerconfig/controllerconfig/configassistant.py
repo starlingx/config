@@ -506,6 +506,9 @@ class ConfigAssistant():
         self.mtce_ks_password = ""
         self.nfv_ks_user_name = ""
         self.nfv_ks_password = ""
+        self.fm_ks_user_name = ""
+        self.fm_ks_password = ""
+
         self.ldap_region_name = ""
         self.ldap_service_name = ""
         self.ldap_service_uri = ""
@@ -2831,6 +2834,12 @@ class ConfigAssistant():
                     'cREGION', 'NFV_PASSWORD')
                 self.add_password_for_validation('NFV_PASSWORD',
                                                  self.nfv_ks_password)
+                self.fm_ks_user_name = config.get(
+                    'cREGION', 'FM_USER_NAME')
+                self.panko_ks_password = config.get(
+                    'cREGION', 'FM_PASSWORD')
+                self.add_password_for_validation('FM_PASSWORD',
+                                                 self.fm_ks_password)
 
                 self.shared_services.append(self.keystone_service_type)
                 if self.glance_region_name == self.region_1_name:
@@ -3403,6 +3412,10 @@ class ConfigAssistant():
                             self.mtce_ks_user_name)
                     f.write("MTCE_PASSWORD=%s\n" %
                             self.mtce_ks_password)
+                    f.write("FM_USER_NAME=%s\n" %
+                            self.fm_ks_user_name)
+                    f.write("FM_PASSWORD=%s\n" %
+                            self.fm_ks_password)
 
                 # Subcloud configuration
                 if self.subcloud_config():
@@ -3749,6 +3762,14 @@ class ConfigAssistant():
                   'capabilities': capabilities}
         client.sysinv.sm_service.service_create(**values)
 
+        # fm service config
+        capabilities = {'user_name': self.fm_ks_user_name}
+        values = {'name': "fm",
+                  'enabled': True,
+                  'region_name': self.region_2_name,
+                  'capabilities': capabilities}
+        client.sysinv.sm_service.service_create(**values)
+
         # possible shared services (glance)
         capabilities = {'service_name': self.glance_service_name,
                         'service_type': self.glance_service_type,
@@ -3954,6 +3975,9 @@ class ConfigAssistant():
 
         keyring.set_password('vim', constants.DEFAULT_SERVICE_PROJECT_NAME,
                              self.nfv_ks_password)
+
+        keyring.set_password('fm', constants.DEFAULT_SERVICE_PROJECT_NAME,
+                             self.fm_ks_password)
 
         del os.environ["XDG_DATA_HOME"]
 

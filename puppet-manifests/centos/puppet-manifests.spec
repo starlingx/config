@@ -21,6 +21,7 @@ Requires: puppet-patching
 Requires: puppet-sysinv
 Requires: puppet-sshd
 Requires: puppet-smapi
+Requires: puppet-fm
 
 # Openstack puppet modules
 Requires: puppet-aodh

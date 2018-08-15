@@ -14,13 +14,10 @@ from cgtsclient.v1 import cluster_shell
 from cgtsclient.v1 import controller_fs_shell
 from cgtsclient.v1 import drbdconfig_shell
 from cgtsclient.v1 import ethernetport_shell
-from cgtsclient.v1 import event_log_shell
-from cgtsclient.v1 import event_suppression_shell
 from cgtsclient.v1 import firewallrules_shell
 from cgtsclient.v1 import health_shell
 from cgtsclient.v1 import helm_shell
 
-from cgtsclient.v1 import ialarm_shell
 from cgtsclient.v1 import icommunity_shell
 from cgtsclient.v1 import icpu_shell
 from cgtsclient.v1 import idisk_shell
@@ -83,11 +80,8 @@ COMMAND_MODULES = [
     sm_service_nodes_shell,
     sm_servicegroup_shell,
     sm_service_shell,
-    ialarm_shell,
     icommunity_shell,
     itrapdest_shell,
-    event_log_shell,
-    event_suppression_shell,
     iinfra_shell,
     ethernetport_shell,
     port_shell,

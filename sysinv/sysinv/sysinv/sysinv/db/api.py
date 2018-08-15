@@ -1696,85 +1696,6 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ialarm_create(self, values):
-        """Create a new alarm.
-
-        :param values: A dict containing several items used to identify
-                       and track the alarm.
-        :returns: An ialarm.
-        """
-
-    @abc.abstractmethod
-    def ialarm_get(self, uuid):
-        """Return an ialarm.
-
-        :param uuid: The uuid of an alarm.
-        :returns: An ialarm.
-        """
-
-    @abc.abstractmethod
-    def ialarm_get_by_ids(self, alarm_id, entity_instance_id):
-        """Return an ialarm.
-
-        :param alarm_id: The alarm_id of an alarm.
-        :param entity_instance_id: The entity_instance_id of an alarm.
-        :returns: An ialarm.
-        """
-
-    @abc.abstractmethod
-    def ialarm_get_all(self, uuid=None, alarm_id=None, entity_type_id=None,
-                entity_instance_id=None, severity=None, alarm_type=None):
-        """Return a list of alarms for the given filters.
-
-        :param uuid: The uuid of an alarm.
-        :param alarm_id: The alarm_id of an alarm.
-        :param entity_type_id: The entity_type_id of an alarm.
-        :param entity_instance_id: The entity_instance_id of an alarm.
-        :param severity: The severity of an alarm.
-        :param alarm_type: The alarm_type of an alarm.
-        :returns:  ialarms.
-        """
-
-    @abc.abstractmethod
-    def ialarm_get_list(self, limit=None, marker=None,
-                        sort_key=None, sort_dir=None):
-        """Return a list of ialarms.
-
-        :param limit: Maximum number of ialarm to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        """
-
-    @abc.abstractmethod
-    def ialarm_update(self, id, values):
-        """Update properties of an ialarm.
-
-        :param id: The id or uuid of an ialarm.
-        :param values: Dict of values to update.
-
-        :returns: An ialarm.
-        """
-
-    @abc.abstractmethod
-    def ialarm_destroy(self, id):
-        """Destroy an ialarm.
-
-        :param id: The id or uuid of an ialarm.
-        """
-
-    @abc.abstractmethod
-    def ialarm_destroy_by_ids(self, alarm_id, entity_instance_id):
-        """Destroy an ialarm.
-
-        :param alarm_id: The alarm_id of an ialarm.
-        :param entity_instance_id: The entity_instance_id of an ialarm.
-
-        """
-
-    @abc.abstractmethod
     def iuser_create(self, values):
         """Create a new iuser for an isystem
 
@@ -2805,45 +2726,6 @@ class Connection(object):
         """Destroy an service.
 
         :param name: The name of an service
-        """
-
-    @abc.abstractmethod
-    def event_log_get(self, uuid):
-        """Return an event_log.
-
-        :param uuid: The uuid of an event_log.
-        :returns: An event_log.
-        """
-
-    @abc.abstractmethod
-    def event_log_get_all(self, uuid=None, event_log_id=None, entity_type_id=None,
-                               entity_instance_id=None, severity=None,
-                               event_log_type=None, start=None, end=None,
-                               limit=None):
-        """Return a list of event_log for the given filters.
-
-        :param uuid: The uuid of an event_log.
-        :param alarm_id: The alarm_id of an event_log.
-        :param entity_type_id: The entity_type_id of an event_log.
-        :param entity_instance_id: The entity_instance_id of an event_log.
-        :param severity: The severity of an event_log.
-        :param alarm_type: The alarm_type of an event_log.
-        :param start: The event_logs that occurred after start
-        :param end: The event_logs that occurred before end
-        :returns:  event_log.
-        """
-
-    @abc.abstractmethod
-    def event_log_get_list(self, limit=None, marker=None,
-                                sort_key=None, sort_dir=None, evtType="ALL"):
-        """Return a list of event_log.
-
-        :param limit: Maximum number of event_log to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
         """
 
     @abc.abstractmethod

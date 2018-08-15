@@ -26,12 +26,9 @@ from cgtsclient.v1 import cluster
 from cgtsclient.v1 import controller_fs
 from cgtsclient.v1 import drbdconfig
 from cgtsclient.v1 import ethernetport
-from cgtsclient.v1 import event_log
-from cgtsclient.v1 import event_suppression
 from cgtsclient.v1 import firewallrules
 from cgtsclient.v1 import health
 from cgtsclient.v1 import helm
-from cgtsclient.v1 import ialarm
 from cgtsclient.v1 import icommunity
 from cgtsclient.v1 import icpu
 from cgtsclient.v1 import idisk
@@ -117,9 +114,6 @@ class Client(http.HTTPClient):
         self.iprofile = iprofile.iprofileManager(self)
         self.icommunity = icommunity.iCommunityManager(self)
         self.itrapdest = itrapdest.iTrapdestManager(self)
-        self.ialarm = ialarm.ialarmManager(self)
-        self.event_log = event_log.EventLogManager(self)
-        self.event_suppression = event_suppression.EventSuppressionManager(self)
         self.iinfra = iinfra.iinfraManager(self)
         self.port = port.PortManager(self)
         self.ethernet_port = ethernetport.EthernetPortManager(self)

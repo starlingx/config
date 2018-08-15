@@ -524,3 +524,13 @@ dcorch::debug: false
 dcmanager::use_syslog: true
 dcmanager::log_facility: 'local2'
 dcmanager::debug: false
+
+#FM
+fm::use_syslog: true
+fm::log_facility: 'local2'
+fm::api::enable_proxy_headers_parsing: true
+fm::db::sync::user: 'root'
+fm::database_idle_timeout: 60
+fm::database_max_overflow: 20
+fm::database_max_pool_size: 1
+

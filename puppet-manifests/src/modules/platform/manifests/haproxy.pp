@@ -19,6 +19,7 @@ define platform::haproxy::proxy (
   $client_timeout = undef,
   $x_forwarded_proto = true,
   $enable_https = undef,
+  $public_api = true,
 ) {
   include ::platform::haproxy::params
   
@@ -29,7 +30,7 @@ define platform::haproxy::proxy (
   }  
 
   if $x_forwarded_proto {
-    if $https_enabled {
+    if $https_enabled and $public_api {
         $ssl_option = 'ssl crt /etc/ssl/private/server-cert.pem'
         $proto = 'X-Forwarded-Proto:\ https'
         # The value of max-age matches lighttpd.conf, and should be
@@ -135,6 +136,7 @@ class platform::haproxy::runtime {
   include ::platform::sysinv::haproxy
   include ::platform::nfv::haproxy
   include ::platform::ceph::haproxy
+  include ::platform::fm::haproxy
   if $::platform::params::distributed_cloud_role =='systemcontroller' {
     include ::platform::dcmanager::haproxy
     include ::platform::dcorch::haproxy
