@@ -11,6 +11,7 @@ restrict -6 default kod nomodify notrap nopeer noquery
 restrict 127.0.0.1
 restrict -6 ::1
 
+<%- if @enabled == true -%>
 # orphan - Use orphan mode if external servers are unavailable (or not configured).
 # minclock - Prevent clustering algorithm from casting out any outlyers by setting
 #            minclock to the maximum number of ntp servers that can be configured
@@ -23,4 +24,6 @@ peer <%= @peer_server %>
 
 <%- scope['platform::ntp::servers'].each do |server| -%>
 server <%= server %>
+<%- end -%>
+
 <%- end -%>
