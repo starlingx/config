@@ -45,13 +45,13 @@ To install the utilities on a Linux machine follow these steps:
                 sudo rpm -Uvh epel-release-6*.rpm
                 sudo yum install wxPython python-pip
 
-3.  Copy wrs-configutilities-3.0.1.tgz to the python install directory
+3.  Copy wrs-configutilities-3.0.2.tgz to the python install directory
     (i.e. /usr/lib/python2.7/dist-packages or /usr/lib/python2.7/site-packages)
 
 4.  Cd to this python install directory
 
 5.  Untar the file: 
-        sudo tar xfv wrs-configutilities-3.0.1.tgz
+        sudo tar xfv wrs-configutilities-3.0.2.tgz
 
 6.  Cd configutilities
 
