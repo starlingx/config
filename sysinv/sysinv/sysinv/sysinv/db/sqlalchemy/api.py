@@ -3577,7 +3577,7 @@ class Connection(api.Connection):
         try:
             return query.one()
         except NoResultFound:
-            raise exception.ServerNotFound(server=server)
+            raise exception.NTPNotFound(server=server)
 
     @objects.objectify(objects.ntp)
     def intp_create(self, values):
@@ -3633,7 +3633,7 @@ class Connection(api.Connection):
 
             count = query.update(values, synchronize_session='fetch')
             if count != 1:
-                raise exception.ServerNotFound(server=server)
+                raise exception.NTPNotFound(server=server)
             return query.one()
 
     def intp_destroy(self, server):
@@ -3644,7 +3644,7 @@ class Connection(api.Connection):
             try:
                 query.one()
             except NoResultFound:
-                raise exception.ServerNotFound(server=server)
+                raise exception.NTPNotFound(server=server)
             # if node_ref['reservation'] is not None:
             #     raise exception.NodeLocked(node=node)
 
@@ -4418,7 +4418,7 @@ class Connection(api.Connection):
         # isystem_get() to raise an exception if the isystem is not found
         isystem_obj = self.isystem_get(isystem_id)
         query = model_query(models.remotelogging)
-        query = query.filter_by(forisystemid=isystem_obj.id)
+        query = query.filter_by(system_id=isystem_obj.id)
         return _paginate_query(models.remotelogging, limit, marker,
                                sort_key, sort_dir, query)
 

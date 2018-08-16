@@ -1744,7 +1744,7 @@ class HostController(rest.RestController):
         delta_handle = list(delta)
 
         uptime_update = False
-        if 'uptime' in delta:
+        if 'uptime' in delta_handle:
             # There is a log of uptime updates, so just do a debug log
             uptime_update = True
             LOG.debug("%s %s patch" % (ihost_obj.hostname,

@@ -60,7 +60,7 @@ def donot_dns_add(cc, args):
         suuid = getattr(idns, 'uuid', '')
 
     except exc.HTTPNotFound:
-        raise exc.CommandError('DNS create failed: %s ' %
+        raise exc.CommandError('DNS create failed: name %s, fields %s ' %
                                (args.cname, fields))
 
     try:

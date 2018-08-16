@@ -1945,14 +1945,15 @@ class Connection(object):
 
         :param forisystemid: intp belongs to this isystem
         :param values: A dict containing several items used to identify
-                       and track the cpu.
+                       and track the ntp settings.
                         {
+                         'enabled': 'True'
                          'ntpservers': '0.pool.ntp.org,
                                         1.pool.ntp.org,
                                         2.pool.ntp.org',
                          'forisystemid': '1'
                         }
-        :returns: An ntp.
+        :returns: An intp.
         """
 
     @abc.abstractmethod

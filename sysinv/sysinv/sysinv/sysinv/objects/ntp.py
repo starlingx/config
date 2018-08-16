@@ -21,6 +21,7 @@ class NTP(base.SysinvObject):
             'id': int,
             'uuid': utils.str_or_none,
 
+            'enabled': utils.bool_or_none,
             'ntpservers': utils.str_or_none,
 
             'forisystemid': utils.int_or_none,

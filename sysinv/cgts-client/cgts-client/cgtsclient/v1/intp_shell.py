@@ -14,8 +14,8 @@ from cgtsclient import exc
 
 
 def _print_intp_show(intp):
-    fields = ['uuid', 'ntpservers', 'isystem_uuid',
-              'created_at', 'updated_at']
+    fields = ['uuid', 'enabled', 'ntpservers',
+              'isystem_uuid', 'created_at', 'updated_at']
     data = [(f, getattr(intp, f, '')) for f in fields]
     utils.print_tuple_list(data)
 
@@ -34,8 +34,8 @@ def donot_config_ntp_list(cc, args):
 
     intps = cc.intp.list()
 
-    field_labels = ['uuid', 'ntpservers']
-    fields = ['uuid', 'ntpservers']
+    field_labels = ['uuid', 'enabled', 'ntpservers']
+    fields = ['uuid', 'enabled', 'ntpservers']
     utils.print_list(intps, fields, field_labels, sortby=1)
 
 
@@ -59,7 +59,7 @@ def donot_ntp_add(cc, args):
         suuid = getattr(intp, 'uuid', '')
 
     except exc.HTTPNotFound:
-        raise exc.CommandError('NTP create failed: %s ' %
+        raise exc.CommandError('NTP create failed: name: %s, fields %s ' %
                                (args.cname, fields))
 
     try:
@@ -69,10 +69,12 @@ def donot_ntp_add(cc, args):
 
     _print_intp_show(intp)
 
-
+@utils.arg('--enabled',
+           metavar='<true/false>',
+           help="NTP service enabled.")
 @utils.arg('attributes',
            metavar='<path=value>',
-           nargs='+',
+           nargs='*',
            action='append',
            default=[],
            help="NTP attributes to modify ")
@@ -82,6 +84,9 @@ def do_ntp_modify(cc, args):
     intps = cc.intp.list()
     intp = intps[0]
     op = "replace"
+
+    if args.enabled is not None:
+        args.attributes[0].append('enabled=%s' % args.enabled)
 
     for attribute in args.attributes:
         if 'ntpservers=' in attribute:
