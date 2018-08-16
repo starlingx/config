@@ -582,6 +582,21 @@ class SBApiHelper(object):
                 )
 
     @staticmethod
+    def check_swift_enabled():
+        try:
+            swift_enabled = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_SWIFT,
+                section=constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
+                name=constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED)
+            if swift_enabled:
+                raise wsme.exc.ClientSideError(
+                    "Swift is already enabled through service parameter.")
+        except exception.SysinvException:
+            raise wsme.exc.ClientSideError(
+                "Failed to check if Swift is already enabled through service "
+                "parameter.")
+
+    @staticmethod
     def getListFromServices(be_dict):
         return [] if be_dict['services'] is None else be_dict['services'].split(',')
 
