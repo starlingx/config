@@ -8,6 +8,8 @@ class openstack::ceilometer::params (
 
 class openstack::ceilometer {
   include ::platform::amqp::params
+  include ::platform::params
+  include ::openstack::ceilometer::params
 
   class { '::ceilometer':
     rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
@@ -18,11 +20,53 @@ class openstack::ceilometer {
   if ($::openstack::ceilometer::params::service_create and
       $::platform::params::init_keystone) {
     include ::ceilometer::keystone::auth
+
+    if $::platform::params::distributed_cloud_role != 'systemcontroller' {
+      include ::openstack::gnocchi::params
+
+      Keystone_endpoint["${::openstack::gnocchi::params::region_name}/gnocchi::metric"] ->
+      class { '::ceilometer::db::sync':
+        extra_params => '--skip-metering-database'
+      }
+
+      if $::platform::params::vswitch_type !~ '^ovs' {
+        include ::gnocchi::keystone::authtoken
+
+        $os_auth_url = $::gnocchi::keystone::authtoken::auth_url
+        $os_username = $::gnocchi::keystone::authtoken::username
+        $os_user_domain = $::gnocchi::keystone::authtoken::user_domain_name
+        $os_project_name = $::gnocchi::keystone::authtoken::project_name
+        $os_project_domain = $::gnocchi::keystone::authtoken::project_domain_name
+        $os_region_name = $::gnocchi::keystone::authtoken::region_name
+        $os_auth_type = $::gnocchi::keystone::authtoken::auth_type
+        $os_password = $::gnocchi::keystone::authtoken::password
+        $os_interface = 'internalURL'
+
+        Class['::ceilometer::db::sync'] ->
+        exec { 'Creating vswitch resource types':
+          command => 'gnocchi resource-type create vswitch_engine \
+                        -a cpu_id:number:true:min=0 \
+                        -a host:string:true:max_length=64;
+                      gnocchi resource-type create vswitch_interface_and_port \
+                        -a host:string:false:max_length=64 \
+                        -a network_uuid:string:false:max_length=255 \
+                        -a network_id:string:false:max_length=255 \
+                        -a link-speed:number:false:min=0',
+          environment => ["OS_AUTH_URL=${os_auth_url}",
+                          "OS_USERNAME=${os_username}",
+                          "OS_USER_DOMAIN_NAME=${os_user_domain}",
+                          "OS_PROJECT_NAME=${os_project_name}",
+                          "OS_PROJECT_DOMAIN_NAME=${os_project_domain}",
+                          "OS_REGION_NAME=${os_region_name}",
+                          "OS_INTERFACE=${os_interface}",
+                          "OS_AUTH_TYPE=${os_auth_type}",
+                          "OS_PASSWORD=${os_password}"],
+        }
+      }
+    }
   }
 
   include ::ceilometer::agent::auth
-  include ::platform::params
-  include ::openstack::ceilometer::params
   include ::openstack::cinder::params
   include ::openstack::glance::params
 

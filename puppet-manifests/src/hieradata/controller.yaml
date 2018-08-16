@@ -307,7 +307,7 @@ ceilometer::keystone::auth::configure_endpoint: false
 
 
 # gnocchi
-gnocchi::api::enabled: false
+gnocchi::api::enabled: true
 gnocchi::api::service_name: 'openstack-gnocchi-api'
 gnocchi::api::enable_proxy_headers_parsing: true
 gnocchi::metricd::enabled: false
