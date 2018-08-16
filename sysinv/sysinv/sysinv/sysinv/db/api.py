@@ -2547,7 +2547,7 @@ class Connection(object):
         :param stor_ceph_ext_id: The id or uuid of a ceph storage backend.
         :param values: Dict of values to update.
                        {
-                        'ceph_conf': '/opt/extension/ceph/3p_ceph1.conf'
+                        'ceph_conf': '3p_ceph1.conf'
                        }
         :returns: An external ceph storage backend.
         """

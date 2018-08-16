@@ -9552,16 +9552,20 @@ class ConductorManager(service.PeriodicService):
     def store_ceph_external_config(self, context, contents, ceph_conf_filename):
         """Store the uploaded external ceph config file in /opt/platform/config
         """
-        ## Once this directory is created at installation time, we can
-        ## remove this code.
+        # Once this directory is created at installation time, we can
+        # remove this code.
         if not os.path.exists(tsc.PLATFORM_CEPH_CONF_PATH):
             os.makedirs(tsc.PLATFORM_CEPH_CONF_PATH)
         opt_ceph_conf_file = os.path.join(tsc.PLATFORM_CEPH_CONF_PATH,
                                           ceph_conf_filename)
 
+        # Because user needs root permission to manually delete ceph config file
+        # from /opt/platform/config/version/ceph-config directory if the file
+        # already exists, we will allow ceph config file to be overwritten.
+        # Thus, we won't raise an exception if the file already exists.
         if os.path.exists(opt_ceph_conf_file):
-            raise exception.SysinvException(_(
-                "Same external ceph config file already exists."))
+            LOG.info("Overwriting file %s in %s " %
+                     (ceph_conf_filename, tsc.PLATFORM_CEPH_CONF_PATH))
 
         try:
             with open(opt_ceph_conf_file, 'w+') as f:
