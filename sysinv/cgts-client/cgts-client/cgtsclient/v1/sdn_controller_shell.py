@@ -30,8 +30,8 @@ def do_sdn_controller_show(cc, args):
     try:
         controller = cc.sdn_controller.get(args.uuid)
     except exc.HTTPNotFound:
-        raise exc.CommandError('Create SDN Controller UUID not found: %s',
-                               args.uuid)
+        raise exc.CommandError('Create SDN Controller UUID not found: %s'
+                               % args.uuid)
     _print_sdn_controller_show(controller)
 
 

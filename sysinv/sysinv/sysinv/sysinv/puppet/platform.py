@@ -378,8 +378,8 @@ class PlatformPuppet(base.BasePuppet):
         return config
 
     def _get_host_ntp_config(self, host):
+        ntp = self.dbapi.intp_get_one()
         if host.personality == constants.CONTROLLER:
-            ntp = self.dbapi.intp_get_one()
             servers = ntp.ntpservers.split(',') if ntp.ntpservers else []
         else:
             controller0_address = self._get_address_by_name(
@@ -425,6 +425,7 @@ class PlatformPuppet(base.BasePuppet):
             ntpdate_timeout = "30"
 
         return {
+            'platform::ntp::enabled': ntp.enabled,
             'platform::ntp::servers': servers,
             'platform::ntp::ntpdate_timeout': ntpdate_timeout,
         }

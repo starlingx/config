@@ -154,9 +154,9 @@ def _check_dns_data(dns):
     MAX_S = 3
 
     if 'forisystemid' in dns.keys():
-        ntp_list = pecan.request.dbapi.intp_get_list(dns['forisystemid'])
+        ntp_list = pecan.request.dbapi.intp_get_by_isystem(dns['forisystemid'])
     else:
-        ntp_list = []
+        ntp_list = pecan.request.dbapi.intp_get_by_isystem(dns['isystem_uuid'])
 
     if nameservers:
         for nameservers in [n.strip() for n in nameservers.split(',')]:

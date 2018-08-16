@@ -5146,9 +5146,14 @@ class ConductorManager(service.PeriodicService):
         config_uuid = self._config_update_hosts(context, personalities)
         self._update_resolv_file(context, config_uuid, personalities)
 
-    def update_ntp_config(self, context):
+    def update_ntp_config(self, context, service_change=False):
         """Update the NTP configuration"""
-        personalities = [constants.CONTROLLER]
+        if service_change:
+            personalities = [constants.CONTROLLER,
+                             constants.COMPUTE,
+                             constants.STORAGE]
+        else:
+            personalities = [constants.CONTROLLER]
         self._config_update_hosts(context, personalities, reboot=True)
 
     def update_system_mode_config(self, context):

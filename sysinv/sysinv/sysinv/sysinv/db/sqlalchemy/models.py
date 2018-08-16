@@ -823,6 +823,7 @@ class intp(Base):
     id = Column(Integer, primary_key=True)
     uuid = Column(String(36))
 
+    enabled = Column(Boolean, default=True)
     ntpservers = Column(String(255))  # csv list of ntp servers
 
     forisystemid = Column(Integer,

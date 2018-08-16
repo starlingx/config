@@ -1886,3 +1886,12 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
                                        getattr(sqlalchemy.types, coltype)))
             # Assert deletion of the i_storconfig table
         self.assertTableNotExists(engine, 'storage_file')
+
+    def _check_074(self, engine, data):
+        ntps = db_utils.get_table(engine, 'i_ntp')
+        ntps_col = {
+            'enabled': 'Boolean',
+        }
+        for col, coltype in ntps_col.items():
+            self.assertTrue(isinstance(ntps.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))

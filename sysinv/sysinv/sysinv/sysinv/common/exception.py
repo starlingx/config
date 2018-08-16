@@ -610,6 +610,10 @@ class MultipleResults(SysinvException):
     message = _("More than one result found.")
 
 
+class NTPNotFound(NotFound):
+    message = _("No NTP with id %(uuid)s found.")
+
+
 class DiskNotFound(NotFound):
     message = _("No disk with id %(disk_id)s")
 

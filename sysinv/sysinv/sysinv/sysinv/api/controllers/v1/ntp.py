@@ -65,6 +65,9 @@ class NTP(base.APIBase):
     uuid = types.uuid
     "Unique UUID for this ntp"
 
+    enabled = types.boolean
+    "Represent the status of the intp."
+
     ntpservers = wtypes.text
     "Represent the ntpservers of the intp. csv list."
 
@@ -101,6 +104,7 @@ class NTP(base.APIBase):
         ntp = NTP(**rpc_ntp.as_dict())
         if not expand:
             ntp.unset_fields_except(['uuid',
+                                     'enabled',
                                      'ntpservers',
                                      'isystem_uuid',
                                      'created_at',
@@ -147,6 +151,7 @@ class intpCollection(collection.Collection):
 ##############
 def _check_ntp_data(op, ntp):
     # Get data
+    enabled = ntp['enabled']
     ntpservers = ntp['ntpservers']
     intp_ntpservers_list = []
     ntp_ntpservers = ""
@@ -154,7 +159,7 @@ def _check_ntp_data(op, ntp):
 
     MAX_S = 3
 
-    dns_list = pecan.request.dbapi.idns_get_list(ntp['forisystemid'])
+    dns_list = pecan.request.dbapi.idns_get_by_isystem(ntp['forisystemid'])
 
     if dns_list:
         if hasattr(dns_list[0], 'nameservers'):
@@ -187,8 +192,8 @@ def _check_ntp_data(op, ntp):
                         "Please configure a valid NTP "
                         "IP address or hostname.") % (ntpserver))
 
-    if len(intp_ntpservers_list) == 0:
-        raise wsme.exc.ClientSideError(_("No NTP servers provided."))
+    if len(intp_ntpservers_list) == 0 and enabled is None:
+        raise wsme.exc.ClientSideError(_("No NTP parameters provided."))
 
     if len(intp_ntpservers_list) > MAX_S:
         raise wsme.exc.ClientSideError(_(
@@ -344,12 +349,18 @@ class NTPController(rest.RestController):
                     rpc_ntp[field] = ntp[field]
 
             delta = rpc_ntp.obj_what_changed()
+            delta_handle = list(delta)
             if delta:
                 rpc_ntp.save()
 
+                if 'enabled' in delta_handle:
+                    service_change = True
+                else:
+                    service_change = False
                 if action == constants.APPLY_ACTION:
                     # perform rpc to conductor to perform config apply
-                    pecan.request.rpcapi.update_ntp_config(pecan.request.context)
+                    pecan.request.rpcapi.update_ntp_config(pecan.request.context,
+                                                           service_change)
             else:
                 LOG.info("No NTP config changes")
 
