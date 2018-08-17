@@ -7,15 +7,26 @@ class platform::lvm::params (
 class platform::lvm
   inherits platform::lvm::params {
 
+  # Mask socket unit as well to make sure
+  # systemd socket activation does not happen
+  service { 'lvm2-lvmetad.socket':
+    enable => mask,
+    ensure => 'stopped',
+  } ->
+  # Masking service unit ensures that it is not started again
+  service { 'lvm2-lvmetad':
+    enable => mask,
+    ensure => 'stopped',
+  } ->
+  # Since masking is changing unit symlinks to point to /dev/null,
+  # we need to reload systemd configuration
+  exec { 'lvmetad-systemd-daemon-reload':
+    command => "systemctl daemon-reload",
+  } ->
   file_line { 'use_lvmetad':
-    path    => '/etc/lvm/lvm.conf',
-    match   => '^[^#]*use_lvmetad = 1',
-    line    => '        use_lvmetad = 0',
-  }
-
-  exec { 'disable lvm2-lvmetad.service':
-    command => "systemctl stop lvm2-lvmetad.service ; systemctl disable lvm2-lvmetad.service",
-    onlyif  => "systemctl status lvm2-lvmetad.service",
+    path  => '/etc/lvm/lvm.conf',
+    match => '^[^#]*use_lvmetad = 1',
+    line  => '        use_lvmetad = 0',
   }
 }
 
