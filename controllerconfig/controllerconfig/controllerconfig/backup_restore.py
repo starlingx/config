@@ -71,7 +71,7 @@ def get_backup_databases(cinder_config=False):
     REGION_LOCAL_DATABASES = ('postgres', 'template1', 'nova', 'sysinv',
                               'neutron', 'heat', 'nova_api',
                               'aodh', 'murano', 'magnum', 'panko', 'ironic',
-                              'nova_cell0', 'gnocchi')
+                              'nova_cell0', 'gnocchi', 'fm')
     REGION_SHARED_DATABASES = ('glance', 'keystone')
 
     if cinder_config:
@@ -79,7 +79,7 @@ def get_backup_databases(cinder_config=False):
 
     # Indicates which tables have to be dropped for a certain database.
     DB_TABLE_SKIP_MAPPING = {
-        'sysinv': ('i_alarm',),
+        'fm': ('alarm',),
         'gnocchi': ('metric', 'resource'),
         'dcorch': ('orch_job',
                    'orch_request',

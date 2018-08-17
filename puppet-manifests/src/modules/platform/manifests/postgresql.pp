@@ -211,6 +211,7 @@ class platform::postgresql::upgrade
   include ::sysinv::db::postgresql
   include ::keystone::db::postgresql
   include ::ironic::db::postgresql
+  include ::fm::db::postgresql
 
 }
 

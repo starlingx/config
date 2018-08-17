@@ -60,12 +60,6 @@ class platform::sysinv
       'sysinv %(asctime)s.%(msecs)03d %(process)d %(levelname)s %(name)s [-] %(instance)s%(message)s';
   }
 
-  $sysinv_db_connection = $::sysinv::database_connection
-  file { "/etc/fm.conf":
-    ensure => 'present',
-    content => template('platform/fm.conf.erb'),
-  }
-
   if str2bool($::is_initial_config_primary) {
     $software_version = $::platform::params::software_version
 

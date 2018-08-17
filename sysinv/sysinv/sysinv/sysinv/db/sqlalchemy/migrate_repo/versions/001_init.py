@@ -497,35 +497,6 @@ def upgrade(migrate_engine):
     )
     i_community.create()
 
-    i_alarm = Table(
-        'i_alarm',
-        meta,
-        Column('created_at', DateTime),
-        Column('updated_at', DateTime),
-        Column('deleted_at', DateTime),
-
-        Column('id', Integer, primary_key=True, nullable=False),
-        Column('uuid', String(255), unique=True, index=True),
-        Column('alarm_id', String(255), index=True),
-        Column('alarm_state', String(255)),
-        Column('entity_type_id', String(255), index=True),
-        Column('entity_instance_id', String(255), index=True),
-        Column('timestamp', DateTime(timezone=False)),
-        Column('severity', String(255), index=True),
-        Column('reason_text', String(255)),
-        Column('alarm_type', String(255), index=True),
-        Column('probable_cause', String(255)),
-        Column('proposed_repair_action', String(255)),
-        Column('service_affecting', Boolean),
-        Column('suppression', Boolean),
-        Column('inhibit_alarms', Boolean),
-        Column('masked', Boolean),
-
-        mysql_engine=ENGINE,
-        mysql_charset=CHARSET,
-                    )
-    i_alarm.create()
-
     i_user = Table(
         'i_user',
         meta,

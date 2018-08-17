@@ -863,20 +863,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col in communities_enums_col:
             self.assertColumnExists(engine, 'i_community', col)
 
-        alarms = db_utils.get_table(engine, 'i_alarm')
-        alarms_col = {
-            'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
-            'created_at': 'DateTime', 'updated_at': 'DateTime',
-            'alarm_id': 'String', 'alarm_state': 'String', 'entity_type_id': 'String',
-            'entity_instance_id': 'String', 'timestamp': 'DateTime', 'severity': 'String',
-            'reason_text': 'String', 'alarm_type': 'String', 'probable_cause': 'String',
-            'proposed_repair_action': 'String', 'service_affecting': 'Boolean',
-            'suppression': 'Boolean', 'inhibit_alarms': 'Boolean', 'masked': 'Boolean',
-        }
-        for col, coltype in alarms_col.items():
-            self.assertTrue(isinstance(alarms.c[col].type,
-                                       getattr(sqlalchemy.types, coltype)))
-
         users = db_utils.get_table(engine, 'i_user')
         users_col = {
             'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
@@ -1801,15 +1787,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         self.assertColumnNotExists(engine, 'journal', 'device_node')
         self.assertColumnExists(engine, 'journal', 'device_path')
 
-        # 61 --> Add a column to table "event_suppression"
-        event_suppression = db_utils.get_table(engine, 'event_suppression')
-        event_suppression_col = {
-            'mgmt_affecting': 'String',
-        }
-        for col, coltype in event_suppression_col.items():
-            self.assertTrue(isinstance(event_suppression.c[col].type,
-                                       getattr(sqlalchemy.types, coltype)))
-        # 62 --> Add a column to table "i_host"
+        # 61 --> Add a column to table "i_host"
         host = db_utils.get_table(engine, 'i_host')
         host_col = {
             'iscsi_initiator_name': 'String',

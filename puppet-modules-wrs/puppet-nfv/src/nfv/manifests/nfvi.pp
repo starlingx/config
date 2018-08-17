@@ -52,6 +52,10 @@ class nfv::nfvi (
   $patching_service_name         = 'patching',
   $patching_service_type         = 'patching',
   $patching_endpoint_type        = 'admin',
+  $fm_region_name                = 'RegionOne',
+  $fm_service_name               = 'fm',
+  $fm_service_type               = 'faultmanagement',
+  $fm_endpoint_type              = 'admin',
   $rabbit_host                   = '127.0.0.1',
   $rabbit_port                   =  5672,
   $rabbit_userid                 = 'guest',
@@ -132,6 +136,11 @@ class nfv::nfvi (
     'patching/service_name': value => $patching_service_name;
     'patching/service_type': value => $patching_service_type;
     'patching/endpoint_type': value => $patching_endpoint_type;
+
+    'fm/region_name': value => $fm_region_name;
+    'fm/service_name': value => $fm_service_name;
+    'fm/service_type': value => $fm_service_type;
+    'fm/endpoint_type': value => $fm_endpoint_type;
 
     /* AMQP */
     'amqp/host': value => $rabbit_host;

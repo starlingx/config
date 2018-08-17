@@ -21,7 +21,6 @@ import functools
 from sysinv.objects import address
 from sysinv.objects import address_mode
 from sysinv.objects import address_pool
-from sysinv.objects import alarm
 from sysinv.objects import ceph_mon
 from sysinv.objects import certificate
 from sysinv.objects import cluster
@@ -34,8 +33,6 @@ from sysinv.objects import partition
 from sysinv.objects import dns
 from sysinv.objects import drbdconfig
 from sysinv.objects import port_ethernet
-from sysinv.objects import event_log
-from sysinv.objects import event_suppression
 from sysinv.objects import helm_overrides
 from sysinv.objects import host
 from sysinv.objects import host_upgrade
@@ -137,7 +134,6 @@ lvg = lvg.LVG
 pv = pv.PV
 trapdest = trapdest.TrapDest
 community = community.Community
-alarm = alarm.Alarm
 user = user.User
 dns = dns.DNS
 ntp = ntp.NTP
@@ -148,8 +144,6 @@ storage_lvm = storage_lvm.StorageLVM
 ceph_mon = ceph_mon.CephMon
 controller_fs = controller_fs.ControllerFS
 drbdconfig = drbdconfig.DRBDConfig
-event_log = event_log.EventLog
-event_suppression = event_suppression.EventSuppression
 infra_network = network_infra.InfraNetwork
 address = address.Address
 address_pool = address_pool.AddressPool
@@ -204,7 +198,6 @@ __all__ = (system,
            pv,
            trapdest,
            community,
-           alarm,
            user,
            dns,
            ntp,
@@ -214,8 +207,6 @@ __all__ = (system,
            storage_lvm,
            ceph_mon,
            drbdconfig,
-           event_log,
-           event_suppression,
            infra_network,
            address,
            address_mode,

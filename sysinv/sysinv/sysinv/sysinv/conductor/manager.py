@@ -9047,7 +9047,8 @@ class ConductorManager(service.PeriodicService):
         config_uuid = self._config_update_hosts(context, personalities)
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::snmp::runtime'],
+            "classes": ['platform::snmp::runtime',
+                        'platform::fm::runtime'],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 

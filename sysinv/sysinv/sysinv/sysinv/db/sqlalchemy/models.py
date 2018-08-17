@@ -761,29 +761,6 @@ class icommunity(Base):
     access = Column(accessEnum, default='ro')
 
 
-class ialarm(Base):
-    __tablename__ = 'i_alarm'
-
-    id = Column(Integer, primary_key=True, nullable=False)
-    uuid = Column(String(255), unique=True, index=True)
-    alarm_id = Column('alarm_id', String(255),
-                      ForeignKey('event_suppression.alarm_id'),
-                      nullable=True, index=True)
-    alarm_state = Column(String(255))
-    entity_type_id = Column(String(255), index=True)
-    entity_instance_id = Column(String(255), index=True)
-    timestamp = Column(DateTime(timezone=False))
-    severity = Column(String(255), index=True)
-    reason_text = Column(String(255))
-    alarm_type = Column(String(255), index=True)
-    probable_cause = Column(String(255))
-    proposed_repair_action = Column(String(255))
-    service_affecting = Column(Boolean, default=False)
-    suppression = Column(Boolean, default=False)
-    inhibit_alarms = Column(Boolean, default=False)
-    masked = Column(Boolean, default=False)
-
-
 class iuser(Base):
     __tablename__ = 'i_user'
 
@@ -1026,40 +1003,6 @@ class Services(Base):
     enabled = Column(Boolean, default=False)
     region_name = Column(Text)
     capabilities = Column(JSONEncodedDict)
-
-
-class event_log(Base):
-    __tablename__ = 'i_event_log'
-
-    id = Column(Integer, primary_key=True, nullable=False)
-    uuid = Column(String(255), unique=True, index=True)
-    event_log_id = Column('event_log_id', String(255),
-                          ForeignKey('event_suppression.alarm_id'),
-                          nullable=True, index=True)
-    state = Column(String(255))
-    entity_type_id = Column(String(255), index=True)
-    entity_instance_id = Column(String(255), index=True)
-    timestamp = Column(DateTime(timezone=False))
-    severity = Column(String(255), index=True)
-    reason_text = Column(String(255))
-    event_log_type = Column(String(255), index=True)
-    probable_cause = Column(String(255))
-    proposed_repair_action = Column(String(255))
-    service_affecting = Column(Boolean, default=False)
-    suppression = Column(Boolean, default=False)
-
-
-class EventSuppression(Base):
-    __tablename__ = 'event_suppression'
-
-    id = Column('id', Integer, primary_key=True, nullable=False)
-    uuid = Column('uuid', String(36), unique=True)
-    alarm_id = Column('alarm_id', String(255), unique=True)
-    description = Column('description', String(255))
-    suppression_status = Column('suppression_status', String(255))
-    set_for_deletion = Column('set_for_deletion', Boolean)
-    mgmt_affecting = Column('mgmt_affecting', String(255))
-    degrade_affecting = Column('degrade_affecting', String(255))
 
 
 class Routes(Base):

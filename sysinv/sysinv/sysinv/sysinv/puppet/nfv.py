@@ -90,6 +90,8 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                 self._operator.patching.get_region_name(),
             'nfv::nfvi::ceilometer_region_name':
                 self._operator.ceilometer.get_region_name(),
+            'nfv::nfvi::fm_region_name':
+                self._operator.fm.get_region_name(),
 
             'nfv::vim::vim_api_ip': self._get_management_address(),
             'nfv::vim::vim_webserver_ip': self._get_oam_address(),

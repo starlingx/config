@@ -22,7 +22,6 @@ from wsme import types as wtypes
 
 from sysinv.api.controllers.v1 import address
 from sysinv.api.controllers.v1 import address_pool
-from sysinv.api.controllers.v1 import alarm
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import ceph_mon
 from sysinv.api.controllers.v1 import cluster
@@ -33,8 +32,6 @@ from sysinv.api.controllers.v1 import disk
 from sysinv.api.controllers.v1 import dns
 from sysinv.api.controllers.v1 import drbdconfig
 from sysinv.api.controllers.v1 import ethernet_port
-from sysinv.api.controllers.v1 import event_log
-from sysinv.api.controllers.v1 import event_suppression
 from sysinv.api.controllers.v1 import firewallrules
 from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
@@ -130,15 +127,6 @@ class V1(base.APIBase):
 
     icommunity = [link.Link]
     "Links to the icommunity node cluster resource"
-
-    ialarms = [link.Link]
-    "Links to the ialarm resource"
-
-    event_log = [link.Link]
-    "Links to the event_log resource"
-
-    event_suppression = [link.Link]
-    "Links to the event_suppression resource"
 
     iuser = [link.Link]
     "Links to the iuser resource"
@@ -511,29 +499,6 @@ class V1(base.APIBase):
                                            bookmark=True)
                          ]
 
-        v1.ialarms = [link.Link.make_link('self', pecan.request.host_url,
-                                         'ialarms', ''),
-                     link.Link.make_link('bookmark',
-                                         pecan.request.host_url,
-                                         'ialarms', '',
-                                         bookmark=True)
-                      ]
-
-        v1.event_log = [link.Link.make_link('self', pecan.request.host_url,
-                                                 'event_log', ''),
-                            link.Link.make_link('bookmark',
-                                                 pecan.request.host_url,
-                                                 'event_log', '',
-                                                 bookmark=True)
-                        ]
-
-        v1.event_suppression = [link.Link.make_link('self', pecan.request.host_url,
-                                                 'event_suppression', ''),
-                                link.Link.make_link('bookmark',
-                                                 pecan.request.host_url,
-                                                 'event_suppression', '',
-                                                 bookmark=True)
-                                ]
 
         v1.iinfra = [link.Link.make_link('self', pecan.request.host_url,
                                           'iinfra', ''),
@@ -764,9 +729,6 @@ class Controller(rest.RestController):
         storage_ceph_external.StorageCephExternalController()
     ceph_mon = ceph_mon.CephMonController()
     drbdconfig = drbdconfig.drbdconfigsController()
-    ialarms = alarm.AlarmController()
-    event_log = event_log.EventLogController()
-    event_suppression = event_suppression.EventSuppressionController()
     iinfra = network_infra.InfraNetworkController()
     addresses = address.AddressController()
     addrpools = address_pool.AddressPoolController()
