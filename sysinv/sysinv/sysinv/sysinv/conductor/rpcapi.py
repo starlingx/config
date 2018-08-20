@@ -404,6 +404,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
     def update_partition_config(self, context, partition):
         """Asynchronously, have a conductor configure the physical volume
         partitions.
+
         :param context: request context.
         :param partition: dict with partition details.
         """
@@ -829,6 +830,18 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('update_ceph_external_config',
                                        sb_uuid=sb_uuid,
                                        services=services))
+
+    def config_update_nova_local_backed_hosts(self, context, instance_backing):
+        """Synchronously, have the conductor set the hosts with compute
+           functionality and with a certain nova-local instance backing to
+           config out-of-date.
+
+           :param context: request context
+           :param instance_backing: the host's instance backing
+        """
+        return self.call(context,
+                         self.make_msg('config_update_nova_local_backed_hosts',
+                                       instance_backing=instance_backing))
 
     def update_external_cinder_config(self, context):
         """Synchronously, have the conductor update Cinder Exernal(shared)
