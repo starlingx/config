@@ -3508,14 +3508,14 @@ class Connection(api.Connection):
 
             query.delete()
 
-    def _ntp_get(self, server):
+    def _ntp_get(self, intp_id):
         query = model_query(models.intp)
-        query = add_identity_filter(query, server)
+        query = add_identity_filter(query, intp_id)
 
         try:
             return query.one()
         except NoResultFound:
-            raise exception.NTPNotFound(server=server)
+            raise exception.NTPNotFound(intp_id=intp_id)
 
     @objects.objectify(objects.ntp)
     def intp_create(self, values):
@@ -3564,25 +3564,25 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     @objects.objectify(objects.ntp)
-    def intp_update(self, server, values):
+    def intp_update(self, intp_id, values):
         with _session_for_write() as session:
             query = model_query(models.intp, session=session)
-            query = add_identity_filter(query, server)
+            query = add_identity_filter(query, intp_id)
 
             count = query.update(values, synchronize_session='fetch')
             if count != 1:
-                raise exception.NTPNotFound(server=server)
+                raise exception.NTPNotFound(intp_id=intp_id)
             return query.one()
 
-    def intp_destroy(self, server):
+    def intp_destroy(self, intp_id):
         with _session_for_write() as session:
             query = model_query(models.intp, session=session)
-            query = add_identity_filter(query, server)
+            query = add_identity_filter(query, intp_id)
 
             try:
                 query.one()
             except NoResultFound:
-                raise exception.NTPNotFound(server=server)
+                raise exception.NTPNotFound(intp_id=intp_id)
             # if node_ref['reservation'] is not None:
             #     raise exception.NodeLocked(node=node)
 
@@ -3594,6 +3594,92 @@ class Connection(api.Connection):
             #     server_id = server
 
             query.delete()
+
+    def _ptp_get(self, ptp_id):
+        query = model_query(models.PTP)
+        query = add_identity_filter(query, ptp_id)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.PTPNotFound(ptp_id=ptp_id)
+
+    @objects.objectify(objects.ptp)
+    def ptp_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        ptp = models.PTP()
+        ptp.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(ptp)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.PTPAlreadyExists(uuid=values['uuid'])
+            return self._ptp_get(values['uuid'])
+
+    @objects.objectify(objects.ptp)
+    def ptp_get(self, ptp_id):
+        return self._ptp_get(ptp_id)
+
+    @objects.objectify(objects.ptp)
+    def ptp_get_one(self):
+        query = model_query(models.PTP)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.ptp)
+    def ptp_get_list(self, limit=None, marker=None,
+                     sort_key=None, sort_dir=None):
+
+        query = model_query(models.PTP)
+
+        return _paginate_query(models.PTP, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.ptp)
+    def ptp_get_by_isystem(self, isystem_id, limit=None, marker=None,
+                           sort_key=None, sort_dir=None):
+        # isystem_get() to raise an exception if the isystem is not found
+        isystem_obj = self.isystem_get(isystem_id)
+        query = model_query(models.PTP)
+        query = query.filter_by(system_id=isystem_obj.id)
+        return _paginate_query(models.PTP, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.ptp)
+    def ptp_update(self, ptp_id, values):
+        with _session_for_write() as session:
+            query = model_query(models.PTP, session=session)
+            query = add_identity_filter(query, ptp_id)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.PTPNotFound(ptp_id=ptp_id)
+            return query.one()
+
+    def ptp_destroy(self, ptp_id):
+        with _session_for_write() as session:
+            query = model_query(models.PTP, session=session)
+            query = add_identity_filter(query, ptp_id)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.PTPNotFound(ptp_id=ptp_id)
+
+            query.delete()
+
+    def ptp_fill_empty_system_id(self, system_id):
+        values = {'system_id': system_id}
+        with _session_for_write() as session:
+            query = model_query(models.PTP,
+                                session=session)
+            query = query.filter_by(system_id=None)
+            query.update(values, synchronize_session='fetch')
 
     # NOTE: method is deprecated and provided for API compatibility.
     # object class will convert Network entity to an iextoam object

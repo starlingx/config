@@ -53,6 +53,7 @@ from sysinv.api.controllers.v1 import partition
 from sysinv.api.controllers.v1 import pci_device
 from sysinv.api.controllers.v1 import port
 from sysinv.api.controllers.v1 import profile
+from sysinv.api.controllers.v1 import ptp
 from sysinv.api.controllers.v1 import pv
 from sysinv.api.controllers.v1 import remotelogging
 from sysinv.api.controllers.v1 import route
@@ -136,6 +137,9 @@ class V1(base.APIBase):
 
     intp = [link.Link]
     "Links to the intp resource"
+
+    ptp = [link.Link]
+    "Links to the ptp resource"
 
     iextoam = [link.Link]
     "Links to the iextoam resource"
@@ -387,39 +391,47 @@ class V1(base.APIBase):
                     ]
 
         v1.idns = [link.Link.make_link('self', pecan.request.host_url,
-                                          'idns', ''),
+                                       'idns', ''),
                       link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'idns', '',
-                                           bookmark=True)
+                                          pecan.request.host_url,
+                                          'idns', '',
+                                          bookmark=True)
                    ]
 
         v1.intp = [link.Link.make_link('self', pecan.request.host_url,
-                                          'intp', ''),
-                      link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'intp', '',
-                                           bookmark=True)
+                                       'intp', ''),
+                   link.Link.make_link('bookmark',
+                                       pecan.request.host_url,
+                                       'intp', '',
+                                       bookmark=True)
                    ]
+
+        v1.ptp = [link.Link.make_link('self', pecan.request.host_url,
+                                      'ptp', ''),
+                  link.Link.make_link('bookmark',
+                                      pecan.request.host_url,
+                                      'ptp', '',
+                                      bookmark=True)
+                  ]
 
         v1.iextoam = [link.Link.make_link('self', pecan.request.host_url,
                                           'iextoam', ''),
                       link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'iextoam', '',
-                                           bookmark=True)
+                                          pecan.request.host_url,
+                                          'iextoam', '',
+                                          bookmark=True)
                       ]
 
         v1.controller_fs = [link.Link.make_link('self', pecan.request.host_url,
                                                 'controller_fs', ''),
                             link.Link.make_link('bookmark',
-                                                 pecan.request.host_url,
-                                                 'controller_fs', '',
-                                                 bookmark=True)
+                                                pecan.request.host_url,
+                                                'controller_fs', '',
+                                                bookmark=True)
                             ]
 
         v1.storage_backend = [link.Link.make_link('self',
-                                                   pecan.request.host_url,
+                                                  pecan.request.host_url,
                                                   'storage_backend', ''),
                               link.Link.make_link('bookmark',
                                                   pecan.request.host_url,
@@ -717,6 +729,7 @@ class Controller(rest.RestController):
     iuser = user.UserController()
     idns = dns.DNSController()
     intp = ntp.NTPController()
+    ptp = ptp.PTPController()
     iextoam = network_oam.OAMNetworkController()
     controller_fs = controller_fs.ControllerFsController()
     storage_backend = storage_backend.StorageBackendController()

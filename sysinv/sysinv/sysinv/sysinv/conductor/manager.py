@@ -227,6 +227,8 @@ class ConductorManager(service.PeriodicService):
 
             # fill in empty remotelogging system_id fields
             self.dbapi.remotelogging_fill_empty_system_id(system.id)
+            # fill in empty ptp system_id fields
+            self.dbapi.ptp_fill_empty_system_id(system.id)
 
             return system  # system already configured
         except exception.NotFound:
@@ -271,9 +273,10 @@ class ConductorManager(service.PeriodicService):
             'rtt_ms': constants.DRBD_RTT_MS_DEFAULT
         })
 
-        # remotelogging tables have attribute 'system_id' not 'forisystemid'
+        # remotelogging and ptp tables have attribute 'system_id' not 'forisystemid'
         system_id_attribute_value = {'system_id': system.id}
         self.dbapi.remotelogging_create(system_id_attribute_value)
+        self.dbapi.ptp_create(system_id_attribute_value)
 
         # set default storage_backend
         values.update({'backend': constants.SB_TYPE_FILE,
@@ -5155,6 +5158,13 @@ class ConductorManager(service.PeriodicService):
         else:
             personalities = [constants.CONTROLLER]
         self._config_update_hosts(context, personalities, reboot=True)
+
+    def update_ptp_config(self, context):
+        """Update the PTP configuration"""
+        personalities = [constants.CONTROLLER,
+                         constants.COMPUTE,
+                         constants.STORAGE]
+        self._config_update_hosts(context, personalities)
 
     def update_system_mode_config(self, context):
         """Update the system mode configuration"""

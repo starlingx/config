@@ -702,6 +702,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('update_ntp_config',
                          service_change=service_change))
 
+    def update_ptp_config(self, context):
+        """Synchronously, have the conductor update the PTP configuration.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('update_ptp_config'))
+
     def update_system_mode_config(self, context):
         """Synchronously, have the conductor update the system mode
         configuration.

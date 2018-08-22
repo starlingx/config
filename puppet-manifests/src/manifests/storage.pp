@@ -18,6 +18,7 @@ include ::platform::fstab
 include ::platform::password
 include ::platform::ldap::client
 include ::platform::ntp::client
+include ::platform::ptp
 include ::platform::lldp
 include ::platform::patching
 include ::platform::remotelogging

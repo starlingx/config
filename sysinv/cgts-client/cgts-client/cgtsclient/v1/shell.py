@@ -46,6 +46,7 @@ from cgtsclient.v1 import network_shell
 from cgtsclient.v1 import partition_shell
 from cgtsclient.v1 import pci_device_shell
 from cgtsclient.v1 import port_shell
+from cgtsclient.v1 import ptp_shell
 from cgtsclient.v1 import remotelogging_shell
 from cgtsclient.v1 import route_shell
 from cgtsclient.v1 import sdn_controller_shell
@@ -63,6 +64,7 @@ COMMAND_MODULES = [
     iuser_shell,
     idns_shell,
     intp_shell,
+    ptp_shell,
     iextoam_shell,
     controller_fs_shell,
     storage_backend_shell,

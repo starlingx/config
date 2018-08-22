@@ -57,6 +57,7 @@ from cgtsclient.v1 import network
 from cgtsclient.v1 import partition
 from cgtsclient.v1 import pci_device
 from cgtsclient.v1 import port
+from cgtsclient.v1 import ptp
 from cgtsclient.v1 import remotelogging
 from cgtsclient.v1 import route
 from cgtsclient.v1 import sdn_controller
@@ -102,6 +103,7 @@ class Client(http.HTTPClient):
         self.iuser = iuser.iuserManager(self)
         self.idns = idns.idnsManager(self)
         self.intp = intp.intpManager(self)
+        self.ptp = ptp.ptpManager(self)
         self.iextoam = iextoam.iextoamManager(self)
         self.controller_fs = controller_fs.ControllerFsManager(self)
         self.storage_backend = storage_backend.StorageBackendManager(self)

@@ -96,6 +96,7 @@ def _does_command_need_no_wrap(callback):
 
     if callback.__name__ in \
             ['donot_config_ntp_list',
+             'donot_config_ptp_list',
              'do_host_apply_memprofile',
              'do_host_apply_cpuprofile',
              'do_host_apply_ifprofile',

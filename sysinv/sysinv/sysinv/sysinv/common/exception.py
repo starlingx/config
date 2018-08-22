@@ -478,7 +478,11 @@ class DNSAlreadyExists(Conflict):
 
 
 class NTPAlreadyExists(Conflict):
-    message = _("An NTP with UUID %(uuid)s already exists.")
+    message = _("A NTP with UUID %(uuid)s already exists.")
+
+
+class PTPAlreadyExists(Conflict):
+    message = _("A PTP with UUID %(uuid)s already exists.")
 
 
 class PMAlreadyExists(Conflict):
@@ -612,6 +616,10 @@ class MultipleResults(SysinvException):
 
 class NTPNotFound(NotFound):
     message = _("No NTP with id %(uuid)s found.")
+
+
+class PTPNotFound(NotFound):
+    message = _("No PTP with id %(uuid)s found.")
 
 
 class DiskNotFound(NotFound):
