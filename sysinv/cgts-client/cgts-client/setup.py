@@ -10,7 +10,6 @@ import setuptools
 
 setuptools.setup(
     name='cgtsclient',
-    version='1.0.0',
     description='Titanium Cloud System Client and CLI',
     classifiers=[
         'Environment :: OpenStack',
