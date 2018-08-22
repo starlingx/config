@@ -159,6 +159,15 @@ def _check_ntp_data(op, ntp):
 
     MAX_S = 3
 
+    ptp_list = pecan.request.dbapi.ptp_get_by_isystem(ntp['forisystemid'])
+
+    if ptp_list:
+        if hasattr(ptp_list[0], 'enabled'):
+            if ptp_list[0].enabled is True and enabled is True:
+                    raise wsme.exc.ClientSideError(_(
+                        "NTP cannot be configured alongside with PTP."
+                        " Please disable PTP before enabling NTP."))
+
     dns_list = pecan.request.dbapi.idns_get_by_isystem(ntp['forisystemid'])
 
     if dns_list:

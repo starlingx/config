@@ -211,6 +211,13 @@ define platform::firewall::services (
     provider => $provider,
   }
 
+  firewall { "203 platform accept ptp ${version}":
+    proto => 'udp',
+    dport => [319, 320],
+    action => 'accept',
+    provider => $provider,
+  }
+
   # allow IGMP Query traffic if IGMP Snooping is
   # enabled on the TOR switch
   firewall { "204 platform accept igmp ${version}":

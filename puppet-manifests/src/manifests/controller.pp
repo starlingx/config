@@ -25,6 +25,7 @@ include ::platform::ldap::server
 include ::platform::ldap::client
 include ::platform::password
 include ::platform::ntp::server
+include ::platform::ptp
 include ::platform::lldp
 include ::platform::amqp::rabbitmq
 include ::platform::postgresql::server

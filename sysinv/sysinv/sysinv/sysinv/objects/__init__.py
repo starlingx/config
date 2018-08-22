@@ -50,13 +50,14 @@ from sysinv.objects import load
 from sysinv.objects import lvg
 from sysinv.objects import memory
 from sysinv.objects import network
+from sysinv.objects import network_oam
 from sysinv.objects import node
 from sysinv.objects import ntp
-from sysinv.objects import network_oam
 from sysinv.objects import pci_device
 from sysinv.objects import peer
 from sysinv.objects import port
 from sysinv.objects import profile
+from sysinv.objects import ptp
 from sysinv.objects import pv
 from sysinv.objects import remote_logging
 from sysinv.objects import route
@@ -137,6 +138,7 @@ community = community.Community
 user = user.User
 dns = dns.DNS
 ntp = ntp.NTP
+ptp = ptp.PTP
 oam_network = network_oam.OAMNetwork
 storage_backend = storage_backend.StorageBackend
 storage_ceph = storage_ceph.StorageCeph
@@ -201,6 +203,7 @@ __all__ = (system,
            user,
            dns,
            ntp,
+           ptp,
            oam_network,
            storage_backend,
            storage_ceph,

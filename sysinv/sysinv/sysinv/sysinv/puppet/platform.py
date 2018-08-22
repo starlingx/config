@@ -62,6 +62,7 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         config.update(self._get_host_platform_config(host, config_uuid))
         config.update(self._get_host_ntp_config(host))
+        config.update(self._get_host_ptp_config(host))
         config.update(self._get_host_sysctl_config(host))
         config.update(self._get_host_drbd_config(host))
         config.update(self._get_host_upgrade_config(host))
@@ -428,6 +429,20 @@ class PlatformPuppet(base.BasePuppet):
             'platform::ntp::enabled': ntp.enabled,
             'platform::ntp::servers': servers,
             'platform::ntp::ntpdate_timeout': ntpdate_timeout,
+        }
+
+    def _get_host_ptp_config(self, host):
+        ptp = self.dbapi.ptp_get_one()
+
+        return {
+            'platform::ptp::enabled':
+                ptp.enabled,
+            'platform::ptp::mode':
+                ptp.mode,
+            'platform::ptp::transport':
+                ptp.transport,
+            'platform::ptp::mechanism':
+                ptp.mechanism,
         }
 
     def _get_host_sysctl_config(self, host):

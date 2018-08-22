@@ -809,6 +809,23 @@ class intp(Base):
     system = relationship("isystem", lazy="joined", join_depth=1)
 
 
+class PTP(Base):
+    __tablename__ = 'ptp'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+
+    enabled = Column(Boolean, default=False)
+    mode = Column(String(16), default='hardware')
+    transport = Column(String(4), default='l2')
+    mechanism = Column(String(4), default='e2e')
+
+    system_id = Column(Integer,
+                      ForeignKey('i_system.id', ondelete='CASCADE'))
+
+    system = relationship("isystem", lazy="joined", join_depth=1)
+
+
 class StorageTier(Base):
     __tablename__ = 'storage_tiers'
 
