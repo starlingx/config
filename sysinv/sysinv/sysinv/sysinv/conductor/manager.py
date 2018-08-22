@@ -5558,14 +5558,14 @@ class ConductorManager(service.PeriodicService):
                       'task': None}
             self.dbapi.storage_ceph_update(sb_uuid, values)
 
-        if constants.SB_SVC_NOVA in services:
-            hosts_uuid = self.hosts_with_nova_local(constants.LVG_NOVA_BACKING_REMOTE)
-            if hosts_uuid:
-                personalities = [constants.CONTROLLER, constants.COMPUTE]
-                self._config_update_hosts(context,
-                                          personalities,
-                                          host_uuids=hosts_uuid,
-                                          reboot=True)
+    def config_update_nova_local_backed_hosts(self, context, instance_backing):
+        hosts_uuid = self.hosts_with_nova_local(instance_backing)
+        if hosts_uuid:
+            personalities = [constants.CONTROLLER, constants.COMPUTE]
+            self._config_update_hosts(context,
+                                      personalities,
+                                      host_uuids=hosts_uuid,
+                                      reboot=True)
 
     def hosts_with_nova_local(self, backing_type):
         """Returns a list of hosts with certain backing type of nova_local"""
@@ -5671,13 +5671,8 @@ class ConductorManager(service.PeriodicService):
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
 
         if constants.SB_SVC_NOVA in services:
-            hosts_uuid = self.hosts_with_nova_local(constants.LVG_NOVA_BACKING_REMOTE)
-            if hosts_uuid:
-                personalities = [constants.CONTROLLER, constants.COMPUTE]
-                self._config_update_hosts(context,
-                                          personalities,
-                                          host_uuids=hosts_uuid,
-                                          reboot=True)
+            self.config_update_nova_local_backed_hosts(
+                context, constants.LVG_NOVA_BACKING_REMOTE)
 
     def update_ceph_services(self, context, sb_uuid):
         """Update service configs for Ceph tier pools."""

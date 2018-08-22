@@ -602,6 +602,24 @@ def _apply_backend_changes(op, sb_obj):
         pass
 
 
+def _apply_nova_specific_changes(sb_obj, old_sb_obj=None):
+    """If the backend's services have been modified and nova has been either
+       added or (re)moved, set the hosts with compute functionality and a
+       certain nova-local instance backing to Config out-of-date.
+    """
+    services = api_helper.getListFromServices(sb_obj.as_dict())
+
+    if old_sb_obj:
+        old_services = api_helper.getListFromServices(old_sb_obj.as_dict())
+    else:
+        old_services = []
+    diff_services = set(services) ^ set(old_services)
+
+    if constants.SB_SVC_NOVA in diff_services:
+        pecan.request.rpcapi.config_update_nova_local_backed_hosts(
+            pecan.request.context,
+            constants.LVG_NOVA_BACKING_REMOTE)
+
 #
 # Create
 #
@@ -688,6 +706,9 @@ def _create(storage_ceph):
 
     # Enable the backend:
     _apply_backend_changes(constants.SB_API_OP_CREATE, storage_backend_obj)
+
+    # Make any needed changes for nova local.
+    _apply_nova_specific_changes(storage_backend_obj)
 
     return storage_ceph_obj
 
@@ -1113,6 +1134,8 @@ def _patch(storceph_uuid, patch):
             # Enable the backend changes:
             _apply_backend_changes(constants.SB_API_OP_MODIFY,
                                    rpc_storceph)
+
+        _apply_nova_specific_changes(rpc_storceph, ostorceph)
 
         return StorageCeph.convert_with_links(rpc_storceph)
 
