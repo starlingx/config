@@ -48,8 +48,6 @@ from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 
-VALID_VSWITCH_TYPES = [constants.VSWITCH_TYPE_OVS_DPDK]
-
 
 class System(base.APIBase):
     """API representation of a system.
@@ -486,9 +484,6 @@ class SystemController(rest.RestController):
                                                  " as %s" % rpc_isystem['distributed_cloud_role']))
 
         if 'vswitch_type' in updates:
-            if vswitch_type not in VALID_VSWITCH_TYPES:
-                raise wsme.exc.ClientSideError(_("unsupported vswitch_type: %s"
-                                                 % vswitch_type))
             if vswitch_type == rpc_isystem['capabilities']['vswitch_type']:
                 raise wsme.exc.ClientSideError(_("vswitch_type is already set"
                                                  " as %s" % vswitch_type))
