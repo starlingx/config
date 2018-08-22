@@ -8,7 +8,6 @@ import pecan
 import socket
 from rest_api import get_token
 from rest_api import rest_api_request
-from sysinv.common.constants import REGION_ONE_NAME
 from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)
@@ -22,6 +21,7 @@ SM_API_PATH = "http://{host}:{port}".\
 def _get_token():
     system = pecan.request.dbapi.isystem_get_one()
     return get_token(system.region_name)
+
 
 def swact_pre_check(hostname, timeout):
     """
