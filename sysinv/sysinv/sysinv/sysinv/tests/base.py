@@ -36,6 +36,7 @@ from oslo_config import cfg
 from oslo_db.sqlalchemy import enginefacade
 import copy
 import fixtures
+import mock
 import os
 import shutil
 import sys
@@ -48,6 +49,8 @@ CONF = cfg.CONF
 _DB_CACHE = None
 
 logging.setup('sysinv')
+
+sys.modules['fm_core'] = mock.Mock()
 
 
 class Database(fixtures.Fixture):
