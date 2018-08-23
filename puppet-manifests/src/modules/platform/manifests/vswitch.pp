@@ -2,6 +2,7 @@ class platform::vswitch::params(
   $iommu_enabled = true,
   $hugepage_dir = '/mnt/huge-1048576kB',
   $driver_type = 'vfio-pci',
+  $vswitch_class = ::platform::vswitch::ovs,
 ) { }
 
 
@@ -18,7 +19,7 @@ class platform::vswitch
     require => Kmod::Load[$driver_type],
   }
 
-  include ::platform::vswitch::ovs
+  include $vswitch_class
 }
 
 
