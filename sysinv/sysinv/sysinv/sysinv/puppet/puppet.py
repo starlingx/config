@@ -16,44 +16,8 @@ import yaml
 from oslo_utils import importutils
 from stevedore import extension
 
-from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.openstack.common import log as logging
-from sysinv.openstack.common.gettextutils import _
-
-from . import aodh
-from . import ceilometer
-from . import ceph
-from . import cinder
-from . import common
-from . import dcmanager
-from . import dcorch
-from . import fm
-from . import glance
-from . import gnocchi
-from . import heat
-from . import horizon
-from . import interface
-from . import inventory
-from . import ironic
-from . import keystone
-from . import ldap
-from . import magnum
-from . import mtce
-from . import murano
-from . import networking
-from . import neutron
-from . import nfv
-from . import nova
-from . import ovs
-from . import panko
-from . import patching
-from . import platform
-from . import storage
-from . import device
-from . import service_parameter
-from . import kubernetes
-from . import smapi
+from sysinv.puppet import common
 
 
 LOG = logging.getLogger(__name__)
@@ -78,38 +42,6 @@ class PuppetOperator(object):
         self.dbapi = dbapi
         self.path = path
 
-        self.aodh = aodh.AodhPuppet(self)
-        self.ceilometer = ceilometer.CeilometerPuppet(self)
-        self.ceph = ceph.CephPuppet(self)
-        self.cinder = cinder.CinderPuppet(self)
-        self.dcmanager = dcmanager.DCManagerPuppet(self)
-        self.dcorch = dcorch.DCOrchPuppet(self)
-        self.glance = glance.GlancePuppet(self)
-        self.gnocchi = gnocchi.GnocchiPuppet(self)
-        self.heat = heat.HeatPuppet(self)
-        self.horizon = horizon.HorizonPuppet(self)
-        self.interface = interface.InterfacePuppet(self)
-        self.keystone = keystone.KeystonePuppet(self)
-        self.ldap = ldap.LdapPuppet(self)
-        self.magnum = magnum.MagnumPuppet(self)
-        self.mtce = mtce.MtcePuppet(self)
-        self.murano = murano.MuranoPuppet(self)
-        self.networking = networking.NetworkingPuppet(self)
-        self.neutron = neutron.NeutronPuppet(self)
-        self.nfv = nfv.NfvPuppet(self)
-        self.nova = nova.NovaPuppet(self)
-        self.ovs = ovs.OVSPuppet(self)
-        self.panko = panko.PankoPuppet(self)
-        self.patching = patching.PatchingPuppet(self)
-        self.platform = platform.PlatformPuppet(self)
-        self.storage = storage.StoragePuppet(self)
-        self.sysinv = inventory.SystemInventoryPuppet(self)
-        self.device = device.DevicePuppet(self)
-        self.ironic = ironic.IronicPuppet(self)
-        self.kubernetes = kubernetes.KubernetesPuppet(self)
-        self.service_parameter = service_parameter.ServiceParamPuppet(self)
-        self.smapi = smapi.SmPuppet(self)
-        self.fm = fm.FmPuppet(self)
         puppet_plugins = extension.ExtensionManager(
             namespace='systemconfig.puppet_plugins',
             invoke_on_load=True, invoke_args=(self,))
@@ -139,29 +71,6 @@ class PuppetOperator(object):
 
         try:
             config = {}
-            config.update(self.platform.get_static_config())
-            config.update(self.patching.get_static_config())
-            config.update(self.mtce.get_static_config())
-            config.update(self.keystone.get_static_config())
-            config.update(self.sysinv.get_static_config())
-            config.update(self.ceph.get_static_config())
-            config.update(self.nova.get_static_config())
-            config.update(self.neutron.get_static_config())
-            config.update(self.glance.get_static_config())
-            config.update(self.gnocchi.get_static_config())
-            config.update(self.cinder.get_static_config())
-            config.update(self.aodh.get_static_config())
-            config.update(self.heat.get_static_config())
-            config.update(self.magnum.get_static_config())
-            config.update(self.murano.get_static_config())
-            config.update(self.ironic.get_static_config())
-            config.update(self.panko.get_static_config())
-            config.update(self.ldap.get_static_config())
-            config.update(self.dcmanager.get_static_config())
-            config.update(self.dcorch.get_static_config())
-            config.update(self.smapi.get_static_config())
-            config.update(self.fm.get_static_config())
-
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_static_config())
 
@@ -184,32 +93,6 @@ class PuppetOperator(object):
 
         try:
             config = {}
-            config.update(self.platform.get_secure_static_config())
-            config.update(self.ldap.get_secure_static_config())
-            config.update(self.patching.get_secure_static_config())
-            config.update(self.mtce.get_secure_static_config())
-            config.update(self.keystone.get_secure_static_config())
-            config.update(self.sysinv.get_secure_static_config())
-            config.update(self.nfv.get_secure_static_config())
-            config.update(self.ceph.get_secure_static_config())
-            config.update(self.nova.get_secure_static_config())
-            config.update(self.neutron.get_secure_static_config())
-            config.update(self.horizon.get_secure_static_config())
-            config.update(self.glance.get_secure_static_config())
-            config.update(self.gnocchi.get_secure_static_config())
-            config.update(self.cinder.get_secure_static_config())
-            config.update(self.ceilometer.get_secure_static_config())
-            config.update(self.aodh.get_secure_static_config())
-            config.update(self.heat.get_secure_static_config())
-            config.update(self.magnum.get_secure_static_config())
-            config.update(self.murano.get_secure_static_config())
-            config.update(self.ironic.get_secure_static_config())
-            config.update(self.panko.get_secure_static_config())
-            config.update(self.dcmanager.get_secure_static_config())
-            config.update(self.dcorch.get_secure_static_config())
-            config.update(self.smapi.get_secure_static_config())
-            config.update(self.fm.get_secure_static_config())
-
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_secure_static_config())
 
@@ -225,36 +108,6 @@ class PuppetOperator(object):
         try:
             # NOTE: order is important due to cached context data
             config = {}
-            config.update(self.platform.get_system_config())
-            config.update(self.networking.get_system_config())
-            config.update(self.patching.get_system_config())
-            config.update(self.mtce.get_system_config())
-            config.update(self.keystone.get_system_config())
-            config.update(self.sysinv.get_system_config())
-            config.update(self.nfv.get_system_config())
-            config.update(self.ceph.get_system_config())
-            config.update(self.nova.get_system_config())
-            config.update(self.neutron.get_system_config())
-            config.update(self.horizon.get_system_config())
-            config.update(self.glance.get_system_config())
-            config.update(self.gnocchi.get_system_config())
-            config.update(self.cinder.get_system_config())
-            config.update(self.ceilometer.get_system_config())
-            config.update(self.aodh.get_system_config())
-            config.update(self.heat.get_system_config())
-            config.update(self.magnum.get_system_config())
-            config.update(self.murano.get_system_config())
-            config.update(self.storage.get_system_config())
-            config.update(self.ironic.get_system_config())
-            config.update(self.panko.get_system_config())
-            config.update(self.dcmanager.get_system_config())
-            config.update(self.dcorch.get_system_config())
-            config.update(self.kubernetes.get_system_config())
-            config.update(self.smapi.get_system_config())
-            config.update(self.fm.get_system_config())
-            # service_parameter must be last to permit overrides
-            config.update(self.service_parameter.get_system_config())
-
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_system_config())
 
@@ -270,25 +123,6 @@ class PuppetOperator(object):
         try:
             # NOTE: order is important due to cached context data
             config = {}
-            config.update(self.platform.get_secure_system_config())
-            config.update(self.keystone.get_secure_system_config())
-            config.update(self.sysinv.get_secure_system_config())
-            config.update(self.nova.get_secure_system_config())
-            config.update(self.neutron.get_secure_system_config())
-            config.update(self.glance.get_secure_system_config())
-            config.update(self.gnocchi.get_secure_system_config())
-            config.update(self.cinder.get_secure_system_config())
-            config.update(self.aodh.get_secure_system_config())
-            config.update(self.heat.get_secure_system_config())
-            config.update(self.magnum.get_secure_system_config())
-            config.update(self.murano.get_secure_system_config())
-            config.update(self.ironic.get_secure_system_config())
-            config.update(self.panko.get_secure_system_config())
-            config.update(self.dcmanager.get_secure_system_config())
-            config.update(self.dcorch.get_secure_system_config())
-            config.update(self.kubernetes.get_secure_system_config())
-            config.update(self.fm.get_secure_system_config())
-
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_secure_system_config())
 
@@ -302,91 +136,12 @@ class PuppetOperator(object):
     def update_host_config(self, host, config_uuid=None):
         """Update the host hiera configuration files for the supplied host"""
 
+        self.config_uuid = config_uuid
         config = {}
-        if host.personality == constants.CONTROLLER:
-            config = self.update_controller_config(host, config_uuid)
-        elif host.personality == constants.COMPUTE:
-            config = self.update_compute_config(host, config_uuid)
-        elif host.personality == constants.STORAGE:
-            config = self.update_storage_config(host, config_uuid)
-        else:
-            raise exception.SysinvException(_(
-                "Invalid method call: unsupported personality: %s") %
-                host.personality)
         for puppet_plugin in self.puppet_plugins:
             config.update(puppet_plugin.obj.get_host_config(host))
 
         self._write_host_config(host, config)
-
-    def update_controller_config(self, host, config_uuid=None):
-        """Update the configuration for a specific controller host"""
-        try:
-            # NOTE: order is important due to cached context data
-            config = {}
-            config.update(self.platform.get_host_config(host, config_uuid))
-            config.update(self.interface.get_host_config(host))
-            config.update(self.ovs.get_host_config(host))
-            config.update(self.networking.get_host_config(host))
-            config.update(self.storage.get_host_config(host))
-            config.update(self.ldap.get_host_config(host))
-            config.update(self.nfv.get_host_config(host))
-            config.update(self.ceph.get_host_config(host))
-            config.update(self.cinder.get_host_config(host))
-            config.update(self.device.get_host_config(host))
-            config.update(self.nova.get_host_config(host))
-            config.update(self.neutron.get_host_config(host))
-            config.update(self.smapi.get_host_config(host))
-            config.update(self.fm.get_host_config(host))
-            # service_parameter must be last to permit overrides
-            config.update(self.service_parameter.get_host_config(host))
-
-            return config
-        except Exception:
-            LOG.exception("failed to create host config: %s" % host.uuid)
-            raise
-
-    def update_compute_config(self, host, config_uuid=None):
-        """Update the configuration for a specific compute host"""
-        try:
-            # NOTE: order is important due to cached context data
-            config = {}
-            config.update(self.platform.get_host_config(host, config_uuid))
-            config.update(self.interface.get_host_config(host))
-            config.update(self.ovs.get_host_config(host))
-            config.update(self.networking.get_host_config(host))
-            config.update(self.storage.get_host_config(host))
-            config.update(self.ceph.get_host_config(host))
-            config.update(self.device.get_host_config(host))
-            config.update(self.nova.get_host_config(host))
-            config.update(self.neutron.get_host_config(host))
-            config.update(self.kubernetes.get_host_config(host))
-            config.update(self.ldap.get_host_config(host))
-            # service_parameter must be last to permit overrides
-            config.update(self.service_parameter.get_host_config(host))
-
-            return config
-        except Exception:
-            LOG.exception("failed to create host config: %s" % host.uuid)
-            raise
-
-    def update_storage_config(self, host, config_uuid=None):
-        """Update the configuration for a specific storage host"""
-        try:
-            # NOTE: order is important due to cached context data
-            config = {}
-            config.update(self.platform.get_host_config(host, config_uuid))
-            config.update(self.interface.get_host_config(host))
-            config.update(self.networking.get_host_config(host))
-            config.update(self.storage.get_host_config(host))
-            config.update(self.ceph.get_host_config(host))
-            config.update(self.ldap.get_host_config(host))
-            # service_parameter must be last to permit overrides
-            config.update(self.service_parameter.get_host_config(host))
-
-            return config
-        except Exception:
-            LOG.exception("failed to create host config: %s" % host.uuid)
-            raise
 
     def remove_host_config(self, host):
         """Remove the configuration for the supplied host"""

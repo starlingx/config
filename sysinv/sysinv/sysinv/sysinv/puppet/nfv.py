@@ -5,6 +5,7 @@
 #
 
 from sysinv.common import constants
+from sysinv.common import utils
 
 from . import openstack
 
@@ -103,6 +104,8 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
         }
 
     def get_host_config(self, host):
+        if (constants.CONTROLLER not in utils.get_personalities(host)):
+            return {}
         database_dir = "/opt/platform/nfv/vim/%s" % host.software_load
         return {
             'nfv::vim::database_dir': database_dir,

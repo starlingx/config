@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from sysinv.common import constants
+from sysinv.common import utils
+
 from . import openstack
 
 
@@ -54,6 +57,9 @@ class SmPuppet(openstack.OpenstackBasePuppet):
         return config
 
     def get_host_config(self, host):
+        if (constants.CONTROLLER not in utils.get_personalities(host)):
+            return {}
+
         config = {
             'platform::smapi::params::bind_ip': host.mgmt_ip,
         }

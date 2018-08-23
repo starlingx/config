@@ -45,6 +45,10 @@ class BasePuppet(object):
         return self._operator.dbapi
 
     @property
+    def config_uuid(self):
+        return self._operator.config_uuid
+
+    @property
     def context(self):
         return self._operator.context
 
