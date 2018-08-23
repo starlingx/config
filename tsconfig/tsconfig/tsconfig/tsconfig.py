@@ -154,17 +154,15 @@ def _load():
 
 _load()
 
-''' Keep the following path and flag declarations in sync with the tsconfig
-    bash script.
-'''
+# Keep the following path and flag declarations in sync with the tsconfig
+#    bash script.
+#
 
 # Platform configuration paths and files
 
 VOLATILE_PATH = "/var/run"
 PLATFORM_PATH = "/opt/platform"
 CONFIG_PATH = PLATFORM_PATH + "/config/" + SW_VERSION + "/"
-# TODO(mpeters) remove the PACKSTACK_PATH
-PACKSTACK_PATH = PLATFORM_PATH + "/packstack/" + SW_VERSION + "/"
 PUPPET_PATH = PLATFORM_PATH + "/puppet/" + SW_VERSION + "/"
 CGCS_PATH = "/opt/cgcs"
 KEYRING_PATH = PLATFORM_PATH + "/.keyring/" + SW_VERSION
