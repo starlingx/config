@@ -947,7 +947,9 @@ def _update_pool_quotas(storceph):
 
 
 def _check_object_gateway_install():
+    # Ensure we have the required number of monitors
     api_helper.check_minimal_number_of_controllers(2)
+    api_helper.check_swift_enabled()
 
 
 def _patch(storceph_uuid, patch):
@@ -1114,7 +1116,6 @@ def _patch(storceph_uuid, patch):
         # attribute and DB column. This should be driven by if the service
         # is added to the services list
         if object_gateway_install:
-            # Ensure we have the required number of monitors
             _check_object_gateway_install()
 
     # Update current ceph storage object again for object_gateway delta adjustments

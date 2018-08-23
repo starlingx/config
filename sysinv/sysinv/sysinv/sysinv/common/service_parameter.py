@@ -21,7 +21,9 @@ import urlparse
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import utils as cutils
+from sysinv.db import api as db_api
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 
@@ -586,6 +588,18 @@ def _rpm_pkg_is_installed(pkg_name):
     for h in mi:
         sum += 1
     return (sum > 0)
+
+
+def _validate_swift_enabled(name, value):
+    _validate_boolean(name, value)
+    if not value:
+        return
+    dbapi = db_api.get_instance()
+    ceph_backend = StorageBackendConfig.get_backend_conf(
+        dbapi, constants.CINDER_BACKEND_CEPH)
+    if ceph_backend and ceph_backend.object_gateway:
+        raise wsme.exc.ClientSideError(_(
+            "Swift API is already supported by Ceph Object Gateway."))
 
 
 # LDAP Identity Service Parameters (mandatory)
@@ -1368,6 +1382,29 @@ AODH_PARAMETER_RESOURCE = {
         'aodh::alarm_history_time_to_live',
 }
 
+SWIFT_CONFIG_PARAMETER_MANDATORY = [
+    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED,
+]
+
+SWIFT_CONFIG_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB,
+]
+
+SWIFT_CONFIG_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED: _validate_swift_enabled,
+    constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB: _validate_integer,
+}
+
+SWIFT_CONFIG_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED:
+        'openstack::swift::params::service_enabled',
+    constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB:
+        'openstack::swift::params::fs_size_mb',
+}
+
+SWIFT_CONFIG_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED: SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN,
+}
 
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
@@ -1534,6 +1571,15 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_MANDATORY: AODH_PARAMETER_MANDATORY,
             SERVICE_PARAM_VALIDATOR: AODH_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: AODH_PARAMETER_RESOURCE,
+        },
+    },
+    constants.SERVICE_TYPE_SWIFT: {
+        constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG: {
+            SERVICE_PARAM_MANDATORY: SWIFT_CONFIG_PARAMETER_MANDATORY,
+            SERVICE_PARAM_OPTIONAL: SWIFT_CONFIG_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: SWIFT_CONFIG_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: SWIFT_CONFIG_PARAMETER_RESOURCE,
+            SERVICE_PARAM_DATA_FORMAT: SWIFT_CONFIG_PARAMETER_DATA_FORMAT,
         },
     },
 }

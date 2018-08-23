@@ -125,6 +125,10 @@ include ::platform::dcmanager::api
 include ::platform::dcorch::snmp
 
 include ::platform::smapi
+
+include ::openstack::swift
+include ::openstack::swift::api
+
 include ::platform::sm
 
 class { '::platform::config::controller::post':

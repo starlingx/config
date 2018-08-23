@@ -153,6 +153,7 @@ class platform::haproxy::runtime {
   include ::openstack::ironic::haproxy
   include ::openstack::panko::haproxy
   include ::openstack::gnocchi::haproxy
+  include ::openstack::swift::haproxy
 
   class {'::platform::haproxy::reload':
     stage => post

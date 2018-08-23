@@ -497,6 +497,14 @@ class ConductorManager(service.PeriodicService):
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSINV,
          'name': constants.SERVICE_PARAM_NAME_SYSINV_FIREWALL_RULES_ID,
          'value': None},
+        {'service': constants.SERVICE_TYPE_SWIFT,
+         'section': constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED,
+         'value': False},
+        {'service': constants.SERVICE_TYPE_SWIFT,
+         'section': constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB,
+         'value': constants.SERVICE_PARAM_SWIFT_FS_SIZE_MB_DEFAULT},
     ]
 
     def _create_default_service_parameter(self):
@@ -6892,6 +6900,14 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "classes": ['openstack::aodh::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+            elif service == constants.SERVICE_TYPE_SWIFT:
+                personalities = [constants.CONTROLLER]
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['openstack::swift::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
