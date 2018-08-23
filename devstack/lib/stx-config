@@ -43,8 +43,6 @@ CGCS_PATCH_DIR=$STXUPDATE_DIR/cgcs-patch/
 STXFAULT_REPO=${STXFAULT_REPO:-${GIT_BASE}/openstack/stx-fault.git}
 STXFAULT_DIR=$DEST/stx-fault
 STXFAULT_BRANCH=${STXFAULT_BRANCH:-master}
-STXUTILS_REPO=${STXUTILS_REPO:-${GIT_BASE}/openstack/stx-utils.git}
-STXUTILS_DIR=$DEST/stx-utils
 STXUTILS_PLATFORM_DIR=$STXUTILS_DIR/middleware/util/recipes-common/platform-util
 STXUTILS_BRANCH=${STXUTILS_BRANCH:-master}
 GITDIR["fm-api"]=$STXFAULT_DIR/fm-api
@@ -181,13 +179,6 @@ function install_fm_api {
     popd
 }
 
-function install_stx_utils {
-    git_clone $STXUTILS_REPO $STXUTILS_DIR $STXUTILS_BRANCH
-    pushd $STXUTILS_PLATFORM_DIR/platform-util/
-    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
-    popd
-}
-
 function install_sysinv {
     local req_services="key rabbit nova neutron"
     for srv in $req_services;do
@@ -221,7 +212,6 @@ function install_sysinv_depends {
     install_controllerconfig
     install_tsconfig
     install_fm_api
-    install_stx_utils
 }
 
 function install_tsconfig {
