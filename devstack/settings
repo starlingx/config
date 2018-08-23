@@ -1,0 +1,8 @@
+# Devstack settings
+
+# Defaults
+# --------
+
+
+######### Plugin Specific ##########
+enable_service sysinv sysinv-api sysinv-cond
