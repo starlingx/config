@@ -48,9 +48,9 @@ class Manager(object):
         self.api = api
 
     def _create(self, url, body):
-        resp, body = self.api.json_request('POST', url, body=body)
+        _, body = self.api.json_request('POST', url, body=body)
         if body:
-            return self.resource_class(self, body)
+            return self.resource_class(self, body)  # noqa
 
     def _upload(self, url, body, data=None):
         resp = self.api.upload_request_with_data(
@@ -59,11 +59,11 @@ class Manager(object):
 
     def _json_get(self, url, body=None):
         """send a GET request and return a json serialized object"""
-        resp, body = self.api.json_request('GET', url, body=body)
+        _, body = self.api.json_request('GET', url, body=body)
         return body
 
     def _list(self, url, response_key=None, obj_class=None, body=None):
-        resp, body = self.api.json_request('GET', url)
+        _, body = self.api.json_request('GET', url)
 
         if obj_class is None:
             obj_class = self.resource_class
@@ -81,10 +81,10 @@ class Manager(object):
         return [obj_class(self, res, loaded=True) for res in data if res]
 
     def _update(self, url, body, http_method='PATCH', response_key=None):
-        resp, body = self.api.json_request(http_method, url, body=body)
+        _, body = self.api.json_request(http_method, url, body=body)
         # PATCH/PUT requests may not return a body
         if body:
-            return self.resource_class(self, body)
+            return self.resource_class(self, body)  # noqa
 
     def _delete(self, url):
         self.api.raw_request('DELETE', url)
