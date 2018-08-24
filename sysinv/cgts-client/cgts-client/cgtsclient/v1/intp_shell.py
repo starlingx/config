@@ -69,6 +69,7 @@ def donot_ntp_add(cc, args):
 
     _print_intp_show(intp)
 
+
 @utils.arg('--enabled',
            metavar='<true/false>',
            help="NTP service enabled.")

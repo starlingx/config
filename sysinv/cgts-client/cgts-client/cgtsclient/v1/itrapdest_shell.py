@@ -62,7 +62,7 @@ def do_snmp_trapdest_add(cc, args):
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
     # fields = utils.args_array_to_dict(fields, 'activity')
-    #fields = utils.args_array_to_dict(fields, 'reason')
+    # fields = utils.args_array_to_dict(fields, 'reason')
     itrapdest = cc.itrapdest.create(**fields)
 
     field_list.append('uuid')

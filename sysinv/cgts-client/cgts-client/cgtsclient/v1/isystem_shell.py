@@ -87,8 +87,6 @@ def do_show(cc, args):
            metavar='<security_feature>',
            choices=['spectre_meltdown_v1', 'spectre_meltdown_all'],
            help='Use spectre_meltdown_v1 for spectre/meltdown v1 fixes, or spectre_meltdown_all to use all fixes')
-
-
 def do_modify(cc, args):
     """Modify system attributes."""
     isystems = cc.isystem.list()
