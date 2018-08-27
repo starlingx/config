@@ -88,6 +88,15 @@ class openstack::keystone (
       token_expiration => $token_expiration,
     }
 
+    # create keystone policy configuration
+    file { "/etc/keystone/policy.json":
+      ensure  => present,
+      owner   => 'keystone',
+      group   => 'keystone',
+      mode    => '0640',
+      content => template('openstack/keystone-policy.json.erb'),
+    }
+
     # Keystone users can only be added to the SQL backend (write support for 
     # the LDAP backend has been removed). We can therefore set password rules
     # irrespective of the backend
