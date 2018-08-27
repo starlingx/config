@@ -98,12 +98,19 @@ class openstack::gnocchi::api
       mode    => '0640',
     }
 
-    if $::platform::params::init_database {
+    $storage_configured = inline_template("<% if File.exists?('/opt/gnocchi/tmp/gnocchi-config') -%>true<% else %>false<% end -%>")
+    if ! str2bool($storage_configured) {
       include ::openstack::gnocchi::metricd
       $sacks_number = $::openstack::gnocchi::metricd::metricd_workers + 2
 
+      if $::platform::params::init_database {
+         $options = "--sacks-number $sacks_number"
+      } else {
+         $options = "--sacks-number $sacks_number --skip-index --skip-archive-policies-creation"
+      }
+
       class { '::gnocchi::db::sync':
-        extra_opts => "--sacks-number $sacks_number"
+        extra_opts => $options
       }
     }
 
