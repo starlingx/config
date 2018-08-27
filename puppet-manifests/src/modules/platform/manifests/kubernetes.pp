@@ -104,6 +104,23 @@ class platform::kubernetes::master::init
       command => "kubeadm init --config=/etc/kubernetes/kubeadm.yaml",
       logoutput => true,
     } ->
+    
+    # Update ownership/permissions for file created by "kubeadm init".
+    # We want it readable by sysinv and wrsroot.
+    file { "/etc/kubernetes/admin.conf":
+      ensure => 'file',
+      owner  => 'root',
+      group  => $::platform::params::protected_group_name,
+      mode   => '0640',
+    } ->
+
+    # Add a bash profile script to set a k8s env variable
+    file {'bash_profile_k8s':
+      path    => '/etc/profile.d/kubeconfig.sh',
+      ensure  => present,
+      mode    => '0644',
+      source  => "puppet:///modules/${module_name}/kubeconfig.sh"
+    } ->
 
     # Configure calico networking using the Kubernetes API datastore. This is
     # beta functionality and has this limitation:
@@ -189,6 +206,23 @@ class platform::kubernetes::master::init
       exec { "configure master node":
         command   => "kubeadm init --config=/etc/kubernetes/kubeadm.yaml",
         logoutput => true,
+      } ->
+
+      # Update ownership/permissions for file created by "kubeadm init".
+      # We want it readable by sysinv and wrsroot.
+      file { "/etc/kubernetes/admin.conf":
+        ensure => 'file',
+        owner  => 'root',
+        group  => $::platform::params::protected_group_name,
+        mode   => '0640',
+      } ->
+
+      # Add a bash profile script to set a k8s env variable
+      file {'bash_profile_k8s':
+        path    => '/etc/profile.d/kubeconfig.sh',
+        ensure  => present,
+        mode    => '0644',
+        source  => "puppet:///modules/${module_name}/kubeconfig.sh"
       } ->
 
       # Remove the taint from the master node
