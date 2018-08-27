@@ -108,6 +108,7 @@ mimetype.assign             = (
   ".tbz"          =>      "application/x-bzip-compressed-tar",
   ".tar.bz2"      =>      "application/x-bzip-compressed-tar",
   ".rpm"          =>      "application/x-rpm",
+  ".yaml"         =>      "text/yaml",
   ".cfg"          =>      "text/plain"
  )
 
@@ -217,7 +218,7 @@ server.max-keep-alive-idle = 0
 ## read proxy.txt for more info
 
 # Proxy all non-static content to the local horizon dashboard
-$HTTP["url"] !~ "^/(rel-[^/]*|feed|updates|static)/" {
+$HTTP["url"] !~ "^/(rel-[^/]*|feed|updates|static|helm_charts)/" {
     proxy.server            = ( "" =>
                                ( "localhost" =>
                                  (
