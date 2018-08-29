@@ -38,6 +38,7 @@ from cgtsclient.v1 import isystem_shell
 from cgtsclient.v1 import itrapdest_shell
 from cgtsclient.v1 import iuser_shell
 
+from cgtsclient.v1 import label_shell
 from cgtsclient.v1 import license_shell
 from cgtsclient.v1 import lldp_agent_shell
 from cgtsclient.v1 import lldp_neighbour_shell
@@ -109,6 +110,7 @@ COMMAND_MODULES = [
     certificate_shell,
     storage_tier_shell,
     helm_shell,
+    label_shell,
 ]
 
 

@@ -65,6 +65,7 @@ from sysinv.api.controllers.v1 import pv as pv_api
 from sysinv.api.controllers.v1 import sensor as sensor_api
 from sysinv.api.controllers.v1 import sensorgroup
 from sysinv.api.controllers.v1 import storage
+from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import lldp_agent
 from sysinv.api.controllers.v1 import lldp_neighbour
@@ -483,6 +484,9 @@ class Host(base.APIBase):
     lldp_neighbours = [link.Link]
     "Links to the collection of LldpNeighbours on this ihost"
 
+    labels = [link.Link]
+    "Links to the collection of labels assigned to this host"
+
     boot_device = wtypes.text
     rootfs_device = wtypes.text
     install_output = wtypes.text
@@ -748,6 +752,16 @@ class Host(base.APIBase):
                                     bookmark=True)
                                      ]
 
+            uhost.labels = [link.Link.make_link('self',
+                                                pecan.request.host_url,
+                                                'ihosts',
+                                                uhost.uuid + "/labels"),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'ihosts',
+                                                uhost.uuid + "/labels",
+                                                bookmark=True)
+                            ]
         # Don't expose the vsc_controllers field if we are not configured with
         # the nuage_vrs vswitch or we are not a compute node.
         vswitch_type = utils.get_vswitch_type()
@@ -1035,6 +1049,9 @@ class HostController(rest.RestController):
     lldp_neighbours = lldp_neighbour.LLDPNeighbourController(
         from_ihosts=True)
     "Expose lldp_neighbours as a sub-element of ihosts"
+
+    labels = label.LabelController(from_ihosts=True)
+    "Expose labels as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],

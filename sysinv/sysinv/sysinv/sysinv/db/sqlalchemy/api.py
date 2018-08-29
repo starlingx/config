@@ -1082,6 +1082,25 @@ def add_lldp_tlv_filter_by_agent(query, agentid):
                            models.LldpTlvs.agent_id == models.LldpAgents.id)
         return query.filter(models.LldpAgents.uuid == agentid)
 
+
+def add_label_filter_by_host(query, hostid):
+    """Adds a label-specific ihost filter to a query.
+
+    Filters results by host id if supplied value is an integer,
+    otherwise attempts to filter results by host uuid.
+
+    :param query: Initial query to add filter to.
+    :param hostid: host id or uuid to filter results by.
+    :return: Modified query.
+    """
+    if utils.is_int_like(hostid):
+        return query.filter_by(host_id=hostid)
+
+    elif utils.is_uuid_like(hostid):
+        query = query.join(models.ihost)
+        return query.filter(models.ihost.uuid == hostid)
+
+
 class Connection(api.Connection):
     """SqlAlchemy connection."""
 
@@ -7267,3 +7286,96 @@ class Connection(api.Connection):
                 raise exception.HelmOverrideNotFound(name=name,
                                                      namespace=namespace)
             query.delete()
+
+    def _label_get(self, label_id):
+        query = model_query(models.Label)
+        query = add_identity_filter(query, label_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.HostLabelNotFound(uuid=label_id)
+        return result
+
+    @objects.objectify(objects.label)
+    def label_create(self, host_uuid, values):
+
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        values['host_uuid'] = host_uuid
+
+        host_label = models.Label()
+        host_label.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(host_label)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add host label %s. "
+                          "Already exists with this uuid" %
+                          (values['label']))
+                raise exception.HostLabelAlreadyExists(
+                    label=values['label'], host=values['host_uuid'])
+            return self._label_get(values['uuid'])
+
+    @objects.objectify(objects.label)
+    def label_get(self, uuid):
+        query = model_query(models.Label)
+        query = query.filter_by(uuid=uuid)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.InvalidParameterValue(
+                err="No label entry found for %s" % uuid)
+        return result
+
+    @objects.objectify(objects.label)
+    def label_get_all(self, hostid=None):
+        query = model_query(models.Label, read_deleted="no")
+        if hostid:
+            query = query.filter_by(host_id=hostid)
+        return query.all()
+
+    @objects.objectify(objects.label)
+    def label_update(self, uuid, values):
+        with _session_for_write() as session:
+            query = model_query(models.Label, session=session)
+            query = query.filter_by(uuid=uuid)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count == 0:
+                raise exception.HostLabelNotFound(uuid)
+            return query.one()
+
+    def label_destroy(self, uuid):
+        with _session_for_write() as session:
+            query = model_query(models.Label, session=session)
+            query = query.filter_by(uuid=uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.HostLabelNotFound(uuid)
+            query.delete()
+
+    @objects.objectify(objects.label)
+    def label_get_by_host(self, host,
+                          limit=None, marker=None,
+                          sort_key=None, sort_dir=None):
+        query = model_query(models.Label)
+        query = add_label_filter_by_host(query, host)
+        return _paginate_query(models.Label, limit, marker,
+                               sort_key, sort_dir, query)
+
+    def _label_query(self, host_id, values, session=None):
+        query = model_query(models.Label, session=session)
+        query = query.filter(models.Label.host_id == host_id)
+        query = query.filter(models.Label.label.startswith(values))
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.HostLabelNotFoundByKey(label=values)
+        return result
+
+    @objects.objectify(objects.label)
+    def label_query(self, host_id, values):
+        return self._label_query(host_id, values)

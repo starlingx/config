@@ -71,6 +71,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import fm
 from sysinv.common import health
+from sysinv.common import kubernetes
 from sysinv.common import retrying
 from sysinv.common import service
 from sysinv.common import utils as cutils
@@ -153,6 +154,7 @@ class ConductorManager(service.PeriodicService):
         self._ceph = None
         self._ceph_api = ceph.CephWrapper(
             endpoint='http://localhost:5001/api/v0.1/')
+        self._kube = None
 
         self._openstack = None
         self._api_token = None
@@ -178,6 +180,7 @@ class ConductorManager(service.PeriodicService):
         self._puppet = puppet.PuppetOperator(self.dbapi)
         self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
+        self._kube = kubernetes.KubeOperator(self.dbapi)
 
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
@@ -10170,3 +10173,27 @@ class ConductorManager(service.PeriodicService):
         }
         """
         return self._helm.get_helm_application_overrides(app_name, cnamespace)
+
+    def update_kubernetes_label(self, context,
+                                host_uuid, label_dict):
+        """Synchronously, have the conductor update kubernetes label
+        per host.
+
+        :param context: request context.
+        :param host_uuid: uuid or id of the host
+        :param label_dict: a dictionary of host label attributes
+
+        """
+        LOG.info("update_kubernetes_label: label_dict=%s" % label_dict)
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            LOG.error("Cannot find host by id %s" % host_uuid)
+            return
+        body = {
+            'metadata': {
+                'labels': {}
+            }
+        }
+        body['metadata']['labels'].update(label_dict)
+        self._kube.kube_patch_node(host.hostname, body)

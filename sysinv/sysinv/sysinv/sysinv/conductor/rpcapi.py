@@ -1631,3 +1631,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('get_helm_application_overrides',
                                        app_name=app_name,
                                        cnamespace=cnamespace))
+
+    def update_kubernetes_label(self, context, host_uuid, label_dict):
+        """Synchronously, have the conductor update kubernetes label.
+
+        :param context: request context.
+        :param host_uuid: uuid or id of the host
+        :param label_dict: a dictionary of kubernetes labels
+        """
+        return self.call(context,
+                         self.make_msg('update_kubernetes_label',
+                                       host_uuid=host_uuid,
+                                       label_dict=label_dict))
