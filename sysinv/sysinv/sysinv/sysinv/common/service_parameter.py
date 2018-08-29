@@ -93,6 +93,18 @@ def _validate_range(name, value, min, max):
             "Parameter '%s' must be an integer value." % name))
 
 
+def _validate_zero_or_range(name, value, min, max):
+    try:
+        if int(value) != 0:
+            if int(value) < min or int(value) > max:
+                raise wsme.exc.ClientSideError(_(
+                    "Parameter '%s' must be zero or between %d and %d.")
+                    % (name, min, max))
+    except ValueError:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be an integer value." % name))
+
+
 def _validate_ldap_url(name, value):
 
     url = urlparse.urlparse(value)
@@ -543,6 +555,19 @@ def _validate_hbs_degrade_threshold(name, value):
     _validate_range(name, value,
                     SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_MIN,
                     SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_MAX)
+
+
+def _validate_mnfa_threshold(name, value):
+    _validate_range(name, value,
+                    SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MIN,
+                    SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MAX)
+
+
+def _validate_mnfa_timeout(name, value):
+    # accept zero (no timeout) or a reasonable/tested specific range
+    _validate_zero_or_range(name, value,
+                    SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN,
+                    SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX)
 
 
 # Validate range of Performance Monitoring Event 'time to live" value
@@ -1308,6 +1333,8 @@ PLATFORM_MTCE_PARAMETER_MANDATORY = [
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD,
+    constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD,
+    constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT,
 ]
 
 PLATFORM_SYSINV_PARAMETER_PROTECTED = ['firewall_rules_id']
@@ -1322,6 +1349,10 @@ SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD_MIN = 10
 SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD_MAX = 100
 SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_MIN = 4
 SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_MAX = 100
+SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MIN = 2
+SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MAX = 100
+SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN = 100
+SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX = 86400
 
 PLATFORM_MTCE_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT:
@@ -1334,6 +1365,10 @@ PLATFORM_MTCE_PARAMETER_VALIDATOR = {
         _validate_hbs_failure_threshold,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD:
         _validate_hbs_degrade_threshold,
+    constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD:
+        _validate_mnfa_threshold,
+    constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT:
+        _validate_mnfa_timeout,
 }
 
 PLATFORM_MTCE_PARAMETER_RESOURCE = {
@@ -1342,6 +1377,8 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD: 'platform::mtce::params::heartbeat_period',
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD: 'platform::mtce::params::heartbeat_failure_threshold',
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD: 'platform::mtce::params::heartbeat_degrade_threshold',
+    constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD: 'platform::mtce::params::mnfa_threshold',
+    constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT: 'platform::mtce::params::mnfa_timeout',
 }
 
 # Panko Event TTL range from 1 hour to 1 year

@@ -51,6 +51,8 @@ platform::mtce::agent::params::controller_boot_timeout: 1200
 platform::mtce::agent::params::heartbeat_period: 100
 platform::mtce::agent::params::heartbeat_failure_threshold: 10
 platform::mtce::agent::params::heartbeat_degrade_threshold: 6
+platform::mtce::agent::params::mnfa_threshold: 2
+platform::mtce::agent::params::mnfa_timeout: 0
 
 # influxdb configuration for collectd
 platform::influxdb::params::bind_address: ':25826'

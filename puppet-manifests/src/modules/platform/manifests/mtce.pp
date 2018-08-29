@@ -14,6 +14,8 @@ class platform::mtce::params (
   $heartbeat_failure_threshold = undef,
   $heartbeat_period = undef,
   $mtce_multicast = undef,
+  $mnfa_threshold = undef,
+  $mnfa_timeout = undef,
 ) { }
 
 

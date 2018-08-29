@@ -1,4 +1,4 @@
-; Packstack managed Maintenance Configuration
+; Puppet Managed Maintenance Configuration
 [agent]                       ; Agent Configuration
 keystone_auth_username = <%= @auth_username %> ; mtce auth username
 keystone_auth_pw       = <%= @auth_pw %> ; mtce auth password
@@ -16,8 +16,31 @@ heartbeat_period = <%= @heartbeat_period %> ; Heartbeat period in milliseconds
 heartbeat_failure_threshold = <%= @heartbeat_failure_threshold %> ; Heartbeat failure threshold count.
 heartbeat_degrade_threshold = <%= @heartbeat_degrade_threshold %> ; Heartbeat degrade threshold count.
 
+; Multi-Node Failure Avoidance (MNFA) Activation and Deactivation threshold.
+; The minimum number of hosts that fail heartbeat within the
+;  heartbeat_failure_threshold upon which Maintenance activates MNFA Mode.
+; Once the number of failing hosts drop below this threshold then mainteance
+;  deactivates MNFA mode while remaining failing hosts are Gracefully Recovered.
+; Default value is 2
+; Minimum value is 2
+; To modify execute:
+;  system service-parameter-modify platform maintenance mnfa_threshold=<value>
+mnfa_threshold = <%= @mnfa_threshold %>
+
 [timeouts]
 compute_boot_timeout = <%= @compute_boot_timeout %> ; The max time (seconds) that Mtce waits for the mtcAlive
 controller_boot_timeout = <%= @controller_boot_timeout %> ; message after which it will time out and fail the host.
 
-
+; Multi-Node Failure Avoidance (MNFA) Lifecycle Timer.
+; MNFA Activation starts a timer with this timeout value.
+;  See mnfa_threshold above.
+; Maintenance automatically Deactivates MNFA mode if the number of hosts that
+;  are failing heartbeat doesn't drop below mnfa_threshold before timer expires.
+; Timer is in seconds.
+; A zero value means infinite lifecycle or until the number of
+;  heartbeat failing hosts drops below the mnfa_threshold before expiry.
+; Default value is 0
+; Minimum non-zero value is 100 ; maximum is 86400
+; To modify execute:
+;  system service-parameter-modify platform maintenance mnfa_timeout=<value>
+mnfa_timeout = <%= @mnfa_timeout %>
