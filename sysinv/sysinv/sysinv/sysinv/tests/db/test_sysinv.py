@@ -34,7 +34,7 @@ class DbNodeTestCase(base.DbTestCase):
 
     def _create_many_test_ihosts(self):
         uuids = []
-        for i in xrange(1, 6):
+        for i in range(1, 6):
             n = self._create_test_ihost(id=i, uuid=uuidutils.generate_uuid())
             uuids.append(n['uuid'])
         uuids.sort()

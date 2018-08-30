@@ -75,7 +75,7 @@ class OpenStack(object):
             self._disconnect()
 
         # Try to obtain an admin token from keystone
-        for _ in xrange(KEYSTONE_AUTH_SERVER_RETRY_CNT):
+        for _ in range(KEYSTONE_AUTH_SERVER_RETRY_CNT):
             self.admin_token = get_token(self.conf['auth_url'],
                                          self.conf['admin_tenant'],
                                          self.conf['admin_user'],
@@ -245,7 +245,7 @@ class OpenStack(object):
         if exempt_hostnames is None:
             exempt_hostnames = []
 
-        for _ in xrange(timeout / interval_step):
+        for _ in range(timeout / interval_step):
             hosts = sysinv.get_hosts(self.admin_token,
                                      self.conf['region_name'])
             if not hosts:

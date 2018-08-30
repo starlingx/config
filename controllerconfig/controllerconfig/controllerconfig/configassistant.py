@@ -3529,7 +3529,7 @@ class ConfigAssistant():
         cmd = 'test $(sm-dump | grep -E %s | wc -l) -eq %d' % (egrep, count)
 
         interval = 10
-        for _ in xrange(0, constants.SERVICE_ENABLE_TIMEOUT, interval):
+        for _ in range(0, constants.SERVICE_ENABLE_TIMEOUT, interval):
             try:
                 subprocess.check_call(cmd, shell=True,
                                       stderr=subprocess.STDOUT)
@@ -3624,7 +3624,7 @@ class ConfigAssistant():
         return True
 
     def _wait_system_config(self, client):
-        for _ in xrange(constants.SYSTEM_CONFIG_TIMEOUT):
+        for _ in range(constants.SYSTEM_CONFIG_TIMEOUT):
             try:
                 systems = client.sysinv.isystem.list()
                 if systems:
@@ -3639,7 +3639,7 @@ class ConfigAssistant():
 
     def _wait_ethernet_port_config(self, client, host):
         count = 0
-        for _ in xrange(constants.SYSTEM_CONFIG_TIMEOUT / 10):
+        for _ in range(constants.SYSTEM_CONFIG_TIMEOUT / 10):
             try:
                 ports = client.sysinv.ethernet_port.list(host.uuid)
                 if ports and count == len(ports):
@@ -3654,7 +3654,7 @@ class ConfigAssistant():
 
     def _wait_disk_config(self, client, host):
         count = 0
-        for _ in xrange(constants.SYSTEM_CONFIG_TIMEOUT / 10):
+        for _ in range(constants.SYSTEM_CONFIG_TIMEOUT / 10):
             try:
                 disks = client.sysinv.idisk.list(host.uuid)
                 if disks and count == len(disks):
@@ -3672,7 +3672,7 @@ class ConfigAssistant():
 
     def _wait_pv_config(self, client, host):
         count = 0
-        for _ in xrange(constants.SYSTEM_CONFIG_TIMEOUT / 10):
+        for _ in range(constants.SYSTEM_CONFIG_TIMEOUT / 10):
             try:
                 pvs = client.sysinv.ipv.list(host.uuid)
                 if pvs and count == len(pvs):

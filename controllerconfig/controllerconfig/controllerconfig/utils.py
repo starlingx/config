@@ -219,7 +219,7 @@ def wait_sm_service(service, timeout=180):
     :param timeout: timeout in seconds
     :return True if the service is enabled, False otherwise
     """
-    for _ in xrange(timeout):
+    for _ in range(timeout):
         if check_sm_service(service, 'enabled-active'):
             return True
         time.sleep(1)
