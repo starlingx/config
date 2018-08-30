@@ -6,8 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import os
-import ConfigParser
-import StringIO
+from six.moves import configparser
+import io
 import logging
 
 SW_VERSION = ""
@@ -54,17 +54,17 @@ def _load():
 
     # The build.info file has no section headers, which causes problems
     # for ConfigParser. So we'll fake it out.
-    ini_str = '[build_info]\n' + open(build_info, 'r').read()
-    ini_fp = StringIO.StringIO(ini_str)
+    ini_str = u'[build_info]\n' + open(build_info, 'r').read()
+    ini_fp = io.StringIO(ini_str)
 
-    config = ConfigParser.SafeConfigParser()
+    config = configparser.SafeConfigParser()
     config.readfp(ini_fp)
 
     try:
         value = config.get('build_info', 'SW_VERSION')
 
         SW_VERSION = value.strip('"')
-    except ConfigParser.Error:
+    except configparser.Error:
         logging.exception("Failed to read SW_VERSION from /etc/build.info")
         return False
 
@@ -72,8 +72,8 @@ def _load():
 
     # The platform.conf file has no section headers, which causes problems
     # for ConfigParser. So we'll fake it out.
-    ini_str = '[platform_conf]\n' + open(PLATFORM_CONF_FILE, 'r').read()
-    ini_fp = StringIO.StringIO(ini_str)
+    ini_str = u'[platform_conf]\n' + open(PLATFORM_CONF_FILE, 'r').read()
+    ini_fp = io.StringIO(ini_str)
     config.readfp(ini_fp)
 
     try:
@@ -147,7 +147,7 @@ def _load():
         if config.has_option('platform_conf', 'security_feature'):
             security_feature = config.get('platform_conf', 'security_feature')
 
-    except ConfigParser.Error:
+    except configparser.Error:
         logging.exception("Failed to read platform.conf")
         return False
 
