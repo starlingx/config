@@ -160,6 +160,15 @@ class openstack::ceilometer::agent::notification {
     mode    => '0640',
   }
 
+  file { "/etc/ceilometer/gnocchi_resources.yaml":
+    ensure  => 'present',
+    content => template('openstack/gnocchi_resources.yaml.erb'),
+    mode    => '0640',
+    owner   => 'root',
+    group   => 'ceilometer',
+    tag     => 'ceilometer-yamls',
+  }
+
   class { '::ceilometer::agent::notification':
     notification_workers  => $::platform::params::eng_workers_by_2,
   }
