@@ -9120,11 +9120,11 @@ class ConductorManager(service.PeriodicService):
                             '/dev/cgts-vg/img-conversions-lv ' \
                             '/dev/cgts-vg/scratch-lv ' \
                             '/dev/cgts-vg/extension-lv ' \
-                            '/dev/cgts-vg/gnocchi-lv'
+                            '/dev/cgts-vg/gnocchi-lv '
 
         if kubernetes_config:
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/docker-lv '
-            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/etcd-lv'
+            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/etcd-lv '
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/dockerdistribution-lv '
 
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
