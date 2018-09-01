@@ -114,7 +114,7 @@ def prepare_upgrade(from_load, to_load, i_system):
              (from_load, to_load))
     dest_dir = os.path.join(utils.POSTGRES_PATH, "upgrade")
     try:
-        os.mkdir(dest_dir, 0755)
+        os.mkdir(dest_dir, 0o755)
     except OSError:
         LOG.exception("Failed to create upgrade export directory %s." %
                       dest_dir)

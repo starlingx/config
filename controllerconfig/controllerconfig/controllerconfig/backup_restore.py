@@ -846,7 +846,7 @@ def restore_ldap(archive, ldap_permdir, staging_dir):
         utils.stop_lsb_service('openldap')
 
         subprocess.call(['rm', '-rf', ldap_permdir], stdout=DEVNULL)
-        os.mkdir(ldap_permdir, 0755)
+        os.mkdir(ldap_permdir, 0o755)
 
         subprocess.check_call(['slapadd', '-F', '/etc/openldap/schema',
                               '-l', ldap_staging_dir + '/ldap.db'],

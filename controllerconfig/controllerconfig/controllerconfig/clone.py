@@ -392,12 +392,12 @@ def create_iso(iso_name, archive_dir):
         iso_patch_committed_dir = os.path.join(iso_patch_metadata_dir,
                                                'committed')
 
-        os.mkdir(iso_patches_dir, 0755)
-        os.mkdir(iso_patch_repo_dir, 0755)
-        os.mkdir(iso_patch_pkgs_dir, 0755)
-        os.mkdir(iso_patch_metadata_dir, 0755)
-        os.mkdir(iso_patch_applied_dir, 0755)
-        os.mkdir(iso_patch_committed_dir, 0755)
+        os.mkdir(iso_patches_dir, 0o755)
+        os.mkdir(iso_patch_repo_dir, 0o755)
+        os.mkdir(iso_patch_pkgs_dir, 0o755)
+        os.mkdir(iso_patch_metadata_dir, 0o755)
+        os.mkdir(iso_patch_applied_dir, 0o755)
+        os.mkdir(iso_patch_committed_dir, 0o755)
 
         repodata = '/www/pages/updates/rel-%s/repodata/' % tsconfig.SW_VERSION
         pkgsdir = '/www/pages/updates/rel-%s/Packages/' % tsconfig.SW_VERSION
