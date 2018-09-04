@@ -61,6 +61,7 @@ openstack::nova::compute::compute_monitors: "cpu.virt_driver"
 
 
 # ceilometer
+ceilometer::agent::auth::auth_endpoint_type: 'internalURL'
 ceilometer::agent::polling::central_namespace: false
 ceilometer::agent::polling::compute_namespace: true
 ceilometer::agent::polling::instance_discovery_method: 'workload_partitioning'

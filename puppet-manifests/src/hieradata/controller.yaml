@@ -295,6 +295,7 @@ neutron::services::bgpvpn::service_providers:
 
 
 # ceilometer
+ceilometer::agent::auth::auth_endpoint_type: 'internalURL'
 ceilometer::agent::notification::enabled: false
 ceilometer::agent::notification::disable_non_metric_meters: false
 ceilometer::agent::notification::manage_event_pipeline: true

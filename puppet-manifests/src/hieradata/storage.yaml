@@ -2,6 +2,7 @@
 ---
 
 # ceilometer
+ceilometer::agent::auth::auth_endpoint_type: 'internalURL'
 ceilometer::agent::polling::central_namespace: false
 ceilometer::agent::polling::compute_namespace: false
 ceilometer::agent::polling::ipmi_namespace: true

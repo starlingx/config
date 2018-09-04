@@ -182,7 +182,6 @@ class openstack::ceilometer::agent::notification {
   ceilometer_config {
     'DEFAULT/csv_location': value => "${ceilometer_directory_csv}";
     'DEFAULT/csv_location_strict': value => true;
-    'service_credentials/interface': value => 'internalURL';
     'notification/workers': value => $agent_workers_count;
     'notification/batch_size': value => 100;
     'notification/batch_timeout': value => $batch_timeout;
