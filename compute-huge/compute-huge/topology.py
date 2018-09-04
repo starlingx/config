@@ -81,17 +81,17 @@ class Topology(object):
                 if match:
                     core_id = int(match.group(1))
 
-                    if not Thread_cnt.has_key(socket_id):
+                    if socket_id not in Thread_cnt:
                         Thread_cnt[socket_id] = {}
-                    if not Thread_cnt[socket_id].has_key(core_id):
+                    if core_id not in Thread_cnt[socket_id]:
                         Thread_cnt[socket_id][core_id] = 0
                     else:
                         Thread_cnt[socket_id][core_id] += 1
                     thread_id = Thread_cnt[socket_id][core_id]
 
-                    if not self.topology.has_key(socket_id):
+                    if socket_id not in self.topology:
                         self.topology[socket_id] = {}
-                    if not self.topology[socket_id].has_key(core_id):
+                    if core_id not in self.topology[socket_id]:
                         self.topology[socket_id][core_id] = {}
 
                     self.topology[socket_id][core_id][thread_id] = cpu
