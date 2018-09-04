@@ -169,9 +169,8 @@ class openstack::ceilometer::agent::notification {
     tag     => 'ceilometer-yamls',
   }
 
-  class { '::ceilometer::agent::notification':
-    notification_workers  => $::platform::params::eng_workers_by_2,
-  }
+  # Limit the number of ceilometer agent notification workers to 10 max
+  $agent_workers_count = min($::platform::params::eng_workers_by_2, 10)
 
   if $::platform::params::system_type == 'All-in-one' {
     $batch_timeout = 25
@@ -184,6 +183,7 @@ class openstack::ceilometer::agent::notification {
     'DEFAULT/csv_location': value => "${ceilometer_directory_csv}";
     'DEFAULT/csv_location_strict': value => true;
     'service_credentials/interface': value => 'internalURL';
+    'notification/workers': value => $agent_workers_count;
     'notification/batch_size': value => 100;
     'notification/batch_timeout': value => $batch_timeout;
   }
