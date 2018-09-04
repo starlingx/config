@@ -33,7 +33,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
             single_hypervisor = False
             single_controller = False
 
-        return {
+        config = {
             'nfv::keystone::auth::public_url': self.get_public_url(),
             'nfv::keystone::auth::internal_url': self.get_internal_url(),
             'nfv::keystone::auth::admin_url': self.get_admin_url(),
@@ -102,6 +102,21 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
             'platform::nfv::params::service_create':
                 self._to_create_services(),
         }
+
+        if self._kubernetes_enabled():
+            endpoints_disabled = {
+                # Disable VIM for these services as they will not yet be
+                # active.
+                'nfv::nfvi::cinder_endpoint_disabled': True,
+                'nfv::nfvi::nova_endpoint_disabled': True,
+                'nfv::nfvi::glance_endpoint_disabled': True,
+                'nfv::nfvi::neutron_endpoint_disabled': True,
+                'nfv::nfvi::ceilometer_endpoint_disabled': True
+            }
+
+            config.update(endpoints_disabled)
+
+        return config
 
     def get_host_config(self, host):
         if (constants.CONTROLLER not in utils.get_personalities(host)):
