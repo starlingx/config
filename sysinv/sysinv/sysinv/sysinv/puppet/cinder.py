@@ -566,6 +566,11 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
         # Update the params for the external SANs
         config.update(self._get_service_parameter_config(is_service_enabled,
                                                          enabled_backends))
+
+        # Disable cinder services if kubernetes is enabled
+        if self._kubernetes_enabled():
+            is_service_enabled = False
+
         config.update({
             'openstack::cinder::params::service_enabled': is_service_enabled,
             'openstack::cinder::params::enabled_backends': enabled_backends,

@@ -34,7 +34,6 @@ SCHEDULER_FILTERS_COMMON = [
     'ServerGroupAntiAffinityFilter',
     'PciPassthroughFilter',
     'DiskFilter',
-#    'AggregateProviderNetworkFilter',
 ]
 
 SCHEDULER_FILTERS_STANDARD = [
@@ -419,6 +418,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
 
     def _get_compute_config(self, host):
         return {
+            'nova::compute::enabled': self._enable_nova_compute(),
             'nova::compute::compute_reserved_vm_memory_2M':
                 self._get_reserved_memory_2M(host),
             'nova::compute::compute_reserved_vm_memory_1G':
@@ -634,3 +634,9 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         ws_protocol = 'ws'
         url = "%s://%s:%s" % (ws_protocol, str(oam_addr), str(self.SERIALPROXY_PORT))
         return url
+
+    def _enable_nova_compute(self):
+        if self._kubernetes_enabled():
+            return False
+        else:
+            return True

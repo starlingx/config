@@ -276,4 +276,11 @@ class platform::kubernetes::worker
     Class['::platform::kubernetes::kubeadm'] ->
     Class['::platform::kubernetes::worker::init']
   }
+
+  if $enabled {
+    file { "/var/run/.disable_compute_services":
+      ensure => file,
+      replace => no,
+    }
+  }
 }

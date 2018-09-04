@@ -4980,18 +4980,19 @@ class HostController(rest.RestController):
 
         # Check whether a restore was properly completed
         self._semantic_check_restore_complete(ihost)
+        # Disable compute unlock checks in a kubernetes config
+        if not utils.is_kubernetes_config():
+            # sdn configuration check
+            self._semantic_check_sdn_attributes(ihost)
 
-        # sdn configuration check
-        self._semantic_check_sdn_attributes(ihost)
+            # check whether data route gateways are reachable
+            self._semantic_check_data_routes(ihost)
 
-        # check whether data route gateways are reachable
-        self._semantic_check_data_routes(ihost)
-
-        # check whether data interfaces have been configured
-        self._semantic_check_data_interfaces(ihost)
-        self._semantic_check_data_addresses(ihost)
-        self._semantic_check_data_vrs_attributes(ihost)
-        self._semantic_check_data_vrs_interfaces(ihost)
+            # check whether data interfaces have been configured
+            self._semantic_check_data_interfaces(ihost)
+            self._semantic_check_data_addresses(ihost)
+            self._semantic_check_data_vrs_attributes(ihost)
+            self._semantic_check_data_vrs_interfaces(ihost)
 
         # check if the platform reserved memory is valid
         ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])

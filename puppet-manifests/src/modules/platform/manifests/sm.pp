@@ -187,12 +187,12 @@ class platform::sm
 
   # Cinder
   include ::openstack::cinder::params
+  $cinder_service_enabled = $::openstack::cinder::params::service_enabled
   $cinder_region_name     = $::openstack::cinder::params::region_name
   $cinder_ip_param_ip     = $::openstack::cinder::params::cinder_address
   $cinder_backends        = $::openstack::cinder::params::enabled_backends
   $cinder_drbd_resource   = $::openstack::cinder::params::drbd_resource
   $cinder_vg_name         = $::openstack::cinder::params::cinder_vg_name
-  $cinder_service_enabled = $::openstack::cinder::params::service_enabled
 
   # Glance
   include ::openstack::glance::params
@@ -201,16 +201,13 @@ class platform::sm
 
   # Murano
   include ::openstack::murano::params
-  $murano_configured = $::openstack::murano::params::service_enabled
   $disable_murano_agent = $::openstack::murano::params::disable_murano_agent
 
   # Magnum
   include ::openstack::magnum::params
-  $magnum_configured = $::openstack::magnum::params::service_enabled
 
   # Ironic
   include ::openstack::ironic::params
-  $ironic_configured = $::openstack::ironic::params::service_enabled
   $ironic_tftp_ip = $::openstack::ironic::params::tftp_server
   $ironic_controller_0_nic = $::openstack::ironic::params::controller_0_if
   $ironic_controller_1_nic = $::openstack::ironic::params::controller_1_if
@@ -221,6 +218,15 @@ class platform::sm
   include ::platform::ceph::params
   $ceph_configured = $::platform::ceph::params::service_enabled
   $rgw_configured = $::platform::ceph::params::rgw_enabled
+
+  # Gnocchi
+  include ::openstack::gnocchi::params
+
+  # AODH
+  include ::openstack::aodh::params
+
+  # Panko
+  include ::openstack::panko::params
 
   if $system_mode == 'simplex' {
     $hostunit = '0'
@@ -262,6 +268,27 @@ class platform::sm
   # Add a shell for the postgres. By default WRL sets the shell to /bin/false.
   user { 'postgres':
     shell => '/bin/sh'
+  }
+
+  # Workaround for the time being to prevent SM from enabling the openstack
+  # services when kubernetes is enabled to avoid making changes to individual
+  # openstack manifests
+  if $kubernetes_enabled {
+    $heat_service_enabled   = false
+    $murano_configured = false
+    $ironic_configured = false
+    $magnum_configured = false
+    $gnocchi_enabled   = false
+    $aodh_enabled      = false
+    $panko_enabled     = false
+  } else {
+      $heat_service_enabled   = $::openstack::heat::params::service_enabled
+      $murano_configured      = $::openstack::murano::params::service_enabled
+      $ironic_configured      = $::openstack::ironic::params::service_enabled
+      $magnum_configured      = $::openstack::magnum::params::service_enabled
+      $gnocchi_enabled        = $::openstack::gnocchi::params::service_enabled
+      $aodh_enabled           = $::openstack::aodh::params::service_enabled
+      $panko_enabled          = $::openstack::panko::params::service_enabled
   }
 
   if $system_mode == 'simplex' {
@@ -488,6 +515,9 @@ class platform::sm
            }
          }
       }
+  } elsif $kubernetes_enabled {
+      $configure_keystone = true
+      $configure_glance = false
   } else {
       $configure_keystone = true
       $configure_glance = true
@@ -520,6 +550,21 @@ class platform::sm
       } ->
       exec { 'Provision OpenStack - Glance API (service)':
         command => "sm-provision service glance-api",
+      }
+  } else {
+      # Deprovision Glance API and Glance Registry incase of a kubernetes config
+      exec { 'Deprovision OpenStack - Glance Registry (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services glance-registry",
+      } ->
+      exec { 'Deprovision OpenStack - Glance Registry(service)':
+          command => "sm-deprovision service glance-registry",
+      }
+
+      exec { 'Deprovision OpenStack - Glance API (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services glance-api",
+      } ->
+      exec { 'Deprovision OpenStack - Glance API(service)':
+          command => "sm-deprovision service glance-api",
       }
   }
 
@@ -666,6 +711,8 @@ class platform::sm
       } else {
           $configure_neturon = true
       }
+  } elsif $kubernetes_enabled {
+      $configure_neturon = false
   } else {
       $configure_neturon = true
   }
@@ -676,35 +723,114 @@ class platform::sm
       }
   }
 
-  exec { 'Configure OpenStack - Nova API':
-    command => "sm-configure service_instance nova-api nova-api \"config=/etc/nova/nova.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens\"",
+  if $kubernetes_enabled != true {
+
+    exec { 'Configure OpenStack - Nova API':
+      command => "sm-configure service_instance nova-api nova-api \"config=/etc/nova/nova.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens\"",
+    }
+
+    exec { 'Configure OpenStack - Nova Placement API':
+      command => "sm-configure service_instance nova-placement-api nova-placement-api \"config=/etc/nova/nova.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens,host=${mgmt_ip_param_ip}\"",
+    }
+
+    exec { 'Configure OpenStack - Nova Scheduler':
+      command => "sm-configure service_instance nova-scheduler nova-scheduler \"config=/etc/nova/nova.conf,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
+    }
+
+    exec { 'Configure OpenStack - Nova Conductor':
+      command => "sm-configure service_instance nova-conductor nova-conductor \"config=/etc/nova/nova.conf,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
+    }
+
+    exec { 'Configure OpenStack - Nova Console Authorization':
+      command => "sm-configure service_instance nova-console-auth nova-console-auth \"config=/etc/nova/nova.conf,user=root,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
+    }
+
+    exec { 'Configure OpenStack - Nova NoVNC':
+      command => "sm-configure service_instance nova-novnc nova-novnc \"config=/etc/nova/nova.conf,user=root,console_port=${novnc_console_port}\"",
+    }
+
+    exec { 'Configure OpenStack - Ceilometer Agent Notification':
+      command => "sm-configure service_instance ceilometer-agent-notification ceilometer-agent-notification \"config=/etc/ceilometer/ceilometer.conf\"",
+    }
+  } else {
+      # Deprovision Openstack services if Kubernetes Config is enabled
+
+      # Deprovision Nova Services
+      exec { 'Deprovision OpenStack - Nova API (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services nova-api",
+      } ->
+      exec { 'Deprovision OpenStack - Nova API(service)':
+          command => "sm-deprovision service nova-api",
+      }
+
+      exec { 'Deprovision OpenStack - Nova API Proxy (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services nova-api-proxy",
+      } ->
+      exec { 'Deprovision OpenStack - Nova API Proxy(service)':
+          command => "sm-deprovision service nova-api-proxy",
+      }
+
+      exec { 'Deprovision OpenStack - Nova Placement API (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services nova-placement-api",
+      } ->
+      exec { 'Deprovision OpenStack - Nova Placement API(service)':
+          command => "sm-deprovision service nova-placement-api",
+      }
+
+      exec { 'Deprovision OpenStack - Nova Scheduler (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services nova-scheduler",
+      } ->
+      exec { 'Deprovision OpenStack - Nova Scheduler(service)':
+          command => "sm-deprovision service nova-scheduler",
+      }
+
+      exec { 'Deprovision OpenStack - Nova Conductor (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services nova-conductor",
+      } ->
+      exec { 'Deprovision OpenStack - Nova Conductor(service)':
+          command => "sm-deprovision service nova-conductor",
+      }
+
+      exec { 'Deprovision OpenStack - Nova Console Auth (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services nova-console-auth",
+      } ->
+      exec { 'Deprovision OpenStack - Nova Console Auth(service)':
+          command => "sm-deprovision service nova-console-auth",
+      }
+
+      exec { 'Deprovision OpenStack - Nova NoVNC (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services nova-novnc",
+      } ->
+      exec { 'Deprovision OpenStack - Nova NoVNC(service)':
+          command => "sm-deprovision service nova-novnc",
+      }
+
+      # Deprovision Celiometer
+      exec { 'Deprovision OpenStack - Ceilometer Agent Notification (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services ceilometer-agent-notification",
+      } ->
+      exec { 'Deprovision OpenStack - Ceilometer Agent Notification(service)':
+          command => "sm-deprovision service ceilometer-agent-notification",
+      }
+
+      # Deprovision Neutron Server
+      exec { 'Deprovision OpenStack - Neutron Server (service-group-member)':
+          command => "sm-deprovision service-group-member cloud-services neutron-server",
+      } ->
+      exec { 'Deprovision OpenStack - Neutron Server (service)':
+          command => "sm-deprovision service neutron-server",
+      }
+
+      # Deprovision Horizon
+      exec { 'Deprovision OpenStack - Horizon (service-group-member)':
+          command => "sm-deprovision service-group-member web-services horizon",
+      } ->
+      exec { 'Deprovision OpenStack - Horizon(service)':
+          command => "sm-deprovision service horizon",
+      }
   }
 
-  exec { 'Configure OpenStack - Nova Placement API':
-    command => "sm-configure service_instance nova-placement-api nova-placement-api \"config=/etc/nova/nova.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens,host=${mgmt_ip_param_ip}\"",
-  }
-
-  exec { 'Configure OpenStack - Nova Scheduler':
-    command => "sm-configure service_instance nova-scheduler nova-scheduler \"config=/etc/nova/nova.conf,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
-  }
-
-  exec { 'Configure OpenStack - Nova Conductor':
-    command => "sm-configure service_instance nova-conductor nova-conductor \"config=/etc/nova/nova.conf,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
-  }
-
-  exec { 'Configure OpenStack - Nova Console Authorization':
-    command => "sm-configure service_instance nova-console-auth nova-console-auth \"config=/etc/nova/nova.conf,user=root,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
-  }
-
-  exec { 'Configure OpenStack - Nova NoVNC':
-    command => "sm-configure service_instance nova-novnc nova-novnc \"config=/etc/nova/nova.conf,user=root,console_port=${novnc_console_port}\"",
-  }
-
-  exec { 'Configure OpenStack - Ceilometer Agent Notification':
-    command => "sm-configure service_instance ceilometer-agent-notification ceilometer-agent-notification \"config=/etc/ceilometer/ceilometer.conf\"",
-  }
-
-  if $::openstack::heat::params::service_enabled {
+  if $heat_service_enabled {
     exec { 'Configure OpenStack - Heat Engine':
       command => "sm-configure service_instance heat-engine heat-engine \"config=/etc/heat/heat.conf,user=root,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
     }
@@ -759,7 +885,7 @@ class platform::sm
   }
 
   # Gnocchi
-  if $::openstack::gnocchi::params::service_enabled {
+  if $gnocchi_enabled {
 
     exec { 'Configure OpenStack - Gnocchi API':
       command => "sm-configure service_instance gnocchi-api gnocchi-api \"config=/etc/gnocchi/gnocchi.conf\"",
@@ -787,9 +913,9 @@ class platform::sm
         command => "sm-deprovision service gnocchi-metricd",
       }
   }
-  
+
   # AODH
-  if $::openstack::aodh::params::service_enabled {
+  if $aodh_enabled {
 
     exec { 'Configure OpenStack - AODH API':
       command => "sm-configure service_instance aodh-api aodh-api \"config=/etc/aodh/aodh.conf\"",
@@ -845,7 +971,7 @@ class platform::sm
   }
 
   # Panko
-  if $::openstack::panko::params::service_enabled {
+  if $panko_enabled {
     exec { 'Configure OpenStack - Panko API':
       command => "sm-configure service_instance panko-api panko-api \"config=/etc/panko/panko.conf\"",
     }

@@ -193,7 +193,10 @@ class openstack::neutron::server {
 class openstack::neutron::agents
   inherits ::openstack::neutron::params {
 
-  if str2bool($::disable_compute_services) {
+  include ::platform::kubernetes::params
+
+  if (str2bool($::disable_compute_services) or
+      $::platform::kubernetes::params::enabled) {
     $pmon_ensure = absent
 
     class {'::neutron::agents::l3':
