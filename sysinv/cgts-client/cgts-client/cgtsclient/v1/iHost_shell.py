@@ -23,6 +23,7 @@ from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import iinterface as iinterface_utils
 from cgtsclient.v1 import iprofile as iprofile_utils
 from cgtsclient.v1 import istor as istor_utils
+from six.moves import input
 
 
 def _print_ihost_show(ihost):
@@ -694,7 +695,7 @@ def do_host_downgrade(cc, args):
             'Only proceed once the system data has been copied to another '
             'system.\n'
             'Are you absolutely sure you want to continue?  [yes/N]: ')
-        confirm = raw_input(warning_message)
+        confirm = input(warning_message)
         if confirm != 'yes':
             print "Operation cancelled."
             return
@@ -723,7 +724,7 @@ def do_host_upgrade(cc, args):
             'Only proceed once the system data has been copied to another '
             'system.\n'
             'Are you absolutely sure you want to continue?  [yes/N]: ')
-        confirm = raw_input(warning_message)
+        confirm = input(warning_message)
         if confirm != 'yes':
             print "Operation cancelled."
             return
