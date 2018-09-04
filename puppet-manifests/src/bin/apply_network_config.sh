@@ -81,6 +81,22 @@ function normalized_cfg_attr_value() {
     local attr_name=$2
     local attr_value=$(cat $cfg | grep $attr_name= | awk -F "=" {'print $2'})
 
+
+    #
+    # Special case BONDING_OPTS attribute.
+    #
+    # The BONDING_OPTS attribute contains '=' characters, so is not correctly
+    # parsed by splitting on '=' as done above.  This results in changes to
+    # BONDING_OPTS not causing the interface to be restarted, so the old
+    # BONDING_OPTS still be used.  Because this is only checking for changes,
+    # rather than actually using the returned value, we can return the whole
+    # line.
+    #
+    if [[ "${attr_name}" == "BONDING_OPTS" ]]; then
+       echo "$(cat $cfg | grep $attr_name=)"
+       return $(true)
+    fi
+
     if [[ "${attr_name}" != "BOOTPROTO" ]]; then
        echo "${attr_value}"
        return $(true)
@@ -208,13 +224,13 @@ function is_eq_sriov_numvfs() {
 # returns $(true) if ifcfg files are equal
 #
 # Warning:  Only compares against cfg file attributes:
-#            BOOTPROTO DEVICE IPADDR NETMASK GATEWAY SRIOV_NUMVFS
+#            BOOTPROTO DEVICE IPADDR NETMASK GATEWAY MTU BONDING_OPTS SRIOV_NUMVFS
 #
 function is_eq_ifcfg() {
    local cfg_1=$1
    local cfg_2=$2
 
-   for attr in BOOTPROTO DEVICE IPADDR NETMASK GATEWAY MTU
+   for attr in BOOTPROTO DEVICE IPADDR NETMASK GATEWAY MTU BONDING_OPTS
    do
       local attr_value1=$(normalized_cfg_attr_value $cfg_1 $attr)
       local attr_value2=$(normalized_cfg_attr_value $cfg_2 $attr)
