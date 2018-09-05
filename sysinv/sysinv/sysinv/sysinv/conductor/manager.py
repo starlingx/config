@@ -443,12 +443,12 @@ class ConductorManager(service.PeriodicService):
          },
         {'service': constants.SERVICE_TYPE_CINDER,
          'section': constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
-         'name': constants.SERVICE_PARAM_CINDER_HPE3PAR_ENABLED,
+         'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
          'value': False
          },
         {'service': constants.SERVICE_TYPE_CINDER,
          'section': constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND,
-         'name': constants.SERVICE_PARAM_CINDER_HPELEFTHAND_ENABLED,
+         'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
          'value': False
          },
         {'service': constants.SERVICE_TYPE_CINDER,
@@ -509,6 +509,16 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB,
          'value': constants.SERVICE_PARAM_SWIFT_FS_SIZE_MB_DEFAULT},
     ]
+
+    for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
+        section = "{0}{1}".format(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR, i)
+        DEFAULT_PARAMETERS.extend([
+            {'service': constants.SERVICE_TYPE_CINDER,
+             'section': section,
+             'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
+             'value': False
+             }]
+        )
 
     def _create_default_service_parameter(self):
         """ Populate the default service parameters"""
@@ -4740,18 +4750,32 @@ class ConductorManager(service.PeriodicService):
          of cinder services.
          """
 
-        # Only run audit of either one of the backends is enabled
+        # Only run audit if any one of the backends is enabled
 
+        hpe3par_enabled = False
         try:
             param = self.dbapi.service_parameter_get_one(constants.SERVICE_TYPE_CINDER,
-                constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR, 'enabled')
+                constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
+                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
             hpe3par_enabled = param.value.lower() == 'true'
         except exception.NotFound:
-            hpe3par_enabled = False
-
+            pass
+        if not hpe3par_enabled:
+            for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
+                section = "{0}{1}".format(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR, i)
+                try:
+                    param = self.dbapi.service_parameter_get_one(constants.SERVICE_TYPE_CINDER,
+                        section,
+                        constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
+                    hpe3par_enabled = param.value.lower() == 'true'
+                except exception.NotFound:
+                    pass
+                if hpe3par_enabled:
+                    break
         try:
             param = self.dbapi.service_parameter_get_one(constants.SERVICE_TYPE_CINDER,
-                constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND, 'enabled')
+                constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND,
+                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
             hpelefthand_enabled = param.value.lower() == 'true'
         except exception.NotFound:
             hpelefthand_enabled = False
@@ -6991,12 +7015,28 @@ class ConductorManager(service.PeriodicService):
         status_param = self._hpe_get_state(name)
         status = status_param.value
 
-        enabled_param = self.dbapi.service_parameter_get_one(
-            constants.SERVICE_TYPE_CINDER, name,
-            constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED
-        )
-        enabled = (enabled_param.value.lower() == 'true')
-
+        enabled = False
+        try:
+            enabled_param = self.dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_CINDER, name,
+                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED
+            )
+            enabled = (enabled_param.value.lower() == 'true')
+        except exception.NotFound:
+            pass
+        if not enabled and name == constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR:
+            for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
+                section = "{0}{1}".format(name, i)
+                try:
+                    enabled_param = self.dbapi.service_parameter_get_one(
+                        constants.SERVICE_TYPE_CINDER, section,
+                        constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED
+                    )
+                    enabled = (enabled_param.value.lower() == 'true')
+                except exception.NotFound:
+                    pass
+                if enabled:
+                    break
         if enabled and status == constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLED:
             do_update = True
             new_state = constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED
@@ -9231,7 +9271,7 @@ class ConductorManager(service.PeriodicService):
 
         return not emc_volume_found
 
-    def validate_hpe3par_removal(self, context):
+    def validate_hpe3par_removal(self, context, backend):
         """
         Check that it is safe to remove the HPE3PAR SAN
         Ensure there are no volumes using the HPE3PAR endpoint
@@ -9240,7 +9280,7 @@ class ConductorManager(service.PeriodicService):
 
         for volume in self._openstack.get_cinder_volumes():
             end_point = getattr(volume, 'os-vol-host-attr:host', '')
-            if end_point and '@hpe3par' in end_point:
+            if end_point and '@' + backend + '#' in end_point:
                 volume_found = True
                 break
 

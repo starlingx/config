@@ -1173,7 +1173,7 @@ HPE_DATA_NETWORKS = [
 #
 
 CINDER_HPE3PAR_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_CINDER_HPE3PAR_ENABLED,
+    constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
 ]
 
 CINDER_HPE3PAR_PARAMETER_PROTECTED = [
@@ -1205,7 +1205,7 @@ CINDER_HPE3PAR_PARAMETER_OPTIONAL = (
 
 CINDER_HPE3PAR_PARAMETER_VALIDATOR = {
     # Mandatory parameters
-    constants.SERVICE_PARAM_CINDER_HPE3PAR_ENABLED: _validate_boolean,
+    constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED: _validate_boolean,
     # Required parameters
     'hpe3par_api_url': _validate_hpe_api_url,
     'hpe3par_username': _validate_not_empty,
@@ -1224,7 +1224,7 @@ CINDER_HPE3PAR_PARAMETER_VALIDATOR = {
 
 CINDER_HPE3PAR_PARAMETER_RESOURCE = {
     # Mandatory parameters
-    constants.SERVICE_PARAM_CINDER_HPE3PAR_ENABLED: None,
+    constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED: None,
     # Required parameters
     'hpe3par_api_url': None,
     'hpe3par_username': None,
@@ -1246,7 +1246,7 @@ CINDER_HPE3PAR_PARAMETER_RESOURCE = {
 #
 
 CINDER_HPELEFTHAND_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_CINDER_HPELEFTHAND_ENABLED,
+    constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
 ]
 
 CINDER_HPELEFTHAND_PARAMETER_PROTECTED = []
@@ -1275,7 +1275,7 @@ CINDER_HPELEFTHAND_PARAMETER_OPTIONAL = (
 
 CINDER_HPELEFTHAND_PARAMETER_VALIDATOR = {
     # Mandatory parameters
-    constants.SERVICE_PARAM_CINDER_HPELEFTHAND_ENABLED: _validate_boolean,
+    constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED: _validate_boolean,
     # Required parameters
     'hpelefthand_api_url': _validate_hpe_api_url,
     'hpelefthand_username': _validate_not_empty,
@@ -1289,7 +1289,7 @@ CINDER_HPELEFTHAND_PARAMETER_VALIDATOR = {
 
 CINDER_HPELEFTHAND_PARAMETER_RESOURCE = {
     # Mandatory parameters
-    constants.SERVICE_PARAM_CINDER_HPELEFTHAND_ENABLED: None,
+    constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED: None,
     # Required parameters
     'hpelefthand_api_url': None,
     'hpelefthand_username': None,
