@@ -6,6 +6,9 @@
             voting: false
         - sysinv-tox-unittest:
             voting: false
+    gate:
+      jobs:
+        - noop
 
 - job:
     name: sysinv-tox-unittest
