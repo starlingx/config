@@ -12,6 +12,7 @@ class platform::mtce::params (
   $controller_boot_timeout = undef,
   $heartbeat_degrade_threshold = undef,
   $heartbeat_failure_threshold = undef,
+  $heartbeat_failure_action = undef,
   $heartbeat_period = undef,
   $mtce_multicast = undef,
   $mnfa_threshold = undef,
