@@ -6,12 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import ConfigParser
+import mock
 import os
 import pytest
+import sys
 
-import controllerconfig.systemconfig as cr
 import configutilities.common.exceptions as exceptions
 from configutilities import validate, DEFAULT_CONFIG
+
+sys.modules['fm_core'] = mock.Mock()
+
+import controllerconfig.systemconfig as cr  # noqa: E402
 
 
 def _dump_config(config):

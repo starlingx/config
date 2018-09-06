@@ -9,17 +9,21 @@ import ConfigParser
 import difflib
 import filecmp
 import fileinput
+import mock
 from mock import patch
 import os
 import pytest
 import shutil
+import sys
 
-import controllerconfig.systemconfig as cr
 import configutilities.common.exceptions as exceptions
 from configutilities import validate, REGION_CONFIG
 import controllerconfig.common.keystone as keystone
 import test_answerfile
 
+sys.modules['fm_core'] = mock.Mock()
+
+import controllerconfig.systemconfig as cr  # noqa: E402
 
 FAKE_SERVICE_DATA = {u'services': [
     {u'type': u'keystore', u'description': u'Barbican Key Management Service',

@@ -2836,7 +2836,7 @@ class ConfigAssistant():
                                                  self.nfv_ks_password)
                 self.fm_ks_user_name = config.get(
                     'cREGION', 'FM_USER_NAME')
-                self.panko_ks_password = config.get(
+                self.fm_ks_password = config.get(
                     'cREGION', 'FM_PASSWORD')
                 self.add_password_for_validation('FM_PASSWORD',
                                                  self.fm_ks_password)
