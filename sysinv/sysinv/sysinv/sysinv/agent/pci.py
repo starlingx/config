@@ -474,7 +474,7 @@ class PCIOperator(object):
                                   vendor, device)
                 except subprocess.CalledProcessError as e:
                     dpdksupport = False
-                    if e.returncode == '1':
+                    if e.returncode == 1:
                         # NIC is not supprted
                         LOG.debug("DPDK does not support NIC "
                                   "(vendor: %s device: %s)",
