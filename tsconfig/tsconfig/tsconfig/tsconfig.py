@@ -47,7 +47,7 @@ def _load():
 
     if not os.path.isfile(build_info):
         # Assume that we are in a test environment. Dirty, dirty, dirty...
-        SW_VERSION = '18.03'
+        SW_VERSION = 'TEST.SW.VERSION'
         nodetype = 'controller'
         subfunctions = ['controller']
         return
