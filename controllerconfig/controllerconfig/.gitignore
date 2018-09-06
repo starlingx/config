@@ -2,4 +2,5 @@
 .coverage
 .testrepository
 cover
+.cache
 
