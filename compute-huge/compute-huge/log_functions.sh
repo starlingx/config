@@ -10,8 +10,7 @@
 # Log if debug is enabled via LOG_DEBUG
 #
 ################################################################################
-function log_debug
-{
+function log_debug {
     if [ ! -z "${LOG_DEBUG}" ]; then
         logger -p debug -t "$0[${PPID}]" -s "$@" 2>&1
     fi
@@ -21,8 +20,7 @@ function log_debug
 # Log unconditionally to STDERR
 #
 ################################################################################
-function log_error
-{
+function log_error {
     logger -p error -t "$0[${PPID}]" -s "$@"
 }
 
@@ -30,8 +28,7 @@ function log_error
 # Log unconditionally to STDOUT
 #
 ################################################################################
-function log
-{
+function log {
     logger -p info -t "$0[${PPID}]" -s "$@" 2>&1
 }
 
@@ -39,8 +36,7 @@ function log
 # Utility function to print the status of a command result
 #
 ################################################################################
-function print_status() 
-{
+function print_status {
     if [ "$1" -eq "0" ]; then
         echo "[  OK  ]"
     else

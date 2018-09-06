@@ -49,8 +49,7 @@ function log {
 log "$NAME: performing sample migration from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 
-if [ "$FROM_RELEASE" == "17.06" ] && [ "$ACTION" == "migrate" ]
-then
+if [ "$FROM_RELEASE" == "17.06" ] && [ "$ACTION" == "migrate" ]; then
     log "Sample migration from release $FROM_RELEASE"
 fi
 
