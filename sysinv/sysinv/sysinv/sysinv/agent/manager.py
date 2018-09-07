@@ -41,7 +41,7 @@ import subprocess
 import sys
 import tempfile
 import time
-import ConfigParser
+from six.moves import configparser
 import StringIO
 import socket
 import yaml
@@ -342,7 +342,7 @@ class AgentManager(service.PeriodicService):
         ini_str = '[DEFAULT]\n' + open(CONFIG_APPLIED_FILE, 'r').read()
         ini_fp = StringIO.StringIO(ini_str)
 
-        config_applied = ConfigParser.RawConfigParser()
+        config_applied = configparser.RawConfigParser()
         config_applied.optionxform = str
         config_applied.readfp(ini_fp)
 

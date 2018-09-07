@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
-import ConfigParser
+from six.moves import configparser
 import re
 import six
 from netaddr import (IPNetwork,
@@ -232,7 +232,7 @@ def lag_mode_to_str(lag_mode):
 def validate_openstack_password(password, rules_file,
                                 section="security_compliance"):
     try:
-        config = ConfigParser.RawConfigParser()
+        config = configparser.RawConfigParser()
         parsed_config = config.read(rules_file)
         if not parsed_config:
             msg = ("Cannot parse rules file: %s" % rules_file)
@@ -276,7 +276,7 @@ def validate_openstack_password(password, rules_file,
 def extract_openstack_password_rules_from_file(
         rules_file, section="security_compliance"):
     try:
-        config = ConfigParser.RawConfigParser()
+        config = configparser.RawConfigParser()
         parsed_config = config.read(rules_file)
         if not parsed_config:
             msg = ("Cannot parse rules file: %" % rules_file)

@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
-import ConfigParser
+from six.moves import configparser
 import os
 import subprocess
 import sys
@@ -553,7 +553,7 @@ def configure_region(config_file, config_type=REGION_CONFIG):
         create_cgcs_config_file(None, region_config, None, None, None,
                                 config_type=config_type,
                                 validate_only=True)
-    except ConfigParser.Error as e:
+    except configparser.Error as e:
         raise ConfigFail("Error parsing configuration file %s: %s" %
                          (config_file, e))
     print "DONE"
@@ -679,7 +679,7 @@ def configure_region(config_file, config_type=REGION_CONFIG):
             create_cgcs_config_file(TEMP_CGCS_CONFIG_FILE, region_config,
                                     services, endpoints, domains,
                                     config_type=config_type)
-        except ConfigParser.Error as e:
+        except configparser.Error as e:
             raise ConfigFail("Error parsing configuration file %s: %s" %
                              (config_file, e))
         print "DONE"

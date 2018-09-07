@@ -16,7 +16,7 @@
 #    under the License.
 
 
-import ConfigParser
+from six.moves import configparser
 import logging
 import logging.handlers
 import os
@@ -110,7 +110,7 @@ def load_filters(filters_path):
         if not os.path.isdir(filterdir):
             continue
         for filterfile in os.listdir(filterdir):
-            filterconfig = ConfigParser.RawConfigParser()
+            filterconfig = configparser.RawConfigParser()
             filterconfig.read(os.path.join(filterdir, filterfile))
             for (name, value) in filterconfig.items("Filters"):
                 filterdefinition = [string.strip(s) for s in value.split(',')]

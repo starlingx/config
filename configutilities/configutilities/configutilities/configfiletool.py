@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from collections import OrderedDict
-import ConfigParser
+from six.moves import configparser
 import wx
 import wx.wizard as wiz
 import wx.lib.dialogs
@@ -28,7 +28,7 @@ LINK_SPEED_25G = '25000'
 # Config parser to hold current configuration
 filename = None
 filedir = None
-config = ConfigParser.RawConfigParser()
+config = configparser.RawConfigParser()
 config.optionxform = str
 
 
@@ -364,7 +364,7 @@ class STARTPage(WizardPage):
             filedir = reader.GetDirectory()
         except Exception as ex:
             wx.LogError("Cannot parse configuration file, Error: %s." % ex)
-            config = ConfigParser.RawConfigParser()
+            config = configparser.RawConfigParser()
             config.optionxform = str
             return
 

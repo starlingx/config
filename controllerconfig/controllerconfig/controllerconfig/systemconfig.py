@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
-import ConfigParser
+from six.moves import configparser
 import os
 import readline
 import sys
@@ -31,7 +31,7 @@ LOG = log.get_logger(__name__)
 
 def parse_system_config(config_file):
     """Parse system config file"""
-    system_config = ConfigParser.RawConfigParser()
+    system_config = configparser.RawConfigParser()
     try:
         system_config.read(config_file)
     except Exception as e:
@@ -145,7 +145,7 @@ def create_cgcs_config_file(output_file, system_config,
     """
     cgcs_config = None
     if not validate_only:
-        cgcs_config = ConfigParser.RawConfigParser()
+        cgcs_config = configparser.RawConfigParser()
         cgcs_config.optionxform = str
 
     # general error checking, if not validate_only cgcs config data is returned
@@ -258,7 +258,7 @@ def configure_system(config_file):
     try:
         create_cgcs_config_file(None, system_config, None, None, None,
                                 DEFAULT_CONFIG, validate_only=True)
-    except ConfigParser.Error as e:
+    except configparser.Error as e:
         raise ConfigFail("Error parsing configuration file %s: %s" %
                          (config_file, e))
     print "DONE"
@@ -268,7 +268,7 @@ def configure_system(config_file):
     try:
         create_cgcs_config_file(TEMP_CGCS_CONFIG_FILE, system_config,
                                 None, None, None, DEFAULT_CONFIG)
-    except ConfigParser.Error as e:
+    except configparser.Error as e:
         raise ConfigFail("Error parsing configuration file %s: %s" %
                          (config_file, e))
     print "DONE"

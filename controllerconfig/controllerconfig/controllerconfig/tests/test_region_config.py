@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
-import ConfigParser
+from six.moves import configparser
 import difflib
 import filecmp
 import fileinput
@@ -654,10 +654,10 @@ def test_region_config_validation():
         validate(region_config, REGION_CONFIG, None, False)
 
     region_config.remove_option('REGION2_PXEBOOT_NETWORK', 'PXEBOOT_CIDR')
-    with pytest.raises(ConfigParser.NoOptionError):
+    with pytest.raises(configparser.NoOptionError):
         cr.create_cgcs_config_file(None, region_config, None, None, None,
                                    validate_only=True)
-    with pytest.raises(ConfigParser.NoOptionError):
+    with pytest.raises(configparser.NoOptionError):
         validate(region_config, REGION_CONFIG, None, False)
 
     # Test overlap of CLM_CIDR
