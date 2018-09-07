@@ -1375,7 +1375,7 @@ class HostController(rest.RestController):
         if ihost_dict['personality'] == constants.CONTROLLER:
             if self._no_controllers_exist():
                 pecan.request.rpcapi.create_controller_filesystems(
-                    pecan.request.context)
+                    pecan.request.context, ihost_dict['rootfs_device'])
                 controller_ihost = pecan.request.rpcapi.create_ihost(
                     pecan.request.context, ihost_dict)
                 if 'recordtype' in ihost_dict and \

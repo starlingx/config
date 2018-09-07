@@ -92,22 +92,6 @@ class DiskOperator(object):
 
         return
 
-    def parse_fdisk(self, device_node):
-        # Run command
-        fdisk_command = 'fdisk -l %s | grep "Disk %s:"' % (device_node, device_node)
-        fdisk_process = subprocess.Popen(fdisk_command, stdout=subprocess.PIPE, shell=True)
-        fdisk_output = fdisk_process.stdout.read()
-
-        # Parse output
-        secnd_half = fdisk_output.split(',')[1]
-        size_bytes = secnd_half.split()[0].strip()
-
-        # Convert bytes to MiB (1 MiB = 1024*1024 bytes)
-        int_size = int(size_bytes)
-        size_mib = int_size / 1048576
-
-        return int(size_mib)
-
     @utils.skip_udev_partition_probe
     def get_disk_available_mib(self, device_node):
         # Check that partition table format is GPT.
@@ -282,7 +266,7 @@ class DiskOperator(object):
 
                 # Can merge all try/except in one block but this allows at least attributes with no exception to be filled
                 try:
-                    size_mib = self.parse_fdisk(device.device_node)
+                    size_mib = utils.get_disk_capacity_mib(device.device_node)
                 except Exception as e:
                     self.handle_exception("Could not retrieve disk size - %s "
                                           % e)
