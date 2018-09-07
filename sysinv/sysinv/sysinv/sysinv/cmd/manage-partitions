@@ -198,7 +198,7 @@ def _get_no_of_partitions(disk_device_path):
     :return number of partitions
     """
     output, _, _ = _command_pipe(
-        ['sgdisk','-p', disk_device_path],
+        ['sgdisk', '-p', disk_device_path],
         ['sed', "1,/^Number.*Start.*(sector).*End/d"],
         device_node=disk_device_path)
     rows = [row.strip() for row in output.splitlines() if row.strip()]
@@ -825,7 +825,7 @@ def check_partitions(data, mode, pfile):
 
     for partitions in disks.values():
         # Filter out any partitions without a start_mib.
-        sortable_partitions = filter(lambda p: p.get('start_mib') != None,
+        sortable_partitions = filter(lambda p: p.get('start_mib') is not None,
                                      partitions)
 
         for p in sorted(sortable_partitions,
