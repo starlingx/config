@@ -6,9 +6,16 @@
             voting: false
         - sysinv-tox-unittest:
             voting: false
+        - controllerconfig-tox-flake8
+        - controllerconfig-tox-py27
+        - controllerconfig-tox-pylint
+        - configutilities-tox-flake8
     gate:
       jobs:
-        - noop
+        - controllerconfig-tox-flake8
+        - controllerconfig-tox-py27
+        - controllerconfig-tox-pylint
+        - configutilities-tox-flake8
 
 - job:
     name: sysinv-tox-unittest
@@ -22,3 +29,44 @@
     vars:
       tox_envlist: py27
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: controllerconfig-tox-flake8
+    parent: tox
+    description: Run flake8 tests for controllerconfig
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+    vars:
+      tox_envlist: flake8
+      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
+
+- job:
+    name: controllerconfig-tox-py27
+    parent: tox
+    description: Run py27 tests for controllerconfig
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+    vars:
+      tox_envlist: py27
+      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
+
+- job:
+    name: controllerconfig-tox-pylint
+    parent: tox
+    description: Run pylint tests for controllerconfig
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+    vars:
+      tox_envlist: pylint
+      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
+
+- job:
+    name: configutilities-tox-flake8
+    parent: tox
+    description: Run flake8 tests for configutilities
+    vars:
+      tox_envlist: flake8
+      tox_extra_args: -c configutilities/configutilities/tox.ini
