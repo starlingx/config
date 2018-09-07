@@ -859,6 +859,11 @@ CONF.register_cli_opt(
                       handler=add_action_parsers))
 
 
+@utils.synchronized(constants.PARTITION_MANAGE_LOCK)
+def run(action, data, mode, pfile):
+    action(data, mode, pfile)
+
+
 def main(argv):
     sysinv_service.prepare_service(argv)
     global LOG
@@ -873,7 +878,8 @@ def main(argv):
                 "data": CONF.action.data})
         LOG.info(msg)
         print msg
-        CONF.action.func(CONF.action.data, CONF.action.mode, CONF.action.pfile)
+        run(CONF.action.func, CONF.action.data,
+            CONF.action.mode, CONF.action.pfile)
     else:
         LOG.error(_("Unknown action: %(action)") % {"action":
                                                         CONF.action.name})

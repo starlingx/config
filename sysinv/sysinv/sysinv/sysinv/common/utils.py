@@ -31,11 +31,13 @@ import errno
 import functools
 import fcntl
 import glob
+import grp
 import hashlib
 import itertools as it
 import json
 import math
 import os
+import pwd
 import random
 import re
 import shutil
@@ -1274,8 +1276,25 @@ def bytes_to_MiB(bytes_number):
     return bytes_number / float(1024 ** 2)
 
 
+def check_lock_path():
+    if os.path.isdir(constants.SYSINV_LOCK_PATH):
+        return
+    try:
+        uid = pwd.getpwnam(constants.SYSINV_USERNAME).pw_uid
+        gid = grp.getgrnam(constants.SYSINV_GRPNAME).gr_gid
+        os.makedirs(constants.SYSINV_LOCK_PATH)
+        os.chown(constants.SYSINV_LOCK_PATH, uid, gid)
+        LOG.info("Created directory=%s" %
+                 constants.SYSINV_LOCK_PATH)
+
+    except OSError as e:
+        LOG.exception("makedir %s OSError=%s encountered" %
+                      (constants.SYSINV_LOCK_PATH, e))
+
+
 def synchronized(name, external=True):
     if external:
+        check_lock_path()
         lock_path = constants.SYSINV_LOCK_PATH
     else:
         lock_path = None

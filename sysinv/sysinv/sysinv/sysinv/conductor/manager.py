@@ -32,11 +32,9 @@ collection of inventory data for each host.
 import errno
 import filecmp
 import glob
-import grp
 import hashlib
 import httplib
 import os
-import pwd
 import re
 import shutil
 import socket
@@ -184,20 +182,7 @@ class ConductorManager(service.PeriodicService):
 
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
-
-        if not os.path.isdir(constants.SYSINV_LOCK_PATH):
-            try:
-                uid = pwd.getpwnam(constants.SYSINV_USERNAME).pw_uid
-                gid = grp.getgrnam(constants.SYSINV_GRPNAME).gr_gid
-                os.makedirs(constants.SYSINV_LOCK_PATH)
-                os.chown(constants.SYSINV_LOCK_PATH, uid, gid)
-                LOG.info("Created directory=%s" %
-                         constants.SYSINV_LOCK_PATH)
-
-            except OSError as e:
-                LOG.exception("makedir %s OSError=%s encountered" %
-                              (constants.SYSINV_LOCK_PATH, e))
-                pass
+        cutils.check_lock_path()
 
         system = self._create_default_system()
 
