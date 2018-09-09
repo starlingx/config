@@ -38,6 +38,7 @@ from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
 from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import interface
+from sysinv.api.controllers.v1 import interface_network
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import lldp_agent
 from sysinv.api.controllers.v1 import lldp_neighbour
@@ -189,6 +190,9 @@ class V1(base.APIBase):
 
     networks = [link.Link]
     "Links to the network resource"
+
+    interface_networks = [link.Link]
+    "Links to the network interface resource"
 
     service_parameter = [link.Link]
     "Links to the service parameter resource"
@@ -601,6 +605,15 @@ class V1(base.APIBase):
                                            'networks', '',
                                            bookmark=True)
                        ]
+
+        v1.interface_networks = [link.Link.make_link('self', pecan.request.host_url,
+                                                     'interface_networks', ''),
+                                 link.Link.make_link('bookmark',
+                                                     pecan.request.host_url,
+                                                     'interface_networks', '',
+                                                     bookmark=True)
+                                 ]
+
         v1.service_parameter = [link.Link.make_link('self',
                                                     pecan.request.host_url,
                                                     'service_parameter', ''),
@@ -763,6 +776,7 @@ class Controller(rest.RestController):
     pci_devices = pci_device.PCIDeviceController()
     upgrade = upgrade.UpgradeController()
     networks = network.NetworkController()
+    interface_networks = interface_network.InterfaceNetworkController()
     service_parameter = service_parameter.ServiceParameterController()
     clusters = cluster.ClusterController()
     lldp_agents = lldp_agent.LLDPAgentController()

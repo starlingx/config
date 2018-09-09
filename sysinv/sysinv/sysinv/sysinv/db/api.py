@@ -4316,3 +4316,16 @@ class Connection(object):
 
         :param uuid: The uuid of a tpmdevice.
         """
+
+    @abc.abstractmethod
+    def interface_network_create(self, values):
+        """Create a new interface to network association.
+
+        :param values: A dict containing several items used to identify
+                       and track the interface to network association. For example:
+                        {
+                         'interface_id'  : id of the interface,
+                         'network_id'    : id of the network,
+                        }
+        :returns: An interface network association
+        """

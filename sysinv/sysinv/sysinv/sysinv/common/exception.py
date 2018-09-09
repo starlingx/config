@@ -614,10 +614,6 @@ class MultipleResults(SysinvException):
     message = _("More than one result found.")
 
 
-class NTPNotFound(NotFound):
-    message = _("No NTP with id %(uuid)s found.")
-
-
 class PTPNotFound(NotFound):
     message = _("No PTP with id %(uuid)s found.")
 
@@ -662,8 +658,40 @@ class NetworkTypeNotFound(NotFound):
     message = _("Network of type %(type)s could not be found.")
 
 
+class NetworkIDNotFound(NotFound):
+    message = _("Network with id %(id)s could not be found.")
+
+
+class NetworkNameNotFound(NotFound):
+    message = _("Network with name %(name)s could not be found.")
+
+
 class NetworkAlreadyExists(Conflict):
     message = _("Network of type %(type)s already exists.")
+
+
+class InterfaceNetworkNotFound(NotFound):
+    message = _("Interface network %(uuid)s could not be found.")
+
+
+class InterfaceNetworkAlreadyExists(Conflict):
+    message = _("Interface network with interface ID %(interface_id)s "
+                "and network ID %(network_id)s already exists.")
+
+
+class InterfaceNetworkNotFoundByHostInterfaceNetwork(NotFound):
+    message = _("Interface network with interface ID %(interface_id)s "
+                "and network ID %(network_id)s not found")
+
+
+class UnsupportedAssignedInterfaceNetworkType(Conflict):
+    message = _("Cannot assign network with type '%(network_type)s' "
+                "to an interface.")
+
+
+class UnsupportedRemovedInterfaceNetworkType(Conflict):
+    message = _("Cannot remove network with type '%(network_type)s' "
+                "from an interface.")
 
 
 class NetworkAddressPoolInUse(Conflict):

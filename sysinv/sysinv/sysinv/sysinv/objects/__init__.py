@@ -40,6 +40,7 @@ from sysinv.objects import network_infra
 from sysinv.objects import interface
 from sysinv.objects import interface_ae
 from sysinv.objects import interface_ethernet
+from sysinv.objects import interface_network
 from sysinv.objects import interface_virtual
 from sysinv.objects import interface_vlan
 from sysinv.objects import journal
@@ -125,6 +126,7 @@ ethernet_interface = interface_ethernet.EthernetInterface
 ae_interface = interface_ae.AEInterface
 virtual_interface = interface_virtual.VirtualInterface
 vlan_interface = interface_vlan.VLANInterface
+interface_network = interface_network.InterfaceNetwork
 port = port.Port
 ethernet_port = port_ethernet.EthernetPort
 disk = disk.Disk
@@ -227,6 +229,7 @@ __all__ = (system,
            software_upgrade,
            host_upgrade,
            network,
+           interface_network,
            service_parameter,
            label,
            lldp_agent,

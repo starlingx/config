@@ -40,6 +40,7 @@ from cgtsclient.v1 import iinterface
 from cgtsclient.v1 import ilvg
 from cgtsclient.v1 import imemory
 from cgtsclient.v1 import inode
+from cgtsclient.v1 import interface_network
 from cgtsclient.v1 import intp
 from cgtsclient.v1 import iprofile
 from cgtsclient.v1 import ipv
@@ -129,6 +130,7 @@ class Client(http.HTTPClient):
         self.load = load.LoadManager(self)
         self.upgrade = upgrade.UpgradeManager(self)
         self.network = network.NetworkManager(self)
+        self.interface_network = interface_network.InterfaceNetworkManager(self)
         self.service_parameter = service_parameter.ServiceParameterManager(self)
         self.cluster = cluster.ClusterManager(self)
         self.lldp_agent = lldp_agent.LldpAgentManager(self)

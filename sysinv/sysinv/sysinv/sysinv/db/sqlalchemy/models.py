@@ -1150,10 +1150,11 @@ class Networks(Base):
 
     id = Column(Integer, primary_key=True, nullable=False)
     uuid = Column(String(36), unique=True)
+    name = Column(String(255), unique=True)
     type = Column(String(255), unique=True)
-    mtu = Column(Integer, nullable=False)
-    link_capacity = Column(Integer)
     dynamic = Column(Boolean, nullable=False)
+    link_capacity = Column(Integer)
+    mtu = Column(Integer, nullable=False)
     vlan_id = Column(Integer)
 
     address_pool_id = Column(Integer,
@@ -1162,6 +1163,20 @@ class Networks(Base):
                              nullable=False)
 
     address_pool = relationship("AddressPools", lazy="joined")
+
+
+class InterfaceNetworks(Base):
+    __tablename__ = 'interface_networks'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36), unique=True)
+
+    interface_id = Column(Integer, ForeignKey('interfaces.id', ondelete='CASCADE'))
+    network_id = Column(Integer, ForeignKey('networks.id', ondelete='CASCADE'))
+
+    interface = relationship("Interfaces", lazy="joined", backref="interface_networks")
+    network = relationship("Networks", lazy="joined", backref="interface_networks")
+    UniqueConstraint('interface_id', 'network_id', name='u_interface_id@network_id')
 
 
 class SensorGroups(Base):

@@ -21,12 +21,13 @@ class Network(base.SysinvObject):
 
     fields = {'id': int,
               'uuid': utils.uuid_or_none,
+              'name': utils.str_or_none,
               'type': utils.str_or_none,
+              'dynamic': utils.bool_or_none,
+              'pool_uuid': utils.uuid_or_none,
               'mtu': utils.int_or_none,
               'link_capacity': utils.int_or_none,
-              'dynamic': utils.bool_or_none,
               'vlan_id': utils.int_or_none,
-              'pool_uuid': utils.uuid_or_none,
               }
 
     _foreign_fields = {'pool_uuid': 'address_pool:uuid'}

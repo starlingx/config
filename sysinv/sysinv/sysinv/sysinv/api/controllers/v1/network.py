@@ -45,7 +45,6 @@ LOG = log.getLogger(__name__)
 
 ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_PXEBOOT,
-                         constants.NETWORK_TYPE_BM,
                          constants.NETWORK_TYPE_INFRA,
                          constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_MULTICAST,
@@ -69,14 +68,8 @@ class Network(base.APIBase):
     type = wtypes.text
     "Represent the type for the network"
 
-    mtu = int
-    "MTU bytes size for the network"
-
-    link_capacity = int
-    "link capacity Mbps for the network"
-
-    vlan_id = int
-    "VLAN ID assigned to the network (optional)"
+    name = wtypes.text
+    "Unique name for this network"
 
     dynamic = bool
     "Enables or disables dynamic address allocation for network"
@@ -95,9 +88,8 @@ class Network(base.APIBase):
     def convert_with_links(cls, rpc_network, expand=True):
         network = Network(**rpc_network.as_dict())
         if not expand:
-            network.unset_fields_except(['uuid', 'type', 'mtu',
-                                         'link_capacity', 'vlan_id', 'dynamic',
-                                         'pool_uuid'])
+            network.unset_fields_except(['id', 'uuid', 'type', 'name',
+                                         'dynamic', 'pool_uuid'])
         return network
 
     def _validate_network_type(self):
@@ -167,16 +159,6 @@ class NetworkController(rest.RestController):
         networks = pecan.request.dbapi.networks_get_by_type(networktype)
         if networks:
             raise exception.NetworkAlreadyExists(type=networktype)
-
-    def _check_network_mtu(self, mtu):
-        utils.validate_mtu(mtu)
-
-    def _check_network_speed(self, speed):
-        # ensure network speed is a supported setting
-        if speed and speed not in (constants.LINK_SPEED_1G,
-                                   constants.LINK_SPEED_10G,
-                                   constants.LINK_SPEED_25G):
-            raise exception.NetworkSpeedNotSupported(speed=speed)
 
     def _check_network_pool(self, pool):
         # ensure address pool exists and is not already inuse
@@ -330,8 +312,6 @@ class NetworkController(rest.RestController):
 
         # Perform semantic validation
         self._check_network_type(network['type'])
-        self._check_network_mtu(network['mtu'])
-        self._check_network_speed(network.get('link_capacity'))
 
         pool_uuid = network.pop('pool_uuid', None)
         if pool_uuid:
@@ -363,3 +343,9 @@ class NetworkController(rest.RestController):
     def post(self, network):
         """Create a new IP network."""
         return self._create_network(network)
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
+    def delete(self, network_uuid):
+        """Delete a network."""
+        pecan.request.dbapi.network_destroy(network_uuid)

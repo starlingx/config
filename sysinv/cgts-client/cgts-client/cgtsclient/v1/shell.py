@@ -28,6 +28,7 @@ from cgtsclient.v1 import iinfra_shell
 from cgtsclient.v1 import iinterface_shell
 from cgtsclient.v1 import ilvg_shell
 from cgtsclient.v1 import imemory_shell
+from cgtsclient.v1 import interface_network_shell
 from cgtsclient.v1 import intp_shell
 from cgtsclient.v1 import iprofile_shell
 from cgtsclient.v1 import ipv_shell
@@ -97,6 +98,7 @@ COMMAND_MODULES = [
     pci_device_shell,
     upgrade_shell,
     network_shell,
+    interface_network_shell,
     service_parameter_shell,
     cluster_shell,
     lldp_agent_shell,

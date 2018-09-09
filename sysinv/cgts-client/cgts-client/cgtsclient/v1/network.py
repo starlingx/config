@@ -8,11 +8,11 @@
 #
 
 from cgtsclient.common import base
+from cgtsclient.common import utils
 from cgtsclient import exc
 
 
-CREATION_ATTRIBUTES = ['type', 'mtu', 'link_capacity', 'dynamic', 'vlan_id',
-                       'pool_uuid']
+CREATION_ATTRIBUTES = ['type', 'name', 'dynamic', 'pool_uuid']
 
 
 class Network(base.Resource):
@@ -47,3 +47,20 @@ class NetworkManager(base.Manager):
     def delete(self, network_id):
         path = '/v1/networks/%s' % network_id
         return self._delete(path)
+
+
+def _find_network(cc, network):
+    if network.isdigit() or utils.is_uuid_like(network):
+        try:
+            h = cc.network.get(network)
+        except exc.HTTPNotFound:
+            raise exc.CommandError('network not found: %s' % network)
+        else:
+            return h
+    else:
+        network_list = cc.network.list()
+        for n in network_list:
+            if n.name == network:
+                return n
+        else:
+            raise exc.CommandError('network not found: %s' % network)

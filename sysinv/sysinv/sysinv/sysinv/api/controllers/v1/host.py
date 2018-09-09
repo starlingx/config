@@ -76,6 +76,7 @@ from sysinv.api.controllers.v1 import sm_api
 from sysinv.api.controllers.v1 import state
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
+from sysinv.api.controllers.v1 import interface_network
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.api.controllers.v1 import patch_api
 
@@ -1052,6 +1053,10 @@ class HostController(rest.RestController):
 
     labels = label.LabelController(from_ihosts=True)
     "Expose labels as a sub-element of ihosts"
+
+    interface_networks = interface_network.InterfaceNetworkController(
+        parent="ihosts")
+    "Expose interface_networks as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],
@@ -2711,7 +2716,7 @@ class HostController(rest.RestController):
                 ihost_uuid)
             # Make a list of only the infra interfaces
             infra_interfaces = [i for i in iinterfaces if
-                                cutils.get_primary_network_type(i) == constants.NETWORK_TYPE_INFRA]
+                                i['networktype'] == constants.NETWORK_TYPE_INFRA]
             # Get the UUID of the infra interface (there is only one)
             infra_interface_uuid = infra_interfaces[0]['uuid']
             # Return the first address for this interface (there is only one)
@@ -2995,8 +3000,8 @@ class HostController(rest.RestController):
         Perform IP address semantic checks on a specific interface.
         """
         count = 0
-        networktype = cutils.get_primary_network_type(interface)
-        if networktype not in address_api.ALLOWED_NETWORK_TYPES:
+
+        if interface.networktype not in address_api.ALLOWED_NETWORK_TYPES:
             return
         # Check IPv4 address presence
         addresses = pecan.request.dbapi.addresses_get_by_interface(
@@ -3026,7 +3031,7 @@ class HostController(rest.RestController):
             msg = (_("Expecting at least %(min)s IP address(es) on "
                      "%(networktype)s interface %(ifname)s; found %(count)s") %
                    {'min': min_count,
-                    'networktype': networktype,
+                    'networktype': interface.networktype,
                     'ifname': interface.ifname,
                     'count': count})
             raise wsme.exc.ClientSideError(msg)
@@ -3068,8 +3073,7 @@ class HostController(rest.RestController):
         interfaces = (
             pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid']))
         for interface in interfaces:
-            networktype = cutils.get_primary_network_type(interface)
-            if networktype == constants.NETWORK_TYPE_OAM:
+            if interface.networktype == constants.NETWORK_TYPE_OAM:
                 break
         else:
             msg = _("Can not unlock a controller host without an oam "
@@ -3173,8 +3177,7 @@ class HostController(rest.RestController):
         address_count = 0
         interfaces = pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid'])
         for iface in interfaces:
-            networktype = cutils.get_primary_network_type(iface)
-            if networktype != constants.NETWORK_TYPE_DATA:
+            if iface.networktype != constants.NETWORK_TYPE_DATA:
                 continue
             addresses = (
                 pecan.request.dbapi.addresses_get_by_interface(iface['uuid']))
@@ -3183,33 +3186,6 @@ class HostController(rest.RestController):
         if address_count > 1:
             msg = _("Can not unlock a compute host with multiple data "
                     "addresses while in SDN mode.")
-            raise wsme.exc.ClientSideError(msg)
-
-    def _semantic_check_data_vrs_interfaces(self, ihost):
-        """
-        Perform semantic checks against data-vrs interfaces to ensure validity
-        of the node configuration prior to unlocking it.
-        """
-        vswitch_type = utils.get_vswitch_type()
-        if vswitch_type != constants.VSWITCH_TYPE_NUAGE_VRS:
-            return
-
-        ihost_iinterfaces = (
-            pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid']))
-        data_interface_configured = False
-        for iif in ihost_iinterfaces:
-            if not iif.networktype:
-                continue
-            if any(n in [constants.NETWORK_TYPE_DATA_VRS]
-                    for n in iif.networktype.split(",")):
-                self._semantic_check_interface_addresses(ihost, iif,
-                                                         min_count=1)
-                data_interface_configured = True
-
-        if not data_interface_configured:
-            msg = _("Can not unlock a compute host without a data-vrs "
-                    "interface. Add a data-vrs interface before "
-                    "re-attempting this command.")
             raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
@@ -4992,7 +4968,6 @@ class HostController(rest.RestController):
             self._semantic_check_data_interfaces(ihost)
             self._semantic_check_data_addresses(ihost)
             self._semantic_check_data_vrs_attributes(ihost)
-            self._semantic_check_data_vrs_interfaces(ihost)
 
         # check if the platform reserved memory is valid
         ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
@@ -5561,22 +5536,21 @@ class HostController(rest.RestController):
             # controller/compute/storage
             ihost_iinterfaces = \
                 pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid'])
-            infra_interface = None
-            for iif in ihost_iinterfaces:
-                if (iif.networktype and
-                        any(network in [constants.NETWORK_TYPE_INFRA] for
-                            network in iif.networktype.split(","))):
-                    infra_interface = iif
 
+            infra_interface = None
             # Checks if infrastructure network is configured
             if _infrastructure_configured():
+                infra_network = pecan.request.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_INFRA)
+
+                for iif in ihost_iinterfaces:
+                    if iif.networks and str(infra_network.id) in iif.networks:
+                        infra_interface = iif
+
                 if not infra_interface:
                     msg = _("Cannot unlock host %s without an infrastructure "
                             "interface configured." % hostupdate.displayid)
                     raise wsme.exc.ClientSideError(msg)
-
-                infra_network = pecan.request.dbapi.network_get_by_type(
-                    constants.NETWORK_TYPE_INFRA)
 
                 addr_mode = constants.IPV4_STATIC
                 if infra_interface.ipv4_mode != addr_mode:
@@ -5598,22 +5572,16 @@ class HostController(rest.RestController):
                             "address via the system host-addr-add "
                             "command. " % hostupdate.displayid)
                     raise wsme.exc.ClientSideError(msg)
-            else:
-                if infra_interface is not None:
-                    msg = _("Cannot unlock host %s with an infrastructure "
-                            "interface when no infrastructure network is "
-                            "configured." % hostupdate.displayid)
-                    raise wsme.exc.ClientSideError(msg)
 
             # Check if there is an management interface on
             # controller/compute/storage
             ihost_iinterfaces = pecan.request.dbapi.iinterface_get_by_ihost(
                 ihost['uuid'])
+            network = pecan.request.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_MGMT)
             mgmt_interface_configured = False
             for iif in ihost_iinterfaces:
-                if (iif.networktype and
-                        any(network in [constants.NETWORK_TYPE_MGMT]
-                            for network in iif.networktype.split(","))):
+                if iif.networks and str(network.id) in iif.networks:
                     mgmt_interface_configured = True
 
             if not mgmt_interface_configured:

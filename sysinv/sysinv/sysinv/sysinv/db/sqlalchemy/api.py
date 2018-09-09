@@ -4589,6 +4589,15 @@ class Connection(api.Connection):
             raise exception.NetworkNotFound(network_uuid=network_uuid)
         return result
 
+    def _network_get_by_id(self, network_id):
+        query = model_query(models.Networks)
+        query = query.filter_by(id=network_id)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.NetworkIDNotFound(id=network_id)
+        return result
+
     def _network_get_by_type(self, networktype):
         query = model_query(models.Networks)
         query = query.filter_by(type=networktype)
@@ -4596,6 +4605,15 @@ class Connection(api.Connection):
             result = query.one()
         except NoResultFound:
             raise exception.NetworkTypeNotFound(type=networktype)
+        return result
+
+    def _network_get_by_name(self, networkname):
+        query = model_query(models.Networks)
+        query = query.filter_by(name=networkname)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.NetworkNameNotFound(name=networkname)
         return result
 
     def _networks_get_by_type(self, networktype, limit=None, marker=None,
@@ -4623,6 +4641,10 @@ class Connection(api.Connection):
         return self._network_get(network_uuid)
 
     @objects.objectify(objects.network)
+    def network_get_by_id(self, network_id):
+        return self._network_get_by_id(network_id)
+
+    @objects.objectify(objects.network)
     def network_get_by_type(self, networktype):
         return self._network_get_by_type(networktype)
 
@@ -4638,6 +4660,10 @@ class Connection(api.Connection):
                              sort_key=None, sort_dir=None):
         return self._networks_get_by_type(networktype, limit, marker,
                                           sort_key, sort_dir)
+
+    @objects.objectify(objects.network)
+    def network_get_by_name(self, networkname):
+        return self._network_get_by_name(networkname)
 
     @objects.objectify(objects.network)
     def networks_get_by_pool(self, pool_id, limit=None, marker=None,
@@ -4666,6 +4692,113 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NetworkNotFound(network_uuid=network_uuid)
         query.delete()
+
+    def _interface_network_get(self, uuid):
+        query = model_query(models.InterfaceNetworks)
+        query = add_identity_filter(query, uuid)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.InterfaceNetworkNotFound(uuid=uuid)
+        return result
+
+    def _interface_network_get_all(
+            self, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        query = model_query(models.InterfaceNetworks)
+        return _paginate_query(
+            models.InterfaceNetworks, limit, marker,
+            sort_key, sort_dir, query)
+
+    def _interface_network_get_by_host(
+            self, host_uuid, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        query = model_query(models.InterfaceNetworks)
+        query = (query.
+                 join(models.Interfaces).
+                 join(models.ihost,
+                      models.ihost.id == models.Interfaces.forihostid))
+        query, field = add_filter_by_many_identities(
+            query, models.ihost, [host_uuid])
+        return _paginate_query(
+            models.InterfaceNetworks, limit, marker,
+            sort_key, sort_dir, query)
+
+    def _interface_network_get_by_interface(
+            self, interface_uuid, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        query = model_query(models.InterfaceNetworks)
+        query = (query.join(models.Interfaces))
+        query, field = add_filter_by_many_identities(
+            query, models.Interfaces, [interface_uuid])
+        return _paginate_query(models.InterfaceNetworks, limit, marker,
+                               sort_key, sort_dir, query)
+
+    def _interface_network_query(self, values):
+        query = model_query(models.InterfaceNetworks)
+        query = (query.
+                 filter(models.InterfaceNetworks.interface_id == values['interface_id']).
+                 filter(models.InterfaceNetworks.network_id == values['network_id']))
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.InterfaceNetworkNotFoundByHostInterfaceNetwork(
+                interface_id=values['interface_id'],
+                network_id=values['network_id'])
+        return result
+
+    @objects.objectify(objects.interface_network)
+    def interface_network_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        interface_network = models.InterfaceNetworks(**values)
+        with _session_for_write() as session:
+            try:
+                session.add(interface_network)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.InterfaceNetworkAlreadyExists(
+                    interface_id=values['interface_id'],
+                    network_id=values['network_id'])
+            return self._interface_network_get(values['uuid'])
+
+    @objects.objectify(objects.interface_network)
+    def interface_network_get(self, uuid):
+        return self._interface_network_get(uuid)
+
+    @objects.objectify(objects.interface_network)
+    def interface_network_get_all(
+            self, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        return self._interface_network_get_all(
+            limit, marker, sort_key, sort_dir)
+
+    @objects.objectify(objects.interface_network)
+    def interface_network_get_by_host(
+            self, host_id, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        return self._interface_network_get_by_host(
+            host_id, limit, marker, sort_key, sort_dir)
+
+    @objects.objectify(objects.interface_network)
+    def interface_network_get_by_interface(
+            self, interface_id, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        return self._interface_network_get_by_interface(
+            interface_id, limit, marker, sort_key, sort_dir)
+
+    def interface_network_destroy(self, uuid):
+        query = model_query(models.InterfaceNetworks)
+        query = add_identity_filter(query, uuid)
+        try:
+            query.one()
+        except NoResultFound:
+            raise exception.InterfaceNetworkNotFound(uuid=uuid)
+        query.delete()
+
+    @objects.objectify(objects.interface_network)
+    def interface_network_query(self, values):
+        return self._interface_network_query(values)
 
     def _address_get(self, address_uuid):
         query = model_query(models.Addresses)
