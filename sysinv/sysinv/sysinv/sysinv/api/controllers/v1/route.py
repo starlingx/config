@@ -46,8 +46,6 @@ SYSINV_ROUTE_MAX_PATHS = 4
 
 # Defines the list of interface network types that support routes
 ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA,
-                         constants.NETWORK_TYPE_DATA_VRS,
-                         constants.NETWORK_TYPE_CONTROL,
                          constants.NETWORK_TYPE_MGMT]
 
 
@@ -265,7 +263,7 @@ class RouteController(rest.RestController):
 
     def _check_interface_type(self, interface_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        networktype = cutils.get_primary_network_type(interface)
+        networktype = interface['networktype']
         if networktype not in ALLOWED_NETWORK_TYPES:
             raise exception.RoutesNotSupportedOnInterfaces(iftype=networktype)
         return
@@ -334,13 +332,6 @@ class RouteController(rest.RestController):
         self._check_duplicate_route(host_id, route)
         self._check_duplicate_subnet(host_id, route)
 
-    def _check_allowed_routes(self, interface_id, route):
-        if route['prefix'] == 0:
-            interface = pecan.request.dbapi.iinterface_get(interface_id)
-            networktype = cutils.get_primary_network_type(interface)
-            if networktype in [constants.NETWORK_TYPE_DATA_VRS]:
-                raise exception.DefaultRouteNotAllowedOnVRSInterface()
-
     def _create_route(self, route):
         route.validate_syntax()
         route = route.as_dict()
@@ -350,7 +341,6 @@ class RouteController(rest.RestController):
         host_id, interface_id = self._get_parent_id(interface_uuid)
         # Check for semantic conflicts
         self._check_interface_type(interface_id)
-        self._check_allowed_routes(interface_id, route)
         self._check_route_conflicts(host_id, route)
         self._check_local_gateway(host_id, route)
         self._check_reachable_gateway(interface_id, route)

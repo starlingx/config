@@ -34,8 +34,6 @@ class InfraNetwork(base.SysinvObject):
             'infra_subnet': utils.str_or_none,
             'infra_start': utils.str_or_none,
             'infra_end': utils.str_or_none,
-            'infra_mtu': utils.str_or_none,
-            'infra_vlan_id': utils.str_or_none,
 
             'infra_c0_ip': utils.str_or_none,
             'infra_c1_ip': utils.str_or_none,
@@ -74,8 +72,6 @@ class InfraNetwork(base.SysinvObject):
             'infra_subnet': subnet,
             'infra_start': address_range.start,
             'infra_end': address_range.end,
-            'infra_mtu': network.mtu,
-            'infra_vlan_id': network.vlan_id,
         })
 
         # update standard DB fields (i.e. id, uuid)
@@ -123,13 +119,6 @@ class InfraNetwork(base.SysinvObject):
             if address:
                 values = {'address': self[field]}
                 self.dbapi.address_update(address.uuid, values)
-
-        # update infrastructure network entry
-        values = {
-            'mtu': self['infra_mtu'],
-            'vlan_id': self['infra_vlan_id'],
-        }
-        self.dbapi.network_update(self.uuid, values)
 
         self.obj_reset_changes()
 

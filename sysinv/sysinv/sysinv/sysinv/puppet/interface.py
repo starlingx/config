@@ -7,7 +7,6 @@
 import collections
 import copy
 import six
-import uuid
 
 from netaddr import IPAddress
 from netaddr import IPNetwork
@@ -26,15 +25,17 @@ LOG = log.getLogger(__name__)
 PLATFORM_NETWORK_TYPES = [constants.NETWORK_TYPE_PXEBOOT,
                           constants.NETWORK_TYPE_MGMT,
                           constants.NETWORK_TYPE_INFRA,
-                          constants.NETWORK_TYPE_OAM,
-                          constants.NETWORK_TYPE_DATA_VRS,  # For HP/Nuage
-                          constants.NETWORK_TYPE_BM,  # For internal use only
-                          constants.NETWORK_TYPE_CONTROL]
+                          constants.NETWORK_TYPE_OAM]
 
 DATA_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA]
 
+DATA_INTERFACE_CLASSES = [constants.INTERFACE_CLASS_DATA]
+
 PCI_NETWORK_TYPES = [constants.NETWORK_TYPE_PCI_SRIOV,
                      constants.NETWORK_TYPE_PCI_PASSTHROUGH]
+
+PCI_INTERFACE_CLASSES = [constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                         constants.INTERFACE_CLASS_PCI_SRIOV]
 
 ACTIVE_STANDBY_AE_MODES = ['active_backup', 'active-backup', 'active_standby']
 BALANCED_AE_MODES = ['balanced', 'balanced-xor']
@@ -76,14 +77,6 @@ class InterfacePuppet(base.BasePuppet):
         # Normalize some of the host info into formats that are easier to
         # use when parsing the interface list.
         context = self._create_interface_context(host)
-
-        if host.personality == constants.CONTROLLER:
-            # Insert a fake BMC interface because BMC information is only
-            # stored on the host and in the global config.  This makes it
-            # easier to setup the BMC interface from the interface handling
-            # code.  Hopefully we can add real interfaces in the DB some day
-            # and remove this code.
-            self._create_bmc_interface(host, context)
 
         # interface configuration is organized into sets of network_config,
         # route_config and address_config resource hashes (dict)
@@ -137,62 +130,17 @@ class InterfacePuppet(base.BasePuppet):
         }
         return context
 
-    def _create_bmc_interface(self, host, context):
-        """
-        Creates a fake BMC interface and inserts it into the context interface
-        list.  It also creates a fake BMC address and inserts it into the
-        context address list.  This is required because these two entities
-        exist only as attributes on the host and in local context variables.
-        Rather than have different code to generate manifest entries based on
-        these other data structures it is easier to create fake context entries
-        and re-use the existing code base.
-        """
-        try:
-            network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_BM)
-        except exception.NetworkTypeNotFound:
-            # No BMC network configured
-            return
-
-        lower_iface = _find_bmc_lower_interface(context)
-        if not lower_iface:
-            # No mgmt or pxeboot?
-            return
-
-        addr = self._get_address_by_name(host.hostname,
-                                         constants.NETWORK_TYPE_BM)
-
-        iface = {
-            'uuid': str(uuid.uuid4()),
-            'ifname': 'bmc0',
-            'iftype': constants.INTERFACE_TYPE_VLAN,
-            'networktype': constants.NETWORK_TYPE_BM,
-            'imtu': network.mtu,
-            'vlan_id': network.vlan_id,
-            'uses': [lower_iface['ifname']],
-            'used_by': []
-        }
-
-        lower_iface['used_by'] = ['bmc0']
-        address = {
-            'ifname': iface['ifname'],
-            'family': addr.family,
-            'prefix': addr.prefix,
-            'address': addr.address,
-            'networktype': iface['networktype']
-        }
-
-        context['interfaces'].update({iface['ifname']: iface})
-        context['addresses'].update({iface['ifname']: [address]})
-
     def _find_host_interface(self, host, networktype):
         """
         Search the host interface list looking for an interface with a given
         primary network type.
         """
         for iface in self.dbapi.iinterface_get_by_ihost(host.id):
-            if networktype == utils.get_primary_network_type(iface):
-                return iface
+            for ni in self.dbapi.interface_network_get_by_interface(
+                    iface['id']):
+                network = self.dbapi.network_get(ni.id)
+                if network.type == networktype:
+                    return iface
 
     def _get_port_interface_id_index(self, host):
         """
@@ -328,30 +276,11 @@ class InterfacePuppet(base.BasePuppet):
 
 
 def is_platform_network_type(iface):
-    networktype = utils.get_primary_network_type(iface)
-    return bool(networktype in PLATFORM_NETWORK_TYPES)
+    return bool(iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM)
 
 
 def is_data_network_type(iface):
-    networktypelist = utils.get_network_type_list(iface)
-    return bool(any(n in DATA_NETWORK_TYPES for n in networktypelist))
-
-
-def _find_bmc_lower_interface(context):
-    """
-    Search the profile interface list looking for either a pxeboot or mgmt
-    interface that can be used to attach a BMC VLAN interface.  If a pxeboot
-    interface exists then it is preferred since we do not want to create a VLAN
-    over another VLAN interface.
-    """
-    selected_iface = None
-    for ifname, iface in six.iteritems(context['interfaces']):
-        networktype = utils.get_primary_network_type(iface)
-        if networktype == constants.NETWORK_TYPE_PXEBOOT:
-            return iface
-        elif networktype == constants.NETWORK_TYPE_MGMT:
-            selected_iface = iface
-    return selected_iface
+    return bool(iface['ifclass'] == constants.INTERFACE_CLASS_DATA)
 
 
 def is_controller(context):
@@ -378,8 +307,7 @@ def is_pci_interface(iface):
     """
     Determine if the interface is one of the PCI device types.
     """
-    networktype = utils.get_primary_network_type(iface)
-    return bool(networktype in PCI_NETWORK_TYPES)
+    return bool(iface['ifclass'] in PCI_INTERFACE_CLASSES)
 
 
 def is_platform_interface(context, iface):
@@ -594,14 +522,6 @@ def get_interface_routes(context, iface):
     return context['routes'][iface['ifname']]
 
 
-def get_network_speed(context, networktype):
-    if 'networks' in context:
-        network = context['networks'].get(networktype, None)
-        if network:
-            return network['link_capacity']
-    return 0
-
-
 def _set_address_netmask(address):
     """
     The netmask is not supplied by sysinv but is required by the puppet
@@ -615,14 +535,20 @@ def _set_address_netmask(address):
     return address
 
 
-def get_interface_primary_address(context, iface):
+def get_interface_primary_address(context, iface, network_id=None):
     """
     Determine the primary IP address on an interface (if any).  If multiple
     addresses exist then the first address is returned.
     """
     addresses = context['addresses'].get(iface['ifname'], [])
-    if len(addresses) > 0:
+    if len(addresses) > 0 and network_id is None:
         return _set_address_netmask(addresses[0])
+    elif network_id:
+        for address in addresses:
+            net = find_network_by_pool_uuid(context,
+                                            address.pool_uuid)
+            if net and network_id == net.id:
+                return _set_address_netmask(address)
 
 
 def get_interface_address_family(context, iface):
@@ -640,11 +566,10 @@ def get_interface_address_family(context, iface):
         return 'inet6'
 
 
-def get_interface_gateway_address(context, iface):
+def get_interface_gateway_address(context, networktype):
     """
     Determine if the interface has a default gateway.
     """
-    networktype = utils.get_primary_network_type(iface)
     return context['gateways'].get(networktype, None)
 
 
@@ -652,32 +577,25 @@ def get_interface_address_method(context, iface):
     """
     Determine what type of interface to configure for each network type.
     """
-    networktype = utils.get_primary_network_type(iface)
-    if not networktype:
+
+    if not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE:
         # Interfaces that are configured purely as a dependency from other
         # interfaces (i.e., vlan lower interface, bridge member, bond slave)
         # should be left as manual config
         return 'manual'
-    elif networktype in DATA_NETWORK_TYPES:
+    elif iface.ifclass == constants.INTERFACE_CLASS_DATA:
         # All data interfaces configured in the kernel because they are not
         # natively supported in vswitch or need to be shared with the kernel
         # because of a platform VLAN should be left as manual config
         return 'manual'
-    elif networktype == constants.NETWORK_TYPE_CONTROL:
-        return 'static'
-    elif networktype == constants.NETWORK_TYPE_DATA_VRS:
-        # All HP/Nuage interfaces have their own IP address defined statically
-        return 'static'
-    elif networktype == constants.NETWORK_TYPE_BM:
-        return 'static'
-    elif networktype in PCI_NETWORK_TYPES:
+    elif iface.ifclass in PCI_INTERFACE_CLASSES:
         return 'manual'
     else:
         if is_controller(context):
             # All other interface types that exist on a controller are setup
             # statically since the controller themselves run the DHCP server.
             return 'static'
-        elif networktype == constants.NETWORK_TYPE_PXEBOOT:
+        elif iface.networktype == constants.NETWORK_TYPE_PXEBOOT:
             # All pxeboot interfaces that exist on non-controller nodes are set
             # to manual as they are not needed/used once the install is done.
             # They exist only in support of the vlan mgmt interface above it.
@@ -691,14 +609,16 @@ def get_interface_traffic_classifier(context, iface):
     """
     Get the interface traffic classifier command line (if any)
     """
-    networktype = utils.get_primary_network_type(iface)
-    if networktype in [constants.NETWORK_TYPE_MGMT,
-                       constants.NETWORK_TYPE_INFRA]:
-        networkspeed = get_network_speed(context, networktype)
-        return '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' % (
-            get_interface_os_ifname(context, iface),
-            networktype,
-            networkspeed)
+
+    for net_id in iface.networks:
+        networktype = find_networktype_by_network_id(context, int(net_id))
+        if networktype in [constants.NETWORK_TYPE_MGMT,
+                           constants.NETWORK_TYPE_INFRA]:
+            networkspeed = constants.LINK_SPEED_10G
+            return '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' \
+                   % (get_interface_os_ifname(context, iface),
+                      networktype,
+                      networkspeed)
     return None
 
 
@@ -879,7 +799,7 @@ def get_ethernet_network_config(context, iface, config):
     Augments a basic config dictionary with the attributes specific to an
     ethernet interface.
     """
-    networktype = utils.get_primary_network_type(iface)
+    interface_class = iface['ifclass']
     options = {}
     # Increased to accommodate devices that require more time to
     # complete link auto-negotiation
@@ -890,7 +810,7 @@ def get_ethernet_network_config(context, iface, config):
         options['SLAVE'] = 'yes'
         options['MASTER'] = get_master_interface(context, iface)
         options['PROMISC'] = 'yes'
-    elif networktype == constants.NETWORK_TYPE_PCI_SRIOV:
+    elif interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
         if not is_a_mellanox_cx3_device(context, iface):
             # CX3 device can only use kernel module options to enable vfs
             # others share the same pci-sriov sysfs enabling mechanism
@@ -898,7 +818,7 @@ def get_ethernet_network_config(context, iface, config):
                             get_interface_port_name(context, iface))
             options['pre_up'] = "echo 0 > %s; echo %s > %s" % (
                 sriovfs_path, iface['sriov_numvfs'], sriovfs_path)
-    elif networktype == constants.NETWORK_TYPE_PCI_PASSTHROUGH:
+    elif interface_class == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
         sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
                         get_interface_port_name(context, iface))
         options['pre_up'] = "if [ -f  %s ]; then echo 0 > %s; fi" % (
@@ -931,35 +851,38 @@ def get_route_config(route, ifname):
     return config
 
 
-def get_common_network_config(context, iface, config):
+def get_common_network_config(context, iface, config, network_id=None):
     """
     Augments a basic config dictionary with the attributes specific to an upper
     layer interface (i.e., an interface that is used to terminate IP traffic).
     """
-    traffic_classifier = get_interface_traffic_classifier(context, iface)
-    if traffic_classifier:
-        config['options']['post_up'] = traffic_classifier
+    LOG.debug("get_common_network_config %s %s network_id=%s" %
+              (iface.ifname, iface.networks, network_id))
+    if network_id is None:
+        traffic_classifier = get_interface_traffic_classifier(context, iface)
+        if traffic_classifier:
+            config['options']['post_up'] = traffic_classifier
 
     method = get_interface_address_method(context, iface)
     if method == 'static':
-        address = get_interface_primary_address(context, iface)
+        address = get_interface_primary_address(context, iface, network_id)
         if address is None:
-            networktype = utils.get_primary_network_type(iface)
-            # control interfaces are not required to have an IP address
-            if networktype == constants.NETWORK_TYPE_CONTROL:
-                return config
             LOG.error("Interface %s has no primary address" % iface['ifname'])
         assert address is not None
+
         config['ipaddress'] = address['address']
         config['netmask'] = address['netmask']
 
-        gateway = get_interface_gateway_address(context, iface)
-        if gateway:
-            config['gateway'] = gateway
+        if network_id is None and len(iface.networks) > 0:
+            networktype = find_networktype_by_network_id(
+                context, int(iface.networks[0]))
+            gateway = get_interface_gateway_address(context, networktype)
+            if gateway:
+                config['gateway'] = gateway
     return config
 
 
-def get_interface_network_config(context, iface):
+def get_interface_network_config(context, iface, network_id=None):
     """
     Builds a network_config resource dictionary for a given interface
     """
@@ -972,7 +895,7 @@ def get_interface_network_config(context, iface):
         os_ifname, method=method, family=family, mtu=mtu)
 
     # Add options common to all top level interfaces
-    config = get_common_network_config(context, iface, config)
+    config = get_common_network_config(context, iface, config, network_id)
 
     # Add type specific options
     if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
@@ -1018,10 +941,18 @@ def generate_network_config(context, config, iface):
     bridge, or to add additional route resources.
     """
     network_config = get_interface_network_config(context, iface)
-
     config[NETWORK_CONFIG_RESOURCE].update({
         network_config['ifname']: format_network_config(network_config)
     })
+
+    if len(iface.networks) > 1:
+        for net_id in iface.networks:
+            net_config = get_interface_network_config(context, iface,
+                                                      int(net_id))
+            ifname = net_config['ifname'] + ':' + net_id
+            config[NETWORK_CONFIG_RESOURCE].update({
+                ifname: format_network_config(net_config)
+            })
 
     # Add additional configs for special interfaces
     if is_bridged_interface(context, iface):
@@ -1039,6 +970,25 @@ def generate_network_config(context, config, iface):
         })
 
 
+def find_network_by_pool_uuid(context, pool_uuid):
+    for networktype, network in six.iteritems(context['networks']):
+        if network.pool_uuid == pool_uuid:
+            return network
+    return None
+
+
+def find_network_id_by_networktype(context, networktype):
+    for net_type, network in six.iteritems(context['networks']):
+        if networktype == net_type:
+            return network.id
+
+
+def find_networktype_by_network_id(context, network_id):
+    for networktype, network in six.iteritems(context['networks']):
+        if network.id == network_id:
+            return networktype
+
+
 def find_interface_by_type(context, networktype):
     """
     Lookup an interface based on networktype.  This is only intended for
@@ -1046,8 +996,10 @@ def find_interface_by_type(context, networktype):
     mgmt, infra, pxeboot, bmc).
     """
     for ifname, iface in six.iteritems(context['interfaces']):
-        if networktype == utils.get_primary_network_type(iface):
-            return iface
+        for net_id in iface.networks:
+            net_type = find_networktype_by_network_id(context, int(net_id))
+            if networktype == net_type:
+                return iface
 
 
 def find_address_by_type(context, networktype):
@@ -1074,21 +1026,10 @@ def find_sriov_interfaces_by_driver(context, driver):
         if iface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
             continue
         port = get_interface_port(context, iface)
-        networktype = utils.get_primary_network_type(iface)
         if (port['driver'] == driver and
-                networktype == constants.NETWORK_TYPE_PCI_SRIOV):
+                iface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV):
             ifaces.append(iface)
     return ifaces
-
-
-def count_interfaces_by_type(context, networktypes):
-    """
-    Count the number of interfaces with a matching network type.
-    """
-    for ifname, iface in six.iteritems(context['interfaces']):
-        networktypelist = utils.get_network_type_list(iface)
-        if any(n in networktypelist for n in networktypes):
-            return iface
 
 
 def interface_sort_key(iface):

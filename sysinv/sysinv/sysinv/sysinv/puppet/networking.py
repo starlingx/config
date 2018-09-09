@@ -170,8 +170,6 @@ class NetworkingPuppet(base.BasePuppet):
                 controller0_address,
             'platform::network::%s::params::controller1_address' % networktype:
                 controller1_address,
-            'platform::network::%s::params::mtu' % networktype:
-                network.mtu,
         }
 
     def _get_pxeboot_interface_config(self):
@@ -195,14 +193,15 @@ class NetworkingPuppet(base.BasePuppet):
         if network_interface:
             interface_name = interface.get_interface_os_ifname(
                 self.context, network_interface)
-
+            network_id = interface.find_network_id_by_networktype(
+                self.context, networktype)
             config.update({
                 'platform::network::%s::params::interface_name' % networktype:
                     interface_name
             })
 
             interface_address = interface.get_interface_primary_address(
-                self.context, network_interface)
+                self.context, network_interface, network_id)
             if interface_address:
                 config.update({
                     'platform::network::%s::params::interface_address' %

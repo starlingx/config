@@ -72,7 +72,8 @@ CONF.import_opt('journal_default_size',
                 group='journal')
 
 # Defines the fields that must be copied in/out of interface profiles
-INTERFACE_PROFILE_FIELDS = ['ifname', 'iftype', 'imtu', 'networktype', 'aemode',
+INTERFACE_PROFILE_FIELDS = ['ifname', 'iftype', 'imtu', 'networktype',
+                            'ifclass', 'aemode',
                             'txhashpolicy', 'forihostid', 'providernetworks',
                             'vlan_id', 'ipv4_mode', 'ipv6_mode',
                             'ipv4_pool', 'ipv6_pool',

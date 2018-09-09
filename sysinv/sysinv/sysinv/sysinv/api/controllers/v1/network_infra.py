@@ -215,10 +215,11 @@ class InfraNetworkController(rest.RestController):
             if utils.is_host_active_controller(host):
                 interface_list = pecan.request.dbapi.iinterface_get_by_ihost(
                     host.uuid)
+                network = pecan.request.dbapi.network_get_by_type(constants.NETWORK_TYPE_INFRA)
                 for interface in interface_list:
-                    if (cutils.get_primary_network_type(interface) ==
-                            constants.NETWORK_TYPE_INFRA):
-                        return True
+                    if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+                        if str(network['id']) in interface['networks']:
+                            return True
         raise wsme.exc.ClientSideError(_(
             "Infrastructure interface must be configured on the active "
             "controller prior to applying infrastructure network "
@@ -376,10 +377,6 @@ class InfraNetworkController(rest.RestController):
             for index, field in enumerate(InfraNetwork.address_names.keys()):
                 infra[field] = str(start_address + index)
 
-        self._check_mtu_syntax(infra)
-        self._check_vlan_id_syntax(infra)
-        self._check_interface_mtu(infra)
-        self._check_interface_vlan_id(infra)
         return infra
 
     def _create_infra_network(self, infra):
@@ -407,16 +404,9 @@ class InfraNetworkController(rest.RestController):
 
         values = {
             'type': constants.NETWORK_TYPE_INFRA,
-            'mtu': infra['infra_mtu'],
             'dynamic': mgmt_network.dynamic,
             'address_pool_id': pool.id,
-            'link_capacity': constants.LINK_SPEED_10G,
         }
-
-        if infra['infra_vlan_id']:
-            values.update({
-                'vlan_id': infra['infra_vlan_id'],
-            })
 
         pecan.request.dbapi.network_create(values)
 
@@ -565,10 +555,6 @@ class InfraNetworkController(rest.RestController):
                     changed_fields.append(field)
 
             rpc_infra.save()
-            # If mtu or vlan has changed, update the infrastructure interface
-            if any(field in ['infra_mtu', 'infra_vlan_id']
-                   for field in changed_fields):
-                self._update_interface(infra)
 
             if action == constants.APPLY_ACTION:
                 # perform rpc to conductor to perform config apply

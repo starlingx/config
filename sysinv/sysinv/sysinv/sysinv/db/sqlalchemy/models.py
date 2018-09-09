@@ -331,7 +331,7 @@ class iinterface(Base):
     iftype = Column(String(255))
     imac = Column(String(255), unique=True)
     imtu = Column(Integer)
-    networktype = Column(String(255))  # e.g. mgmt, data, ext, api
+    networktype = Column(String(255))
     aemode = Column(String(255))  # e.g. balanced, active_standby
     aedict = Column(JSONEncodedDict)  # e.g. 802.3ad parameters
     txhashpolicy = Column(String(255))  # e.g. L2, L2L3, L3L4
@@ -362,7 +362,8 @@ class Interfaces(Base):
     iftype = Column(String(255))
 
     ifname = Column(String(255))
-    networktype = Column(String(255))  # e.g. mgmt, data, ext, api
+    ifclass = Column(String(255))
+    networktype = Column(String(255))
     ifcapabilities = Column(JSONEncodedDict)
     farend = Column(JSONEncodedDict)
     sriov_numvfs = Column(Integer)
@@ -1153,9 +1154,6 @@ class Networks(Base):
     name = Column(String(255), unique=True)
     type = Column(String(255), unique=True)
     dynamic = Column(Boolean, nullable=False)
-    link_capacity = Column(Integer)
-    mtu = Column(Integer, nullable=False)
-    vlan_id = Column(Integer)
 
     address_pool_id = Column(Integer,
                              ForeignKey('address_pools.id',

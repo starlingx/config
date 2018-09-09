@@ -478,7 +478,6 @@ class PlatformPuppet(base.BasePuppet):
         drbdconfig = self.dbapi.drbdconfig_get_one()
         return {
             'platform::drbd::params::link_util': str(drbdconfig.link_util),
-            'platform::drbd::params::link_speed': self._get_drbd_link_speed(),
             'platform::drbd::params::num_parallel': str(drbdconfig.num_parallel),
             'platform::drbd::params::rtt_ms': str(drbdconfig.rtt_ms),
         }
@@ -738,31 +737,24 @@ class PlatformPuppet(base.BasePuppet):
 
         return config
 
-    def _get_drbd_link_speed(self):
-        # return infra link speed if provisioned, otherwise mgmt
-        try:
-            infra_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_INFRA)
-            drbd_link_speed = infra_network.link_capacity
-        except exception.NetworkTypeNotFound:
-            mgmt_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT)
-            drbd_link_speed = mgmt_network.link_capacity
-
-        return drbd_link_speed
-
     def _get_nfs_config(self):
 
         # Calculate the optimal NFS r/w size based on the network mtu based
         # on the configured network(s)
+        mtu = constants.DEFAULT_MTU
         try:
-            infra_network = self.dbapi.network_get_by_type(
+            interfaces = self.dbapi.iinterface_get_by_network(
                 constants.NETWORK_TYPE_INFRA)
-            mtu = infra_network.mtu
-        except exception.NetworkTypeNotFound:
-            mgmt_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT)
-            mtu = mgmt_network.mtu
+            for interface in interfaces:
+                mtu = interface.imtu
+        except exception.InvalidParameterValue:
+            try:
+                interfaces = self.dbapi.iinterface_get_by_network(
+                    constants.NETWORK_TYPE_MGMT)
+                for interface in interfaces:
+                    mtu = interface.imtu
+            except exception.InvalidParameterValue:
+                pass
 
         if self._get_address_by_name(
                 constants.CONTROLLER_PLATFORM_NFS,

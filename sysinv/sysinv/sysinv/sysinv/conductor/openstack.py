@@ -470,10 +470,7 @@ class OpenStackOperator(object):
         try:
             iinterfaces = self.try_interface_get_by_host(ihost_uuid)
             for interface in iinterfaces:
-                networktypelist = []
-                if interface.networktype:
-                    networktypelist = [network.strip() for network in interface['networktype'].split(",")]
-                if constants.NETWORK_TYPE_DATA in networktypelist:
+                if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
                     providernets = interface.providernetworks
                     for providernet in providernets.split(',') if providernets else []:
                         ihost_aggset_provider.add(aggregate_name_prefix +
@@ -591,11 +588,7 @@ class OpenStackOperator(object):
         try:
             iinterfaces = self.try_interface_get_by_host(ihost_uuid)
             for interface in iinterfaces:
-                networktypelist = []
-                if interface.networktype:
-                    networktypelist = [network.strip() for network in
-                                       interface['networktype'].split(",")]
-                if constants.NETWORK_TYPE_DATA in networktypelist:
+                if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
                     providernets = interface.providernetworks
                     for providernet in (
                             providernets.split(',') if providernets else []):

@@ -21,16 +21,20 @@ from sysinv.tests.db import utils as dbutils
 
 
 NETWORKTYPES_WITH_V4_ADDRESSES = [constants.NETWORK_TYPE_MGMT,
-                                  constants.NETWORK_TYPE_DATA_VRS,
                                   constants.NETWORK_TYPE_OAM,
                                   constants.NETWORK_TYPE_PXEBOOT]
 
 NETWORKTYPES_WITH_V6_ADDRESSES = [constants.NETWORK_TYPE_INFRA,
                                   constants.NETWORK_TYPE_DATA]
 
-NETWORKTYPES_WITH_V4_ROUTES = [constants.NETWORK_TYPE_DATA_VRS]
+NETWORKTYPES_WITH_V4_ROUTES = [constants.NETWORK_TYPE_DATA]
 
 NETWORKTYPES_WITH_V6_ROUTES = [constants.NETWORK_TYPE_DATA]
+
+PLATFORM_INTERFACE_CLASSES = [constants.NETWORK_TYPE_PXEBOOT,
+                              constants.NETWORK_TYPE_MGMT,
+                              constants.NETWORK_TYPE_INFRA,
+                              constants.NETWORK_TYPE_OAM]
 
 
 class BaseTestCase(dbbase.DbTestCase):
@@ -107,12 +111,25 @@ class BaseTestCase(dbbase.DbTestCase):
                      'metric': '1'}
             self.routes.append(dbutils.create_test_route(**route))
 
-    def _create_ethernet_test(self, ifname=None, networktype=None, **kwargs):
-        if isinstance(networktype, list):
+    def _create_ethernet_test(self, ifname=None, ifclass=None,
+                              networktype=None, **kwargs):
+        if not isinstance(networktype, list):
+            networktypelist = [networktype]
+        else:
+            networktypelist = networktype
             networktype = ','.join(networktype)
         interface_id = len(self.interfaces)
+        networks = []
         if not ifname:
             ifname = (networktype or 'eth') + str(interface_id)
+        if all(network_type in constants.PLATFORM_NETWORK_TYPES
+                   for network_type in networktypelist):
+            ifclass = constants.INTERFACE_CLASS_PLATFORM
+            for network_type in networktypelist:
+                network = self.dbapi.network_get_by_type(network_type)
+                networks.append(str(network.id))
+        if not ifclass and networktype:
+            ifclass = networktype
         interface = {'id': interface_id,
                      'uuid': str(uuid.uuid4()),
                      'forihostid': self.host.id,
@@ -121,6 +138,8 @@ class BaseTestCase(dbbase.DbTestCase):
                      'imac': '02:11:22:33:44:' + str(10 + interface_id),
                      'uses': [],
                      'used_by': [],
+                     'ifclass': ifclass,
+                     'networks': networks,
                      'networktype': networktype,
                      'imtu': 1500,
                      'sriov_numvfs': kwargs.get('sriov_numvfs', 0)}
@@ -144,14 +163,26 @@ class BaseTestCase(dbbase.DbTestCase):
         self._setup_address_and_routes(db_interface)
         return db_port, db_interface
 
-    def _create_vlan_test(self, ifname, networktype, vlan_id,
+    def _create_vlan_test(self, ifname, ifclass, networktype, vlan_id,
                           lower_iface=None):
-        if isinstance(networktype, list):
+        if not isinstance(networktype, list):
+            networktypelist = [networktype]
+        else:
+            networktypelist = networktype
             networktype = ','.join(networktype)
         if not lower_iface:
             lower_port, lower_iface = self._create_ethernet_test()
         if not ifname:
             ifname = 'vlan' + str(vlan_id)
+        networks = []
+        if all(network_type in constants.PLATFORM_NETWORK_TYPES
+               for network_type in networktypelist):
+            ifclass = constants.INTERFACE_CLASS_PLATFORM
+            for network_type in networktypelist:
+                network = self.dbapi.network_get_by_type(network_type)
+                networks.append(str(network.id))
+        if not ifclass and networktype:
+            ifclass = networktype
         interface_id = len(self.interfaces)
         interface = {'id': interface_id,
                      'uuid': str(uuid.uuid4()),
@@ -162,6 +193,8 @@ class BaseTestCase(dbbase.DbTestCase):
                      'imac': '02:11:22:33:44:' + str(10 + interface_id),
                      'uses': [lower_iface['ifname']],
                      'used_by': [],
+                     'ifclass': ifclass,
+                     'networks': networks,
                      'networktype': networktype,
                      'imtu': 1500}
         lower_iface['used_by'].append(interface['ifname'])
@@ -170,14 +203,28 @@ class BaseTestCase(dbbase.DbTestCase):
         self._setup_address_and_routes(db_interface)
         return db_interface
 
-    def _create_bond_test(self, ifname, networktype=None):
-        if isinstance(networktype, list):
+    def _create_bond_test(self, ifname, ifclass=None, networktype=None):
+        if not isinstance(networktype, list):
+            networktypelist = [networktype]
+        else:
+            networktypelist = networktype
             networktype = ','.join(networktype)
         port1, iface1 = self._create_ethernet_test()
         port2, iface2 = self._create_ethernet_test()
         interface_id = len(self.interfaces)
         if not ifname:
             ifname = 'bond' + str(interface_id)
+
+        networks = []
+        if all(network_type in constants.PLATFORM_NETWORK_TYPES
+               for network_type in networktypelist):
+            ifclass = constants.INTERFACE_CLASS_PLATFORM
+            for network_type in networktypelist:
+                network = self.dbapi.network_get_by_type(network_type)
+                networks.append(str(network.id))
+        if not ifclass and networktype:
+            ifclass = networktype
+
         interface = {'id': interface_id,
                      'uuid': str(uuid.uuid4()),
                      'forihostid': self.host.id,
@@ -186,6 +233,8 @@ class BaseTestCase(dbbase.DbTestCase):
                      'imac': '02:11:22:33:44:' + str(10 + interface_id),
                      'uses': [iface1['ifname'], iface2['ifname']],
                      'used_by': [],
+                     'ifclass': ifclass,
+                     'networks': networks,
                      'networktype': networktype,
                      'imtu': 1500,
                      'txhashpolicy': 'layer2'}
@@ -217,12 +266,6 @@ class BaseTestCase(dbbase.DbTestCase):
             ranges=[['192.168.202.2', '192.168.202.254']],
             prefix=24)
 
-        bm_pool = dbutils.create_test_address_pool(
-            network='192.168.203.0',
-            name='board-management',
-            ranges=[['192.168.203.2', '192.168.203.254']],
-            prefix=24)
-
         infra_pool = dbutils.create_test_address_pool(
             network='192.168.205.0',
             name='infrastructure',
@@ -237,7 +280,7 @@ class BaseTestCase(dbbase.DbTestCase):
 
         self.networks.append(dbutils.create_test_network(
             type=constants.NETWORK_TYPE_MGMT,
-            link_capacity=constants.LINK_SPEED_1G,
+            link_capacity=constants.LINK_SPEED_10G,
             vlan_id=2,
             address_pool_id=mgmt_pool.id))
 
@@ -246,12 +289,6 @@ class BaseTestCase(dbbase.DbTestCase):
             link_capacity=constants.LINK_SPEED_1G,
             vlan_id=None,
             address_pool_id=pxeboot_pool.id))
-
-        self.networks.append(dbutils.create_test_network(
-            type=constants.NETWORK_TYPE_BM,
-            link_capacity=constants.LINK_SPEED_1G,
-            vlan_id=78,
-            address_pool_id=bm_pool.id))
 
         self.networks.append(dbutils.create_test_network(
             type=constants.NETWORK_TYPE_INFRA,
@@ -303,26 +340,6 @@ class BaseTestCase(dbbase.DbTestCase):
             'family': 4,
             'prefix': 24,
             'address': '192.168.202.4'
-        }
-        dbutils.create_test_address(**address)
-
-        name = utils.format_address_name(constants.CONTROLLER_0_HOSTNAME,
-                                         constants.NETWORK_TYPE_BM)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '192.168.203.3'
-        }
-        dbutils.create_test_address(**address)
-
-        name = utils.format_address_name(constants.CONTROLLER_1_HOSTNAME,
-                                         constants.NETWORK_TYPE_BM)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '192.168.203.4'
         }
         dbutils.create_test_address(**address)
 
@@ -417,7 +434,7 @@ class InterfaceTestCase(BaseTestCase):
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
         self.port, self.iface = self._create_ethernet_test(
-            "mgmt0", constants.NETWORK_TYPE_MGMT)
+            "mgmt0", None, constants.NETWORK_TYPE_MGMT)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -432,11 +449,13 @@ class InterfaceTestCase(BaseTestCase):
         self._setup_context()
 
     def test_is_platform_network_type_true(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         result = interface.is_platform_network_type(self.iface)
         self.assertTrue(result)
 
     def test_is_platform_network_type_false(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         result = interface.is_platform_network_type(self.iface)
         self.assertFalse(result)
@@ -510,10 +529,12 @@ class InterfaceTestCase(BaseTestCase):
         self.assertFalse(interface.is_compute_subfunction(self.context))
 
     def test_is_pci_interface_true(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.assertTrue(interface.is_pci_interface(self.iface))
 
     def test_is_pci_interface_false(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.assertFalse(interface.is_pci_interface(self.iface))
 
@@ -531,7 +552,8 @@ class InterfaceTestCase(BaseTestCase):
 
     def test_get_lower_interface(self):
         vlan = self._create_vlan_test(
-            "infra", constants.NETWORK_TYPE_INFRA, 1, self.iface)
+            "infra", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_INFRA, 1, self.iface)
         self._update_context()
         value = interface.get_lower_interface(self.context, vlan)
         self.assertEqual(value, self.iface)
@@ -547,7 +569,8 @@ class InterfaceTestCase(BaseTestCase):
 
     def test_get_interface_os_ifname_vlan_over_ethernet(self):
         vlan = self._create_vlan_test(
-            "infra", constants.NETWORK_TYPE_INFRA, 1, self.iface)
+            "infra", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_INFRA, 1, self.iface)
         self._update_context()
         value = interface.get_interface_os_ifname(self.context, vlan)
         self.assertEqual(value, self.port['name'] + ".1")
@@ -555,7 +578,8 @@ class InterfaceTestCase(BaseTestCase):
     def test_get_interface_os_ifname_vlan_over_bond(self):
         bond = self._create_bond_test("none")
         vlan = self._create_vlan_test(
-            "infra", constants.NETWORK_TYPE_INFRA, 1, bond)
+            "infra", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_INFRA, 1, bond)
         self._update_context()
         value = interface.get_interface_os_ifname(self.context, vlan)
         self.assertEqual(value, bond['ifname'] + ".1")
@@ -596,56 +620,58 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(family, 'inet')
 
     def test_get_interface_gateway_address_oam(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_OAM
         gateway = interface.get_interface_gateway_address(
-            self.context, self.iface)
+            self.context, constants.NETWORK_TYPE_OAM)
         expected = str(self.oam_gateway_address.ip)
         self.assertEqual(gateway, expected)
 
     def test_get_interface_gateway_address_mgmt(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         gateway = interface.get_interface_gateway_address(
-            self.context, self.iface)
+            self.context, constants.NETWORK_TYPE_MGMT)
         expected = str(self.mgmt_gateway_address.ip)
         self.assertEqual(gateway, expected)
 
     def test_get_interface_gateway_address_none(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         gateway = interface.get_interface_gateway_address(
-            self.context, self.iface)
+            self.context, constants.NETWORK_TYPE_DATA)
         self.assertIsNone(gateway)
 
     def test_get_interface_address_method_for_none(self):
+        self.iface['ifclass'] = None
         self.iface['networktype'] = None
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_data(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
-    def test_get_interface_address_method_for_data_vrs(self):
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA_VRS
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'static')
-
     def test_get_interface_address_method_for_pci_sriov(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pci_pthru(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pxeboot_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_PXEBOOT
         self.host['personality'] = constants.COMPUTE
         self._update_context()
@@ -654,6 +680,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pxeboot_storage(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_PXEBOOT
         self.host['personality'] = constants.STORAGE
         self._update_context()
@@ -662,6 +689,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pxeboot_controller(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_PXEBOOT
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
@@ -670,6 +698,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_mgmt_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         self.host['personality'] = constants.COMPUTE
         self._update_context()
@@ -678,6 +707,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_mgmt_storage(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         self.host['personality'] = constants.STORAGE
         self._update_context()
@@ -686,6 +716,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_mgmt_controller(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
@@ -694,6 +725,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_infra_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
         self.host['personality'] = constants.COMPUTE
         self._update_context()
@@ -702,6 +734,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_infra_storage(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
         self.host['personality'] = constants.STORAGE
         self._update_context()
@@ -710,6 +743,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_infra_controller(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
@@ -718,6 +752,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_oam_controller(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_OAM
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
@@ -726,18 +761,28 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(method, 'static')
 
     def test_get_interface_traffic_classifier_for_mgmt(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_MGMT:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface)
         print(self.context)
         expected = ('/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
                     (self.port['name'], constants.NETWORK_TYPE_MGMT,
-                     constants.LINK_SPEED_1G))
+                     constants.LINK_SPEED_10G))
         self.assertEqual(classifier, expected)
 
     def test_get_interface_traffic_classifier_for_infra(self):
         self.iface['ifname'] = 'infra0'
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_INFRA:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface)
         expected = ('/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
@@ -746,7 +791,12 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(classifier, expected)
 
     def test_get_interface_traffic_classifier_for_oam(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_OAM
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_OAM:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface)
         self.assertIsNone(classifier)
@@ -758,6 +808,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertIsNone(classifier)
 
     def test_get_bridge_interface_name_none_dpdk_supported(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.port['dpdksupport'] = True
         self._update_context()
@@ -765,11 +816,13 @@ class InterfaceTestCase(BaseTestCase):
         self.assertIsNone(ifname)
 
     def test_get_bridge_interface_name_none_not_data(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         ifname = interface.get_bridge_interface_name(self.context, self.iface)
         self.assertIsNone(ifname)
 
     def test_get_bridge_interface_name(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.port['dpdksupport'] = False
         self._update_context()
@@ -777,6 +830,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(ifname, 'br-' + self.port['name'])
 
     def test_needs_interface_config_kernel_mgmt(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
@@ -784,6 +838,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_kernel_infra(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
@@ -791,20 +846,15 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_kernel_oam(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_OAM
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_kernel_vrs(self):
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA_VRS
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
-        needed = interface.needs_interface_config(self.context, self.iface)
-        self.assertTrue(needed)
-
     def test_needs_interface_config_data(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.port['dpdksupport'] = True
@@ -813,6 +863,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_slow(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.port['dpdksupport'] = False
@@ -821,6 +872,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_mlx4(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.port['driver'] = interface.DRIVER_MLX_CX3
@@ -829,6 +881,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_mlx5(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.port['driver'] = interface.DRIVER_MLX_CX4
@@ -837,6 +890,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_slow_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.COMPUTE
         self.port['dpdksupport'] = False
@@ -845,6 +899,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_mlx4_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.COMPUTE
         self.port['driver'] = interface.DRIVER_MLX_CX3
@@ -853,6 +908,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_mlx5_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.COMPUTE
         self.port['driver'] = interface.DRIVER_MLX_CX4
@@ -861,6 +917,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_sriov_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.COMPUTE
         self._update_context()
@@ -868,6 +925,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_pthru_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
         self.host['personality'] = constants.COMPUTE
         self._update_context()
@@ -875,6 +933,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_cpe_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.COMPUTE
@@ -884,6 +943,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_slow_cpe_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.COMPUTE
@@ -893,6 +953,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_mlx4_cpe_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.COMPUTE
@@ -902,6 +963,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_mlx5_cpe_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.COMPUTE
@@ -911,6 +973,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_sriov_cpe(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.CONTROLLER
@@ -919,6 +982,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertFalse(needed)
 
     def test_needs_interface_config_sriov_cpe_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.COMPUTE
@@ -927,6 +991,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertTrue(needed)
 
     def test_needs_interface_config_pthru_cpe_compute(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.COMPUTE
@@ -988,7 +1053,12 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(result, expected)
 
     def test_get_controller_ethernet_config_oam(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_OAM
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_OAM:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1000,7 +1070,12 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_controller_ethernet_config_mgmt(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_MGMT:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1008,7 +1083,7 @@ class InterfaceTestCase(BaseTestCase):
                    'post_up':
                        '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
                        (self.port['name'], constants.NETWORK_TYPE_MGMT,
-                        constants.LINK_SPEED_1G)}
+                        constants.LINK_SPEED_10G)}
         expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500, gateway='192.168.204.1',
             options=options)
@@ -1016,7 +1091,12 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_controller_ethernet_config_infra(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_INFRA:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1088,7 +1168,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_controller_vlan_config(self):
-        vlan = self._create_vlan_test("vlan1", None, 1, self.iface)
+        vlan = self._create_vlan_test("vlan1", None, None, 1, self.iface)
         self._update_context()
         config = interface.get_interface_network_config(self.context, vlan)
         options = {'VLAN': 'yes',
@@ -1101,7 +1181,7 @@ class InterfaceTestCase(BaseTestCase):
 
     def test_get_controller_vlan_config_over_bond(self):
         bond = self._create_bond_test("bond0")
-        vlan = self._create_vlan_test("vlan1", None, 1, bond)
+        vlan = self._create_vlan_test("vlan1", None, None, 1, bond)
         self._update_context()
         config = interface.get_interface_network_config(self.context, vlan)
         options = {'VLAN': 'yes',
@@ -1113,8 +1193,13 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_compute_ethernet_config_mgmt(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
         self.host['personality'] = constants.COMPUTE
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_MGMT:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1122,15 +1207,20 @@ class InterfaceTestCase(BaseTestCase):
                    'post_up':
                        '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
                        (self.port['name'], constants.NETWORK_TYPE_MGMT,
-                        constants.LINK_SPEED_1G)}
+                        constants.LINK_SPEED_10G)}
         expected = self._get_network_config(
             ifname=self.port['name'], mtu=1500, options=options)
         print(expected)
         self.assertEqual(expected, config)
 
     def test_get_compute_ethernet_config_infra(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
         self.host['personality'] = constants.COMPUTE
+        for network in self.networks:
+            if network['type'] == constants.NETWORK_TYPE_INFRA:
+                net_id = network['id']
+        self.iface['networks'] = [str(net_id)]
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1145,6 +1235,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_compute_ethernet_config_pci_sriov(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.COMPUTE
         self._update_context()
@@ -1161,6 +1252,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_compute_ethernet_config_pci_pthru(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
         self.host['personality'] = constants.COMPUTE
         self._update_context()
@@ -1176,19 +1268,8 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_data_vrs(self):
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA_VRS
-        self.host['personality'] = constants.COMPUTE
-        self._update_context()
-        config = interface.get_interface_network_config(
-            self.context, self.iface)
-        options = {'LINKDELAY': '20'}
-        expected = self._get_static_network_config(
-            ifname=self.port['name'], mtu=1500, options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
     def test_get_compute_ethernet_config_data_slow(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.port['dpdksupport'] = False
         self.host['personality'] = constants.COMPUTE
@@ -1204,7 +1285,8 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_compute_ethernet_config_data_slow_as_bond_slave(self):
-        bond = self._create_bond_test("data1", constants.NETWORK_TYPE_DATA)
+        bond = self._create_bond_test("data1", constants.INTERFACE_CLASS_DATA,
+                                      constants.NETWORK_TYPE_DATA)
         self.host['personality'] = constants.COMPUTE
         self._update_context()
         lower_ifname = bond['uses'][0]
@@ -1224,6 +1306,7 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(expected, config)
 
     def test_get_compute_ethernet_config_data_slow_bridge(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.port['dpdksupport'] = False
         self.host['personality'] = constants.COMPUTE
@@ -1362,7 +1445,8 @@ class InterfaceTestCase(BaseTestCase):
 
     def _create_sriov_cx3_if_test(self, name, vf_num, **kwargs):
         port, iface = self._create_ethernet_test(
-            name, constants.NETWORK_TYPE_PCI_SRIOV,
+            name, constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
             driver=interface.DRIVER_MLX_CX3, sriov_numvfs=vf_num, **kwargs)
         return port, iface
 
@@ -1420,12 +1504,6 @@ class InterfaceHostTestCase(BaseTestCase):
         self.assertIn('addresses', context)
         self.assertIn('routes', context)
         self.assertIn('gateways', context)
-
-    def test_find_bmc_lower_interface(self):
-        if self.expected_bmc_interface:
-            lower_iface = interface._find_bmc_lower_interface(self.context)
-            lower_ifname = lower_iface['ifname']
-            self.assertEqual(lower_ifname, self.expected_bmc_interface)
 
     def test_is_platform_interface(self):
         for iface in self.interfaces:
@@ -1513,9 +1591,9 @@ class InterfaceControllerEthernet(InterfaceHostTestCase):
         # ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
-        self._create_ethernet_test('oam', constants.NETWORK_TYPE_OAM)
-        self._create_ethernet_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('oam', None, constants.NETWORK_TYPE_OAM)
+        self._create_ethernet_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet_test('infra', None, constants.NETWORK_TYPE_INFRA)
         self._create_ethernet_test('none')
 
     def setUp(self):
@@ -1530,9 +1608,9 @@ class InterfaceControllerBond(InterfaceHostTestCase):
         # aggregated ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
-        self._create_bond_test('oam', constants.NETWORK_TYPE_OAM)
-        self._create_bond_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('oam', None, constants.NETWORK_TYPE_OAM)
+        self._create_bond_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_bond_test('infra', None, constants.NETWORK_TYPE_INFRA)
 
     def setUp(self):
         super(InterfaceControllerBond, self).setUp()
@@ -1551,11 +1629,11 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
         # vlan interfaces over aggregated ethernet interfaces
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
-        bond = self._create_bond_test('pxeboot',
+        bond = self._create_bond_test('pxeboot', None,
                                       constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, bond)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3,
+        self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, bond)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2, bond)
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3,
                                bond)
         self._create_ethernet_test('none')
 
@@ -1574,11 +1652,11 @@ class InterfaceControllerVlanOverEthernet(InterfaceHostTestCase):
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
         port, iface = self._create_ethernet_test(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, iface)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2,
+            'pxeboot', None, constants.NETWORK_TYPE_PXEBOOT)
+        self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, iface)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2,
                                iface)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3,
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3,
                                iface)
         self._create_ethernet_test('none')
 
@@ -1595,29 +1673,32 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         # compute and all interfaces are ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.COMPUTE)
-        self._create_ethernet_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_ethernet_test('vrs', constants.NETWORK_TYPE_DATA_VRS)
-        self._create_ethernet_test('data', constants.NETWORK_TYPE_DATA)
-        self._create_ethernet_test('sriov',
+        self._create_ethernet_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet_test('infra', None, constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                   constants.NETWORK_TYPE_DATA)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
         port, iface = (
-            self._create_ethernet_test('slow', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        dpdksupport=False))
         port, iface = (
-            self._create_ethernet_test('mlx4', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('mlx4', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        driver=interface.DRIVER_MLX_CX3))
         port, iface = (
-            self._create_ethernet_test('mlx5', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        driver=interface.DRIVER_MLX_CX4))
         self._create_ethernet_test('none')
 
     def setUp(self):
         super(InterfaceComputeEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['mgmt', 'infra', 'vrs']
+        self.expected_platform_interfaces = ['mgmt', 'infra']
         self.expected_data_interfaces = ['slow', 'data', 'mlx4', 'mlx5']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slow_interfaces = ['slow']
@@ -1634,24 +1715,23 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
         self._create_test_common()
         self._create_test_host(constants.COMPUTE)
         port, iface = self._create_ethernet_test(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2,
+            'pxeboot', None, constants.NETWORK_TYPE_PXEBOOT)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2,
                                iface)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3)
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4)
-        self._create_vlan_test('data', constants.NETWORK_TYPE_DATA, 5)
-        self._create_ethernet_test('sriov',
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3)
+        self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA, 5)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
         super(InterfaceComputeVlanOverEthernet, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['pxeboot', 'mgmt',
-                                             'eth2', 'infra',
-                                             'eth4', 'vrs']
-        self.expected_data_interfaces = ['eth6', 'data']
+                                             'eth2', 'infra']
+        self.expected_data_interfaces = ['eth4', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
 
@@ -1661,22 +1741,23 @@ class InterfaceComputeBond(InterfaceHostTestCase):
         self._create_test_common()
         # compute and all interfaces are aggregated ethernet interfaces.
         self._create_test_host(constants.COMPUTE)
-        self._create_bond_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_bond_test('vrs', constants.NETWORK_TYPE_DATA_VRS)
-        self._create_bond_test('data', constants.NETWORK_TYPE_DATA)
+        self._create_bond_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_bond_test('infra', None, constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA)
         self._create_ethernet_test('sriov',
+                                   constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
         self._create_ethernet_test('pthru',
+                                   constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
         super(InterfaceComputeBond, self).setUp()
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'mgmt',
-                                             'eth3', 'eth4', 'infra',
-                                             'eth6', 'eth7', 'vrs']
-        self.expected_data_interfaces = ['eth9', 'eth10', 'data',
+                                             'eth3', 'eth4', 'infra']
+        self.expected_data_interfaces = ['eth6', 'eth7', 'data',
                                          'eth12', 'eth13', 'ex']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slave_interfaces = ['eth0', 'eth1', 'eth3', 'eth4',
@@ -1691,64 +1772,32 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
         # interfaces.
         self._create_test_common()
         self._create_test_host(constants.COMPUTE)
-        bond = self._create_bond_test('pxeboot',
+        bond = self._create_bond_test('pxeboot', None,
                                       constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, bond)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3,
+        self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, bond)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2, bond)
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3,
                                bond)
-        bond1 = self._create_bond_test('bond1')
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4,
-                               bond1)
         bond2 = self._create_bond_test('bond2')
-        self._create_vlan_test('data', constants.NETWORK_TYPE_DATA, 5,
+        self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA, 5,
                                bond2)
         self._create_ethernet_test('sriov',
+                                   constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
         self._create_ethernet_test('pthru',
+                                   constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
         super(InterfaceComputeVlanOverBond, self).setUp()
         self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'infra',
-                                             'eth6', 'eth7', 'bond1', 'vrs']
-        self.expected_data_interfaces = ['eth10', 'eth11', 'bond2', 'data',
+                                             'oam', 'mgmt', 'infra']
+        self.expected_data_interfaces = ['eth6', 'eth7', 'bond2', 'data',
                                          'eth14', 'eth15']
         self.expected_slave_interfaces = ['eth0', 'eth1',
                                           'eth6', 'eth7',
                                           'eth10', 'eth11']
-        self.expected_pci_interfaces = ['sriov', 'pthru']
-
-
-class InterfaceComputeVlanOverDataEthernet(InterfaceHostTestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are vlan interfaces over data ethernet
-        # interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.COMPUTE)
-        port, iface = (
-            self._create_ethernet_test(
-                'data',
-                [constants.NETWORK_TYPE_PXEBOOT, constants.NETWORK_TYPE_DATA]))
-        self._create_ethernet_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4,
-                               iface)
-        self._create_vlan_test('data2', constants.NETWORK_TYPE_DATA, 5,
-                               iface)
-        self._create_ethernet_test('sriov',
-                                   constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
-                                   constants.NETWORK_TYPE_PCI_PASSTHROUGH)
-
-    def setUp(self):
-        super(InterfaceComputeVlanOverDataEthernet, self).setUp()
-        self.expected_platform_interfaces = ['data', 'mgmt',
-                                             'eth2', 'infra',
-                                             'vrs']
-        self.expected_data_interfaces = ['data', 'data2']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
 
@@ -1759,30 +1808,33 @@ class InterfaceCpeEthernet(InterfaceHostTestCase):
         # ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
-        self._create_ethernet_test('oam', constants.NETWORK_TYPE_OAM)
-        self._create_ethernet_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_ethernet_test('vrs', constants.NETWORK_TYPE_DATA_VRS)
-        self._create_ethernet_test('data', constants.NETWORK_TYPE_DATA)
-        self._create_ethernet_test('sriov',
+        self._create_ethernet_test('oam', None, constants.NETWORK_TYPE_OAM)
+        self._create_ethernet_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet_test('infra', None, constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                   constants.NETWORK_TYPE_DATA)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
         port, iface = (
-            self._create_ethernet_test('slow', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        dpdksupport=False))
         port, iface = (
-            self._create_ethernet_test('mlx4', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('mlx4', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        driver=interface.DRIVER_MLX_CX3))
         port, iface = (
-            self._create_ethernet_test('mlx5', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        driver=interface.DRIVER_MLX_CX4))
         self._create_ethernet_test('none')
 
     def setUp(self):
         super(InterfaceCpeEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['oam', 'mgmt', 'infra', 'vrs']
+        self.expected_platform_interfaces = ['oam', 'mgmt', 'infra']
         self.expected_data_interfaces = ['slow', 'data', 'mlx4', 'mlx5']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slow_interfaces = ['slow']
@@ -1799,25 +1851,24 @@ class InterfaceCpeVlanOverEthernet(InterfaceHostTestCase):
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
         port, iface = self._create_ethernet_test(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, iface)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2,
+            'pxeboot', None, constants.NETWORK_TYPE_PXEBOOT)
+        self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, iface)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2,
                                iface)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3)
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4)
-        self._create_vlan_test('data', constants.NETWORK_TYPE_DATA, 5)
-        self._create_ethernet_test('sriov',
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3)
+        self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA, 5)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
         super(InterfaceCpeVlanOverEthernet, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['pxeboot', 'mgmt', 'oam',
-                                             'eth3', 'infra',
-                                             'eth5', 'vrs']
-        self.expected_data_interfaces = ['eth7', 'data']
+                                             'eth3', 'infra']
+        self.expected_data_interfaces = ['eth5', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
 
@@ -1828,14 +1879,14 @@ class InterfaceCpeBond(InterfaceHostTestCase):
         # aggregated ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
-        self._create_bond_test('oam', constants.NETWORK_TYPE_OAM)
-        self._create_bond_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_bond_test('vrs', constants.NETWORK_TYPE_DATA_VRS)
-        self._create_bond_test('data', constants.NETWORK_TYPE_DATA)
-        self._create_ethernet_test('sriov',
+        self._create_bond_test('oam', None, constants.NETWORK_TYPE_OAM)
+        self._create_bond_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_bond_test('infra', None, constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
@@ -1843,9 +1894,8 @@ class InterfaceCpeBond(InterfaceHostTestCase):
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'oam',
                                              'eth3', 'eth4', 'mgmt',
-                                             'eth6', 'eth7', 'infra',
-                                             'eth9', 'eth10', 'vrs']
-        self.expected_data_interfaces = ['eth12', 'eth13', 'data']
+                                             'eth6', 'eth7', 'infra']
+        self.expected_data_interfaces = ['eth9', 'eth10', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slave_interfaces = ['eth0', 'eth1', 'eth3', 'eth4',
                                           'eth6', 'eth7', 'eth9', 'eth10',
@@ -1859,65 +1909,28 @@ class InterfaceCpeVlanOverBond(InterfaceHostTestCase):
         # vlan interfaces over aggregated ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER)
-        bond = self._create_bond_test('pxeboot',
+        bond = self._create_bond_test('pxeboot', None,
                                       constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, bond)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3,
+        self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, bond)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2, bond)
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3,
                                bond)
-        bond1 = self._create_bond_test('bond3')
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4,
-                               bond1)
         bond2 = self._create_bond_test('bond4')
-        self._create_vlan_test('data', constants.NETWORK_TYPE_DATA, 5,
+        self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA, 5,
                                bond2)
-        self._create_ethernet_test('sriov',
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
         super(InterfaceCpeVlanOverBond, self).setUp()
         self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'infra',
-                                             'eth6', 'eth7', 'bond3', 'vrs']
-        self.expected_data_interfaces = ['eth10', 'eth11', 'bond4', 'data']
+                                             'oam', 'mgmt', 'infra']
+        self.expected_data_interfaces = ['eth6', 'eth7', 'bond4', 'data']
         self.expected_slave_interfaces = ['eth0', 'eth1',
-                                          'eth6', 'eth7',
-                                          'eth10', 'eth11']
-        self.expected_pci_interfaces = ['sriov', 'pthru']
-
-
-class InterfaceCpeVlanOverDataEthernet(InterfaceHostTestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # controller with a controller subfunction and all interfaces are
-        # vlan interfaces over data ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
-        port, iface = (
-            self._create_ethernet_test(
-                'data',
-                [constants.NETWORK_TYPE_PXEBOOT, constants.NETWORK_TYPE_DATA]))
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, iface)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2,
-                               iface)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3,
-                               iface)
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4,
-                               iface)
-        self._create_vlan_test('data2', constants.NETWORK_TYPE_DATA, 5,
-                               iface)
-        self._create_ethernet_test('sriov',
-                                   constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
-                                   constants.NETWORK_TYPE_PCI_PASSTHROUGH)
-
-    def setUp(self):
-        super(InterfaceCpeVlanOverDataEthernet, self).setUp()
-        self.expected_platform_interfaces = ['data', 'oam', 'mgmt',
-                                             'infra', 'vrs']
-        self.expected_data_interfaces = ['data', 'data2']
+                                          'eth6', 'eth7']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
 
@@ -1928,30 +1941,33 @@ class InterfaceCpeComputeEthernet(InterfaceHostTestCase):
         # ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
-        self._create_ethernet_test('oam', constants.NETWORK_TYPE_OAM)
-        self._create_ethernet_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_ethernet_test('vrs', constants.NETWORK_TYPE_DATA_VRS)
-        self._create_ethernet_test('data', constants.NETWORK_TYPE_DATA)
-        self._create_ethernet_test('sriov',
+        self._create_ethernet_test('oam', None, constants.NETWORK_TYPE_OAM)
+        self._create_ethernet_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet_test('infra', None, constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                   constants.NETWORK_TYPE_DATA)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
         port, iface = (
-            self._create_ethernet_test('slow', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        dpdksupport=False))
         port, iface = (
-            self._create_ethernet_test('mlx4', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('mlx4', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        driver=interface.DRIVER_MLX_CX3))
         port, iface = (
-            self._create_ethernet_test('mlx5', constants.NETWORK_TYPE_DATA,
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
                                        driver=interface.DRIVER_MLX_CX4))
         self._create_ethernet_test('none')
 
     def setUp(self):
         super(InterfaceCpeComputeEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['oam', 'mgmt', 'infra', 'vrs']
+        self.expected_platform_interfaces = ['oam', 'mgmt', 'infra']
         self.expected_data_interfaces = ['slow', 'data', 'mlx4', 'mlx5']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slow_interfaces = ['slow']
@@ -1968,25 +1984,24 @@ class InterfaceCpeComputeVlanOverEthernet(InterfaceHostTestCase):
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
         port, iface = self._create_ethernet_test(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, iface)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2,
+            'pxeboot', None, constants.NETWORK_TYPE_PXEBOOT)
+        self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, iface)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2,
                                iface)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3)
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4)
-        self._create_vlan_test('data', constants.NETWORK_TYPE_DATA, 5)
-        self._create_ethernet_test('sriov',
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3)
+        self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA, 5)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
         super(InterfaceCpeComputeVlanOverEthernet, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['pxeboot', 'oam', 'mgmt',
-                                             'eth3', 'infra',
-                                             'eth5', 'vrs']
-        self.expected_data_interfaces = ['eth7', 'data']
+                                             'eth3', 'infra']
+        self.expected_data_interfaces = ['eth5', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
 
@@ -1997,14 +2012,14 @@ class InterfaceCpeComputeBond(InterfaceHostTestCase):
         # aggregated ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
-        self._create_bond_test('oam', constants.NETWORK_TYPE_OAM)
-        self._create_bond_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_bond_test('vrs', constants.NETWORK_TYPE_DATA_VRS)
-        self._create_bond_test('data', constants.NETWORK_TYPE_DATA)
-        self._create_ethernet_test('sriov',
+        self._create_bond_test('oam', None, constants.NETWORK_TYPE_OAM)
+        self._create_bond_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
+        self._create_bond_test('infra', None, constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
@@ -2012,9 +2027,8 @@ class InterfaceCpeComputeBond(InterfaceHostTestCase):
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'oam',
                                              'eth3', 'eth4', 'mgmt',
-                                             'eth6', 'eth7', 'infra',
-                                             'eth9', 'eth10', 'vrs']
-        self.expected_data_interfaces = ['eth12', 'eth13', 'data']
+                                             'eth6', 'eth7', 'infra']
+        self.expected_data_interfaces = ['eth9', 'eth10', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slave_interfaces = ['eth0', 'eth1', 'eth3', 'eth4',
                                           'eth6', 'eth7', 'eth9', 'eth10',
@@ -2028,61 +2042,26 @@ class InterfaceCpeComputeVlanOverBond(InterfaceHostTestCase):
         # vlan interfaces over aggregated ethernet interfaces.
         self._create_test_common()
         self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
-        bond = self._create_bond_test('pxeboot',
+        bond = self._create_bond_test('pxeboot', None,
                                       constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.NETWORK_TYPE_OAM, 1, bond)
-        self._create_vlan_test('mgmt', constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.NETWORK_TYPE_INFRA, 3,
+        self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, bond)
+        self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2, bond)
+        self._create_vlan_test('infra', None, constants.NETWORK_TYPE_INFRA, 3,
                                bond)
-        bond1 = self._create_bond_test('bond1')
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4,
-                               bond1)
         bond2 = self._create_bond_test('bond2')
-        self._create_vlan_test('data', constants.NETWORK_TYPE_DATA, 5,
+        self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA, 5,
                                bond2)
-        self._create_ethernet_test('sriov',
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
     def setUp(self):
         super(InterfaceCpeComputeVlanOverBond, self).setUp()
         self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'infra',
-                                             'eth6', 'eth7', 'bond1', 'vrs']
-        self.expected_data_interfaces = ['eth10', 'eth11', 'bond2', 'data']
+                                             'oam', 'mgmt', 'infra']
+        self.expected_data_interfaces = ['eth6', 'eth7', 'bond2', 'data']
         self.expected_slave_interfaces = ['eth0', 'eth1',
-                                          'eth6', 'eth7',
-                                          'eth10', 'eth11']
-        self.expected_pci_interfaces = ['sriov', 'pthru']
-
-
-class InterfaceCpeComputeVlanOverDataEthernet(InterfaceHostTestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
-        # vlan interfaces over data ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
-        port, iface = (
-            self._create_ethernet_test(
-                'data',
-                [constants.NETWORK_TYPE_PXEBOOT, constants.NETWORK_TYPE_DATA]))
-        self._create_ethernet_test('oam', constants.NETWORK_TYPE_OAM)
-        self._create_ethernet_test('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_vlan_test('vrs', constants.NETWORK_TYPE_DATA_VRS, 4,
-                               iface)
-        self._create_vlan_test('data2', constants.NETWORK_TYPE_DATA, 5,
-                               iface)
-        self._create_ethernet_test('sriov',
-                                   constants.NETWORK_TYPE_PCI_SRIOV)
-        self._create_ethernet_test('pthru',
-                                   constants.NETWORK_TYPE_PCI_PASSTHROUGH)
-
-    def setUp(self):
-        super(InterfaceCpeComputeVlanOverDataEthernet, self).setUp()
-        self.expected_platform_interfaces = ['data', 'oam', 'mgmt',
-                                             'infra', 'vrs']
-        self.expected_data_interfaces = ['data', 'data2']
+                                          'eth6', 'eth7']
         self.expected_pci_interfaces = ['sriov', 'pthru']

@@ -12,7 +12,6 @@ import subprocess
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import utils
 
 from . import openstack
 from . import interface
@@ -585,10 +584,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         # the list of devices to whitelist
         devices = []
         for iface in self.context['interfaces'].values():
-            network_type = utils.get_primary_network_type(iface)
-            networktypes = utils.get_network_type_list(iface)
-            if (network_type == constants.NETWORK_TYPE_PCI_PASSTHROUGH or
-                    utils.is_pci_network_types(networktypes)):
+            if iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_PASSTHROUGH]:
                 port = interface.get_interface_port(self.context, iface)
                 device = {
                     'address': port['pciaddr'],
@@ -617,8 +613,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         # the list of devices to whitelist
         devices = []
         for iface in self.context['interfaces'].values():
-            network_type = utils.get_primary_network_type(iface)
-            if network_type == constants.NETWORK_TYPE_PCI_SRIOV:
+            if iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_SRIOV]:
                 port = interface.get_interface_port(self.context, iface)
                 device = {
                     'address': port['pciaddr'],

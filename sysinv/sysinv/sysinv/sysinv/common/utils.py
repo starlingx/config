@@ -1058,19 +1058,22 @@ def get_primary_network_type(interface):
     network types, discards the secondary type (if any) and returns the primary
     network type.
     """
-    if not interface['networktype'] or interface['networktype'] == constants.NETWORK_TYPE_NONE:
+    if not interface['ifclass'] or interface['ifclass'] == constants.INTERFACE_CLASS_NONE:
         return None
-    networktypes = get_network_type_list(interface)
-    if len(networktypes) > 1:
-        networktypes = [n for n in networktypes if n != constants.NETWORK_TYPE_DATA]
-    # If the network type is the combined PCI passthrough and SRIOV then
-    # return pci-sriov as the primary network type
-    if is_pci_network_types(networktypes):
-        return constants.NETWORK_TYPE_PCI_SRIOV
-    if len(networktypes) > 1:
-        raise exception.CannotDeterminePrimaryNetworkType(
-            iface=interface['uuid'], types=interface['networktype'])
-    return networktypes[0]
+    primary_network_type = None
+    if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
+        primary_network_type = constants.NETWORK_TYPE_DATA
+    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
+        primary_network_type = constants.NETWORK_TYPE_PCI_PASSTHROUGH
+    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV:
+        primary_network_type = constants.NETWORK_TYPE_PCI_SRIOV
+    elif interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+        if not interface['networktype'] or interface[
+                'networktype'] == constants.NETWORK_TYPE_NONE:
+            return None
+        primary_network_type = interface['networktype']
+
+    return primary_network_type
 
 
 def get_sw_version():
@@ -1158,6 +1161,15 @@ def validate_load_for_delete(load):
 
 def gethostbyname(hostname):
     return socket.getaddrinfo(hostname, None)[0][4][0]
+
+
+def get_local_controller_hostname():
+    try:
+        local_hostname = socket.gethostname()
+    except Exception as e:
+        raise exception.SysinvException(_(
+            "Failed to get the local hostname: %s") % str(e))
+    return local_hostname
 
 
 def get_mate_controller_hostname(hostname=None):

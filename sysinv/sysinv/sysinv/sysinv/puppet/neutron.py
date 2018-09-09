@@ -162,8 +162,7 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
 
         device_mappings = []
         for iface in self.context['interfaces'].values():
-            if (utils.get_primary_network_type(iface) ==
-                    constants.NETWORK_TYPE_PCI_SRIOV):
+            if (iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_SRIOV]):
                 port = interface.get_interface_port(self.context, iface)
                 providernets = interface.get_interface_providernets(iface)
                 for net in providernets:

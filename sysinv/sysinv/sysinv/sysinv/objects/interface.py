@@ -79,6 +79,15 @@ def get_host_uuid(field, db_server):
     return host_uuid
 
 
+def get_networks(field, db_object):
+    result = []
+    if hasattr(db_object, 'interface_networks'):
+        for entry in getattr(db_object, 'interface_networks', []):
+            id_str = str(entry.network_id)
+            result.append(id_str)
+    return result
+
+
 class Interface(base.SysinvObject):
     # VERSION 1.0: Initial version
     # VERSION 1.1: Added VLAN and uses/used_by interface support
@@ -94,6 +103,7 @@ class Interface(base.SysinvObject):
 
             'ifname': utils.str_or_none,
             'iftype': utils.str_or_none,
+            'ifclass': utils.str_or_none,
             'imac': utils.str_or_none,
             'imtu': utils.int_or_none,
             'networktype': utils.str_or_none,
@@ -102,6 +112,7 @@ class Interface(base.SysinvObject):
             'txhashpolicy': utils.str_or_none,
             'providernetworks': utils.str_or_none,
             'providernetworksdict': utils.dict_or_none,
+            'networks': utils.list_of_strings_or_none,
 
             'ifcapabilities': utils.dict_or_none,
 
@@ -124,7 +135,8 @@ class Interface(base.SysinvObject):
                        'ipv6_mode': get_ipv6_address_mode,
                        'ipv4_pool': get_ipv4_address_pool,
                        'ipv6_pool': get_ipv6_address_pool,
-                       'ihost_uuid': get_host_uuid}
+                       'ihost_uuid': get_host_uuid,
+                       'networks': get_networks}
 
     _optional_fields = ['aemode', 'txhashpolicy', 'schedpolicy',
                         'vlan_id', 'vlan_type']

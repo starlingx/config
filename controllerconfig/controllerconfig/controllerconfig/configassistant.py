@@ -1443,11 +1443,9 @@ class ConfigAssistant():
                   user_input == self.external_oam_interface):
                 self.infrastructure_interface = user_input
                 self.infrastructure_interface_name = user_input
-                if ((self.management_interface_configured and
-                     user_input == self.management_interface) or
-                    (self.external_oam_interface_configured and
-                     user_input == self.external_oam_interface and
-                     not self.external_oam_vlan)):
+                if (self.external_oam_interface_configured and
+                    user_input == self.external_oam_interface and
+                        not self.external_oam_vlan):
                     infra_vlan_required = True
                 break
             else:
@@ -4007,14 +4005,10 @@ class ConfigAssistant():
         # create the network for the pool
         values = {
             'type': sysinv_constants.NETWORK_TYPE_MGMT,
-            'mtu': self.management_mtu,
-            'link_capacity': self.management_link_capacity,
+            'name': sysinv_constants.NETWORK_TYPE_MGMT,
             'dynamic': self.dynamic_address_allocation,
             'pool_uuid': pool.uuid,
         }
-
-        if self.management_vlan:
-            values.update({'vlan_id': int(self.management_vlan)})
 
         client.sysinv.network.create(**values)
 
@@ -4032,7 +4026,7 @@ class ConfigAssistant():
         # create the network for the pool
         values = {
             'type': sysinv_constants.NETWORK_TYPE_PXEBOOT,
-            'mtu': self.management_mtu,
+            'name': sysinv_constants.NETWORK_TYPE_PXEBOOT,
             'dynamic': True,
             'pool_uuid': pool.uuid,
         }
@@ -4055,14 +4049,10 @@ class ConfigAssistant():
         # create the network for the pool
         values = {
             'type': sysinv_constants.NETWORK_TYPE_INFRA,
-            'mtu': self.infrastructure_mtu,
-            'link_capacity': self.infrastructure_link_capacity,
+            'name': sysinv_constants.NETWORK_TYPE_INFRA,
             'dynamic': self.dynamic_address_allocation,
             'pool_uuid': pool.uuid,
         }
-
-        if self.infrastructure_vlan:
-            values.update({'vlan_id': int(self.infrastructure_vlan)})
 
         client.sysinv.network.create(**values)
 
@@ -4096,13 +4086,10 @@ class ConfigAssistant():
         # create the network for the pool
         values = {
             'type': sysinv_constants.NETWORK_TYPE_OAM,
-            'mtu': self.external_oam_mtu,
+            'name': sysinv_constants.NETWORK_TYPE_OAM,
             'dynamic': False,
             'pool_uuid': pool.uuid,
         }
-
-        if self.external_oam_vlan:
-            values.update({'vlan_id': int(self.external_oam_vlan)})
 
         client.sysinv.network.create(**values)
 
@@ -4120,7 +4107,7 @@ class ConfigAssistant():
         # create the network for the pool
         values = {
             'type': sysinv_constants.NETWORK_TYPE_MULTICAST,
-            'mtu': self.management_mtu,
+            'name': sysinv_constants.NETWORK_TYPE_MULTICAST,
             'dynamic': False,
             'pool_uuid': pool.uuid,
         }
@@ -4139,7 +4126,7 @@ class ConfigAssistant():
         # create the network for the pool
         values = {
             'type': sysinv_constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
-            'mtu': '1500',  # unused in subcloud
+            'name': sysinv_constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
             'dynamic': False,
             'pool_uuid': pool.uuid,
         }
@@ -4262,6 +4249,14 @@ class ConfigAssistant():
         else:
             raise ConfigFail("Unknown interface AE mode: %s" % aemode)
 
+    def _get_network(self, client, network_type):
+        networks = client.sysinv.network.list()
+        for net in networks:
+            if net.type == network_type:
+                return net
+        else:
+            raise ConfigFail("Failed to find network %s" % type)
+
     def _get_interface_mtu(self, ifname):
         """
         This function determines the MTU value that must be configured on an
@@ -4295,10 +4290,13 @@ class ConfigAssistant():
     def _populate_management_interface(self, client, controller):
         """Configure the management/pxeboot interface(s)"""
 
+        interface_class = sysinv_constants.INTERFACE_CLASS_PLATFORM
         if self.management_vlan:
-            networktype = sysinv_constants.NETWORK_TYPE_PXEBOOT
+            network = self._get_network(client,
+                                        sysinv_constants.NETWORK_TYPE_PXEBOOT)
         else:
-            networktype = sysinv_constants.NETWORK_TYPE_MGMT
+            network = self._get_network(client,
+                                        sysinv_constants.NETWORK_TYPE_MGMT)
 
         if self.lag_management_interface:
             members = [self.lag_management_interface_member0]
@@ -4318,7 +4316,8 @@ class ConfigAssistant():
                 'iftype': 'ae',
                 'aemode': aemode,
                 'txhashpolicy': txhashpolicy,
-                'networktype': networktype,
+                'ifclass': interface_class,
+                'networks': [str(network.id)],
                 'uses': members,
             }
 
@@ -4331,7 +4330,8 @@ class ConfigAssistant():
                 'ifname': self.management_interface,
                 'imtu': self.management_mtu,
                 'iftype': sysinv_constants.INTERFACE_TYPE_VIRTUAL,
-                'networktype': networktype,
+                'ifclass': interface_class,
+                'networks': [str(network.id)],
             }
             client.sysinv.iinterface.create(**values)
         else:
@@ -4340,17 +4340,21 @@ class ConfigAssistant():
                 'ihost_uuid': controller.uuid,
                 'ifname': self.management_interface,
                 'imtu': self.management_mtu,
-                'networktype': networktype,
+                'ifclass': interface_class,
+                'networks': str(network.id),
             }
             self._update_interface_config(client, values)
 
         if self.management_vlan:
+            mgmt_network = self._get_network(
+                client, sysinv_constants.NETWORK_TYPE_MGMT)
             values = {
                 'ihost_uuid': controller.uuid,
                 'ifname': self.management_interface_name,
                 'imtu': self.management_mtu,
                 'iftype': sysinv_constants.INTERFACE_TYPE_VLAN,
-                'networktype': sysinv_constants.NETWORK_TYPE_MGMT,
+                'ifclass': interface_class,
+                'networks': [str(mgmt_network.id)],
                 'uses': [self.management_interface],
                 'vlan_id': self.management_vlan,
             }
@@ -4375,10 +4379,9 @@ class ConfigAssistant():
         if not self.infrastructure_interface:
             return  # No infrastructure interface configured
 
-        if self.infrastructure_vlan:
-            networktype = sysinv_constants.NETWORK_TYPE_NONE
-        else:
-            networktype = sysinv_constants.NETWORK_TYPE_INFRA
+        interface_class = sysinv_constants.INTERFACE_CLASS_PLATFORM
+        network = self._get_network(client,
+                                    sysinv_constants.NETWORK_TYPE_INFRA)
 
         if self.lag_infrastructure_interface:
             members = [self.lag_infrastructure_interface_member0]
@@ -4398,7 +4401,8 @@ class ConfigAssistant():
                 'iftype': sysinv_constants.INTERFACE_TYPE_AE,
                 'aemode': aemode,
                 'txhashpolicy': txhashpolicy,
-                'networktype': networktype,
+                'ifclass': interface_class,
+                'networks': [str(network.id)],
                 'uses': members,
             }
 
@@ -4408,13 +4412,14 @@ class ConfigAssistant():
             values = {
                 'ihost_uuid': controller.uuid,
                 'ifname': self.infrastructure_interface,
+                'ifclass': interface_class,
             }
             values.update({
                 'imtu': self._get_interface_mtu(self.infrastructure_interface)
             })
-            if networktype != sysinv_constants.NETWORK_TYPE_NONE:
+            if not self.infrastructure_vlan:
                 values.update({
-                    'networktype': networktype
+                    'networks': str(network.id)
                 })
 
             self._update_interface_config(client, values)
@@ -4425,7 +4430,8 @@ class ConfigAssistant():
                 'ifname': self.infrastructure_interface_name,
                 'imtu': self.infrastructure_mtu,
                 'iftype': sysinv_constants.INTERFACE_TYPE_VLAN,
-                'networktype': sysinv_constants.NETWORK_TYPE_INFRA,
+                'ifclass': interface_class,
+                'networks': [str(network.id)],
                 'uses': [self.infrastructure_interface],
                 'vlan_id': self.infrastructure_vlan,
             }
@@ -4434,10 +4440,8 @@ class ConfigAssistant():
     def _populate_oam_interface(self, client, controller):
         """Configure the OAM interface(s)"""
 
-        if self.external_oam_vlan:
-            networktype = sysinv_constants.NETWORK_TYPE_NONE
-        else:
-            networktype = sysinv_constants.NETWORK_TYPE_OAM
+        network = self._get_network(client,
+                                    sysinv_constants.NETWORK_TYPE_OAM)
 
         if self.lag_external_oam_interface:
             members = [self.lag_external_oam_interface_member0]
@@ -4457,7 +4461,8 @@ class ConfigAssistant():
                 'iftype': sysinv_constants.INTERFACE_TYPE_AE,
                 'aemode': aemode,
                 'txhashpolicy': txhashpolicy,
-                'networktype': networktype,
+                'ifclass': sysinv_constants.INTERFACE_CLASS_PLATFORM,
+                'networks': [str(network.id)],
                 'uses': members,
             }
 
@@ -4467,13 +4472,14 @@ class ConfigAssistant():
             values = {
                 'ihost_uuid': controller.uuid,
                 'ifname': self.external_oam_interface,
+                'ifclass': sysinv_constants.INTERFACE_CLASS_PLATFORM,
             }
             values.update({
                 'imtu': self._get_interface_mtu(self.external_oam_interface)
             })
-            if networktype != sysinv_constants.NETWORK_TYPE_NONE:
+            if not self.external_oam_vlan:
                 values.update({
-                    'networktype': networktype
+                    'networks': str(network.id),
                 })
 
             self._update_interface_config(client, values)
@@ -4484,7 +4490,8 @@ class ConfigAssistant():
                 'ifname': self.external_oam_interface_name,
                 'imtu': self.external_oam_mtu,
                 'iftype': sysinv_constants.INTERFACE_TYPE_VLAN,
-                'networktype': sysinv_constants.NETWORK_TYPE_OAM,
+                'ifclass': sysinv_constants.INTERFACE_CLASS_PLATFORM,
+                'networks': [str(network.id)],
                 'uses': [self.external_oam_interface],
                 'vlan_id': self.external_oam_vlan,
             }

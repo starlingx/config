@@ -12,7 +12,8 @@ from cgtsclient import exc
 from cgtsclient.v1 import port
 
 
-CREATION_ATTRIBUTES = ['ifname', 'iftype', 'ihost_uuid', 'imtu', 'networktype', 'aemode', 'txhashpolicy',
+CREATION_ATTRIBUTES = ['ifname', 'iftype', 'ihost_uuid', 'imtu', 'ifclass',
+                       'networks', 'network_uuid', 'networktype', 'aemode', 'txhashpolicy',
                        'providernetworks', 'providernetworksdict', 'ifcapabilities', 'ports', 'imac',
                        'vlan_id', 'uses', 'used_by',
                        'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',

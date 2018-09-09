@@ -46,9 +46,7 @@ LOG = log.getLogger(__name__)
 ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_INFRA,
                          constants.NETWORK_TYPE_OAM,
-                         constants.NETWORK_TYPE_DATA,
-                         constants.NETWORK_TYPE_DATA_VRS,
-                         constants.NETWORK_TYPE_CONTROL]
+                         constants.NETWORK_TYPE_DATA]
 
 
 class Address(base.APIBase):
@@ -247,12 +245,11 @@ class AddressController(rest.RestController):
 
     def _check_interface_type(self, interface_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        networktype = cutils.get_primary_network_type(interface)
-        if not networktype:
+        if not interface.networktype:
             raise exception.InterfaceNetworkTypeNotSet()
-        if networktype not in ALLOWED_NETWORK_TYPES:
+        if interface.networktype not in ALLOWED_NETWORK_TYPES:
             raise exception.UnsupportedInterfaceNetworkType(
-                networktype=networktype)
+                networktype=interface.networktype)
         return
 
     def _check_infra_address(self, interface_id, address):
@@ -317,17 +314,13 @@ class AddressController(rest.RestController):
 
     def _check_address_count(self, interface_id, host_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        networktype = cutils.get_primary_network_type(interface)
+        networktype = interface['networktype']
         sdn_enabled = utils.get_sdn_enabled()
 
         if networktype == constants.NETWORK_TYPE_DATA and not sdn_enabled:
             # Is permitted to add multiple addresses only
             # if SDN L3 mode is not enabled.
             return
-        addresses = (
-            pecan.request.dbapi.addresses_get_by_interface(interface_id))
-        if len(addresses) != 0:
-            raise exception.AddressCountLimitedToOne(iftype=networktype)
 
         # There can only be one 'data' interface with an IP address
         # where SDN is enabled
@@ -338,8 +331,7 @@ class AddressController(rest.RestController):
                 # skip the one we came in with
                 if uuid == interface_id:
                     continue
-                nt = cutils.get_primary_network_type(iface)
-                if nt == constants.NETWORK_TYPE_DATA:
+                if iface['ifclass'] == constants.NETWORK_TYPE_DATA:
                     addresses = (
                         pecan.request.dbapi.addresses_get_by_interface(uuid))
                     if len(addresses) != 0:
@@ -385,7 +377,7 @@ class AddressController(rest.RestController):
     def _check_managed_addr(self, host_id, interface_id):
         # Check that static address alloc is enabled
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        networktype = cutils.get_primary_network_type(interface)
+        networktype = interface['networktype']
         if networktype not in [constants.NETWORK_TYPE_MGMT,
                                constants.NETWORK_TYPE_INFRA,
                                constants.NETWORK_TYPE_OAM]:
@@ -467,8 +459,7 @@ class AddressController(rest.RestController):
             self._check_interface_type(interface_id)
             self._check_host_state(host_id)
             self._check_address_mode(interface_id, address_dict['family'])
-            if (cutils.get_primary_network_type(interface) ==
-                    constants.NETWORK_TYPE_INFRA):
+            if (interface['networktype'] == constants.NETWORK_TYPE_INFRA):
                 result = self._create_infra_addr(
                     address_dict, host_id, interface_id)
             else:
@@ -527,8 +518,7 @@ class AddressController(rest.RestController):
         self._check_host_state(getattr(address, 'forihostid'))
         self._check_from_pool(getattr(address, 'pool_uuid'))
         interface = pecan.request.dbapi.iinterface_get(interface_uuid)
-        if (cutils.get_primary_network_type(interface) ==
-                constants.NETWORK_TYPE_INFRA):
+        if (interface['networktype'] == constants.NETWORK_TYPE_INFRA):
             self._delete_infra_addr(address)
         else:
             pecan.request.dbapi.address_destroy(address_uuid)

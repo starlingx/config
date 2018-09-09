@@ -327,10 +327,7 @@ def get_test_network(**kw):
             'id': kw.get('id'),
             'uuid': kw.get('uuid'),
             'type': kw.get('type'),
-            'mtu': kw.get('mtu', 1500),
-            'link_capacity': kw.get('link_capacity'),
             'dynamic': kw.get('dynamic', True),
-            'vlan_id': kw.get('vlan_id'),
             'address_pool_id': kw.get('address_pool_id', None)
            }
     return inv
@@ -617,7 +614,9 @@ def post_get_test_interface(**kw):
         'iftype': kw.get('iftype', 'ethernet'),
         'imac': kw.get('imac', '11:22:33:44:55:66'),
         'imtu': kw.get('imtu', 1500),
+        'ifclass': kw.get("ifclass"),
         'networktype': kw.get('networktype'),
+        'networks': kw.get('networks', []),
         'aemode': kw.get('aemode', 'balanced'),
         'txhashpolicy': kw.get('txhashpolicy', 'layer2'),
         'providernetworks': kw.get('providernetworks'),
@@ -643,7 +642,9 @@ def get_test_interface(**kw):
         'iftype': kw.get('iftype', 'ethernet'),
         'imac': kw.get('imac', '11:22:33:44:55:66'),
         'imtu': kw.get('imtu', 1500),
+        'ifclass': kw.get('ifclass', 'none'),
         'networktype': kw.get('networktype'),
+        'networks': kw.get('networks', []),
         'aemode': kw.get('aemode'),
         'txhashpolicy': kw.get('txhashpolicy', None),
         'providernetworks': kw.get('providernetworks'),
@@ -672,6 +673,30 @@ def create_test_interface(**kw):
     dbapi = db_api.get_instance()
     forihostid = kw.get('forihostid')
     return dbapi.iinterface_create(forihostid, interface)
+
+
+def create_test_interface_network(**kw):
+    """Create test network interface entry in DB and return Network DB
+    object. Function to be used to create test Network objects in the database.
+    :param kw: kwargs with overriding values for network's attributes.
+    :returns: Test Network DB object.
+    """
+    network_interface = get_test_interface_network(**kw)
+    if 'id' not in kw:
+        del network_interface['id']
+    dbapi = db_api.get_instance()
+    return dbapi.network_interface_create(network_interface)
+
+
+def get_test_interface_network(**kw):
+    inv = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'forihostid': kw.get('forihostid'),
+        'interface_id': kw.get('interface_id'),
+        'network_id': kw.get('network_id'),
+    }
+    return inv
 
 
 def get_test_storage_tier(**kw):

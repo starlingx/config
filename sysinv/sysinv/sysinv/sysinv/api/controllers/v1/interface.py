@@ -41,7 +41,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import route
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
-from sysinv.api.controllers.v1 import network
+from sysinv.api.controllers.v1 import interface_network
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -58,7 +58,6 @@ LOG = log.getLogger(__name__)
 
 FM = fm_api.FaultAPIs()
 
-
 # These are the only valid network type values
 VALID_NETWORK_TYPES = [constants.NETWORK_TYPE_NONE,
                        constants.NETWORK_TYPE_PXEBOOT,
@@ -66,15 +65,22 @@ VALID_NETWORK_TYPES = [constants.NETWORK_TYPE_NONE,
                        constants.NETWORK_TYPE_MGMT,
                        constants.NETWORK_TYPE_INFRA,
                        constants.NETWORK_TYPE_DATA,
-                       constants.NETWORK_TYPE_DATA_VRS,
                        constants.NETWORK_TYPE_PCI_PASSTHROUGH,
-                       constants.NETWORK_TYPE_PCI_SRIOV,
-                       constants.NETWORK_TYPE_CONTROL]
+                       constants.NETWORK_TYPE_PCI_SRIOV]
+
+VALID_INTERFACE_CLASS = [constants.INTERFACE_CLASS_PLATFORM,
+                         constants.INTERFACE_CLASS_DATA,
+                         constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                         constants.INTERFACE_CLASS_PCI_SRIOV]
 
 # Interface network types that require coordination with neutron
 NEUTRON_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA,
                          constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                          constants.NETWORK_TYPE_PCI_SRIOV]
+
+NEUTRON_INTERFACE_CLASS = [constants.INTERFACE_CLASS_DATA,
+                           constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                           constants.INTERFACE_CLASS_PCI_SRIOV]
 
 # Interface network types that are PCI based
 PCI_NETWORK_TYPES = [constants.NETWORK_TYPE_PCI_PASSTHROUGH, constants.NETWORK_TYPE_PCI_SRIOV]
@@ -101,7 +107,6 @@ DEFAULT_MTU = 1500
 
 
 class InterfacePatchType(types.JsonPatchType):
-
     @staticmethod
     def mandatory_attrs():
         return ['/address', '/ihost_uuid']
@@ -119,43 +124,46 @@ class Interface(base.APIBase):
     "Unique UUID for this interface"
 
     ifname = wtypes.text
-    "Represent the unique name of the iinterface"
+    "Represent the unique name of the interface"
 
     iftype = wtypes.text
-    "Represent the unique type of the iinterface"
+    "Represent the unique type of the interface"
 
     # mac = wsme.wsattr(types.macaddress, mandatory=True)
     imac = wsme.wsattr(types.macaddress, mandatory=False)
-    "MAC Address for this iinterface"
+    "MAC Address for this interface"
 
     imtu = int
-    "MTU bytes size for this iinterface"
+    "MTU bytes size for this interface"
+
+    ifclass = wtypes.text
+    "Represent the class of the interface"
 
     networktype = wtypes.text
-    "Represent the network type of the iinterface"
+    "Represent the network type of the interface"
 
     aemode = wtypes.text
-    "Represent the aemode of the iinterface"
+    "Represent the aemode of the interface"
 
     schedpolicy = wtypes.text
-    "Represent the schedpolicy of the iinterface"
+    "Represent the schedpolicy of the interface"
 
     txhashpolicy = wtypes.text
-    "Represent the txhashpolicy of the iinterface"
+    "Represent the txhashpolicy of the interface"
 
     providernetworks = wtypes.text
-    "Represent the providernetworks of the iinterface"
+    "Represent the providernetworks of the interface"
 
     providernetworksdict = {wtypes.text: utils.ValidTypes(wtypes.text,
-                            six.integer_types)}
-    "Represent the providernetworksdict of the iinterface"
+                                                          six.integer_types)}
+    "Represent the providernetworksdict of the interface"
 
     ifcapabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
-                      six.integer_types)}
+                                                    six.integer_types)}
     "This interface's meta data"
 
     forihostid = int
-    "The ihostid that this iinterface belongs to"
+    "The ihostid that this interface belongs to"
 
     ihost_uuid = types.uuid
     "The UUID of the host this interface belongs to"
@@ -167,7 +175,7 @@ class Interface(base.APIBase):
     "A list containing a self link and associated interface links"
 
     vlan_id = int
-    "VLAN id for this iinterface"
+    "VLAN id for this interface"
 
     uses = [wtypes.text]
     "A list containing the interface(s) that this interface uses"
@@ -193,6 +201,9 @@ class Interface(base.APIBase):
     sriov_numvfs = int
     "The number of configured SR-IOV VFs"
 
+    networks = [wtypes.text]
+    "Represent the networks of the interface"
+
     def __init__(self, **kwargs):
         self.fields = objects.interface.fields.keys()
         for k in self.fields:
@@ -210,22 +221,23 @@ class Interface(base.APIBase):
         interface = Interface(**rpc_interface.as_dict())
         if not expand:
             interface.unset_fields_except(['uuid', 'ifname', 'iftype',
-                      'imac', 'imtu', 'networktype', 'aemode',
-                      'schedpolicy', 'txhashpolicy',
-                      'providernetworks', 'ihost_uuid', 'forihostid',
-                      'vlan_id', 'uses', 'usesmodify', 'used_by',
-                      'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                      'sriov_numvfs'])
+                                           'imac', 'imtu', 'ifclass', 'networktype', 'networks',
+                                           'aemode', 'schedpolicy', 'txhashpolicy',
+                                           'providernetworks', 'ihost_uuid', 'forihostid',
+                                           'vlan_id', 'uses', 'usesmodify', 'used_by',
+                                           'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
+                                           'sriov_numvfs'])
 
         # never expose the ihost_id attribute
         interface.ihost_id = wtypes.Unset
+        # interface.networktype = wtypes.Unset
 
         interface.links = [link.Link.make_link('self', pecan.request.host_url,
-                                          'iinterfaces', interface.uuid),
-                      link.Link.make_link('bookmark',
-                                          pecan.request.host_url,
-                                          'iinterfaces', interface.uuid,
-                                          bookmark=True)
+                                               'iinterfaces', interface.uuid),
+                           link.Link.make_link('bookmark',
+                                               pecan.request.host_url,
+                                               'iinterfaces', interface.uuid,
+                                               bookmark=True)
                            ]
         if expand:
             interface.ports = [
@@ -241,8 +253,20 @@ class Interface(base.APIBase):
                     bookmark=True)
             ]
 
-        networktype = cutils.get_primary_network_type(rpc_interface.as_dict())
-        if networktype and networktype not in address.ALLOWED_NETWORK_TYPES:
+        ifclass = rpc_interface.as_dict()['ifclass']
+        networks = rpc_interface.as_dict()['networks']
+        networktypelist = []
+        if ifclass == constants.INTERFACE_CLASS_PLATFORM:
+            for network_id in networks:
+                network = pecan.request.dbapi.network_get_by_id(network_id)
+                networktypelist.append(network.type)
+        elif ifclass:
+            networktypelist.append(ifclass)
+        else:
+            networktypelist.append(constants.INTERFACE_CLASS_NONE)
+        if not any(networktype in address.ALLOWED_NETWORK_TYPES
+                   for networktype in networktypelist):
+
             # Hide this functionality when the network type does not support
             # setting or updating the network type
             interface.ipv4_mode = wtypes.Unset
@@ -294,6 +318,10 @@ class InterfaceController(rest.RestController):
     routes = route.RouteController(parent="iinterfaces")
     "Expose routes as a sub-element of interface"
 
+    interface_networks = interface_network.InterfaceNetworkController(
+        parent="iinterfaces")
+    "Expose interface_networks as a sub-element of interface"
+
     _custom_actions = {
         'detail': ['GET'],
     }
@@ -305,7 +333,7 @@ class InterfaceController(rest.RestController):
                                    sort_dir, expand=False, resource_url=None):
         if self._from_ihosts and not ihost_uuid:
             raise exception.InvalidParameterValue(_(
-                  "Host id not specified."))
+                "Host id not specified."))
 
         limit = utils.validate_limit(limit)
         sort_dir = utils.validate_sort_dir(sort_dir)
@@ -313,20 +341,20 @@ class InterfaceController(rest.RestController):
         marker_obj = None
         if marker:
             marker_obj = objects.interface.get_by_uuid(
-                                        pecan.request.context,
-                                        marker)
+                pecan.request.context,
+                marker)
 
         if ihost_uuid:
             interfaces = pecan.request.dbapi.iinterface_get_by_ihost(
-                                                    ihost_uuid, limit,
-                                                    marker_obj,
-                                                    sort_key=sort_key,
-                                                    sort_dir=sort_dir)
+                ihost_uuid, limit,
+                marker_obj,
+                sort_key=sort_key,
+                sort_dir=sort_dir)
         else:
             interfaces = pecan.request.dbapi.iinterface_get_list(
-                                                    limit, marker_obj,
-                                                    sort_key=sort_key,
-                                                    sort_dir=sort_dir)
+                limit, marker_obj,
+                sort_key=sort_key,
+                sort_dir=sort_dir)
 
         return InterfaceCollection.convert_with_links(interfaces, limit,
                                                       url=resource_url,
@@ -355,7 +383,7 @@ class InterfaceController(rest.RestController):
     @wsme_pecan.wsexpose(InterfaceCollection, types.uuid, types.uuid, int,
                          wtypes.text, wtypes.text)
     def detail(self, ihost_uuid=None, marker=None, limit=None,
-                sort_key='id', sort_dir='asc'):
+               sort_key='id', sort_dir='asc'):
         """Retrieve a list of interfaces with detail."""
         # NOTE(lucasagomes): /detail should only work agaist collections
         parent = pecan.request.path.split('/')[:-1][-1]
@@ -376,7 +404,7 @@ class InterfaceController(rest.RestController):
             raise exception.OperationNotPermitted
 
         rpc_interface = objects.interface.get_by_uuid(
-                                        pecan.request.context, interface_uuid)
+            pecan.request.context, interface_uuid)
         return Interface.convert_with_links(rpc_interface)
 
     @cutils.synchronized(LOCK_NAME)
@@ -409,26 +437,38 @@ class InterfaceController(rest.RestController):
         LOG.debug("patch_data: %s" % patch)
 
         uses = None
+        ports = None
+        networks = []
+        networks_to_add = []
+        patches_to_remove = []
         for p in patch:
-            if '/usesmodify' in p['path']:
+            if '/ifclass' == p['path']:
+                if p['value'] == 'none':
+                    p['value'] = None
+            elif '/usesmodify' == p['path']:
                 uses = p['value'].split(',')
-                patch.remove(p)
-                break
+                patches_to_remove.append(p)
+            elif '/ports' == p['path']:
+                ports = p['value']
+                patches_to_remove.append(p)
+            elif '/networks' == p['path']:
+                networks = p['value'].split(',')
+                patches_to_remove.append(p)
+            elif '/networks_to_add' == p['path']:
+                networks_to_add = p['value'].split(',')
+                patches_to_remove.append(p)
 
         if uses:
             patch.append(dict(path='/uses', value=uses, op='replace'))
 
-        ports = None
-        for p in patch:
-            if '/ports' in p['path']:
-                ports = p['value']
-                patch.remove(p)
-                break
+        patch = [p for p in patch if p not in patches_to_remove]
 
         LOG.debug("patch_ports: %s" % ports)
+        LOG.debug("patch_networks: %s" % networks)
 
         rpc_interface = objects.interface.get_by_uuid(pecan.request.context,
                                                       interface_uuid)
+
         # create a temp interface for semantics checks
         temp_interface = copy.deepcopy(rpc_interface)
 
@@ -461,8 +501,9 @@ class InterfaceController(rest.RestController):
                 temp_interface['sriov_numvfs'] = p['value']
         # If network type is not pci-sriov, reset the sriov-numvfs to zero
         if (temp_interface['sriov_numvfs'] is not None and
-                temp_interface['networktype'] is not None and
-                constants.NETWORK_TYPE_PCI_SRIOV not in temp_interface['networktype']):
+                temp_interface['ifclass'] is not None and
+                temp_interface[
+                        'ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV):
             temp_interface['sriov_numvfs'] = None
         _check_interface_sriov(temp_interface.as_dict(), ihost)
 
@@ -500,8 +541,8 @@ class InterfaceController(rest.RestController):
 
         try:
             interface = Interface(**jsonpatch.apply_patch(
-                                   rpc_interface.as_dict(),
-                                   patch_obj)).as_dict()
+                rpc_interface.as_dict(),
+                patch_obj)).as_dict()
         except utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
 
@@ -509,9 +550,14 @@ class InterfaceController(rest.RestController):
         if interface['aemode'] == 'active_standby':
             interface['txhashpolicy'] = None
 
-        if (not interface['networktype'] or
-                interface['networktype'] == constants.NETWORK_TYPE_NONE):
-            # If the interface networktype is reset, make sure any networktype
+        # The variable 'networks' contains a list of networks that the
+        # interface should have by the end of this update. These should be
+        # compared to the previous networks assigned to the interface
+        interface['networks'] = networks
+
+        if (not interface['ifclass'] or
+                interface['ifclass'] == constants.INTERFACE_CLASS_NONE):
+            # If the interface class is reset, make sure any network
             # specific fields are reset as well
             interface['sriov_numvfs'] = 0
             interface['ipv4_mode'] = None
@@ -539,26 +585,32 @@ class InterfaceController(rest.RestController):
         if ports:
             _update_ports("modify", rpc_interface, ihost, ports)
 
-        networktype = cutils.get_primary_network_type(interface)
-        orig_networktype = cutils.get_primary_network_type(rpc_interface)
-        if ((not networktype) and
-                orig_networktype == constants.NETWORK_TYPE_MGMT):
-            # Remove mgmt address associated with this interface
-            pecan.request.rpcapi.mgmt_ip_set_by_ihost(
-                pecan.request.context,
-                ihost['uuid'],
-                None)
-        if ((not networktype) and
-                orig_networktype == constants.NETWORK_TYPE_INFRA):
-            # Remove infra address associated with this interface
-            pecan.request.rpcapi.infra_ip_set_by_ihost(
-                pecan.request.context,
-                ihost['uuid'],
-                None)
+        if (not interface['ifclass'] or
+                interface['ifclass'] == constants.NETWORK_TYPE_NONE):
+            ifclass = None
+        else:
+            ifclass = interface['ifclass']
+        orig_ifclass = rpc_interface['ifclass']
+        if (not ifclass and
+                orig_ifclass == constants.INTERFACE_CLASS_PLATFORM):
+            for network_id in rpc_interface['networks']:
+                network = pecan.request.dbapi.network_get_by_id(network_id)
+                if network.type == constants.NETWORK_TYPE_MGMT:
+                    # Remove mgmt address associated with this interface
+                    pecan.request.rpcapi.mgmt_ip_set_by_ihost(
+                        pecan.request.context,
+                        ihost['uuid'],
+                        None)
+                elif network.type == constants.NETWORK_TYPE_INFRA:
+                    # Remove infra address associated with this interface
+                    pecan.request.rpcapi.infra_ip_set_by_ihost(
+                        pecan.request.context,
+                        ihost['uuid'],
+                        None)
 
         if delete_addressing:
             for family in constants.IP_FAMILIES:
-                _delete_addressing(interface, family, orig_networktype)
+                _delete_addressing(interface, family, rpc_interface)
         else:
             if _is_ipv4_address_mode_updated(interface, rpc_interface):
                 _update_ipv4_address_mode(interface)
@@ -566,16 +618,34 @@ class InterfaceController(rest.RestController):
                 _update_ipv6_address_mode(interface)
 
         # Commit operation with neutron
-        if (interface['networktype'] and
-            any(network.strip() in NEUTRON_NETWORK_TYPES for network in
-                interface['networktype'].split(","))):
+        if (interface['ifclass'] and
+                interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
             _neutron_bind_interface(ihost, interface)
-        elif (rpc_interface['networktype'] and
-              any(network.strip() in NEUTRON_NETWORK_TYPES for network in
-                  rpc_interface['networktype'].split(","))):
+        elif (rpc_interface['ifclass'] and
+              interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
             _neutron_unbind_interface(ihost, rpc_interface)
 
         saved_interface = copy.deepcopy(rpc_interface)
+
+        # Update network-interface
+        try:
+            if networks_to_add:
+                for network_id in networks_to_add:
+                    values = {'interface_id': interface['id'],
+                              'network_id': network_id}
+                    pecan.request.dbapi.interface_network_create(values)
+            elif networks:
+                for network_id in networks:
+                    values = {'interface_id': interface['id'],
+                              'network_id': network_id}
+                    pecan.request.dbapi.interface_network_create(values)
+        except exception.InterfaceNetworkAlreadyExists:
+            pass
+        except Exception as e:
+            LOG.exception(e)
+            msg = _("Failed to create interface network association for "
+                    "interface %s" % (interface['ifname']))
+            raise wsme.exc.ClientSideError(msg)
 
         try:
             # Update only the fields that have changed
@@ -589,15 +659,25 @@ class InterfaceController(rest.RestController):
             new_interface = objects.interface.get_by_uuid(
                 pecan.request.context, rpc_interface.uuid)
 
+            networktypelist = []
+            if new_interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+                for network_id in new_interface['networks']:
+                    network = pecan.request.dbapi.network_get_by_id(network_id)
+                    networktypelist.append(network.type)
+            elif new_interface['ifclass']:
+                networktypelist = [new_interface['ifclass']]
+            else:
+                networktypelist = [constants.NETWORK_TYPE_NONE]
+
             # Update address (if required)
-            if networktype == constants.NETWORK_TYPE_MGMT:
+            if constants.NETWORK_TYPE_MGMT in networktypelist:
                 _update_host_mgmt_address(ihost, interface)
-            elif networktype == constants.NETWORK_TYPE_INFRA:
+            if constants.NETWORK_TYPE_INFRA in networktypelist:
                 _update_host_infra_address(ihost, interface)
             if ihost['personality'] == constants.CONTROLLER:
-                if networktype == constants.NETWORK_TYPE_OAM:
+                if constants.NETWORK_TYPE_OAM in networktypelist:
                     _update_host_oam_address(ihost, interface)
-                elif networktype == constants.NETWORK_TYPE_PXEBOOT:
+                elif constants.NETWORK_TYPE_PXEBOOT in networktypelist:
                     _update_host_pxeboot_address(ihost, interface)
 
             # Update the MTU of underlying interfaces of an AE
@@ -620,9 +700,8 @@ class InterfaceController(rest.RestController):
             LOG.exception(e)
             msg = _("Interface update failed: host %s if %s : patch %s"
                     % (ihost['hostname'], interface['ifname'], patch))
-            if (saved_interface['networktype'] and
-                any(network.strip() in NEUTRON_NETWORK_TYPES for network in
-                    saved_interface['networktype'].split(","))):
+            if (saved_interface['ifclass'] and
+                    saved_interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
                 # Restore Neutron bindings
                 _neutron_bind_interface(ihost, saved_interface)
 
@@ -674,24 +753,26 @@ def _set_defaults(interface):
                 'vlan_id': None,
                 'sriov_numvfs': 0}
 
-    networktype = cutils.get_primary_network_type(interface)
-    if networktype in [constants.NETWORK_TYPE_DATA,
-                       constants.NETWORK_TYPE_DATA_VRS]:
+    if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+        if interface['networks']:
+            for network_id in interface['networks']:
+                network = pecan.request.dbapi.network_get_by_id(network_id)
+                interface['networktype'] = network.type
+                break
+        elif interface['networktype']:
+            network = pecan.request.dbapi.network_get_by_type(
+                interface['networktype']
+            )
+            interface['networks'] = [str(network.id)]
+
+    networktype = interface['networktype']
+    if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
         defaults['ipv6_mode'] = constants.IPV6_DISABLED
     elif (networktype == constants.NETWORK_TYPE_MGMT or
           networktype == constants.NETWORK_TYPE_OAM or
           networktype == constants.NETWORK_TYPE_INFRA):
         _set_address_family_defaults_by_pool(defaults, networktype)
-
-    # Update default MTU to that of configured network
-    if networktype in network.ALLOWED_NETWORK_TYPES:
-        try:
-            interface_network = pecan.request.dbapi.network_get_by_type(
-                networktype)
-            defaults['imtu'] = interface_network.mtu
-        except exception.NetworkTypeNotFound:
-            pass  # use default MTU
 
     interface_merged = interface.copy()
     for key in interface_merged:
@@ -706,26 +787,6 @@ def _check_interface_vlan_id(op, interface, ihost, from_profile=False):
     if 'vlan_id' in interface.keys() and interface['vlan_id'] is not None:
         if not str(interface['vlan_id']).isdigit():
             raise wsme.exc.ClientSideError(_("VLAN id is an integer value."))
-        elif not from_profile:
-            networktype = []
-            if interface['networktype']:
-                networktype = [network.strip() for network in interface['networktype'].split(",")]
-            if (any(network in [constants.NETWORK_TYPE_MGMT] for network in networktype) and
-                    ihost['recordtype'] != 'profile'):
-
-                mgmt_network = pecan.request.dbapi.network_get_by_type(
-                    constants.NETWORK_TYPE_MGMT)
-                if not mgmt_network.vlan_id:
-                    msg = _("The management VLAN was not configured on this "
-                        "system, so configuring the %s interface over a VLAN "
-                        "is not allowed." % (interface['networktype']))
-                    raise wsme.exc.ClientSideError(msg)
-                elif int(interface['vlan_id']) != int(mgmt_network.vlan_id):
-                    msg = _("The management VLAN configured on this "
-                        "system is %s, so the VLAN configured for the %s "
-                        "interface must match." % (mgmt_network.vlan_id,
-                        interface['networktype']))
-                    raise wsme.exc.ClientSideError(msg)
 
         interface['vlan_id'] = int(interface['vlan_id'])
         if interface['vlan_id'] < 1 or interface['vlan_id'] > 4094:
@@ -757,7 +818,7 @@ def _check_interface_name(op, interface, ihost, from_profile=False):
     if ifname and len(ifname) > iflen:
         raise wsme.exc.ClientSideError(_("Interface {} has name length "
                                          "greater than {}.".
-                                          format(ifname, iflen)))
+                                         format(ifname, iflen)))
 
     # Check for invalid characters
     vlan_id = None
@@ -777,7 +838,7 @@ def _check_interface_name(op, interface, ihost, from_profile=False):
     else:
         this_interface_id = interface['id']
     interface_list = pecan.request.dbapi.iinterface_get_all(
-                                             forihostid=ihost_id)
+        forihostid=ihost_id)
     for i in interface_list:
         if i.id == this_interface_id:
             continue
@@ -791,15 +852,6 @@ def _check_interface_mtu(interface, ihost, from_profile=False):
     if 'imtu' in interface.keys() and interface['imtu'] is not None:
         if not str(interface['imtu']).isdigit():
             raise wsme.exc.ClientSideError(_("MTU is an integer value."))
-        elif not from_profile and ihost['recordtype'] != 'profile':
-            networktype = cutils.get_primary_network_type(interface)
-            if networktype in [constants.NETWORK_TYPE_MGMT,
-                               constants.NETWORK_TYPE_INFRA]:
-                network = pecan.request.dbapi.network_get_by_type(networktype)
-                if network and int(interface['imtu']) != int(network.mtu):
-                    msg = _("Setting of %s interface MTU is not supported"
-                            % networktype)
-                    raise wsme.exc.ClientSideError(msg)
 
         interface['imtu'] = int(interface['imtu'])
         utils.validate_mtu(interface['imtu'])
@@ -807,28 +859,25 @@ def _check_interface_mtu(interface, ihost, from_profile=False):
 
 
 def _check_interface_sriov(interface, ihost, from_profile=False):
-    if 'networktype' in interface.keys() and interface['networktype'] == constants.NETWORK_TYPE_NONE:
+    if ('ifclass' in interface.keys() and
+                interface['ifclass'] == constants.INTERFACE_CLASS_NONE):
         return interface
 
-    networktypelist = cutils.get_network_type_list(interface)
-    if ('networktype' in interface.keys() and
-            constants.NETWORK_TYPE_PCI_SRIOV in networktypelist and
-            'sriov_numvfs' not in interface.keys()):
-
+    if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
+                'sriov_numvfs' not in interface.keys()):
         raise wsme.exc.ClientSideError(_("A network type of pci-sriov must specify "
-            "a number for SR-IOV VFs."))
+                                         "a number for SR-IOV VFs."))
 
     if ('sriov_numvfs' in interface.keys() and interface['sriov_numvfs']
-            is not None and int(interface['sriov_numvfs']) > 0 and
-            ('networktype' not in interface.keys() or
-             constants.NETWORK_TYPE_PCI_SRIOV not in interface['networktype'])):
-
+    is not None and int(interface['sriov_numvfs']) > 0 and
+            ('ifclass' not in interface.keys() or
+                     interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV)):
         raise wsme.exc.ClientSideError(_("Number of SR-IOV VFs is specified but network "
-            "type is not pci-sriov."))
+                                         "type is not pci-sriov."))
 
-    if ('networktype' in interface.keys() and
-            constants.NETWORK_TYPE_PCI_SRIOV in networktypelist and
-            'sriov_numvfs' in interface.keys()):
+    if ('ifclass' in interface.keys() and
+                interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
+                'sriov_numvfs' in interface.keys()):
 
         if interface['sriov_numvfs'] is None:
             raise wsme.exc.ClientSideError(_("Value for number of SR-IOV VFs must be specified."))
@@ -864,7 +913,7 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
 
 def _check_host(ihost):
     if utils.is_aio_simplex_host_unlocked(ihost):
-            raise wsme.exc.ClientSideError(_("Host must be locked."))
+        raise wsme.exc.ClientSideError(_("Host must be locked."))
     elif ihost['administrative'] != 'locked' and not \
             utils.is_host_simplex_controller(ihost):
         unlocked = False
@@ -878,11 +927,8 @@ def _check_host(ihost):
 
 def _valid_network_types():
     valid_types = set(VALID_NETWORK_TYPES)
-    vswitch_type = utils.get_vswitch_type()
     system_mode = utils.get_system_mode()
 
-    if vswitch_type != constants.VSWITCH_TYPE_NUAGE_VRS:
-        valid_types -= set([constants.NETWORK_TYPE_DATA_VRS])
     if system_mode == constants.SYSTEM_MODE_SIMPLEX:
         valid_types -= set([constants.NETWORK_TYPE_INFRA])
     return list(valid_types)
@@ -895,25 +941,16 @@ def _check_network_type_validity(networktypelist):
         raise wsme.exc.ClientSideError(msg)
 
 
-def _check_network_type_count(networktypelist):
-    if (networktypelist and len(networktypelist) != 1 and
-            not cutils.is_pci_network_types(networktypelist)):
-        msg = _("Network type list may only contain at most one type, "
-                "except for PCI network types.")
-        raise wsme.exc.ClientSideError(msg)
-
-
 def _check_network_type_and_host_type(ihost, networktypelist):
-
     for nt in DATA_NETWORK_TYPES:
         if (nt in networktypelist and
-           constants.COMPUTE not in ihost['subfunctions']):
+                constants.COMPUTE not in ihost['subfunctions']):
             msg = _("The '%s' network type is only supported on nodes "
-                "supporting compute functions" % nt)
+                    "supporting compute functions" % nt)
             raise wsme.exc.ClientSideError(msg)
 
     if (constants.NETWORK_TYPE_OAM in networktypelist and
-          ihost['personality'] != constants.CONTROLLER):
+            ihost['personality'] != constants.CONTROLLER):
         msg = _("The '%s' network type is only supported on controller nodes." %
                 constants.NETWORK_TYPE_OAM)
         raise wsme.exc.ClientSideError(msg)
@@ -934,16 +971,8 @@ def _check_network_type_and_interface_type(interface, networktypelist):
 
     if (any(nt in networktypelist for nt in PCI_NETWORK_TYPES) and
             interface['iftype'] != "ethernet"):
-
         msg = (_("The {} network types are only valid on Ethernet interfaces").
                format(', '.join(PCI_NETWORK_TYPES)))
-        raise wsme.exc.ClientSideError(msg)
-
-    if (constants.NETWORK_TYPE_DATA_VRS in networktypelist and
-          interface['iftype'] not in ['ethernet', 'ae']):
-        msg = _("Only ethernet and aggregated ethernet interfaces can be "
-                "configured as '%s' interfaces" %
-                constants.NETWORK_TYPE_DATA_VRS)
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -951,13 +980,14 @@ def _check_network_type_duplicates(ihost, interface, networktypelist):
     # Check that we are not creating duplicate interface types
     interfaces = pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid'])
     for host_interface in interfaces:
-        if not host_interface['networktype']:
+        if not host_interface['networks']:
             continue
-        host_networktypes = host_interface['networktype']
-        host_networktypelist = [
-            nt.strip() for nt in host_networktypes.split(",")]
+        host_networktypelist = []
+        for network_id in host_interface['networks']:
+            network = pecan.request.dbapi.network_get_by_id(network_id)
+            host_networktypelist.append(network.type)
 
-        for nt in [constants.NETWORK_TYPE_INFRA, constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_DATA_VRS]:
+        for nt in [constants.NETWORK_TYPE_INFRA, constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_OAM]:
             if nt in host_networktypelist and nt in networktypelist:
                 if host_interface['uuid'] != interface['uuid']:
                     msg = _("An interface with '%s' network type is "
@@ -965,29 +995,24 @@ def _check_network_type_duplicates(ihost, interface, networktypelist):
                     raise wsme.exc.ClientSideError(msg)
 
 
-def _check_network_type_transition(interface, existing_interface):
+def _check_interface_class_transition(interface, existing_interface):
     if not existing_interface:
         return
-    networktype = cutils.get_primary_network_type(interface)
-    existing_networktype = cutils.get_primary_network_type(existing_interface)
-    if networktype == existing_networktype:
-        if networktype == constants.NETWORK_TYPE_PCI_SRIOV:
+    ifclass = interface['ifclass']
+    existing_ifclass = existing_interface['ifclass']
+    if ifclass == existing_ifclass:
+        if ifclass == constants.NETWORK_TYPE_PCI_SRIOV:
             if (len(cutils.get_network_type_list(interface)) ==
                     len(cutils.get_network_type_list(existing_interface))):
                 return
         else:
             return
-    if networktype and existing_networktype:
-        msg = _("The network type of an interface cannot be changed without "
-                "first being reset back to '%s'." %
-                constants.NETWORK_TYPE_NONE)
-        raise wsme.exc.ClientSideError(msg)
 
 
 def _check_network_type_and_interface_name(interface, networktypelist):
     if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
-                constants.NETWORK_TYPE_NONE in networktypelist and
-                interface['ifname'] == constants.LOOPBACK_IFNAME):
+            constants.NETWORK_TYPE_NONE in networktypelist and
+            interface['ifname'] == constants.LOOPBACK_IFNAME):
         msg = _("The loopback interface cannot be changed for an all-in-one "
                 "simplex system")
         raise wsme.exc.ClientSideError(msg)
@@ -995,13 +1020,17 @@ def _check_network_type_and_interface_name(interface, networktypelist):
 
 def _check_network_type(op, interface, ihost, existing_interface):
     networktypelist = []
-    if interface['networktype']:
-        networktypelist = [
-            nt.strip() for nt in interface['networktype'].split(",")]
+    if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+        for network_id in interface['networks']:
+            network = pecan.request.dbapi.network_get_by_id(network_id)
+            networktypelist.append(network.type)
+    elif interface['ifclass']:
+        networktypelist.append(interface['ifclass'])
+    else:
+        networktypelist.append(constants.INTERFACE_CLASS_NONE)
 
     _check_network_type_validity(networktypelist)
-    _check_network_type_transition(interface, existing_interface)
-    _check_network_type_count(networktypelist)
+    _check_interface_class_transition(interface, existing_interface)
     _check_network_type_and_host_type(ihost, networktypelist)
     _check_network_type_and_interface_type(interface, networktypelist)
     _check_network_type_duplicates(ihost, interface, networktypelist)
@@ -1030,14 +1059,35 @@ def _check_network_type_and_port(interface, ihost,
             pif_networktypelist = cutils.get_network_type_list(pif)
         if (pif_networktypelist and
                 ((constants.NETWORK_TYPE_DATA in pif_networktypelist and
-                  constants.NETWORK_TYPE_DATA not in networktypelist) or
-                 (constants.NETWORK_TYPE_DATA not in pif_networktypelist and
-                  constants.NETWORK_TYPE_DATA in networktypelist))):
+                    constants.NETWORK_TYPE_DATA not in networktypelist) or
+                    (constants.NETWORK_TYPE_DATA not in pif_networktypelist and
+                        constants.NETWORK_TYPE_DATA in networktypelist))):
             msg = (_("Shared device %(device)s cannot be shared "
                      "with different network types when device "
                      "is associated with a data network type") %
                    {'device': interface_port.pciaddr})
             raise wsme.exc.ClientSideError(msg)
+
+
+def _check_interface_class(interface, existing_interface):
+    if not interface['ifclass'] or interface['ifclass'] == constants.INTERFACE_CLASS_NONE:
+        return
+
+    if interface['ifclass'] not in VALID_INTERFACE_CLASS:
+        msg = (_("Invalid interface class %s" % interface['ifclass']))
+        raise wsme.exc.ClientSideError(msg)
+
+    if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+        for network_id in interface['networks']:
+            network = pecan.request.dbapi.network_get_by_id(network_id)
+            if network.type not in constants.PLATFORM_NETWORK_TYPES:
+                msg = (_("Invalid network type %s for interface class %s" %
+                         (network.type, interface['ifclass'])))
+                raise wsme.exc.ClientSideError(msg)
+
+    if existing_interface and existing_interface['ifclass']:
+        if existing_interface['ifclass'] == interface['ifclass']:
+            return
 
 
 def _check_address_mode(op, interface, ihost, existing_interface):
@@ -1049,8 +1099,18 @@ def _check_address_mode(op, interface, ihost, existing_interface):
     object_utils.ipv6_mode_or_none(ipv6_mode)
 
     # Check for supported interface network types
-    network_type = cutils.get_primary_network_type(interface)
-    if network_type not in address.ALLOWED_NETWORK_TYPES:
+    networktypelist = []
+    if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+        for network_id in interface['networks']:
+            network = pecan.request.dbapi.network_get_by_id(network_id)
+            networktypelist.append(network.type)
+    elif interface['ifclass']:
+        networktypelist.append(interface['ifclass'])
+    else:
+        networktypelist.append(constants.INTERFACE_CLASS_NONE)
+
+    if not any(network_type in address.ALLOWED_NETWORK_TYPES
+               for network_type in networktypelist):
         if (ipv4_mode and ipv4_mode != constants.IPV4_DISABLED):
             raise exception.AddressModeOnlyOnSupportedTypes(
                 types=", ".join(address.ALLOWED_NETWORK_TYPES))
@@ -1059,7 +1119,8 @@ def _check_address_mode(op, interface, ihost, existing_interface):
                 types=", ".join(address.ALLOWED_NETWORK_TYPES))
 
     # Check for infrastructure specific requirements
-    if network_type == constants.NETWORK_TYPE_INFRA:
+    if any(network_type == constants.NETWORK_TYPE_INFRA
+           for network_type in networktypelist):
         if ipv4_mode != constants.IPV4_STATIC:
             if ipv6_mode != constants.IPV6_STATIC:
                 raise exception.AddressModeMustBeStaticOnInfra()
@@ -1118,22 +1179,48 @@ def _check_address_mode(op, interface, ihost, existing_interface):
                         family=constants.IP_FAMILIES[constants.IPV6_FAMILY])
 
 
+def _check_networks(interface):
+    NONASSIGNABLE_WITH_OAM = [constants.NETWORK_TYPE_MGMT,
+                              constants.NETWORK_TYPE_PXEBOOT,
+                              constants.NETWORK_TYPE_INFRA]
+    ifclass = interface['ifclass']
+    networks = interface['networks']
+    if ifclass == constants.INTERFACE_CLASS_PLATFORM and len(networks) > 1:
+        networktypelist = []
+        for network_id in networks:
+            network = pecan.request.dbapi.network_get_by_id(network_id)
+            networktypelist.append(network.type)
+        if constants.NETWORK_TYPE_PXEBOOT in networktypelist:
+            msg = _("An interface assigned with a network of "
+                    "type '%s' cannot contain additional networks."
+                    % constants.NETWORK_TYPE_PXEBOOT)
+            raise wsme.exc.ClientSideError(msg)
+        elif any(network_type in NONASSIGNABLE_WITH_OAM
+                 for network_type in networktypelist) and \
+                any(network_type == constants.NETWORK_TYPE_OAM
+                    for network_type in networktypelist):
+            msg = _("An interface assigned with a network of "
+                    "type '%s' cannot assign any networks "
+                    "of type '%s'."
+                    % (constants.NETWORK_TYPE_OAM, NONASSIGNABLE_WITH_OAM))
+            raise wsme.exc.ClientSideError(msg)
+
+
 def _check_interface_data(op, interface, ihost, existing_interface):
     # Get data
-
     ihost_id = interface['forihostid']
     ihost_uuid = interface['ihost_uuid']
     providernetworks = interface['providernetworks']
+    ifclass = interface['ifclass']
     networktypelist = []
-    if interface['networktype']:
-        networktypelist = [network.strip() for network in interface['networktype'].split(",")]
-
-    existing_networktypelist = []
-    if existing_interface:
-        if existing_interface['networktype']:
-            existing_networktypelist = [network.strip() for network in existing_interface['networktype'].split(",")]
-
-    network_type = cutils.get_primary_network_type(interface)
+    if ifclass == constants.INTERFACE_CLASS_PLATFORM:
+        for network_id in interface['networks']:
+            platform_network = pecan.request.dbapi.network_get_by_id(network_id)
+            networktypelist.append(platform_network.type)
+    elif ifclass:
+        networktypelist.append(ifclass)
+    else:
+        networktypelist.append(constants.INTERFACE_CLASS_NONE)
 
     # Get providernet dict
     all_providernetworks = _neutron_providernet_list()
@@ -1163,24 +1250,21 @@ def _check_interface_data(op, interface, ihost, existing_interface):
             msg = _("VLAN id %s already in use on interface %s" %
                     (str(vlan_id), lower_iface['ifname']))
             raise wsme.exc.ClientSideError(msg)
-        if lower_iface['networktype']:
-            nt1 = [network.strip() for network in
-                   interface['networktype'].split(",")]
-            nt2 = [network.strip() for network in
-                   lower_iface['networktype'].split(",")]
-            ntset = set(nt1).union(nt2)
-            if any(set(c).issubset(ntset) for c in
-                   INCOMPATIBLE_NETWORK_TYPES):
-                msg = _("%s VLAN cannot be created over an interface with "
-                        "network type %s" %
-                        (interface['networktype'],
-                         lower_iface['networktype']))
-                raise wsme.exc.ClientSideError(msg)
+        if (lower_iface['ifclass'] == constants.INTERFACE_CLASS_DATA and
+                interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM):
+            msg = _("Platform VLAN interface cannot be created over a data "
+                    "interface ")
+            raise wsme.exc.ClientSideError(msg)
+        elif (lower_iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
+                interface['ifclass'] == constants.INTERFACE_CLASS_DATA):
+            msg = _("Data VLAN interface cannot be created over a platform "
+                    "interface ")
+            raise wsme.exc.ClientSideError(msg)
 
     # Check if the 'uses' interface is already used by another AE or VLAN
     # interface
     interface_list = pecan.request.dbapi.iinterface_get_all(
-                                             forihostid=ihost_id)
+        forihostid=ihost_id)
     for i in interface_list:
         if i.id == this_interface_id:
             continue
@@ -1195,16 +1279,23 @@ def _check_interface_data(op, interface, ihost, existing_interface):
                                 " AE interface {}".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
                     elif (i.iftype == constants.INTERFACE_TYPE_VLAN and
-                          iftype != constants.INTERFACE_TYPE_VLAN):
+                                  iftype != constants.INTERFACE_TYPE_VLAN):
                         msg = _("Interface {} is already used by another"
                                 " VLAN interface {}".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
+
+    # check interface class validity
+    _check_interface_class(interface, existing_interface)
 
     # check networktype combinations and transitions for validity
     _check_network_type(op, interface, ihost, existing_interface)
 
     # check mode/pool combinations and transitions for validity
     _check_address_mode(op, interface, ihost, existing_interface)
+
+    # check to ensure that the interface assigned with an OAM or
+    # PXEBOOT network has no other networks
+    _check_networks(interface)
 
     # Make sure txhashpolicy for data is layer2
     aemode = interface['aemode']
@@ -1262,7 +1353,6 @@ def _check_interface_data(op, interface, ihost, existing_interface):
     # can only be in ae mode 'active_standby' or 'balanced'
     if (any(network in [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_INFRA] for network in networktypelist) and
             iftype == 'ae' and (aemode not in VALID_AEMODE_LIST)):
-
         msg = _("Device interface with network type '%s', and interface "
                 "type 'aggregated ethernet' must be in mode 'active_standby' "
                 "or 'balanced' or '802.3ad'." % (str(networktypelist)))
@@ -1291,8 +1381,7 @@ def _check_interface_data(op, interface, ihost, existing_interface):
     #    and none for 'oam', 'mgmt' and 'infra'
     # Ensure uniqueness wrt the providernetworks
     if (_neutron_providernet_extension_supported() and
-          any(nt in NEUTRON_NETWORK_TYPES for nt in networktypelist)):
-
+            interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
         if not providernetworks:
             msg = _("At least one provider network must be selected.")
             raise wsme.exc.ClientSideError(msg)
@@ -1322,10 +1411,10 @@ def _check_interface_data(op, interface, ihost, existing_interface):
             # type. Ensure that the only provider type that
             # can be assigned is VLAN.
             if (providernet['type'] != constants.NEUTRON_PROVIDERNET_VLAN and
-                    network_type not in NEUTRON_NETWORK_TYPES):
+                    ifclass not in NEUTRON_NETWORK_TYPES):
                 msg = _("Provider network '%s' of type '%s' cannot be assigned "
-                        "to an interface with network type '%s'"
-                        % (pn, providernet['type'], network_type))
+                        "to an interface with interface class '%s'"
+                        % (pn, providernet['type'], ifclass))
                 raise wsme.exc.ClientSideError(msg)
 
         # This ensures that a specific provider network type can
@@ -1357,7 +1446,7 @@ def _check_interface_data(op, interface, ihost, existing_interface):
         _update_shared_interface_neutron_bindings(ihost, interface, test=True)
 
     elif (not _neutron_providernet_extension_supported() and
-            any(nt in PCI_NETWORK_TYPES for nt in networktypelist)):
+              any(nt in PCI_NETWORK_TYPES for nt in networktypelist)):
         # When the neutron implementation is not our own and it does not
         # support our provider network extension we still want to do minimal
         # validation of the provider network list but we cannot do more
@@ -1372,25 +1461,14 @@ def _check_interface_data(op, interface, ihost, existing_interface):
                format(', '.join(networktypelist)))
         raise wsme.exc.ClientSideError(msg)
 
-    elif (constants.NETWORK_TYPE_NONE not in networktypelist and constants.NETWORK_TYPE_DATA not in networktypelist and
-          constants.NETWORK_TYPE_DATA not in existing_networktypelist):
+    elif (interface['ifclass'] is not constants.INTERFACE_CLASS_NONE and
+            interface['ifclass'] != constants.INTERFACE_CLASS_DATA):
         if providernetworks is not None:
             msg = _("Provider network(s) not supported "
-                    "for non-data interfaces. (%s) (%s)" % (str(networktypelist), str(existing_interface)))
+                    "for non-data interfaces. (%s) (%s)" % (interface['ifclass'], str(existing_interface)))
             raise wsme.exc.ClientSideError(msg)
     else:
         interface['providernetworks'] = None
-
-    # Update MTU based on values to sent via DHCP
-    interface['ihost_uuid'] = ihost['uuid']
-    if any(network in [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_INFRA] for network in networktypelist):
-        try:
-            interface_network = pecan.request.dbapi.network_get_by_type(
-                network_type)
-            interface['imtu'] = interface_network.mtu
-        except exception.NetworkTypeNotFound:
-            msg = _("The %s network is not configured." % network_type)
-            raise wsme.exc.ClientSideError(msg)
 
     # check MTU
     if interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
@@ -1420,8 +1498,14 @@ def _check_interface_data(op, interface, ihost, existing_interface):
             # find any interface in controller host that is of type infra
             interfaces = pecan.request.dbapi.iinterface_get_by_ihost(ihost=h['uuid'])
             for host_interface in interfaces:
-                if host_interface['networktype']:
-                    hi_networktypelist = [network.strip() for network in host_interface['networktype'].split(",")]
+                if host_interface['ifclass']:
+                    hi_networktypelist = []
+                    if host_interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+                        for network_id in host_interface['networks']:
+                            network = pecan.request.dbapi.network_get_by_id(network_id)
+                            hi_networktypelist.append(network.type)
+                    else:
+                        hi_networktypelist.append(host_interface['ifclass'])
                     if constants.NETWORK_TYPE_INFRA in hi_networktypelist:
                         infra_on_controller = True
                         break
@@ -1461,7 +1545,7 @@ def _check_ports(op, interface, ihost, ports):
             if p.interface_id and p.interface_id != this_interface_id:
                 pif = pecan.request.dbapi.iinterface_get(p.interface_id)
                 msg = _("Another interface %s is already using this port"
-                         % pif.uuid)
+                        % pif.uuid)
                 raise wsme.exc.ClientSideError(msg)
 
         # If someone enters name with spaces anywhere, such as " eth2", "eth2 "
@@ -1485,7 +1569,6 @@ def _check_ports(op, interface, ihost, ports):
         port_exists = False
         for pTwo in host_ports:
             if p == pTwo.name or p == pTwo.uuid:
-
                 # port exists
                 port_exists = True
                 break
@@ -1543,19 +1626,22 @@ def _update_address_mode(interface, family, mode, pool):
     pecan.request.dbapi.address_mode_update(interface_id, updates)
 
 
-def _delete_addressing(interface, family, orig_networktype):
+def _delete_addressing(interface, family, existing_interface):
     interface_id = interface['id']
     pecan.request.dbapi.routes_destroy_by_interface(
         interface_id, family)
-    if ((orig_networktype == constants.NETWORK_TYPE_OAM) or
-            (orig_networktype == constants.NETWORK_TYPE_PXEBOOT)):
-        pecan.request.dbapi.addresses_remove_interface_by_interface(
-            interface['id']
-        )
-    elif ((orig_networktype != constants.NETWORK_TYPE_MGMT) and
-            (orig_networktype != constants.NETWORK_TYPE_INFRA)):
-        pecan.request.dbapi.addresses_destroy_by_interface(
-            interface_id, family)
+    for network_id in existing_interface['networks']:
+        network = pecan.request.dbapi.network_get_by_id(network_id)
+        orig_networktype = network.type
+        if ((orig_networktype == constants.NETWORK_TYPE_OAM) or
+                (orig_networktype == constants.NETWORK_TYPE_PXEBOOT)):
+            pecan.request.dbapi.addresses_remove_interface_by_interface(
+                interface['id']
+            )
+        elif ((orig_networktype != constants.NETWORK_TYPE_MGMT) and
+                  (orig_networktype != constants.NETWORK_TYPE_INFRA)):
+            pecan.request.dbapi.addresses_destroy_by_interface(
+                interface_id, family)
     pecan.request.dbapi.address_modes_destroy_by_interface(
         interface_id, family)
 
@@ -1607,7 +1693,7 @@ def _add_extended_attributes(ihost, interface, attributes):
     that got added before sending the object to the database.
     """
     interface_data = interface.as_dict()
-    networktype = cutils.get_primary_network_type(interface_data)
+    networktype = interface_data['networktype']
     if networktype not in address.ALLOWED_NETWORK_TYPES:
         # No need to create new address mode records if the interface type
         # does not support it
@@ -1642,7 +1728,7 @@ def _update_ports(op, interface, ihost, ports):
                 values = {'interface_id': interface['id']}
             # else if old port disassociated
             elif ((p.uuid not in port_list and p.name not in port_list) and
-                    p.interface_id and p.interface_id == this_interface_id):
+                      p.interface_id and p.interface_id == this_interface_id):
                 values = {'interface_id': None}
             # else move on
             else:
@@ -1795,22 +1881,22 @@ def _get_shared_data_interfaces(ihost, interface):
         for ifname in uses:
             parent = pecan.request.dbapi.iinterface_get(ifname, ihost['uuid'])
             used_by.extend(parent['used_by'])
-            network_type = parent.get('networktype', None)
-            if network_type:
-                # This should only match 'data' networktype since that
+            interface_class = parent.get('ifclass', None)
+            if interface_class:
+                # This should only match 'data' interface class since that
                 # is the only type that can be shared on multiple interfaces.
-                if any(network in [constants.NETWORK_TYPE_DATA] for network in network_type.split(",")):
+                if interface_class == constants.INTERFACE_CLASS_DATA:
                     shared_data_interfaces.append(parent)
     else:
         used_by = interface['used_by']
 
     for ifname in used_by:
         child = pecan.request.dbapi.iinterface_get(ifname, ihost['uuid'])
-        network_type = child.get('networktype', None)
-        if network_type:
-            # This should only match 'data' networktype since that
+        interface_class = child.get('ifclass', None)
+        if interface_class:
+            # This should only match 'data' interface class since that
             # is the only type that can be shared on multiple interfaces.
-            if any(network in [constants.NETWORK_TYPE_DATA] for network in network_type.split(",")):
+            if interface_class == constants.INTERFACE_CLASS_DATA:
                 shared_data_interfaces.append(child)
 
     return shared_data_interfaces
@@ -1886,17 +1972,15 @@ def _neutron_bind_interface(ihost, interface, test=False):
     if not _neutron_host_extension_supported():
         # No action required if neutron does not support the host extension
         return
-    networktypelist = []
-    if interface['networktype']:
-        networktypelist = [network.strip() for network in interface['networktype'].split(",")]
-    if constants.NETWORK_TYPE_DATA in networktypelist:
+
+    if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         networktype = constants.NETWORK_TYPE_DATA
-    elif constants.NETWORK_TYPE_PCI_PASSTHROUGH in networktypelist:
+    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
         networktype = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-    elif constants.NETWORK_TYPE_PCI_SRIOV in networktypelist:
+    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV:
         networktype = constants.NETWORK_TYPE_PCI_SRIOV
     else:
-        msg = _("Invalid network type %s: " % interface['networktype'])
+        msg = _("Invalid interface class %s: " % interface['ifclass'])
         raise wsme.exc.ClientSideError(msg)
 
     interface_uuid = interface['uuid']
@@ -2034,6 +2118,9 @@ def _create(interface, from_profile=False):
     if not interface.get('uuid'):
         interface['uuid'] = str(uuid.uuid4())
 
+    if 'ifclass' in interface and interface['ifclass'] == 'none':
+        interface.update({'ifclass': None})
+
     # Get ports
     ports = None
     uses_if = None
@@ -2051,6 +2138,11 @@ def _create(interface, from_profile=False):
         interface.update({'used_by': []})
     elif 'used_by' not in interface:
         interface.update({'used_by': []})
+
+    if 'networks' in interface and interface['networks'] is None:
+        interface.update({'networks': []})
+    elif 'networks' not in interface:
+        interface.update({'networks': []})
 
     # Check mtu before setting defaults
     interface = _check_interface_mtu(interface, ihost, from_profile=from_profile)
@@ -2070,8 +2162,24 @@ def _create(interface, from_profile=False):
         interface = set_interface_mac(ihost, interface)
 
     new_interface = pecan.request.dbapi.iinterface_create(
-                          forihostid,
-                          interface)
+        forihostid,
+        interface)
+
+    # Create network-interface
+    try:
+        if (new_interface['ifclass'] and
+                new_interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM):
+            if 'networks' in interface.keys() and interface['networks']:
+                for network_id in interface['networks']:
+                    values = {'interface_id': new_interface['id'],
+                              'network_id': network_id}
+                    pecan.request.dbapi.interface_network_create(values)
+    except Exception as e:
+        LOG.exception("Failed to create network interface association: "
+                      "new_interface={} interface={}".format(
+                          new_interface.as_dict(), interface))
+        pecan.request.dbapi.iinterface_destroy(new_interface.as_dict()['uuid'])
+        raise e
 
     try:
         # Add extended attributes stored in other tables
@@ -2084,9 +2192,8 @@ def _create(interface, from_profile=False):
         raise e
 
     try:
-        if (interface['networktype'] and
-            (any(network.strip() in NEUTRON_NETWORK_TYPES for network in
-                interface['networktype'].split(",")))):
+        if (interface['ifclass'] and
+                interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
             _neutron_bind_interface(ihost, new_interface.as_dict())
     except Exception as e:
         LOG.exception("Failed to update neutron bindings: "
@@ -2114,9 +2221,8 @@ def _create(interface, from_profile=False):
             LOG.exception("Failed to update ports for interface "
                           "interfaces: new_interface={} ports={}".format(
                               new_interface.as_dict(), ports))
-            if (interface['networktype'] and
-                any(network.strip() in NEUTRON_NETWORK_TYPES for network in
-                    interface['networktype'].split(","))):
+            if (interface['ifclass'] and
+                    interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
                 _neutron_unbind_interface(ihost, new_interface.as_dict())
             pecan.request.dbapi.iinterface_destroy(new_interface.as_dict()['uuid'])
             raise e
@@ -2136,16 +2242,19 @@ def _create(interface, from_profile=False):
 
     if ihost['recordtype'] != "profile":
         try:
-            networktype = cutils.get_primary_network_type(new_interface)
-            if networktype == constants.NETWORK_TYPE_MGMT:
-                _update_host_mgmt_address(ihost, new_interface.as_dict())
-            elif networktype == constants.NETWORK_TYPE_INFRA:
-                _update_host_infra_address(ihost, new_interface.as_dict())
-            if ihost['personality'] == constants.CONTROLLER:
-                if networktype == constants.NETWORK_TYPE_OAM:
-                    _update_host_oam_address(ihost, new_interface.as_dict())
-                elif networktype == constants.NETWORK_TYPE_PXEBOOT:
-                    _update_host_pxeboot_address(ihost, new_interface.as_dict())
+            ifclass = new_interface['ifclass']
+            if ifclass == constants.INTERFACE_CLASS_PLATFORM and interface['networks']:
+                for network_id in interface['networks']:
+                    network = pecan.request.dbapi.network_get_by_id(network_id)
+                    if network.type == constants.NETWORK_TYPE_MGMT:
+                        _update_host_mgmt_address(ihost, new_interface.as_dict())
+                    elif network.type == constants.NETWORK_TYPE_INFRA:
+                        _update_host_infra_address(ihost, new_interface.as_dict())
+                    if ihost['personality'] == constants.CONTROLLER:
+                        if network.type == constants.NETWORK_TYPE_OAM:
+                            _update_host_oam_address(ihost, new_interface.as_dict())
+                        elif network.type == constants.NETWORK_TYPE_PXEBOOT:
+                            _update_host_pxeboot_address(ihost, new_interface.as_dict())
         except Exception as e:
             LOG.exception(
                 "Failed to add static infrastructure interface address: "
@@ -2155,16 +2264,19 @@ def _create(interface, from_profile=False):
             raise e
 
         # Covers off LAG case here.
-        networktype = cutils.get_primary_network_type(new_interface)
-        if networktype == constants.NETWORK_TYPE_MGMT:
-            cutils.perform_distributed_cloud_config(pecan.request.dbapi,
-                                                    new_interface['id'])
+        ifclass = new_interface['ifclass']
+        if ifclass == constants.INTERFACE_CLASS_PLATFORM and new_interface['networks']:
+            for network_id in new_interface['networks']:
+                network = pecan.request.dbapi.network_get_by_id(network_id)
+                if network.type == constants.NETWORK_TYPE_MGMT:
+                    cutils.perform_distributed_cloud_config(pecan.request.dbapi,
+                                                            new_interface['id'])
 
     return new_interface
 
 
 def _check(op, interface, ports=None, ifaces=None, from_profile=False,
-        existing_interface=None):
+           existing_interface=None):
     # Semantic checks
     ihost = pecan.request.dbapi.ihost_get(interface['ihost_uuid']).as_dict()
     _check_host(ihost)
@@ -2174,7 +2286,7 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
         if ifaces:
             interfaces = pecan.request.dbapi.iinterface_get_by_ihost(interface['ihost_uuid'])
             if len(ifaces) > 1 and \
-               interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+                    interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
                 # Can only have one interface associated to vlan interface type
                 raise wsme.exc.ClientSideError(
                     _("Can only have one interface for vlan type. (%s)" % ifaces))
@@ -2204,7 +2316,6 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
 
 
 def _update(interface_uuid, interface_values, from_profile):
-
     return objects.interface.get_by_uuid(pecan.request.context, interface_uuid)
 
 
@@ -2263,10 +2374,13 @@ def _delete(interface, from_profile=False):
         msg = _("Cannot delete an ethernet interface type.")
         raise wsme.exc.ClientSideError(msg)
 
-    if interface['iftype'] == constants.INTERFACE_TYPE_VIRTUAL and \
-                    interface['networktype'] == constants.NETWORK_TYPE_MGMT:
-        msg = _("Cannot delete a virtual management interface.")
-        raise wsme.exc.ClientSideError(msg)
+    if interface['networks']:
+        for network_id in interface['networks']:
+            network = pecan.request.dbapi.network_get_by_id(network_id)
+            if interface['iftype'] == constants.INTERFACE_TYPE_VIRTUAL and \
+                    network.type == constants.NETWORK_TYPE_MGMT:
+                msg = _("Cannot delete a virtual management interface.")
+                raise wsme.exc.ClientSideError(msg)
 
     # Update ports
     ports = pecan.request.dbapi.ethernet_port_get_all(
@@ -2303,18 +2417,20 @@ def _delete(interface, from_profile=False):
 
     # Delete interface
     try:
-        primary_networktype = cutils.get_primary_network_type(interface)
-        if ((primary_networktype == constants.NETWORK_TYPE_MGMT) or
-                (primary_networktype == constants.NETWORK_TYPE_INFRA) or
-                (primary_networktype == constants.NETWORK_TYPE_PXEBOOT) or
-                (primary_networktype == constants.NETWORK_TYPE_OAM)):
-            pecan.request.dbapi.addresses_remove_interface_by_interface(
-                interface['id']
-            )
+        primary_ifclass = interface['ifclass']
+        if primary_ifclass == constants.INTERFACE_CLASS_PLATFORM:
+            for network_id in interface['networks']:
+                network = pecan.request.dbapi.network_get_by_id(network_id)
+                if ((network.type == constants.NETWORK_TYPE_MGMT) or
+                        (network.type == constants.NETWORK_TYPE_INFRA) or
+                        (network.type == constants.NETWORK_TYPE_PXEBOOT) or
+                        (network.type == constants.NETWORK_TYPE_OAM)):
+                    pecan.request.dbapi.addresses_remove_interface_by_interface(
+                        interface['id']
+                    )
         pecan.request.dbapi.iinterface_destroy(interface['uuid'])
-        if (interface['networktype'] and
-            any(network.strip() in NEUTRON_NETWORK_TYPES for network in
-                interface['networktype'].split(","))):
+        if (interface['ifclass'] and
+                    interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
             # Unbind the interface in neutron
             _neutron_unbind_interface(ihost, interface)
         # Update shared data interface bindings, if required
