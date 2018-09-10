@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import sys
 import os
-import ConfigParser
+from six.moves import configparser
 from common.validator import validate
 from common.configobjects import DEFAULT_CONFIG, REGION_CONFIG
 from common.exceptions import ConfigFail, ValidateFail
@@ -15,7 +15,7 @@ from common.exceptions import ConfigFail, ValidateFail
 
 def parse_config(config_file):
     """Parse system config file"""
-    config = ConfigParser.RawConfigParser()
+    config = configparser.RawConfigParser()
     try:
         config.read(config_file)
     except Exception as e:
@@ -93,7 +93,7 @@ def main():
         except ImportError:
             offboard = True
         validate(system_config, config_type, None, offboard)
-    except ConfigParser.Error as e:
+    except configparser.Error as e:
         print("Error parsing configuration file %s: %s" % (config_file, e))
     except (ConfigFail, ValidateFail) as e:
         print("\nValidation failed: %s" % e)

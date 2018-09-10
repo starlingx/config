@@ -42,7 +42,7 @@ postgres=# create database openstack_citest with owner openstack_citest;
 """
 
 import commands
-import ConfigParser
+from six.moves import configparser
 import os
 import urlparse
 
@@ -171,13 +171,13 @@ class BaseMigrationTestCase(test_utils.BaseTestCase):
         # once. No need to re-run this on each test...
         LOG.debug('config_path is %s' % self.CONFIG_FILE_PATH)
         if os.path.exists(self.CONFIG_FILE_PATH):
-            cp = ConfigParser.RawConfigParser()
+            cp = configparser.RawConfigParser()
             try:
                 cp.read(self.CONFIG_FILE_PATH)
                 defaults = cp.defaults()
                 for key, value in defaults.items():
                     self.test_databases[key] = value
-            except ConfigParser.ParsingError as e:
+            except configparser.ParsingError as e:
                 self.fail("Failed to read test_migrations.conf config "
                           "file. Got error: %s" % e)
         else:

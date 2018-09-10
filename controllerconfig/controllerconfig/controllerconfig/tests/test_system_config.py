@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
-import ConfigParser
+from six.moves import configparser
 import mock
 import os
 import pytest
@@ -200,10 +200,10 @@ def test_system_config_validation():
         validate(system_config, DEFAULT_CONFIG, None, False)
 
     system_config.remove_option('PXEBOOT_NETWORK', 'PXEBOOT_CIDR')
-    with pytest.raises(ConfigParser.NoOptionError):
+    with pytest.raises(configparser.NoOptionError):
         cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
                                    validate_only=True)
-    with pytest.raises(ConfigParser.NoOptionError):
+    with pytest.raises(configparser.NoOptionError):
         validate(system_config, DEFAULT_CONFIG, None, False)
 
     # Test overlap of MGMT_NETWORK CIDR

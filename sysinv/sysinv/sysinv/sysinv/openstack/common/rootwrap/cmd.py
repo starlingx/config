@@ -35,7 +35,7 @@
 
 from __future__ import print_function
 
-import ConfigParser
+from six.moves import configparser
 import logging
 import os
 import pwd
@@ -82,13 +82,13 @@ def main():
 
     # Load configuration
     try:
-        rawconfig = ConfigParser.RawConfigParser()
+        rawconfig = configparser.RawConfigParser()
         rawconfig.read(configfile)
         config = wrapper.RootwrapConfig(rawconfig)
     except ValueError as exc:
         msg = "Incorrect value in %s: %s" % (configfile, exc.message)
         _exit_error(execname, msg, RC_BADCONFIG, log=False)
-    except ConfigParser.Error:
+    except configparser.Error:
         _exit_error(execname, "Incorrect configuration file: %s" % configfile,
                     RC_BADCONFIG, log=False)
 

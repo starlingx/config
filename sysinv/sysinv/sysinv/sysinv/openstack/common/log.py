@@ -29,7 +29,7 @@ It also allows setting of formatting information through conf.
 
 """
 
-import ConfigParser
+from six.moves import configparser
 import cStringIO
 import inspect
 import itertools
@@ -347,7 +347,7 @@ class LogConfigError(Exception):
 def _load_log_config(log_config):
     try:
         logging.config.fileConfig(log_config)
-    except ConfigParser.Error as exc:
+    except configparser.Error as exc:
         raise LogConfigError(log_config, str(exc))
 
 

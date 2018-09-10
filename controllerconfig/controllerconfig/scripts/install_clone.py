@@ -11,7 +11,7 @@ import uuid
 import shutil
 import tempfile
 import subprocess
-import ConfigParser
+from six.moves import configparser
 
 import tsconfig.tsconfig as tsconfig
 from controllerconfig.common import log
@@ -26,7 +26,7 @@ LOG = log.get_logger("cloning")
 DEVNULL = open(os.devnull, 'w')
 INI_FILE = os.path.join("/", clone.CLONE_ARCHIVE_DIR, clone.CLONE_ISO_INI)
 SECTION = "clone_iso"
-parser = ConfigParser.SafeConfigParser()
+parser = configparser.SafeConfigParser()
 clone_name = ""
 
 

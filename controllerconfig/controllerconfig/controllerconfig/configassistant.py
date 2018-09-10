@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
-import ConfigParser
+from six.moves import configparser
 import datetime
 import errno
 import getpass
@@ -2346,7 +2346,7 @@ class ConfigAssistant():
             print "Specified answer or config file not found"
             raise ConfigFail("Answer or Config file not found")
 
-        config = ConfigParser.RawConfigParser()
+        config = configparser.RawConfigParser()
         config_sections = []
 
         try:
