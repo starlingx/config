@@ -25,7 +25,6 @@ neutron::agents::ml2::sriov::polling_interval: 5
 
 
 # nova
-nova::compute::enabled: true
 nova::compute::manage_service: false
 nova::compute::config_drive_format: 'iso9660'
 nova::compute::instance_usage_audit: true

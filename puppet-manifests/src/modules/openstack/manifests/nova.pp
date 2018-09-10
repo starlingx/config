@@ -672,8 +672,12 @@ class openstack::nova::compute::pci
 
 
 class openstack::nova::compute::reload {
-  exec { 'pmon-restart-nova-compute':
-    command => "pmon-restart nova-compute",
+  include ::platform::kubernetes::params
+
+  if $::platform::kubernetes::params::enabled != true {
+    exec { 'pmon-restart-nova-compute':
+      command => "pmon-restart nova-compute",
+    }
   }
 }
 

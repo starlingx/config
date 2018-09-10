@@ -10,6 +10,7 @@ class openstack::ceilometer {
   include ::platform::amqp::params
   include ::platform::params
   include ::openstack::ceilometer::params
+  include ::platform::kubernetes::params
 
   class { '::ceilometer':
     rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
@@ -21,7 +22,8 @@ class openstack::ceilometer {
       $::platform::params::init_keystone) {
     include ::ceilometer::keystone::auth
 
-    if $::platform::params::distributed_cloud_role != 'systemcontroller' {
+    if ($::platform::params::distributed_cloud_role != 'systemcontroller' and
+        $::platform::kubernetes::params::enabled != true) {
       include ::openstack::gnocchi::params
 
       Keystone_endpoint["${::openstack::gnocchi::params::region_name}/gnocchi::metric"] ->
@@ -199,6 +201,7 @@ class openstack::ceilometer::polling (
   $volume_polling_interval         = 600,
 ) {
    include ::platform::params
+   include ::platform::kubernetes::params
 
    file { "/etc/ceilometer/polling.yaml":
      ensure  => 'present',
@@ -215,7 +218,8 @@ class openstack::ceilometer::polling (
      $central_namespace = false
    }
 
-   if str2bool($::disable_compute_services) {
+   if (str2bool($::disable_compute_services) or
+       $::platform::kubernetes::params::enabled) {
      $agent_enable = false
      $compute_namespace = false
 
