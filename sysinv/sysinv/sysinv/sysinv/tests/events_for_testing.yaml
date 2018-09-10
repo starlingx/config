@@ -9,13 +9,13 @@
 ############################################################################
 #
 # Record Format ... for documentation
-# 
-# 100.001: 
+#
+# 100.001:
 #   Type: < Alarm |  Log >
 #   Description: < yaml string >
 #                OR
-#                [ < yaml string >,      // list of yaml strings
-#                  < yaml string >  ]
+#                [< yaml string >,      // list of yaml strings
+#                  < yaml string >]
 #                OR
 #                critical: < yaml string >     // i.e. dictionary of yaml strings indexed by severity
 #                major:    < yaml string >
@@ -23,11 +23,11 @@
 #                warning:  < yaml string >
 #   Entity_Instance_ID: < yaml string ... e.g. host=<hostname>.interface=<ifname> >
 #                       OR
-#                       [ < yaml string >,      // list of yaml strings
-#                         < yaml string >  ]
+#                       [< yaml string >,      // list of yaml strings
+#                         < yaml string >]
 #   Severity: < critical |  major |  minor |  warning >
 #                       OR
-#                       [ critical, major ]      // list of severity values
+#                       [critical, major]      // list of severity values
 #   Proposed_Repair_Action: < yaml string >      // NOTE ALARM ONLY FIELD
 #                           OR
 #                           critical: < yaml string >     // i.e. dictionary of yaml strings indexed by severity
@@ -40,14 +40,14 @@
 #                       major:    < yaml string >
 #                       minor:    < yaml string >
 #                       warning:  < yaml string >
-#   Inhibit_Alarms: < True | False >            // NOTE ALARM ONLY FIELD
+#   Inhibit_Alarms: < true | false >            // NOTE ALARM ONLY FIELD
 #   Alarm_Type: < operational-violation | ... >
 #   Probable_Cause: < timing-problem | ... >
 #                   OR
-#                   [ < timing-problem | ... >,      // list of probable-causes
-#                     < timing-problem | ... >  ]
-#   Service_Affecting: < True | False >
-#   Suppression: < True | False >               // NOTE ALARM ONLY FIELD
+#                   [< timing-problem | ... >,      // list of probable-causes
+#                     < timing-problem | ... >]
+#   Service_Affecting: < true | false >
+#   Suppression: < true | false >               // NOTE ALARM ONLY FIELD
 #
 #
 #   Other Notes:
@@ -57,58 +57,58 @@
 #        then they should all have the same # of items and corresponding list items represent instance of alarm
 #      - if you can't describe the alarm/log based on the above rules,
 #        then you can use a multi-line string format
-# 
+#
 ############################################################################
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   RMON
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 100.101:
     Type: Alarm
     Description: "Platform CPU threshold exceeded; threshold x%, actual y% ."
     Entity_Instance_ID: host=<hostname>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support."
-    Maintenance_Action: 
+    Maintenance_Action:
         critical: degrade
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: threshold-crossed
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
 100.102:
     Type: Alarm
     Description: "VSwitch CPU threshold exceeded; threshold x%, actual y% ."
     Entity_Instance_ID: host=<hostname>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support."
-    Maintenance_Action: 
+    Maintenance_Action:
         critical: degrade
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: threshold-crossed
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
 100.103:
     Type: Alarm
     Description: "Memory threshold exceeded; threshold x%, actual y% ."
     Entity_Instance_ID: host=<hostname>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support; may require additional memory on Host."
-    Maintenance_Action: 
+    Maintenance_Action:
         critical: degrade
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: threshold-crossed
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
 100.104:    # NOTE This should really be split into two different Alarms.
     Type: Alarm
@@ -122,16 +122,16 @@
         host=<hostname>.filesystem=<mount-dir>
         OR
         host=<hostname>.volumegroup=<volumegroup-name>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support."
-    Maintenance_Action: 
+    Maintenance_Action:
         critical: degrade
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: threshold-crossed
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
 100.105:
     Type: Alarm
@@ -140,11 +140,11 @@
     Severity: major
     Proposed_Repair_Action: Check Management and Infrastructure Networks and Controller or Storage Nodes.
     Maintenance_Action: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.106:
     Type: Alarm
@@ -153,11 +153,11 @@
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
     Maintenance_Action: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.107:
     Type: Alarm
@@ -166,16 +166,16 @@
         OR
         'OAM' Interface failed.
     Entity_Instance_ID: host=<hostname>.interface=<if-name>
-    Severity: [ critical, major ]
+    Severity: [critical, major]
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
-    Maintenance_Action: 
+    Maintenance_Action:
         critical: degrade
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.108:
     Type: Alarm
@@ -184,11 +184,11 @@
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
     Maintenance_Action: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.109:
     Type: Alarm
@@ -197,16 +197,16 @@
         OR
         'MGMT' Interface failed.
     Entity_Instance_ID: host=<hostname>.interface=<if-name>
-    Severity: [ critical, major ]
+    Severity: [critical, major]
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
-    Maintenance_Action: 
+    Maintenance_Action:
         critical: degrade
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.110:
     Type: Alarm
@@ -215,11 +215,11 @@
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
     Maintenance_Action: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.111:
     Type: Alarm
@@ -228,16 +228,16 @@
         OR
         'INFRA' Interface failed.
     Entity_Instance_ID: host=<hostname>.interface=<if-name>
-    Severity: [ critical, major ]
+    Severity: [critical, major]
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
-    Maintenance_Action: 
+    Maintenance_Action:
         critical: degrade
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.112:
     Type: Alarm
@@ -246,11 +246,11 @@
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
     Maintenance_Action: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.113:
     Type: Alarm
@@ -259,38 +259,38 @@
         OR
         'DATA-VRS' Interface down.
     Entity_Instance_ID: host=<hostname>.interface=<if-name>
-    Severity: [ critical, major ]
+    Severity: [critical, major]
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
-    Maintenance_Action: 
+    Maintenance_Action:
         major: degrade
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 100.114:
     Type: Alarm
-    Description: 
+    Description:
         major: "NTP configuration does not contain any valid or reachable NTP servers."
-        minor: "NTP address <IP address>  is not a valid or a reachable NTP server." 
-    Entity_Instance_ID: 
+        minor: "NTP address <IP address>  is not a valid or a reachable NTP server."
+    Entity_Instance_ID:
         major: host=<hostname>.ntp
-        minor: host=<hostname>.ntp=<IP address> 
-    Severity: [ major, minor ]
+        minor: host=<hostname>.ntp=<IP address>
+    Severity: [major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support."
     Maintenance_Action: none
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: communication
     Probable_Cause: unknown
-    Service_Affecting: False
-    Suppression: False
+    Service_Affecting: false
+    Suppression: false
 
 100.115:
     Type: Alarm
     Description: "VSwitch Memory Usage, processor <processor> threshold exceeded; threshold x%, actual y% ."
     Entity_Instance_ID: host=<hostname>.processor=<processor>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support."
     Maintenance_Action:
         critical: degrade
@@ -298,14 +298,14 @@
     Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: threshold-crossed
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
 100.116:
     Type: Alarm
     Description: "Cinder LVM Thinpool Usage threshold exceeded; threshold x%, actual y% ."
     Entity_Instance_ID: host=<hostname>.volumegroup=<volumegroup>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support."
     Maintenance_Action:
         critical: degrade
@@ -313,14 +313,14 @@
     Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: threshold-crossed
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
 100.117:
     Type: Alarm
     Description: "Nova Thinpool Usage threshold exceeded; threshold x%, actual y% ."
     Entity_Instance_ID: host=<hostname>.volumegroup=<volumegroup>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "Monitor and if condition persists, contact next level of support."
     Maintenance_Action:
         critical: degrade
@@ -328,12 +328,12 @@
     Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: threshold-crossed
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   MAINTENANCE
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 
 200.001:
@@ -343,11 +343,11 @@
     Severity: warning
     Proposed_Repair_Action: Administratively unlock Host to bring it back in-service.
     Maintenance_Action: none
-    Inhibit_Alarms: True
+    Inhibit_Alarms: true
     Alarm_Type: operational-violation
     Probable_Cause: out-of-service
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 200.004:
     Type: Alarm
@@ -358,11 +358,11 @@
     Severity: critical
     Proposed_Repair_Action: If auto-recovery is consistently unable to recover host to the unlocked-enabled state contact next level of support or lock and replace failing host.
     Maintenance_Action: auto recover
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: application-subsystem-failure
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 200.011:
     Type: Alarm
@@ -371,11 +371,11 @@
     Severity: critical
     Proposed_Repair_Action: If auto-recovery is consistently unable to recover host to the unlocked-enabled state contact next level of support or lock and replace failing host.
     Maintenance_Action: auto-recover
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: configuration-or-customization-error
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 200.010:
     Type: Alarm
@@ -384,24 +384,27 @@
     Severity: warning
     Proposed_Repair_Action: Check Host's board management configuration and connectivity.
     Maintenance_Action: auto recover
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: communication-subsystem-failure
-    Service_Affecting: False
-    Suppression: False
+    Service_Affecting: false
+    Suppression: false
 
 200.012:
     Type: Alarm
     Description: <hostname> controller function has in-service failure while compute services remain healthy.
     Entity_Instance_ID: host=<hostname>
     Severity: major
-    Proposed_Repair_Action: Lock and then Unlock host to recover. Avoid using 'Force Lock' action as that will impact compute services running on this host.  If lock action fails then contact next level of support to investigate and recover.
+    Proposed_Repair_Action: |-
+        Lock and then Unlock host to recover.
+        Avoid using 'Force Lock' action as that will impact compute services running on this host,
+        If lock action fails then contact next level of support to investigate and recover.
     Maintenance_Action: "degrade - requires manual action"
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: communication-subsystem-failure
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 200.013:
     Type: Alarm
@@ -410,47 +413,51 @@
     Severity: major
     Proposed_Repair_Action: Enable second controller and Switch Activity (Swact) over to it as soon as possible. Then Lock and Unlock host to recover its local compute service.
     Maintenance_Action: "degrade - requires manual action"
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: communication-subsystem-failure
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 200.005:
     Type: Alarm
     Description: |-
         Degrade:
         <hostname> is experiencing an intermittent 'Management Network'  communication failures that have exceeded its lower alarming threshold.
-        
-        Failure: 
+
+        Failure:
         <hostname> is experiencing a persistent critical 'Management Network' communication failure."
     Entity_Instance_ID: host=<hostname>
-    Severity: [ critical, major ]
-    Proposed_Repair_Action: "Check 'Management Network' connectivity and support for multicast messaging. If problem consistently occurs after that and Host is reset, then contact next level of support or lock and replace failing host."
+    Severity: [critical, major]
+    Proposed_Repair_Action: |-
+        "Check 'Management Network' connectivity and support for multicast messaging.
+        If problem consistently occurs after that and Host is reset, then contact next level of support or lock and replace failing host."
     Maintenance_Action: auto recover
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: communication
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 200.009:
     Type: Alarm
     Description: |-
         Degrade:
         <hostname> is experiencing an intermittent 'Infrastructure Network'  communication failures that have exceeded its lower alarming threshold.
-        
+
         Failure:
         <hostname> is experiencing a persistent critical 'Infrastructure Network' communication failure."
     Entity_Instance_ID: host=<hostname>
-    Severity: [ critical, major ]
-    Proposed_Repair_Action: "Check 'Infrastructure Network' connectivity and support for multicast messaging. If problem consistently occurs after that and Host is reset, then contact next level of support or lock and replace failing host."
+    Severity: [critical, major]
+    Proposed_Repair_Action: |-
+        "Check 'Infrastructure Network' connectivity and support for multicast messaging.
+        If problem consistently occurs after that and Host is reset, then contact next level of support or lock and replace failing host."
     Maintenance_Action: auto recover
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: communication
     Probable_Cause: unknown
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 
 200.006:
@@ -458,43 +465,44 @@
     Description: |-
         Main Process Monitor Daemon Failure (major):
             <hostname> 'Process Monitor' (pmond) process is not running or functioning properly. The system is trying to recover this process.
-        
+
         Monitored Process Failure (critical/major/minor):
-            Critical: <hostname> critical '<processname>' process has failed and could not be auto-recovered gracefully. 
+            Critical: <hostname> critical '<processname>' process has failed and could not be auto-recovered gracefully.
                       Auto-recovery progression by host reboot is required and in progress.
             Major:    <hostname> is degraded due to the failure of its '<processname>' process. Auto recovery of this major process is in progress.
             Minor:    <hostname> '<processname>' process has failed. Auto recovery of this minor process is in progress.
                       OR
                       <hostname> '<processname>' process has failed. Manual recovery is required.
     Entity_Instance_ID: host=<hostname>.process=<processname>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: |-
-        If this alarm does not automatically clear after some time and continues to be asserted after Host is locked and unlocked then contact next level of support for root cause analysis and recovery.
-    
+        If this alarm does not automatically clear after some time and continues to be asserted after Host is locked and unlocked
+        then contact next level of support for root cause analysis and recovery.
+
         If problem consistently occurs after Host is locked and unlocked then contact next level of support for root cause analysys and recovery."
     Maintenance_Action:
         critical: auto-recover
         major: degrade
-        minor: 
-    Inhibit_Alarms: False
+        minor:
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: unknown
     Service_Affecting:
-        critical: True
-        major: True
-        minor: False
-    Suppression: True
+        critical: true
+        major: true
+        minor: false
+    Suppression: true
 
 
 # 200.006:      // NOTE using duplicate ID of a completely analogous Alarm for this
 #     Type: Log
 #     Description: |-
 #         Main Process Monitor Daemon Failure (major)
-#             <hostname> 'Process Monitor' (pmond) process is not running or functioning properly. 
+#             <hostname> 'Process Monitor' (pmond) process is not running or functioning properly.
 #             The system is trying to recover this process.
-#     
-#         Monitored Process Failure (critical/major/minor) 
-#             critical: <hostname> critical '<processname>' process has failed and could not be auto-recovered gracefully. 
+#
+#         Monitored Process Failure (critical/major/minor)
+#             critical: <hostname> critical '<processname>' process has failed and could not be auto-recovered gracefully.
 #                       Auto-recovery progression by host reboot is required and in progress.
 #             major:    <hostname> is degraded due to the failure of its '<processname>' process. Auto recovery of this major process is in progress.
 #             minor:    <hostname> '<processname>' process has failed. Auto recovery of this minor process is in progress.
@@ -504,43 +512,46 @@
 #     Severity: minor
 #     Alarm_Type: other
 #     Probable_Cause: unspecified-reason
-#     Service_Affecting: True
+#     Service_Affecting: true
 
 
 200.007:
     Type: Alarm
-    Description: 
+    Description:
         critical: "Host is degraded due to a 'critical' out-of-tolerance reading from  the '<sensorname>' sensor"
-        major:    "Host is degraded due to a 'major' out-of-tolerance reading from  the '<sensorname>' sensor"
-        minor:    "Host is reporting a 'minor' out-of-tolerance reading from the '<sensorname>' sensor"
+        major: "Host is degraded due to a 'major' out-of-tolerance reading from  the '<sensorname>' sensor"
+        minor: "Host is reporting a 'minor' out-of-tolerance reading from the '<sensorname>' sensor"
     Entity_Instance_ID: host=<hostname>.sensor=<sensorname>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: "If problem consistently occurs after Host is power cycled and or reset, contact next level of support or lock and replace failing host."
     Maintenance_Action:
         critical: degrade
         major: degrade
         minor: auto-recover (polling)
-    Inhibit_Alarms: 
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unspecified-reason
-    Service_Affecting: 
-        critical: True
-        major: False
-        minor: False
-    Suppression: True
+    Service_Affecting:
+        critical: true
+        major: false
+        minor: false
+    Suppression: true
 
 200.014:
     Type: Alarm
     Description: "The Hardware Monitor was unable to load, configure and monitor one or more hardware sensors."
     Entity_Instance_ID: host=<hostname>
     Severity: minor
-    Proposed_Repair_Action: Check Board Management Controller provisioning. Try reprovisioning the BMC. If problem persists try power cycling the host and then the entire server including the BMC power. If problem persists then contact next level of support.
+    Proposed_Repair_Action: |-
+        Check Board Management Controller provisioning. Try reprovisioning the BMC.
+        If problem persists try power cycling the host and then the entire server including the BMC power.
+        If problem persists then contact next level of support.
     Maintenance_Action: None
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: False
-    Suppression: True
+    Service_Affecting: false
+    Suppression: true
 
 200.015:
     Type: Alarm
@@ -549,82 +560,82 @@
     Severity: major
     Proposed_Repair_Action: Check board management connectivity and try rebooting the board management controller. If problem persists contact next level of support or lock and replace failing host.
     Maintenance_Action: None
-    Inhibit_Alarms: False
+    Inhibit_Alarms: false
     Alarm_Type: operational-violation
     Probable_Cause: unknown
-    Service_Affecting: False
-    Suppression: False
+    Service_Affecting: false
+    Suppression: false
 
 
 200.020:
     Type: Log
-    Description: [ "<hostname> has been 'discovered' on the network",
-                   "<hostname> has been 'added' to the system",
-                   "<hostname> has 'entered' multi-node failure avoidance",
-                   "<hostname> has 'exited' multi-node failure avoidance"    ]
-    Entity_Instance_ID: [ host=<hostname>.event=discovered,
-                          host=<hostname>.event=add,
-                          host=<hostname>.event=mnfa_enter,
-                          host=<hostname>.event=mnfa_exit   ]
+    Description: ["<hostname> has been 'discovered' on the network",
+                  "<hostname> has been 'added' to the system",
+                  "<hostname> has 'entered' multi-node failure avoidance",
+                  "<hostname> has 'exited' multi-node failure avoidance"]
+    Entity_Instance_ID: [host=<hostname>.event=discovered,
+                         host=<hostname>.event=add,
+                         host=<hostname>.event=mnfa_enter,
+                         host=<hostname>.event=mnfa_exit]
     Severity: warning
     Alarm_Type: other
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
+    Service_Affecting: true
 
 
 200.021:
     Type: Log
-    Description: [ "<hostname> board management controller has been 'provisioned'",
-                   "<hostname> board management controller has been 're-provisioned'",
-                   "<hostname> board management controller has been 'de-provisioned'",
-                   "<hostname> manual 'unlock' request",
-                   "<hostname> manual 'reboot' request",
-                   "<hostname> manual 'reset' request",
-                   "<hostname> manual 'power-off' request",
-                   "<hostname> manual 'power-on' request",
-                   "<hostname> manual 'reinstall' request",
-                   "<hostname> manual 'force-lock' request",
-                   "<hostname> manual 'delete' request",
-                   "<hostname> manual 'controller switchover' request"                     ]
-    Entity_Instance_ID: [ host=<hostname>.command=provision,
-                          host=<hostname>.command=reprovision,
-                          host=<hostname>.command=deprovision,
-                          host=<hostname>.command=unlock,
-                          host=<hostname>.command=reboot,
-                          host=<hostname>.command=reset,
-                          host=<hostname>.command=power-off,
-                          host=<hostname>.command=power-on,
-                          host=<hostname>.command=reinstall,
-                          host=<hostname>.command=force-lock,
-                          host=<hostname>.command=delete,
-                          host=<hostname>.command=swact         ]
+    Description: ["<hostname> board management controller has been 'provisioned'",
+                  "<hostname> board management controller has been 're-provisioned'",
+                  "<hostname> board management controller has been 'de-provisioned'",
+                  "<hostname> manual 'unlock' request",
+                  "<hostname> manual 'reboot' request",
+                  "<hostname> manual 'reset' request",
+                  "<hostname> manual 'power-off' request",
+                  "<hostname> manual 'power-on' request",
+                  "<hostname> manual 'reinstall' request",
+                  "<hostname> manual 'force-lock' request",
+                  "<hostname> manual 'delete' request",
+                  "<hostname> manual 'controller switchover' request"]
+    Entity_Instance_ID: [host=<hostname>.command=provision,
+                         host=<hostname>.command=reprovision,
+                         host=<hostname>.command=deprovision,
+                         host=<hostname>.command=unlock,
+                         host=<hostname>.command=reboot,
+                         host=<hostname>.command=reset,
+                         host=<hostname>.command=power-off,
+                         host=<hostname>.command=power-on,
+                         host=<hostname>.command=reinstall,
+                         host=<hostname>.command=force-lock,
+                         host=<hostname>.command=delete,
+                         host=<hostname>.command=swact]
     Severity: warning
     Alarm_Type: other
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 
 200.022:
     Type: Log
-    Description: [ "<hostname> is now 'disabled'",
-                   "<hostname> is now 'enabled'",
-                   "<hostname> is now 'online'",
-                   "<hostname> is now 'offline'",
-                   "<hostname> is 'disabled-failed' to the system" ]
-    Entity_Instance_ID: [ host=<hostname>.state=disabled,
-                          host=<hostname>.state=enabled,
-                          host=<hostname>.status=online,
-                          host=<hostname>.status=offline,
-                          host=<hostname>.status=failed   ]
+    Description: ["<hostname> is now 'disabled'",
+                  "<hostname> is now 'enabled'",
+                  "<hostname> is now 'online'",
+                  "<hostname> is now 'offline'",
+                  "<hostname> is 'disabled-failed' to the system"]
+    Entity_Instance_ID: [host=<hostname>.state=disabled,
+                         host=<hostname>.state=enabled,
+                         host=<hostname>.status=online,
+                         host=<hostname>.status=offline,
+                         host=<hostname>.status=failed]
     Severity: warning
     Alarm_Type: other
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
+    Service_Affecting: true
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   BACKUP AND RESTORE
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 210.001:
     Type: Alarm
@@ -632,17 +643,17 @@
     Entity_Instance_ID: host=controller
     Severity: minor
     Proposed_Repair_Action: No action required.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
-    Suppression: False
+    Service_Affecting: false
+    Suppression: false
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   SYSTEM CONFIGURATION
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 250.001:
     Type: Alarm
@@ -650,17 +661,17 @@
     Entity_Instance_ID: host=<hostname>
     Severity: major
     Proposed_Repair_Action: Administratively lock and unlock <hostname>  to update config.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   VM Compute Services
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 270.001:
     Type: Alarm
     Description: "Host <host_name> compute services failure[, reason = <reason_text>]"
@@ -671,8 +682,8 @@
     Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 270.101:
     Type: Log
@@ -681,7 +692,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 270.102:
     Type: Log
@@ -690,7 +701,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 270.103:
     Type: Log
@@ -699,7 +710,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 
 275.001:
@@ -709,12 +720,12 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   NETWORK
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 300.001:
     Type: Alarm
@@ -722,12 +733,12 @@
     Entity_Instance_ID: host=<hostname>.port=<port-uuid>
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: equipment
     Probable_Cause: loss-of-signal
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 
 300.002:
@@ -737,14 +748,14 @@
         OR
         'Data' Interface failed.
     Entity_Instance_ID: host=<hostname>.interface=<if-uuid>
-    Severity: [ critical, major ]
+    Severity: [critical, major]
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: equipment
     Probable_Cause: loss-of-signal
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 
 300.003:
@@ -753,12 +764,12 @@
     Entity_Instance_ID: host=<hostname>.agent=<agent-uuid>
     Severity: major
     Proposed_Repair_Action: "If condition persists, attempt to clear issue by administratively locking and unlocking the Host."
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 
 300.004:
@@ -767,12 +778,12 @@
     Entity_Instance_ID: host=<hostname>.providernet=<pnet-uuid>
     Severity: major
     Proposed_Repair_Action: Enable compute hosts with required provider network connectivity.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 
 300.005:
@@ -788,13 +799,13 @@
     Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   HIGH AVAILABILITY
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 400.001:
     Type: Alarm
@@ -805,14 +816,14 @@
         OR
         Service group warning; <list of affected services>.
     Entity_Instance_ID: service_domain=<domain_name>.service_group=<group_name>.host=<hostname>
-    Severity: [ critical, major, minor ]
+    Severity: [critical, major, minor]
     Proposed_Repair_Action: Contact next level of support.
-    Maintenance_Action: 
-    Inhibit_Alarms: False
+    Maintenance_Action:
+    Inhibit_Alarms: false
     Alarm_Type: processing-error
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 
 400.002:
@@ -828,12 +839,12 @@
     Entity_Instance_ID: service_domain=<domain_name>.service_group=<group_name>
     Severity: major
     Proposed_Repair_Action: "Bring a controller node back in to service, otherwise contact next level of support."
-    Maintenance_Action: 
-    Inhibit_Alarms: False
+    Maintenance_Action:
+    Inhibit_Alarms: false
     Alarm_Type: processing-error
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 
 400.003:
@@ -849,12 +860,12 @@
     Entity_Instance_ID: host=<hostname>
     Severity: critical
     Proposed_Repair_Action: Contact next level of support to obtain a new license key.
-    Maintenance_Action: 
-    Inhibit_Alarms: False
+    Maintenance_Action:
+    Inhibit_Alarms: false
     Alarm_Type: processing-error
     Probable_Cause: key-expired
-    Service_Affecting: True
-    Suppression: False
+    Service_Affecting: true
+    Suppression: false
 
 
 # 400.004:    // NOTE Removed
@@ -863,12 +874,12 @@
 #     Entity_Instance_ID: host=<hostname>
 #     Severity: major
 #     Proposed_Repair_Action: Contact next level of support.
-#     Maintenance_Action: 
-#     Inhibit_Alarms: False
+#     Maintenance_Action:
+#     Inhibit_Alarms: false
 #     Alarm_Type: processing-error
 #     Probable_Cause: software-program-error
-#     Service_Affecting: True
-#     Suppression: False
+#     Service_Affecting: true
+#     Suppression: false
 
 
 400.005:
@@ -880,17 +891,17 @@
     Entity_Instance_ID: host=<hostname>.network=<mgmt | oam | infra>
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
-    Maintenance_Action: 
-    Inhibit_Alarms: False
+    Maintenance_Action:
+    Inhibit_Alarms: false
     Alarm_Type: communication
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   SM
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 401.001:
     Type: Log
@@ -899,7 +910,7 @@
     Severity: critical
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
+    Service_Affecting: true
 
 401.002:
     Type: Log
@@ -915,7 +926,7 @@
     Severity: critical
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
+    Service_Affecting: true
 
 401.003:
     Type: Log
@@ -929,7 +940,7 @@
     Severity: critical
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
+    Service_Affecting: true
 
 401.005:
     Type: Log
@@ -943,7 +954,7 @@
     Severity: critical
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
+    Service_Affecting: true
 
 401.007:
     Type: Log
@@ -952,13 +963,12 @@
     Severity: critical
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
+    Service_Affecting: true
 
 
-
-#---------------------------------------------------------------------------
-#   VM
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+#  VM
+# ---------------------------------------------------------------------------
 
 700.001:
     Type: Alarm
@@ -968,12 +978,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: The system will attempt recovery; no repair action required
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: software-error
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.002:
     Type: Alarm
@@ -981,12 +991,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Unpause the instance
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: procedural-error
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.003:
     Type: Alarm
@@ -994,12 +1004,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Resume the instance
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: procedural-error
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.005:
     Type: Alarm
@@ -1007,12 +1017,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Wait for reboot to complete; if problem persists contact next level of support
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.006:
     Type: Alarm
@@ -1020,12 +1030,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Wait for rebuild to complete; if problem persists contact next level of support
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.007:
     Type: Alarm
@@ -1033,12 +1043,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Wait for evacuate to complete; if problem persists contact next level of support
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: underlying-resource-unavailable
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.008:
     Type: Alarm
@@ -1046,12 +1056,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: warning
     Proposed_Repair_Action: Wait for live migration to complete; if problem persists contact next level of support
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.009:
     Type: Alarm
@@ -1059,12 +1069,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Wait for cold migration to complete; if problem persists contact next level of support
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.010:
     Type: Alarm
@@ -1072,12 +1082,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Confirm or revert cold-migrate of instance
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.011:
     Type: Alarm
@@ -1085,12 +1095,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: "Wait for cold migration revert to complete; if problem persists contact next level of support"
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: other
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.012:
     Type: Alarm
@@ -1098,12 +1108,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Wait for resize to complete; if problem persists contact next level of support
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.013:
     Type: Alarm
@@ -1111,12 +1121,12 @@
     Entity_Instance_ID: itenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: Confirm or revert resize of instance
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: processing-error
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.014:
     Type: Alarm
@@ -1124,12 +1134,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Proposed_Repair_Action: "Wait for resize revert to complete; if problem  persists contact next level of support"
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: other
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.015:
     Type: Alarm
@@ -1137,12 +1147,12 @@
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: major
     Proposed_Repair_Action: "Verify that the instance is running the Guest-Client daemon, or disabsle Guest Heartbeat for the instance if no longer needed, otherwise contact next level of support"
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: communication
     Probable_Cause: procedural-error
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.016:
     Type: Alarm
@@ -1154,8 +1164,8 @@
     Inhibit_Alarms:
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: True
-    Suppression: True
+    Service_Affecting: true
+    Suppression: true
 
 700.101:
     Type: Log
@@ -1164,7 +1174,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.102:
     Type: Log
@@ -1174,7 +1184,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.103:
     Type: Log
@@ -1183,7 +1193,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.104:
     Type: Log
@@ -1192,7 +1202,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.105:
     Type: Log
@@ -1201,7 +1211,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.106:
     Type: Log
@@ -1210,7 +1220,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.107:
     Type: Log
@@ -1219,7 +1229,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.108:
     Type: Log
@@ -1228,7 +1238,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.109:
     Type: Log
@@ -1237,7 +1247,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.110:
     Type: Log
@@ -1246,7 +1256,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.111:
     Type: Log
@@ -1255,7 +1265,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.112:
     Type: Log
@@ -1264,7 +1274,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.113:
     Type: Log
@@ -1273,7 +1283,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.114:
     Type: Log
@@ -1282,7 +1292,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.115:
     Type: Log
@@ -1291,7 +1301,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.116:
     Type: Log
@@ -1300,7 +1310,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.117:
     Type: Log
@@ -1309,7 +1319,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.118:
     Type: Log
@@ -1318,7 +1328,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.119:
     Type: Log
@@ -1327,7 +1337,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.120:
     Type: Log
@@ -1336,7 +1346,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.121:
     Type: Log
@@ -1345,7 +1355,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.122:
     Type: Log
@@ -1354,7 +1364,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.123:
     Type: Log
@@ -1363,7 +1373,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.124:
     Type: Log
@@ -1372,7 +1382,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.125:
     Type: Log
@@ -1381,7 +1391,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.126:
     Type: Log
@@ -1390,7 +1400,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.127:
     Type: Log
@@ -1399,7 +1409,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.128:
     Type: Log
@@ -1408,7 +1418,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.129:
     Type: Log
@@ -1417,7 +1427,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.130:
     Type: Log
@@ -1426,7 +1436,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.131:
     Type: Log
@@ -1435,7 +1445,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.132:
     Type: Log
@@ -1444,7 +1454,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.133:
     Type: Log
@@ -1453,7 +1463,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.134:
     Type: Log
@@ -1462,7 +1472,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.135:
     Type: Log
@@ -1471,7 +1481,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.136:
     Type: Log
@@ -1480,7 +1490,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.137:
     Type: Log
@@ -1489,7 +1499,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.138:
     Type: Log
@@ -1498,7 +1508,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.139:
     Type: Log
@@ -1507,7 +1517,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.140:
     Type: Log
@@ -1516,7 +1526,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.141:
     Type: Log
@@ -1525,7 +1535,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.142:
     Type: Log
@@ -1534,7 +1544,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.143:
     Type: Log
@@ -1543,7 +1553,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.144:
     Type: Log
@@ -1552,7 +1562,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.145:
     Type: Log
@@ -1561,7 +1571,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.146:
     Type: Log
@@ -1570,7 +1580,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.147:
     Type: Log
@@ -1579,7 +1589,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.148:
     Type: Log
@@ -1588,7 +1598,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.149:
     Type: Log
@@ -1597,7 +1607,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.150:
     Type: Log
@@ -1606,7 +1616,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.151:
     Type: Log
@@ -1615,7 +1625,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.152:
     Type: Log
@@ -1624,7 +1634,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.153:
     Type: Log
@@ -1633,7 +1643,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.154:
     Type: Log
@@ -1642,7 +1652,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.155:
     Type: Log
@@ -1651,7 +1661,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.156:
     Type: Log
@@ -1660,7 +1670,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.157:
     Type: Log
@@ -1669,7 +1679,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.158:
     Type: Log
@@ -1678,7 +1688,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.159:
     Type: Log
@@ -1687,7 +1697,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.160:
     Type: Log
@@ -1696,7 +1706,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.161:
     Type: Log
@@ -1705,7 +1715,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.162:
     Type: Log
@@ -1714,7 +1724,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.163:
     Type: Log
@@ -1723,7 +1733,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.164:
     Type: Log
@@ -1732,7 +1742,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.165:
     Type: Log
@@ -1741,7 +1751,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.166:
     Type: Log
@@ -1750,7 +1760,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.167:
     Type: Log
@@ -1759,7 +1769,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.168:
     Type: Log
@@ -1768,7 +1778,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.169:
     Type: Log
@@ -1777,7 +1787,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.170:
     Type: Log
@@ -1786,7 +1796,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.171:
     Type: Log
@@ -1795,7 +1805,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.172:
     Type: Log
@@ -1804,7 +1814,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.173:
     Type: Log
@@ -1813,7 +1823,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.174:
     Type: Log
@@ -1822,7 +1832,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.175:
     Type: Log
@@ -1831,7 +1841,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.176:
     Type: Log
@@ -1840,7 +1850,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.177:
     Type: Log
@@ -1849,7 +1859,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.178:
     Type: Log
@@ -1858,7 +1868,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.179:
     Type: Log
@@ -1867,7 +1877,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.180:
     Type: Log
@@ -1876,16 +1886,18 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.181:
     Type: Log
-    Description: "Reboot <(soft-reboot)|(hard-reboot)> issued <by <tenant_name>|by the system|by the instance>  against instance <instance_name> owned by <tenant_name> on host <host_name>[, reason = <reason_text>]"
+    Description: |-
+        "Reboot <(soft-reboot)|(hard-reboot)> issued <by <tenant_name>|by the system|by the instance>
+        against instance <instance_name> owned by <tenant_name> on host <host_name>[, reason = <reason_text>]"
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.182:
     Type: Log
@@ -1894,7 +1906,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.183:
     Type: Log
@@ -1903,7 +1915,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.184:
     Type: Log
@@ -1912,7 +1924,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.185:
     Type: Log
@@ -1921,7 +1933,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.186:
     Type: Log
@@ -1930,7 +1942,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.187:
     Type: Log
@@ -1939,7 +1951,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.188:
     Type: Log
@@ -1948,7 +1960,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.189:
     Type: Log
@@ -1957,7 +1969,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.190:
     Type: Log
@@ -1966,7 +1978,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.191:
     Type: Log
@@ -1975,7 +1987,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.192:
     Type: Log
@@ -1984,7 +1996,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.193:
     Type: Log
@@ -1993,7 +2005,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.194:
     Type: Log
@@ -2002,7 +2014,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.195:
     Type: Log
@@ -2011,7 +2023,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.196:
     Type: Log
@@ -2020,7 +2032,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.197:
     Type: Log
@@ -2029,7 +2041,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.198:
     Type: Log
@@ -2038,7 +2050,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.199:
     Type: Log
@@ -2047,7 +2059,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.200:
     Type: Log
@@ -2056,7 +2068,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.201:
     Type: Log
@@ -2065,7 +2077,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.202:
     Type: Log
@@ -2074,7 +2086,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.203:
     Type: Log
@@ -2083,7 +2095,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.204:
     Type: Log
@@ -2092,7 +2104,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.205:
     Type: Log
@@ -2101,7 +2113,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.206:
     Type: Log
@@ -2110,7 +2122,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.207:
     Type: Log
@@ -2119,7 +2131,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.208:
     Type: Log
@@ -2128,7 +2140,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.209:
     Type: Log
@@ -2137,7 +2149,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.210:
     Type: Log
@@ -2146,7 +2158,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.211:
     Type: Log
@@ -2155,7 +2167,7 @@
     Severity: major
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.212:
     Type: Log
@@ -2164,7 +2176,7 @@
     Severity: major
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.213:
     Type: Log
@@ -2173,7 +2185,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.214:
     Type: Log
@@ -2182,7 +2194,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.215:
     Type: Log
@@ -2191,7 +2203,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 700.216:
     Type: Log
@@ -2200,7 +2212,7 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 
 700.217:
@@ -2210,12 +2222,12 @@
     Severity: critical
     Alarm_Type: equipment
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   STORAGE
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 800.001:
     Type: Alarm
@@ -2223,23 +2235,23 @@
         Storage Alarm Condition:
         1 mons down, quorum 1,2 controller-1,storage-0
     Entity_Instance_ID: cluster=<dist-fs-uuid>
-    Severity: [ critical, major ]
+    Severity: [critical, major]
     Proposed_Repair_Action: "If problem persists, contact next level of support."
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: equipment
     Probable_Cause: equipment-malfunction
-    Service_Affecting: 
-        critical: True
-        major: False
-    Suppression: False
+    Service_Affecting:
+        critical: true
+        major: false
+    Suppression: false
 
 800.010:
     Type: Alarm
     Description: |-
         Potential data loss. No available OSDs in storage replication group.
     Entity_Instance_ID: cluster=<dist-fs-uuid>.peergroup=<group-x>
-    Severity: [ critical ]
+    Severity: [critical]
     Proposed_Repair_Action: "Ensure storage hosts from replication group are unlocked and available.
                              Check if OSDs of each storage host are up and running.
                              If problem persists contact next level of support."
@@ -2248,15 +2260,15 @@
     Alarm_Type: equipment
     Probable_Cause: equipment-malfunction
     Service_Affecting:
-        critical: True
-    Suppression: False
+        critical: true
+    Suppression: false
 
 800.011:
     Type: Alarm
     Description: |-
         Loss of replication in peergroup.
     Entity_Instance_ID: cluster=<dist-fs-uuid>.peergroup=<group-x>
-    Severity: [ major ]
+    Severity: [major]
     Proposed_Repair_Action: "Ensure storage hosts from replication group are unlocked and available.
                              Check if OSDs of each storage host are up and running.
                              If problem persists contact next level of support."
@@ -2265,47 +2277,47 @@
     Alarm_Type: equipment
     Probable_Cause: equipment-malfunction
     Service_Affecting:
-        major: True
-    Suppression: False
+        major: true
+    Suppression: false
 
 800.002:
     Type: Log
-    Description: [ "Image storage media is full: There is not enough disk space on the image storage media.",
-                   "Instance <instance name> snapshot failed: There is not enough disk space on the image storage media.",
-                   "Supplied <attrs> (<supplied>) and <attrs> generated from uploaded image (<actual>) did not match. Setting image status to 'killed'.",
-                   "Error in store configuration. Adding images to store is disabled.",
-                   "Forbidden upload attempt: <exception>",
-                   "Insufficient permissions on image storage media: <exception>",
-                   "Denying attempt to upload image larger than <size> bytes.",
-                   "Denying attempt to upload image because it exceeds the quota: <exception>",
-                   "Received HTTP error while uploading image <image_id>",
-                   "Client disconnected before sending all data to backend",
-                   "Failed to upload image <image_id>"                               ]
-    Entity_Instance_ID: [ "image=<image-uuid>, instance=<instance-uuid>",
-                          "tenant=<tenant-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>",
-                          "image=<image-uuid>, instance=<instance-uuid>"            ]
-    Alarm_Type: [ physical-violation,
-                  physical-violation,
-                  integrity-violation,
-                  integrity-violation,
-                  security-service-or-mechanism-violation,
-                  security-service-or-mechanism-violation,
-                  security-service-or-mechanism-violation,
-                  security-service-or-mechanism-violation,
-                  communication,
-                  communication,
-                  operational-violation                       ]
+    Description: ["Image storage media is full: There is not enough disk space on the image storage media.",
+                  "Instance <instance name> snapshot failed: There is not enough disk space on the image storage media.",
+                  "Supplied <attrs> (<supplied>) and <attrs> generated from uploaded image (<actual>) did not match. Setting image status to 'killed'.",
+                  "Error in store configuration. Adding images to store is disabled.",
+                  "Forbidden upload attempt: <exception>",
+                  "Insufficient permissions on image storage media: <exception>",
+                  "Denying attempt to upload image larger than <size> bytes.",
+                  "Denying attempt to upload image because it exceeds the quota: <exception>",
+                  "Received HTTP error while uploading image <image_id>",
+                  "Client disconnected before sending all data to backend",
+                  "Failed to upload image <image_id>"]
+    Entity_Instance_ID: ["image=<image-uuid>, instance=<instance-uuid>",
+                         "tenant=<tenant-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>",
+                         "image=<image-uuid>, instance=<instance-uuid>"]
+    Alarm_Type: [physical-violation,
+                 physical-violation,
+                 integrity-violation,
+                 integrity-violation,
+                 security-service-or-mechanism-violation,
+                 security-service-or-mechanism-violation,
+                 security-service-or-mechanism-violation,
+                 security-service-or-mechanism-violation,
+                 communication,
+                 communication,
+                 operational-violation]
     Severity: warning
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
+    Service_Affecting: false
 
 
 800.003:
@@ -2320,13 +2332,13 @@
     Inhibit_Alarms:
     Alarm_Type: operational-violation
     Probable_Cause: configuration-out-of-date
-    Service_Affecting: False
-    Suppression: False   
+    Service_Affecting: false
+    Suppression: false
 
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #   SOFTWARE
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 900.001:
     Type: Alarm
@@ -2334,12 +2346,12 @@
     Entity_Instance_ID: host=controller
     Severity: minor
     Proposed_Repair_Action: Complete reboots of affected hosts.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: environmental
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
-    Suppression: False
+    Service_Affecting: false
+    Suppression: false
 
 900.002:
     Type: Alarm
@@ -2347,12 +2359,12 @@
     Entity_Instance_ID: host=controller
     Severity: warning
     Proposed_Repair_Action: Remove and delete obsolete patches.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: environmental
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
-    Suppression: False
+    Service_Affecting: false
+    Suppression: false
 
 900.003:
     Type: Alarm
@@ -2360,11 +2372,11 @@
     Entity_Instance_ID: host=<hostname>
     Severity: major
     Proposed_Repair_Action: Undo patching operation.
-    Maintenance_Action: 
-    Inhibit_Alarms: 
+    Maintenance_Action:
+    Inhibit_Alarms:
     Alarm_Type: environmental
     Probable_Cause: unspecified-reason
-    Service_Affecting: False
-    Suppression: False
+    Service_Affecting: false
+    Suppression: false
 
 ...
