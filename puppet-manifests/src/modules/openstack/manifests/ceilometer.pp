@@ -26,9 +26,9 @@ class openstack::ceilometer {
         $::platform::kubernetes::params::enabled != true) {
       include ::openstack::gnocchi::params
 
-      Keystone_endpoint["${::openstack::gnocchi::params::region_name}/gnocchi::metric"] ->
       class { '::ceilometer::db::sync':
-        extra_params => '--skip-metering-database'
+        extra_params => '--skip-metering-database',
+        require => [Keystone::Resource::Service_identity["ceilometer", "gnocchi"]]
       }
 
       if $::platform::params::vswitch_type !~ '^ovs' {
