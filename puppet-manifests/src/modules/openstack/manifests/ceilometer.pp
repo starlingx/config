@@ -87,10 +87,19 @@ class openstack::ceilometer {
   if $::personality == 'controller' {
     include ::platform::memcached::params
 
+    $memcache_ip = $::platform::memcached::params::listen_ip
+    $memcache_port = $::platform::memcached::params::tcp_port
+    $memcache_ip_version = $::platform::memcached::params::listen_ip_version
+
+    $memcache_servers = $memcache_ip_version ? {
+      4 => "'$memcache_ip:$memcache_port'",
+      6 => "'inet6:[$memcache_ip]:$memcache_port'",
+    }
+
     oslo::cache { 'ceilometer_config':
       enabled => true,
       backend => 'dogpile.cache.memcached',
-      memcache_servers => "'${::platform::memcached::params::listen_ip}:${::platform::memcached::params::tcp_port}'",
+      memcache_servers => $memcache_servers,
       expiration_time => 86400,
     }
   }
