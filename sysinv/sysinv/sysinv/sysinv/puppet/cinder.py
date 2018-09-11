@@ -250,7 +250,7 @@ def sp_hpe3par_post_process(config, section, section_map,
 
     if provided_params.get('enabled', 'false').lower() == 'true':
         # Hardcoded params must exist in cinder.conf.
-        provided_params['volume_backend_name'] = SP_CINDER_HPE3PAR
+        provided_params['volume_backend_name'] = section
         provided_params['volume_driver'] = (
             'cinder.volume.drivers.hpe.hpe_3par_iscsi.HPE3PARISCSIDriver')
 
@@ -344,6 +344,18 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
     SERVICE_PATH_V2 = 'v2/%(tenant_id)s'
     SERVICE_PATH_V3 = 'v3/%(tenant_id)s'
     PROXY_SERVICE_PORT = '28776'
+
+    def __init__(self, *args, **kwargs):
+        super(CinderPuppet, self).__init__(*args, **kwargs)
+        # Update the section mapping for multiple HPE3PAR backends
+        for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
+            section = "{0}{1}".format(SP_CINDER_HPE3PAR, i)
+            prefix = "{0}{1}".format(SP_CINDER_HPE3PAR_PREFIX, i)
+            SP_CINDER_SECTION_MAPPING[section] = {
+                SP_CONF_NAME_KEY: prefix,
+                SP_PARAM_PROCESS_KEY: sp_common_param_process,
+                SP_POST_PROCESS_KEY: sp_hpe3par_post_process,
+            }
 
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
@@ -760,6 +772,11 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
                 config, section, sp_section_map,
                 is_service_enabled, enabled_backends)
 
+        # Build the list of possible HPE3PAR backends
+        possible_hpe3pars = filter(
+            lambda s: constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR in s,
+            SP_CINDER_SECTION_MAPPING.keys())
+        config.update({'openstack::cinder::backends::hpe3par::sections': possible_hpe3pars})
         return config
 
     def is_service_enabled(self):

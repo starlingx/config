@@ -1368,11 +1368,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('validate_emc_removal'))
 
-    def validate_hpe3par_removal(self, context):
+    def validate_hpe3par_removal(self, context, backend):
         """
         Check that it is safe to remove the HPE 3PAR storage array
         """
-        return self.call(context, self.make_msg('validate_hpe3par_removal'))
+        return self.call(context,
+                         self.make_msg('validate_hpe3par_removal',
+                                       backend=backend))
 
     def validate_hpelefthand_removal(self, context):
         """

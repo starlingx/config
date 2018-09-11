@@ -245,7 +245,7 @@ class openstack::cinder::backup
 class openstack::cinder::backends::san
   inherits ::openstack::cinder::params {
     include ::openstack::cinder::emc_vnx
-    include ::openstack::cinder::hpe3par
+    include ::openstack::cinder::backends::hpe3par
     include ::openstack::cinder::hpelefthand
   }
 
@@ -520,20 +520,26 @@ class openstack::cinder::emc_vnx(
 }
 
 
-class openstack::cinder::hpe3par(
-  $feature_enabled,
-  $config_params
-) inherits ::openstack::cinder::params {
-  create_resources('cinder_config', hiera_hash('openstack::cinder::hpe3par::config_params', {}))
+define openstack::cinder::backend::hpe3par
+{
+  $hiera_params = "openstack::cinder::${name}::config_params"
+  $feature_enabled = "openstack::cinder::${name}::feature_enabled"
 
-  # As HP SANs are addon PS supported options, make sure we have explicit
-  # logging showing this is being included when the feature is enabled.
+  create_resources('cinder_config', hiera_hash($hiera_params, {}))
+ 
   if $feature_enabled {
-    exec {'Including hpe3par configuration':
+    exec {"Including $name configuration":
       path    => [ '/usr/bin', '/usr/sbin', '/bin', '/sbin' ],
-      command => 'echo Including hpe3par configuration',
+      command => "echo Including $name configuration",
     }
   }
+}
+
+
+class openstack::cinder::backends::hpe3par (
+  $sections = []
+) inherits ::openstack::cinder::params {
+  ::openstack::cinder::backend::hpe3par {$sections:}
 }
 
 

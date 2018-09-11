@@ -134,6 +134,21 @@ class ServiceParameterController(rest.RestController):
 
     def __init__(self, parent=None, **kwargs):
         self._parent = parent
+        # Add additional hpe3par backends
+        for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
+            section = "{0}{1}".format(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR, i)
+            service_parameter.SERVICE_PARAMETER_SCHEMA[constants.SERVICE_TYPE_CINDER][section] = {
+                service_parameter.SERVICE_PARAM_MANDATORY:
+                    service_parameter.CINDER_HPE3PAR_PARAMETER_MANDATORY,
+                service_parameter.SERVICE_PARAM_PROTECTED:
+                    service_parameter.CINDER_HPE3PAR_PARAMETER_PROTECTED,
+                service_parameter.SERVICE_PARAM_OPTIONAL:
+                    service_parameter.CINDER_HPE3PAR_PARAMETER_OPTIONAL,
+                service_parameter.SERVICE_PARAM_VALIDATOR:
+                    service_parameter.CINDER_HPE3PAR_PARAMETER_VALIDATOR,
+                service_parameter.SERVICE_PARAM_RESOURCE:
+                    service_parameter.CINDER_HPE3PAR_PARAMETER_RESOURCE,
+            }
 
     def _get_service_parameter_collection(self, marker=None, limit=None,
                                           sort_key=None, sort_dir=None,
@@ -952,8 +967,12 @@ class ServiceParameterController(rest.RestController):
             self._service_parameter_apply_semantic_check_cinder_emc_vnx()
             self._emc_vnx_ip_addresses_reservation()
 
-            self._service_parameter_apply_semantic_check_cinder_hpe3par()
-            self._hpe3par_reserve_ip_addresses()
+            self._service_parameter_apply_semantic_check_cinder_hpe3par(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR)
+            self._hpe3par_reserve_ip_addresses(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR)
+            for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
+                section = "{0}{1}".format(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR, i)
+                self._service_parameter_apply_semantic_check_cinder_hpe3par(section)
+                self._hpe3par_reserve_ip_addresses(section)
 
             self._service_parameter_apply_semantic_check_cinder_hpelefthand()
             self._hpelefthand_reserve_ip_addresses()
@@ -986,7 +1005,7 @@ class ServiceParameterController(rest.RestController):
                 LOG.exception(e)
 
     @staticmethod
-    def _hpe3par_reserve_ip_addresses():
+    def _hpe3par_reserve_ip_addresses(section):
 
         """
         We need to keep the address information between service_parameter
@@ -997,11 +1016,11 @@ class ServiceParameterController(rest.RestController):
 
         Service Parameter    | Address DB Entry Name
         ---------------------------------------------------------------
-        hpe3par_api_url      | hpe3par-api-ip
+        hpe3par_api_url      | <section>-api-ip
         ---------------------------------------------------------------
-        hpe3par_iscsi_ips    | hpe3par-iscsi-ip<n>
+        hpe3par_iscsi_ips    | <section>-iscsi-ip<n>
         ---------------------------------------------------------------
-        san_ip               | hpe3par-san-ip
+        san_ip               | <section>-san-ip
         ---------------------------------------------------------------
 
         """
@@ -1011,7 +1030,7 @@ class ServiceParameterController(rest.RestController):
         # feature is enabled.
         #
 
-        name = "hpe3par-api-ip"
+        name = section + "-api-ip"
         try:
             addr = pecan.request.dbapi.address_get_by_name(name)
             LOG.debug("Removing address %s" % name)
@@ -1021,7 +1040,7 @@ class ServiceParameterController(rest.RestController):
 
         i = 0
         while True:
-            name = "hpe3par-iscsi-ip" + str(i)
+            name = section + "-iscsi-ip" + str(i)
             try:
                 addr = pecan.request.dbapi.address_get_by_name(name)
                 LOG.debug("Removing address %s" % name)
@@ -1030,7 +1049,7 @@ class ServiceParameterController(rest.RestController):
             except exception.AddressNotFoundByName:
                 break
 
-        name = "hpe3par-san-ip"
+        name = section + "-san-ip"
         try:
             addr = pecan.request.dbapi.address_get_by_name(name)
             LOG.debug("Removing address %s" % name)
@@ -1040,7 +1059,7 @@ class ServiceParameterController(rest.RestController):
 
         enabled = pecan.request.dbapi.service_parameter_get_one(
             service=constants.SERVICE_TYPE_CINDER,
-            section=constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
+            section=section,
             name="enabled")
 
         if enabled.value.lower() == 'false':
@@ -1051,7 +1070,7 @@ class ServiceParameterController(rest.RestController):
         #
         api_url = pecan.request.dbapi.service_parameter_get_one(
             service=constants.SERVICE_TYPE_CINDER,
-            section=constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
+            section=section,
             name="hpe3par_api_url")
 
         url = urlparse.urlparse(api_url.value)
@@ -1063,7 +1082,7 @@ class ServiceParameterController(rest.RestController):
         #
         if pool is not None:
             try:
-                name = "hpe3par-api-ip"
+                name = section + "-api-ip"
                 address = {'address': str(ip),
                            'prefix': pool['prefix'],
                            'family': pool['family'],
@@ -1099,7 +1118,7 @@ class ServiceParameterController(rest.RestController):
             #
             if pool is not None:
                 try:
-                    name = "hpe3par-iscsi-ip" + str(i)
+                    name = section + "-iscsi-ip" + str(i)
                     address = {'address': str(ip),
                                'prefix': pool['prefix'],
                                'family': pool['family'],
@@ -1122,7 +1141,7 @@ class ServiceParameterController(rest.RestController):
         try:
             san_ip = pecan.request.dbapi.service_parameter_get_one(
                 service=constants.SERVICE_TYPE_CINDER,
-                section=constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
+                section=section,
                 name="san_ip")
         except exception.NotFound:
             return
@@ -1135,7 +1154,7 @@ class ServiceParameterController(rest.RestController):
         #
         if pool is not None:
             try:
-                name = "hpe3par-san-ip"
+                name = section + "-san-ip"
                 address = {'address': str(ip),
                            'prefix': pool['prefix'],
                            'family': pool['family'],
@@ -1219,12 +1238,12 @@ class ServiceParameterController(rest.RestController):
                 raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
-    def _service_parameter_apply_semantic_check_cinder_hpe3par():
+    def _service_parameter_apply_semantic_check_cinder_hpe3par(section):
         """Semantic checks for the Cinder Service Type """
         feature_enabled = pecan.request.dbapi.service_parameter_get_one(
             service=constants.SERVICE_TYPE_CINDER,
-            section=constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
-            name=constants.SERVICE_PARAM_CINDER_HPE3PAR_ENABLED)
+            section=section,
+            name=constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
 
         if feature_enabled.value.lower() == 'true':
             # Client library installed?  If not fail.
@@ -1237,21 +1256,21 @@ class ServiceParameterController(rest.RestController):
                 try:
                     pecan.request.dbapi.service_parameter_get_one(
                         service=constants.SERVICE_TYPE_CINDER,
-                        section=constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
+                        section=section,
                         name=name)
                 except exception.NotFound:
                     msg = _("Unable to apply service parameters. "
                             "Missing service parameter '%s' for service '%s' "
                             "in section '%s'." % (name,
                                 constants.SERVICE_TYPE_CINDER,
-                                constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR))
+                                section))
                     raise wsme.exc.ClientSideError(msg)
         else:
             if not pecan.request.rpcapi.validate_hpe3par_removal(
-                    pecan.request.context):
+                    pecan.request.context, section):
                 msg = _("Unable to apply service parameters. Can not disable "
                         "%s while in use. Remove any HPE3PAR volumes."
-                        % constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR)
+                        % section)
                 raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
@@ -1260,7 +1279,7 @@ class ServiceParameterController(rest.RestController):
         feature_enabled = pecan.request.dbapi.service_parameter_get_one(
             service=constants.SERVICE_TYPE_CINDER,
             section=constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND,
-            name=constants.SERVICE_PARAM_CINDER_HPELEFTHAND_ENABLED)
+            name=constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
 
         if feature_enabled.value.lower() == 'true':
             # Client library installed?  If not fail.
