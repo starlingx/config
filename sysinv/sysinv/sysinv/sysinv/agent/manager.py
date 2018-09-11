@@ -1292,6 +1292,7 @@ class AgentManager(service.PeriodicService):
 
         return
 
+    @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def iconfig_update_file(self, context, iconfig_uuid, iconfig_dict):
         """Configure the iiconfig_uuid, by updating file based upon
            iconfig_dict.
