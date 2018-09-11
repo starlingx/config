@@ -1,3 +1,22 @@
+class platform::compute::params (
+  $compute_cpu_list = '',
+  $platform_cpu_list = '',
+  $reserved_vswitch_cores = '',
+  $reserved_platform_cores = '',
+  $compute_base_reserved = '',
+  $compute_vswitch_reserved = '',
+) { }
+
+class platform::compute::config
+  inherits ::platform::compute::params {
+
+  file { "/etc/nova/compute_reserved.conf":
+      ensure => 'present',
+      replace => true,
+      content => template('platform/compute_reserved.conf.erb')
+  }
+}
+
 class platform::compute::grub::params (
   $n_cpus = '',
   $cpu_options = '',
@@ -243,4 +262,5 @@ class platform::compute {
   require ::platform::compute::pmqos
   require ::platform::compute::resctrl
   require ::platform::compute::extend
+  require ::platform::compute::config
 }
