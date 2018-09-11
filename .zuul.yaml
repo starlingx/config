@@ -2,9 +2,9 @@
 - project:
     check:
       jobs:
-        - openstack-tox-linters:
-            voting: false
-        - sysinv-tox-unittest:
+        - openstack-tox-linters
+        - sysinv-tox-py27
+        - sysinv-tox-flake8:
             voting: false
         - controllerconfig-tox-flake8
         - controllerconfig-tox-py27
@@ -12,22 +12,37 @@
         - configutilities-tox-flake8
     gate:
       jobs:
+        - openstack-tox-linters
+        - sysinv-tox-py27
         - controllerconfig-tox-flake8
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - configutilities-tox-flake8
 
 - job:
-    name: sysinv-tox-unittest
+    name: sysinv-tox-py27
     parent: tox
     description: |
-      Run unit test for sysinv
+      Run py27 test for sysinv
     required-projects:
       - openstack/stx-update
       - openstack/stx-fault
       - openstack/stx-integ
     vars:
       tox_envlist: py27
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: sysinv-tox-flake8
+    parent: tox
+    description: |
+      Run flake8 test for sysinv
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+      - openstack/stx-integ
+    vars:
+      tox_envlist: flake8
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
