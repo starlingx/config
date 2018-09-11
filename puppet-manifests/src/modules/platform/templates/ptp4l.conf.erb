@@ -96,12 +96,14 @@ manufacturerIdentity    00:00:00
 userDescription         ;
 timeSource              0xA0
 
-<%- if scope['platform::ptp::transport'] == 'udp' -%>
 [<%= @slave_interface %>]
+<%- if scope['platform::ptp::transport'] == 'udp' -%>
 network_transport       UDPv<%= @slave_subnet %>
+<%- end -%>
 
 <%- if @slave_only == false -%>
 [<%= @master_interface %>]
+<%- if scope['platform::ptp::transport'] == 'udp' -%>
 network_transport       UDPv<%= @master_subnet %>
 <%- end -%>
 <%- end -%>
