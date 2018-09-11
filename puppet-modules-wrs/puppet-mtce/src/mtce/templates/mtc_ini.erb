@@ -16,6 +16,19 @@ heartbeat_period = <%= @heartbeat_period %> ; Heartbeat period in milliseconds
 heartbeat_failure_threshold = <%= @heartbeat_failure_threshold %> ; Heartbeat failure threshold count.
 heartbeat_degrade_threshold = <%= @heartbeat_degrade_threshold %> ; Heartbeat degrade threshold count.
 
+; Heartbeat Loss / Failure Action Selection.
+; The action to take on host heartbeat failure.
+; Supported actions are
+;      fail = fail host and raise network specific heartbeat alarms
+;   degrade = degrade host and raise network specific heartbeat alarms
+;     alarm = raise network specific heartbeat alarms only
+;      none = no action and no alarms
+; Selected action applies to all hosts in the system
+; Default is fail
+; To modify execute:
+;  system service-parameter-modify platform maintenance heartbeat_failure_action=<action>
+heartbeat_failure_action = <%= @heartbeat_failure_action %>
+
 ; Multi-Node Failure Avoidance (MNFA) Activation and Deactivation threshold.
 ; The minimum number of hosts that fail heartbeat within the
 ;  heartbeat_failure_threshold upon which Maintenance activates MNFA Mode.

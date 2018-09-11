@@ -545,6 +545,27 @@ def _validate_hbs_period(name, value):
                     SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_MAX)
 
 
+def _validate_hbs_failure_action(name, value):
+    error = False
+    try:
+        if str(value) != SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_FAIL and \
+                str(value) != SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEGRADE and \
+                str(value) != SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM and \
+                str(value) != SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_NONE:
+            error = True
+
+    except ValueError:
+        error = True
+
+    if error is True:
+        raise wsme.exc.ClientSideError(_(
+            "Action must be one of '%s', '%s', '%s' or '%s'" %
+            (SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_FAIL,
+             SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEGRADE,
+             SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM,
+             SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_NONE)))
+
+
 def _validate_hbs_failure_threshold(name, value):
     _validate_range(name, value,
                     SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD_MIN,
@@ -1331,6 +1352,7 @@ PLATFORM_MTCE_PARAMETER_MANDATORY = [
     constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT,
     constants.SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD,
+    constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD,
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD,
@@ -1349,6 +1371,10 @@ SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD_MIN = 10
 SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD_MAX = 100
 SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_MIN = 4
 SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_MAX = 100
+SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_FAIL = 'fail'
+SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEGRADE = 'degrade'
+SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_ALARM = 'alarm'
+SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_NONE = 'none'
 SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MIN = 2
 SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MAX = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN = 100
@@ -1361,6 +1387,8 @@ PLATFORM_MTCE_PARAMETER_VALIDATOR = {
         _validate_controller_boot_timeout,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD:
         _validate_hbs_period,
+    constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION:
+        _validate_hbs_failure_action,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD:
         _validate_hbs_failure_threshold,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD:
@@ -1375,6 +1403,7 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT: 'platform::mtce::params::compute_boot_timeout',
     constants.SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT: 'platform::mtce::params::controller_boot_timeout',
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD: 'platform::mtce::params::heartbeat_period',
+    constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION: 'platform::mtce::params::heartbeat_failure_action',
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD: 'platform::mtce::params::heartbeat_failure_threshold',
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD: 'platform::mtce::params::heartbeat_degrade_threshold',
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD: 'platform::mtce::params::mnfa_threshold',
