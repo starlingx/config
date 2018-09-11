@@ -9,10 +9,10 @@
 
 NOVAOPENRC="/etc/nova/openrc"
 if [ -e ${NOVAOPENRC} ] ; then
-   source  ${NOVAOPENRC} &>/dev/null
+    source  ${NOVAOPENRC} &>/dev/null
 else
-   echo "Admin credentials not found"
-   exit
+    echo "Admin credentials not found"
+    exit
 fi
 
 # Delete all the servers

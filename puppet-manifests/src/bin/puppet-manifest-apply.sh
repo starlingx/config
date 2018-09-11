@@ -58,16 +58,15 @@ cp /etc/puppet/hieradata/${PERSONALITY}.yaml ${PUPPET_TMP}/hieradata/personality
 # the grub. At this time, copying the host file failed due to a timing issue that
 # has not yet been fully understood. Subsequent retries worked. 
 if [ "${PERSONALITY}" = "compute" ]; then
-  n=0
-  until [ $n -ge 3 ]
-  do
-    cp -f ${HIERADATA}/${HOST}.yaml ${PUPPET_TMP}/hieradata/host.yaml && break
-    n=$[$n+1]
-    logger -t $0 "Failed to copy /etc/puppet/hieradata/${HOST}.yaml"
-    sleep 15
-  done
+    n=0
+    until [ $n -ge 3 ]; do
+        cp -f ${HIERADATA}/${HOST}.yaml ${PUPPET_TMP}/hieradata/host.yaml && break
+        n=$(($n+1))
+        logger -t $0 "Failed to copy /etc/puppet/hieradata/${HOST}.yaml"
+        sleep 15
+    done
 else
-  cp -f ${HIERADATA}/${HOST}.yaml ${PUPPET_TMP}/hieradata/host.yaml
+    cp -f ${HIERADATA}/${HOST}.yaml ${PUPPET_TMP}/hieradata/host.yaml
 fi
 cp -f ${HIERADATA}/system.yaml \
     ${HIERADATA}/secure_system.yaml \
@@ -81,8 +80,7 @@ fi
 
 
 # Exit function to save logs from initial apply
-function finish()
-{
+function finish {
     local SAVEDLOGS=/var/log/puppet/first_apply.tgz
     if [ ! -f ${SAVEDLOGS} ]; then
         # Save the logs
@@ -102,15 +100,13 @@ echo "Applying puppet ${MANIFEST} manifest..."
 flock /var/run/puppet.lock \
     puppet apply --debug --trace --modulepath ${PUPPET_MODULES_PATH} ${PUPPET_MANIFEST} \
         < /dev/null 2>&1 | awk ' { system("date -u +%FT%T.%3N | tr \"\n\" \" \""); print $0; fflush(); } ' > ${LOGFILE}
-if [ $? -ne 0 ]
-then
+if [ $? -ne 0 ]; then
     echo "[FAILED]"
     echo "See ${LOGFILE} for details"
     exit 1
 else
     grep -qE '^(.......)?Warning|^....-..-..T..:..:..([.]...)?(.......)?.Warning|^(.......)?Error|^....-..-..T..:..:..([.]...)?(.......)?.Error' ${LOGFILE}
-    if [ $? -eq 0 ]
-    then
+    if [ $? -eq 0 ]; then
         echo "[WARNING]"
         echo "Warnings found. See ${LOGFILE} for details"
         exit 1

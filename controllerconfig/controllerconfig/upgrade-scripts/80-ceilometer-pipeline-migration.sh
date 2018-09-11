@@ -33,11 +33,9 @@ function do_escape {
     echo $val_escaped
 }
 
-if [ "$ACTION" == "migrate" ]
-then
+if [ "$ACTION" == "migrate" ]; then
     log "Creating new $NEW_PIPELINE_FILE file for release $TO_RELEASE"
-    if [ ! -d "$NEW_PIPELINE_DIR" ]
-    then
+    if [ ! -d "$NEW_PIPELINE_DIR" ]; then
         mkdir $NEW_PIPELINE_DIR
     fi
     cp $PIPELINE_SOURCE_FILE $NEW_PIPELINE_FILE

@@ -31,29 +31,29 @@ if [ ! -d /var/run/network-scripts.puppet/ ] ; then
     exit 1
 fi
 
-function log_it() {
+function log_it {
     logger "${0} ${1}"
 }
 
-function do_if_up() {
+function do_if_up {
     local iface=$1
     log_it "Bringing $iface up"
     /sbin/ifup $iface
 }
 
-function do_if_down() {
+function do_if_down {
     local iface=$1
     log_it "Bringing $iface down"
     /sbin/ifdown $iface
 }
 
-function do_rm() {
+function do_rm {
     local theFile=$1
     log_it "Removing $theFile"
     /bin/rm  $theFile
 }
 
-function do_cp() {
+function do_cp {
     local srcFile=$1
     local dstFile=$2
     log_it "copying network cfg $srcFile to $dstFile"
@@ -76,10 +76,11 @@ array_diff () {
     echo  ${result[@]}
 }
 
-function normalized_cfg_attr_value() {
+function normalized_cfg_attr_value {
     local cfg=$1
     local attr_name=$2
-    local attr_value=$(cat $cfg | grep $attr_name= | awk -F "=" {'print $2'})
+    local attr_value
+    attr_value=$(cat $cfg | grep $attr_name= | awk -F "=" {'print $2'})
 
 
     #
@@ -93,13 +94,13 @@ function normalized_cfg_attr_value() {
     # line.
     #
     if [[ "${attr_name}" == "BONDING_OPTS" ]]; then
-       echo "$(cat $cfg | grep $attr_name=)"
-       return $(true)
+        echo "$(cat $cfg | grep $attr_name=)"
+        return $(true)
     fi
 
     if [[ "${attr_name}" != "BOOTPROTO" ]]; then
-       echo "${attr_value}"
-       return $(true)
+        echo "${attr_value}"
+        return $(true)
     fi
     #
     # Special case BOOTPROTO attribute.
@@ -124,13 +125,13 @@ function normalized_cfg_attr_value() {
     # "dhcp".
     #
     if [[ "${attr_value}" == "none" ]]; then
-       attr_value="none"
+        attr_value="none"
     fi
     if [[ "${attr_value}" == "manual" ]]; then
-       attr_value="none"
+        attr_value="none"
     fi
     if [[ "${attr_value}" == "" ]]; then
-       attr_value="none"
+        attr_value="none"
     fi
     echo "${attr_value}"
     return $(true)
@@ -139,7 +140,7 @@ function normalized_cfg_attr_value() {
 #
 # returns $(true) if cfg file ( $1 ) has property propName ( $2 ) with a value of propValue ( $3 )
 #
-function cfg_has_property_with_value() {
+function cfg_has_property_with_value {
     local cfg=$1
     local propname=$2
     local propvalue=$3
@@ -154,7 +155,7 @@ function cfg_has_property_with_value() {
 #
 # returns $(true) if cfg file is configured as a slave
 #
-function is_slave() {
+function is_slave {
     cfg_has_property_with_value $1 "SLAVE" "yes"
     return $?
 }
@@ -162,14 +163,14 @@ function is_slave() {
 #
 # returns $(true) if cfg file is configured for DHCP
 #
-function is_dhcp() {
+function is_dhcp {
     cfg_has_property_with_value $1 "BOOTPROTO" "dhcp"
 }
 
 #
 # returns $(true) if cfg file is configured as a VLAN interface
 #
-function is_vlan() {
+function is_vlan {
     cfg_has_property_with_value $1 "VLAN" "yes"
     return $?
 }
@@ -180,7 +181,7 @@ function is_vlan() {
 # a vlan or a slave.  This includes both regular ethernet interfaces and bonded
 # interfaces.
 #
-function is_ethernet() {
+function is_ethernet {
     if ! is_vlan $1; then
         if ! is_slave $1; then
             return $(true)
@@ -192,7 +193,7 @@ function is_ethernet() {
 #
 # returns $(true) if cfg file represents an interface of the specified type.
 #
-function iftype_filter() {
+function iftype_filter {
     local iftype=$1
 
     return $(is_$iftype $2)
@@ -202,22 +203,23 @@ function iftype_filter() {
 # returns $(true) if ifcfg files have the same number of VFs
 #
 #
-function is_eq_sriov_numvfs() {
-   local cfg_1=$1
-   local cfg_2=$2
+function is_eq_sriov_numvfs {
+    local cfg_1=$1
+    local cfg_2=$2
+    local sriov_numvfs_1
+    sriov_numvfs_1=$(grep -o 'echo *[1-9].*sriov_numvfs' $cfg_1 | awk {'print $2'})
+    local sriov_numvfs_2
+    sriov_numvfs_2=$(grep -o 'echo *[1-9].*sriov_numvfs' $cfg_2 | awk {'print $2'})
 
-   local sriov_numvfs_1=$(grep -o 'echo *[1-9].*sriov_numvfs' $cfg_1 | awk {'print $2'})
-   local sriov_numvfs_2=$(grep -o 'echo *[1-9].*sriov_numvfs' $cfg_2 | awk {'print $2'})
+    sriov_numvfs_1=${sriov_numvfs_1:-0}
+    sriov_numvfs_2=${sriov_numvfs_2:-0}
 
-   sriov_numvfs_1=${sriov_numvfs_1:-0}
-   sriov_numvfs_2=${sriov_numvfs_2:-0}
+    if [[ "${sriov_numvfs_1}" != "${sriov_numvfs_2}" ]]; then
+        log_it "$cfg_1 and $cfg_2 differ on attribute sriov_numvfs [${sriov_numvfs_1}:${sriov_numvfs_2}]"
+        return $(false)
+    fi
 
-   if [[ "${sriov_numvfs_1}" != "${sriov_numvfs_2}" ]]; then
-      log_it "$cfg_1 and $cfg_2 differ on attribute sriov_numvfs [${sriov_numvfs_1}:${sriov_numvfs_2}]"
-      return $(false)
-   fi
-
-   return $(true)
+    return $(true)
 }
 
 #
@@ -226,51 +228,52 @@ function is_eq_sriov_numvfs() {
 # Warning:  Only compares against cfg file attributes:
 #            BOOTPROTO DEVICE IPADDR NETMASK GATEWAY MTU BONDING_OPTS SRIOV_NUMVFS
 #
-function is_eq_ifcfg() {
-   local cfg_1=$1
-   local cfg_2=$2
+function is_eq_ifcfg {
+    local cfg_1=$1
+    local cfg_2=$2
 
-   for attr in BOOTPROTO DEVICE IPADDR NETMASK GATEWAY MTU BONDING_OPTS
-   do
-      local attr_value1=$(normalized_cfg_attr_value $cfg_1 $attr)
-      local attr_value2=$(normalized_cfg_attr_value $cfg_2 $attr)
-      if [[ "${attr_value1}" != "${attr_value2}"  ]]; then
-         log_it "$cfg_1 and $cfg_2 differ on attribute $attr"
-         return $(false)
-      fi
-   done
+    for attr in BOOTPROTO DEVICE IPADDR NETMASK GATEWAY MTU BONDING_OPTS; do
+        local attr_value1
+        attr_value1=$(normalized_cfg_attr_value $cfg_1 $attr)
+        local attr_value2
+        attr_value2=$(normalized_cfg_attr_value $cfg_2 $attr)
+        if [[ "${attr_value1}" != "${attr_value2}"  ]]; then
+            log_it "$cfg_1 and $cfg_2 differ on attribute $attr"
+            return $(false)
+        fi
+    done
 
-   is_eq_sriov_numvfs $1 $2
-   return $?
+    is_eq_sriov_numvfs $1 $2
+    return $?
 }
 
 # Synchronize with sysinv-agent audit (ifup/down to query link speed).
-function sysinv_agent_lock() {
-   case $1 in
-   $ACQUIRE_LOCK)
-      local lock_file="/var/run/apply_network_config.lock"
-      # Lock file should be the same as defined in sysinv agent code
-      local lock_timeout=5
-      local max=15
-      local n=1
-      LOCK_FD=0
-      exec {LOCK_FD}>$lock_file
-      while [[ $n -le $max ]]
-      do
-          flock -w $lock_timeout $LOCK_FD && break
-          log_it "Failed to get lock($LOCK_FD) after $lock_timeout seconds ($n/$max), will retry"
-          sleep 1
-          ((n++))
-      done
-      if [[ $n -gt $max ]]; then
-         log_it "Failed to acquire lock($LOCK_FD) even after $max retries"
-         exit 1
-      fi
-      ;;
-   $RELEASE_LOCK)
-      [[ $LOCK_FD -gt 0 ]] && flock -u $LOCK_FD
-      ;;
-   esac
+function sysinv_agent_lock {
+    case $1 in
+    $ACQUIRE_LOCK)
+        local lock_file="/var/run/apply_network_config.lock"
+        # Lock file should be the same as defined in sysinv agent code
+        local lock_timeout=5
+        local max=15
+        local n=1
+        LOCK_FD=0
+        exec {LOCK_FD}>$lock_file
+        while [[ $n -le $max ]]; do
+
+            flock -w $lock_timeout $LOCK_FD && break
+            log_it "Failed to get lock($LOCK_FD) after $lock_timeout seconds ($n/$max), will retry"
+            sleep 1
+            n=$(($n+1))
+        done
+        if [[ $n -gt $max ]]; then
+            log_it "Failed to acquire lock($LOCK_FD) even after $max retries"
+            exit 1
+        fi
+        ;;
+    $RELEASE_LOCK)
+        [[ $LOCK_FD -gt 0 ]] && flock -u $LOCK_FD
+        ;;
+    esac
 }
 
 # First thing to do is deal with the case of there being no routes left on an interface.
@@ -310,7 +313,7 @@ for rt_path in $(find /var/run/network-scripts.puppet/ -name "${RTNAME_INCLUDE}"
         fi
     fi
 
-   
+
     if [ -s /var/run/network-scripts.puppet/$rt ] ; then
         # Whether this is a new routes file or there are changes, ultimately we will need
         # to ifup the file to add any potentially new routes.
@@ -352,16 +355,16 @@ for cfg_path in $(find /var/run/network-scripts.puppet/ -name "${IFNAME_INCLUDE}
            is_dhcp /etc/sysconfig/network-scripts/$cfg  ; then
            # if dhcp type iface, then too many possible attr's to compare against, so
            # just add cfg to the upDown list because we know (from above) cfg file is changed
-           log_it "dhcp detected for $cfg - adding to upDown list"
-           upDown+=($cfg)
+            log_it "dhcp detected for $cfg - adding to upDown list"
+            upDown+=($cfg)
         else
             # not in dhcp situation so check if any significant
             # cfg attributes have changed to warrant an iface restart
             is_eq_ifcfg /var/run/network-scripts.puppet/$cfg \
                         /etc/sysconfig/network-scripts/$cfg
             if [ $? -ne 0 ] ; then
-               log_it "$cfg changed - adding to upDown list"
-               upDown+=($cfg)
+                log_it "$cfg changed - adding to upDown list"
+                upDown+=($cfg)
             fi
         fi
     fi

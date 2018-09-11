@@ -13,24 +13,21 @@ SYSINV_READY_FLAG=/var/run/.sysinv_ready
 
 logfile=/var/log/platform.log
 
-function LOG()
-{
+function LOG {
     logger "$NAME: $*"
     echo "`date "+%FT%T"`: $NAME: $*" >> $logfile
 }
 
 count=0
-while [ $count -le 45 ]
-do
-    if [ -f $SYSINV_READY_FLAG ]
-    then
+while [ $count -le 45 ]; do
+    if [ -f $SYSINV_READY_FLAG ]; then
         LOG "SysInv is ready.  Passing goenabled check."
         echo "SysInv goenabled iterations PASS $count"
         LOG "SysInv goenabled iterations PASS $count"
         exit 0
     fi
     sleep 1
-    (( count++ ))
+    count=$(($count+1))
 done
 
 echo "SysInv goenabled iterations FAIL $count"

@@ -37,12 +37,11 @@ CPU_LIST=$2
 NUMBER_OF_CPUS=$(getconf _NPROCESSORS_CONF 2>/dev/null)
 STATUS=1
 
-for CPU_NUM in $(expand_sequence "$CPU_LIST" " ")
-do
+for CPU_NUM in $(expand_sequence "$CPU_LIST" " "); do
     # Check that we are not setting PM QoS policy for non-existing CPU
     if [ "$CPU_NUM" -lt "0" ] || [ "$CPU_NUM" -ge "$NUMBER_OF_CPUS" ]; then
         log_error "CPU number ${CPU_NUM} is invalid, available CPUs are 0-${NUMBER_OF_CPUS-1}"
-        exit 1 
+        exit 1
     fi
 
     # Obtain CPU wakeup latencies for all C-states available starting from operating state to deepest sleep
@@ -70,7 +69,7 @@ do
                 LATENCY=${LIMITS[${#LIMITS[@]}-1]}
             fi
             ;;
-        *)      
+        *)
             log_error "Policy is invalid, can be either low or high"
             exit 1
     esac

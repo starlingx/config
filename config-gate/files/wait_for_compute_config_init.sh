@@ -9,8 +9,7 @@
 
 SERVICE=computeconfig.service
 
-while :
-do
+while :; do
     systemctl status $SERVICE |grep -q running
     if [ $? -ne 0 ]; then
         exit 0

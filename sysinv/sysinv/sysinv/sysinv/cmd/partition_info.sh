@@ -33,7 +33,8 @@ wlog() {
         return
     fi
 
-    local head="$(date "+%Y-%m-%d %H:%M:%S.%3N") $0 $1"
+    local head
+    head="$(date "+%Y-%m-%d %H:%M:%S.%3N") $0 $1"
     echo "$head $2: $3" >> $LOG_FILE
     if [ "$4" = "print_trace" ]; then
         # Print out the stack trace
@@ -50,8 +51,7 @@ device_path=$1 && shift
 part_numbers=( `parted -s $device_path print | awk '$1 == "Number" {i=1; next}; i {print $1}'` )
 sector_size=$(blockdev --getss $device_path)
 
-for part_number in "${part_numbers[@]}";
-do
+for part_number in "${part_numbers[@]}"; do
     sgdisk_part_info=$(sgdisk -i $part_number $device_path)
 
     # Parse the output and put it in the right return format.
