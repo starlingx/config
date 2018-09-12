@@ -15,6 +15,7 @@ from sqlalchemy import Column, MetaData, Table, ForeignKey
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'
 
+
 def _populate_ptp_table(migrate_engine, meta, ptp, i_system):
     """This function inserts all the initial data about journals,
        into the ptp table.

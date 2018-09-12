@@ -543,7 +543,6 @@ class LLDPOperator(object):
         LOG.error("vswitch_lldp_agent_list is not implemented.")
         return []
 
-
     def vswitch_lldp_neighbour_list(self):
         """Sends a request to the vswitch requesting the full list of LLDP
 
@@ -552,7 +551,6 @@ class LLDPOperator(object):
 
         LOG.error("vswitch_lldp_neighbour_ist s not implemented.")
         return []
-
 
     def lldp_agents_list(self, do_compute=False):
         self.agent_audit_count += 1
@@ -660,5 +658,4 @@ class LLDPOperator(object):
                               newname], stdout=subprocess.PIPE)
 
         if do_compute:
-            attrs = {"system-name": newname}
             LOG.error("lldp_update_systemname failed due to lack of vswitch")

@@ -1552,7 +1552,6 @@ class AgentManager(service.PeriodicService):
         :returns: none
         """
         try:
-            from controllerconfig import backup_restore
             from controllerconfig.upgrades import \
                 management as upgrades_management
         except ImportError:

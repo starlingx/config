@@ -515,7 +515,6 @@ class V1(base.APIBase):
                                            bookmark=True)
                          ]
 
-
         v1.iinfra = [link.Link.make_link('self', pecan.request.host_url,
                                           'iinfra', ''),
                       link.Link.make_link('bookmark',
