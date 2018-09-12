@@ -1265,3 +1265,9 @@ class IncompleteCephMonNetworkConfig(CephFailure):
 
 class InvalidHelmNamespace(Invalid):
     message = _("Invalid helm overrides namespace (%(namespace)s) for chart %(chart)s.")
+
+
+class LocalManagementIpNotFound(NotFound):
+    message = _("Local management IP not found: "
+                "config_uuid=%(config_uuid), config_dict=%(config_dict), "
+                "host_personality=%(host_personality)")
