@@ -42,14 +42,8 @@ neutron::vlan_transparent: true
 neutron::pnet_audit_enabled: false
 
 neutron::verbose: false
-neutron::root_helper: 'sudo'
 neutron::log_dir: false
 neutron::use_syslog: true
-neutron::host_driver: 'neutron.plugins.wrs.drivers.host.DefaultHostDriver'
-neutron::fm_driver: 'neutron.plugins.wrs.drivers.fm.DefaultFmDriver'
-neutron::vlan_transparent: true
-neutron::state_path: '/var/run/neutron'
-neutron::lock_path: '/var/run/neutron/lock'
 neutron::notification_driver: ['messagingv2']
 neutron::dns_domain: 'openstacklocal'
 
@@ -59,7 +53,6 @@ nova::use_syslog: true
 nova::debug: false
 nova::log_facility: 'local6'
 nova::notification_driver: 'messagingv2'
-nova::notify_on_state_change: 'vm_and_task_state'
 nova::cinder_catalog_info: 'volumev2:cinderv2:internalURL'
 nova::notify_on_state_change: 'vm_and_task_state'
 
@@ -104,7 +97,7 @@ platform::collectd::params::collectd_d_dir: '/etc/collectd.d'
 
 # collectd: module named plugins
 platform::collectd::params::module_path: '/opt/collectd/extensions/python'
-platform::collectd::params::plugins: ['fm_notifier','mtce_notifier']
+platform::collectd::params::plugins: ['fm_notifier', 'mtce_notifier']
 platform::collectd::params::mtce_notifier_port: 2101
 platform::collectd::params::log_traces: true
 platform::collectd::params::encoding: "utf-8"

@@ -373,39 +373,39 @@ cinder::volume::enabled: false
 cinder::backup::posix::backup_posix_path: '/opt/backups'
 
 cinder::policy::policies:
-    enable_consistencygroup_create:
-        key: 'consistencygroup:create'
-        value: ''
-    enable_consistencygroup_delete:
-        key: 'consistencygroup:delete'
-        value: ''
-    enable_consistencygroup_update:
-        key: 'consistencygroup:update'
-        value: ''
-    enable_consistencygroup_get:
-        key: 'consistencygroup:get'
-        value: ''
-    enable_consistencygroup_get_all:
-        key: 'consistencygroup:get_all'
-        value: ''
-    enable_consistencygroup_create_cgsnapshot:
-        key: 'consistencygroup:create_cgsnapshot'
-        value: ''
-    enable_consistencygroup_delete_cgsnapshot:
-        key: 'consistencygroup:delete_cgsnapshot'
-        value: ''
-    enable_consistencygroup_get_cgsnapshot:
-        key: 'consistencygroup:get_cgsnapshot'
-        value: ''
-    enable_consistencygroup_get_all_cgsnapshots:
-        key: 'consistencygroup:get_all_cgsnapshots'
-        value: ''
-    enable_snapshot_export_attributes:
-        key: 'volume_extension:snapshot_export_attributes'
-        value: 'rule:admin_or_owner'
-    enable_snapshot_backup_status_attribute:
-        key: 'volume_extension:snapshot_backup_status_attribute'
-        value: 'rule:admin_or_owner'
+  enable_consistencygroup_create:
+    key: 'consistencygroup:create'
+    value: ''
+  enable_consistencygroup_delete:
+    key: 'consistencygroup:delete'
+    value: ''
+  enable_consistencygroup_update:
+    key: 'consistencygroup:update'
+    value: ''
+  enable_consistencygroup_get:
+    key: 'consistencygroup:get'
+    value: ''
+  enable_consistencygroup_get_all:
+    key: 'consistencygroup:get_all'
+    value: ''
+  enable_consistencygroup_create_cgsnapshot:
+    key: 'consistencygroup:create_cgsnapshot'
+    value: ''
+  enable_consistencygroup_delete_cgsnapshot:
+    key: 'consistencygroup:delete_cgsnapshot'
+    value: ''
+  enable_consistencygroup_get_cgsnapshot:
+    key: 'consistencygroup:get_cgsnapshot'
+    value: ''
+  enable_consistencygroup_get_all_cgsnapshots:
+    key: 'consistencygroup:get_all_cgsnapshots'
+    value: ''
+  enable_snapshot_export_attributes:
+    key: 'volume_extension:snapshot_export_attributes'
+    value: 'rule:admin_or_owner'
+  enable_snapshot_backup_status_attribute:
+    key: 'volume_extension:snapshot_backup_status_attribute'
+    value: 'rule:admin_or_owner'
 
 # heat
 heat::use_syslog: true
@@ -449,7 +449,7 @@ openstack::murano::params::tcp_listen_options: '[binary,
                           {exit_on_close,false},
                           {keepalive,true}]'
 openstack::murano::params::rabbit_tcp_listen_options:
-         '[binary,
+  '[binary,
          {packet,        raw},
          {reuseaddr,     true},
          {backlog,       128},
@@ -462,37 +462,37 @@ openstack::murano::params::rabbit_tcp_listen_options:
 # is currently in either lighttpd or haproxy's cipher lists
 # constructed on 2017-04-05
 openstack::murano::params::rabbit_cipher_list: ["AES128-GCM-SHA256",
-                         "AES128-SHA",
-                         "AES128-SHA256",
-                         "AES256-GCM-SHA384",
-                         "AES256-SHA",
-                         "AES256-SHA256",
-                         "DHE-DSS-AES128-GCM-SHA256",
-                         "DHE-DSS-AES128-SHA256",
-                         "DHE-DSS-AES256-GCM-SHA384",
-                         "DHE-DSS-AES256-SHA256",
-                         "DHE-RSA-AES128-GCM-SHA256",
-                         "DHE-RSA-AES128-SHA256",
-                         "DHE-RSA-AES256-GCM-SHA384",
-                         "DHE-RSA-AES256-SHA256",
-                         "ECDH-ECDSA-AES128-GCM-SHA256",
-                         "ECDH-ECDSA-AES128-SHA256",
-                         "ECDH-ECDSA-AES256-GCM-SHA384",
-                         "ECDH-ECDSA-AES256-SHA384",
-                         "ECDHE-ECDSA-AES128-GCM-SHA256",
-                         "ECDHE-ECDSA-AES128-SHA256",
-                         "ECDHE-ECDSA-AES256-GCM-SHA384",
-                         "ECDHE-ECDSA-AES256-SHA384",
-                         "ECDHE-RSA-AES128-GCM-SHA256",
-                         "ECDHE-RSA-AES128-SHA",
-                         "ECDHE-RSA-AES128-SHA256",
-                         "ECDHE-RSA-AES256-GCM-SHA384",
-                         "ECDHE-RSA-AES256-SHA",
-                         "ECDHE-RSA-AES256-SHA384",
-                         "ECDH-RSA-AES128-GCM-SHA256",
-                         "ECDH-RSA-AES128-SHA256",
-                         "ECDH-RSA-AES256-GCM-SHA384",
-                         "ECDH-RSA-AES256-SHA384"]
+                                                "AES128-SHA",
+                                                "AES128-SHA256",
+                                                "AES256-GCM-SHA384",
+                                                "AES256-SHA",
+                                                "AES256-SHA256",
+                                                "DHE-DSS-AES128-GCM-SHA256",
+                                                "DHE-DSS-AES128-SHA256",
+                                                "DHE-DSS-AES256-GCM-SHA384",
+                                                "DHE-DSS-AES256-SHA256",
+                                                "DHE-RSA-AES128-GCM-SHA256",
+                                                "DHE-RSA-AES128-SHA256",
+                                                "DHE-RSA-AES256-GCM-SHA384",
+                                                "DHE-RSA-AES256-SHA256",
+                                                "ECDH-ECDSA-AES128-GCM-SHA256",
+                                                "ECDH-ECDSA-AES128-SHA256",
+                                                "ECDH-ECDSA-AES256-GCM-SHA384",
+                                                "ECDH-ECDSA-AES256-SHA384",
+                                                "ECDHE-ECDSA-AES128-GCM-SHA256",
+                                                "ECDHE-ECDSA-AES128-SHA256",
+                                                "ECDHE-ECDSA-AES256-GCM-SHA384",
+                                                "ECDHE-ECDSA-AES256-SHA384",
+                                                "ECDHE-RSA-AES128-GCM-SHA256",
+                                                "ECDHE-RSA-AES128-SHA",
+                                                "ECDHE-RSA-AES128-SHA256",
+                                                "ECDHE-RSA-AES256-GCM-SHA384",
+                                                "ECDHE-RSA-AES256-SHA",
+                                                "ECDHE-RSA-AES256-SHA384",
+                                                "ECDH-RSA-AES128-GCM-SHA256",
+                                                "ECDH-RSA-AES128-SHA256",
+                                                "ECDH-RSA-AES256-GCM-SHA384",
+                                                "ECDH-RSA-AES256-SHA384"]
 
 # Magnum
 magnum::logging::use_syslog: true
@@ -512,7 +512,7 @@ ironic::db::postgresql::encoding: 'UTF8'
 ironic::logging::debug: false
 ironic::api::enabled: false
 ironic::conductor::enabled: false
-ironic::conductor::enabled_drivers: ['pxe_ipmitool','pxe_ipmitool_socat']
+ironic::conductor::enabled_drivers: ['pxe_ipmitool', 'pxe_ipmitool_socat']
 ironic::conductor::automated_clean: true
 ironic::conductor::default_boot_option: 'local'
 ironic::drivers::pxe::images_path: '/opt/img-conversions/ironic/images/'
@@ -528,7 +528,7 @@ dcmanager::use_syslog: true
 dcmanager::log_facility: 'local2'
 dcmanager::debug: false
 
-#FM
+# FM
 fm::use_syslog: true
 fm::log_facility: 'local2'
 fm::api::enable_proxy_headers_parsing: true
@@ -536,4 +536,3 @@ fm::db::sync::user: 'root'
 fm::database_idle_timeout: 60
 fm::database_max_overflow: 20
 fm::database_max_pool_size: 1
-
