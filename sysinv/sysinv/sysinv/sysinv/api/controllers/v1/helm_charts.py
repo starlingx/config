@@ -80,7 +80,7 @@ class HelmChartsController(rest.RestController):
             # Extract the info we want.
             values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
                                   '\nCOMPUTED VALUES:')[0]
-        except:
+        except Exception:
             raise
         finally:
             os.remove(chartfile)
@@ -90,7 +90,6 @@ class HelmChartsController(rest.RestController):
             os.remove(tmpfile)
 
         return values
-
 
     @wsme_pecan.wsexpose(wtypes.text)
     def get_all(self):

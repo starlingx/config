@@ -13,7 +13,6 @@ import os
 import tempfile
 import yaml
 
-from oslo_utils import importutils
 from stevedore import extension
 
 from sysinv.openstack.common import log as logging
