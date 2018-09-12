@@ -944,57 +944,6 @@ def backup_postgres(archive, staging_dir, cinder_config=False):
         raise BackupFail("Failed to backup database configuration")
 
 
-def set_cinder_volumes_snapshots_status():
-    """Update cinder volumes and cinder snapshots status to error,
-       except for those from external backends.
-    """
-
-    # All volumes from external backends should not be put into error.
-    # Only volumes from LVM and internal CEPH backend (all tiers) should be
-    # put into error.
-
-    # Possible cinder volumes hosts.
-    volumes_host = ["%@{}#%".format(sysinv_constants.SB_TYPE_CEPH),
-                    "%@{}#%".format(sysinv_constants.SB_TYPE_LVM)]
-
-    # Get the cinder volumes host for any secondary storage tiers.
-    storage_tiers_string = "SELECT NAME FROM STORAGE_TIERS WHERE " \
-                           "type='ceph' and NAME!='storage'"
-    storage_tiers_cmd = ["sudo", "-u", "postgres", "psql", "-t", "sysinv",
-                         "-c", storage_tiers_string]
-    storage_tiers = subprocess.check_output(storage_tiers_cmd)
-    storage_tiers = storage_tiers.split()
-    if storage_tiers:
-        for tier in storage_tiers:
-            cinder_volumes_host = "%@{}-{}#%".format(
-                sysinv_constants.SB_TYPE_CEPH, tier)
-            volumes_host.append(cinder_volumes_host)
-
-    # Get the volumes backed by LVM or internal CEPH.
-    get_volumes_cmd_string = "SELECT ID FROM VOLUMES WHERE HOST LIKE ANY "\
-                             " (ARRAY%s)" % volumes_host
-    get_volumes_cmd = ["sudo", "-u", "postgres", "psql", "-t", "cinder", "-c",
-                       get_volumes_cmd_string]
-    volumes = subprocess.check_output(get_volumes_cmd)
-    volumes = volumes.split()
-
-    # Set the status to error for all the cinder volumes and snapshots backed
-    # by LVM or internal CEPH.
-    if volumes:
-        volumes = str(volumes).replace('[', '(').replace(']', ')')
-        cmd_string = "UPDATE VOLUMES SET STATUS='error' WHERE ID " \
-                     "IN %s" % volumes
-        cmd = ["sudo", "-u", "postgres", "psql", "-d", "cinder", "-c",
-               cmd_string]
-        subprocess.check_call(cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-        cmd_string = "UPDATE SNAPSHOTS SET STATUS='error' WHERE VOLUME_ID " \
-                     "IN %s" % volumes
-        cmd = ["sudo", "-u", "postgres", "psql", "-d", "cinder", "-c",
-               cmd_string]
-        subprocess.check_call(cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-
 def restore_postgres(archive, staging_dir):
     """ Restore postgres configuration """
     try:
@@ -1017,15 +966,6 @@ def restore_postgres(archive, staging_dir):
                                    data, db_elem],
                                   stdout=DEVNULL)
 
-        if tsconfig.region_config != 'yes':
-            # TODO (rchurch): Should this call the sysinv API to see if the
-            # backend is configured?
-            if subprocess.check_output(["sudo",
-                                        "-u", "postgres",
-                                        "psql", "-lqt"]).find('cinder') != -1:
-                # The backing store for cinder volumes and snapshots is not
-                # restored, so their status must be set to error.
-                set_cinder_volumes_snapshots_status()
     except (OSError, subprocess.CalledProcessError, tarfile.TarError) as e:
         LOG.error("Failed to restore postgres databases. Error: %s", e)
         raise RestoreFail("Failed to restore database configuration")

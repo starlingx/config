@@ -372,6 +372,12 @@ cinder::volume::enabled: false
 
 cinder::backup::posix::backup_posix_path: '/opt/backups'
 
+# backup_file_size should be below 500MB to allow multiple backups
+# to run in parallel and not consume all RAM.
+# backup_file_size must be a multiple of backup_sha_block_size_bytes
+# which has a default value of 32768 bytes.
+cinder::backup::posix::backup_file_size: 499974144
+
 cinder::policy::policies:
   enable_consistencygroup_create:
     key: 'consistencygroup:create'
