@@ -7,6 +7,7 @@
 import copy
 import itertools
 import os
+import operator
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -68,7 +69,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_upgrade_config(host))
         config.update(self._get_host_tpm_config(host))
         config.update(self._get_host_cpu_config(host))
-        config.update(self._get_host_hugepage_config(host))
+        config.update(self._get_host_memory_config(host))
         return config
 
     def _get_static_software_config(self):
@@ -530,6 +531,36 @@ class PlatformPuppet(base.BasePuppet):
             if not host_cpus:
                 return config
 
+            # Define the full range of CPUs for the compute host
+            max_cpu = max(host_cpus, key=operator.attrgetter('cpu'))
+            compute_cpu_list = "\"0-%d\"" % max_cpu.cpu
+
+            platform_cpus_no_threads = self._get_platform_cpu_list(host)
+            vswitch_cpus_no_threads = self._get_vswitch_cpu_list(host)
+
+            platform_cpu_list_with_quotes = \
+                "\"%s\"" % ','.join([str(c.cpu) for c in platform_cpus_no_threads])
+
+            platform_numa_cpus = self._get_numa_index_list(platform_cpus_no_threads)
+            vswitch_numa_cpus = self._get_numa_index_list(vswitch_cpus_no_threads)
+
+            # build a list of platform reserved cpus per numa node
+            platform_cores = []
+            for node, cpus in platform_numa_cpus.items():
+                cpu_list = ','.join([str(c.cpu) for c in cpus])
+                platform_node = "\"node%d:%s\"" % (node, cpu_list)
+                platform_cores.append(platform_node)
+
+            # build a list of vswitch reserved cpu counts per numa node
+            vswitch_cores = []
+            for node, cpus in vswitch_numa_cpus.items():
+                cpu_count = len(cpus)
+                vswitch_node = "\"node%d:%d\"" % (node, cpu_count)
+                vswitch_cores.append(vswitch_node)
+
+            reserved_platform_cores = "(%s)" % ' '.join(platform_cores)
+            reserved_vswitch_cores = "(%s)" % ' '.join(vswitch_cores)
+
             host_cpus = sorted(host_cpus, key=lambda c: c.cpu)
             n_cpus = len(host_cpus)
             host_cpu_list = [c.cpu for c in host_cpus]
@@ -589,17 +620,30 @@ class PlatformPuppet(base.BasePuppet):
                                     platform_cpu_list,
                                     platform_cpu_list)
             config.update({
+                'platform::compute::params::compute_cpu_list':
+                    compute_cpu_list,
+                'platform::compute::params::platform_cpu_list':
+                    platform_cpu_list_with_quotes,
+                'platform::compute::params::reserved_vswitch_cores':
+                    reserved_vswitch_cores,
+                'platform::compute::params::reserved_platform_cores':
+                    reserved_platform_cores,
                 'platform::compute::grub::params::n_cpus': n_cpus,
                 'platform::compute::grub::params::cpu_options': cpu_options,
             })
         return config
 
-    def _get_host_hugepage_config(self, host):
+    def _get_host_memory_config(self, host):
         config = {}
         if constants.COMPUTE in utils.get_personalities(host):
             host_memory = self.dbapi.imemory_get_by_ihost(host.id)
-
             memory_numa_list = self._get_numa_index_list(host_memory)
+
+            platform_cpus = self._get_platform_cpu_list(host)
+            platform_cpu_count = len(platform_cpus)
+
+            platform_nodes = []
+            vswitch_nodes = []
 
             hugepages_2Ms = []
             hugepages_1Gs = []
@@ -614,6 +658,17 @@ class PlatformPuppet(base.BasePuppet):
                 memory = memory_list[0]
                 vswitch_2M_page = 0
                 vswitch_1G_page = 0
+
+                platform_size = memory.platform_reserved_mib
+                platform_node = "\"node%d:%dMB:%d\"" % (
+                    node, platform_size, platform_cpu_count)
+                platform_nodes.append(platform_node)
+
+                vswitch_size = memory.vswitch_hugepages_size_mib
+                vswitch_pages = memory.vswitch_hugepages_nr
+                vswitch_node = "\"node%d:%dkB:%d\"" % (
+                        node, vswitch_size * 1024, vswitch_pages)
+                vswitch_nodes.append(vswitch_node)
 
                 vm_hugepages_nr_2M = memory.vm_hugepages_nr_2M_pending \
                     if memory.vm_hugepages_nr_2M_pending is not None \
@@ -648,6 +703,9 @@ class PlatformPuppet(base.BasePuppet):
                 vm_2M_pages.append(vm_hugepages_nr_2M)
                 vm_1G_pages.append(vm_hugepages_nr_1G)
 
+            platform_reserved_memory = "(%s)" % ' '.join(platform_nodes)
+            vswitch_reserved_memory = "(%s)" % ' '.join(vswitch_nodes)
+
             nr_hugepages_2Ms = "(%s)" % ' '.join(hugepages_2Ms)
             nr_hugepages_1Gs = "(%s)" % ' '.join(hugepages_1Gs)
 
@@ -658,6 +716,10 @@ class PlatformPuppet(base.BasePuppet):
             vm_1G = "\"%s\"" % ','.join([str(i) for i in vm_1G_pages])
 
             config.update({
+                'platform::compute::params::compute_base_reserved':
+                    platform_reserved_memory,
+                'platform::compute::params::compute_vswitch_reserved':
+                    vswitch_reserved_memory,
                 'platform::compute::hugepage::params::nr_hugepages_2M':
                     nr_hugepages_2Ms,
                 'platform::compute::hugepage::params::nr_hugepages_1G':
