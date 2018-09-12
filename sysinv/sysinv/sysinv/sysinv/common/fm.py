@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2016-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,11 +7,34 @@
 
 # FM Fault Management Handling
 
+from keystoneauth1.access import service_catalog as k_service_catalog
+from oslo_config import cfg
 from fm_api import constants as fm_constants
 from fm_api import fm_api
+import fmclient as fm_client
 from sysinv.openstack.common import log
 
+CONF = cfg.CONF
+
 LOG = log.getLogger(__name__)
+
+
+fm_group = cfg.OptGroup(
+    'fm',
+    title='FM Options',
+    help="Configuration options for the fault management service")
+
+fm_opts = [
+    cfg.StrOpt('catalog_info',
+               default='faultmanagement:fm:internalURL',
+               help="Service catalog Look up info."),
+    cfg.StrOpt('os_region_name',
+               default='RegionOne',
+               help="Region name of this node. It is used for catalog lookup")
+]
+
+CONF.register_group(fm_group)
+CONF.register_opts(fm_opts, group=fm_group)
 
 
 class FmCustomerLog(object):
@@ -55,3 +78,27 @@ class FmCustomerLog(object):
                 LOG.info("Generated customer log, fm_uuid=%s." % fm_uuid)
         else:
             LOG.error("Unknown event id (%s) given." % fm_event_id)
+
+
+def fmclient(context, version=1, endpoint=None):
+    """Constructs a fm client object for making API requests.
+
+    :param context: The request context for auth.
+    :param version: API endpoint version.
+    :param endpoint: Optional If the endpoint is not available, it will be
+                     retrieved from context
+    """
+    auth_token = context.auth_token
+    if endpoint is None:
+        sc = k_service_catalog.ServiceCatalogV2(context.service_catalog)
+        service_type, service_name, interface = \
+            CONF.fm.catalog_info.split(':')
+        service_parameters = {'service_type': service_type,
+                              'service_name': service_name,
+                              'interface': interface,
+                              'region_name': CONF.fm.os_region_name}
+        endpoint = sc.url_for(**service_parameters)
+
+    return fm_client.Client(version=version,
+                            endpoint=endpoint,
+                            auth_token=auth_token)

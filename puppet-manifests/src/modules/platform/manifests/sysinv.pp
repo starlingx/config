@@ -2,6 +2,7 @@ class platform::sysinv::params (
   $api_port = 6385,
   $region_name = undef,
   $service_create = false,
+  $fm_catalog_info = 'faultmanagement:fm:internalURL',
 ) { }
 
 class platform::sysinv
@@ -45,6 +46,7 @@ class platform::sysinv
     rabbit_port => $::platform::amqp::params::port,
     rabbit_userid => $::platform::amqp::params::auth_user,
     rabbit_password => $::platform::amqp::params::auth_password,
+    fm_catalog_info => $fm_catalog_info,
   }
 
   # Note: The log format strings are prefixed with "sysinv" because it is

@@ -1,7 +1,7 @@
 #
 # Files in this package are licensed under Apache; see LICENSE file.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -69,7 +69,8 @@ class sysinv (
   $neutron_region_name         = 'RegionOne',
   $cinder_region_name          = 'RegionOne',
   $nova_region_name            = 'RegionOne',
-  $magnum_region_name          = 'RegionOne'
+  $magnum_region_name          = 'RegionOne',
+  $fm_catalog_info             = undef,
 ) {
 
   include sysinv::params
@@ -198,6 +199,11 @@ class sysinv (
     'keystone_authtoken/cinder_region_name':  value => $cinder_region_name;
     'keystone_authtoken/nova_region_name':  value => $nova_region_name;
     'keystone_authtoken/magnum_region_name':  value => $magnum_region_name;
+  }
+
+  sysinv_config {
+    'fm/catalog_info':    value => $fm_catalog_info;
+    'fm/os_region_name':  value => $region_name;
   }
 
  sysinv_api_paste_ini {
