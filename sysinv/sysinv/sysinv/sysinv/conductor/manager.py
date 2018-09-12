@@ -3885,7 +3885,7 @@ class ConductorManager(service.PeriodicService):
                     found = True
                 else:
                     LOG.error("Agent reports a DRBD cinder device, but no physical device found in the inventory.")
-                    # Do not create an unaffiliated DRDB PV, go to the next agent reported PV
+                    # Do not create an unaffiliated DRBD PV, go to the next agent reported PV
                     continue
 
             # Create the physical volume if it doesn't currently exist but only
@@ -6337,9 +6337,12 @@ class ConductorManager(service.PeriodicService):
         values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
         self.dbapi.storage_backend_update(backend.uuid, values)
 
-    def create_controller_filesystems(self, context):
-        """ Create the default storage config for
+    def create_controller_filesystems(self, context, rootfs_device):
+        """ Create the storage config based on disk size for
             database, image, backup, img-conversion
+
+            :param context: an admin context.
+            :param rootfs_device: the root disk device
         """
         database_storage = 0
         cgcs_lv_size = 0
@@ -6372,227 +6375,156 @@ class ConductorManager(service.PeriodicService):
                 # so set glance local to False
                 glance_local = False
 
-        if cutils.is_virtual():
-            # Virtual: 120GB disk
+        disk_size = cutils.get_disk_capacity_mib(rootfs_device)
+        disk_size = int(disk_size / 1024)
+
+        if disk_size >= constants.DEFAULT_SMALL_DISK_SIZE:
+
+            LOG.info("Disk size : %s ... large disk defaults" % disk_size)
+
+            # Defaults: 500G root disk
             #
             # Min size of the cgts-vg PV is:
-            #   50.0 G - PV for cgts-vg (specified in the kickstart)
+            #   147.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   58.0 G - (for DCSC non-AIO)
-            #          4 G - /var/log (reserved in kickstart)
-            #          4 G - /scratch (reserved in kickstart)
+            #   155.0 G - (for DCSC non-AIO)
+            #          8 G - /var/log (reserved in kickstart)
+            #          8 G - /scratch (reserved in kickstart)
             #          2 G - cgcs_lv (DRBD bootstrap manifest)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
             #          2 G - platform_lv (DRBD bootstrap manifest)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
-            #         17 G - cgts-vg contents when we get to these checks
+            #         25 G - cgts-vg contents when we get to these checks
+            #
             #
             #       Final defaults view after controller manifests
-            #          4 G - /var/log (reserved in kickstart)
-            #          4 G - /scratch (reserved in kickstart)
-            #          8 G - /opt/cgcs
-            #         10 G - /var/lib/postgresql
+            #          8 G - /var/log (reserved in kickstart)
+            #          8 G - /scratch (reserved in kickstart)
+            #         10 G - /opt/cgcs
+            #         40 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
             #          2 G - /opt/platform
             #          1 G - /opt/extension
-            #          8 G - /opt/img_conversions
-            #          5 G - /opt/backup
+            #         20 G - /opt/img_conversions
+            #         50 G - /opt/backup
+            #          5 G - /opt/gnocchi
+            #          1 G - anchor_lv
+            #          8 G - /opt/patch-vault (DRBD ctlr manifest for
+            #                   Distributed Cloud System Controller non-AIO only)
+            #        -----
+            #        147 G or 155 G (for DCSC non-AIO)
+            #
+            #  The absolute minimum disk size for these default settings:
+            #      0.5 G - /boot
+            #     20.0 G - /
+            #    147.0 G - cgts-vg PV
+            # or 155.0 G - (DCSC non-AIO)
+            #   -------
+            #    167.5 G => ~168G min size disk
+            # or
+            #    175.5 G => ~176G min size disk
+            #
+            # If required disk is size 500G:
+            #   1) Standard controller - will use all free space for the PV
+            #       0.5 G - /boot
+            #      20.0 G - /
+            #     479.5 G - cgts-vg PV
+            #
+            #   2) AIO - will leave unused space for further partitioning
+            #       0.5 G - /boot
+            #      20.0 G - /
+            #     147.0 G - cgts-vg PV
+            #     332.5 G - unpartitioned free space
+            #
+            database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
+            if glance_local:
+                # When glance is local we need to set the
+                # img_conversion-lv size. Conversely in region
+                # mode conversions are done in the other region
+                # so there is no need to create the conversions
+                # volume or set lize.
+                img_conversions_lv_size = \
+                    constants.DEFAULT_IMG_CONVERSION_STOR_SIZE
+
+            cgcs_lv_size = constants.DEFAULT_IMAGE_STOR_SIZE
+            backup_lv_size = database_storage + \
+                cgcs_lv_size + constants.BACKUP_OVERHEAD
+
+        elif disk_size >= constants.MINIMUM_DISK_SIZE:
+
+            LOG.info("Disk size : %s ... small disk defaults" % disk_size)
+
+            # Small disk: under 240G root disk
+            #
+            # Min size of the cgts-vg PV is:
+            #   97.0 G - PV for cgts-vg (specified in the kickstart)
+            # or
+            #   105.0 G - (for DCSC non-AIO)
+            #          8 G - /var/log (reserved in kickstart)
+            #          8 G - /scratch (reserved in kickstart)
+            #          2 G - cgcs_lv (DRBD bootstrap manifest)
+            #          2 G - pgsql_lv (DRBD bootstrap manifest)
+            #          2 G - rabbit_lv (DRBD bootstrap manifest)
+            #          2 G - platform_lv (DRBD bootstrap manifest)
+            #          1 G - extension_lv (DRBD bootstrap manifest)
+            #        -----
+            #         25 G - cgts-vg contents when we get to these checks
+            #
+            #
+            #       Final defaults view after controller manifests
+            #          8 G - /var/log (reserved in kickstart)
+            #          8 G - /scratch (reserved in kickstart)
+            #         10 G - /opt/cgcs
+            #         20 G - /var/lib/postgresql
+            #          2 G - /var/lib/rabbitmq
+            #          2 G - /opt/platform
+            #          1 G - /opt/extension
+            #         10 G - /opt/img_conversions
+            #         30 G - /opt/backup
             #          5 G - /opt/gnocchi
             #          1 G - anchor_lv
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
             #        -----
-            #         50 G or 58 G (for DCSC non-AIO)
-            #
-            #  vg_free calculation:
-            #         50/58 G - 17 G = 33/41 G
+            #         97 G or 105 G (for DCSC non-AIO)
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
-            #    10.0 G - /
-            #    50.0 G - cgts-vg PV
-            # or 58.0 G - (DCSC non-AIO)
-            #   -------
-            #    60.5 G => ~61G min size disk
+            #    20.0 G - /
+            #    97.0 G - cgts-vg PV
             # or
-            #    68.5 G => ~69G min size disk
+            #   105.0 G - (for DCSC non-AIO)
+            #   -------
+            #   117.5 G => ~118G min size disk
+            # or
+            #   125.5 G => ~126G min size disk
             #
-            # If required disk is size 120G:
+            # If required disk is size 240G:
             #   1) Standard controller - will use all free space for the PV
             #       0.5 G - /boot
-            #      10.0 G - /
-            #     109.5 G - cgts-vg PV
-            #
+            #      20.0 G - /
+            #     219.5 G - cgts-vg PV
             #   2) AIO - will leave unused space for further partitioning
             #       0.5 G - /boot
-            #      10.0 G - /
-            #      50.0 G - cgts-vg PV
-            #      59.5 G - unpartitioned free space
+            #      20.0 G - /
+            #      97.0 G - cgts-vg PV
+            #     122.5 G - unpartitioned free space
             #
-            #  Min sized "usable" vbox disk is ~75G
-            #  Min sized real world disk is 120G
             database_storage = \
-                constants.DEFAULT_VIRTUAL_DATABASE_STOR_SIZE
-            cgcs_lv_size = constants.DEFAULT_VIRTUAL_IMAGE_STOR_SIZE
+                constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
             if glance_local:
                 img_conversions_lv_size = \
-                    constants.DEFAULT_VIRTUAL_IMG_CONVERSION_STOR_SIZE
-            backup_lv_size = constants.DEFAULT_VIRTUAL_BACKUP_STOR_SIZE
+                    constants.DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE
+
+            cgcs_lv_size = constants.DEFAULT_SMALL_IMAGE_STOR_SIZE
+            # Due to the small size of the disk we can't provide the
+            # proper amount of backup space which is (database + cgcs_lv
+            # + BACKUP_OVERHEAD) so we are using a smaller default.
+            backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
         else:
-            vg_free = cutils.get_cgts_vg_free_space()
-
-            if vg_free > 121:
-
-                LOG.info("VG Free : %s ... large disk defaults" % vg_free)
-
-                # Defaults: 500G root disk
-                #
-                # Min size of the cgts-vg PV is:
-                #   147.0 G - PV for cgts-vg (specified in the kickstart)
-                # or
-                #   155.0 G - (for DCSC non-AIO)
-                #          8 G - /var/log (reserved in kickstart)
-                #          8 G - /scratch (reserved in kickstart)
-                #          2 G - cgcs_lv (DRDB bootstrap manifest)
-                #          2 G - pgsql_lv (DRDB bootstrap manifest)
-                #          2 G - rabbit_lv (DRDB bootstrap manifest)
-                #          2 G - platform_lv (DRDB bootstrap manifest)
-                #          1 G - extension_lv (DRDB bootstrap manifest)
-                #        -----
-                #         25 G - cgts-vg contents when we get to these checks
-                #
-                #
-                #       Final defaults view after controller manifests
-                #          8 G - /var/log (reserved in kickstart)
-                #          8 G - /scratch (reserved in kickstart)
-                #         10 G - /opt/cgcs
-                #         40 G - /var/lib/postgresql
-                #          2 G - /var/lib/rabbitmq
-                #          2 G - /opt/platform
-                #          1 G - /opt/extension
-                #         20 G - /opt/img_conversions
-                #         50 G - /opt/backup
-                #          5 G - /opt/gnocchi
-                #          1 G - anchor_lv
-                #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
-                #        -----
-                #        147 G or 155 G (for DCSC non-AIO)
-                #
-                #  vg_free calculation:
-                #         147/155 G - 25 G = 122/130 G
-                #
-                #  The absolute minimum disk size for these default settings:
-                #      0.5 G - /boot
-                #     20.0 G - /
-                #    147.0 G - cgts-vg PV
-                # or 155.0 G - (DCSC non-AIO)
-                #   -------
-                #    167.5 G => ~168G min size disk
-                # or
-                #    175.5 G => ~176G min size disk
-                #
-                # If required disk is size 500G:
-                #   1) Standard controller - will use all free space for the PV
-                #       0.5 G - /boot
-                #      20.0 G - /
-                #     479.5 G - cgts-vg PV
-                #
-                #   2) AIO - will leave unused space for further partitioning
-                #       0.5 G - /boot
-                #      20.0 G - /
-                #     147.0 G - cgts-vg PV
-                #     332.5 G - unpartitioned free space
-                #
-                database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
-                if glance_local:
-                    # When glance is local we need to set the
-                    # img_conversion-lv size. Conversly in region
-                    # mode conversions are done in the other region
-                    # so there is no need to create the conversions
-                    # volume or set lize.
-                    img_conversions_lv_size = \
-                        constants.DEFAULT_IMG_CONVERSION_STOR_SIZE
-
-                cgcs_lv_size = constants.DEFAULT_IMAGE_STOR_SIZE
-                backup_lv_size = database_storage + \
-                    cgcs_lv_size + constants.BACKUP_OVERHEAD
-
-            elif vg_free > 71:
-
-                LOG.info("VG Free : %s ... small disk defaults" % vg_free)
-
-                # Small disk: 240G root disk
-                #
-                # Min size of the cgts-vg PV is:
-                #   97.0 G - PV for cgts-vg (specified in the kickstart)
-                # or
-                #   105.0 G - (for DCSC non-AIO)
-                #          8 G - /var/log (reserved in kickstart)
-                #          8 G - /scratch (reserved in kickstart)
-                #          2 G - cgcs_lv (DRDB bootstrap manifest)
-                #          2 G - pgsql_lv (DRDB bootstrap manifest)
-                #          2 G - rabbit_lv (DRDB bootstrap manifest)
-                #          2 G - platform_lv (DRDB bootstrap manifest)
-                #          1 G - extension_lv (DRDB bootstrap manifest)
-                #        -----
-                #         25 G - cgts-vg contents when we get to these checks
-                #
-                #
-                #       Final defaults view after controller manifests
-                #          8 G - /var/log (reserved in kickstart)
-                #          8 G - /scratch (reserved in kickstart)
-                #         10 G - /opt/cgcs
-                #         20 G - /var/lib/postgresql
-                #          2 G - /var/lib/rabbitmq
-                #          2 G - /opt/platform
-                #          1 G - /opt/extension
-                #         10 G - /opt/img_conversions
-                #         30 G - /opt/backup
-                #          5 G - /opt/gnocchi
-                #          1 G - anchor_lv
-                #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
-                #        -----
-                #         97 G or 105 G (for DCSC non-AIO)
-                #
-                #  vg_free calculation:
-                #         97/105 G - 25 G = 72/80 G
-                #
-                #  The absolute minimum disk size for these default settings:
-                #     0.5 G - /boot
-                #    20.0 G - /
-                #    97.0 G - cgts-vg PV
-                # or
-                #   105.0 G - (for DCSC non-AIO)
-                #   -------
-                #   117.5 G => ~118G min size disk
-                # or
-                #   125.5 G => ~126G min size disk
-                #
-                # If required disk is size 240G:
-                #   1) Standard controller - will use all free space for the PV
-                #       0.5 G - /boot
-                #      20.0 G - /
-                #     219.5 G - cgts-vg PV
-                #   2) AIO - will leave unused space for further partitioning
-                #       0.5 G - /boot
-                #      20.0 G - /
-                #      97.0 G - cgts-vg PV
-                #     122.5 G - unpartitioned free space
-                #
-                database_storage = \
-                    constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
-                if glance_local:
-                    img_conversions_lv_size = \
-                        constants.DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE
-
-                cgcs_lv_size = constants.DEFAULT_SMALL_IMAGE_STOR_SIZE
-                # Due to the small size of the disk we can't provide the
-                # proper amount of backup space which is (database + cgcs_lv
-                # + BACKUP_OVERHEAD) so we are using a smaller default.
-                backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
-            else:
-                raise exception.SysinvException("Disk size requirements not met.")
+            LOG.info("Disk size : %s ... disk too small" % disk_size)
+            raise exception.SysinvException("Disk size requirements not met.")
 
         data = {
             'name': constants.FILESYSTEM_NAME_BACKUP,

@@ -155,18 +155,21 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                   self.make_msg('update_nova_local_aggregates',
                                 ihost_uuid=ihost_uuid))
 
-    def create_controller_filesystems(self, context):
+    def create_controller_filesystems(self, context, rootfs_device):
         """Synchronously, create the controller file systems.
 
         Does the following tasks:
+        - queries OS for root disk size
         - creates the controller file systems.
         - queries system to get region info for img_conversion_size setup.
 
 
         :param context: request context..
+        :param rootfs_device: the root disk device
         """
         return self.call(context,
-                         self.make_msg('create_controller_filesystems'))
+                         self.make_msg('create_controller_filesystems',
+                                       rootfs_device=rootfs_device))
 
     def get_ihost_by_macs(self, context, ihost_macs):
         """Finds ihost db entry based upon the mac list
