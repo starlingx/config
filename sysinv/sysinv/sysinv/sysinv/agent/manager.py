@@ -36,6 +36,7 @@ Commands (from conductors) are received via RPC calls.
 import errno
 import fcntl
 import os
+import retrying
 import shutil
 import subprocess
 import sys
@@ -1355,6 +1356,11 @@ class AgentManager(service.PeriodicService):
             self._update_config_applied(iconfig_uuid)
             self._report_config_applied(context)
 
+    def _retry_on_missing_mgmt_ip(self, exception):
+        return isinstance(exception, exception.LocalManagementIpNotFound)
+
+    @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
+                    retry_on_exception=_retry_on_missing_mgmt_ip)
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def config_apply_runtime_manifest(self, context, config_uuid, config_dict):
         """Asynchronously, have the agent apply the runtime manifest with the
@@ -1375,43 +1381,36 @@ class AgentManager(service.PeriodicService):
         :returns: none ... uses asynchronous cast().
         """
 
-        try:
-            # runtime manifests can not be applied without the initial
-            # configuration applied
-            force = config_dict.get('force', False)
-            if (not force and
-                    not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)):
+        # runtime manifests can not be applied without the initial
+        # configuration applied
+        force = config_dict.get('force', False)
+        if (not force and
+                not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)):
+            return
+
+        personalities = config_dict.get('personalities')
+        host_uuids = config_dict.get('host_uuids')
+
+        if host_uuids:
+            # ignore requests that are not intended for this host
+            if self._ihost_uuid not in host_uuids:
                 return
-
-            personalities = config_dict.get('personalities')
-            host_uuids = config_dict.get('host_uuids')
-
-            if host_uuids:
-                # ignore requests that are not intended for this host
-                if self._ihost_uuid not in host_uuids:
-                    return
+        else:
+            # ignore requests that are not intended for host personality
+            for subfunction in self.subfunctions_list_get():
+                if subfunction in personalities:
+                    break
             else:
-                # ignore requests that are not intended for host personality
-                for subfunction in self.subfunctions_list_get():
-                    if subfunction in personalities:
-                        break
-                else:
-                    return
-
-            LOG.info("config_apply_runtime_manifest: %s %s %s" % (
-                config_uuid, config_dict, self._ihost_personality))
-
-            time_slept = 0
-            while not self._mgmt_ip and time_slept < 300:
-                time.sleep(15)
-                time_slept += 15
-
-            if not self._mgmt_ip:
-                LOG.warn("config_apply_runtime_manifest: "
-                          " timed out waiting for local management ip"
-                          " %s %s %s" %
-                         (config_uuid, config_dict, self._ihost_personality))
                 return
+
+        if not self._mgmt_ip:
+            raise exception.LocalManagementIpNotFound(
+                config_uuid=config_uuid, config_dict=config_dict,
+                host_personality=self._ihost_personality)
+
+        LOG.info("config_apply_runtime_manifest: %s %s %s" % (
+            config_uuid, config_dict, self._ihost_personality))
+        try:
 
             if not os.path.exists(tsc.PUPPET_PATH):
                 # we must be controller-standby or storage, mount /var/run/platform
