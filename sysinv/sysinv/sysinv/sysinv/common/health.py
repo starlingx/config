@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,6 +13,7 @@ from fm_api import fm_api
 from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import utils
+from sysinv.common.fm import fmclient
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import vim_api
@@ -95,9 +96,9 @@ class Health(object):
         success = not not_patch_current_hosts and not hostnames
         return success, not_patch_current_hosts, hostnames
 
-    def _check_alarms(self, force=False):
+    def _check_alarms(self, context, force=False):
         """Checks that no alarms are active"""
-        db_alarms = self._dbapi.ialarm_get_all(include_suppress=True)
+        db_alarms = fmclient(context).alarm.list(include_suppress=True)
 
         success = True
         allowed = 0
@@ -210,7 +211,7 @@ class Health(object):
 
         return True
 
-    def get_system_health(self, force=False):
+    def get_system_health(self, context, force=False):
         """Returns the general health of the system"""
         # Checks the following:
         # All hosts are provisioned
@@ -277,7 +278,7 @@ class Health(object):
 
         health_ok = health_ok and success
 
-        success, allowed, affecting = self._check_alarms(force)
+        success, allowed, affecting = self._check_alarms(context, force)
         output += _('No alarms: [%s]\n') \
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
         if not success:
@@ -288,7 +289,7 @@ class Health(object):
 
         return health_ok, output
 
-    def get_system_health_upgrade(self, force=False):
+    def get_system_health_upgrade(self, context, force=False):
         """Ensures the system is in a valid state for an upgrade"""
         # Does a general health check then does the following:
         # A load is imported
@@ -298,7 +299,7 @@ class Health(object):
         system_mode = self._dbapi.isystem_get_one().system_mode
         simplex = (system_mode == constants.SYSTEM_MODE_SIMPLEX)
 
-        health_ok, output = self.get_system_health(force)
+        health_ok, output = self.get_system_health(context, force)
         loads = self._dbapi.load_get_list()
         try:
             imported_load = utils.get_imported_load(loads)

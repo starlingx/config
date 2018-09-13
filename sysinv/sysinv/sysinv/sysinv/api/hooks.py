@@ -16,13 +16,15 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
 import time
 import urlparse
+import webob
 
 from oslo_config import cfg
+from oslo_serialization import jsonutils
 from pecan import hooks
 
 from sysinv.common import context
@@ -33,6 +35,7 @@ from sysinv.openstack.common import policy
 from webob import exc
 
 from sysinv.openstack.common import log
+from sysinv.openstack.common.gettextutils import _
 import eventlet.semaphore
 
 import re
@@ -78,6 +81,9 @@ class ContextHook(hooks.PecanHook):
         The flag is set to True, if X-Roles contains either an administrator
         or admin substring. Otherwise it is set to False.
 
+    X-Service_Catalog:
+        Used for context.service_catalog.
+
     """
     def __init__(self, public_api_routes):
         self.public_api_routes = public_api_routes
@@ -92,6 +98,14 @@ class ContextHook(hooks.PecanHook):
         domain_name = state.request.headers.get('X-User-Domain-Name')
         auth_token = state.request.headers.get('X-Auth-Token', None)
         creds = {'roles': state.request.headers.get('X-Roles', '').split(',')}
+        catalog_header = state.request.headers.get('X-Service-Catalog')
+        service_catalog = None
+        if catalog_header:
+            try:
+                service_catalog = jsonutils.loads(catalog_header)
+            except ValueError:
+                raise webob.exc.HTTPInternalServerError(
+                    _('Invalid service catalog json.'))
 
         is_admin = policy.check('admin', state.request.headers, creds)
 
@@ -105,7 +119,9 @@ class ContextHook(hooks.PecanHook):
             domain_id=domain_id,
             domain_name=domain_name,
             is_admin=is_admin,
-            is_public_api=is_public_api)
+            is_public_api=is_public_api,
+            service_catalog=service_catalog
+        )
 
 
 class RPCHook(hooks.PecanHook):
