@@ -16,7 +16,7 @@ from cgtsclient.v1 import iinterface as iinterface_utils
 from cgtsclient.v1 import network as network_utils
 
 
-def _print_iinterface_show(iinterface):
+def _print_iinterface_show(cc, iinterface):
     fields = ['ifname', 'iftype', 'ports', 'providernetworks',
               'imac', 'imtu', 'ifclass', 'networks',
               'aemode', 'schedpolicy', 'txhashpolicy',
@@ -25,6 +25,13 @@ def _print_iinterface_show(iinterface):
               'created_at', 'updated_at', 'sriov_numvfs']
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
     rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
+    network_names = ""
+    networks = getattr(iinterface, 'networks', [])
+    for n in networks:
+        network = network_utils._find_network(cc, n)
+        network_names += "{},".format(network.name)
+    network_names = network_names.strip(',')
+    setattr(iinterface, 'networks', network_names)
     data = [(f, getattr(iinterface, f, '')) for f in fields]
     data += [(f, getattr(iinterface, f, '')) for f in optional_fields
              if hasattr(iinterface, f)]
@@ -56,7 +63,7 @@ def do_host_if_show(cc, args):
     i = _find_interface(cc, ihost, args.ifnameoruuid)
     iinterface_utils._get_ports(cc, ihost, i)
 
-    _print_iinterface_show(i)
+    _print_iinterface_show(cc, i)
 
 
 @utils.arg('hostnameorid',
@@ -215,7 +222,7 @@ def do_host_if_add(cc, args):
         raise exc.CommandError('Created Interface UUID not found: %s' % suuid)
 
     iinterface_utils._get_ports(cc, ihost, iinterface)
-    _print_iinterface_show(iinterface)
+    _print_iinterface_show(cc, iinterface)
 
 
 @utils.arg('hostnameorid',
@@ -312,4 +319,4 @@ def do_host_if_modify(cc, args):
 
     iinterface = cc.iinterface.update(interface.uuid, patch)
     iinterface_utils._get_ports(cc, ihost, iinterface)
-    _print_iinterface_show(iinterface)
+    _print_iinterface_show(cc, iinterface)

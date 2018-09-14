@@ -50,7 +50,14 @@ class NetworkManager(base.Manager):
 
 
 def _find_network(cc, network):
-    if network.isdigit() or utils.is_uuid_like(network):
+    if network.isdigit() and not utils.is_uuid_like(network):
+        network_list = cc.network.list()
+        for n in network_list:
+            if str(n.id) == network:
+                return n
+        else:
+            raise exc.CommandError('network not found: %s' % network)
+    elif utils.is_uuid_like(network):
         try:
             h = cc.network.get(network)
         except exc.HTTPNotFound:
