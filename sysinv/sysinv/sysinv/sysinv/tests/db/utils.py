@@ -642,7 +642,7 @@ def get_test_interface(**kw):
         'iftype': kw.get('iftype', 'ethernet'),
         'imac': kw.get('imac', '11:22:33:44:55:66'),
         'imtu': kw.get('imtu', 1500),
-        'ifclass': kw.get('ifclass', 'none'),
+        'ifclass': kw.get('ifclass', None),
         'networktype': kw.get('networktype'),
         'networks': kw.get('networks', []),
         'aemode': kw.get('aemode'),
@@ -692,7 +692,6 @@ def get_test_interface_network(**kw):
     inv = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
-        'forihostid': kw.get('forihostid'),
         'interface_id': kw.get('interface_id'),
         'network_id': kw.get('network_id'),
     }
