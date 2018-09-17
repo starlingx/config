@@ -606,10 +606,6 @@ class ConfigValidator(object):
                 self.configured_vlans.append(self.infra_network.vlan)
                 infrastructure_interface_name += '.' + (
                                                  str(self.infra_network.vlan))
-            elif self.infrastructure_interface == self.management_interface:
-                raise ConfigFail(
-                    "VLAN required for %s_NETWORK since it uses the same "
-                    "interface as another network" % infra_prefix)
 
             mtu = self.infra_network.logical_interface.mtu
             if not is_mtu_valid(mtu):

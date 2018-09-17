@@ -330,15 +330,6 @@ def test_system_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
 
-    # Test INFRA_NETWORK VLAN missing
-    system_config = cr.parse_system_config(lag_vlan_systemfile)
-    system_config.remove_option('INFRA_NETWORK', 'VLAN')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(system_config, DEFAULT_CONFIG, None, False)
-
     # Test overlap of OAM_NETWORK CIDR
     system_config = cr.parse_system_config(lag_vlan_systemfile)
     system_config.set('OAM_NETWORK', 'CIDR', '192.168.203.0/26')
