@@ -681,11 +681,11 @@ def create_test_interface_network(**kw):
     :param kw: kwargs with overriding values for network's attributes.
     :returns: Test Network DB object.
     """
-    network_interface = get_test_interface_network(**kw)
+    interface_network = get_test_interface_network(**kw)
     if 'id' not in kw:
-        del network_interface['id']
+        del interface_network['id']
     dbapi = db_api.get_instance()
-    return dbapi.network_interface_create(network_interface)
+    return dbapi.interface_network_create(interface_network)
 
 
 def get_test_interface_network(**kw):
@@ -694,6 +694,14 @@ def get_test_interface_network(**kw):
         'uuid': kw.get('uuid'),
         'interface_id': kw.get('interface_id'),
         'network_id': kw.get('network_id'),
+    }
+    return inv
+
+
+def post_get_test_interface_network(**kw):
+    inv = {
+        'interface_uuid': kw.get('interface_uuid'),
+        'network_uuid': kw.get('network_uuid'),
     }
     return inv
 

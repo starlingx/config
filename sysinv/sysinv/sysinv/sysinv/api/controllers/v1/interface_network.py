@@ -212,9 +212,10 @@ class InterfaceNetworkController(rest.RestController):
         result = self._query_interface_network(interface_network)
         if not result:
             return
-        raise exception.InterfaceNetworkAlreadyExists(
-            interface_id=interface_network['interface_id'],
-            network_id=interface_network['network_id'])
+        msg = _("Interface network with interface ID '%s' "
+                "and network ID '%s' already exists."
+                % (interface_network['interface_id'], interface_network['network_id']))
+        raise wsme.exc.ClientSideError(msg)
 
     def _check_duplicate_type(self, interface_id, network_type):
         if network_type in NONDUPLICATE_NETWORK_TYPES:
