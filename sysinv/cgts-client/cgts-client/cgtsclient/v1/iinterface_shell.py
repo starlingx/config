@@ -131,7 +131,7 @@ def do_host_if_delete(cc, args):
            default=None,
            help=('The provider network attached to the interface '
                  '(default: %(default)s) '
-                 '[REQUIRED when networktype is data or pci-passthrough'))
+                 '[REQUIRED when interface class is data or pci-passthrough'))
 @utils.arg('-a', '--aemode',
            metavar='<ae mode>',
            choices=['balanced', 'active_standby', '802.3ad'],
@@ -146,15 +146,9 @@ def do_host_if_delete(cc, args):
 @utils.arg('-m', '--imtu',
            metavar='<mtu>',
            help='The MTU of the interface')
-@utils.arg('-nt', '--networktype',
-           metavar='<networktype>',
-           nargs='?',
-           const='data',
-           default='data',
-           help='The networktype of the interface (default: %(default)s)')
 @utils.arg('-c', '--ifclass',
            metavar='<class>',
-           choices=['platform', 'data', 'pci-passthrough', 'pci-sriov'],
+           choices=['platform', 'data', 'pci-passthrough', 'pci-sriov', 'none'],
            help='The class of the interface')
 @utils.arg('--networks',
            metavar='<network name or id>',
@@ -180,8 +174,7 @@ def do_host_if_delete(cc, args):
 def do_host_if_add(cc, args):
     """Add an interface."""
 
-    field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'networks',
-                  'networktype', 'aemode',
+    field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'networks', 'aemode',
                   'txhashpolicy', 'providernetworks', 'vlan_id',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
 
@@ -205,8 +198,6 @@ def do_host_if_add(cc, args):
         user_specified_fields['providernetworks'] = user_specified_fields['providernetworks'].replace(" ", "")
         if 'none' in user_specified_fields['providernetworks']:
             del user_specified_fields['providernetworks']
-    if 'networktype' in user_specified_fields.keys():
-        user_specified_fields['networktype'] = user_specified_fields['networktype'].replace(" ", "")
     if 'networks' in user_specified_fields.keys():
         network = network_utils._find_network(cc, args.networks)
         user_specified_fields['networks'] = [str(network.id)]
@@ -248,9 +239,6 @@ def do_host_if_add(cc, args):
            metavar='<txhashpolicy>',
            choices=['layer2', 'layer2+3', 'layer3+4'],
            help='The balanced tx distribution hash policy')
-@utils.arg('-nt', '--networktype',
-           metavar='<networktype>',
-           help='The networktype of the interface')
 @utils.arg('-c', '--ifclass',
            metavar='<class>',
            help='The class of the interface')
@@ -279,8 +267,7 @@ def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
-                'providernetworks', 'ports', 'ifclass', 'networktype',
-                'networks',
+                'providernetworks', 'ports', 'ifclass', 'networks',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                 'sriov_numvfs']
 
@@ -303,7 +290,6 @@ def do_host_if_modify(cc, args):
     # Allow setting an interface back to a None type
     if 'ifclass' in user_specified_fields.keys():
         if args.ifclass == 'none':
-            user_specified_fields['networktype'] = 'none'
             iinterface_utils._get_ports(cc, ihost, interface)
             if interface.ports or interface.uses:
                 if interface.iftype != 'ae' and interface.iftype != 'vlan':
