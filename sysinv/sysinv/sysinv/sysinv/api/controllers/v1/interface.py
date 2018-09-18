@@ -1275,14 +1275,37 @@ def _check_interface_data(op, interface, ihost, existing_interface):
                 if (parent.uuid in interface['uses'] or
                         parent.ifname in interface['uses']):
                     if i.iftype == constants.INTERFACE_TYPE_AE:
-                        msg = _("Interface {} is already used by another"
-                                " AE interface {}".format(p, i.ifname))
+                        msg = _("Interface '{}' is already used by another"
+                                " AE interface '{}'".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
                     elif (i.iftype == constants.INTERFACE_TYPE_VLAN and
-                                  iftype != constants.INTERFACE_TYPE_VLAN):
-                        msg = _("Interface {} is already used by another"
-                                " VLAN interface {}".format(p, i.ifname))
+                            iftype != constants.INTERFACE_TYPE_VLAN):
+                        msg = _("Interface '{}' is already used by another"
+                                " VLAN interface '{}'".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
+
+    # Ensure that the interfaces being used in the AE interface
+    # are originally set to None when creating the AE interface
+    if iftype == constants.INTERFACE_TYPE_AE:
+        for i in interface['uses']:
+            iface_lower = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
+            if iface_lower.ifclass:
+                msg = _("All interfaces being used in an AE interface "
+                        "must have the interface class set to 'none'.")
+                raise wsme.exc.ClientSideError(msg)
+
+    # Ensure that the interfaces being used in the AE interface
+    # are not changed after the AE interface has been created
+    if interface['used_by']:
+        for i in interface['used_by']:
+            iface = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
+            if iface.iftype == constants.INTERFACE_TYPE_AE and \
+                    interface['ifclass']:
+                msg = _("Interface '{}' is being used by interface '{}' "
+                        "as an AE interface and therefore the interface "
+                        "class cannot be changed from 'none'.".format(interface['ifname'],
+                                                                      iface.ifname))
+                raise wsme.exc.ClientSideError(msg)
 
     # check interface class validity
     _check_interface_class(interface, existing_interface)
@@ -1290,12 +1313,12 @@ def _check_interface_data(op, interface, ihost, existing_interface):
     # check networktype combinations and transitions for validity
     _check_network_type(op, interface, ihost, existing_interface)
 
-    # check mode/pool combinations and transitions for validity
-    _check_address_mode(op, interface, ihost, existing_interface)
-
     # check to ensure that the interface assigned with an OAM or
     # PXEBOOT network has no other networks
     _check_networks(interface)
+
+    # check mode/pool combinations and transitions for validity
+    _check_address_mode(op, interface, ihost, existing_interface)
 
     # Make sure txhashpolicy for data is layer2
     aemode = interface['aemode']
@@ -2118,7 +2141,8 @@ def _create(interface, from_profile=False):
     if not interface.get('uuid'):
         interface['uuid'] = str(uuid.uuid4())
 
-    if 'ifclass' in interface and interface['ifclass'] == 'none':
+    if 'ifclass' in interface \
+            and interface['ifclass'] == constants.INTERFACE_CLASS_NONE:
         interface.update({'ifclass': None})
 
     # Get ports

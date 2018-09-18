@@ -147,7 +147,7 @@ class InterfaceTestCase(base.FunctionalTest):
 
     def setUp(self):
         super(InterfaceTestCase, self).setUp()
-
+        self.dbapi = db_api.get_instance()
         p = mock.patch.object(api_if_v1, '_get_lower_interface_macs')
         self.mock_lower_macs = p.start()
         self.mock_lower_macs.return_value = {'enp0s18': '08:00:27:8a:87:48',
@@ -276,10 +276,9 @@ class InterfaceTestCase(base.FunctionalTest):
             host = self.controller
         if all(network_type in constants.PLATFORM_NETWORK_TYPES
                for network_type in networktypelist):
-            dbapi = db_api.get_instance()
             ifclass = constants.INTERFACE_CLASS_PLATFORM
             for network_type in networktypelist:
-                network = dbapi.network_get_by_type(network_type)
+                network = self.dbapi.network_get_by_type(network_type)
                 networks.append(str(network.id))
         if not ifclass and networktype:
             ifclass = networktype
@@ -335,10 +334,9 @@ class InterfaceTestCase(base.FunctionalTest):
         networks = []
         if all(network_type in constants.PLATFORM_NETWORK_TYPES
                for network_type in networktypelist):
-            dbapi = db_api.get_instance()
             ifclass = constants.INTERFACE_CLASS_PLATFORM
             for network_type in networktypelist:
-                network = dbapi.network_get_by_type(network_type)
+                network = self.dbapi.network_get_by_type(network_type)
                 networks.append(str(network.id))
         if not ifclass and networktype:
             ifclass = networktype
@@ -393,10 +391,9 @@ class InterfaceTestCase(base.FunctionalTest):
         networks = []
         if all(network_type in constants.PLATFORM_NETWORK_TYPES
                for network_type in networktypelist):
-            dbapi = db_api.get_instance()
             ifclass = constants.INTERFACE_CLASS_PLATFORM
             for network_type in networktypelist:
-                network = dbapi.network_get_by_type(network_type)
+                network = self.dbapi.network_get_by_type(network_type)
                 networks.append(str(network.id))
         if not ifclass and networktype:
             ifclass = networktype
