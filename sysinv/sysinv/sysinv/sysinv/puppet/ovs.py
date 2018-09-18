@@ -26,6 +26,7 @@ class OVSPuppet(base.BasePuppet):
             config.update(self._get_port_config(host))
             config.update(self._get_virtual_config(host))
             config.update(self._get_neutron_config(host))
+            config.update(self._get_lldp_config(host))
         return config
 
     def _get_port_config(self, host):
@@ -33,6 +34,7 @@ class OVSPuppet(base.BasePuppet):
         ovs_bridges = {}
         ovs_ports = {}
         ovs_addresses = {}
+        ovs_flows = {}
 
         index = 0
         for iface in sorted(self.context['interfaces'].values(),
@@ -61,6 +63,31 @@ class OVSPuppet(base.BasePuppet):
                 ovs_ports.update({port['name']: port})
                 ovs_devices.update({d['pci_addr']: d for d in devices})
 
+                if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                    ovs_ifname = port['interfaces'][0]['name']
+                    lldp_port = self._get_lldp_port(
+                        iface, brname, ovs_ifname=ovs_ifname)
+                    ovs_ports.update({lldp_port['name']: lldp_port})
+                    flow = self._get_lldp_flow(
+                        brname, ovs_ifname, lldp_port['name'])
+                    ovs_flows.update({port['name']: flow})
+
+                if iface['iftype'] == constants.INTERFACE_TYPE_AE:
+                    slaves = interface.get_bond_interface_slaves(
+                        self.context, iface)
+                    for member, slave in enumerate(slaves):
+                        ovs_ifname = port['interfaces'][member]['name']
+
+                        lldp_port = self._get_lldp_port(
+                            slave, brname, ovs_ifname=ovs_ifname)
+                        ovs_ports.update({lldp_port['name']: lldp_port})
+                        flow = self._get_lldp_flow(
+                            brname, ovs_ifname, lldp_port['name'])
+                        ovs_flows.update({flow['name']: flow})
+                        flow = self._get_lldp_flow(
+                            brname, lldp_port['name'], ovs_ifname)
+                        ovs_flows.update({flow['name']: flow})
+
                 index += 1
 
                 # currently only one provider network is supported per
@@ -83,6 +110,7 @@ class OVSPuppet(base.BasePuppet):
             'platform::vswitch::ovs::bridges': ovs_bridges,
             'platform::vswitch::ovs::ports': ovs_ports,
             'platform::vswitch::ovs::addresses': ovs_addresses,
+            'platform::vswitch::ovs::flows': ovs_flows,
         }
 
     def _get_ethernet_device(self, iface):
@@ -146,6 +174,74 @@ class OVSPuppet(base.BasePuppet):
         }
 
         return port, devices
+
+    def _get_lldp_interface(self, ifname, peer_ifname):
+        attributes = []
+
+        iftype = 'internal'
+
+        attributes.append("other_config:lldp_phy_peer=%s" % peer_ifname)
+
+        return {
+            'name': ifname,
+            'type': iftype,
+            'attributes': attributes,
+        }
+
+    def _get_lldp_port(self, iface, lldp_brname, ovs_ifname=None):
+        interfaces = []
+
+        port = interface.get_interface_port(self.context, iface)
+
+        # Limit port name length to the maximum supported by ovs-ofctl to
+        # reference a port with a name rather than ofport number
+        # when creating flows.
+
+        port_name_len = constants.LLDP_OVS_PORT_NAME_LEN
+        uuid_len = port_name_len - len(constants.LLDP_OVS_PORT_PREFIX)
+
+        port_name = '{}{}'.format(constants.LLDP_OVS_PORT_PREFIX,
+            port.uuid[:uuid_len])
+
+        if ovs_ifname:
+            interfaces.append(self._get_lldp_interface(port_name, ovs_ifname))
+        else:
+            interfaces.append(self._get_lldp_interface(port_name, iface['name']))
+
+        port = {
+            'name': port_name,
+            'bridge': lldp_brname,
+            'interfaces': interfaces,
+        }
+
+        return port
+
+    def _get_lldp_flow(self, bridge, in_port, out_port):
+        actions = []
+
+        attributes = {
+            'idle_timeout': 0,
+            'hard_timeout': 0,
+            'in_port': in_port,
+            'dl_dst': constants.LLDP_MULTICAST_ADDRESS,
+            'dl_type': constants.LLDP_ETHER_TYPE
+        }
+
+        action = {
+            'type': 'output',
+            'value': out_port
+        }
+
+        actions.append(action)
+
+        flow = {
+            'name': '{}-{}-{}'.format(bridge, in_port, out_port),
+            'bridge': bridge,
+            'attributes': attributes,
+            'actions': actions
+        }
+
+        return flow
 
     def _get_bond_port(self, host, iface, bridge, index):
         devices = []
@@ -294,3 +390,11 @@ class OVSPuppet(base.BasePuppet):
     def _is_vxlan_providernet(self, name):
         providernet_type = self._get_providernet_type(name)
         return bool(providernet_type == constants.NEUTRON_PROVIDERNET_VXLAN)
+
+    def _get_lldp_config(self, host):
+        driver_list = self.context['_lldp_drivers']
+        driver_list.append('ovs')
+
+        return {
+            'sysinv::agent::lldp_drivers': driver_list
+        }

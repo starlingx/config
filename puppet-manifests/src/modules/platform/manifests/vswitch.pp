@@ -35,6 +35,7 @@ define platform::vswitch::ovs::device(
 
 define platform::vswitch::ovs::bridge(
   $datapath_type = 'netdev',
+  $attributes = [],
 ) {
   exec { "ovs-add-br: ${title}":
     command => template("platform/ovs.add-bridge.erb")
@@ -69,11 +70,24 @@ define platform::vswitch::ovs::address(
 }
 
 
+define platform::vswitch::ovs::flow(
+  $bridge,
+  $attributes = [],
+  $actions,
+) {
+  exec { "ovs-add-flow: ${title}":
+    command => template("platform/ovs.add-flow.erb"),
+    logoutput => true
+  }
+}
+
+
 class platform::vswitch::ovs(
   $devices = {},
   $bridges = {},
   $ports = {},
   $addresses = {},
+  $flows = {},
 ) inherits ::platform::vswitch::params {
 
   if $::platform::params::vswitch_type == 'ovs' {
@@ -116,6 +130,7 @@ class platform::vswitch::ovs(
 
     Platform::Vswitch::Ovs::Bridge<||> -> Platform::Vswitch::Ovs::Port<||>
     Platform::Vswitch::Ovs::Bridge<||> -> Platform::Vswitch::Ovs::Address<||>
+    Platform::Vswitch::Ovs::Port<||> -> Platform::Vswitch::Ovs::Flow<||>
   }
 
   create_resources('platform::vswitch::ovs::bridge', $bridges, {
@@ -127,6 +142,10 @@ class platform::vswitch::ovs(
   })
 
   create_resources('platform::vswitch::ovs::address', $addresses, {
+    require => Service['openvswitch']
+  })
+
+  create_resources('platform::vswitch::ovs::flow', $flows, {
     require => Service['openvswitch']
   })
 }

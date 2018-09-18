@@ -17,7 +17,8 @@
 class sysinv::agent (
   $agent_driver = false,
   $package_ensure   = 'latest',
-  $enabled          = true
+  $enabled          = true,
+  $lldp_drivers     = []
 ) {
 
   include sysinv::params
@@ -30,6 +31,10 @@ class sysinv::agent (
     sysinv_config {
       'DEFAULT/agent_driver': value => $agent_driver;
     }
+  }
+
+  sysinv_config {
+    'lldp/drivers': value => join($lldp_drivers,",");
   }
 
   if $::sysinv::params::agent_package {

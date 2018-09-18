@@ -13,4 +13,9 @@ ovs-vsctl --timeout 10 -- --may-exist add-<%= @type -%> <%= @bridge -%> <%= @nam
  <%- interface['attributes'].each do |attribute| -%>
  <%= attribute -%>
  <%- end -%>
+<%- end %>
+<%- @interfaces.each do |interface| -%>
+ <%- if interface['type'] == 'internal' -%>
+ ip link set <%= interface['name'] -%> up
+ <%- end -%>
 <%- end -%>
