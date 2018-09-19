@@ -3480,6 +3480,9 @@ class ConfigAssistant():
     def persist_local_config(self):
         utils.persist_config()
 
+        if os.path.isdir('/opt/banner'):
+            utils.apply_banner_customization()
+
     def finalize_controller_config(self):
 
         # restart maintenance to pick up configuration changes
