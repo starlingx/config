@@ -440,6 +440,7 @@ class InterfaceController(rest.RestController):
         ports = None
         networks = []
         networks_to_add = []
+        interface_networks_to_remove = []
         patches_to_remove = []
         for p in patch:
             if '/ifclass' == p['path']:
@@ -456,6 +457,9 @@ class InterfaceController(rest.RestController):
                 patches_to_remove.append(p)
             elif '/networks_to_add' == p['path']:
                 networks_to_add = p['value'].split(',')
+                patches_to_remove.append(p)
+            elif '/interface_networks_to_remove' == p['path']:
+                interface_networks_to_remove = p['value'].split(',')
                 patches_to_remove.append(p)
 
         if uses:
@@ -627,7 +631,7 @@ class InterfaceController(rest.RestController):
 
         saved_interface = copy.deepcopy(rpc_interface)
 
-        # Update network-interface
+        # Update interface-network
         try:
             if networks_to_add:
                 for network_id in networks_to_add:
@@ -644,6 +648,23 @@ class InterfaceController(rest.RestController):
         except Exception as e:
             LOG.exception(e)
             msg = _("Failed to create interface network association for "
+                    "interface %s" % (interface['ifname']))
+            raise wsme.exc.ClientSideError(msg)
+
+        try:
+            # Remove old networks from the interface
+            if interface_networks_to_remove:
+                for ifnet_id in interface_networks_to_remove:
+                    pecan.request.dbapi.interface_network_destroy(ifnet_id)
+            elif (not ifclass and
+                  orig_ifclass == constants.INTERFACE_CLASS_PLATFORM):
+                ifnets = pecan.request.dbapi.interface_network_get_by_interface(
+                    rpc_interface['uuid'])
+                for ifnet in ifnets:
+                    pecan.request.dbapi.interface_network_destroy(ifnet.uuid)
+        except Exception as e:
+            LOG.exception(e)
+            msg = _("Failed to remove interface network association for "
                     "interface %s" % (interface['ifname']))
             raise wsme.exc.ClientSideError(msg)
 

@@ -4329,3 +4329,26 @@ class Connection(object):
                         }
         :returns: An interface network association
         """
+
+    @abc.abstractmethod
+    def interface_network_get_by_interface(self, interface_id,
+                                           limit=None, marker=None,
+                                           sort_key=None, sort_dir=None):
+        """List all the interface networks for a given interface.
+
+        :param interface_id: The id or uuid of an interface.
+        :param limit: Maximum number of items to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of interface-network.
+        """
+
+    @abc.abstractmethod
+    def interface_network_destroy(self, uuid):
+        """Destroy an interface network association
+
+        :param uuid: The uuid of an interface network association.
+        """
