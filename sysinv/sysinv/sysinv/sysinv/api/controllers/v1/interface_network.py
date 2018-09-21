@@ -301,10 +301,4 @@ class InterfaceNetworkController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, interface_network_uuid):
-        interface_network = self._get_one(interface_network_uuid)
         pecan.request.dbapi.interface_network_destroy(interface_network_uuid)
-        interface_networks = pecan.request.dbapi.interface_network_get_by_interface(
-            interface_network.interface_uuid)
-        if not interface_networks:
-            values = {'ifclass': None}
-            pecan.request.dbapi.iinterface_update(interface_network.interface_uuid, values)

@@ -280,6 +280,10 @@ class InterfaceTestCase(base.FunctionalTest):
             for network_type in networktypelist:
                 network = self.dbapi.network_get_by_type(network_type)
                 networks.append(str(network.id))
+        elif ifclass == constants.INTERFACE_CLASS_PLATFORM and \
+            any(network_type not in constants.PLATFORM_NETWORK_TYPES
+                for network_type in networktypelist):
+            ifclass = networktype
         if not ifclass and networktype:
             ifclass = networktype
         port_id = len(self.profile['ports'])
@@ -338,6 +342,10 @@ class InterfaceTestCase(base.FunctionalTest):
             for network_type in networktypelist:
                 network = self.dbapi.network_get_by_type(network_type)
                 networks.append(str(network.id))
+        elif ifclass == constants.INTERFACE_CLASS_PLATFORM and \
+            any(network_type not in constants.PLATFORM_NETWORK_TYPES
+                for network_type in networktypelist):
+            ifclass = networktype
         if not ifclass and networktype:
             ifclass = networktype
         interface = dbutils.post_get_test_interface(
@@ -395,6 +403,10 @@ class InterfaceTestCase(base.FunctionalTest):
             for network_type in networktypelist:
                 network = self.dbapi.network_get_by_type(network_type)
                 networks.append(str(network.id))
+        elif ifclass == constants.INTERFACE_CLASS_PLATFORM and \
+            any(network_type not in constants.PLATFORM_NETWORK_TYPES
+                for network_type in networktypelist):
+            ifclass = networktype
         if not ifclass and networktype:
             ifclass = networktype
         interface = dbutils.post_get_test_interface(
