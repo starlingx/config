@@ -369,6 +369,7 @@ def _check_controller_state():
             # as the resize itself will clear the degrade.
             health_helper = health.Health(pecan.request.dbapi)
             degrade_alarms = health_helper.get_alarms_degrade(
+                pecan.request.context,
                 alarm_ignore_list=[fm_constants.FM_ALARM_ID_FS_USAGE],
                 entity_instance_id_filter="controller-")
             allowed_resize = False

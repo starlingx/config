@@ -121,10 +121,10 @@ class Health(object):
 
         return success, allowed, affecting
 
-    def get_alarms_degrade(self, alarm_ignore_list=[],
+    def get_alarms_degrade(self, context, alarm_ignore_list=[],
             entity_instance_id_filter=""):
         """Return all the alarms that cause the degrade"""
-        db_alarms = self._dbapi.ialarm_get_all(include_suppress=True)
+        db_alarms = fmclient(context).alarm.list(include_suppress=True)
         degrade_alarms = []
 
         for db_alarm in db_alarms:
