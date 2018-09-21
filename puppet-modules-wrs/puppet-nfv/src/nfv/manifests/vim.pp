@@ -20,6 +20,11 @@ class nfv::vim (
   $event_log_config_file    ='/etc/nfv/nfv_plugins/event_log_handlers/config.ini',
   $nfvi_namespace           = 'nfv_vim.nfvi.plugins.v1',
   $nfvi_config_file         = '/etc/nfv/nfv_plugins/nfvi_plugins/config.ini',
+  $image_plugin_disabled    = false,
+  $block_storage_plugin_disabled = false,
+  $compute_plugin_disabled  = false,
+  $network_plugin_disabled  = false,
+  $guest_plugin_disabled    = false,
   $vim_rpc_ip               = '127.0.0.1',
   $vim_rpc_port             = 4343,
   $vim_api_ip               = '0.0.0.0',
@@ -60,6 +65,11 @@ class nfv::vim (
     /* NFVI */
     'nfvi/namespace': value => $nfvi_namespace;
     'nfvi/config_file': value => $nfvi_config_file;
+    'nfvi/image_plugin_disabled': value => $image_plugin_disabled;
+    'nfvi/block_storage_plugin_disabled': value => $block_storage_plugin_disabled;
+    'nfvi/compute_plugin_disabled': value => $compute_plugin_disabled;
+    'nfvi/network_plugin_disabled': value => $network_plugin_disabled;
+    'nfvi/guest_plugin_disabled': value => $guest_plugin_disabled;
 
     /* INSTANCE CONFIGURATION */
     'instance-configuration/max_live_migrate_wait_in_secs': value => $instance_max_live_migrate_wait_in_secs;

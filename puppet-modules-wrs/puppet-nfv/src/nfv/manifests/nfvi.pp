@@ -22,7 +22,6 @@ class nfv::nfvi (
   $ceilometer_service_name       = 'ceilometer',
   $ceilometer_service_type       = 'metering',
   $ceilometer_endpoint_type      = 'admin',
-  $ceilometer_endpoint_disabled  = false,
   $cinder_region_name            = 'RegionOne',
   $cinder_service_name           = 'cinderv2',
   $cinder_service_type           = 'volumev2',
@@ -32,7 +31,6 @@ class nfv::nfvi (
   $glance_service_name           = 'glance',
   $glance_service_type           = 'image',
   $glance_endpoint_type          = 'admin',
-  $glance_endpoint_disabled      = false,
   $neutron_region_name           = 'RegionOne',
   $neutron_service_name          = 'neutron',
   $neutron_service_type          = 'network',
@@ -100,7 +98,6 @@ class nfv::nfvi (
     'ceilometer/service_name': value => $ceilometer_service_name;
     'ceilometer/service_type': value => $ceilometer_service_type;
     'ceilometer/endpoint_type': value => $ceilometer_endpoint_type;
-    'ceilometer/endpoint_disabled': value => $ceilometer_endpoint_disabled;
 
     'cinder/region_name': value => $cinder_region_name;
     'cinder/service_name': value => $cinder_service_name;
@@ -112,7 +109,6 @@ class nfv::nfvi (
     'glance/service_name': value => $glance_service_name;
     'glance/service_type': value => $glance_service_type;
     'glance/endpoint_type': value => $glance_endpoint_type;
-    'glance/endpoint_disabled': value => $glance_endpoint_disabled;
 
     'neutron/region_name': value => $neutron_region_name;
     'neutron/service_name': value => $neutron_service_name;
