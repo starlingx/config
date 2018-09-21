@@ -5312,6 +5312,7 @@ class HostController(rest.RestController):
                         constants.AVAILABILITY_DEGRADED):
                     health_helper = health.Health(pecan.request.dbapi)
                     degrade_alarms = health_helper.get_alarms_degrade(
+                        pecan.request.context,
                         alarm_ignore_list=[
                             fm_constants.FM_ALARM_ID_HA_SERVICE_GROUP_STATE,
                             fm_constants.FM_ALARM_ID_HA_SERVICE_GROUP_REDUNDANCY,
