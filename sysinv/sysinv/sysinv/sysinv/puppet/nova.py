@@ -33,6 +33,7 @@ SCHEDULER_FILTERS_COMMON = [
     'ServerGroupAntiAffinityFilter',
     'PciPassthroughFilter',
     'DiskFilter',
+    'AggregateProviderNetworkFilter',
 ]
 
 SCHEDULER_FILTERS_STANDARD = [
