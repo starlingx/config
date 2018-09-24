@@ -6523,23 +6523,23 @@ class ConductorManager(service.PeriodicService):
             #          2 G - /opt/platform
             #          1 G - /opt/extension
             #         10 G - /opt/img_conversions
-            #         30 G - /opt/backup
+            #         40 G - /opt/backup
             #          5 G - /opt/gnocchi
             #          1 G - anchor_lv
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
             #        -----
-            #         97 G or 105 G (for DCSC non-AIO)
+            #         107 G or 115 G (for DCSC non-AIO)
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
             #    20.0 G - /
-            #    97.0 G - cgts-vg PV
+            #    107.0 G - cgts-vg PV
             # or
-            #   105.0 G - (for DCSC non-AIO)
+            #   115.0 G - (for DCSC non-AIO)
             #   -------
-            #   117.5 G => ~118G min size disk
+            #   127.5 G => ~128G min size disk
             # or
-            #   125.5 G => ~126G min size disk
+            #   135.5 G => ~136G min size disk
             #
             # If required disk is size 240G:
             #   1) Standard controller - will use all free space for the PV
@@ -6549,8 +6549,8 @@ class ConductorManager(service.PeriodicService):
             #   2) AIO - will leave unused space for further partitioning
             #       0.5 G - /boot
             #      20.0 G - /
-            #      97.0 G - cgts-vg PV
-            #     122.5 G - unpartitioned free space
+            #      107.0 G - cgts-vg PV
+            #     112.5 G - unpartitioned free space
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
