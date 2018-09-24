@@ -1008,7 +1008,7 @@ def _check_network_type_duplicates(ihost, interface, networktypelist):
             network = pecan.request.dbapi.network_get_by_id(network_id)
             host_networktypelist.append(network.type)
 
-        for nt in [constants.NETWORK_TYPE_INFRA, constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_OAM]:
+        for nt in interface_network.NONDUPLICATE_NETWORK_TYPES:
             if nt in host_networktypelist and nt in networktypelist:
                 if host_interface['uuid'] != interface['uuid']:
                     msg = _("An interface with '%s' network type is "
