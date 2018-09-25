@@ -3096,11 +3096,11 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi,
                 constants.CINDER_BACKEND_CEPH
             ):
-                ihost_capabilities = ihost.capabilities
-                ihost_dict = {'stor_function': constants.STOR_FUNCTION_MONITOR}
-                ihost_capabilities.update(ihost_dict)
-                ihost_val = {'capabilities': ihost_capabilities}
-                self.dbapi.ihost_update(ihost_uuid, ihost_val)
+                ihost.capabilities.update({
+                    constants.IHOST_STOR_FUNCTION:
+                        constants.STOR_FUNCTION_MONITOR})
+                self.dbapi.ihost_update(ihost_uuid,
+                    {'capabilities': ihost.capabilities})
 
         # Check whether a disk has been removed.
         if idisks and len(idisk_dict_array) > 0:
@@ -4240,14 +4240,11 @@ class ConductorManager(service.PeriodicService):
 
             if ceph_backend and ceph_backend.task != \
                     constants.SB_TASK_PROVISION_STORAGE:
-                LOG.debug("iplatform monitor check system has ceph backend")
-                ihost_capabilities = ihost.capabilities
-                ihost_dict = {
-                    'stor_function': constants.STOR_FUNCTION_MONITOR,
-                }
-                ihost_capabilities.update(ihost_dict)
-                ihost_val = {'capabilities': ihost_capabilities}
-                self.dbapi.ihost_update(ihost_uuid, ihost_val)
+                ihost.capabilities.update({
+                    constants.IHOST_STOR_FUNCTION:
+                        constants.STOR_FUNCTION_MONITOR})
+                self.dbapi.ihost_update(ihost_uuid,
+                    {'capabilities': ihost.capabilities})
 
             storage_lvm = StorageBackendConfig.get_configured_backend_conf(
                 self.dbapi,
