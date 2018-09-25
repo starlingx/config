@@ -1,5 +1,7 @@
 ---
 - project:
+    templates:
+      - build-openstack-docs-pti
     check:
       jobs:
         - openstack-tox-linters
