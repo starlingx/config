@@ -45,10 +45,11 @@ NONASSIGNABLE_NETWORK_TYPES = (constants.NETWORK_TYPE_DATA,
                                constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                                constants.NETWORK_TYPE_PCI_SRIOV)
 
-# Once assigned, cannot remove any of the following network types
+# Each of these networks may only be provisioned once per node
 NONDUPLICATE_NETWORK_TYPES = (constants.NETWORK_TYPE_MGMT,
                               constants.NETWORK_TYPE_OAM,
-                              constants.NETWORK_TYPE_INFRA)
+                              constants.NETWORK_TYPE_INFRA,
+                              constants.NETWORK_TYPE_PXEBOOT)
 
 
 class InterfaceNetwork(base.APIBase):
