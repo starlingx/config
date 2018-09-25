@@ -91,7 +91,12 @@ define platform::filesystem::resize(
     onlyif => "blkid ${device} | grep TYPE=\\\"drbd\\\"",
   } ->
   exec { "resize2fs $devmapper":
-    command => "resize2fs $devmapper"
+    command => "resize2fs $devmapper",
+    onlyif => "blkid -s TYPE -o value $devmapper | grep -v xfs",
+  } ->
+  exec { "xfs_growfs $devmapper":
+    command => "xfs_growfs $devmapper",
+    onlyif => "blkid -s TYPE -o value $devmapper | grep xfs",
   }
 }
 
