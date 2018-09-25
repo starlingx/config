@@ -104,17 +104,19 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
         }
 
         if self._kubernetes_enabled():
-            endpoints_disabled = {
-                # Disable VIM for these services as they will not yet be
-                # active.
-                'nfv::nfvi::cinder_endpoint_disabled': True,
+            vim_disabled = {
+                # Disable VIM plugins for resources not yet
+                # (and which may never be) active.
+                'nfv::vim::block_storage_plugin_disabled': True,
+                'nfv::vim::compute_plugin_disabled': True,
+                'nfv::vim::network_plugin_disabled': True,
+                'nfv::vim::image_plugin_disabled': True,
+                'nfv::vim::guest_plugin_disabled': True,
                 'nfv::nfvi::nova_endpoint_disabled': True,
-                'nfv::nfvi::glance_endpoint_disabled': True,
-                'nfv::nfvi::neutron_endpoint_disabled': True,
-                'nfv::nfvi::ceilometer_endpoint_disabled': True
+                'nfv::nfvi::neutron_endpoint_disabled': True
             }
 
-            config.update(endpoints_disabled)
+            config.update(vim_disabled)
 
         return config
 
