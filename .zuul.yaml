@@ -4,6 +4,7 @@
       - build-openstack-docs-pti
     check:
       jobs:
+        - build-openstack-releasenotes
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-flake8
@@ -13,6 +14,7 @@
         - configutilities-tox-flake8
     gate:
       jobs:
+        - build-openstack-releasenotes
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-flake8

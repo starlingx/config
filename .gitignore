@@ -24,3 +24,6 @@ sdist
 
 # Sphinx documentation
 doc/build/
+
+# Release Notes documentation
+releasenotes/build
