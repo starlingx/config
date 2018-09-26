@@ -563,6 +563,7 @@ class InterfaceController(rest.RestController):
                 interface['ifclass'] == constants.INTERFACE_CLASS_NONE):
             # If the interface class is reset, make sure any network
             # specific fields are reset as well
+            interface['networktype'] = None
             interface['sriov_numvfs'] = 0
             interface['ipv4_mode'] = None
             interface['ipv6_mode'] = None
