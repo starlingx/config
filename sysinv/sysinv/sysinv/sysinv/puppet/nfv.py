@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -15,6 +15,7 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
 
     SERVICE_NAME = 'vim'
     SERVICE_PORT = 4545
+    PLATFORM_KEYRING_SERVICE = 'CGCS'
 
     def get_secure_static_config(self):
         kspass = self._get_service_password(self.SERVICE_NAME)
@@ -45,21 +46,39 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
 
             'nfv::nfvi::nova_endpoint_override':
                 self._get_nova_endpoint_url(),
-            'nfv::nfvi::openstack_auth_host':
-                self._keystone_auth_address(),
             'nfv::nfvi::openstack_nova_api_host':
                 self._get_management_address(),
             'nfv::nfvi::host_listener_host':
                 self._get_management_address(),
 
+            'nfv::nfvi::platform_username':
+                self._operator.keystone.get_admin_user_name(),
+            'nfv::nfvi::platform_tenant':
+                self._operator.keystone.get_admin_project_name(),
+            'nfv::nfvi::platform_auth_host':
+                self._keystone_auth_address(),
+            'nfv::nfvi::platform_user_domain':
+                self._operator.keystone.get_admin_user_domain(),
+            'nfv::nfvi::platform_project_domain':
+                self._operator.keystone.get_admin_project_domain(),
+            'nfv::nfvi::platform_keyring_service':
+                self.PLATFORM_KEYRING_SERVICE,
+
+            # TODO(Bart Wensley): When we switch to the pod based keystone,
+            # this will change to use those credentials.
             'nfv::nfvi::openstack_username':
                 self._operator.keystone.get_admin_user_name(),
             'nfv::nfvi::openstack_tenant':
                 self._operator.keystone.get_admin_project_name(),
+            'nfv::nfvi::openstack_auth_host':
+                self._keystone_auth_address(),
             'nfv::nfvi::openstack_user_domain':
                 self._operator.keystone.get_admin_user_domain(),
             'nfv::nfvi::openstack_project_domain':
                 self._operator.keystone.get_admin_project_domain(),
+            'nfv::nfvi::openstack_keyring_service':
+                self.PLATFORM_KEYRING_SERVICE,
+
             'nfv::nfvi::keystone_region_name': self._keystone_region_name(),
             'nfv::nfvi::keystone_service_name':
                 self._operator.keystone.get_service_name(),

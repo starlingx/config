@@ -6,6 +6,14 @@
 
 class nfv::nfvi (
   $enabled                       = false,
+  $platform_username             = 'admin',
+  $platform_tenant               = 'admin',
+  $platform_user_domain          = 'Default',
+  $platform_project_domain       = 'Default',
+  $platform_auth_protocol        = 'http',
+  $platform_auth_host            = '127.0.0.1',
+  $platform_auth_port            = 5000,
+  $platform_keyring_service      = undef,
   $openstack_username            = 'admin',
   $openstack_tenant              = 'admin',
   $openstack_user_domain         = 'Default',
@@ -13,6 +21,7 @@ class nfv::nfvi (
   $openstack_auth_protocol       = 'http',
   $openstack_auth_host           = '127.0.0.1',
   $openstack_auth_port           = 5000,
+  $openstack_keyring_service     = undef,
   $openstack_nova_api_host       = '127.0.0.1',
   $keystone_region_name          = 'RegionOne',
   $keystone_service_name         = 'keystone',
@@ -80,7 +89,17 @@ class nfv::nfvi (
 
   nfv_plugin_nfvi_config {
 
-    /* OpenStack Information */
+    /* Platform Authentication Information */
+    'platform/username': value => $platform_username;
+    'platform/tenant': value => $platform_tenant;
+    'platform/user_domain_name': value => $platform_user_domain;
+    'platform/project_domain_name': value => $platform_project_domain;
+    'platform/authorization_protocol': value => $platform_auth_protocol;
+    'platform/authorization_ip': value => $platform_auth_host;
+    'platform/authorization_port': value => $platform_auth_port;
+    'platform/keyring_service': value => $platform_keyring_service;
+
+    /* OpenStack Authentication Information */
     'openstack/username': value => $openstack_username;
     'openstack/tenant': value => $openstack_tenant;
     'openstack/user_domain_name': value => $openstack_user_domain;
@@ -88,6 +107,7 @@ class nfv::nfvi (
     'openstack/authorization_protocol': value => $openstack_auth_protocol;
     'openstack/authorization_ip': value => $openstack_auth_host;
     'openstack/authorization_port': value => $openstack_auth_port;
+    'openstack/keyring_service': value => $openstack_keyring_service;
 
     'keystone/region_name': value => $keystone_region_name;
     'keystone/service_name': value => $keystone_service_name;
