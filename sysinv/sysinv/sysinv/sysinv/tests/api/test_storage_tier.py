@@ -31,12 +31,19 @@ from sysinv.tests.db import utils as dbutils
 
 class StorageTierIndependentTCs(base.FunctionalTest):
 
+    set_crushmap_patcher = mock.patch.object(ceph_utils.CephApiOperator, 'set_crushmap')
+
     def setUp(self):
         super(StorageTierIndependentTCs, self).setUp()
+        self.mock_set_crushmap = self.set_crushmap_patcher.start()
         self.system = dbutils.create_test_isystem()
         self.cluster = dbutils.create_test_cluster(system_id=self.system.id, name='ceph_cluster')
         self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
+
+    def tearDown(self):
+        super(StorageTierIndependentTCs, self).tearDown()
+        self.set_crushmap_patcher.stop()
 
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error
@@ -511,8 +518,11 @@ class StorageTierIndependentTCs(base.FunctionalTest):
 
 class StorageTierDependentTCs(base.FunctionalTest):
 
+    set_crushmap_patcher = mock.patch.object(ceph_utils.CephApiOperator, 'set_crushmap')
+
     def setUp(self):
         super(StorageTierDependentTCs, self).setUp()
+        self.mock_set_crushmap = self.set_crushmap_patcher.start()
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
         self.context = context.get_admin_context()
@@ -520,6 +530,10 @@ class StorageTierDependentTCs(base.FunctionalTest):
         self.system = dbutils.create_test_isystem()
         self.load = dbutils.create_test_load()
         self.host_index = -1
+
+    def tearDown(self):
+        super(StorageTierDependentTCs, self).tearDown()
+        self.set_crushmap_patcher.stop()
 
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error

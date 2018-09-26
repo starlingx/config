@@ -33,6 +33,7 @@ from sysinv.common import utils as cutils
 
 
 PATH_PREFIX = '/v1'
+DEBUG_PRINTING = False
 
 
 class FunctionalTest(base.TestCase):
@@ -86,7 +87,8 @@ class FunctionalTest(base.TestCase):
                   method="post", extra_environ=None, status=None,
                   path_prefix=PATH_PREFIX):
         full_path = path_prefix + path
-        print('%s: %s %s' % (method.upper(), full_path, params))
+        if DEBUG_PRINTING:
+            print('%s: %s %s' % (method.upper(), full_path, params))
         response = getattr(self.app, "%s_json" % method)(
             str(full_path),
             params=params,
@@ -95,7 +97,8 @@ class FunctionalTest(base.TestCase):
             extra_environ=extra_environ,
             expect_errors=expect_errors
         )
-        print('GOT:%s' % response)
+        if DEBUG_PRINTING:
+            print('GOT:%s' % response)
         return response
 
     def put_json(self, *args, **kwargs):
@@ -120,13 +123,15 @@ class FunctionalTest(base.TestCase):
     def delete(self, path, expect_errors=False, headers=None,
                extra_environ=None, status=None, path_prefix=PATH_PREFIX):
         full_path = path_prefix + path
-        print('DELETE: %s' % (full_path))
+        if DEBUG_PRINTING:
+            print('DELETE: %s' % (full_path))
         response = self.app.delete(str(full_path),
                                    headers=headers,
                                    status=status,
                                    extra_environ=extra_environ,
                                    expect_errors=expect_errors)
-        print('GOT:%s' % response)
+        if DEBUG_PRINTING:
+            print('GOT: %s' % response)
         return response
 
     def get_json(self, path, expect_errors=False, headers=None,
@@ -143,7 +148,8 @@ class FunctionalTest(base.TestCase):
         all_params.update(params)
         if q:
             all_params.update(query_params)
-        print('GET: %s %r' % (full_path, all_params))
+        if DEBUG_PRINTING:
+            print('GET: %s %r' % (full_path, all_params))
         response = self.app.get(full_path,
                                 params=all_params,
                                 headers=headers,
@@ -151,5 +157,6 @@ class FunctionalTest(base.TestCase):
                                 expect_errors=expect_errors)
         if not expect_errors:
             response = response.json
-        print('GOT:%s' % response)
+        if DEBUG_PRINTING:
+            print('GOT:%s' % response)
         return response
