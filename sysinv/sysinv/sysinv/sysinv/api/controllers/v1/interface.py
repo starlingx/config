@@ -776,26 +776,35 @@ def _set_defaults(interface):
                 'vlan_id': None,
                 'sriov_numvfs': 0}
 
+    networktypelist = []
     if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
         if interface['networks']:
             for network_id in interface['networks']:
                 network = pecan.request.dbapi.network_get_by_id(network_id)
-                interface['networktype'] = network.type
-                break
+                networktypelist.append(network.type)
+            interface['networktype'] = ",".join(networktypelist)
         elif interface['networktype']:
-            network = pecan.request.dbapi.network_get_by_type(
-                interface['networktype']
-            )
-            interface['networks'] = [str(network.id)]
+            networks = []
+            networktypelist = interface['networktype'].split(',')
+            for network_type in networktypelist:
+                if network_type in constants.PLATFORM_NETWORK_TYPES:
+                    network = pecan.request.dbapi.network_get_by_type(
+                        network_type
+                    )
+                    networks.append(str(network.id))
+            interface['networks'] = networks
 
-    networktype = interface['networktype']
+    family_defaults = [constants.NETWORK_TYPE_MGMT,
+                       constants.NETWORK_TYPE_OAM,
+                       constants.NETWORK_TYPE_INFRA]
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
         defaults['ipv6_mode'] = constants.IPV6_DISABLED
-    elif (networktype == constants.NETWORK_TYPE_MGMT or
-          networktype == constants.NETWORK_TYPE_OAM or
-          networktype == constants.NETWORK_TYPE_INFRA):
-        _set_address_family_defaults_by_pool(defaults, networktype)
+    else:
+        for network_type in networktypelist:
+            if network_type in family_defaults:
+                _set_address_family_defaults_by_pool(defaults,
+                                                     network_type)
 
     interface_merged = interface.copy()
     for key in interface_merged:
@@ -987,8 +996,8 @@ def _check_network_type_and_host_type(ihost, networktypelist):
 
 def _check_network_type_and_interface_type(interface, networktypelist):
     if interface['iftype'] == 'vlan':
-        if not networktypelist or constants.NETWORK_TYPE_NONE in networktypelist:
-            msg = _("VLAN interfaces cannot have a network type of '%s'." %
+        if constants.NETWORK_TYPE_NONE in networktypelist:
+            msg = _("VLAN interfaces cannot have an interface class of %s." %
                     constants.NETWORK_TYPE_NONE)
             raise wsme.exc.ClientSideError(msg)
 
