@@ -1505,8 +1505,9 @@ def _check_interface_data(op, interface, ihost, existing_interface):
                format(', '.join(networktypelist)))
         raise wsme.exc.ClientSideError(msg)
 
-    elif (interface['ifclass'] is not constants.INTERFACE_CLASS_NONE and
-            interface['ifclass'] != constants.INTERFACE_CLASS_DATA):
+    elif (interface['ifclass'] and
+            interface['ifclass'] not in NEUTRON_INTERFACE_CLASS and
+            not existing_interface):
         if providernetworks is not None:
             msg = _("Provider network(s) not supported "
                     "for non-data interfaces. (%s) (%s)" % (interface['ifclass'], str(existing_interface)))
