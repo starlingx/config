@@ -26,7 +26,6 @@ def _print_interface_network_show(cc, obj):
 
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',
-           nargs='?',
            help="Name or ID of host")
 @utils.arg('ifnameoruuid',
            metavar='<interface name or uuid>',
@@ -35,15 +34,12 @@ def _print_interface_network_show(cc, obj):
 def do_interface_network_list(cc, args):
     """List network interfaces."""
     fields = ['hostname', 'uuid', 'ifname', 'network_name']
-    if args.hostnameorid is None and args.ifnameoruuid is None:
-        interface_networks = cc.interface_network.list()
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    if args.ifnameoruuid is None:
+        interface_networks = cc.interface_network.list_by_host(ihost.uuid)
     else:
-        ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
-        if args.ifnameoruuid is None:
-            interface_networks = cc.interface_network.list_by_host(ihost.uuid)
-        else:
-            interface = iinterface_utils._find_interface(cc, ihost, args.ifnameoruuid)
-            interface_networks = cc.interface_network.list_by_interface(interface.uuid)
+        interface = iinterface_utils._find_interface(cc, ihost, args.ifnameoruuid)
+        interface_networks = cc.interface_network.list_by_interface(interface.uuid)
     # Add a hostname column using the forihostid field
     for i in interface_networks[:]:
         host_id = str(getattr(i, 'forihostid', ''))
