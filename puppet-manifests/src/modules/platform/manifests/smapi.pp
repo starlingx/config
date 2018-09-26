@@ -29,6 +29,7 @@ class platform::smapi::haproxy
     server_name  => 's-smapi-internal',
     public_ip_address => $::platform::haproxy::params::private_ip_address,
     public_port  => $port,
+    public_api => false,
     private_ip_address => $bind_ip,
     private_port => $port,
   }
