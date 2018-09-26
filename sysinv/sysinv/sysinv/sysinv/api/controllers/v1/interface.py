@@ -499,9 +499,9 @@ class InterfaceController(rest.RestController):
 
         # Check SR-IOV before updating the ports
         for p in patch:
-            if '/networktype' in p['path']:
-                temp_interface['networktype'] = p['value']
-            elif '/sriov_numvfs' in p['path']:
+            if '/ifclass' == p['path']:
+                temp_interface['ifclass'] = p['value']
+            elif '/sriov_numvfs' == p['path']:
                 temp_interface['sriov_numvfs'] = p['value']
         # If network type is not pci-sriov, reset the sriov-numvfs to zero
         if (temp_interface['sriov_numvfs'] is not None and
@@ -625,8 +625,9 @@ class InterfaceController(rest.RestController):
         if (interface['ifclass'] and
                 interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
             _neutron_bind_interface(ihost, interface)
-        elif (rpc_interface['ifclass'] and
-              interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
+        if (rpc_interface['ifclass'] and
+                rpc_interface['ifclass'] in NEUTRON_INTERFACE_CLASS and
+                interface['ifclass'] not in NEUTRON_INTERFACE_CLASS):
             _neutron_unbind_interface(ihost, rpc_interface)
 
         saved_interface = copy.deepcopy(rpc_interface)
@@ -656,8 +657,9 @@ class InterfaceController(rest.RestController):
             if interface_networks_to_remove:
                 for ifnet_id in interface_networks_to_remove:
                     pecan.request.dbapi.interface_network_destroy(ifnet_id)
-            elif (not ifclass and
-                  orig_ifclass == constants.INTERFACE_CLASS_PLATFORM):
+            elif (orig_ifclass == constants.INTERFACE_CLASS_PLATFORM and
+                  (not ifclass or
+                   ifclass != constants.INTERFACE_CLASS_PLATFORM)):
                 ifnets = pecan.request.dbapi.interface_network_get_by_interface(
                     rpc_interface['uuid'])
                 for ifnet in ifnets:
@@ -880,25 +882,25 @@ def _check_interface_mtu(interface, ihost, from_profile=False):
 
 
 def _check_interface_sriov(interface, ihost, from_profile=False):
-    if ('ifclass' in interface.keys() and
-                interface['ifclass'] == constants.INTERFACE_CLASS_NONE):
+    if 'ifclass' in interface.keys() and not interface['ifclass']:
         return interface
 
     if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
-                'sriov_numvfs' not in interface.keys()):
+            'sriov_numvfs' not in interface.keys()):
         raise wsme.exc.ClientSideError(_("A network type of pci-sriov must specify "
                                          "a number for SR-IOV VFs."))
 
     if ('sriov_numvfs' in interface.keys() and interface['sriov_numvfs']
-    is not None and int(interface['sriov_numvfs']) > 0 and
+            is not None and int(interface['sriov_numvfs']) > 0 and
             ('ifclass' not in interface.keys() or
-                     interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV)):
-        raise wsme.exc.ClientSideError(_("Number of SR-IOV VFs is specified but network "
-                                         "type is not pci-sriov."))
+             interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV)):
+        raise wsme.exc.ClientSideError(_("Number of SR-IOV VFs is specified "
+                                         "but interface class is not "
+                                         "pci-sriov."))
 
     if ('ifclass' in interface.keys() and
-                interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
-                'sriov_numvfs' in interface.keys()):
+            interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
+            'sriov_numvfs' in interface.keys()):
 
         if interface['sriov_numvfs'] is None:
             raise wsme.exc.ClientSideError(_("Value for number of SR-IOV VFs must be specified."))
@@ -1022,12 +1024,23 @@ def _check_interface_class_transition(interface, existing_interface):
     ifclass = interface['ifclass']
     existing_ifclass = existing_interface['ifclass']
     if ifclass == existing_ifclass:
-        if ifclass == constants.NETWORK_TYPE_PCI_SRIOV:
-            if (len(cutils.get_network_type_list(interface)) ==
-                    len(cutils.get_network_type_list(existing_interface))):
-                return
-        else:
-            return
+        return
+    if (ifclass and
+            existing_interface[
+                'ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
+            existing_interface['used_by'] and
+            existing_interface['networks']):
+        msg = _("The class of an interface with platform networks cannot "
+                "be changed to %s since it is being used by %s" %
+                (ifclass, existing_interface['used_by']))
+        raise wsme.exc.ClientSideError(msg)
+    elif (ifclass and ifclass == constants.INTERFACE_CLASS_PLATFORM and
+          existing_interface['ifclass'] in NEUTRON_INTERFACE_CLASS and
+          existing_interface['used_by']):
+        msg = _("The class of a non-platform interface cannot "
+                "be changed to platform since it is being used by %s" %
+                existing_interface['used_by'])
+        raise wsme.exc.ClientSideError(msg)
 
 
 def _check_network_type_and_interface_name(interface, networktypelist):

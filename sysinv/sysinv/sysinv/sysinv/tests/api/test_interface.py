@@ -1564,14 +1564,6 @@ class TestPost(InterfaceTestCase):
             lower_iface=bond_iface, providernetworks='group0-ext1',
             expect_errors=True)
 
-    # Expected message: The management VLAN configured on this system is 2,
-    # so the VLAN configured for the mgmt interface must match.
-    def test_mgmt_vlan_not_matching_in_network(self):
-        self._create_compute_vlan(
-            'vlan2', constants.NETWORK_TYPE_MGMT,
-            constants.INTERFACE_CLASS_PLATFORM, 12,
-            providernetworks='group0-ext1', expect_errors=True)
-
     # Expected message:
     #   Provider network(s) not supported for non-data interfaces.
     def test_create_nondata_provider_network(self):
