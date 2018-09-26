@@ -257,7 +257,7 @@ DEFAULT_IMG_CONVERSION_STOR_SIZE = 20
 DEFAULT_SMALL_IMAGE_STOR_SIZE = 10
 DEFAULT_SMALL_DATABASE_STOR_SIZE = 10
 DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE = 10
-DEFAULT_SMALL_BACKUP_STOR_SIZE = 30
+DEFAULT_SMALL_BACKUP_STOR_SIZE = 40
 DEFAULT_VIRTUAL_IMAGE_STOR_SIZE = 8
 DEFAULT_VIRTUAL_DATABASE_STOR_SIZE = 5
 DEFAULT_VIRTUAL_IMG_CONVERSION_STOR_SIZE = 8
@@ -274,7 +274,7 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # DEFAULT_SMALL_IMAGE_STOR_SIZE                 10
 # 2*DEFAULT_SMALL_DATABASE_STOR_SIZE            2*10
 # DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE        10
-# DEFAULT_SMALL_BACKUP_STOR_SIZE                30
+# DEFAULT_SMALL_BACKUP_STOR_SIZE                40
 # LOG_VOL_SIZE (reserved in kickstarts)         8
 # SCRATH_VOL_SIZE (reserved in kickstarts)      8
 # RABBIT_LV                                     2
@@ -287,8 +287,8 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # boot partition (created in kickstarts)        1
 # buffer for partition creation                 1
 # -----------------------------------------------
-#                                               120
-MINIMUM_DISK_SIZE = 120
+#                                               130
+MINIMUM_DISK_SIZE = 130
 
 # Docker lv size when Kubernetes is configured
 KUBERNETES_DOCKER_STOR_SIZE = 10
