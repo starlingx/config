@@ -19,6 +19,7 @@
 # Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
+import ast
 import cgi
 import copy
 import json
@@ -1721,6 +1722,62 @@ class HostController(rest.RestController):
     def _patch_gen(self, uuid, patch, profile_uuid):
         return self._patch(uuid, patch, profile_uuid)
 
+    @staticmethod
+    def _validate_capability_is_not_set(old, new):
+        is_set, _ = new
+        return not is_set
+
+    @staticmethod
+    def _validate_capability_is_equal(old, new):
+        return old == new
+
+    def _validate_capabilities(self, old_caps, new_caps):
+        """ Reject updating read-only host capabilities:
+            1. stor_function. This field is set to 'monitor' for hosts that are
+               running ceph monitor process: controller-0, controller-1, storage-0.
+            2. Personality. This field is "virtual": not saved in the database but
+               returned via API and displayed via "system host-show".
+
+            :param old_caps: current host capabilities
+            :type old_caps: dict
+            :param new_caps: updated host capabilies (to  be set)
+            :type new_caps: str
+            :raises: wsme.exc.ClientSideError when attempting to change read-only
+                     capabilities
+        """
+        if type(new_caps) == str:
+            try:
+                new_caps = ast.literal_eval(new_caps)
+            except SyntaxError:
+                pass
+        if type(new_caps) != dict:
+            raise wsme.exc.ClientSideError(
+                _("Changing capabilities type is not allowed: "
+                  "old_value={}, new_value={}").format(
+                    old_caps, new_caps))
+        PROTECTED_CAPABILITIES = [
+            ('Personality',
+                self._validate_capability_is_not_set),
+            (constants.IHOST_STOR_FUNCTION,
+                self._validate_capability_is_equal)]
+        for capability, validate in PROTECTED_CAPABILITIES:
+            old_is_set, old_value = (
+                capability in old_caps, old_caps.get(capability))
+            new_is_set, new_value = (
+                capability in new_caps, new_caps.get(capability))
+            if not validate((old_is_set, old_value),
+                            (new_is_set, new_value)):
+                if old_is_set:
+                    raise wsme.exc.ClientSideError(
+                        _("Changing capability not allowed: "
+                          "name={}, old_value={}, new_value={}. ").format(
+                              capability, old_value, new_value))
+                else:
+                    raise wsme.exc.ClientSideError(
+                        _("Setting capability not allowed: "
+                          "name={}, value={}. ").format(
+                              capability, new_value))
+
     def _patch(self, uuid, patch, myprofile_uuid):
         log_start = cutils.timestamped("ihost_patch_start")
 
@@ -1744,6 +1801,9 @@ class HostController(rest.RestController):
         except jsonpatch.JsonPatchException as e:
             LOG.exception(e)
             raise wsme.exc.ClientSideError(_("Patching Error: %s") % e)
+
+        self._validate_capabilities(
+            ihost_dict['capabilities'], patched_ihost['capabilities'])
 
         defaults = objects.host.get_defaults()
 
