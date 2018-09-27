@@ -19,7 +19,8 @@ class Label(base.SysinvObject):
 
     fields = {
         'uuid': utils.str_or_none,
-        'label': utils.str_or_none,
+        'label_key': utils.str_or_none,
+        'label_value': utils.str_or_none,
         'host_id': utils.int_or_none,
         'host_uuid': utils.str_or_none,
     }

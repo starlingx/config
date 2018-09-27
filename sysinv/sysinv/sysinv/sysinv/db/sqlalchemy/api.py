@@ -7446,9 +7446,9 @@ class Connection(api.Connection):
             except db_exc.DBDuplicateEntry:
                 LOG.error("Failed to add host label %s. "
                           "Already exists with this uuid" %
-                          (values['label']))
+                          (values['label_key']))
                 raise exception.HostLabelAlreadyExists(
-                    label=values['label'], host=values['host_uuid'])
+                    label=values['label_key'], host=values['host_uuid'])
             return self._label_get(values['uuid'])
 
     @objects.objectify(objects.label)
@@ -7499,16 +7499,16 @@ class Connection(api.Connection):
         return _paginate_query(models.Label, limit, marker,
                                sort_key, sort_dir, query)
 
-    def _label_query(self, host_id, values, session=None):
+    def _label_query(self, host_id, label_key, session=None):
         query = model_query(models.Label, session=session)
         query = query.filter(models.Label.host_id == host_id)
-        query = query.filter(models.Label.label.startswith(values))
+        query = query.filter(models.Label.label_key == label_key)
         try:
             result = query.one()
         except NoResultFound:
-            raise exception.HostLabelNotFoundByKey(label=values)
+            raise exception.HostLabelNotFoundByKey(label=label_key)
         return result
 
     @objects.objectify(objects.label)
-    def label_query(self, host_id, values):
-        return self._label_query(host_id, values)
+    def label_query(self, host_id, label_key):
+        return self._label_query(host_id, label_key)

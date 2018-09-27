@@ -7,7 +7,7 @@
 
 from sqlalchemy import Column, MetaData, Table
 from sqlalchemy import DateTime, Integer, String
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, UniqueConstraint
 from sysinv.openstack.common import log
 
 ENGINE = 'InnoDB'
@@ -37,7 +37,9 @@ def upgrade(migrate_engine):
         Column('host_id', Integer, ForeignKey('i_host.id',
                                               ondelete='CASCADE')),
 
-        Column('label', String(255)),
+        Column('label_key', String(384)),
+        Column('label_value', String(128)),
+        UniqueConstraint('host_id', 'label_key', name='u_host_id@label_key'),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,

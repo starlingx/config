@@ -12,10 +12,14 @@
 """ System Inventory Kubernetes Utilities and helper functions."""
 
 from __future__ import absolute_import
+import httplib
+import json
 
 from kubernetes import config
 from kubernetes import client
 from kubernetes.client import Configuration
+from kubernetes.client.rest import ApiException
+from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
@@ -43,6 +47,10 @@ class KubeOperator(object):
         try:
             api_response = self._get_kubernetesclient().patch_node(name, body)
             LOG.debug("Response: %s" % api_response)
+        except ApiException as e:
+            if e.status == httplib.UNPROCESSABLE_ENTITY:
+                reason = json.loads(e.body).get('message', "")
+                raise exception.HostLabelInvalid(reason=reason)
         except Exception as e:
             LOG.error("Kubernetes exception: %s" % e)
             raise

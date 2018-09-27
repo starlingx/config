@@ -4,7 +4,6 @@
 #
 
 import pecan
-import re
 import wsme
 import wsmeext.pecan as wsme_pecan
 from pecan import rest
@@ -43,8 +42,11 @@ class Label(base.APIBase):
     uuid = types.uuid
     "Unique UUID for this label"
 
-    label = wtypes.text
-    "Represents a label assigned to the host"
+    label_key = wtypes.text
+    "Represents a label key assigned to the host"
+
+    label_value = wtypes.text
+    "Represents a label value assigned to the host"
 
     host_id = int
     "Represent the host_id the label belongs to"
@@ -65,7 +67,8 @@ class Label(base.APIBase):
         if not expand:
             label.unset_fields_except(['uuid',
                                        'host_uuid',
-                                       'label'])
+                                       'label_key',
+                                       'label_value'])
 
         # do not expose the id attribute
         label.host_id = wtypes.Unset
@@ -181,26 +184,6 @@ class LabelController(rest.RestController):
 
         return Label.convert_with_links(sp_label)
 
-    @staticmethod
-    def _check_label_validity(label):
-        """Perform checks on validity of label
-        """
-        expr = re.compile("([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]")
-        if not expr.match(label):
-            return False
-        return True
-
-    @staticmethod
-    def _check_duplicate_label(host, label_key):
-        """Perform checks whether label already exists
-        """
-        try:
-            pecan.request.dbapi.label_query(host.id, label_key)
-        except exception.HostLabelNotFoundByKey:
-            return None
-        raise exception.HostLabelAlreadyExists(host=host.hostname,
-                                               label=label_key)
-
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(LabelCollection, types.uuid,
                          body=types.apidict)
@@ -213,32 +196,6 @@ class LabelController(rest.RestController):
         LOG.info("patch_data: %s" % body)
         host = objects.host.get_by_uuid(pecan.request.context, uuid)
 
-        new_records = []
-        for key, value in body.iteritems():
-            values = {
-                'host_id': host.id,
-                'label': "=".join([key, str(value)])
-            }
-            # syntax check
-            if not self._check_label_validity(values['label']):
-                msg = _("Label must consist of alphanumeric characters, "
-                        "'-', '_' or '.', and must start and end with an "
-                        "alphanumeric character with an optional DNS "
-                        "subdomain prefix and '/'")
-                raise wsme.exc.ClientSideError(msg)
-
-            # check for duplicate
-            self._check_duplicate_label(host, key)
-
-            try:
-                new_label = pecan.request.dbapi.label_create(uuid, values)
-            except exception.HostLabelAlreadyExists:
-                msg = _("Host label add failed: "
-                        "host %s label %s "
-                        % (host.hostname, values['label']))
-                raise wsme.exc.ClientSideError(msg)
-            new_records.append(new_label)
-
         try:
             pecan.request.rpcapi.update_kubernetes_label(
                 pecan.request.context,
@@ -246,18 +203,23 @@ class LabelController(rest.RestController):
                 body
             )
         except rpc_common.RemoteError as e:
-            # rollback
-            for p in new_records:
-                try:
-                    pecan.request.dbapi.label_destroy(p.uuid)
-                    LOG.warn(_("Rollback host label create: "
-                               "destroy uuid {}".format(p.uuid)))
-                except exception.SysinvException:
-                    pass
             raise wsme.exc.ClientSideError(str(e.value))
         except Exception as e:
             with excutils.save_and_reraise_exception():
                 LOG.exception(e)
+
+        new_records = []
+        for key, value in body.iteritems():
+            values = {
+                'host_id': host.id,
+                'label_key': key,
+                'label_value': value
+            }
+            try:
+                new_label = pecan.request.dbapi.label_create(uuid, values)
+                new_records.append(new_label)
+            except exception.HostLabelAlreadyExists:
+                pass
 
         return LabelCollection.convert_with_links(
             new_records, limit=None, url=None, expand=False,
@@ -272,7 +234,7 @@ class LabelController(rest.RestController):
 
         lbl_obj = objects.label.get_by_uuid(pecan.request.context, uuid)
         host = objects.host.get_by_uuid(pecan.request.context, lbl_obj.host_id)
-        label_dict = {lbl_obj.label.split('=')[0]: None}
+        label_dict = {lbl_obj.label_key: None}
 
         try:
             pecan.request.rpcapi.update_kubernetes_label(
@@ -288,6 +250,6 @@ class LabelController(rest.RestController):
         try:
             pecan.request.dbapi.label_destroy(lbl_obj.uuid)
         except exception.HostLabelNotFound:
-            msg = _("Delete host label failed: host %s label %s"
-                    % (host.hostname, lbl_obj.label.split('=')[0]))
+            msg = _("Delete host label failed: host %s label %s=%s"
+                    % (host.hostname, lbl_obj.label_key, lbl_obj.label_value))
             raise wsme.exc.ClientSideError(msg)

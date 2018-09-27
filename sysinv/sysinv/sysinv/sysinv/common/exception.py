@@ -1184,6 +1184,10 @@ class HostLabelNotFoundByKey(NotFound):
     message = _("Host label %(label)s could not be found.")
 
 
+class HostLabelInvalid(Invalid):
+    message = _("Host label is invalid. Reason: %(reason)s")
+
+
 class PickleableException(Exception):
     """
     Pickleable Exception
