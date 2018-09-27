@@ -53,7 +53,7 @@ from sysinv.agent import pv
 from sysinv.agent import lvg
 from sysinv.agent import pci
 from sysinv.agent import node
-from sysinv.agent import lldp
+from sysinv.agent.lldp import plugin as lldp_plugin
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import service
@@ -138,7 +138,7 @@ class AgentManager(service.PeriodicService):
         self._ipv_operator = pv.PVOperator()
         self._ipartition_operator = partition.PartitionOperator()
         self._ilvg_operator = lvg.LVGOperator()
-        self._lldp_operator = lldp.LLDPOperator()
+        self._lldp_operator = lldp_plugin.SysinvLldpPlugin()
         self._iconfig_read_config_reported = None
         self._ihost_personality = None
         self._ihost_uuid = ""
@@ -363,10 +363,8 @@ class AgentManager(service.PeriodicService):
         neighbours = []
         agents = []
 
-        do_compute = constants.COMPUTE in self.subfunctions_list_get()
-
         try:
-            neighbours = self._lldp_operator.lldp_neighbours_list(do_compute)
+            neighbours = self._lldp_operator.lldp_neighbours_list()
         except Exception as e:
             LOG.error("Failed to get LLDP neighbours: %s", str(e))
 
@@ -408,7 +406,7 @@ class AgentManager(service.PeriodicService):
                 pass
 
         try:
-            agents = self._lldp_operator.lldp_agents_list(do_compute)
+            agents = self._lldp_operator.lldp_agents_list()
         except Exception as e:
             LOG.error("Failed to get LLDP agents: %s", str(e))
 
@@ -470,7 +468,8 @@ class AgentManager(service.PeriodicService):
                     subprocess.call(['ip', 'link', 'set', interface, 'up'])
                     links_down.append(interface)
                     LOG.info('interface %s enabled to receive LLDP PDUs' % interface)
-            subprocess.call(['lldpcli', 'update'])
+            self._lldp_operator.lldp_update()
+
             # delay maximum 30 seconds for lldpd to receive LLDP PDU
             timeout = 0
             link_wait_for_lldp = True
@@ -478,8 +477,9 @@ class AgentManager(service.PeriodicService):
                 time.sleep(5)
                 timeout = timeout + 5
                 link_wait_for_lldp = False
+
                 for link in links_down:
-                    if not self._lldp_operator.lldpd_has_neighbour(link):
+                    if not self._lldp_operator.lldp_has_neighbour(link):
                         link_wait_for_lldp = True
                         break
             self.host_lldp_get_and_report(context, rpcapi, host_uuid)
@@ -1261,12 +1261,10 @@ class AgentManager(service.PeriodicService):
         :param systemname: the systemname
         """
 
-        do_compute = constants.COMPUTE in self.subfunctions_list_get()
         rpcapi = conductor_rpcapi.ConductorAPI(
                                topic=conductor_rpcapi.MANAGER_TOPIC)
         # Update the lldp agent
-        self._lldp_operator.lldp_update_systemname(context, systemname,
-                                                   do_compute)
+        self._lldp_operator.lldp_update_systemname(systemname)
         # Trigger an audit to ensure the db is up to date
         self.host_lldp_get_and_report(context, rpcapi, self._ihost_uuid)
 

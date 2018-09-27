@@ -566,6 +566,10 @@ class LLDPTlvExists(Conflict):
     message = _("An LLDP TLV with type %(type) already exists.")
 
 
+class LLDPDriverError(Conflict):
+    message = _("An LLDP driver error has occurred. method=%(method)")
+
+
 class SDNControllerAlreadyExists(Conflict):
     message = _("An SDN Controller with uuid %(uuid)s already exists.")
 
