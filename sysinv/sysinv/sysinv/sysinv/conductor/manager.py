@@ -2039,6 +2039,15 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Updating port name: %s to %s" % (port_name, updated_name))
         self.dbapi.ethernet_port_update(port['uuid'], {'name': updated_name})
 
+    def lldp_id_to_port(self, id, ports):
+        ovs_id = re.sub(r'^{}'.format(constants.LLDP_OVS_PORT_PREFIX), '', id)
+        for port in ports:
+            if (port['name'] == id or
+                    port['uuid'] == id or
+                    port['uuid'].find(ovs_id) == 0):
+                return port
+        return None
+
     def lldp_tlv_dict(self, agent_neighbour_dict):
         tlv_dict = {}
         for k, v in agent_neighbour_dict.iteritems():
@@ -2156,14 +2165,8 @@ class ConductorManager(service.PeriodicService):
                 "Error getting LLDP agents for host %s") % host_uuid)
 
         for agent in agent_dict_array:
-            port_found = None
-            for db_port in db_ports:
-                if (db_port['name'] == agent['name_or_uuid'] or
-                        db_port['uuid'] == agent['name_or_uuid']):
-                    port_found = db_port
-                    break
-
-            if not port_found:
+            db_port = self.lldp_id_to_port(agent['name_or_uuid'], db_ports)
+            if not db_port:
                 LOG.debug("Could not find port for agent %s",
                           agent['name_or_uuid'])
                 return
@@ -2269,16 +2272,10 @@ class ConductorManager(service.PeriodicService):
                             neighbour['uuid'])
 
         for neighbour in neighbour_dict_array:
-            port_found = None
-            for db_port in db_ports:
-                if (db_port['name'] == neighbour['name_or_uuid'] or
-                        db_port['uuid'] == neighbour['name_or_uuid']):
-                    port_found = db_port
-                    break
-
-            if not port_found:
+            db_port = self.lldp_id_to_port(neighbour['name_or_uuid'], db_ports)
+            if not db_port:
                 LOG.debug("Could not find port for neighbour %s",
-                          neighbour['name'])
+                          neighbour['name_or_uuid'])
                 return
 
             LOG.debug("Processing lldp neighbour %s" % neighbour)

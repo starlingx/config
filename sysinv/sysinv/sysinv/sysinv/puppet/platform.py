@@ -70,6 +70,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_tpm_config(host))
         config.update(self._get_host_cpu_config(host))
         config.update(self._get_host_memory_config(host))
+        config.update(self._get_host_lldp_config(host))
         return config
 
     def _get_static_software_config(self):
@@ -818,3 +819,15 @@ class PlatformPuppet(base.BasePuppet):
     def _get_platform_cpu_count(self, host):
         cpus = self._get_host_cpu_list(host, constants.PLATFORM_FUNCTION, True)
         return len(cpus)
+
+    def _get_host_lldp_config(self, host):
+        driver_list = []
+
+        # Default is lldpd
+        driver_list.append('lldpd')
+
+        self.context['_lldp_drivers'] = driver_list
+
+        return {
+            'sysinv::agent::lldp_drivers': driver_list
+        }
