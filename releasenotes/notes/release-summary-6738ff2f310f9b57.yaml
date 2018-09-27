@@ -1,3 +1,34 @@
 ---
 prelude: >
-    These release notes cover the initial release of StarlingX.
+    The StarlingX Config project is a new repository that:
+      - Provides Host Installation, Inventory Discovery and Host Configuration,
+        (NOTE will move to Host Management in future).
+      - Provides System-level Configuration and Configuration of
+        StarlingX Platform Services.
+      - Provides API, Horizon and CLI services for all Main Components.
+      - Configures various services in StarlingX.
+features:
+  - |
+    Installation
+
+    - Auto-discover new nodes.
+    - Manage installation parameters (i.e. console, root disks).
+    - Bulk provisioning of nodes through xml file.
+    - Installation progress indicators.
+  - |
+    Inventory Discovery
+
+    - CPU/cores, SMT, processors, memory, huge pages.
+    - Storage, ports.
+    - GPUs, crypto/compression H/W, LLDP neighbor info.
+  - |
+    Nodal Configuration
+
+    - Node role, role profiles.
+    - Core, memory (including huge page) assignments.
+    - Network Interfaces and storage assignments.
+    - Bulk configuration of nodes via system profiles.
+  - |
+    User Interface
+
+    - REST API, Horizon GUI and “system” CLI commandsuite.
