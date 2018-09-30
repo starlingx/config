@@ -4197,7 +4197,12 @@ class ConductorManager(service.PeriodicService):
         if not availability:
             return
 
-        if cutils.host_has_function(ihost, constants.COMPUTE):
+        system = self.dbapi.isystem_get_one()
+        kubernetes_config = system.capabilities.get('kubernetes_enabled',
+                                                    False)
+
+        if (cutils.host_has_function(ihost, constants.COMPUTE) and not
+                kubernetes_config):
             if availability == constants.VIM_SERVICES_ENABLED:
                 # report to nova the host aggregate groupings now that
                 # the compute node is available
@@ -4247,7 +4252,9 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi,
                 constants.CINDER_BACKEND_LVM
             )
-            if (storage_lvm and ihost.personality == constants.CONTROLLER):
+
+            if (storage_lvm and ihost.personality == constants.CONTROLLER and
+                    not kubernetes_config):
                 LOG.debug("iplatform monitor check system has lvm backend")
                 cinder_device = cutils._get_cinder_device(self.dbapi, ihost.id)
                 idisks = self.dbapi.idisk_get_by_ihost(ihost_uuid)
