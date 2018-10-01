@@ -75,7 +75,7 @@ class PlatformPuppet(base.BasePuppet):
 
     def _get_static_software_config(self):
         return {
-            'platform::params::software_version': tsconfig.SW_VERSION,
+            'platform::params::software_version': self.quoted_str(tsconfig.SW_VERSION),
         }
 
     def _get_secure_amqp_config(self):
@@ -325,7 +325,7 @@ class PlatformPuppet(base.BasePuppet):
         # required parameters
         config = {
             'platform::params::hostname': host.hostname,
-            'platform::params::software_version': host.software_load,
+            'platform::params::software_version': self.quoted_str(host.software_load),
         }
 
         # optional parameters
