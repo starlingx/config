@@ -114,6 +114,8 @@ class platform::compute::hugetlbf {
       $hugemnt ="/mnt/huge-$page_size"
       $options = "pagesize=${page_size}"
 
+      # TODO: Once all the code is switched over to use the /dev
+      # mount point  we can get rid of this mount point.
       notice("Mounting hugetlbfs at: $hugemnt")
       exec { "create $hugemnt":
         command => "mkdir -p ${hugemnt}",
@@ -128,6 +130,49 @@ class platform::compute::hugetlbf {
         atboot   => 'yes',
         remounts => true,
       }
+
+      # The libvirt helm chart expects hugepages to be mounted
+      # under /dev so let's do that.
+      $hugemnt2 ="/dev/huge-$page_size"
+      notice("Mounting hugetlbfs at: $hugemnt2")
+      file { "${hugemnt2}":
+        ensure => 'directory',
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0755',
+      }->
+      mount { "${hugemnt2}":
+        name     => "${hugemnt2}",
+        device   => 'none',
+        fstype   => 'hugetlbfs',
+        ensure   => 'mounted',
+        options  => "${options}",
+        atboot   => 'yes',
+        remounts => true,
+      }
+    }
+
+    # The libvirt helm chart also assumes that the default hugepage size
+    # will be mounted at /dev/hugepages so let's make that happen too.
+    # Once we upstream a fix to the helm chart to automatically determine
+    # the mountpoint then we can remove this.
+    $page_size = '2M'
+    $hugemnt ="/dev/hugepages"
+    $options = "pagesize=${page_size}"
+
+    notice("Mounting hugetlbfs at: $hugemnt")
+    exec { "create $hugemnt":
+      command => "mkdir -p ${hugemnt}",
+      onlyif  => "test ! -d ${hugemnt}",
+    } ->
+    mount { "${hugemnt}":
+      name     => "${hugemnt}",
+      device   => 'none',
+      fstype   => 'hugetlbfs',
+      ensure   => 'mounted',
+      options  => "${options}",
+      atboot   => 'yes',
+      remounts => true,
     }
   }
 }
