@@ -2140,6 +2140,12 @@ class HostController(rest.RestController):
             LOG.info("host %s %s patch" % (ihost_obj.hostname,
                                            log_end))
 
+        if ('administrative' in hostupdate.delta and
+                    hostupdate.ihost_patch['administrative'] ==
+                    constants.ADMIN_LOCKED):
+            LOG.info("Update host memory for (%s)" % ihost_obj['hostname'])
+            pecan.request.rpcapi.update_host_memory(pecan.request.context,
+                                                    ihost_obj['uuid'])
         return Host.convert_with_links(ihost_obj)
 
     def _vim_host_add(self, ihost):

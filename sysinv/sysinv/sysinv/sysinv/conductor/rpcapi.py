@@ -308,7 +308,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        force_grub_update=force_grub_update))
 
     def imemory_update_by_ihost(self, context,
-                                ihost_uuid, imemory_dict_array):
+                                ihost_uuid, imemory_dict_array,
+                                force_update=False):
         """Create or update memory for an ihost with the supplied data.
 
         This method allows records for memory for ihost to be created,
@@ -317,13 +318,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: an admin context
         :param ihost_uuid: ihost uuid unique id
         :param imemory_dict_array: initial values for memory objects
+        :param force_update: force a memory update
         :returns: pass or fail
         """
 
         return self.call(context,
                          self.make_msg('imemory_update_by_ihost',
                                        ihost_uuid=ihost_uuid,
-                                       imemory_dict_array=imemory_dict_array))
+                                       imemory_dict_array=imemory_dict_array,
+                                       force_update=force_update))
 
     def idisk_update_by_ihost(self, context,
                               ihost_uuid, idisk_dict_array):
@@ -1648,3 +1651,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('update_kubernetes_label',
                                        host_uuid=host_uuid,
                                        label_dict=label_dict))
+
+    def update_host_memory(self, context, host_uuid):
+        """Asynchronously, have a conductor update the host memory
+
+        :param context: request context.
+        :param host_uuid: duuid or id of the host.
+        """
+        LOG.info("ConductorApi.update_host_memory: sending"
+                 " host memory update request to conductor")
+        return self.cast(context, self.make_msg('update_host_memory',
+                                                host_uuid=host_uuid))

@@ -271,3 +271,14 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                           host_uuid=host_uuid,
                           idisk_dict=idisk_dict,
                           is_cinder_device=is_cinder_device))
+
+    def update_host_memory(self, context, host_uuid):
+        """Asynchronously, have the agent to send host memory update
+
+        :param context: request context.
+        :param host_uuid: ihost uuid unique id
+        :returns: pass or fail
+        """
+        return self.fanout_cast(context,
+                                self.make_msg('update_host_memory',
+                                              host_uuid=host_uuid))
