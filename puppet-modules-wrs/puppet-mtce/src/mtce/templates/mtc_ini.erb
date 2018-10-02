@@ -16,6 +16,10 @@ heartbeat_period = <%= @heartbeat_period %> ; Heartbeat period in milliseconds
 heartbeat_failure_threshold = <%= @heartbeat_failure_threshold %> ; Heartbeat failure threshold count.
 heartbeat_degrade_threshold = <%= @heartbeat_degrade_threshold %> ; Heartbeat degrade threshold count.
 
+; Communication ports between SM and maintenance
+sm_server_port = <%= @sm_server_port %> ; port sm receives mtce commands from
+sm_client_port = <%= @sm_client_port %> ; port mtce receives sm commands from
+
 ; Heartbeat Loss / Failure Action Selection.
 ; The action to take on host heartbeat failure.
 ; Supported actions are
