@@ -98,17 +98,6 @@ class NodeOperator(object):
                          e.output)
         return False
 
-    def _is_hugepages_allocated(self):
-        with open(os.devnull, "w") as fnull:
-            try:
-                output = subprocess.check_output(
-                    ["cat", "/proc/sys/vm/nr_hugepages"], stderr=fnull)
-                if int(output) > 0:
-                    return True
-            except subprocess.CalledProcessError as e:
-                LOG.info("Failed to check hugepages, error (%s)", e.output)
-        return False
-
     def convert_range_string_to_list(self, s):
         olist = []
         s = s.strip()
@@ -323,10 +312,12 @@ class NodeOperator(object):
         initial_report = not initial_compute_config_completed
 
         # do not send report if the initial compute config is completed and
-        # the huge pages have not been allocated, i.e.during subsequent
+        # compute config has not finished, i.e.during subsequent
         # reboot before the manifest allocates the huge pages
+        compute_config_completed = \
+            os.path.exists(tsc.VOLATILE_COMPUTE_CONFIG_COMPLETE)
         if (initial_compute_config_completed and
-                not self._is_hugepages_allocated()):
+                not compute_config_completed):
             return imemory
 
         for node in range(self.num_nodes):
