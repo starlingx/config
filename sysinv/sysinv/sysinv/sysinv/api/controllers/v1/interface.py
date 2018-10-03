@@ -1129,9 +1129,11 @@ def _check_interface_class(interface, existing_interface):
                          (network.type, interface['ifclass'])))
                 raise wsme.exc.ClientSideError(msg)
 
-    if existing_interface and existing_interface['ifclass']:
-        if existing_interface['ifclass'] == interface['ifclass']:
-            return
+    if (interface['ifclass'] in NEUTRON_INTERFACE_CLASS and
+            interface['networks']):
+        msg = _("Associating platform network to interface with %s class "
+                "is not allowed" % interface['ifclass'])
+        raise wsme.exc.ClientSideError(msg)
 
 
 def _check_address_mode(op, interface, ihost, existing_interface):
