@@ -6880,6 +6880,12 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+                multipath_state_changed = self._multipath_update_state()
+                if multipath_state_changed:
+                    self._config_update_hosts(context,
+                        [constants.CONTROLLER, constants.COMPUTE],
+                        reboot=True)
+
             elif service == constants.SERVICE_TYPE_PLATFORM:
                 config_dict = {
                     "personalities": personalities,
@@ -7035,6 +7041,43 @@ class ConductorManager(service.PeriodicService):
         if do_update:
             LOG.info("Updating %s to %s" % (name, new_state))
             self.dbapi.service_parameter_update(status_param.uuid, {'value': new_state})
+
+    def _multipath_get_state(self):
+        try:
+            state = self.dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_CINDER,
+                constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
+                constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE
+            )
+        except exception.NotFound:
+            state = self.dbapi.service_parameter_create({
+                'service': constants.SERVICE_TYPE_CINDER,
+                'section': constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
+                'name': constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE,
+                'value': constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE_DISABLED
+            })
+        return state
+
+    def _multipath_update_state(self):
+        """Update multipath service parameter state
+
+        :return True if multipath state changed, False otherwise
+        """
+        state_param = self._multipath_get_state()
+        current_state = state_param.value
+        try:
+            state = self.dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_CINDER,
+                constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
+                constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH
+            ).value
+        except exception.NotFound:
+            state = constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE_DISABLED
+        if current_state != state:
+            self.dbapi.service_parameter_update(
+                state_param.uuid, dict(value=state))
+            return True
+        return False
 
     def update_sdn_controller_config(self, context):
         """Update the SDN controller configuration"""

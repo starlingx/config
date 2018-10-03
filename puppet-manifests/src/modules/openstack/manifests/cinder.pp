@@ -197,7 +197,8 @@ class openstack::cinder
   include ::openstack::cinder::backends
 
   include ::openstack::cinder::backup
-
+  include ::platform::multipath::params
+ 
   # TODO(mpeters): move to puppet module formal parameters
   cinder_config {
     'DEFAULT/my_ip': value => $controller_address;
@@ -208,6 +209,8 @@ class openstack::cinder
     # Liberty renamed this from rpc_thread_pool_size to executor_thread_pool_size
     'DEFAULT/executor_thread_pool_size': value => '32';
     'DEFAULT/enable_force_upload': value => true;
+    'DEFAULT/use_multipath_for_image_xfer': value => $::platform::multipath::params::enabled;
+    'backend_defaults/use_multipath_for_image_xfer': value => $::platform::multipath::params::enabled;
   }
 
   # Run cinder-manage to purge deleted rows daily at the 30 minute mark

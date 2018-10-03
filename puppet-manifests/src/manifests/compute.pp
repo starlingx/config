@@ -33,6 +33,7 @@ include ::platform::collectd
 include ::platform::filesystem::compute
 include ::platform::docker
 include ::platform::kubernetes::worker
+include ::platform::multipath
 
 include ::openstack::client
 include ::openstack::neutron

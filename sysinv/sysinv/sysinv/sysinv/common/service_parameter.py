@@ -1096,7 +1096,8 @@ CINDER_DEFAULT_PARAMETER_REQUIRED = []
 CINDER_DEFAULT_PARAMETER_OPTIONAL = (
     CINDER_DEFAULT_PARAMETER_REQUIRED +
     CINDER_DEFAULT_PARAMETER_PROTECTED + [
-        'default_volume_type'
+        constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE,
+        constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH,
     ]
 )
 
@@ -1104,14 +1105,16 @@ CINDER_DEFAULT_PARAMETER_VALIDATOR = {
     # Mandatory parameters
     # Required parameters
     # Optional parameters
-    'default_volume_type': _validate_not_empty
+    constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE: _validate_not_empty,
+    constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH: _validate_boolean,
 }
 
 CINDER_DEFAULT_PARAMETER_RESOURCE = {
     # Mandatory parameters
     # Required parameters
     # Optional parameters
-    'default_volume_type': None
+    constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE: None,
+    constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH: None,
 }
 
 CINDER_EMC_VNX_SAN_IP = 'san_ip'
