@@ -207,6 +207,7 @@ class openstack::cinder
     # in a lot of thrashing and operations time out.
     # Liberty renamed this from rpc_thread_pool_size to executor_thread_pool_size
     'DEFAULT/executor_thread_pool_size': value => '32';
+    'DEFAULT/enable_force_upload': value => true;
   }
 
   # Run cinder-manage to purge deleted rows daily at the 30 minute mark
