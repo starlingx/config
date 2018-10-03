@@ -502,9 +502,10 @@ class NodeOperator(object):
                 'vm_hugepages_possible_1G': max_vm_pages_1G,
             })
 
-            # calculate 100% 2M pages if it is initial report and the huge
+            # calculate 90% 2M pages if it is initial report and the huge
             # pages have not been allocated
             if initial_report:
+                max_vm_pages_2M = max_vm_pages_2M * 0.9
                 Total_HP_MiB += int(max_vm_pages_2M * (SZ_2M_Ki / Ki))
                 Free_HP_MiB = Total_HP_MiB
                 attr.update({

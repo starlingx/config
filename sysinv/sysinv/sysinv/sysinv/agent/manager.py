@@ -1771,3 +1771,19 @@ class AgentManager(service.PeriodicService):
             return self._idisk_operator.disk_format_gpt(host_uuid,
                                                         idisk_dict,
                                                         is_cinder_device)
+
+    def update_host_memory(self, context, host_uuid):
+        """update the host memory
+
+        :param context: an admin context
+        :param host_uuid: ihost uuid unique id
+        :return: None
+        """
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            rpcapi = conductor_rpcapi.ConductorAPI(
+                topic=conductor_rpcapi.MANAGER_TOPIC)
+            memory = self._inode_operator.inodes_get_imemory()
+            rpcapi.imemory_update_by_ihost(context,
+                                           self._ihost_uuid,
+                                           memory,
+                                           force_update=True)

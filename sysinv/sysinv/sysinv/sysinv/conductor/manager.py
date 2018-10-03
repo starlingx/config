@@ -2744,7 +2744,8 @@ class ConductorManager(service.PeriodicService):
         return {'platform_reserved_mib': reserved} if reserved else {}
 
     def imemory_update_by_ihost(self, context,
-                                ihost_uuid, imemory_dict_array):
+                                ihost_uuid, imemory_dict_array,
+                                force_update):
         """Create or update imemory for an ihost with the supplied data.
 
         This method allows records for memory for ihost to be created,
@@ -2753,6 +2754,7 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context
         :param ihost_uuid: ihost uuid unique id
         :param imemory_dict_array: initial values for cpu objects
+        :param: force_update: force host memory update
         :returns: pass or fail
         """
 
@@ -2761,6 +2763,12 @@ class ConductorManager(service.PeriodicService):
             ihost = self.dbapi.ihost_get(ihost_uuid)
         except exception.ServerNotFound:
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
+            return
+
+        if ihost['administrative'] == constants.ADMIN_LOCKED and \
+            ihost['invprovision'] == constants.PROVISIONED and \
+                not force_update:
+            LOG.debug("Ignore the host memory audit after the host is locked")
             return
 
         forihostid = ihost['id']
@@ -10212,3 +10220,13 @@ class ConductorManager(service.PeriodicService):
         }
         body['metadata']['labels'].update(label_dict)
         self._kube.kube_patch_node(host.hostname, body)
+
+    def update_host_memory(self, context, host_uuid):
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            LOG.error("Cannot find host by id %s" % host_uuid)
+            return
+
+        rpcapi = agent_rpcapi.AgentAPI()
+        rpcapi.update_host_memory(context, host.uuid)
