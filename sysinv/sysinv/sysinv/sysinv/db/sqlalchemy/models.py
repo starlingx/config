@@ -1629,5 +1629,6 @@ class Label(Base):
     host_id = Column(Integer, ForeignKey('i_host.id',
                                          ondelete='CASCADE'))
     host = relationship("ihost", lazy="joined", join_depth=1)
-    label = Column(String(255))
-    UniqueConstraint('host_id', 'label', name='u_host_label')
+    label_key = Column(String(384))
+    label_value = Column(String(128))
+    UniqueConstraint('host_id', 'label_key', name='u_host_id@label_key')

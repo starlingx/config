@@ -16,7 +16,7 @@ from cgtsclient.v1 import ihost as ihost_utils
 
 
 def _print_label_show(obj):
-    fields = ['uuid', 'host_uuid', 'label']
+    fields = ['uuid', 'host_uuid', 'label_key', 'label_value']
     data = [(f, getattr(obj, f, '')) for f in fields]
     utils.print_tuple_list(data)
 
@@ -30,8 +30,8 @@ def do_host_label_list(cc, args):
     host_label = cc.label.list(ihost.uuid)
     for i in host_label[:]:
         setattr(i, 'hostname', ihost.hostname)
-    field_labels = ['hostname', 'label', ]
-    fields = ['hostname', 'label', ]
+    field_labels = ['hostname', 'label key', 'label value']
+    fields = ['hostname', 'label_key', 'label_value']
     utils.print_list(host_label, fields, field_labels, sortby=1)
 
 
@@ -81,7 +81,7 @@ def do_host_label_remove(cc, args):
 def _find_host_label(cc, host, label):
     host_labels = cc.label.list(host.uuid)
     for lbl in host_labels:
-        if lbl.host_uuid == host.uuid and lbl.label.split('=')[0] == label:
+        if lbl.host_uuid == host.uuid and lbl.label_key == label:
             break
     else:
         lbl = None
