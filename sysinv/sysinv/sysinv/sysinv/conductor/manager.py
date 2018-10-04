@@ -6428,16 +6428,16 @@ class ConductorManager(service.PeriodicService):
         disk_size = cutils.get_disk_capacity_mib(rootfs_device)
         disk_size = int(disk_size / 1024)
 
-        if disk_size >= constants.DEFAULT_SMALL_DISK_SIZE:
+        if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
 
             LOG.info("Disk size : %s ... large disk defaults" % disk_size)
 
             # Defaults: 500G root disk
             #
             # Min size of the cgts-vg PV is:
-            #   147.0 G - PV for cgts-vg (specified in the kickstart)
+            #   163.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   155.0 G - (for DCSC non-AIO)
+            #   171.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
             #          2 G - cgcs_lv (DRBD bootstrap manifest)
@@ -6461,20 +6461,23 @@ class ConductorManager(service.PeriodicService):
             #         50 G - /opt/backup
             #          5 G - /opt/gnocchi
             #          1 G - anchor_lv
+            #         10 G - /var/lib/docker (--kubernetes)
+            #          1 G - /var/lib/docker-distribution (--kubernetes)
+            #          5 G - /opt/etcd (--kubernetes)
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for
             #                   Distributed Cloud System Controller non-AIO only)
             #        -----
-            #        147 G or 155 G (for DCSC non-AIO)
+            #        171 G (for DCSC non-AIO) or 163 G
             #
             #  The absolute minimum disk size for these default settings:
             #      0.5 G - /boot
             #     20.0 G - /
-            #    147.0 G - cgts-vg PV
-            # or 155.0 G - (DCSC non-AIO)
+            #    163.0 G - cgts-vg PV
+            # or 171.0 G - (DCSC non-AIO)
             #   -------
-            #    167.5 G => ~168G min size disk
+            #    183.5 G => ~184G min size disk
             # or
-            #    175.5 G => ~176G min size disk
+            #    191.5 G => ~192G min size disk
             #
             # If required disk is size 500G:
             #   1) Standard controller - will use all free space for the PV
@@ -6485,8 +6488,8 @@ class ConductorManager(service.PeriodicService):
             #   2) AIO - will leave unused space for further partitioning
             #       0.5 G - /boot
             #      20.0 G - /
-            #     147.0 G - cgts-vg PV
-            #     332.5 G - unpartitioned free space
+            #     163.0 G - cgts-vg PV
+            #     316.5 G - unpartitioned free space
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
             if glance_local:
@@ -6509,9 +6512,9 @@ class ConductorManager(service.PeriodicService):
             # Small disk: under 240G root disk
             #
             # Min size of the cgts-vg PV is:
-            #   97.0 G - PV for cgts-vg (specified in the kickstart)
+            #   113.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   105.0 G - (for DCSC non-AIO)
+            #   121.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
             #          2 G - cgcs_lv (DRBD bootstrap manifest)
@@ -6535,20 +6538,23 @@ class ConductorManager(service.PeriodicService):
             #         40 G - /opt/backup
             #          5 G - /opt/gnocchi
             #          1 G - anchor_lv
+            #         10 G - /var/lib/docker (--kubernetes)
+            #          1 G - /var/lib/docker-distribution (--kubernetes)
+            #          5 G - /opt/etcd (--kubernetes)
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
             #        -----
-            #         107 G or 115 G (for DCSC non-AIO)
+            #        131 G (for DCSC non-AIO) or 123 G
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
             #    20.0 G - /
-            #    107.0 G - cgts-vg PV
+            #   123.0 G - cgts-vg PV
             # or
-            #   115.0 G - (for DCSC non-AIO)
+            #   131.0 G - (for DCSC non-AIO)
             #   -------
-            #   127.5 G => ~128G min size disk
+            #   143.5 G => ~144G min size disk
             # or
-            #   135.5 G => ~136G min size disk
+            #   151.5 G => ~152G min size disk
             #
             # If required disk is size 240G:
             #   1) Standard controller - will use all free space for the PV
@@ -6558,8 +6564,8 @@ class ConductorManager(service.PeriodicService):
             #   2) AIO - will leave unused space for further partitioning
             #       0.5 G - /boot
             #      20.0 G - /
-            #      107.0 G - cgts-vg PV
-            #     112.5 G - unpartitioned free space
+            #     123.0 G - cgts-vg PV
+            #      96.5 G - unpartitioned free space
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE

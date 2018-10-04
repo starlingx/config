@@ -271,24 +271,27 @@ DEFAULT_GNOCCHI_STOR_SIZE = 5
 DEFAULT_SMALL_DISK_SIZE = 240
 # The minimum disk size needed to create all partitions
 # Value based on the following calculation:
-# DEFAULT_SMALL_IMAGE_STOR_SIZE                 10
-# 2*DEFAULT_SMALL_DATABASE_STOR_SIZE            2*10
-# DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE        10
-# DEFAULT_SMALL_BACKUP_STOR_SIZE                40
-# LOG_VOL_SIZE (reserved in kickstarts)         8
-# SCRATH_VOL_SIZE (reserved in kickstarts)      8
-# RABBIT_LV                                     2
-# PLATFORM_LV                                   2
-# ANCHOR_LV                                     1
-# DEFAULT_EXTENSION_STOR_SIZE                   1
-# DEFAULT_GNOCCHI_STOR_SIZE                     5
-# buffer inside VG for LV creation              1
-# root partition (created in kickstarts)        20
-# boot partition (created in kickstarts)        1
-# buffer for partition creation                 1
-# -----------------------------------------------
-#                                               130
-MINIMUM_DISK_SIZE = 130
+# DEFAULT_SMALL_IMAGE_STOR_SIZE                        10
+# 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   20 (2*10)
+# DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE               10
+# DEFAULT_SMALL_BACKUP_STOR_SIZE                       40
+# LOG_VOL_SIZE (reserved in kickstarts)                 8
+# SCRATCH_VOL_SIZE (reserved in kickstarts)             8
+# RABBIT_LV                                             2
+# PLATFORM_LV                                           2
+# ANCHOR_LV                                             1
+# DEFAULT_EXTENSION_STOR_SIZE                           1
+# DEFAULT_GNOCCHI_STOR_SIZE                             5
+# KUBERNETES_DOCKER_STOR_SIZE (--kubernetes)           10
+# DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE (--kubernetes)  1
+# ETCD_STOR_SIZE (--kubernetes)                         5
+# buffer inside VG for LV creation                      1
+# root partition (created in kickstarts)               20
+# boot partition (created in kickstarts)                1
+# buffer for partition creation                         1
+# -------------------------------------------------------
+#                                                     146
+MINIMUM_DISK_SIZE = 146
 
 # Docker lv size when Kubernetes is configured
 KUBERNETES_DOCKER_STOR_SIZE = 10
