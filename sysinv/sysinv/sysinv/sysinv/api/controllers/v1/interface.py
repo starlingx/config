@@ -794,6 +794,8 @@ def _set_defaults(interface):
                     )
                     networks.append(str(network.id))
             interface['networks'] = networks
+    elif interface['ifclass'] in NEUTRON_NETWORK_TYPES:
+        interface['networktype'] = interface['ifclass']
 
     family_defaults = [constants.NETWORK_TYPE_MGMT,
                        constants.NETWORK_TYPE_OAM,
@@ -1494,10 +1496,9 @@ def _check_interface_data(op, interface, ihost, existing_interface):
                 for i in interface_list:
                     if i.id == this_interface_id:
                         continue
-                    if not i.networktype or not i.providernetworks:
+                    if not i.ifclass or not i.providernetworks:
                         continue
-                    networktype_l = [network.strip() for network in i.networktype.split(",")]
-                    if constants.NETWORK_TYPE_DATA not in networktype_l:
+                    if constants.NETWORK_TYPE_DATA != i.ifclass:
                         continue
                     other_providernetworks = i.providernetworks.split(',')
                     if pn in other_providernetworks:
