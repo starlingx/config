@@ -1113,8 +1113,21 @@ class ConfigAssistant():
                 self.management_start_address = self.management_subnet[2]
                 self.management_end_address = self.management_subnet[-2]
                 if self.management_subnet.size < 255:
-                    print "WARNING: Subnet allows only %d addresses." \
-                          % self.management_subnet.size
+                    print "WARNING: Subnet allows only %d addresses.\n" \
+                          "This will not allow you to provision a Cinder LVM" \
+                          " or Ceph backend." % self.management_subnet.size
+                    while True:
+                        user_input = raw_input(
+                            "Do you want to continue with the current "
+                            "configuration? [Y/n]: ")
+                        if user_input.lower() == 'q' or \
+                                user_input.lower() == 'n':
+                            raise UserQuit
+                        elif user_input.lower() == 'y' or user_input == "":
+                            break
+                        else:
+                            print "Invalid choice"
+                            continue
                 break
             except ValidateFail as e:
                 print "{}".format(e)
