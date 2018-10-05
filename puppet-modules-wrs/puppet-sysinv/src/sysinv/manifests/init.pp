@@ -195,10 +195,11 @@ class sysinv (
 
   sysinv_config {
     'keystone_authtoken/region_name':  value => $region_name;
-    'keystone_authtoken/neutron_region_name':  value => $neutron_region_name;
-    'keystone_authtoken/cinder_region_name':  value => $cinder_region_name;
-    'keystone_authtoken/nova_region_name':  value => $nova_region_name;
-    'keystone_authtoken/magnum_region_name':  value => $magnum_region_name;
+    'openstack_keystone_authtoken/region_name':  value => $region_name;
+    'openstack_keystone_authtoken/neutron_region_name':  value => $neutron_region_name;
+    'openstack_keystone_authtoken/cinder_region_name':  value => $cinder_region_name;
+    'openstack_keystone_authtoken/nova_region_name':  value => $nova_region_name;
+    'openstack_keystone_authtoken/magnum_region_name':  value => $magnum_region_name;
   }
 
   sysinv_config {

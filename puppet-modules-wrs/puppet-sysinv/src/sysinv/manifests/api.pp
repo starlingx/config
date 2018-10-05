@@ -22,12 +22,13 @@
 #
 # === Parameters
 #
-# [*keystone_password*]
-#   The password to use for authentication (keystone)
-#
 # [*keystone_enabled*]
 #   (optional) Use keystone for authentification
 #   Defaults to true
+#   Applies to both bare metal and pod based keystones
+#
+# [*keystone_password*]
+#   The password to use for authentication (keystone)
 #
 # [*keystone_tenant*]
 #   (optional) The tenant of the auth user
@@ -88,6 +89,58 @@
 #   (optional) The state of the service
 #   Defaults to true
 #
+# [*openstack_keystone_tenant*]
+#   (optional) The tenant of the auth user
+#   Defaults to admin
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keystone_user*]
+#   (optional) The name of the auth user
+#   Defaults to admin
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keyring_service*]
+#   (optional) The keyring service from which to retrieve the password
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keystone_auth_host*]
+#   (optional) The keystone host
+#   Defaults to localhost
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keystone_auth_port*]
+#   (optional) The keystone auth port
+#   Defaults to 5000
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keystone_auth_protocol*]
+#   (optional) The protocol used to access the auth host
+#   Defaults to http.
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keystone_auth_admin_prefix*]
+#   (optional) The admin_prefix used to admin endpoint of the auth host
+#   This allow admin auth URIs like http://auth_host:5000/keystone.
+#   (where '/keystone' is the admin prefix)
+#   Defaults to false for empty. If defined, should be a string with a
+#   leading '/' and no trailing '/'.
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keystone_user_domain*]
+#   (Optional) domain name for auth user.
+#   Defaults to 'Default'.
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_keystone_project_domain*]
+#   (Optional) domain name for auth project.
+#   Defaults to 'Default'.
+#   For pod based keystone for authentication with openstack services
+#
+# [*openstack_auth_type*]
+#   (Optional) Authentication type to load.
+#   Defaults to 'password'.
+#   For pod based keystone for authentication with openstack services
+#
 class sysinv::api (
   $keystone_password,
   $keystone_enabled           = true,
@@ -103,6 +156,19 @@ class sysinv::api (
   $keystone_user_domain       = 'Default',
   $keystone_project_domain    = 'Default',
   $auth_type                  = 'password',
+  $openstack_keystone_tenant  = 'admin',
+  $openstack_keystone_user    = 'admin',
+  $openstack_keyring_service  = undef,
+  $openstack_keystone_auth_host         = 'localhost',
+  $openstack_keystone_auth_port         = '5000',
+  $openstack_keystone_auth_protocol     = 'http',
+  $openstack_keystone_auth_admin_prefix = false,
+  $openstack_keystone_auth_uri          = false,
+  $openstack_keystone_auth_version      = false,
+  $openstack_keystone_identity_uri      = false,
+  $openstack_keystone_user_domain       = 'Default',
+  $openstack_keystone_project_domain    = 'Default',
+  $openstack_auth_type        = 'password',
   $service_port               = '5000',
   $package_ensure             = 'latest',
   $bind_host                  = '0.0.0.0',
@@ -145,6 +211,12 @@ class sysinv::api (
     sysinv_api_paste_ini { 'filter:authtoken/auth_url': value => "${keystone_auth_protocol}://${keystone_auth_host}:5000/"; }
   }
 
+  if $openstack_keystone_identity_uri {
+    sysinv_config { 'openstack_keystone_authtoken/auth_url': value => $openstack_keystone_identity_uri; }
+  } else {
+    sysinv_config { 'openstack_keystone_authtoken/auth_url': value => "${openstack_keystone_auth_protocol}://${openstack_keystone_auth_host}:5000/"; }
+  }
+
   if $keystone_auth_uri {
     sysinv_config { 'keystone_authtoken/auth_uri': value => $keystone_auth_uri; }
     sysinv_api_paste_ini { 'filter:authtoken/auth_uri': value => $keystone_auth_uri; }
@@ -157,12 +229,26 @@ class sysinv::api (
     }
   }
 
+  if $openstack_keystone_auth_uri {
+    sysinv_config { 'openstack_keystone_authtoken/auth_uri': value => $openstack_keystone_auth_uri; }
+  } else {
+    sysinv_config {
+      'openstack_keystone_authtoken/auth_uri': value => "${openstack_keystone_auth_protocol}://${openstack_keystone_auth_host}:5000/";
+    }
+  }
+
   if $keystone_auth_version {
     sysinv_config { 'keystone_authtoken/auth_version': value => $keystone_auth_version; }
     sysinv_api_paste_ini { 'filter:authtoken/auth_version': value => $keystone_auth_version; }
   } else {
     sysinv_config { 'keystone_authtoken/auth_version': ensure => absent; }
     sysinv_api_paste_ini { 'filter:authtoken/auth_version': ensure => absent; }
+  }
+
+  if $openstack_keystone_auth_version {
+    sysinv_config { 'openstack_keystone_authtoken/auth_version': value => $openstack_keystone_auth_version; }
+  } else {
+    sysinv_config { 'openstack_keystone_authtoken/auth_version': ensure => absent; }
   }
 
   if $keystone_enabled {
@@ -176,6 +262,14 @@ class sysinv::api (
       'keystone_authtoken/password':     value => $keystone_password, secret=> true;
       'keystone_authtoken/user_domain_name':  value => $keystone_user_domain;
       'keystone_authtoken/project_domain_name':  value => $keystone_project_domain;
+    }
+    sysinv_config {
+      'openstack_keystone_authtoken/auth_type':    value => $openstack_auth_type;
+      'openstack_keystone_authtoken/project_name': value => $openstack_keystone_tenant;
+      'openstack_keystone_authtoken/username':     value => $openstack_keystone_user;
+      'openstack_keystone_authtoken/user_domain_name':  value => $openstack_keystone_user_domain;
+      'openstack_keystone_authtoken/project_domain_name':  value => $openstack_keystone_project_domain;
+      'openstack_keystone_authtoken/keyring_service': value => $openstack_keyring_service;
     }
 
     sysinv_api_paste_ini {
@@ -202,6 +296,18 @@ class sysinv::api (
         'filter:authtoken/auth_admin_prefix': ensure => absent;
       }
     }
+
+    if $openstack_keystone_auth_admin_prefix {
+      validate_re($openstack_keystone_auth_admin_prefix, '^(/.+[^/])?$')
+      sysinv_config {
+        'openstack_keystone_authtoken/auth_admin_prefix': value => $openstack_keystone_auth_admin_prefix;
+      }
+    } else {
+      sysinv_config {
+        'openstack_keystone_authtoken/auth_admin_prefix': ensure => absent;
+      }
+    }
+
   }
   else
   {
