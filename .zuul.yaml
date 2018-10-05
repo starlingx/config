@@ -24,6 +24,9 @@
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - configutilities-tox-flake8
+    post:
+      jobs:
+        - publish-stx-tox
 
 - job:
     name: sysinv-tox-py27
