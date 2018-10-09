@@ -820,14 +820,6 @@ class platform::sm
       exec { 'Deprovision OpenStack - Neutron Server (service)':
           command => "sm-deprovision service neutron-server",
       }
-
-      # Deprovision Horizon
-      exec { 'Deprovision OpenStack - Horizon (service-group-member)':
-          command => "sm-deprovision service-group-member web-services horizon",
-      } ->
-      exec { 'Deprovision OpenStack - Horizon(service)':
-          command => "sm-deprovision service horizon",
-      }
   }
 
   if $heat_service_enabled {
