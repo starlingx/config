@@ -9,4 +9,7 @@ StarlingX System Configuration Management
 
    api-ref-sysinv-v1-config
 
+Search
+------
+
 :ref:`search`

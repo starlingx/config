@@ -6,4 +6,7 @@ stx-config Release Notes
 
    unreleased
 
+Search
+------
+
 :ref:`search`
