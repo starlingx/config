@@ -8,3 +8,5 @@ StarlingX System Configuration Management
    :maxdepth: 2
 
    api-ref-sysinv-v1-config
+
+:ref:`search`

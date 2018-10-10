@@ -5,3 +5,5 @@ stx-config Release Notes
    :maxdepth: 2
 
    unreleased
+
+:ref:`search`
