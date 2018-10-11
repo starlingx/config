@@ -419,6 +419,10 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
     def _get_compute_config(self, host):
         return {
             'nova::compute::enabled': self._enable_nova_compute(),
+            'nova::compute::libvirt::manage_libvirt_services':
+                self._enable_nova_compute(),
+            'nova::migration::libvirt::configure_libvirt':
+                self._enable_nova_compute(),
             'nova::compute::compute_reserved_vm_memory_2M':
                 self._get_reserved_memory_2M(host),
             'nova::compute::compute_reserved_vm_memory_1G':
