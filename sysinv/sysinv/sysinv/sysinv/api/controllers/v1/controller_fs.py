@@ -399,7 +399,6 @@ def _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1):
 
     """
     reserved_space = constants.CONTROLLER_ROOTFS_RESERVED
-    CFS_RESIZE_BUFFER_GIB = 2  # reserve space and ensure no rounding errors
 
     max_disk_size_controller0 = 0
     max_disk_size_controller1 = 0
@@ -516,7 +515,7 @@ def _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1):
     else:
         cgtsvg_max_free_GiB = cgtsvg0_free_mib / 1024
 
-    cgtsvg_max_free_GiB -= CFS_RESIZE_BUFFER_GIB
+    cgtsvg_max_free_GiB -= constants.CFS_RESIZE_BUFFER_GIB
 
     LOG.info("SYS_I filesystem limits cgtsvg0_free_mib=%s, "
              "cgtsvg1_free_mib=%s, cgtsvg_max_free_GiB=%s"

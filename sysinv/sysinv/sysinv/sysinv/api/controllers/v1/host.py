@@ -3786,6 +3786,87 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
+    def _semantic_check_filesystem_sizes(ihost):
+        """
+        Perform checks for filesystem consistency across controllers
+        :param ihost: host information of host with controller functionality
+        """
+        # Unlocking the active controller happens only after running
+        # config_controller or on a one-node system, so this check isn't
+        # needed in such scenarios
+        if (utils.is_host_active_controller(ihost) or
+                utils.is_host_simplex_controller(ihost)):
+            return
+
+        # The check should only happen the first time the standby controller
+        # is unlocked, so we check if the node has already been provisioned
+        # or is in a provisioning state (meaning the unlock is in progress)
+        # After the second controller is provisioned, the filesystem resize
+        # consistency checks prevent any inconsistencies between nodes
+        if (ihost['invprovision'] and
+                ihost['invprovision'] != constants.UNPROVISIONED):
+            LOG.info("Controller host %s provisioning or already provisioned. "
+                     "Skipping filesystem checks." % ihost['hostname'])
+            return
+
+        active_controller = utils.HostHelper.get_active_controller()
+        ihost_ilvgs = pecan.request.dbapi.ilvg_get_by_ihost(active_controller.uuid)
+
+        for lvg in ihost_ilvgs:
+            if lvg.lvm_vg_name == constants.LVG_CGTS_VG:
+                if (not lvg.lvm_vg_size or not lvg.lvm_vg_total_pe):
+                    # Should not happen for active controller, but we should check
+                    # this anyway.
+                    raise wsme.exc.ClientSideError(
+                        _("Active controller %s volume group not yet inventoried.") %
+                        constants.LVG_CGTS_VG)
+                lvm_vg_used_pe = int(lvg.lvm_vg_total_pe) - int(lvg.lvm_vg_free_pe)
+                active_controller_used = (
+                    int(lvg.lvm_vg_size) * lvm_vg_used_pe / int(lvg.lvm_vg_total_pe))
+
+        # For the standby controller the PVs are not yet allocated to the volume
+        # group, so we can't get the size directly from volume-group info
+        # For the standby controller the allocated space is the sum between:
+        # - cgts-vg space allocated by kickstarts
+        # - partition PVs assigned to cgts-vg
+        # - disk PVs assigned to cgts-vg
+        standby_controller_allocated_space = 0
+        standby_pvs = pecan.request.dbapi.ipv_get_by_ihost(ihost['uuid'])
+        for pv in standby_pvs:
+            if pv.lvm_vg_name == constants.LVG_CGTS_VG:
+                if pv.lvm_pv_size:
+                    standby_controller_allocated_space += int(
+                        pv.lvm_pv_size)
+                elif pv.pv_type == constants.PV_TYPE_PARTITION:
+                    part_info = pecan.request.dbapi.partition_get_by_ipv(pv['uuid'])
+                    standby_controller_allocated_space += int(
+                        part_info[0].size_mib) * (1024**2)
+                elif pv.pv_type == constants.PV_TYPE_DISK:
+                    disk_info = pecan.request.dbapi.idisk_get_by_ipv(pv['uuid'])
+                    standby_controller_allocated_space += int(
+                        disk_info[0].size_mib) * (1024**2)
+
+        LOG.info("Active controller filesystem space used: %s" %
+                 str(active_controller_used))
+        LOG.info("Standby controller filesystem allocated space: %s" %
+                 str(standby_controller_allocated_space))
+
+        if (active_controller_used > standby_controller_allocated_space):
+            # Since we allocate space that is measured in GiB, the human
+            # readable information shown in case of an error should also
+            # be in GiB. We add a 2GB buffer (the same used when changing
+            # filesystem sizes) to ensure no rounding errors
+            needed_space = (float(
+                active_controller_used -
+                standby_controller_allocated_space) / (1024 ** 3) +
+                constants.CFS_RESIZE_BUFFER_GIB)
+            msg = _("Standby controller does not have enough space allocated to "
+                    "%(vg_name)s volume-group in order to create all filesystems. "
+                    "Please assign an extra %(needed).2f GB to the volume group.") % {
+                    'vg_name': constants.LVG_CGTS_VG, 'needed': needed_space}
+            raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
     def _semantic_check_storage_backend(ihost):
         """
         Perform semantic checking for storage backends
@@ -5005,6 +5086,7 @@ class HostController(rest.RestController):
         self._semantic_check_unlock_upgrade(hostupdate.ihost_orig, force_unlock)
         self._semantic_check_oam_interface(hostupdate.ihost_orig)
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
+        self._semantic_check_filesystem_sizes(hostupdate.ihost_orig)
         self._semantic_check_storage_backend(hostupdate.ihost_orig)
         # If HTTPS is enabled then we may be in TPM configuration mode
         if utils.get_https_enabled():
