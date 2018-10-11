@@ -9,7 +9,7 @@ class platform::helm
       Class['::platform::kubernetes::master'] ->
 
       exec { "load tiller docker image":
-        command => "docker image pull gcr.io/kubernetes-helm/tiller:v2.9.1",
+        command => "docker image pull gcr.io/kubernetes-helm/tiller:v2.11.0",
         logoutput => true,
       } ->
 
