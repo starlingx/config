@@ -25,6 +25,7 @@ from . import barbican
 from . import glance
 from . import heat
 from . import horizon
+from . import ironic
 from . import keystone
 from . import neutron
 from . import nova
@@ -83,6 +84,7 @@ class HelmOperator(object):
             constants.HELM_CHART_HEAT: heat.HeatHelm(self),
             constants.HELM_CHART_HORIZON: horizon.HorizonHelm(self),
             constants.HELM_CHART_INGRESS: ingress.IngressHelm(self),
+            constants.HELM_CHART_IRONIC: ironic.IronicHelm(self),
             constants.HELM_CHART_KEYSTONE: keystone.KeystoneHelm(self),
             constants.HELM_CHART_LIBVIRT: libvirt.LibvirtHelm(self),
             constants.HELM_CHART_MARIADB: mariadb.MariadbHelm(self),
