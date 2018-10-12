@@ -588,7 +588,7 @@ class SBApiHelper(object):
                 service=constants.SERVICE_TYPE_SWIFT,
                 section=constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
                 name=constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED)
-            if swift_enabled:
+            if swift_enabled.value.lower() == 'true':
                 raise wsme.exc.ClientSideError(
                     "Swift is already enabled through service parameter.")
         except exception.SysinvException:
