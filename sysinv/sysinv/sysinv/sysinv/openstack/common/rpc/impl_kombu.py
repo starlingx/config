@@ -612,7 +612,7 @@ class Connection(object):
 
         def _declare_consumer():
             consumer = consumer_cls(self.conf, self.channel, topic, callback,
-                                    self.consumer_num.next())
+                                    next(self.consumer_num))
             self.consumers.append(consumer)
             return consumer
 
@@ -718,7 +718,7 @@ class Connection(object):
         it = self.iterconsume(limit=limit)
         while True:
             try:
-                it.next()
+                next(it)
             except StopIteration:
                 return
 
