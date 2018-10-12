@@ -26,6 +26,7 @@ import re
 import socket
 import sys
 import textwrap
+import six
 
 from oslo_config import cfg
 
@@ -217,7 +218,7 @@ def _print_opt(opt):
         if opt_default is None:
             print '#%s=<None>' % opt_name
         elif opt_type == STROPT:
-            assert(isinstance(opt_default, basestring))
+            assert(isinstance(opt_default, six.string_types))
             print '#%s=%s' % (opt_name, _sanitize_default(opt_default))
         elif opt_type == BOOLOPT:
             assert(isinstance(opt_default, bool))

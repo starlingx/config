@@ -17,6 +17,8 @@ Requires: python-prettytable
 Requires: bash-completion
 Requires: python-neutronclient
 Requires: python-keystoneclient
+# Needed for python2 and python3 compatible
+Requires: python-six
 
 %description
 System Client and CLI

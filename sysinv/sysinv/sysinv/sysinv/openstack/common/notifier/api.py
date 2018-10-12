@@ -14,6 +14,7 @@
 #    under the License.
 
 import uuid
+import six
 
 from oslo_config import cfg
 
@@ -162,7 +163,7 @@ def add_driver(notification_driver):
     """Add a notification driver at runtime."""
     # Make sure the driver list is initialized.
     _get_drivers()
-    if isinstance(notification_driver, basestring):
+    if isinstance(notification_driver, six.string_types):
         # Load and add
         try:
             driver = importutils.import_module(notification_driver)

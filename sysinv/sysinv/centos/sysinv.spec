@@ -19,6 +19,8 @@ Requires: python-pbr
 # Requires: oslo.config
 
 BuildRequires: systemd
+# Needed for python2 and python3 compatible
+Requires: python-six
 
 %description
 System Inventory
