@@ -16,6 +16,8 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
     SERVICE_PORT = 6385
     SERVICE_PATH = 'v1'
 
+    OPENSTACK_KEYRING_SERVICE = 'CGCS'
+
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
 
@@ -79,6 +81,21 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
             'openstack::sysinv::params::region_name': self.get_region_name(),
             'platform::sysinv::params::service_create':
                 self._to_create_services(),
+
+            'sysinv::api::openstack_keystone_auth_uri':
+                self._keystone_auth_uri(),
+            'sysinv::api::openstack_keystone_identity_uri':
+                self._keystone_identity_uri(),
+            'sysinv::api::openstack_keystone_user_domain':
+                self._operator.keystone.get_admin_user_domain(),
+            'sysinv::api::openstack_keystone_project_domain':
+                self._operator.keystone.get_admin_project_domain(),
+            'sysinv::api::openstack_keystone_user':
+                self._operator.keystone.get_admin_user_name(),
+            'sysinv::api::openstack_keystone_tenant':
+                self._operator.keystone.get_admin_project_name(),
+            'sysinv::api::openstack_keyring_service':
+                self.OPENSTACK_KEYRING_SERVICE
         }
 
     def get_secure_system_config(self):
