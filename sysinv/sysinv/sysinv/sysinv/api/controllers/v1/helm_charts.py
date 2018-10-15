@@ -104,7 +104,7 @@ class HelmChartsController(rest.RestController):
 
     @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text)
     def get_one(self, name, namespace):
-        """Retrieve information about the given event_log.
+        """Retrieve information about the given chart.
 
         :param name: name of helm chart
         :param namespace: namespace of chart overrides

@@ -255,6 +255,20 @@ class HelmOperator(object):
                         LOG.info(e)
         return overrides
 
+    @staticmethod
+    def _add_armada_override_header(chart_name, namespace, overrides):
+        new_overrides = {
+            'schema': 'armada/Chart/v1',
+            'metadata': {
+                'schema': 'metadata/Document/v1',
+                'name': namespace + '-' + chart_name
+            },
+            'data': {
+                'values': overrides
+            }
+        }
+        return new_overrides
+
     @helm_context
     def generate_helm_chart_overrides(self, chart_name, cnamespace=None):
         """Generate system helm chart overrides
@@ -290,7 +304,8 @@ class HelmOperator(object):
             LOG.exception("chart name is required")
 
     @helm_context
-    def generate_helm_application_overrides(self, app_name, cnamespace=None):
+    def generate_helm_application_overrides(self, app_name, cnamespace=None,
+                                            armada_format=False):
         """Create the system overrides files for a supported application
 
         This method will generate system helm chart overrides yaml files for a
@@ -301,13 +316,22 @@ class HelmOperator(object):
         :param app_name: name of the bundle of charts required to support an
                          application
         :param cnamespace: (optional) namespace
+        :param armada_format: (optional) whether to emit in armada format
+                              instead of helm format (with extra header)
         """
 
         if app_name in constants.SUPPORTED_HELM_APP_NAMES:
-            app_overrides = self.get_helm_application_overrides(app_name,
+            app_overrides = self._get_helm_application_overrides(app_name,
                                                                  cnamespace)
-
             for (chart_name, overrides) in iteritems(app_overrides):
+                # If armada formatting is wanted, we need to change the
+                # structure of the yaml file somewhat
+                if armada_format:
+                    for key in overrides:
+                        new_overrides = self._add_armada_override_header(
+                            chart_name, key, overrides[key])
+                        overrides[key] = new_overrides
+
                 self._write_chart_overrides(chart_name, cnamespace, overrides)
         elif app_name:
             LOG.exception("%s application is not supported" % app_name)
