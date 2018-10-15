@@ -7512,3 +7512,8 @@ class Connection(api.Connection):
     @objects.objectify(objects.label)
     def label_query(self, host_id, label_key):
         return self._label_query(host_id, label_key)
+
+    def count_hosts_by_label(self, label):
+        query = model_query(models.Label, read_deleted="no")
+        query = query.filter(models.Label.label_key == label)
+        return query.count()

@@ -20,18 +20,20 @@ from sysinv.openstack.common import log as logging
 from . import common
 
 # Import Chart Override Helpers:
-# Chart source: openstack-helm
+# Chart source: https://github.com/openstack/openstack-helm.git
 from . import glance
 from . import heat
 from . import horizon
-from . import ingress
 from . import keystone
+from . import neutron
+from . import nova
+
+# Chart source: https://github.com/openstack/openstack-helm-infra.git
+from . import ingress
 from . import libvirt
+from . import nfs_provisioner
 from . import mariadb
 from . import memcached
-from . import neutron
-from . import nfs_provisioner
-from . import nova
 from . import openvswitch
 from . import rabbitmq
 
@@ -45,19 +47,33 @@ def helm_context(func):
     def _wrapper(self, *args, **kwargs):
         thread_context = eventlet.greenthread.getcurrent()
         setattr(thread_context, '_helm_context', dict())
-        func(self, *args, **kwargs)
+        return func(self, *args, **kwargs)
     return _wrapper
 
 
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
-    def __init__(self, dbapi=None, path=None):
+    def __init__(self, dbapi=None, path=None, docker_repository=None):
         if path is None:
             path = common.HELM_OVERRIDES_PATH
 
+        # Set the primary source of docker images
+        if docker_repository is None:
+            # During initial development, use upstream OSH images by default and
+            # switch to the STX repo when the images are validated and ready for
+            # use.
+            docker_repository = common.DOCKER_SRC_OSH
+        else:
+            valid_docker_repositories = common.DOCKER_SRCS.keys()
+            if docker_repository not in valid_docker_repositories:
+                raise exception.InvalidHelmDockerImageSource(
+                    source=docker_repository,
+                    valid_srcs=valid_docker_repositories)
+
         self.dbapi = dbapi
         self.path = path
+        self.docker_repo_source = docker_repository
 
         # register chart operators for lookup
         self.chart_operators = {
@@ -104,7 +120,11 @@ class HelmOperator(object):
             namespaces = self.chart_operators[chart_name].get_namespaces()
         return namespaces
 
+    @helm_context
     def get_helm_chart_overrides(self, chart_name, cnamespace=None):
+        return self._get_helm_chart_overrides(chart_name, cnamespace)
+
+    def _get_helm_chart_overrides(self, chart_name, cnamespace=None):
         """Get the overrides for a supported chart.
 
         This method retrieves overrides for a supported chart. Overrides for
@@ -175,7 +195,11 @@ class HelmOperator(object):
                         LOG.info(e)
         return app_namespaces
 
+    @helm_context
     def get_helm_application_overrides(self, app_name, cnamespace=None):
+        return self._get_helm_application_overrides(app_name, cnamespace)
+
+    def _get_helm_application_overrides(self, app_name, cnamespace=None):
         """Get the overrides for a supported set of charts.
 
         This method retrieves overrides for a set of supported charts that
@@ -224,7 +248,7 @@ class HelmOperator(object):
                 if chart_name in self.implemented_charts:
                     try:
                         overrides.update({chart_name:
-                                          self.get_helm_chart_overrides(
+                                          self._get_helm_chart_overrides(
                                               chart_name,
                                               cnamespace)})
                     except exception.InvalidHelmNamespace as e:
@@ -251,7 +275,7 @@ class HelmOperator(object):
                 return
 
             try:
-                overrides = self.get_helm_chart_overrides(
+                overrides = self._get_helm_chart_overrides(
                     chart_name,
                     cnamespace)
                 self._write_chart_overrides(chart_name,
@@ -281,7 +305,7 @@ class HelmOperator(object):
 
         if app_name in constants.SUPPORTED_HELM_APP_NAMES:
             app_overrides = self.get_helm_application_overrides(app_name,
-                                                                cnamespace)
+                                                                 cnamespace)
 
             for (chart_name, overrides) in iteritems(app_overrides):
                 self._write_chart_overrides(chart_name, cnamespace, overrides)
@@ -336,6 +360,7 @@ class HelmOperator(object):
         try:
             fd, tmppath = tempfile.mkstemp(dir=self.path, prefix=filename,
                                            text=True)
+
             with open(tmppath, 'w') as f:
                 yaml.dump(overrides, f, default_flow_style=False)
             os.close(fd)
