@@ -644,3 +644,10 @@ class SBApiHelper(object):
         if name_string == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
             return True
         return False
+
+    @staticmethod
+    def remove_service_from_backend(sb, svc_name):
+        services = SBApiHelper.getListFromServices(sb)
+        services.remove(svc_name)
+        pecan.request.dbapi.storage_backend_update(
+            sb.id, {'services': ','.join(services)})

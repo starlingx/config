@@ -25,6 +25,9 @@ from sysinv.common import utils as cutils
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import uuidutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.common.storage_backend_conf import K8RbdProvisioner
+
+from sysinv.api.controllers.v1 import utils
 
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import rpc
@@ -626,7 +629,8 @@ class CephOperator(object):
         default_quota_map = {'cinder': constants.CEPH_POOL_VOLUMES_QUOTA_GIB,
                              'glance': constants.CEPH_POOL_IMAGES_QUOTA_GIB,
                              'ephemeral': constants.CEPH_POOL_EPHEMERAL_QUOTA_GIB,
-                             'object': constants.CEPH_POOL_OBJECT_GATEWAY_QUOTA_GIB}
+                             'object': constants.CEPH_POOL_OBJECT_GATEWAY_QUOTA_GIB,
+                             'kube': constants.CEPH_POOL_KUBE_QUOTA_GIB}
 
         storage_ceph = StorageBackendConfig.get_configured_backend_conf(
             self._db_api,
@@ -634,7 +638,7 @@ class CephOperator(object):
         )
 
         quotas = []
-        for p in ['cinder', 'glance', 'ephemeral', 'object']:
+        for p in ['cinder', 'glance', 'ephemeral', 'object', 'kube']:
             quota_attr = p + '_pool_gib'
             quota_val = getattr(storage_ceph, quota_attr)
 
@@ -651,10 +655,12 @@ class CephOperator(object):
     def set_quota_gib(self, pool_name):
         quota_gib_value = None
         cinder_pool_gib, glance_pool_gib, ephemeral_pool_gib, \
-            object_pool_gib = self.get_pools_values()
+            object_pool_gib, kube_pool_gib = self.get_pools_values()
 
         if pool_name.find(constants.CEPH_POOL_VOLUMES_NAME) != -1:
             quota_gib_value = cinder_pool_gib
+        elif pool_name.find(constants.CEPH_POOL_KUBE_NAME) != -1:
+            quota_gib_value = kube_pool_gib
         elif pool_name.find(constants.CEPH_POOL_IMAGES_NAME) != -1:
             quota_gib_value = glance_pool_gib
         elif pool_name.find(constants.CEPH_POOL_EPHEMERAL_NAME) != -1:
@@ -728,6 +734,25 @@ class CephOperator(object):
                     LOG.info("Hammer-->Jewel upgrade: delete inactive Hammer object data pool %s",
                              constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER)
                     self.delete_osd_pool(constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER)
+
+    def _configure_pool_key(self, pool_name):
+        """Get CEPH key for a certain pool."""
+        response, body = ("", "")
+        caps_dict = {'mon': 'allow r',
+                     'osd': 'allow rwx pool=%s' % pool_name}
+        entity = "client.%s" % pool_name
+        try:
+            response, body = ("", "")
+            response, body = self._ceph_api.auth_get_or_create(
+                entity, caps_dict, body='json', timeout=10)
+            auth_result = body['output']
+            rc = auth_result[0].get('key')
+        except Exception as e:
+            rc = None
+            LOG.info("CEPH auth exception: %s response: %s body: %s" %
+                     (str(e), str(response), str(body)))
+
+        return rc
 
     def _configure_primary_tier_pool(self, pool, size, min_size):
         """Configure the default Ceph tier pools."""
@@ -846,6 +871,173 @@ class CephOperator(object):
                     LOG.info("Cannot add pools: %s" % e)
                 except exception.CephFailure as e:
                     LOG.info("Cannot add pools: %s" % e)
+
+    def _update_k8s_ceph_pool_secrets(self, ceph_backend):
+        """Create CEPH pool secrets for k8s namespaces.
+        :param ceph_backend input/output storage backend data
+        """
+
+        pool_name = K8RbdProvisioner.get_pool(ceph_backend)
+
+        namespaces_to_add, namespaces_to_rm = \
+            K8RbdProvisioner.getNamespacesDelta(ceph_backend)
+
+        # Get or create Ceph pool key. One per pool.
+        # This key will be used by the K8S secrets from the rbd-provisioner.
+        if namespaces_to_add:
+            key = self._configure_pool_key(pool_name)
+
+        # Get the capabilities of the backend directly from DB to avoid
+        # committing changes unrelated to ceph pool keys.
+        try:
+            orig_ceph_backend = self._db_api.storage_backend_get(ceph_backend['id'])
+            orig_capab = orig_ceph_backend['capabilities']
+        except exception.InvalidParameterValue:
+            # This is a new backend, not yet stored in DB.
+            orig_ceph_backend = None
+
+        configured_namespaces = \
+            K8RbdProvisioner.getListFromNamespaces(orig_ceph_backend,
+                                                   get_configured=True)
+
+        # Adding secrets to namespaces
+        for namespace in namespaces_to_add:
+            K8RbdProvisioner.create_k8s_pool_secret(
+                ceph_backend, key=key,
+                namespace=namespace, force=(True if not ceph_backend else False))
+
+            # Update the backend's capabilities to reflect that a secret
+            # has been created for the k8s pool in the given namespace.
+            # Update DB for each item to reflect reality in case of error.
+            configured_namespaces.append(namespace)
+            if orig_ceph_backend:
+                orig_capab[constants.K8S_RBD_PROV_NAMESPACES_READY] = \
+                    ','.join(configured_namespaces)
+                self._db_api.storage_backend_update(ceph_backend['id'],
+                                                    {'capabilities': orig_capab})
+
+        # Removing secrets from namespaces
+        for namespace in namespaces_to_rm:
+            K8RbdProvisioner.remove_k8s_pool_secret(ceph_backend,
+                                                    namespace)
+            configured_namespaces.remove(namespace)
+            if orig_ceph_backend:
+                if configured_namespaces:
+                    orig_capab[constants.K8S_RBD_PROV_NAMESPACES_READY] = \
+                        ','.join(configured_namespaces)
+                elif constants.K8S_RBD_PROV_NAMESPACES_READY in orig_capab:
+                    # No RBD Provisioner configured, cleanup
+                    del orig_capab[constants.K8S_RBD_PROV_NAMESPACES_READY]
+                self._db_api.storage_backend_update(ceph_backend['id'],
+                                                    {'capabilities': orig_capab})
+
+        # Done, store the updated capabilities in the ceph_backend reference
+        capab = ceph_backend['capabilities']
+        if configured_namespaces:
+            capab[constants.K8S_RBD_PROV_NAMESPACES_READY] = \
+                ','.join(configured_namespaces)
+        elif constants.K8S_RBD_PROV_NAMESPACES_READY in capab:
+            # No RBD Provisioner configured, cleanup
+            del capab[constants.K8S_RBD_PROV_NAMESPACES_READY]
+
+    def _update_db_capabilities(self, bk, new_storceph):
+        # Avoid updating DB for all capabilities in new_storceph as we
+        # don't manage them. Leave the callers deal with it.
+        if (not new_storceph or
+                (new_storceph and bk['name'] != new_storceph['name'])):
+            self._db_api.storage_backend_update(
+                bk['id'],
+                {'capabilities': bk['capabilities']}
+            )
+
+    def check_and_update_rbd_provisioner(self, new_storceph=None):
+        """ Check and/or update RBD Provisioner configuration for all Ceph
+        internal backends.
+
+        This function should be called when:
+           1. Making any changes to rbd-provisioner service
+              (adding a new, removing or updating an existing provisioner)
+           2. Synchronizing changes with the DB.
+
+        To speed up synchronization, DB entries are used to determine when
+        changes are needed and only then proceed with more time consuming
+        operations.
+
+        Note: This function assumes a functional Ceph cluster
+
+        :param   new_storceph a storage backend object as_dict() with updated
+                 data. This is required as database updates can happen later.
+        :returns an updated version of new_storceph or None
+        """
+        # Get an updated list of backends
+        if new_storceph:
+            ceph_backends = [b.as_dict() for b in
+                             self._db_api.storage_backend_get_list()
+                             if b['backend'] == constants.SB_TYPE_CEPH and
+                                b['name'] != new_storceph['name']]
+            ceph_backends.append(new_storceph)
+        else:
+            ceph_backends = [b.as_dict() for b in
+                             self._db_api.storage_backend_get_list()
+                             if b['backend'] == constants.SB_TYPE_CEPH]
+
+        # Nothing to do if rbd-provisioner is not configured and was never
+        # configured on any backend.
+        for bk in ceph_backends:
+            svcs = utils.SBApiHelper.getListFromServices(bk)
+            if (constants.SB_SVC_RBD_PROVISIONER in svcs or
+                    bk['capabilities'].get(constants.K8S_RBD_PROV_NAMESPACES_READY) or
+                    bk['capabilities'].get(constants.K8S_RBD_PROV_ADMIN_SECRET_READY)):
+                break
+        else:
+            return new_storceph
+
+        # In order for an RBD provisioner to work we need:
+        # - A couple of Ceph keys:
+        #    1. A cluster wide admin key (e.g. the one in
+        #       /etc/ceph/ceph.client.admin.keyring)
+        #    2. A key for accessing the pool (e.g. client.kube-rbd)
+        # - The Ceph keys above passed into Kubernetes secrets:
+        #    1. An admin secret in the RBD Provisioner POD namespace with the
+        #       Ceph cluster wide admin key.
+        #    2. One or more K8S keys with the Ceph pool key for each namespace
+        #       we allow RBD PV and PVC creations.
+
+        # Manage Ceph cluster wide admin key and associated secret - we create
+        # it if needed or remove it if no longer needed.
+        admin_secret_exists = False
+        remove_admin_secret = True
+        for bk in ceph_backends:
+            svcs = utils.SBApiHelper.getListFromServices(bk)
+
+            # Create secret
+            # Check to see if we need the admin Ceph key. This key is created
+            # once per cluster and references to it are kept in all Ceph tiers
+            # of that cluster. So make sure they are up to date.
+            if constants.SB_SVC_RBD_PROVISIONER in svcs:
+                remove_admin_secret = False
+                if bk['capabilities'].get(constants.K8S_RBD_PROV_ADMIN_SECRET_READY):
+                    admin_secret_exists = True
+                else:
+                    if not admin_secret_exists:
+                        K8RbdProvisioner.create_k8s_admin_secret()
+                        admin_secret_exists = True
+                    bk['capabilities'][constants.K8S_RBD_PROV_ADMIN_SECRET_READY] = True
+                    self._update_db_capabilities(bk, new_storceph)
+        # Remove admin secret and any references to it if RBD Provisioner is
+        # unconfigured.
+        if remove_admin_secret:
+            K8RbdProvisioner.remove_k8s_admin_secret()
+            for bk in ceph_backends:
+                if bk['capabilities'].get(constants.K8S_RBD_PROV_ADMIN_SECRET_READY):
+                    del bk['capabilities'][constants.K8S_RBD_PROV_ADMIN_SECRET_READY]
+                    self._update_db_capabilities(bk, new_storceph)
+
+        for bk in ceph_backends:
+            self._update_k8s_ceph_pool_secrets(bk)
+
+        # Return updated new_storceph reference
+        return new_storceph
 
     def get_osd_tree(self):
         """Get OSD tree info
@@ -1059,20 +1251,21 @@ class CephOperator(object):
                 osds_raw       actual osds
 
         Primary Tier:
-            Minimum: <= 2 storage applies minimum. (512, 512, 256, 256)
+            Minimum: <= 2 storage applies minimum. (512, 512, 256, 256, 128)
                 Assume max 8 OSD for first pair to set baseline.
 
                 cinder_volumes:  512 * 2
                 ephemeral_vms:   512 * 2
                 glance_images:   256 * 2
                 .rgw.buckets:    256 * 2
+                kube-rbd:        128 * 2
                 rbd:             64 (this is created by Ceph)
                 --------------------
-                Total:          3136
+                Total:          3392
 
             Note: for a single OSD the value has to be less than 2048, formula:
             [Total] / [total number of OSD] = [PGs/OSD]
-            3136    / 2 = 1568 < 2048
+            3392    / 2 = 1696 < 2048
             See constants.CEPH_POOLS for up to date values
 
         Secondary Tiers:
@@ -1081,13 +1274,14 @@ class CephOperator(object):
                     first pair to set baseline.
 
                 cinder_volumes:  512 * 2
+                kube_rbd:        128 * 2
                 rbd:             64 (this is created by Ceph)
                 --------------------
-                Total:          1088
+                Total:          1344
 
             Note: for a single OSD the value has to be less than 2048, formula:
             [Total] / [total number of OSD] = [PGs/OSD]
-            1088    / 2 = 544 < 2048
+            1344    / 2 = 672 < 2048
             See constants.SB_TIER_CEPH_POOLS for up to date values
 
         Above 2 Storage hosts: Calculate OSDs based upon pg_calc:
@@ -1095,11 +1289,12 @@ class CephOperator(object):
 
         Select Target PGs per OSD = 200; to forecast it can double
 
-        Determine number of OSD (in multiples of storage replication factor) on the
-        first host-unlock of storage pair.
+        Determine number of OSD (in multiples of storage replication factor) on
+        the first host-unlock of storage pair.
         """
         # Get configured ceph replication
-        replication, min_replication = StorageBackendConfig.get_ceph_pool_replication(self._db_api)
+        replication, min_replication = \
+            StorageBackendConfig.get_ceph_pool_replication(self._db_api)
 
         if tiers_obj.uuid == self.primary_tier_uuid:
             is_primary_tier = True
@@ -1141,7 +1336,7 @@ class CephOperator(object):
                         data_pt = int(pool['data_pt'])
                         break
 
-            if pool['pool_name'] == pool_name:
+            if pool['pool_name'] in pool_name:
                 data_pt = int(pool['data_pt'])
                 break
 
@@ -1269,9 +1464,9 @@ class CephOperator(object):
 
         try:
             primary_tier_gib = int(self.get_ceph_primary_tier_size())
-            # In case have only two controllers up, the cluster is considered up,
-            # but the total cluster is reported as zero. For such a case we don't
-            # yet dynamically update the ceph quotas
+            # In case have only two controllers up, the cluster is considered
+            # up, but the total cluster is reported as zero. For such a case we
+            # don't yet dynamically update the ceph quotas
             if primary_tier_gib == 0:
                 LOG.info("Ceph cluster is up, but no storage nodes detected.")
                 return
@@ -1302,28 +1497,35 @@ class CephOperator(object):
 
             # Grab the current values
             cinder_pool_gib = storage_ceph.cinder_pool_gib
+            kube_pool_gib = storage_ceph.kube_pool_gib
             glance_pool_gib = storage_ceph.glance_pool_gib
             ephemeral_pool_gib = storage_ceph.ephemeral_pool_gib
             object_pool_gib = storage_ceph.object_pool_gib
 
             # Initial cluster provisioning after cluster is up
             # glance_pool_gib = 20 GiB
+            # kube_pool_gib = 20 Gib
             # cinder_pool_gib = total_cluster_size - glance_pool_gib
+            #                                      - kube_pool_gib
             # ephemeral_pool_gib = 0
             if (upgrade is None and
                     cinder_pool_gib == constants.CEPH_POOL_VOLUMES_QUOTA_GIB and
+                    kube_pool_gib == constants.CEPH_POOL_KUBE_QUOTA_GIB and
                     glance_pool_gib == constants.CEPH_POOL_IMAGES_QUOTA_GIB and
                     ephemeral_pool_gib == constants.CEPH_POOL_EPHEMERAL_QUOTA_GIB and
                     object_pool_gib == constants.CEPH_POOL_OBJECT_GATEWAY_QUOTA_GIB):
                 # The minimum development setup requires two storage
-                # nodes each with one 10GB OSD. This result in cluster
+                # nodes each with one 10GB OSD. This results in a cluster
                 # size which is under the default glance pool size of 20GB.
                 # Setting the glance pool to a value lower than 20GB
-                # is a developement safeguard only and should not really
+                # is a development safeguard only and should not really
                 # happen in real-life scenarios.
-                if primary_tier_gib > constants.CEPH_POOL_IMAGES_QUOTA_GIB:
+                if (primary_tier_gib >
+                        constants.CEPH_POOL_IMAGES_QUOTA_GIB +
+                        constants.CEPH_POOL_KUBE_QUOTA_GIB):
                     cinder_pool_gib = (primary_tier_gib -
-                                       constants.CEPH_POOL_IMAGES_QUOTA_GIB)
+                                       constants.CEPH_POOL_IMAGES_QUOTA_GIB -
+                                       constants.CEPH_POOL_KUBE_QUOTA_GIB)
 
                     self._db_api.storage_ceph_update(storage_ceph.uuid,
                                                      {'cinder_pool_gib':
@@ -1331,12 +1533,22 @@ class CephOperator(object):
                     self.set_osd_pool_quota(constants.CEPH_POOL_VOLUMES_NAME,
                                             cinder_pool_gib * 1024 ** 3)
                 else:
-                    glance_pool_gib = primary_tier_gib
+                    glance_pool_gib = primary_tier_gib / 2
+                    kube_pool_gib = primary_tier_gib - glance_pool_gib
+
+                    # Set the quota for the glance pool.
                     self._db_api.storage_ceph_update(storage_ceph.uuid,
                                                      {'glance_pool_gib':
                                                       glance_pool_gib})
                     self.set_osd_pool_quota(constants.CEPH_POOL_IMAGES_NAME,
                                             glance_pool_gib * 1024 ** 3)
+
+                    # Set the quota for the k8s pool.
+                    self._db_api.storage_ceph_update(storage_ceph.uuid,
+                                                     {'kube_pool_gib':
+                                                      kube_pool_gib})
+                    self.set_osd_pool_quota(constants.CEPH_POOL_KUBE_NAME,
+                                            kube_pool_gib * 1024 ** 3)
 
                 self.executed_default_quota_check_by_tier[tier_obj.name] = True
             elif (upgrade is not None and
@@ -1364,6 +1576,7 @@ class CephOperator(object):
                 self.executed_default_quota_check_by_tier[tier_obj.name] = True
             elif (primary_tier_gib > 0 and
                   primary_tier_gib == (cinder_pool_gib +
+                                       kube_pool_gib +
                                        glance_pool_gib +
                                        ephemeral_pool_gib +
                                        object_pool_gib)):
@@ -1372,31 +1585,41 @@ class CephOperator(object):
                 self.executed_default_quota_check_by_tier[tier_obj.name] = True
 
         else:
-            # Secondary tiers: only cinder pool supported.
+            # Grab the current values
+            cinder_pool_gib = storage_ceph.cinder_pool_gib
+            kube_pool_gib = storage_ceph.kube_pool_gib
 
+            # Secondary tiers: only cinder and kube pool supported.
             tiers_size = self.get_ceph_tiers_size()
             tier_root = "{0}{1}".format(tier_obj.name,
                                         constants.CEPH_CRUSH_TIER_SUFFIX)
             tier_size_gib = tiers_size.get(tier_root, 0)
 
-            # Take action on individual pools not considering any relationships
-            # between pools
-            tier_pools_sum = 0
-            for pool in constants.SB_TIER_CEPH_POOLS:
+            if (cinder_pool_gib == constants.CEPH_POOL_VOLUMES_QUOTA_GIB and
+                    kube_pool_gib == constants.CEPH_POOL_KUBE_QUOTA_GIB):
+                if (tier_size_gib >
+                        constants.CEPH_POOL_VOLUMES_QUOTA_GIB +
+                        constants.CEPH_POOL_KUBE_QUOTA_GIB):
+                    cinder_pool_gib = primary_tier_gib -\
+                                      constants.CEPH_POOL_KUBE_QUOTA_GIB
+                    kube_pool_gib = constants.CEPH_POOL_KUBE_QUOTA_GIB
+                else:
+                    kube_pool_gib = tier_size_gib / 2
+                    cinder_pool_gib = tier_size_gib - kube_pool_gib
 
-                # Grab the current values
-                current_gib = storage_ceph.get(pool['be_quota_attr'])
-                default_gib = pool['quota_default']
+            tier_pools_sum = kube_pool_gib + cinder_pool_gib
 
-                if not current_gib:
-                    self._db_api.storage_ceph_update(storage_ceph.uuid,
-                                                     {pool['be_quota_attr']:
-                                                      default_gib})
-                    self._db_api.storage_ceph_update(storage_ceph.uuid,
-                                                     {pool['be_quota_attr']:
-                                                      default_gib * 1024 ** 3})
-                    current_gib = default_gib
-                tier_pools_sum += current_gib
+            # Set the quota for the cinder-volumes pool.
+            self._db_api.storage_ceph_update(
+                storage_ceph.uuid, {'cinder_pool_gib': cinder_pool_gib})
+            self.set_osd_pool_quota(
+                constants.CEPH_POOL_VOLUMES_NAME, cinder_pool_gib * 1024 ** 3)
+
+            # Set the quota for the k8s pool.
+            self._db_api.storage_ceph_update(
+                storage_ceph.uuid, {'kube_pool_gib': kube_pool_gib})
+            self.set_osd_pool_quota(
+                constants.CEPH_POOL_KUBE_NAME, kube_pool_gib * 1024 ** 3)
 
             # Adjust pool quotas based on pool relationships.
             if tier_size_gib == tier_pools_sum:

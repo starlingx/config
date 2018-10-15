@@ -4466,8 +4466,8 @@ class HostController(rest.RestController):
 
     @staticmethod
     def _update_add_ceph_state():
-
         api = pecan.request.dbapi
+
         backend = StorageBackendConfig.get_configuring_backend(api)
         if backend and backend.backend == constants.CINDER_BACKEND_CEPH:
             ihosts = api.ihost_get_by_personality(

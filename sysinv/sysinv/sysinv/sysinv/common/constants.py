@@ -362,10 +362,13 @@ SB_SVC_CINDER = 'cinder'
 SB_SVC_GLANCE = 'glance'
 SB_SVC_NOVA = 'nova'
 SB_SVC_SWIFT = 'swift'
+SB_SVC_RBD_PROVISIONER = 'rbd-provisioner'
 
 SB_FILE_SVCS_SUPPORTED = [SB_SVC_GLANCE]
 SB_LVM_SVCS_SUPPORTED = [SB_SVC_CINDER]
-SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT, SB_SVC_NOVA]  # supported primary tier svcs
+# Primary tier supported services.
+SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT,
+                          SB_SVC_NOVA, SB_SVC_RBD_PROVISIONER]
 SB_CEPH_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE, SB_SVC_NOVA]
 SB_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE]
 
@@ -384,7 +387,9 @@ SB_TIER_SUPPORTED = [SB_TIER_TYPE_CEPH]
 SB_TIER_DEFAULT_NAMES = {
     SB_TIER_TYPE_CEPH: 'storage'  # maps to crushmap 'storage-tier' root
 }
-SB_TIER_CEPH_SECONDARY_SVCS = [SB_SVC_CINDER]  # supported secondary tier svcs
+
+# Supported secondary tier services.
+SB_TIER_CEPH_SECONDARY_SVCS = [SB_SVC_CINDER, SB_SVC_RBD_PROVISIONER]
 
 SB_TIER_STATUS_DEFINED = 'defined'
 SB_TIER_STATUS_IN_USE = 'in-use'
@@ -705,6 +710,11 @@ CEPH_POOL_EPHEMERAL_PG_NUM = 512
 CEPH_POOL_EPHEMERAL_PGP_NUM = 512
 CEPH_POOL_EPHEMERAL_QUOTA_GIB = 0
 
+CEPH_POOL_KUBE_NAME = 'kube-rbd'
+CEPH_POOL_KUBE_PG_NUM = 128
+CEPH_POOL_KUBE_PGP_NUM = 128
+CEPH_POOL_KUBE_QUOTA_GIB = 20
+
 # Ceph RADOS Gateway default data pool
 # Hammer version pool name will be kept if upgrade from R3 and
 # Swift/Radosgw was configured/enabled in R3.
@@ -724,20 +734,25 @@ CEPH_POOLS = [{'pool_name': CEPH_POOL_VOLUMES_NAME,
                'pg_num': CEPH_POOL_VOLUMES_PG_NUM,
                'pgp_num': CEPH_POOL_VOLUMES_PGP_NUM,
                'quota_gib': None,
-               'data_pt': 40},
+               'data_pt': 35},
               {'pool_name': CEPH_POOL_IMAGES_NAME,
                'pg_num': CEPH_POOL_IMAGES_PG_NUM,
                'pgp_num': CEPH_POOL_IMAGES_PGP_NUM,
                'quota_gib': None,
-               'data_pt': 20},
+               'data_pt': 18},
               {'pool_name': CEPH_POOL_EPHEMERAL_NAME,
                'pg_num': CEPH_POOL_EPHEMERAL_PG_NUM,
                'pgp_num': CEPH_POOL_EPHEMERAL_PGP_NUM,
                'quota_gib': None,
-               'data_pt': 30},
+               'data_pt': 27},
               {'pool_name': CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL,
                'pg_num': CEPH_POOL_OBJECT_GATEWAY_PG_NUM,
                'pgp_num': CEPH_POOL_OBJECT_GATEWAY_PGP_NUM,
+               'quota_gib': None,
+               'data_pt': 10},
+              {'pool_name': CEPH_POOL_KUBE_NAME,
+               'pg_num': CEPH_POOL_KUBE_PG_NUM,
+               'pgp_num': CEPH_POOL_KUBE_PGP_NUM,
                'quota_gib': None,
                'data_pt': 10}]
 
@@ -746,7 +761,8 @@ ALL_CEPH_POOLS = [CEPH_POOL_RBD_NAME,
                   CEPH_POOL_IMAGES_NAME,
                   CEPH_POOL_EPHEMERAL_NAME,
                   CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL,
-                  CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER]
+                  CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER,
+                  CEPH_POOL_KUBE_NAME]
 
 # Supported pools for secondary ceph tiers
 SB_TIER_CEPH_POOLS = [
@@ -755,7 +771,13 @@ SB_TIER_CEPH_POOLS = [
      'pgp_num': CEPH_POOL_VOLUMES_PGP_NUM,
      'be_quota_attr': 'cinder_pool_gib',
      'quota_default': 0,
-     'data_pt': 100}]
+     'data_pt': 80},
+    {'pool_name': CEPH_POOL_KUBE_NAME,
+     'pg_num': CEPH_POOL_KUBE_PG_NUM,
+     'pgp_num': CEPH_POOL_KUBE_PGP_NUM,
+     'be_quota_attr': 'kube_pool_gib',
+     'quota_default': 20,
+     'data_pt': 20}]
 
 # See http://ceph.com/pgcalc/. We set it to more than 100 because pool usage
 # varies greatly in Titanium Cloud and we want to avoid running too low on PGs
@@ -1425,3 +1447,16 @@ SUPPORTED_HELM_APP_CHARTS = {
         HELM_CHART_MAGNUM
     ]
 }
+
+# RBD Provisioner Ceph backend capabilities fields
+K8S_RBD_PROV_STORAGECLASS_NAME = 'rbd_storageclass_name'             # Customer
+K8S_RBD_PROV_NAMESPACES = 'rbd_provisioner_namespaces'               # Customer
+K8S_RBD_PROV_NAMESPACES_READY = '.rbd_provisioner_namespaces_ready'  # Hidden
+K8S_RBD_PROV_ADMIN_SECRET_READY = '.k8s_admin_secret_ready'          # Hidden
+K8S_RBD_PROV_CEPH_POOL_KEY_READY = '.k8s_pool_secret_ready'          # Hidden
+
+# RBD Provisioner defaults and constants
+K8S_RBD_PROV_NAMESPACE_DEFAULT = "kube-system"
+K8S_RBD_PROV_USER_NAME = 'admin'
+K8S_RBD_PROV_ADMIN_SECRET_NAME = 'ceph-admin'
+K8S_RBD_PROV_STOR_CLASS_NAME = 'general'
