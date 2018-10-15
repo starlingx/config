@@ -1,6 +1,7 @@
 class platform::lldp::params(
   $tx_interval = 30,
   $tx_hold = 4,
+  $options = []
 ) {}
 
 
@@ -16,6 +17,13 @@ class platform::lldp
       ensure => 'present',
       replace => true,
       content => template('platform/lldp.conf.erb'),
+      notify => Service['lldpd'],
+  }
+
+  file { "/etc/default/lldpd":
+      ensure => 'present',
+      replace => true,
+      content => template('platform/lldpd.default.erb'),
       notify => Service['lldpd'],
   }
 
