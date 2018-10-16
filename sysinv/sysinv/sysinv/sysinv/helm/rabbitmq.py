@@ -29,7 +29,7 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
             common.HELM_NS_OPENSTACK: {
                 'pod': {
                     'replicas': {
-                        'server': 1
+                        'server': self._num_controllers()
                     }
                 }
             }
