@@ -4428,13 +4428,13 @@ class ConfigAssistant():
             values = {
                 'ihost_uuid': controller.uuid,
                 'ifname': self.infrastructure_interface,
-                'ifclass': interface_class,
             }
             values.update({
                 'imtu': self._get_interface_mtu(self.infrastructure_interface)
             })
             if not self.infrastructure_vlan:
                 values.update({
+                    'ifclass': interface_class,
                     'networks': str(network.id)
                 })
 
