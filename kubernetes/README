@@ -1,0 +1,17 @@
+The expected layout for this subdirectory is as follows:
+
+kubernetes
+|-- applications
+|   `-- stx-openstack
+|       `-- manifest.yaml
+|-- helm-charts
+|   `-- placeholder
+|       `-- placeholder.txt
+`-- README
+
+The idea is that all our custom helm charts would go under "helm-charts".  Each
+chart would get a subdirectory.
+
+Custom applications would generally consist of an armada manifest referencing
+multiple helm charts (both ours and upstream ones).  These applications would
+each get their own subdirectory under "applications".

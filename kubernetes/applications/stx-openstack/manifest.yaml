@@ -1,0 +1,1214 @@
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: helm-toolkit
+data:
+  chart_name: helm-toolkit
+  release: helm-toolkit
+  namespace: helm-toolkit
+  values: {}
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/helm-toolkit-0.1.0.tgz
+    subpath: helm-toolkit
+    reference: master
+  dependencies: []
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: kube-system-ingress
+data:
+  chart_name: ingress
+  release: kube-system-ingress
+  namespace: kube-system
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-kube-system-ingress
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-kube-system-ingress
+  values:
+    labels:
+      server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      error_server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        error_page: 2
+        ingress: 2
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
+    subpath: ingress
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-ingress
+data:
+  chart_name: ingress
+  release: openstack-ingress
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-ingress
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-ingress
+  values:
+    labels:
+      server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      error_server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        error_page: 2
+        ingress: 2
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
+    subpath: ingress
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: default-provisioner
+data:
+  chart_name: provisioner
+  release: default-provisioner
+  namespace: default
+  wait:
+    timeout: 1800
+    labels:
+      app: local-volume-provisioner
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            app: local-volume-provisioner
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/provisioner-2.0.0.tgz
+    subpath: provisioner
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: kube-system-rbd-provisioner
+data:
+  chart_name: rbd-provisioner
+  release: kube-system-rbd-provisioner
+  namespace: kube-system
+  wait:
+    timeout: 1800
+    labels:
+      app: rbd-provisioner
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            app: rbd-provisioner
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/rbd-provisioner-0.1.0.tgz
+    subpath: rbd-provisioner
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-mariadb
+data:
+  chart_name: mariadb
+  release: openstack-mariadb
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-mariadb
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-mariadb
+  values:
+    endpoints:
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+    monitoring:
+      prometheus:
+        enabled: True
+    labels:
+      server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      prometheus_mysql_exporter:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/mariadb-0.1.0.tgz
+    subpath: mariadb
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-memcached
+data:
+  chart_name: memcached
+  release: openstack-memcached
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-memcached
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-memcached
+  values:
+    labels:
+      server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      prometheus_memcached_exporter:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    monitoring:
+      prometheus:
+        enabled: true
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/memcached-0.1.0.tgz
+    subpath: memcached
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-rabbitmq
+data:
+  chart_name: rabbitmq
+  release: openstack-rabbitmq
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-rabbitmq
+  test:
+    enabled: true
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-rabbitmq
+        - type: pod
+          labels:
+            release_group: osh-openstack-rabbitmq
+            component: test
+  values:
+    endpoints:
+      oslo_messaging:
+        auth:
+          user:
+            username: rabbitmq-admin
+            password: 4xWhfGjdQts1SyvXJXs5
+    monitoring:
+      prometheus:
+        enabled: True
+    labels:
+      server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      prometheus_rabbitmq_exporter:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/rabbitmq-0.1.0.tgz
+    subpath: rabbitmq
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-keystone
+data:
+  chart_name: keystone
+  release: openstack-keystone
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-keystone
+  test:
+    enabled: false
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-keystone
+        - type: pod
+          labels:
+            release_group: osh-openstack-keystone
+            component: test
+  values:
+    endpoints:
+      identity:
+        name: keystone
+        namespace: openstack
+        auth:
+          admin:
+            password: BhKhCWNYckYuVIcTW52Q
+      oslo_cache:
+        auth:
+          memcache_secret_key: DO9IThaQIbbxxB6wiAcJ
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          keystone:
+            password: Xq49RaT1dPhvAK9qewcc
+      oslo_messaging:
+        auth:
+          admin:
+            username: rabbitmq-admin
+            password: 4xWhfGjdQts1SyvXJXs5
+          keystone:
+            username: keystone-rabbitmq-user
+            password: W8e12kM78YD8tsftnFxK
+    labels:
+      api:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        api: 2
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/keystone-0.1.0.tgz
+    subpath: keystone
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-glance
+data:
+  chart_name: glance
+  release: openstack-glance
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-glance
+  test:
+    enabled: true
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-glance
+        - type: pod
+          labels:
+            release_group: osh-openstack-glance
+            component: test
+  values:
+    endpoints:
+      identity:
+        auth:
+          admin:
+            password: BhKhCWNYckYuVIcTW52Q
+          glance:
+            password: 8a4DxWzxiWDEmKkfMhWg
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          glance:
+            password: TWursD54scxUJpPyE3VO
+      oslo_cache:
+        auth:
+          memcache_secret_key: DO9IThaQIbbxxB6wiAcJ
+      oslo_messaging:
+        auth:
+          admin:
+            username: rabbitmq-admin
+            password: 4xWhfGjdQts1SyvXJXs5
+          glance:
+            username: glance-rabbitmq-user
+            password: YkR31SCdsFYKiP6wvEgp
+    labels:
+      api:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      registry:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        api: 2
+        registry: 2
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/glance-0.1.0.tgz
+    subpath: glance
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-cinder
+data:
+  chart_name: cinder
+  release: openstack-cinder
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-cinder
+  test:
+    enabled: true
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-cinder
+        - type: pod
+          labels:
+            release_group: osh-openstack-cinder
+            component: test
+  values:
+    endpoints:
+      identity:
+        auth:
+          admin:
+            password: BhKhCWNYckYuVIcTW52Q
+          cinder:
+            password: YXWfRQIcnBUub4G537Sv
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          cinder:
+            password: Ejfga0IWLPbVDfL2rQuY
+      oslo_cache:
+        auth:
+          memcache_secret_key: DO9IThaQIbbxxB6wiAcJ
+      oslo_messaging:
+        auth:
+          admin:
+            username: rabbitmq-admin
+            password: 4xWhfGjdQts1SyvXJXs5
+          cinder:
+            username: cinder-rabbitmq-user
+            password: HJfBmxrfWdkW1MNpXFrB
+    labels:
+      api:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      backup:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      scheduler:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      volume:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        api: 2
+        volume: 1
+        scheduler: 1
+        backup: 1
+    conf:
+      cinder:
+        DEFAULT:
+          backup_driver: cinder.backup.drivers.swift
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/cinder-0.1.0.tgz
+    subpath: cinder
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-libvirt
+data:
+  chart_name: libvirt
+  release: openstack-libvirt
+  namespace: openstack
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+  values:
+    labels:
+      agent:
+        libvirt:
+          node_selector_key: openstack-compute-node
+          node_selector_value: enabled
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/libvirt-0.1.0.tgz
+    subpath: libvirt
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-nova
+data:
+  chart_name: nova
+  release: openstack-nova
+  namespace: openstack
+  test:
+    enabled: false
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            application: nova
+            component: db-init
+        - type: job
+          labels:
+            application: nova
+            component: db-sync
+        - type: job
+          labels:
+            application: nova
+            component: ks-user
+        - type: job
+          labels:
+            application: nova
+            component: ks-service
+        - type: job
+          labels:
+            application: nova
+            component: ks-endpoints
+        - type: job
+          labels:
+            application: placement
+            component: ks-user
+        - type: job
+          labels:
+            application: placement
+            component: ks-service
+        - type: job
+          labels:
+            application: placement
+            component: ks-endpoints
+        - type: job
+          labels:
+            application: nova
+            component: cell-setup
+  values:
+    endpoints:
+      identity:
+        name: keystone
+        auth:
+          admin:
+            password: BhKhCWNYckYuVIcTW52Q
+          nova:
+            password: oGbphe9vHjGK4cR21ZQn
+          neutron:
+            password: fgtvWl00tUbDjedDBnQS
+          placement:
+            password: cL8kJkLLmPP6VhmoKdK3
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          nova:
+            password: 7oPQP9dTxDtvMZRz5eZK
+      oslo_db_api:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          nova:
+            password: 7oPQP9dTxDtvMZRz5eZK
+      oslo_db_cell0:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          nova:
+            password: 7oPQP9dTxDtvMZRz5eZK
+      oslo_cache:
+        auth:
+          memcache_secret_key: DO9IThaQIbbxxB6wiAcJ
+      oslo_messaging:
+        auth:
+          admin:
+            username: rabbitmq-admin
+            password: 4xWhfGjdQts1SyvXJXs5
+          nova:
+            username: nova-rabbitmq-user
+            password: ocx0315VoRlRhw7hx3Ge
+    labels:
+      agent:
+        compute:
+          node_selector_key: openstack-compute-node
+          node_selector_value: enabled
+        compute_ironic:
+          node_selector_key: openstack-compute-node
+          node_selector_value: enabled
+      api_metadata:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      conductor:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      consoleauth:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      novncproxy:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      osapi:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      placement:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      scheduler:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      spiceproxy:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      test:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        api_metadata: 1
+        placement: 1
+        osapi: 1
+        conductor: 1
+        consoleauth: 1
+        scheduler: 1
+        novncproxy: 1
+    conf:
+      nova:
+        libvirt:
+          virt_type: qemu
+          cpu_mode: none
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/nova-0.1.0.tgz
+    subpath: nova
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-neutron
+data:
+  chart_name: neutron
+  release: openstack-neutron
+  namespace: openstack
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            application: neutron
+            component: db-init
+        - type: job
+          labels:
+            application: neutron
+            component: db-sync
+        - type: job
+          labels:
+            application: neutron
+            component: ks-user
+        - type: job
+          labels:
+            application: neutron
+            component: ks-service
+        - type: job
+          labels:
+            application: neutron
+            component: ks-endpoints
+  values:
+    endpoints:
+      identity:
+        auth:
+          admin:
+            password: BhKhCWNYckYuVIcTW52Q
+          neutron:
+            password: fgtvWl00tUbDjedDBnQS
+          nova:
+            password: oGbphe9vHjGK4cR21ZQn
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          neutron:
+            password: SJMFLxwCwp64mk2xVmTI
+      oslo_cache:
+        auth:
+          memcache_secret_key: DO9IThaQIbbxxB6wiAcJ
+      oslo_messaging:
+        auth:
+          admin:
+            username: rabbitmq-admin
+            password: 4xWhfGjdQts1SyvXJXs5
+          neutron:
+            username: neutron-rabbitmq-user
+            password: Q2vgX1jZerJyPgCW3t1D
+    pod:
+      replicas:
+        server: 2
+    labels:
+      agent:
+        dhcp:
+          node_selector_key: openstack-control-plane
+          node_selector_value: enabled
+        l3:
+          node_selector_key: openstack-control-plane
+          node_selector_value: enabled
+        metadata:
+          node_selector_key: openstack-control-plane
+          node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      lb:
+        node_selector_key: linuxbridge
+        node_selector_value: enabled
+      # ovs is a special case, requiring a special
+      # label that can apply to both control hosts
+      # and compute hosts, until we get more sophisticated
+      # with our daemonset scheduling
+      ovs:
+        node_selector_key: openvswitch
+        node_selector_value: enabled
+      server:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      test:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    network:
+      interface:
+        tunnel: enp0s3
+    conf:
+      neutron:
+        DEFAULT:
+          l3_ha: True
+          min_l3_agents_per_router: 2
+          max_l3_agents_per_router: 5
+          l3_ha_network_type: vxlan
+          dhcp_agents_per_network: 2
+      plugins:
+        ml2_conf:
+          ml2_type_flat:
+            flat_networks: public
+        openvswitch_agent:
+          agent:
+            tunnel_types: vxlan
+          ovs:
+            bridge_mappings: public:br-ex
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/neutron-0.1.0.tgz
+    subpath: neutron
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-heat
+data:
+  chart_name: heat
+  release: openstack-heat
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-heat
+  test:
+    enabled: true
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-heat
+        - type: pod
+          labels:
+            release_group: osh-openstack-heat
+            component: test
+  values:
+    endpoints:
+      identity:
+        auth:
+          admin:
+            password: BhKhCWNYckYuVIcTW52Q
+          heat:
+            password: UV3v0doQfatnu4b5xkNN
+          heat_trustee:
+            password: hGIslXC4trwZuQqITNmE
+          heat_stack_user:
+            password: QJTmPxjFw0a8FkCWDKvu
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          heat:
+            password: XZHzE0p1hZ1PfFY1TFHr
+      oslo_cache:
+        hosts:
+          default: heat-memcached
+      oslo_messaging:
+        auth:
+          admin:
+            username: rabbitmq-admin
+            password: 4xWhfGjdQts1SyvXJXs5
+          heat:
+            username: heat-rabbitmq-user
+            password: ukniwaxwmVfgRqSoA9mn
+    labels:
+      api:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      cfn:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      cloudwatch:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      engine:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        api: 2
+        cfn: 2
+        cloudwatch: 2
+        engine: 2
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/heat-0.1.0.tgz
+    subpath: heat
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-gnocchi
+data:
+  chart_name: gnocchi
+  release: openstack-gnocchi
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-gnocchi
+  test:
+    enabled: False
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-gnocchi
+        - type: pod
+          labels:
+            release_group: osh-openstack-gnocchi
+            component: test
+  values:
+    endpoints:
+      identity:
+        auth:
+          admin:
+            password: BhKhCWNYckYuVIcTW52Q
+          gnocchi:
+            password: VR3JaxBM5w4N3s1n07eB
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          gnocchi:
+            password: SPrX7Gb43I3iS3exQXOL
+      oslo_cache:
+        auth:
+          memcache_secret_key: DO9IThaQIbbxxB6wiAcJ
+    conf:
+      apache: |
+        Listen 0.0.0.0:{{ tuple "metric" "internal" "api" . | include "helm-toolkit.endpoints.endpoint_port_lookup" }}
+
+        SetEnvIf X-Forwarded-For "^.*\..*\..*\..*" forwarded
+        CustomLog /dev/stdout combined env=!forwarded
+        CustomLog /dev/stdout proxy env=forwarded
+
+        <VirtualHost *:{{ tuple "metric" "internal" "api" . | include "helm-toolkit.endpoints.endpoint_port_lookup" }}>
+            WSGIDaemonProcess gnocchi processes=1 threads=2 user=gnocchi group=gnocchi display-name=%{GROUP}
+            WSGIProcessGroup gnocchi
+            WSGIScriptAlias / "/var/lib/openstack/bin/gnocchi-api"
+            WSGIApplicationGroup %{GLOBAL}
+
+            ErrorLog /dev/stdout
+            SetEnvIf X-Forwarded-For "^.*\..*\..*\..*" forwarded
+            CustomLog /dev/stdout combined env=!forwarded
+            CustomLog /dev/stdout proxy env=forwarded
+
+            <Directory "/var/lib/openstack/bin">
+                  Require all granted
+            </Directory>
+        </VirtualHost>
+      paste:
+        composite:gnocchi+basic:
+          use: egg:Paste#urlmap
+          /: gnocchiversions_pipeline
+          /v1: gnocchiv1+noauth
+          /healthcheck: healthcheck
+        composite:gnocchi+keystone:
+          use: egg:Paste#urlmap
+          /: gnocchiversions_pipeline
+          /v1: gnocchiv1+keystone
+          /healthcheck: healthcheck
+        composite:gnocchi+remoteuser:
+          use: egg:Paste#urlmap
+          /: gnocchiversions_pipeline
+          /v1: gnocchiv1+noauth
+          /healthcheck: healthcheck
+        pipeline:gnocchiv1+noauth:
+          pipeline: http_proxy_to_wsgi gnocchiv1
+        pipeline:gnocchiv1+keystone:
+          pipeline: http_proxy_to_wsgi keystone_authtoken gnocchiv1
+        pipeline:gnocchiversions_pipeline:
+          pipeline: http_proxy_to_wsgi gnocchiversions
+        app:gnocchiversions:
+          paste.app_factory: gnocchi.rest.app:app_factory
+          root: gnocchi.rest.api.VersionsController
+        app:gnocchiv1:
+          paste.app_factory: gnocchi.rest.app:app_factory
+          root: gnocchi.rest.api.V1Controller
+        filter:keystone_authtoken:
+          use: egg:keystonemiddleware#auth_token
+          oslo_config_project: gnocchi
+        filter:http_proxy_to_wsgi:
+          use: egg:oslo.middleware#http_proxy_to_wsgi
+          oslo_config_project: gnocchi
+        app:healthcheck:
+          use: egg:oslo.middleware#healthcheck
+          oslo_config_project: gnocchi
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/gnocchi-0.1.0.tgz
+    subpath: gnocchi
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-horizon
+data:
+  chart_name: horizon
+  release: openstack-horizon
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-horizon
+  install:
+    no_hooks: False
+  upgrade:
+    no_hooks: False
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-horizon
+  values:
+    endpoints:
+      oslo_db:
+        auth:
+          admin:
+            password: CmA1aNGMQV0BkWubdURG
+          horizon:
+            password: WoPQP9dTxYtvMZRz5eZK
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/horizon-0.1.0.tgz
+    subpath: horizon
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: kube-system-ingress
+data:
+  description: "System Ingress Controller"
+  sequenced: False
+  chart_group:
+    - kube-system-ingress
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-ingress
+data:
+  description: "OpenStack Ingress Controller"
+  sequenced: False
+  chart_group:
+    - openstack-ingress
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: provisioner
+data:
+  description: "Provisioner"
+  sequenced: False
+  chart_group:
+    - default-provisioner
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-mariadb
+data:
+  description: "Mariadb"
+  sequenced: True
+  chart_group:
+    - openstack-mariadb
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-memcached
+data:
+  description: "Memcached"
+  sequenced: True
+  chart_group:
+    - openstack-memcached
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-rabbitmq
+data:
+  description: "Rabbitmq"
+  sequenced: True
+  chart_group:
+    - openstack-rabbitmq
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-keystone
+data:
+  description: "Deploy keystone"
+  sequenced: True
+  chart_group:
+    - openstack-keystone
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-glance
+data:
+  description: "Deploy glance"
+  sequenced: True
+  chart_group:
+    - openstack-glance
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-cinder
+data:
+  description: "Deploy cinder"
+  sequenced: True
+  chart_group:
+    - openstack-cinder
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-compute-kit
+data:
+  description: "Deploy nova and neutron, as well as supporting services"
+  sequenced: False
+  chart_group:
+    - openstack-libvirt
+    - openstack-nova
+    - openstack-neutron
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-heat
+data:
+  description: "Deploy heat"
+  sequenced: True
+  chart_group:
+    - openstack-heat
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-gnocchi
+data:
+  description: "Deploy gnocchi"
+  sequenced: False
+  chart_group:
+    - openstack-gnocchi
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-horizon
+data:
+  description: "Deploy horizon"
+  sequenced: False
+  chart_group:
+    - openstack-horizon
+---
+schema: armada/Manifest/v1
+metadata:
+  schema: metadata/Document/v1
+  name: armada-manifest
+data:
+  release_prefix: osh
+  chart_groups:
+    - kube-system-ingress
+    - openstack-ingress
+    - provisioner
+    - openstack-mariadb
+    - openstack-memcached
+    - openstack-rabbitmq
+    - openstack-keystone
+    - openstack-glance
+    # gnocchi is only supported on systems with ceph
+    # once ceph is enabled on all systems, this can be uncommented
+    # - openstack-gnocchi
+    - openstack-compute-kit
+    - openstack-heat
+    - openstack-horizon
+    - openstack-cinder
