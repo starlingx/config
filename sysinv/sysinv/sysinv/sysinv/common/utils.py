@@ -1758,3 +1758,26 @@ def get_disk_capacity_mib(device_node):
     size_mib = int_size / (1024**2)
 
     return int(size_mib)
+
+
+def format_range_set(items):
+    # Generate a pretty-printed value of ranges, such as 3-6,8-9,12-17
+    ranges = []
+    for k, iterable in it.groupby(enumerate(sorted(items)),
+                                         lambda x: x[1] - x[0]):
+        rng = list(iterable)
+        if len(rng) == 1:
+            s = str(rng[0][1])
+        else:
+            s = "%s-%s" % (rng[0][1], rng[-1][1])
+        ranges.append(s)
+    return ','.join(ranges)
+
+
+def get_numa_index_list(obj):
+    """Create map of objects indexed by numa node"""
+    obj_lists = collections.defaultdict(list)
+    for index, o in enumerate(obj):
+        o["_index"] = index
+        obj_lists[o.numa_node].append(o)
+    return obj_lists
