@@ -45,15 +45,6 @@ class platform::kubernetes::kubeadm {
     command => "sysctl --system",
   } ->
 
-  # Replace kubelet configuration file.
-  file {'/etc/systemd/system/kubelet.service.d/kubeadm.conf':
-    ensure  => file,
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0644',
-    source  => "puppet:///modules/${module_name}/kubelet-service-conf"
-  } ->
-
   # Start kubelet.
   service { 'kubelet':
     ensure => 'running',
@@ -136,9 +127,10 @@ class platform::kubernetes::master::init
       logoutput => true,
     } ->
 
-    # Restrict the kube-dns pod to master nodes
-    exec { "restrict kube-dns to master nodes":
-      command => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment kube-dns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
+    # kubernetes 1.12 uses coredns rather than kube-dns.
+    # Restrict the dns pod to master nodes
+    exec { "restrict coredns to master nodes":
+      command => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
       logoutput => true,
     } ->
 
@@ -216,10 +208,11 @@ class platform::kubernetes::master::init
         source  => "puppet:///modules/${module_name}/kubeconfig.sh"
       } ->
 
-      # Restrict the kube-dns pod to master nodes. It seems that each time
+      # kubernetes 1.12 uses coredns rather than kube-dns.
+      # Restrict the dns pod to master nodes. It seems that each time
       # kubeadm init is run, it undoes any changes to the deployment.
-      exec { "restrict kube-dns to master nodes":
-        command => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment kube-dns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
+      exec { "restrict coredns to master nodes":
+        command => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
         logoutput => true,
       } ->
 
