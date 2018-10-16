@@ -776,9 +776,9 @@ def migrate_hiera_data(from_release, to_release):
             static_config = yaml.load(yaml_file)
         static_config.update({
             'platform::params::software_version': SW_VERSION,
-            'openstack::client::credentials::params::keyring_directory':
+            'platform::client::credentials::params::keyring_directory':
                 KEYRING_PATH,
-            'openstack::client::credentials::params::keyring_file':
+            'platform::client::credentials::params::keyring_file':
                 os.path.join(KEYRING_PATH, '.CREDENTIAL'),
         })
         with open(static_file, 'w') as yaml_file:

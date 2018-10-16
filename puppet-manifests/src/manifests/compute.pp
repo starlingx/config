@@ -34,6 +34,7 @@ include ::platform::filesystem::compute
 include ::platform::docker
 include ::platform::kubernetes::worker
 include ::platform::multipath
+include ::platform::client
 
 include ::openstack::client
 include ::openstack::neutron

@@ -67,7 +67,7 @@ include ::platform::fm
 include ::platform::fm::api
 
 include ::platform::multipath
-
+include ::platform::client
 include ::openstack::client
 include ::openstack::keystone
 include ::openstack::keystone::api
