@@ -106,7 +106,7 @@ class platform::kubernetes::master::init
     #   Note: Calico networking with the Kubernetes API datastore is beta
     #   because it does not yet support Calico IPAM. It uses host-local IPAM
     #   with Kubernetes pod CIDR assignments instead.
-    # See https://docs.projectcalico.org/v3.1/getting-started/kubernetes/
+    # See https://docs.projectcalico.org/v3.2/getting-started/kubernetes/
     # installation/calico for more info.
     file { "/etc/kubernetes/rbac-kdd.yaml":
       ensure  => file,
