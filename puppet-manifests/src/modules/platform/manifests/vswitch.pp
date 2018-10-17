@@ -117,6 +117,8 @@ class platform::vswitch::ovs(
     }
 
     create_resources ('vs_config', $dpdk_configs, $dpdk_dependencies)
+
+    Vs_config<||> -> Platform::Vswitch::Ovs::Bridge<||>
   }
 
   if $::platform::params::vswitch_type =~ '^ovs' {
