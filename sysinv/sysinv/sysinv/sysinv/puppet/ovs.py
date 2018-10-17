@@ -395,6 +395,13 @@ class OVSPuppet(base.BasePuppet):
         driver_list = self.context['_lldp_drivers']
         driver_list.append('ovs')
 
+        lldpd_options = []
+
+        # Disable broadcasting the kernel version
+        lldpd_kernel_option = {"option": "-k"}
+        lldpd_options.append(lldpd_kernel_option)
+
         return {
-            'sysinv::agent::lldp_drivers': driver_list
+            'sysinv::agent::lldp_drivers': driver_list,
+            'platform::lldp::params::options': lldpd_options
         }
