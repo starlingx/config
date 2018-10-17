@@ -100,9 +100,9 @@ class SysinvLldpDriverManager(NamedExtensionManager):
             try:
                 method = getattr(driver.obj, method_name)
                 if attr:
-                    return method(attr)
+                    method(attr)
                 else:
-                    return method()
+                    method()
             except Exception as e:
                 LOG.exception(e)
                 LOG.error(
