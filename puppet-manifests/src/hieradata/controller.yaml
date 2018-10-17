@@ -268,7 +268,7 @@ neutron::server::database_idle_timeout: 60
 neutron::server::database_max_pool_size: 1
 neutron::server::database_max_overflow: 64
 neutron::server::enable_proxy_headers_parsing: true
-neutron::server::network_scheduler_driver: 'neutron.scheduler.dhcp_agent_scheduler.WeightScheduler'
+neutron::server::network_scheduler_driver: 'neutron.scheduler.dhcp_host_agent_scheduler.HostBasedScheduler'
 neutron::server::router_scheduler_driver: 'neutron.scheduler.l3_host_agent_scheduler.HostBasedScheduler'
 
 neutron::server::notifications::endpoint_type: 'internal'
