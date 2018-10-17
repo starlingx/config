@@ -18,7 +18,8 @@ LOG = logging.getLogger(__name__)
 SP_CINDER_DEFAULT = constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT
 SP_CINDER_DEFAULT_PREFIX = 'openstack::cinder::config::default'
 SP_CINDER_DEFAULT_ALL_SUPPORTED_PARAMS = [
-    constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE
+    constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE,
+    constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH,
     # Hardcoded params: params we always want set
 ]
 
@@ -146,9 +147,21 @@ def sp_common_post_process(config, section, section_map, is_service_enabled,
 
         config[conf_name] = provided_params_puppet_format
 
+
 #
 # Section specific post processing calls: DEFAULT, emc_vnx, hpe3par, hpelefthand
 #
+def sp_multipath_post_process(config, provided_params):
+    #   DEFAULT/multipath does not map 1:1 to an entry in cinder.conf
+    param = constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH
+    multipath_key = 'platform::multipath::params::enabled'
+    if provided_params.get(param, 'false').lower() == 'true':
+        config[multipath_key] = True
+    else:
+        config.pop(multipath_key, None)
+    provided_params.pop(param, None)
+    param_state = constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE
+    provided_params.pop(param_state, None)
 
 
 def sp_default_post_process(config, section, section_map,
@@ -179,6 +192,8 @@ def sp_default_post_process(config, section, section_map,
     for param in SP_CINDER_DEFAULT_ALL_SUPPORTED_PARAMS:
         if param not in provided_params:
             absent_params.append(param)
+
+    sp_multipath_post_process(config, provided_params)
 
     sp_common_post_process(config, section, section_map, is_service_enabled,
                            enabled_backends, is_a_feature=False)

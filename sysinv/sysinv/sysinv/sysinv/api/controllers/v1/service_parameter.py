@@ -188,6 +188,12 @@ class ServiceParameterController(rest.RestController):
                 p.section == constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR_STATE or
                 p.section == constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND_STATE))]
 
+        # filter out cinder multipath state
+        parms = [p for p in parms if not(
+            p.service == constants.SERVICE_TYPE_CINDER and
+            p.section == constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT and
+            p.name == constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE)]
+
         # filter out firewall_rules_id
         parms = [p for p in parms if not (
             p.service == constants.SERVICE_TYPE_PLATFORM and p.section ==

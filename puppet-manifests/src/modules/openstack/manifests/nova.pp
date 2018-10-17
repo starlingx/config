@@ -142,6 +142,7 @@ class openstack::nova::compute (
 
   include ::platform::network::mgmt::params
   include ::platform::network::infra::params
+  include ::platform::multipath::params
   include ::nova::keystone::authtoken
   include ::nova::compute::neutron
 
@@ -280,6 +281,7 @@ class openstack::nova::compute (
     'libvirt/libvirt_images_type': value => $libvirt_images_type;
     'libvirt/live_migration_inbound_addr': value => "${::platform::params::hostname}-infra";
     'libvirt/live_migration_uri': ensure => absent;
+    'libvirt/volume_use_multipath': value => $::platform::multipath::params::enabled;
 
     # enable auto-converge by default
     'libvirt/live_migration_permit_auto_converge': value => "True";
