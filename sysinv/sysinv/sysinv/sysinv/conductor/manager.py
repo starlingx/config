@@ -4205,9 +4205,7 @@ class ConductorManager(service.PeriodicService):
         if not availability:
             return
 
-        system = self.dbapi.isystem_get_one()
-        kubernetes_config = system.capabilities.get('kubernetes_enabled',
-                                                    False)
+        kubernetes_config = utils.is_kubernetes_config(self.dbapi)
 
         if (cutils.host_has_function(ihost, constants.COMPUTE) and not
                 kubernetes_config):
@@ -4323,7 +4321,8 @@ class ConductorManager(service.PeriodicService):
         :param context: request context.
         :param ihost_uuid: ihost uuid
         """
-        self._openstack.update_nova_local_aggregates(ihost_uuid)
+        if not utils.is_kubernetes_config(self.dbapi):
+            self._openstack.update_nova_local_aggregates(ihost_uuid)
 
     def subfunctions_update_by_ihost(self, context,
                                 ihost_uuid, subfunctions):
