@@ -140,8 +140,7 @@ platform::memcached::params::max_connections: 8192
 platform::memcached::params::max_memory: 782
 
 # ceph
-ceph::public_addr: '127.0.0.1:5001'
-
+platform::ceph::params::restapi_public_addr: '127.0.0.1:5001'
 
 # sysinv
 sysinv::journal_max_size: 51200

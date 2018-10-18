@@ -57,6 +57,7 @@ include ::platform::nfv::api
 
 include ::platform::ceph
 include ::platform::ceph::monitor
+include ::platform::ceph::storage
 include ::platform::ceph::rgw
 
 include ::platform::influxdb

@@ -1724,7 +1724,7 @@ class HostController(rest.RestController):
 
     @staticmethod
     def _validate_capability_is_not_set(old, new):
-        is_set, _ = new
+        is_set, __ = new
         return not is_set
 
     @staticmethod
@@ -4265,13 +4265,13 @@ class HostController(rest.RestController):
                                                  hostupdate.ihost_val_prenotify)
                 try:
                     self.check_unlock(hostupdate, force_unlock)
-                except Exception as e:
+                except Exception:
                     LOG.info("host unlock check didn't pass, "
                              "so set the ihost_action back to None and re-raise the exception")
                     self.update_ihost_action(None, hostupdate)
                     pecan.request.dbapi.ihost_update(hostupdate.ihost_orig['uuid'],
                                                      hostupdate.ihost_val_prenotify)
-                    raise e
+                    raise
         elif action == constants.LOCK_ACTION:
             if self.check_lock(hostupdate):
                 rc = self.update_ihost_action(action, hostupdate)
@@ -4451,8 +4451,7 @@ class HostController(rest.RestController):
         LOG.info("Provisioned storage node(s) %s" % host_names)
 
         # Get replication
-        replication, min_replication = \
-            StorageBackendConfig.get_ceph_pool_replication(pecan.request.dbapi)
+        replication, __ = StorageBackendConfig.get_ceph_max_replication(pecan.request.dbapi)
 
         expected_hosts = \
             constants.CEPH_REPLICATION_GROUP0_HOSTS[int(replication)]
@@ -5198,41 +5197,48 @@ class HostController(rest.RestController):
         elif StorageBackendConfig.has_backend_configured(
                 pecan.request.dbapi,
                 constants.CINDER_BACKEND_CEPH):
-            # if ceph is configured as 2nd backend (lvm has
-            # been configured), feel free to unlock compute nodes
-            # Due to host-pairing Ceph crush map ceph status is HEALTH_WARN
-            # unless storage are fully redundant.
-            # Storage availability status to also reflect storage redundancy.
-            # if not any_computes_enabled:
-            #     if not self._ceph.ceph_status_ok(timeout=30):
-            #     raise wsme.exc.ClientSideError(
-            #        _("Can not unlock a compute node when storage cluster "
-            #          "is not healthy. "
-            #          "Please check storage hosts and configuration."))
-
             ihost_stors = []
+            if utils.is_aio_simplex_system(pecan.request.dbapi):
+                # Check if host has enough OSDs configured for each tier
+                tiers = pecan.request.dbapi.storage_tier_get_all()
+                ceph_tiers = filter(lambda t: t.type == constants.SB_TIER_TYPE_CEPH, tiers)
+                max_replication, __ = \
+                    StorageBackendConfig.get_ceph_max_replication(pecan.request.dbapi)
+                for tier in ceph_tiers:
+                    replication = max_replication  # In case tier has no storage backend configured
+                    if tier.get('forbackendid'):
+                        bk = pecan.request.dbapi.storage_ceph_get(tier.forbackendid)
+                        replication, __ = \
+                            StorageBackendConfig.get_ceph_pool_replication(pecan.request.dbapi, bk)
+                    stors = pecan.request.dbapi.istor_get_by_tier(tier.id)
+                    if len(stors) < replication:
+                        word = 'is' if len(replication) == 1 else 'are'
+                        msg = ("Can not unlock node until at least %(replication)s osd stor %(word)s "
+                              "configured for tier '%(tier)s'."
+                               % {'replication': str(replication), 'word': word, 'tier': tier['name']})
+                        raise wsme.exc.ClientSideError(msg)
+            else:
+                try:
+                    ihost_stors = pecan.request.dbapi.ihost_get_by_personality(
+                        personality=constants.STORAGE)
+                except Exception:
+                    raise wsme.exc.ClientSideError(
+                        _("Can not unlock a compute node until at "
+                          "least one storage node is unlocked and enabled."))
+                ihost_stor_unlocked = False
+                if ihost_stors:
+                    for ihost_stor in ihost_stors:
+                        if (ihost_stor.administrative == constants.ADMIN_UNLOCKED and
+                           (ihost_stor.operational ==
+                                constants.OPERATIONAL_ENABLED)):
 
-            try:
-                ihost_stors = pecan.request.dbapi.ihost_get_by_personality(
-                    personality=constants.STORAGE)
-            except Exception:
-                raise wsme.exc.ClientSideError(
-                    _("Can not unlock a compute node until at "
-                      "least one storage node is unlocked and enabled."))
-            ihost_stor_unlocked = False
-            if ihost_stors:
-                for ihost_stor in ihost_stors:
-                    if (ihost_stor.administrative == constants.ADMIN_UNLOCKED and
-                       (ihost_stor.operational ==
-                            constants.OPERATIONAL_ENABLED)):
+                            ihost_stor_unlocked = True
+                            break
 
-                        ihost_stor_unlocked = True
-                        break
-
-            if not ihost_stor_unlocked:
-                raise wsme.exc.ClientSideError(
-                    _("Can not unlock a compute node until at "
-                      "least one storage node is unlocked and enabled."))
+                if not ihost_stor_unlocked:
+                    raise wsme.exc.ClientSideError(
+                        _("Can not unlock a compute node until at "
+                          "least one storage node is unlocked and enabled."))
 
         # Local Storage checks
         self._semantic_check_nova_local_storage(ihost['uuid'],
@@ -5561,7 +5567,7 @@ class HostController(rest.RestController):
                 constants.STORAGE)
 
             replication, min_replication = \
-                StorageBackendConfig.get_ceph_pool_replication(pecan.request.dbapi)
+                StorageBackendConfig.get_ceph_max_replication(pecan.request.dbapi)
             available_peer_count = 0
             for node in storage_nodes:
                 if (node['id'] != hostupdate.ihost_orig['id'] and

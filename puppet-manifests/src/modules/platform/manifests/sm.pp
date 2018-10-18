@@ -1127,6 +1127,14 @@ class platform::sm
       command => "sm-configure service_group yes controller web-services N 1 0 \"\" \"\"",
     }
 
+    exec { 'Configure storage-services redundancy model':
+      command => "sm-configure service_group yes controller storage-services N 1 0 \"\" \"\"",
+    }
+
+    exec { 'Configure storage-monitoring-services redundancy model':
+      command => "sm-configure service_group yes controller storage-monitoring-services N 1 0 \"\" \"\"",
+    }
+
   }
 
   exec { 'Provision extension-fs (service-group-member)':

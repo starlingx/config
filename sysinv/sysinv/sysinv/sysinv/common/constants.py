@@ -782,14 +782,28 @@ SB_TIER_CEPH_POOLS = [
 # See http://ceph.com/pgcalc/. We set it to more than 100 because pool usage
 # varies greatly in Titanium Cloud and we want to avoid running too low on PGs
 CEPH_TARGET_PGS_PER_OSD = 200
+
+# Dual node and Storage
 CEPH_REPLICATION_FACTOR_DEFAULT = 2
 CEPH_REPLICATION_FACTOR_SUPPORTED = [2, 3]
-CEPH_MIN_REPLICATION_FACTOR_SUPPORTED = [1, 2]
+
+# Single node
+AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT = 1
+AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED = [1, 2, 3]
+
+CEPH_REPLICATION_MAP_SUPPORTED = {
+    1: [1],
+    2: [1],
+    3: [1, 2]
+}
+
 CEPH_REPLICATION_MAP_DEFAULT = {
     # replication: min_replication
+    1: 1,
     2: 1,
     3: 2
 }
+
 # ceph osd pool size
 CEPH_BACKEND_REPLICATION_CAP = 'replication'
 # ceph osd pool min size

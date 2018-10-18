@@ -153,8 +153,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         config = {}
         if host.personality in [constants.CONTROLLER, constants.STORAGE]:
             config.update(self._get_ceph_mon_config(host))
-
-        if host.personality == constants.STORAGE:
             config.update(self._get_ceph_osd_config(host))
 
         # if it is a compute node and on an secondary region,

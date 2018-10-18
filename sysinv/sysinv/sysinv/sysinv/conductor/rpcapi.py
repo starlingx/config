@@ -117,6 +117,21 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        host=host,
                                        do_compute_apply=do_compute_apply))
 
+    def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
+        """Configure or update configuration of the OSD pools.
+        If none of the optionals are provided then all pools are updated based on DB configuration.
+
+        :param context: an admin context.
+        :param ceph_backend: Optional ceph backend object of a tier
+        :param new_pool_size: Optional override for replication number.
+        :param new_pool_min_size: Optional override for minimum replication number.
+        """
+        return self.call(context,
+                 self.make_msg('configure_osd_pools',
+                               ceph_backend=ceph_backend,
+                               new_pool_size=new_pool_size,
+                               new_pool_min_size=new_pool_min_size))
+
     def remove_host_config(self, context, host_uuid):
         """Synchronously, have a conductor remove configuration for a host.
 
@@ -583,14 +598,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('restore_ceph_config',
                                        after_storage_enabled=after_storage_enabled))
 
-    def get_ceph_pool_replication(self, context):
+    def get_ceph_pool_replication(self, context, ceph_backend=None):
         """Get ceph storage backend pool replication parameters
 
         :param context: request context.
+        :param ceph_backend: ceph backend object type for a tier
         :returns: tuple with (replication, min_replication)
         """
         return self.call(context,
-                         self.make_msg('get_ceph_pool_replication'))
+                         self.make_msg('get_ceph_pool_replication',
+                                       ceph_backend=ceph_backend))
 
     def delete_osd_pool(self, context, pool_name):
         """delete an OSD pool
