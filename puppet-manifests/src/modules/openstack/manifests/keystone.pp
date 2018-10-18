@@ -52,7 +52,7 @@ class openstack::keystone (
       $bind_host = $::platform::network::mgmt::params::controller_address_url
     }
 
-    Class[$name] -> Class['::openstack::client']
+    Class[$name] -> Class['::platform::client'] -> Class['::openstack::client']
 
     include ::keystone::client
     
@@ -215,7 +215,7 @@ class openstack::keystone::bootstrap(
 
     include ::keystone::db::postgresql
 
-    Class[$name] -> Class['::openstack::client']
+    Class[$name] -> Class['::platform::client'] -> Class['::openstack::client']
 
     # Create the parent directory for fernet keys repository
     file { "${keystone_key_repo_path}":
@@ -265,7 +265,7 @@ class openstack::keystone::reload {
 class openstack::keystone::endpointgroup
   inherits ::openstack::keystone::params {
   include ::platform::params
-  include ::openstack::client
+  include ::platform::client
 
   # $::platform::params::init_keystone should be checked by the caller.
   # as this class should be only invoked when initializing keystone.
@@ -274,12 +274,12 @@ class openstack::keystone::endpointgroup
   if ($::platform::params::distributed_cloud_role =='systemcontroller') {
     $reference_region = $::openstack::keystone::params::region_name
     $system_controller_region = $::openstack::keystone::params::system_controller_region
-    $os_username = $::openstack::client::params::admin_username
-    $identity_region = $::openstack::client::params::identity_region
-    $keystone_region = $::openstack::client::params::keystone_identity_region
-    $keyring_file = $::openstack::client::credentials::params::keyring_file
-    $auth_url = $::openstack::client::params::identity_auth_url
-    $os_project_name = $::openstack::client::params::admin_project_name
+    $os_username = $::platform::client::params::admin_username
+    $identity_region = $::platform::client::params::identity_region
+    $keystone_region = $::platform::client::params::keystone_identity_region
+    $keyring_file = $::platform::client::credentials::params::keyring_file
+    $auth_url = $::platform::client::params::identity_auth_url
+    $os_project_name = $::platform::client::params::admin_project_name
     $api_version = 3
 
     file { "/etc/keystone/keystone-${reference_region}-filter.conf":
@@ -317,6 +317,7 @@ class openstack::keystone::endpointgroup
 
 
 class openstack::keystone::server::runtime {
+  include ::platform::client
   include ::openstack::client
   include ::openstack::keystone
 

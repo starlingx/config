@@ -46,13 +46,13 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
         return {
             'keystone::db::postgresql::user': dbuser,
 
-            'openstack::client::params::admin_username': admin_username,
+            'platform::client::params::admin_username': admin_username,
 
-            'openstack::client::credentials::params::keyring_base':
+            'platform::client::credentials::params::keyring_base':
                 os.path.dirname(tsconfig.KEYRING_PATH),
-            'openstack::client::credentials::params::keyring_directory':
+            'platform::client::credentials::params::keyring_directory':
                 tsconfig.KEYRING_PATH,
-            'openstack::client::credentials::params::keyring_file':
+            'platform::client::credentials::params::keyring_file':
                 os.path.join(tsconfig.KEYRING_PATH, '.CREDENTIAL'),
         }
 
@@ -93,17 +93,17 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
             'keystone::roles::admin::admin': admin_username,
 
-            'openstack::client::params::admin_username': admin_username,
-            'openstack::client::params::admin_project_name': admin_project,
-            'openstack::client::params::admin_user_domain':
+            'platform::client::params::admin_username': admin_username,
+            'platform::client::params::admin_project_name': admin_project,
+            'platform::client::params::admin_user_domain':
                 self.get_admin_user_domain(),
-            'openstack::client::params::admin_project_domain':
+            'platform::client::params::admin_project_domain':
                 self.get_admin_project_domain(),
-            'openstack::client::params::identity_region': self._region_name(),
-            'openstack::client::params::identity_auth_url': self.get_auth_url(),
-            'openstack::client::params::keystone_identity_region':
+            'platform::client::params::identity_region': self._region_name(),
+            'platform::client::params::identity_auth_url': self.get_auth_url(),
+            'platform::client::params::keystone_identity_region':
                 self._identity_specific_region_name(),
-            'openstack::client::params::auth_region':
+            'platform::client::params::auth_region':
                 self._identity_specific_region_name(),
             'openstack::keystone::params::api_version': self.SERVICE_PATH,
             'openstack::keystone::params::identity_uri':

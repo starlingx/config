@@ -194,7 +194,7 @@ keystone::security_compliance::password_regex_description: 'Password must have a
 keystone::roles::admin::email: 'admin@localhost'
 keystone::roles::admin::admin_tenant: 'admin'
 
-openstack::client::params::identity_auth_url: 'http://localhost:5000/v3'
+platform::client::params::identity_auth_url: 'http://localhost:5000/v3'
 
 # glance
 glance::api::enabled: false

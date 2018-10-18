@@ -31,10 +31,11 @@ class OpenStack(object):
         self.conf = {}
         self._sysinv = None
 
+        source_command = 'source /etc/platform/openrc && env'
+
         with open(os.devnull, "w") as fnull:
             proc = subprocess.Popen(
-                ['bash', '-c',
-                 'source /etc/nova/openrc && env'],
+                ['bash', '-c', source_command],
                 stdout=subprocess.PIPE, stderr=fnull)
 
         for line in proc.stdout:

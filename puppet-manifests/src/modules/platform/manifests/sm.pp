@@ -158,14 +158,14 @@ class platform::sm
 
   $ost_cl_ctrl_host         = $::platform::network::mgmt::params::controller_address_url
 
-  include ::openstack::client::params
+  include ::platform::client::params
 
-  $os_username              = $::openstack::client::params::admin_username
+  $os_username              = $::platform::client::params::admin_username
   $os_project_name          = 'admin'
   $os_auth_url              = $os_keystone_auth_url
   $system_url               = "http://${ost_cl_ctrl_host}:6385"
-  $os_user_domain_name      = $::openstack::client::params::admin_user_domain
-  $os_project_domain_name   = $::openstack::client::params::admin_project_domain
+  $os_user_domain_name      = $::platform::client::params::admin_user_domain
+  $os_project_domain_name   = $::platform::client::params::admin_project_domain
 
   # Nova
   $db_server_port           = '5432'

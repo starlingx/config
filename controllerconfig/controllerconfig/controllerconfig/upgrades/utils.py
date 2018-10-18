@@ -128,26 +128,26 @@ def get_upgrade_token(from_release,
         system_config['openstack::keystone::params::api_version'])
 
     admin_user_domain = system_config.get(
-        'openstack::client::params::admin_user_domain')
+        'platform::client::params::admin_user_domain')
     if admin_user_domain is None:
         # This value wasn't present in R2. So may be missing in upgrades from
         # that release
-        LOG.info("openstack::client::params::admin_user_domain key not found. "
+        LOG.info("platform::client::params::admin_user_domain key not found. "
                  "Using Default.")
         admin_user_domain = DEFAULT_DOMAIN_NAME
 
     admin_project_domain = system_config.get(
-        'openstack::client::params::admin_project_domain')
+        'platform::client::params::admin_project_domain')
     if admin_project_domain is None:
         # This value wasn't present in R2. So may be missing in upgrades from
         # that release
-        LOG.info("openstack::client::params::admin_project_domain key not "
+        LOG.info("platform::client::params::admin_project_domain key not "
                  "found. Using Default.")
         admin_project_domain = DEFAULT_DOMAIN_NAME
 
     admin_password = get_password_from_keyring("CGCS", "admin")
     admin_username = system_config.get(
-        'openstack::client::params::admin_username')
+        'platform::client::params::admin_username')
 
     # the upgrade token command
     keystone_upgrade_token = (

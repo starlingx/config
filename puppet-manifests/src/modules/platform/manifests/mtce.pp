@@ -28,8 +28,8 @@ class platform::mtce
   include ::openstack::ceilometer::params
   $ceilometer_port = $::openstack::ceilometer::params::api_port
 
-  include ::openstack::client::credentials::params
-  $keyring_directory = $::openstack::client::credentials::params::keyring_directory
+  include ::platform::client::credentials::params
+  $keyring_directory = $::platform::client::credentials::params::keyring_directory
 
   file { "/etc/mtc.ini":
     ensure  => present,
