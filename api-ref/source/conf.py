@@ -29,7 +29,7 @@ extensions = [
     'os_api_ref',
 ]
 
-html_theme = 'openstackdocs'
+html_theme = 'starlingxdocs'
 
 html_theme_options = {
     "sidebar_dropdown": "api_ref",
