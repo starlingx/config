@@ -1526,11 +1526,6 @@ def _check_interface_data(op, interface, ihost, existing_interface):
             msg = _("At least one provider network must be selected.")
             raise wsme.exc.ClientSideError(msg)
 
-    elif any(nt in NEUTRON_NETWORK_TYPES for nt in networktypelist):
-        msg = (_("Unexpected interface network type list {}").
-               format(', '.join(networktypelist)))
-        raise wsme.exc.ClientSideError(msg)
-
     elif (interface['ifclass'] and
             interface['ifclass'] not in NEUTRON_INTERFACE_CLASS and
             not existing_interface):
@@ -1538,7 +1533,8 @@ def _check_interface_data(op, interface, ihost, existing_interface):
             msg = _("Provider network(s) not supported "
                     "for non-data interfaces. (%s) (%s)" % (interface['ifclass'], str(existing_interface)))
             raise wsme.exc.ClientSideError(msg)
-    else:
+    elif (_neutron_providernet_extension_supported() or
+          interface['ifclass'] not in NEUTRON_INTERFACE_CLASS):
         interface['providernetworks'] = None
 
     # check MTU
@@ -1999,6 +1995,11 @@ def _neutron_providernet_extension_supported():
     necessary or not.  If it is not supported then this is an indication that
     we are running against a vanilla openstack installation.
     """
+    # In the case of a kubernetes config, neutron may not be running, and
+    # sysinv should not rely on talking to containerized neutron.
+    if utils.is_kubernetes_config():
+        return False
+
     return True
     # TODO: This should be looking at the neutron extension list, but because
     # our config file is not setup properly to have a different region on a per
@@ -2040,6 +2041,9 @@ def _neutron_bind_interface(ihost, interface, test=False):
     if recordtype in ['profile']:
         # No action required if we are operating on a profile record
         return
+    if not _neutron_providernet_extension_supported():
+        # No action required if neutron does not support the pnet extension
+        return
     if not _neutron_host_extension_supported():
         # No action required if neutron does not support the host extension
         return
@@ -2076,6 +2080,9 @@ def _neutron_unbind_interface(ihost, interface):
     recordtype = ihost['recordtype']
     if recordtype in ['profile']:
         # No action required if we are operating on a profile record
+        return
+    if not _neutron_providernet_extension_supported():
+        # No action required if neutron does not support the pnet extension
         return
     if not _neutron_host_extension_supported():
         # No action required if neutron does not support the host extension
