@@ -89,7 +89,8 @@ def configure_management():
             continue
 
     while True:
-        user_input = raw_input("Enter management address CIDR: ")
+        user_input = raw_input("Enter management IP address in CIDR "
+                               "notation, ie. ip/prefix_length: ")
         try:
             management_cidr = netaddr.IPNetwork(user_input)
             management_ip = management_cidr.ip
@@ -102,10 +103,11 @@ def configure_management():
             break
         except (netaddr.AddrFormatError, ValueError):
             print ("Invalid CIDR - "
-                   "please enter a valid management address CIDR")
+                   "please enter a valid management IP address in "
+                   "CIDR notation.")
 
     while True:
-        user_input = raw_input("Enter management gateway address [" +
+        user_input = raw_input("Enter management gateway IP address [" +
                                str(management_network[1]) + "]: ")
         if user_input == "":
             user_input = management_network[1]
@@ -119,11 +121,12 @@ def configure_management():
             break
         except (netaddr.AddrFormatError, ValueError):
             print ("Invalid address - "
-                   "please enter a valid management gateway address")
+                   "please enter a valid management gateway IP address")
 
     min_addresses = 8
     while True:
-        user_input = raw_input("Enter System Controller subnet: ")
+        user_input = raw_input("Enter System Controller subnet in "
+                               "CIDR notation: ")
         try:
             system_controller_subnet = cutils.validate_network_str(
                 user_input, min_addresses)
