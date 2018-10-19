@@ -1781,3 +1781,10 @@ def get_numa_index_list(obj):
         o["_index"] = index
         obj_lists[o.numa_node].append(o)
     return obj_lists
+
+
+def _format_ceph_mon_address(ip_address, service_port_mon):
+    if netaddr.IPAddress(ip_address).version == constants.IPV4_FAMILY:
+        return '%s:%d' % (ip_address, service_port_mon)
+    else:
+        return '[%s]:%d' % (ip_address, service_port_mon)
