@@ -1307,3 +1307,7 @@ class LocalManagementIpNotFound(NotFound):
     message = _("Local management IP not found: "
                 "config_uuid=%(config_uuid), config_dict=%(config_dict), "
                 "host_personality=%(host_personality)")
+
+
+class InvalidHelmDockerImageSource(Invalid):
+    message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
