@@ -12,6 +12,8 @@ Source1: LICENSE
 %define debug_package %{nil}
 
 BuildRequires: python-setuptools
+BuildRequires: python2-pip
+BuildRequires: python2-wheel
 Requires: python-netaddr
 #Requires: wxPython
 
@@ -35,6 +37,7 @@ SDK files for configutilities
 
 %build
 %{__python} setup.py build
+%py2_build_wheel
 
 %install
 %{__python} setup.py install --root=$RPM_BUILD_ROOT \
@@ -42,6 +45,8 @@ SDK files for configutilities
                              --prefix=/usr \
                              --install-data=/usr/share \
                              --single-version-externally-managed
+mkdir -p $RPM_BUILD_ROOT/wheels
+install -m 644 dist/*.whl $RPM_BUILD_ROOT/wheels/
 
 sed -i "s#xxxSW_VERSIONxxx#%{platform_release}#" %{name}/common/validator.py
 tar czf %{cgcs_sdk_tarball_name} %{name}
@@ -62,3 +67,12 @@ rm -rf $RPM_BUILD_ROOT
 
 %files -n %{name}-cgts-sdk
 %{cgcs_sdk_deploy_dir}/%{cgcs_sdk_tarball_name}
+
+%package wheels
+Summary: %{name} wheels
+
+%description wheels
+Contains python wheels for %{name}
+
+%files wheels
+/wheels/*

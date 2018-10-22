@@ -10,6 +10,8 @@ Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: python-setuptools
 BuildRequires: python-pbr
+BuildRequires: python2-pip
+BuildRequires: python2-wheel
 Requires: python-pyudev
 Requires: pyparted
 Requires: python-ipaddr
@@ -39,6 +41,7 @@ rm -rf *.egg-info
 %build
 export PBR_VERSION=%{version}
 %{__python} setup.py build
+%py2_build_wheel
 
 %install
 export PBR_VERSION=%{version}
@@ -47,6 +50,8 @@ export PBR_VERSION=%{version}
                              --prefix=/usr \
                              --install-data=/usr/share \
                              --single-version-externally-managed
+mkdir -p $RPM_BUILD_ROOT/wheels
+install -m 644 dist/*.whl $RPM_BUILD_ROOT/wheels/
 
 install -d -m 755 %{buildroot}%{local_etc_goenabledd}
 install -p -D -m 755 etc/sysinv/sysinv_goenabled_check.sh %{buildroot}%{local_etc_goenabledd}/sysinv_goenabled_check.sh
@@ -116,3 +121,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/sysinv-upgrade
 %{_bindir}/sysinv-puppet
 %{_bindir}/sysinv-helm
+
+%package wheels
+Summary: %{name} wheels
+
+%description wheels
+Contains python wheels for %{name}
+
+%files wheels
+/wheels/*

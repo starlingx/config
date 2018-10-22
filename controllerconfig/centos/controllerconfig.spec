@@ -9,6 +9,8 @@ URL: unknown
 Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: python-setuptools
+BuildRequires: python2-pip
+BuildRequires: python2-wheel
 Requires: systemd
 Requires: python-netaddr
 Requires: python-keyring
@@ -36,6 +38,7 @@ Controller node configuration
 
 %build
 %{__python} setup.py build
+%py2_build_wheel
 
 # TODO: NO_GLOBAL_PY_DELETE (see python-byte-compile.bbclass), put in macro/script
 %install
@@ -44,6 +47,8 @@ Controller node configuration
                              --prefix=/usr \
                              --install-data=/usr/share \
                              --single-version-externally-managed
+mkdir -p $RPM_BUILD_ROOT/wheels
+install -m 644 dist/*.whl $RPM_BUILD_ROOT/wheels/
 
 install -d -m 755 %{buildroot}%{local_bindir}
 install -p -D -m 700 scripts/keyringstaging %{buildroot}%{local_bindir}/keyringstaging
@@ -84,3 +89,12 @@ rm -rf $RPM_BUILD_ROOT
 %dir %{local_etc_upgraded}
 %{local_etc_upgraded}/*
 %{local_etc_systemd}/*
+
+%package wheels
+Summary: %{name} wheels
+
+%description wheels
+Contains python wheels for %{name}
+
+%files wheels
+/wheels/*
