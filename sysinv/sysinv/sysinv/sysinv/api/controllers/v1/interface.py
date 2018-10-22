@@ -2335,8 +2335,8 @@ def _create(interface, from_profile=False):
 
         # Covers off LAG case here.
         ifclass = new_interface['ifclass']
-        if ifclass == constants.INTERFACE_CLASS_PLATFORM and new_interface['networks']:
-            for network_id in new_interface['networks']:
+        if ifclass == constants.INTERFACE_CLASS_PLATFORM and interface['networks']:
+            for network_id in interface['networks']:
                 network = pecan.request.dbapi.network_get_by_id(network_id)
                 if network.type == constants.NETWORK_TYPE_MGMT:
                     cutils.perform_distributed_cloud_config(pecan.request.dbapi,
