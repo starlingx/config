@@ -34,6 +34,11 @@ class nova_api_proxy::config (
   $user_domain_name          = 'Default',
   $project_domain_name       = 'Default',
   $eventlet_pool_size        = 128,
+  $use_syslog                = false,
+  $log_facility              = 'LOG_USER',
+  $use_stderr                = false,
+  $log_file                  = 'nova-api-proxy.log',
+  $log_dir                   = '/var/log/nova',
 ) {
 
   # SSL Options
@@ -75,6 +80,20 @@ class nova_api_proxy::config (
       'DEFAULT/ssl_cert_file' :    ensure => absent;
       'DEFAULT/ssl_key_file' :     ensure => absent;
       'DEFAULT/ssl_ca_file' :      ensure => absent;
+    }
+  }
+
+  if $use_syslog {
+    proxy_config {
+      'DEFAULT/use_syslog':           value => true;
+      'DEFAULT/syslog_log_facility':  value => $log_facility;
+    }
+  } else {
+    proxy_config {
+      'DEFAULT/use_syslog':           value => false;
+      'DEFAULT/use_stderr':           value => false;
+      'DEFAULT/log_file'  :           value => $log_file;
+      'DEFAULT/log_dir'   :           value => $log_dir;
     }
   }
 
