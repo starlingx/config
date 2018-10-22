@@ -66,6 +66,20 @@ class OpenstackBaseHelm(base.BaseHelm):
         # we generated the password originally.
         return password.encode('utf8', 'strict')
 
+    def _get_service_region_name(self, service):
+        if self._region_config():
+            service_config = self._get_service_config(service)
+            if (service_config is not None and
+                    service_config.region_name is not None):
+                return service_config.region_name
+
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+                service in self.SYSTEM_CONTROLLER_SERVICES):
+            return constants.SYSTEM_CONTROLLER_REGION
+
+        return self._region_name()
+
     def _get_common_users_overrides(self, service):
         overrides = {}
         for user in common.USERS:
