@@ -259,6 +259,9 @@ nova::network::neutron::default_floating_pool: 'public'
 
 nova_api_proxy::config::enabled: false
 nova_api_proxy::config::eventlet_pool_size: 256
+nova_api_proxy::config::use_syslog: true
+nova_api_proxy::config::log_facility: 'local5'
+
 
 # this will trigger simple_setup for cell_v2
 nova::db::sync_api::cellv2_setup: true
