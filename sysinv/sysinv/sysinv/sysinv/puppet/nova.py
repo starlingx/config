@@ -12,6 +12,7 @@ import subprocess
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils
 
 from . import openstack
 from . import interface
@@ -575,7 +576,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         vm_cpus = self._get_host_cpu_list(
             host, function=constants.VM_FUNCTION, threads=True)
         cpu_list = [c.cpu for c in vm_cpus]
-        return "\"%s\"" % self._format_range_set(cpu_list)
+        return "\"%s\"" % utils.format_range_set(cpu_list)
 
     def _get_shared_pcpu_map(self, host):
         shared_cpus = self._get_host_cpu_list(

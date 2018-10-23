@@ -541,8 +541,8 @@ class PlatformPuppet(base.BasePuppet):
             platform_cpu_list_with_quotes = \
                 "\"%s\"" % ','.join([str(c.cpu) for c in platform_cpus_no_threads])
 
-            platform_numa_cpus = self._get_numa_index_list(platform_cpus_no_threads)
-            vswitch_numa_cpus = self._get_numa_index_list(vswitch_cpus_no_threads)
+            platform_numa_cpus = utils.get_numa_index_list(platform_cpus_no_threads)
+            vswitch_numa_cpus = utils.get_numa_index_list(vswitch_cpus_no_threads)
 
             # build a list of platform reserved cpus per numa node
             platform_cores = []
@@ -637,7 +637,7 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         if constants.COMPUTE in utils.get_personalities(host):
             host_memory = self.dbapi.imemory_get_by_ihost(host.id)
-            memory_numa_list = self._get_numa_index_list(host_memory)
+            memory_numa_list = utils.get_numa_index_list(host_memory)
 
             platform_cpus = self._get_platform_cpu_list(host)
             platform_cpu_count = len(platform_cpus)
