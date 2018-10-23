@@ -8,12 +8,12 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from . import common
-from . import openstack
+from . import base
 
 LOG = logging.getLogger(__name__)
 
 
-class MemcachedHelm(openstack.OpenstackBaseHelm):
+class MemcachedHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the memcached chart"""
 
     CHART = constants.HELM_CHART_MEMCACHED
