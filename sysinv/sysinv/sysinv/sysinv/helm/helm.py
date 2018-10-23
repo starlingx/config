@@ -41,6 +41,9 @@ from . import memcached
 from . import openvswitch
 from . import rabbitmq
 
+# Chart source: Custom
+from . import rbd_provisioner
+
 
 LOG = logging.getLogger(__name__)
 
@@ -100,6 +103,8 @@ class HelmOperator(object):
             constants.HELM_CHART_OPENVSWITCH:
                 openvswitch.OpenvswitchHelm(self),
             constants.HELM_CHART_RABBITMQ: rabbitmq.RabbitmqHelm(self),
+            constants.HELM_CHART_RBD_PROVISIONER:
+                rbd_provisioner.RbdProvisionerHelm(self)
         }
 
         # build the list of registered supported charts
