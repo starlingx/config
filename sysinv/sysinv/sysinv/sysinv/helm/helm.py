@@ -27,6 +27,7 @@ from . import heat
 from . import horizon
 from . import ironic
 from . import keystone
+from . import magnum
 from . import neutron
 from . import nova
 
@@ -87,6 +88,7 @@ class HelmOperator(object):
             constants.HELM_CHART_IRONIC: ironic.IronicHelm(self),
             constants.HELM_CHART_KEYSTONE: keystone.KeystoneHelm(self),
             constants.HELM_CHART_LIBVIRT: libvirt.LibvirtHelm(self),
+            constants.HELM_CHART_MAGNUM: magnum.MagnumHelm(self),
             constants.HELM_CHART_MARIADB: mariadb.MariadbHelm(self),
             constants.HELM_CHART_MEMCACHED: memcached.MemcachedHelm(self),
             constants.HELM_CHART_NEUTRON: neutron.NeutronHelm(self),
