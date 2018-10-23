@@ -13,7 +13,6 @@ import filecmp
 import fileinput
 import os
 import glob
-import re
 import shutil
 import stat
 import subprocess
@@ -28,7 +27,7 @@ from sysinv.common import constants as sysinv_constants
 
 from common import log
 from common import constants
-from common.exceptions import BackupFail, BackupWarn, RestoreFail
+from common.exceptions import BackupFail, RestoreFail
 from common.exceptions import KeystoneFail, SysInvFail
 import openstack
 import tsconfig.tsconfig as tsconfig
@@ -204,35 +203,16 @@ def backup_etc_size():
     """ Backup etc size estimate """
     try:
         total_size = utils.directory_get_size('/etc')
-        nova_size = utils.directory_get_size('/etc/nova/instances')
-        # We only backup .xml and .log files under /etc/nova/instances
-        vm_files_re = re.compile(".*\.xml$|.*\.log$")
-        filtered_nova_size = utils.directory_get_size('/etc/nova/instances',
-                                                      vm_files_re)
-
-        return total_size - nova_size + filtered_nova_size
+        return total_size
     except OSError:
         LOG.error("Failed to estimate backup etc size.")
         raise BackupFail("Failed to estimate backup etc size")
 
 
-def filter_etc(tarinfo):
-    """
-    Filters all files from the /etc/nova/instances directory.
-    :param tarinfo: file to check
-    :return: None if file should be excluded from archive, otherwise unchanged
-        tarinfo
-    """
-    if tarinfo.name.startswith('etc/nova/instances'):
-        return None
-    else:
-        return tarinfo
-
-
 def backup_etc(archive):
     """ Backup etc """
     try:
-        archive.add('/etc', arcname='etc', filter=filter_etc)
+        archive.add('/etc', arcname='etc')
 
     except tarfile.TarError:
         LOG.error("Failed to backup etc.")
@@ -253,20 +233,6 @@ def restore_etc_file(archive, dest_dir, etc_file):
     except tarfile.TarError:
         LOG.error("Failed to restore etc file.")
         raise RestoreFail("Failed to restore etc file")
-
-
-def filter_etc_nova_instances(tarinfo):
-    """
-    Filters all files from the /etc/nova/instances directory except .xml and
-    .log files.
-    :param tarinfo: file to check
-    :return: None if file should be excluded from archive, otherwise unchanged
-        tarinfo
-    """
-    if not tarinfo.isdir() and not tarinfo.name.endswith(('.xml', '.log')):
-        return None
-    else:
-        return tarinfo
 
 
 def restore_etc_ssl_dir(archive, configpath=constants.CONFIG_WORKDIR):
@@ -301,156 +267,6 @@ def restore_ceph_external_config_files(archive, staging_dir):
         cp_command = ('cp -Rp ' + os.path.join(ceph_permdir, '*') +
                       ' /etc/ceph/')
         subprocess.call(cp_command, shell=True)
-
-
-def backup_nova_instances(archive):
-    """ Backup /etc/nova/instances directory """
-    try:
-        archive.add(
-            '/etc/nova/instances',
-            arcname=utils.get_controller_hostname() + '_nova_instances',
-            filter=filter_etc_nova_instances)
-
-    except tarfile.TarError:
-        LOG.error("Failed to backup etc.")
-        raise BackupFail("Failed to backup etc")
-
-
-def restore_nova_instances(archive, staging_dir):
-    """ Restore /etc/nova/instances directory """
-
-    member_name = utils.get_controller_hostname() + '_nova_instances'
-    try:
-        # Verify that archive contains this directory
-        try:
-            archive.getmember(member_name)
-        except KeyError:
-            LOG.info("Archive does not contain directory %s" % member_name)
-            # No instance data was backed up on this controller. Continue
-            # with the restore.
-            return
-
-        # Restore to a temporary directory
-        archive.extractall(path=staging_dir,
-                           members=filter_directory(archive, member_name))
-
-        # Copy to /etc/nova/instances. Preserve ownership. Don't check return
-        # code because there may not be any files to copy.
-        cp_command = ('cp -Rp ' + os.path.join(staging_dir, member_name, '*') +
-                      ' /etc/nova/instances/')
-        subprocess.call(cp_command, shell=True)
-    except tarfile.TarError:
-        LOG.exception("Failed to restore /etc/nova/instances.")
-        raise RestoreFail("Failed to restore /etc/nova/instances")
-
-
-def backup_mate_nova_instances_size():
-    """ Backup mate nova instances size estimate """
-
-    # This is a small system configuration. We will also be backing up
-    # .xml and .log files in the /etc/nova directory on the mate
-    # controller. Instead of talking to the mate to get the actual
-    # size, we will just add 1M.
-    return 1024 * 1024
-
-
-def backup_mate_nova_instances(archive, staging_dir):
-    """ Backup /etc/nova/instances on mate controller """
-
-    # This is a small system configuration. Back up the .xml and .log files
-    # in the /etc/nova directory on the mate controller.
-    mate_hostname = utils.get_mate_controller_hostname()
-    tmpdir = tempfile.mkdtemp(dir=staging_dir)
-    try:
-        output = subprocess.check_output(
-            ["rsync",
-             "-amv",
-             "--include",
-             "*.xml",
-             "--include",
-             "*.log",
-             "--include",
-             "*/",
-             "--exclude",
-             "*",
-             "rsync://%s/instances/" % mate_hostname,
-             "%s/" % tmpdir],
-            stderr=subprocess.STDOUT)
-        LOG.info("Synced from mate via rsync: %s" % output)
-        archive.add(tmpdir, arcname=mate_hostname + '_nova_instances')
-
-    except subprocess.CalledProcessError:
-        LOG.exception("Failed to rsync nova instances data from mate.")
-        raise BackupWarn(
-            "Unable to copy nova instances data from mate controller. No "
-            "instances running on the mate controller will be restored if "
-            "this backup is used for a system restore.\n"
-        )
-    except tarfile.TarError:
-        LOG.exception("Failed to backup nova instances data from mate.")
-        raise BackupFail("Failed to backup nova instances data from mate")
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-def extract_mate_nova_instances(archive, directory):
-    """ Extract mate controller's /etc/nova/instances so the mate can
-        restore it when it comes up.
-     """
-    member_name = utils.get_mate_controller_hostname() + '_nova_instances'
-    dest_dir = os.path.join(directory, member_name)
-
-    try:
-        shutil.rmtree(dest_dir, ignore_errors=True)
-        # Verify that archive contains this directory
-        try:
-            archive.getmember(member_name)
-        except KeyError:
-            LOG.warning("Archive does not contain directory %s" % member_name)
-            # No instance data was backed up on the mate controller. Continue
-            # with the restore.
-            return
-
-        archive.extractall(
-            path=directory,
-            members=filter_directory(archive, member_name))
-
-    except (shutil.Error, tarfile.TarError):
-        LOG.exception("Failed to restore %s" % dest_dir)
-        raise RestoreFail("Failed to restore %s" % dest_dir)
-
-
-def backup_nova_size(directory):
-    """
-    Backup nova directory size estimate. Only includes .xml and .log files.
-    :param directory: nova permdir
-    :return: size in bytes of files to be backed up
-    """
-
-    try:
-        # We only backup .xml and .log files under the nova directory
-        vm_files_re = re.compile(".*\.xml$|.*\.log$")
-        nova_size = utils.directory_get_size(directory, vm_files_re)
-
-        return nova_size
-    except OSError:
-        LOG.exception("Failed to estimate nova size.")
-        raise BackupFail("Failed to estimate nova size")
-
-
-def filter_nova(tarinfo):
-    """
-    Filters all files from the nova directory except .xml and
-    .log files.
-    :param tarinfo: file to check
-    :return: None if file should be excluded from archive, otherwise unchanged
-        tarinfo
-    """
-
-    if not tarinfo.isdir() and not tarinfo.name.endswith(('.xml', '.log')):
-        return None
-    else:
-        return tarinfo
 
 
 def backup_config_size(config_permdir):
@@ -1145,9 +961,6 @@ def check_size(archive_dir, cinder_config):
                    backup_cinder_size(cinder_permdir)
                    )
 
-    if utils.is_combined_load():
-        backup_size += backup_mate_nova_instances_size()
-
     archive_dir_free_space = \
         utils.filesystem_get_free_space(archive_dir)
 
@@ -1221,7 +1034,7 @@ def backup(backup_name, archive_dir, clone=False):
                                        backup_name + '_images.tgz')
 
         step = 1
-        total_steps = 16
+        total_steps = 15
 
         if sysinv_constants.SB_TYPE_CEPH in backend_services.keys():
             total_steps += 1
@@ -1273,49 +1086,37 @@ def backup(backup_name, archive_dir, clone=False):
             utils.progress(total_steps, step, 'backup glance', 'DONE')
             step += 1
 
-        # Step 9: Backup nova
-        if utils.is_combined_load() and not clone:
-            # Small system configuration uses /etc/nova/instances on both
-            # controllers for instance data.
-            backup_nova_instances(system_archive)
-            try:
-                backup_mate_nova_instances(system_archive, staging_dir)
-            except BackupWarn as e:
-                warnings += e.message
-        utils.progress(total_steps, step, 'backup nova', 'DONE')
-        step += 1
-
-        # Step 10: Backup home
+        # Step 9: Backup home
         backup_std_dir(system_archive, home_permdir)
         utils.progress(total_steps, step, 'backup home directory', 'DONE')
         step += 1
 
-        # Step 11: Backup patching
+        # Step 10: Backup patching
         if not clone:
             backup_std_dir(system_archive, patching_permdir)
             utils.progress(total_steps, step, 'backup patching', 'DONE')
         step += 1
 
-        # Step 12: Backup patching repo
+        # Step 11: Backup patching repo
         if not clone:
             backup_std_dir(system_archive, patching_repo_permdir)
             utils.progress(total_steps, step, 'backup patching repo', 'DONE')
         step += 1
 
-        # Step 13: Backup extension filesystem
+        # Step 12: Backup extension filesystem
         backup_std_dir(system_archive, extension_permdir)
         utils.progress(total_steps, step, 'backup extension filesystem '
                                           'directory', 'DONE')
         step += 1
 
-        # Step 14: Backup patch-vault filesystem
+        # Step 13: Backup patch-vault filesystem
         if os.path.exists(patch_vault_permdir):
             backup_std_dir(system_archive, patch_vault_permdir)
             utils.progress(total_steps, step, 'backup patch-vault filesystem '
                                               'directory', 'DONE')
         step += 1
 
-        # Step 15: Backup cinder config/LVM config
+        # Step 14: Backup cinder config/LVM config
         # No need to add extra check here as if cinder/LVM is not configured,
         # ../iscsi-target/saveconfig.json will be absent, so this function will
         # do nothing.
@@ -1323,13 +1124,13 @@ def backup(backup_name, archive_dir, clone=False):
         utils.progress(total_steps, step, 'backup cinder/LVM config', 'DONE')
         step += 1
 
-        # Step 16: Backup ceph crush map
+        # Step 15: Backup ceph crush map
         if sysinv_constants.SB_TYPE_CEPH in backend_services.keys():
             backup_ceph_crush_map(system_archive, staging_dir)
             utils.progress(total_steps, step, 'backup ceph crush map', 'DONE')
             step += 1
 
-        # Step 17: Create archive
+        # Step 16: Create archive
         system_archive.close()
         utils.progress(total_steps, step, 'create archive', 'DONE')
         step += 1
@@ -1496,7 +1297,7 @@ def restore_system(backup_file, clone=False):
         os.chdir('/')
 
         step = 1
-        total_steps = 25
+        total_steps = 24
 
         # Step 1: Open archive and verify installed load matches backup
         try:
@@ -1725,32 +1526,25 @@ def restore_system(backup_file, clone=False):
                        newline)
         step += 1
 
-        # Step 18: Restore nova
-        if utils.is_combined_load():
-            restore_nova_instances(archive, staging_dir)
-            extract_mate_nova_instances(archive, tsconfig.CONFIG_PATH)
-        utils.progress(total_steps, step, 'restore nova', 'DONE', newline)
-        step += 1
-
-        # Step 19: Restore ceph crush map
+        # Step 18: Restore ceph crush map
         restore_ceph_crush_map(archive)
         utils.progress(total_steps, step, 'restore ceph crush map', 'DONE',
                        newline)
         step += 1
 
-        # Step 20: Restore home
+        # Step 19: Restore home
         restore_std_dir(archive, home_permdir)
         utils.progress(total_steps, step, 'restore home directory', 'DONE',
                        newline)
         step += 1
 
-        # Step 21: Restore extension filesystem
+        # Step 20: Restore extension filesystem
         restore_std_dir(archive, extension_permdir)
         utils.progress(total_steps, step, 'restore extension filesystem '
                                           'directory', 'DONE', newline)
         step += 1
 
-        # Step 22: Restore patch-vault filesystem
+        # Step 21: Restore patch-vault filesystem
         if file_exists_in_archive(archive,
                                   os.path.basename(patch_vault_permdir)):
             restore_std_dir(archive, patch_vault_permdir)
@@ -1759,13 +1553,13 @@ def restore_system(backup_file, clone=False):
 
         step += 1
 
-        # Step 23: Restore external ceph configuration files.
+        # Step 22: Restore external ceph configuration files.
         restore_ceph_external_config_files(archive, staging_dir)
         utils.progress(total_steps, step, 'restore CEPH external config',
                        'DONE', newline)
         step += 1
 
-        # Step 24: Shutdown file systems
+        # Step 23: Shutdown file systems
         archive.close()
         shutil.rmtree(staging_dir, ignore_errors=True)
         utils.shutdown_file_systems()
@@ -1773,7 +1567,7 @@ def restore_system(backup_file, clone=False):
                        newline)
         step += 1
 
-        # Step 25: Recover services
+        # Step 24: Recover services
         utils.mtce_restart()
         utils.mark_config_complete()
         time.sleep(120)

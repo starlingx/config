@@ -187,8 +187,9 @@ def do_host_lvg_delete(cc, args):
 @utils.arg('-s', '--instances_lv_size_gib',
            metavar='<instances_lv size in GiB>',
            help=("Set the desired size (in GiB) of the instances LV that is "
-                 "used for /etc/nova/instances. Example: For a 50GB volume, "
-                 "use 50. Required when instance backing is \"lvm\". "
+                 "used for /var/lib/nova/instances. "
+                 "Example: For a 50GB volume, use 50. "
+                 "Required when instance backing is \"lvm\". "
                  "[nova-local]"))
 @utils.arg('-l', '--lvm_type',
            metavar='<lvm_type>',

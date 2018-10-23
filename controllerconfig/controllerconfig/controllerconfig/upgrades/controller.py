@@ -1485,9 +1485,6 @@ def upgrade_controller_simplex(backup_file):
     backup_restore.restore_ceilometer(archive,
                                       backup_restore.ceilometer_permdir)
 
-    backup_restore.restore_nova_instances(archive, staging_dir)
-    backup_restore.extract_mate_nova_instances(archive, CONFIG_PATH)
-
     backup_restore.restore_std_dir(archive, backup_restore.home_permdir)
 
     archive.close()
