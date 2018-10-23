@@ -21,6 +21,16 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
         common.HELM_NS_OPENSTACK
     ]
 
+    SERVICE_NAME = 'libvirt'
+
+    @property
+    def docker_repo_source(self):
+        return common.DOCKER_SRC_STX
+
+    @property
+    def docker_repo_tag(self):
+        return common.DOCKER_SRCS[self.docker_repo_source][common.IMG_TAG_KEY]
+
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 
@@ -28,12 +38,24 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'conf': {
+                    'libvirt': {
+                        'listen_addr': '0.0.0.0'
+                    },
                     'ceph': {
-                        'enabled': 'false'
+                        'enabled': False
+                    },
+                    'qemu': {
+                        'user': "root",
+                        'group': "root",
+                        'cgroup_controllers': ["cpu", "cpuacct"],
+                        'namespaces': [],
+                        'clear_emulator_capabilities': 0
                     }
                 }
             }
         }
+
+        self._get_images_overrides(overrides[common.HELM_NS_OPENSTACK])
 
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]
@@ -42,3 +64,13 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_images_overrides(self, overrides_dict):
+        if self.docker_repo_source != common.DOCKER_SRC_OSH:
+            overrides_dict.update({
+                'images': {
+                    'tags': {
+                        'libvirt': self.docker_image
+                    }
+                }
+            })
