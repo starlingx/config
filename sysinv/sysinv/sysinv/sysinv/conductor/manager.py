@@ -1510,6 +1510,9 @@ class ConductorManager(service.PeriodicService):
                 # unlocked.
                 self._ceph.configure_osd_pools()
 
+                # Generate CEPH keys for k8s pools.
+                self.check_and_update_rbd_provisioner(context)
+
                 # Generate host configuration files
                 self._puppet.update_host_config(host)
         else:
@@ -4973,6 +4976,41 @@ class ConductorManager(service.PeriodicService):
             elif bk.backend in self._stor_bck_op_timeouts:
                 del self._stor_bck_op_timeouts[bk.backend]
 
+    def get_k8s_namespaces(self, context):
+        """ Get Kubernetes namespaces
+        :returns: list of namespaces
+        """
+        try:
+            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                   'get', 'namespaces', '-o',
+                   'go-template=\'{{range .items}}{{.metadata.name}}\'{{end}}\'']
+            stdout, _ = cutils.execute(*cmd, run_as_root=False)
+            namespaces = [n for n in stdout.split("\'") if n]
+            return namespaces
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException(
+                _("Error getting Kubernetes list of namespaces, "
+                  "Details: %s" % str(e)))
+
+    def check_and_update_rbd_provisioner(self, context, new_storceph=None):
+        """ Check and/or update RBD Provisioner configuration for all Ceph
+        internal backends.
+
+        This function should be called in two cases:
+           1. When making any changes to the rbd-provisioner service.
+           2. When delaying changes due to Ceph not being up.
+
+        To allow delayed executions we check DB entries for changes and only
+        then proceed with time consuming modifications.
+
+        Note: This function assumes a functional Ceph cluster
+
+        :param   new_storceph a storage backend object as_dict() with updated
+                 data. This is required as database updates can happen later.
+        :returns an updated version of new_storceph or None
+        """
+        return self._ceph.check_and_update_rbd_provisioner(new_storceph)
+
     def configure_isystemname(self, context, systemname):
         """Configure the systemname with the supplied data.
 
@@ -5045,7 +5083,8 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi, constants.SB_TYPE_LVM):
             pools = self._openstack.get_cinder_pools()
             for pool in pools:
-                if getattr(pool, 'volume_backend_name', '') == constants.CINDER_BACKEND_LVM:
+                if (getattr(pool, 'volume_backend_name', '') ==
+                        constants.CINDER_BACKEND_LVM):
                     return pool.to_dict()
 
         return None

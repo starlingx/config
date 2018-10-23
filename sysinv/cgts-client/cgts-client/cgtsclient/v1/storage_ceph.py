@@ -13,14 +13,14 @@ from cgtsclient import exc
 CREATION_ATTRIBUTES = ['confirmed', 'name', 'services', 'capabilities',
                        'tier_uuid', 'cinder_pool_gib', 'glance_pool_gib',
                        'ephemeral_pool_gib', 'object_pool_gib',
-                       'object_gateway']
+                       'kube_pool_gib', 'object_gateway']
 DISPLAY_ATTRIBUTES = ['object_gateway', 'ceph_total_space_gib',
                       'object_pool_gib', 'cinder_pool_gib',
-                      'glance_pool_gib', 'ephemeral_pool_gib',
+                      'kube_pool_gib', 'glance_pool_gib', 'ephemeral_pool_gib',
                       'tier_name', 'tier_uuid']
 PATCH_ATTRIBUTES = ['object_gateway', 'object_pool_gib',
                     'cinder_pool_gib', 'glance_pool_gib',
-                    'ephemeral_pool_gib']
+                    'ephemeral_pool_gib', 'kube_pool_gib']
 
 
 class StorageCeph(base.Resource):

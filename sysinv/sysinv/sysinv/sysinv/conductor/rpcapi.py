@@ -874,6 +874,35 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_ceph_services', sb_uuid=sb_uuid))
 
+    def get_k8s_namespaces(self, context):
+        """Synchronously, get Kubernetes namespaces
+
+        :returns: list of namespacea
+        """
+        return self.call(context,
+                         self.make_msg('get_k8s_namespaces'))
+
+    def check_and_update_rbd_provisioner(self, context, new_storceph=None):
+        """ Check and/or update RBD Provisioner is correctly configured
+        for all Ceph internal backends.
+
+        This function should be called in two cases:
+           1. When making any change to rbd-provisioner
+           2. When delaying changes due to Ceph not being up
+
+        To allow delayed executions we check DB entries for changes and only
+        then proceed with time consuming modifications.
+
+        Note: This function assumes a fully functional Ceph cluster
+
+        :param   new_storceph a storage backend object as_dict() with updated
+                 data. This is needed as database updates can happen later.
+        :returns an updated version of new_storceph
+        """
+        return self.call(context,
+                         self.make_msg('check_and_update_rbd_provisioner',
+                                       new_storceph=new_storceph))
+
     def report_config_status(self, context, iconfig,
                              status, error=None):
         """ Callback from Sysinv Agent on manifest apply success or failure

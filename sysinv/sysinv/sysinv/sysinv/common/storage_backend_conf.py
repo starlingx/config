@@ -17,6 +17,7 @@ import ast
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils as cutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
@@ -435,3 +436,209 @@ class StorageBackendConfig(object):
             return True
         else:
             return False
+
+
+class K8RbdProvisioner(object):
+    """ Utility methods for getting the k8 overrides for internal ceph
+    from a corresponding storage backend.
+    """
+
+    @staticmethod
+    def getListFromNamespaces(bk, get_configured=False):
+        cap = bk['capabilities']
+        capab_type = constants.K8S_RBD_PROV_NAMESPACES if not get_configured else \
+            constants.K8S_RBD_PROV_NAMESPACES_READY
+
+        return [] if not cap.get(capab_type) else \
+            cap[capab_type].split(',')
+
+    @staticmethod
+    def setNamespacesFromList(bk, namespace_list, set_configured=False):
+        capab_type = constants.K8S_RBD_PROV_NAMESPACES if not set_configured else \
+            constants.K8S_RBD_PROV_NAMESPACES_READY
+        bk[capab_type] = ','.join(namespace_list)
+        return bk[capab_type]
+
+    @staticmethod
+    def getNamespacesDelta(bk):
+        """ Get changes in namespaces
+        :returns namespaces_to_add, namespaces_to_rm
+        """
+        namespaces = K8RbdProvisioner.getListFromNamespaces(bk)
+        namespaces_configured = K8RbdProvisioner.getListFromNamespaces(bk, get_configured=True)
+        namespaces_to_add = set(namespaces) - set(namespaces_configured)
+        namespaces_to_rm = set(namespaces_configured) - set(namespaces)
+        return namespaces_to_add, namespaces_to_rm
+
+    @staticmethod
+    def get_storage_class_name(bk):
+        """ Get the name of the storage class for an rbd provisioner
+        :param bk: Ceph storage backend object
+        :returns: name of the rbd provisioner
+        """
+        if bk['capabilities'].get(constants.K8S_RBD_PROV_STORAGECLASS_NAME):
+            name = bk['capabilities'][constants.K8S_RBD_PROV_STORAGECLASS_NAME]
+        elif bk.name == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
+            name = constants.K8S_RBD_PROV_STOR_CLASS_NAME
+        else:
+            name = bk.name + '-' + constants.K8S_RBD_PROV_STOR_CLASS_NAME
+
+        return str(name)
+
+    @staticmethod
+    def get_pool(bk):
+        """ Get the name of the ceph pool for an rbd provisioner
+        This naming convention is valid only for internal backends
+        :param bk: Ceph storage backend object
+        :returns: name of the rbd provisioner
+        """
+        if bk['name'] == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
+            return constants.CEPH_POOL_KUBE_NAME
+        else:
+            return str(constants.CEPH_POOL_KUBE_NAME + '-' + bk['name'])
+
+    @staticmethod
+    def get_user_id(bk):
+        """ Get the non admin user name for an rbd provisioner secret
+        :param bk: Ceph storage backend object
+        :returns: name of the rbd provisioner
+        """
+        if bk['name'] == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
+            name = K8RbdProvisioner.get_pool(bk)
+        else:
+            name = K8RbdProvisioner.get_pool(bk)
+
+        prefix = 'ceph-pool'
+        return str(prefix + '-' + name)
+
+    @staticmethod
+    def get_user_secret_name(bk):
+        """ Get the name for the non admin secret key of a pool
+        :param bk: Ceph storage backend object
+        :returns: name of k8 secret
+        """
+        if bk['name'] == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
+            name = K8RbdProvisioner.get_pool(bk)
+        else:
+            name = K8RbdProvisioner.get_pool(bk)
+
+        base_name = 'ceph-pool'
+        return str(base_name + '-' + name)
+
+    @staticmethod
+    def get_k8s_secret(secret_name, namespace=None):
+        try:
+            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                   'get', 'secrets', secret_name]
+            if namespace:
+                cmd.append('--namespace=%s' % namespace)
+            stdout, _ = cutils.execute(*cmd, run_as_root=False)
+        except exception.ProcessExecutionError as e:
+            if "not found" in e.stderr.lower():
+                return None
+            raise exception.SysinvException(
+                "Error getting secret: %s in namespace: %s, "
+                "Details: %s" % (secret_name, namespace, str(e)))
+
+        return stdout
+
+    @staticmethod
+    def create_k8s_pool_secret(bk, key=None, namespace=None, force=False):
+        user_secret_name = K8RbdProvisioner.get_user_secret_name(bk)
+
+        if K8RbdProvisioner.get_k8s_secret(user_secret_name,
+                                           namespace=namespace):
+            if not force:
+                return
+            # Key already exists
+            LOG.warning("K8S Secret for backend: %s and namespace: %s exists and "
+                        "should not be present! Removing existing and creating "
+                        "a new one." % (bk['name'], namespace))
+            K8RbdProvisioner.remove_k8s_pool_secret(bk, namespace)
+
+        LOG.info("Creating Kubernetes RBD Provisioner Ceph pool secret "
+                 "for namespace: %s." % namespace)
+        try:
+            # Create the k8s secret for the given Ceph pool and namespace.
+            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                   'create', 'secret', 'generic',
+                   user_secret_name,
+                   '--type=kubernetes.io/rbd']
+            if key:
+                cmd.append('--from-literal=key=%s' % key)
+            if namespace:
+                cmd.append('--namespace=%s' % namespace)
+            _, _ = cutils.execute(*cmd, run_as_root=False)
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException(
+                "Could not create Kubernetes secret: %s for backend: %s, "
+                "namespace: %s, Details: %s." %
+                (user_secret_name, bk['name'], namespace, str(e)))
+
+    @staticmethod
+    def remove_k8s_pool_secret(bk, namespace):
+        user_secret_name = K8RbdProvisioner.get_user_secret_name(bk)
+        if not K8RbdProvisioner.get_k8s_secret(user_secret_name,
+                                               namespace=namespace):
+            LOG.warning("K8S secret for backend: %s and namespace: %s "
+                        "does not exists. Skipping removal." % (bk['name'], namespace))
+            return
+        try:
+            # Remove the k8s secret from given namepsace.
+            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                   'delete', 'secret', user_secret_name,
+                   '--namespace=%s' % namespace]
+            _, _ = cutils.execute(*cmd, run_as_root=False)
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException(
+                "Could not remove Kubernetes secret: %s for backend: %s, "
+                "namespace: %s, Details: %s." %
+                (user_secret_name, bk['name'], namespace, str(e)))
+
+    @staticmethod
+    def create_k8s_admin_secret():
+        admin_secret_name = constants.K8S_RBD_PROV_ADMIN_SECRET_NAME
+        namespace = constants.K8S_RBD_PROV_NAMESPACE_DEFAULT
+
+        if K8RbdProvisioner.get_k8s_secret(
+                admin_secret_name, namespace=namespace):
+            # Key already exists
+            return
+
+        LOG.info("Creating Kubernetes RBD Provisioner Ceph admin secret.")
+        try:
+            # TODO(oponcea): Get admin key on Ceph clusters with
+            # enabled authentication. For now feed an empty key
+            # to satisfy RBD Provisioner requirements.
+            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                   'create', 'secret', 'generic',
+                   admin_secret_name,
+                   '--type=kubernetes.io/rbd',
+                   '--from-literal=key=']
+            cmd.append('--namespace=%s' % namespace)
+            _, _ = cutils.execute(*cmd, run_as_root=False)
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException(
+                "Could not create Kubernetes secret: %s, namespace: %s,"
+                "Details: %s" % (admin_secret_name, namespace, str(e)))
+
+    @staticmethod
+    def remove_k8s_admin_secret():
+        admin_secret_name = constants.K8S_RBD_PROV_ADMIN_SECRET_NAME
+        namespace = constants.K8S_RBD_PROV_NAMESPACE_DEFAULT
+
+        if not K8RbdProvisioner.get_k8s_secret(
+                admin_secret_name, namespace=namespace):
+            # Secret does not exist.
+            return
+
+        LOG.info("Removing Kubernetes RBD Provisioner Ceph admin secret.")
+        try:
+            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                   'delete', 'secret', admin_secret_name,
+                   '--namespace=%s' % namespace]
+            _, _ = cutils.execute(*cmd, run_as_root=False)
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException(
+                "Could not delete Kubernetes secret: %s, namespace: %s,"
+                "Details: %s." % (admin_secret_name, namespace, str(e)))

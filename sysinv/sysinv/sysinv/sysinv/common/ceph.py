@@ -699,3 +699,14 @@ class CephApiOperator(object):
         num_active_monitors = len(active_monitors)
 
         return num_active_monitors, required_monitors, active_monitors
+
+    def list_osd_pools(self):
+        """List all osd pools."""
+        resp, pools = self._ceph_api.osd_pool_ls(body='json')
+        if not resp.ok:
+            e = exception.CephPoolListFailure(
+                reason=resp.reason)
+            LOG.error(e)
+            raise e
+        else:
+            return pools['output']

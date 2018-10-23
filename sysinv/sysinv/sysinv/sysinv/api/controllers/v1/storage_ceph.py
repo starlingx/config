@@ -19,8 +19,9 @@
 # Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
-import jsonpatch
 import copy
+import jsonpatch
+import re
 
 from oslo_utils import strutils
 from oslo_serialization import jsonutils
@@ -43,6 +44,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
@@ -52,13 +54,25 @@ import controller_fs as controller_fs_api
 
 LOG = log.getLogger(__name__)
 
-HIERA_DATA = {
+CAPABILITIES = {
     'backend': [constants.CEPH_BACKEND_REPLICATION_CAP,
                 constants.CEPH_BACKEND_MIN_REPLICATION_CAP],
     constants.SB_SVC_CINDER: [],
     constants.SB_SVC_GLANCE: [],
     constants.SB_SVC_SWIFT: [],
     constants.SB_SVC_NOVA: [],
+    constants.SB_SVC_RBD_PROVISIONER: [constants.K8S_RBD_PROV_NAMESPACES,
+                                       constants.K8S_RBD_PROV_STORAGECLASS_NAME],
+}
+
+MANDATORY_CAP = {
+    'backend': [constants.CEPH_BACKEND_REPLICATION_CAP,
+                constants.CEPH_BACKEND_MIN_REPLICATION_CAP],
+    constants.SB_SVC_CINDER: [],
+    constants.SB_SVC_GLANCE: [],
+    constants.SB_SVC_SWIFT: [],
+    constants.SB_SVC_NOVA: [],
+    constants.SB_SVC_RBD_PROVISIONER: [],
 }
 
 
@@ -104,6 +118,9 @@ class StorageCeph(base.APIBase):
     object_pool_gib = int
     "The object gateway pool GiB of storage ceph - ceph object gateway pool "
     "quota."
+
+    kube_pool_gib = int
+    "The k8s pool GiB of storage ceph - ceph pool quota for k8s."
 
     object_gateway = bool
     "If object gateway is configured."
@@ -204,6 +221,7 @@ class StorageCeph(base.APIBase):
                                            'glance_pool_gib',
                                            'ephemeral_pool_gib',
                                            'object_pool_gib',
+                                           'kube_pool_gib',
                                            'object_gateway',
                                            'ceph_total_space_gib',
                                            'tier_name',
@@ -361,9 +379,9 @@ def _get_options_string(storage_ceph):
     return opt_str
 
 
-def _discover_and_validate_backend_hiera_data(caps_dict, confirmed):
+def _discover_and_validate_backend_config_data(caps_dict, confirmed):
     # Validate parameters
-    for k in HIERA_DATA['backend']:
+    for k in CAPABILITIES['backend']:
         v = caps_dict.get(k, None)
         if not v:
             raise wsme.exc.ClientSideError("Missing required backend "
@@ -417,37 +435,74 @@ def _discover_and_validate_backend_hiera_data(caps_dict, confirmed):
                                              'ceph backend'))
 
 
-def _discover_and_validate_cinder_hiera_data(caps_dict):
-    # Currently there is no backend specific hiera_data for this backend
+def _discover_and_validate_cinder_capabilities(caps_dict, storage_ceph):
+    # Currently there is no backend specific data for this backend
     pass
 
 
-def _discover_and_validate_glance_hiera_data(caps_dict):
-    # Currently there is no backend specific hiera_data for this backend
+def _discover_and_validate_glance_capabilities(caps_dict, storage_ceph):
+    # Currently there is no backend specific data for this backend
     pass
 
 
-def _discover_and_validate_swift_hiera_data(caps_dict):
-    # Currently there is no backend specific hiera_data for this backend
+def _discover_and_validate_swift_capabilities(caps_dict, storage_ceph):
+    # Currently there is no backend specific data for this backend
     pass
 
 
-def _discover_and_validate_nova_hiera_data(caps_dict):
-    # Currently there is no backend specific hiera_data for this backend
+def _discover_and_validate_nova_capabilities(caps_dict, storage_ceph):
+    # Currently there is no backend specific data for this backend
     pass
+
+
+def _discover_and_validate_rbd_provisioner_capabilities(caps_dict, storage_ceph):
+    # Use same regex that Kubernetes uses to validate its labels
+    r = re.compile(r'[a-z0-9]([-a-z0-9]*[a-z0-9])')
+    msg_help = ("Each name or label must consist of lower case "
+                "alphanumeric characters or '-', and must start "
+                "and end with an alphanumeric character.")
+
+    # Check for a valid list of namespaces
+    if constants.K8S_RBD_PROV_NAMESPACES in caps_dict:
+        namespaces = caps_dict[constants.K8S_RBD_PROV_NAMESPACES].split(',')
+        for namespace in namespaces:
+            if not r.match(namespace):
+                msg = _("Invalid list of namespaces provided: '%s' please "
+                        "provide a valid comma separated list of Kubernetes "
+                        "namespaces. %s" % (namespaces, msg_help))
+                raise wsme.exc.ClientSideError(msg)
+
+    if constants.K8S_RBD_PROV_STORAGECLASS_NAME in caps_dict:
+        # Check for a valid RBD StorageClass name
+        name = caps_dict[constants.K8S_RBD_PROV_STORAGECLASS_NAME]
+        if not r.match(name):
+                msg = _("Invalid RBD StorageClass name '%s'. %s" %
+                        (name, msg_help))
+                raise wsme.exc.ClientSideError(msg)
+
+        # Check the uniqueness of RBD StorageClass name in DB.
+        if constants.K8S_RBD_PROV_STORAGECLASS_NAME in caps_dict:
+            ceph_backends = [bk for bk in pecan.request.dbapi.storage_backend_get_list()
+                             if bk.backend == constants.SB_TYPE_CEPH and
+                             bk.id != storage_ceph['id']]
+            storclass_names = [bk.capabilities.get(constants.K8S_RBD_PROV_STORAGECLASS_NAME)
+                               for bk in ceph_backends]
+            if name in storclass_names:
+                msg = _("RBD StorageClass name '%s'is already used by another backend." % name)
+                raise wsme.exc.ClientSideError(msg)
 
 
 def _check_backend_ceph(req, storage_ceph, confirmed=False):
     # check for the backend parameters
     capabilities = storage_ceph.get('capabilities', {})
 
-    # Discover the latest hiera_data for the supported service
-    _discover_and_validate_backend_hiera_data(capabilities, confirmed)
+    # Discover the latest config data for the supported service
+    _discover_and_validate_backend_config_data(capabilities, confirmed)
 
-    for k in HIERA_DATA['backend']:
+    for k in CAPABILITIES['backend']:
         if not capabilities.get(k, None):
-            raise wsme.exc.ClientSideError("Missing required backend "
-                                           "parameter: %s" % k)
+            raise wsme.exc.ClientSideError(_("Missing required backend "
+                                           "parameter: %s" % k))
 
     # Check restrictions based on the primary or seconday backend.:
     if api_helper.is_primary_ceph_backend(storage_ceph['name']):
@@ -469,20 +524,21 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
     req_services = api_helper.getListFromServices(storage_ceph)
     for svc in req_services:
         if svc not in supported_svcs:
-            raise wsme.exc.ClientSideError("Service %s is not supported for the"
-                                           " %s backend %s" %
-                                           (svc, constants.SB_TYPE_CEPH,
-                                            storage_ceph['name']))
+            raise wsme.exc.ClientSideError(
+                _("Service %s is not supported for the %s backend %s" %
+                  (svc, constants.SB_TYPE_CEPH, storage_ceph['name'])))
 
-        # Service is valid. Discover the latest hiera_data for the supported service
-        discover_func = eval('_discover_and_validate_' + svc + '_hiera_data')
-        discover_func(capabilities)
+        # Service is valid. Discover the latest config data for the supported
+        # service.
+        discover_func = eval(
+            '_discover_and_validate_' + svc.replace('-', '_') + '_capabilities')
+        discover_func(capabilities, storage_ceph)
 
         # Service is valid. Check the params
-        for k in HIERA_DATA[svc]:
+        for k in MANDATORY_CAP[svc]:
             if not capabilities.get(k, None):
-                raise wsme.exc.ClientSideError("Missing required %s service "
-                                               "parameter: %s" % (svc, k))
+                raise wsme.exc.ClientSideError(
+                    _("Missing required %s service parameter: %s" % (svc, k)))
 
     # TODO (rchurch): Remove this in R6 with object_gateway refactoring. Should
     # be enabled only if the service is present in the service list. Special
@@ -505,8 +561,8 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
                         {'name': constants.SB_TIER_DEFAULT_NAMES[
                             constants.SB_TIER_TYPE_CEPH]})
                 except exception.StorageTierNotFoundByName:
-                    raise wsme.exc.ClientSideError(_("Default tier not found for"
-                                                     " this backend."))
+                    raise wsme.exc.ClientSideError(
+                        _("Default tier not found for this backend."))
             else:
                 raise wsme.exc.ClientSideError(_("No tier specified for this "
                                                  "backend."))
@@ -538,28 +594,95 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
 
 
 def check_and_update_services(storage_ceph):
+    """Update backends' services that allow a single service instance."""
     req_services = api_helper.getListFromServices(storage_ceph)
 
-    # If glance/nova is already a service on an external ceph backend, remove it from there
     check_svcs = [constants.SB_SVC_GLANCE, constants.SB_SVC_NOVA]
     check_data = {constants.SB_SVC_GLANCE: ['glance_pool'],
                   constants.SB_SVC_NOVA: ['ephemeral_pool']}
+
     for s in check_svcs:
         if s in req_services:
-            sb_list = pecan.request.dbapi.storage_backend_get_list()
+            for sb in pecan.request.dbapi.storage_backend_get_list():
+                if (sb.backend == constants.SB_TYPE_CEPH_EXTERNAL and
+                        s in sb.get('services')):
+                    services = api_helper.getListFromServices(sb)
+                    services.remove(s)
+                    cap = sb.capabilities
+                    for k in check_data[s]:
+                        cap.pop(k, None)
+                    values = {'services': ','.join(services),
+                              'capabilities': cap}
+                    pecan.request.dbapi.storage_backend_update(
+                        sb.uuid, values)
 
-            if sb_list:
-                for sb in sb_list:
-                    if (sb.backend == constants.SB_TYPE_CEPH_EXTERNAL and
-                            s in sb.get('services')):
-                        services = api_helper.getListFromServices(sb)
-                        services.remove(s)
-                        cap = sb.capabilities
-                        for k in check_data[s]:
-                            cap.pop(k, None)
-                        values = {'services': ','.join(services),
-                                  'capabilities': cap, }
-                        pecan.request.dbapi.storage_backend_update(sb.uuid, values)
+
+def validate_k8s_namespaces(values):
+    """ Check if a list of namespaces is configured in Kubernetes """
+    configured_namespaces = \
+        pecan.request.rpcapi.get_k8s_namespaces(pecan.request.context)
+    invalid_namespaces = []
+    for namespace in values:
+        if namespace not in configured_namespaces:
+            invalid_namespaces.append(namespace)
+
+    if invalid_namespaces:
+        msg = _("Error configuring rbd-provisioner service. "
+                "The following Kubernetes namespaces are not "
+                "configured: %s." % ', '.join(invalid_namespaces))
+        raise wsme.exc.ClientSideError(msg)
+
+
+def _check_and_update_rbd_provisioner(new_storceph, remove=False):
+    """ Check and/or update RBD Provisioner configuration """
+    capab = new_storceph['capabilities']
+    if remove:
+        # Remove the RBD Provisioner
+        del capab[constants.K8S_RBD_PROV_NAMESPACES]
+        if constants.K8S_RBD_PROV_STORAGECLASS_NAME in capab:
+            del capab[constants.K8S_RBD_PROV_STORAGECLASS_NAME]
+    else:
+        bk_services = api_helper.getListFromServices(new_storceph)
+        if constants.SB_SVC_RBD_PROVISIONER not in bk_services:
+            # RBD Provisioner service not involved, return early
+            return new_storceph
+
+        # Use default namespace if not specified
+        if not capab.get(constants.K8S_RBD_PROV_NAMESPACES):
+            capab[constants.K8S_RBD_PROV_NAMESPACES] = \
+                constants.K8S_RBD_PROV_NAMESPACE_DEFAULT
+
+        namespaces_to_add, namespaces_to_rm = K8RbdProvisioner.getNamespacesDelta(new_storceph)
+        if not namespaces_to_add and not namespaces_to_rm:
+            # No changes to namespaces, return early
+            return new_storceph
+
+        validate_k8s_namespaces(K8RbdProvisioner.getListFromNamespaces(new_storceph))
+
+    # Check if cluster is configured
+    storage_hosts = pecan.request.dbapi.ihost_get_by_personality(
+        constants.STORAGE
+    )
+    available_storage_hosts = [h for h in storage_hosts if
+                               h['availability'] == constants.AVAILABILITY_AVAILABLE]
+    if not available_storage_hosts:
+        LOG.info("No storage hosts installed, delaying "
+                 "rbd-provisioner configuration.")
+        # Configuration will be resumed when first storage node comes up and
+        # after pools are configured.
+        return new_storceph
+
+    # Cluster is configured, run live.
+    try:
+        new_storceph = \
+            pecan.request.rpcapi.check_and_update_rbd_provisioner(pecan.request.context,
+                                                                  new_storceph)
+    except Exception as e:
+        msg = _("Error configuring rbd-provisioner service. Please "
+                "investigate and try again: %s." % str(e))
+        raise wsme.exc.ClientSideError(msg)
+
+    return new_storceph
 
 
 def _apply_backend_changes(op, sb_obj):
@@ -644,7 +767,7 @@ def _set_defaults(storage_ceph):
 
     def_capabilities = {
         constants.CEPH_BACKEND_REPLICATION_CAP: def_replication,
-        constants.CEPH_BACKEND_MIN_REPLICATION_CAP: def_min_replication
+        constants.CEPH_BACKEND_MIN_REPLICATION_CAP: def_min_replication,
     }
 
     defaults = {
@@ -658,16 +781,20 @@ def _set_defaults(storage_ceph):
         'glance_pool_gib': None,
         'ephemeral_pool_gib': None,
         'object_pool_gib': None,
+        'kube_pool_gib': None,
         'object_gateway': False,
     }
     sc = api_helper.set_backend_data(storage_ceph,
                                      defaults,
-                                     HIERA_DATA,
+                                     CAPABILITIES,
                                      constants.SB_CEPH_SVCS_SUPPORTED)
     return sc
 
 
 def _create(storage_ceph):
+    # Validate provided capabilities at creation
+    _capabilities_semantic_checks(storage_ceph.get('capabilities', {}))
+
     # Set the default for the storage backend
     storage_ceph = _set_defaults(storage_ceph)
 
@@ -681,6 +808,10 @@ def _create(storage_ceph):
     _check_backend_ceph(constants.SB_API_OP_CREATE,
                         storage_ceph,
                         storage_ceph.pop('confirmed', False))
+
+    # Setup new rbd-provisioner keys and services early on.
+    # Failures here are critical and no backend should be created
+    storage_ceph = _check_and_update_rbd_provisioner(storage_ceph)
 
     check_and_update_services(storage_ceph)
 
@@ -717,22 +848,33 @@ def _create(storage_ceph):
 # Update/Modify/Patch
 #
 
-def _hiera_data_semantic_checks(caps_dict):
-    """ Validate each individual data value to make sure it's of the correct
-        type and value.
-    """
-    # Filter out unsupported parameters which have been passed
-    valid_hiera_data = {}
+def _capabilities_semantic_checks(caps_dict):
+    """ Early check of capabilities """
 
+    # Get supported capabilities
+    valid_data = {}
     for key in caps_dict:
-        if key in HIERA_DATA['backend']:
-            valid_hiera_data[key] = caps_dict[key]
+        if key in CAPABILITIES['backend']:
+            valid_data[key] = caps_dict[key]
             continue
         for svc in constants.SB_CEPH_SVCS_SUPPORTED:
-            if key in HIERA_DATA[svc]:
-                valid_hiera_data[key] = caps_dict[key]
+            if key in CAPABILITIES[svc]:
+                valid_data[key] = caps_dict[key]
 
-    return valid_hiera_data
+    # Raise exception if unsupported capabilities are passed
+    invalid_data = set(caps_dict.keys()) - set(valid_data.keys())
+    if valid_data.keys() != caps_dict.keys():
+        # Build short customer message to help with supported capabilities
+        # he can then search for them in the manual.
+        params = "    backend: %s\n" % ", ".join(CAPABILITIES['backend'])
+        for svc in constants.SB_CEPH_SVCS_SUPPORTED:
+            if CAPABILITIES[svc]:
+                params += "    %s service: %s\n" % (svc, ", ".join(CAPABILITIES[svc]))
+        msg = ("Invalid Ceph parameters: '%s', supported "
+               "parameters:\n%s" % (", ".join(invalid_data), params))
+        raise wsme.exc.ClientSideError(msg)
+
+    return valid_data
 
 
 def _pre_patch_checks(storage_ceph_obj, patch_obj):
@@ -743,7 +885,7 @@ def _pre_patch_checks(storage_ceph_obj, patch_obj):
             patch_caps_dict = p['value']
 
             # Validate the change to make sure it valid
-            patch_caps_dict = _hiera_data_semantic_checks(patch_caps_dict)
+            patch_caps_dict = _capabilities_semantic_checks(patch_caps_dict)
 
             # If 'replication' parameter is provided with a valid value and optional
             # 'min_replication' parameter is not provided, default its value
@@ -782,7 +924,10 @@ def _pre_patch_checks(storage_ceph_obj, patch_obj):
 
             # Make sure we aren't removing a service.on the primary tier. - Not currently supported.
             if len(current_svcs - updated_svcs):
-                if api_helper.is_primary_ceph_tier(storage_ceph_obj.tier_name):
+                new_svc = current_svcs - updated_svcs
+                if (api_helper.is_primary_ceph_tier(
+                        storage_ceph_obj.tier_name) and
+                        new_svc != set([constants.SB_SVC_RBD_PROVISIONER])):
                     raise wsme.exc.ClientSideError(
                         _("Removing %s is not supported.") % ','.join(
                             current_svcs - updated_svcs))
@@ -794,7 +939,8 @@ def _is_quotaconfig_changed(ostorceph, storceph):
         if (storceph.cinder_pool_gib != ostorceph.cinder_pool_gib or
                 storceph.glance_pool_gib != ostorceph.glance_pool_gib or
                 storceph.ephemeral_pool_gib != ostorceph.ephemeral_pool_gib or
-                storceph.object_pool_gib != ostorceph.object_pool_gib):
+                storceph.object_pool_gib != ostorceph.object_pool_gib or
+                storceph.kube_pool_gib != ostorceph.kube_pool_gib):
             return True
     return False
 
@@ -812,13 +958,15 @@ def _check_pool_quotas_data(ostorceph, storceph):
     pools_key = ['cinder_pool_gib',
                  'glance_pool_gib',
                  'ephemeral_pool_gib',
-                 'object_pool_gib']
+                 'object_pool_gib',
+                 'kube_pool_gib']
     for k in pools_key:
         if storceph[k]:
-            if (k != 'cinder_pool_gib' and not
+            if (k != 'cinder_pool_gib' and k != 'kube_pool_gib' and not
                     api_helper.is_primary_ceph_backend(storceph['name'])):
-                raise wsme.exc.ClientSideError(_("Secondary ceph backend only "
-                                                 "supports cinder pool."))
+                raise wsme.exc.ClientSideError(_(
+                    "Secondary ceph backend only supports cinder and kube "
+                    "pools."))
 
             if (not cutils.is_int_like(storceph[k]) or
                     int(storceph[k]) < 0):
@@ -849,6 +997,15 @@ def _check_pool_quotas_data(ostorceph, storceph):
                         _("The configured quota for the cinder pool (%s GiB) "
                           "must be greater than the already occupied space (%s GiB)")
                         % (storceph['cinder_pool_gib'],
+                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+            elif ceph_pool['name'] == constants.CEPH_POOL_KUBE_NAME:
+                if (int(storceph['kube_pool_gib']) > 0 and
+                    (int(ceph_pool['stats']['bytes_used']) >
+                     int(storceph['kube_pool_gib'] * 1024 ** 3))):
+                    raise wsme.exc.ClientSideError(
+                        _("The configured quota for the kube pool (%s GiB) "
+                          "must be greater than the already occupied space (%s GiB)")
+                        % (storceph['kube_pool_gib'],
                            float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
             elif ceph_pool['name'] == constants.CEPH_POOL_EPHEMERAL_NAME:
                 if (int(storceph['ephemeral_pool_gib']) > 0 and
@@ -887,6 +1044,15 @@ def _check_pool_quotas_data(ostorceph, storceph):
                             _("The configured quota for the cinder pool (%s GiB) "
                               "must be greater than the already occupied space (%s GiB)")
                             % (storceph['cinder_pool_gib'],
+                               float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                elif K8RbdProvisioner.get_pool(storceph) == ceph_pool['name']:
+                    if (int(storceph['kube_pool_gib']) > 0 and
+                        (int(ceph_pool['stats']['bytes_used']) >
+                         int(storceph['kube_pool_gib'] * 1024 ** 3))):
+                        raise wsme.exc.ClientSideError(
+                            _("The configured quota for the kube pool (%s GiB) "
+                              "must be greater than the already occupied space (%s GiB)")
+                            % (storceph['kube_pool_gib'],
                                float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
 
     # sanity check the quota
@@ -929,11 +1095,17 @@ def _update_pool_quotas(storceph):
                  {'name': constants.CEPH_POOL_EPHEMERAL_NAME,
                   'quota_key': 'ephemeral_pool_gib'},
                  {'name': object_pool_name,
-                  'quota_key': 'object_pool_gib'}]
+                  'quota_key': 'object_pool_gib'},
+                 {'name': constants.CEPH_POOL_KUBE_NAME,
+                  'quota_key': 'kube_pool_gib'}]
     else:
         pools = [{'name': "{0}-{1}".format(constants.CEPH_POOL_VOLUMES_NAME,
                                            storceph['tier_name']),
-                  'quota_key': 'cinder_pool_gib'}]
+                  'quota_key': 'cinder_pool_gib'},
+                 {'name': "{0}-{1}".format(constants.CEPH_POOL_KUBE_NAME,
+                                           storceph['tier_name']),
+                  'quota_key': 'kube_pool_gib'}
+                 ]
 
     for p in pools:
         if storceph[p['quota_key']] is not None:
@@ -959,7 +1131,6 @@ def _patch(storceph_uuid, patch):
         storceph_uuid)
 
     object_gateway_install = False
-    add_nova_only = False
     patch_obj = jsonpatch.JsonPatch(patch)
     for p in patch_obj:
         if p['path'] == '/capabilities':
@@ -991,13 +1162,51 @@ def _patch(storceph_uuid, patch):
                           'glance_pool_gib',
                           'ephemeral_pool_gib',
                           'object_pool_gib',
+                          'kube_pool_gib',
                           'object_gateway']
     quota_attributes = ['cinder_pool_gib', 'glance_pool_gib',
-                        'ephemeral_pool_gib', 'object_pool_gib']
+                        'ephemeral_pool_gib', 'object_pool_gib',
+                        'kube_pool_gib']
 
     if len(delta) == 0 and rpc_storceph['state'] != constants.SB_STATE_CONFIG_ERR:
         raise wsme.exc.ClientSideError(
             _("No changes to the existing backend settings were detected."))
+
+    # Get changes to services
+    services_added = (
+        set(api_helper.getListFromServices(storceph_config.as_dict())) -
+        set(api_helper.getListFromServices(ostorceph.as_dict()))
+    )
+
+    services_removed = (
+        set(api_helper.getListFromServices(ostorceph.as_dict())) -
+        set(api_helper.getListFromServices(storceph_config.as_dict()))
+    )
+
+    # Some services allow fast settings update, check if we are in this case.
+    # Adding/removing services or just making changes to the configuration
+    # these services depend on will not trigger manifest application.
+    fast_config = False
+    if not (delta - set(['capabilities']) - set(['services'])):
+        fast_cfg_services = [constants.SB_SVC_NOVA, constants.SB_SVC_RBD_PROVISIONER]
+
+        # Changes to unrelated capabilities?
+        storceph_cap = storceph_config.as_dict()['capabilities'].items()
+        ostorceph_cap = ostorceph.as_dict()['capabilities'].items()
+        related_cap = []
+        for service in fast_cfg_services:
+            related_cap.extend(CAPABILITIES[service])
+        cap_modified = dict(set(storceph_cap) - set(ostorceph_cap))
+        unrelated_cap_modified = [k for k in cap_modified.keys() if k not in related_cap]
+
+        # Changes to unrelated services?
+        unrelated_services_modified = ((set(services_added) |
+                                        set(services_removed)) -
+                                       set(fast_cfg_services))
+
+        if not unrelated_services_modified and not unrelated_cap_modified:
+            # We only have changes to fast configurable services and/or to their capabilities
+            fast_config = True
 
     quota_only_update = True
     for d in delta:
@@ -1032,11 +1241,7 @@ def _patch(storceph_uuid, patch):
                 storceph_config.object_gateway = True
                 storceph_config.task = constants.SB_TASK_ADD_OBJECT_GATEWAY
                 object_gateway_install = True
-            if ((set(api_helper.getListFromServices(storceph_config.as_dict())) -
-                 set(api_helper.getListFromServices(ostorceph.as_dict())) ==
-                    set([constants.SB_SVC_NOVA])) and
-                    (delta == set(['services']))):
-                add_nova_only = True
+
         elif d == 'capabilities':
             # Go through capabilities parameters and check
             # if any values changed
@@ -1057,9 +1262,9 @@ def _patch(storceph_uuid, patch):
             if constants.CEPH_BACKEND_REPLICATION_CAP in new_cap and \
                  constants.CEPH_BACKEND_REPLICATION_CAP in orig_cap:
 
-                # Currently, the only moment when we allow modification
-                # of ceph storage backend parameters is after the manifests have
-                # been applied and before first storage node has been configured.
+                # Currently, the only moment when we allow modification of ceph
+                # storage backend parameters is after the manifests have been
+                # applied and before first storage node has been configured.
                 ceph_task = StorageBackendConfig.get_ceph_backend_task(pecan.request.dbapi)
                 ceph_state = StorageBackendConfig.get_ceph_backend_state(pecan.request.dbapi)
                 if ceph_task != constants.SB_TASK_PROVISION_STORAGE and \
@@ -1102,8 +1307,8 @@ def _patch(storceph_uuid, patch):
         _check_pool_quotas_data(ostorceph, storceph_config.as_dict())
 
     if not quota_only_update:
-        # Execute the common semantic checks for all backends, if backend is not
-        # present this will not return
+        # Execute the common semantic checks for all backends, if backend is
+        # not present this will not return.
         api_helper.common_checks(constants.SB_API_OP_MODIFY,
                                  rpc_storceph.as_dict())
 
@@ -1118,11 +1323,17 @@ def _patch(storceph_uuid, patch):
         if object_gateway_install:
             _check_object_gateway_install()
 
-    # Update current ceph storage object again for object_gateway delta adjustments
+    # Update current ceph storage object again for object_gateway delta
+    # adjustments.
     for field in objects.storage_ceph.fields:
         if (field in storceph_config.as_dict() and
                 rpc_storceph[field] != storceph_config.as_dict()[field]):
             rpc_storceph[field] = storceph_config.as_dict()[field]
+
+    # Perform changes to the RBD Provisioner service
+    remove_rbd_provisioner = constants.SB_SVC_RBD_PROVISIONER in services_removed
+    ret = _check_and_update_rbd_provisioner(rpc_storceph.as_dict(), remove_rbd_provisioner)
+    rpc_storceph['capabilities'] = ret['capabilities']
 
     LOG.info("SYS_I new     storage_ceph: %s " % rpc_storceph.as_dict())
     try:
@@ -1130,8 +1341,8 @@ def _patch(storceph_uuid, patch):
 
         rpc_storceph.save()
 
-        if ((not quota_only_update and not add_nova_only) or
-                (storceph_config.state == constants.SB_STATE_CONFIG_ERR)):
+        if ((not quota_only_update and not fast_config) or
+             (storceph_config.state == constants.SB_STATE_CONFIG_ERR)):
             # Enable the backend changes:
             _apply_backend_changes(constants.SB_API_OP_MODIFY,
                                    rpc_storceph)
@@ -1144,6 +1355,18 @@ def _patch(storceph_uuid, patch):
         msg = _("StorCeph update failed: storceph %s : "
                 " patch %s"
                 % (storceph_config, patch))
+        raise wsme.exc.ClientSideError(msg)
+    except Exception as e:
+        rpc_storceph = objects.storage_ceph.get_by_uuid(
+            pecan.request.context,
+            storceph_uuid)
+        for field in allowed_attributes:
+            if (field in ostorceph.as_dict() and
+                    rpc_storceph[field] != ostorceph.as_dict()[field]):
+                rpc_storceph[field] = ostorceph.as_dict()[field]
+        rpc_storceph.save()
+        msg = _("There was an error trying to update the backend. Please "
+                "investigate and try again: %s" % str(e))
         raise wsme.exc.ClientSideError(msg)
 
 #

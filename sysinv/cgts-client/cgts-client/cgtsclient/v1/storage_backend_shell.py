@@ -36,10 +36,15 @@ def do_storage_usage_list(cc, args):
     utils.print_list(usage, fields, field_labels, sortby=0)
 
 
+@utils.arg('--asdict',
+           action='store_true',
+           default=False,
+           help=('Format capabilities field as dictionary.'))
 def do_storage_backend_list(cc, args):
     """List storage backends."""
 
-    storage_backends = cc.storage_backend.list()
+    asdict = args.asdict if 'asdict' in args else None
+    storage_backends = cc.storage_backend.list(asdict)
 
     field_labels = ['uuid', 'name', 'backend', 'state', 'task', 'services',
                     'capabilities']
@@ -51,11 +56,16 @@ def do_storage_backend_list(cc, args):
 @utils.arg('backend_name_or_uuid',
            metavar='<backend name or uuid>',
            help="Name or UUID of the backend [REQUIRED]")
+@utils.arg('--asdict',
+           action='store_true',
+           default=False,
+           help=('Format capabilities field as dictionary.'))
 def do_storage_backend_show(cc, args):
     """Show a storage backend."""
 
+    asdict = args.asdict if 'asdict' in args else None
     storage_backend_utils.backend_show(
-        cc, args.backend_name_or_uuid)
+        cc, args.backend_name_or_uuid, asdict)
 
 
 @utils.arg('backend',
@@ -102,6 +112,11 @@ def do_storage_backend_add(cc, args):
 @utils.arg('backend_name_or_uuid',
            metavar='<backend name or uuid>',
            help="Name or UUID of the backend [REQUIRED]")
+@utils.arg('attributes',
+           metavar='<parameter=value>',
+           nargs='*',
+           default=[],
+           help="Required backend/service parameters to apply.")
 @utils.arg('-s', '--services',
            metavar='<services>',
            help=('Optional string of comma separated services to add/update. '
@@ -110,11 +125,6 @@ def do_storage_backend_add(cc, args):
            metavar='<ceph_conf>',
            help=('Location of the Ceph configuration file used for provisioning'
                  ' an external backend.'))
-@utils.arg('attributes',
-           metavar='<parameter=value>',
-           nargs='*',
-           default=[],
-           help="Required backend/service parameters to apply.")
 def do_storage_backend_modify(cc, args):
     """Modify a storage backend."""
 

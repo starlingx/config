@@ -886,6 +886,7 @@ class StorageCeph(StorageBackend):
     glance_pool_gib = Column(Integer)
     ephemeral_pool_gib = Column(Integer)
     object_pool_gib = Column(Integer)
+    kube_pool_gib = Column(Integer)
     object_gateway = Column(Boolean, default=False)
     tier_id = Column(Integer,
                      ForeignKey('storage_tiers.id'))

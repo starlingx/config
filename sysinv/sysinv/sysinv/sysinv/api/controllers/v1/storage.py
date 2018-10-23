@@ -775,12 +775,13 @@ def _create(stor, iprofile=None, create_pv=True):
         # Get the tier the stor should be associated with
         tierId = stor.get('fortierid') or stor.get('tier_uuid')
         if not tierId:
-            # Get the available tiers. If only one exists (the default tier) then add
-            # it.
+            # Get the available tiers. If only one exists (the default tier)
+            # then add it.
             default_ceph_tier_name = constants.SB_TIER_DEFAULT_NAMES[
                 constants.SB_TIER_TYPE_CEPH]
             tier_list = pecan.request.dbapi.storage_tier_get_list()
-            if len(tier_list) == 1 and tier_list[0].name == default_ceph_tier_name:
+            if (len(tier_list) == 1 and
+                    tier_list[0].name == default_ceph_tier_name):
                 tierId = tier_list[0].uuid
             else:
                 raise wsme.exc.ClientSideError(
