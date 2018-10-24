@@ -8,12 +8,12 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from . import common
-from . import base
+from . import openstack
 
 LOG = logging.getLogger(__name__)
 
 
-class MariadbHelm(base.BaseHelm):
+class MariadbHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the mariadb chart"""
 
     CHART = constants.HELM_CHART_MARIADB
@@ -31,7 +31,8 @@ class MariadbHelm(base.BaseHelm):
                     'replicas': {
                         'server': 1
                     }
-                }
+                },
+                'endpoints': self._get_endpoints_overrides(),
             }
         }
 
@@ -42,3 +43,11 @@ class MariadbHelm(base.BaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_endpoints_overrides(self):
+        return {
+            'oslo_db': {
+                'auth': self._get_endpoints_oslo_db_overrides(
+                    self.CHART, [])
+            }
+        }

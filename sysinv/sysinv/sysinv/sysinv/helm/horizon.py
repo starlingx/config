@@ -67,7 +67,8 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
                             }
                         }
                     }
-                }
+                },
+                'endpoints': self._get_endpoints_overrides()
             }
         }
 
@@ -78,6 +79,14 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_endpoints_overrides(self):
+        return {
+            'oslo_db': {
+                'auth': self._get_endpoints_oslo_db_overrides(
+                    self.SERVICE_NAME, [self.SERVICE_NAME])
+            },
+        }
 
     def _get_images_overrides(self):
         heat_image = self._operator.chart_operators[
@@ -101,6 +110,9 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
             'https_enabled': 'False',
             'lockout_period_sec': '300',
             'lockout_retries_num': '3',
+            'horizon_secret_key': self._get_or_generate_password(
+                self.SERVICE_NAME, common.HELM_NS_OPENSTACK,
+                'horizon_secret_key'),
 
             # Optional Services
             'enable_murano': 'False',

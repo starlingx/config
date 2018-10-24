@@ -1619,6 +1619,7 @@ class HelmOverrides(Base):
     name = Column(String(255), nullable=False)
     namespace = Column(String(255), nullable=False)
     user_overrides = Column(Text, nullable=True)
+    system_overrides = Column(JSONEncodedDict, nullable=True)
     UniqueConstraint('name', 'namespace', name='u_name_namespace')
 
 

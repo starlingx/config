@@ -10,8 +10,11 @@ import subprocess
 from . import base
 from . import common
 
+from oslo_log import log
 from sysinv.common import constants
 from sysinv.common import exception
+
+LOG = log.getLogger(__name__)
 
 
 class OpenstackBaseHelm(base.BaseHelm):
@@ -37,13 +40,6 @@ class OpenstackBaseHelm(base.BaseHelm):
             passwords[service][user] = self._get_keyring_password(service, user)
 
         return passwords[service][user]
-
-    def _get_database_password(self, service):
-        passwords = self.context.setdefault('_database_passwords', {})
-        if service not in passwords:
-            passwords[service] = self._get_keyring_password(service,
-                                                            'database')
-        return passwords[service]
 
     def _get_database_username(self, service):
         return 'admin-%s' % service
@@ -79,6 +75,103 @@ class OpenstackBaseHelm(base.BaseHelm):
             return constants.SYSTEM_CONTROLLER_REGION
 
         return self._region_name()
+
+    def _get_or_generate_password(self, chart, namespace, field):
+        # Get password from the db for the specified chart overrides
+        if not self.dbapi:
+            return None
+
+        try:
+            override = self.dbapi.helm_override_get(name=chart,
+                                                    namespace=namespace)
+        except exception.HelmOverrideNotFound:
+            # Override for this chart not found, so create one
+            try:
+                values = {
+                    'name': chart,
+                    'namespace': namespace,
+                }
+                override = self.dbapi.helm_override_create(values=values)
+            except exception as e:
+                LOG.exception(e)
+                return None
+
+        password = override.system_overrides.get(field, None)
+        if password:
+            return password.encode('utf8', 'strict')
+
+        # The password is not present, so generate one and store it to
+        # the override
+        password = self._generate_random_password()
+        values = {'system_overrides': override.system_overrides}
+        values['system_overrides'].update({
+            field: password,
+        })
+        try:
+            self.dbapi.helm_override_update(
+                name=chart, namespace=namespace, values=values)
+        except exception as e:
+            LOG.exception(e)
+
+        return password.encode('utf8', 'strict')
+
+    def _get_endpoints_identity_overrides(self, service_name, users):
+        # Returns overrides for admin and individual users
+        overrides = {}
+        overrides.update(self._get_common_users_overrides(service_name))
+
+        for user in users:
+            overrides.update({
+                user: {
+                    'region_name': self._region_name(),
+                    'password': self._get_or_generate_password(
+                        service_name, common.HELM_NS_OPENSTACK, user)
+                }
+            })
+        return overrides
+
+    def _get_endpoints_oslo_db_overrides(self, service_name, users):
+        overrides = {
+            'admin': {
+                'password': self._get_common_password('admin_db'),
+            }
+        }
+
+        for user in users:
+            overrides.update({
+                user: {
+                    'password': self._get_or_generate_password(
+                        service_name, common.HELM_NS_OPENSTACK,
+                        user + '_db'),
+                }
+            })
+
+        return overrides
+
+    def _get_endpoints_oslo_messaging_overrides(self, service_name, users):
+        overrides = {
+            'admin': {
+                'username': 'rabbitmq-admin',
+                'password': self._get_common_password('rabbitmq-admin')
+            }
+        }
+
+        for user in users:
+            overrides.update({
+                user: {
+                    'username': user + '-rabbitmq-user',
+                    'password': self._get_or_generate_password(
+                        service_name, common.HELM_NS_OPENSTACK,
+                        user + '_rabbit')
+                }
+            })
+
+        return overrides
+
+    def _get_common_password(self, name):
+        # Admin passwords are stored on keystone's helm override entry
+        return self._get_or_generate_password(
+            'keystone', common.HELM_NS_OPENSTACK, name)
 
     def _get_common_users_overrides(self, service):
         overrides = {}

@@ -80,23 +80,23 @@ class HeatHelm(openstack.OpenstackBaseHelm):
             }
         }
 
-    def _get_endpoints_identity_users_overrides(self):
-        overrides = {}
-        overrides.update(self._get_common_users_overrides(self.SERVICE_NAME))
-
-        for user in self.AUTH_USERS:
-            overrides.update({
-                user: {
-                    'region_name': self._region_name(),
-                    'password': self._get_keyring_password(self.SERVICE_NAME, user)
-                }
-            })
-        return overrides
-
-    def _get_endpoints_identity_overrides(self):
-        return {'auth': self._get_endpoints_identity_users_overrides()}
-
     def _get_endpoints_overrides(self):
         return {
-            'identity': self._get_endpoints_identity_overrides(),
+            'identity': {
+                'auth': self._get_endpoints_identity_overrides(
+                    self.SERVICE_NAME, self.AUTH_USERS),
+            },
+            'oslo_cache': {
+                'hosts': {
+                    'default': 'heat-memcached'
+                }
+            },
+            'oslo_db': {
+                'auth': self._get_endpoints_oslo_db_overrides(
+                    self.SERVICE_NAME, [self.SERVICE_NAME])
+            },
+            'oslo_messaging': {
+                'auth': self._get_endpoints_oslo_messaging_overrides(
+                    self.SERVICE_NAME, [self.SERVICE_NAME])
+            },
         }

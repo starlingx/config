@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import copy
 import os
 
 from sysinv.common import constants
@@ -190,33 +191,44 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             }
         }
 
-    def _get_endpoints_identity_users_overrides(self):
-        overrides = {}
-        overrides.update(self._get_common_users_overrides(self.SERVICE_NAME))
-
-        for user in self.AUTH_USERS:
-            overrides.update({
-                user: {
-                    'region_name': self._region_name(),
-                    'password': self._get_keyring_password(self.SERVICE_NAME, user)
-                }
-            })
-        for user in self.SERVICE_USERS:
-            overrides.update({
-                user: {
-                    'region_name': self._region_name(),
-                    'password': self._get_keyring_password(user, user)
-                }
-            })
-        return overrides
-
-    def _get_endpoints_identity_overrides(self):
-        return {'auth': self._get_endpoints_identity_users_overrides()}
-
     def _get_endpoints_overrides(self):
-        return {
-            'identity': self._get_endpoints_identity_overrides(),
+        overrides = {
+            'identity': {
+                'name': 'keystone',
+                'auth': self._get_endpoints_identity_overrides(
+                    self.SERVICE_NAME, self.AUTH_USERS),
+            },
+            'oslo_cache': {
+                'auth': {
+                    'memcached_secret_key':
+                        self._get_common_password('auth_memcache_key')
+                }
+            },
+            'oslo_messaging': {
+                'auth': self._get_endpoints_oslo_messaging_overrides(
+                    self.SERVICE_NAME, [self.SERVICE_NAME])
+            },
         }
+
+        db_passwords = {'auth': self._get_endpoints_oslo_db_overrides(
+            self.SERVICE_NAME, [self.SERVICE_NAME])}
+        overrides.update({
+            'oslo_db': db_passwords,
+            'oslo_db_api': copy.deepcopy(db_passwords),
+            'oslo_db_cell0': copy.deepcopy(db_passwords),
+        })
+
+        # Service user passwords already exist in other chart overrides
+        for user in self.SERVICE_USERS:
+            overrides['identity']['auth'].update({
+                user: {
+                    'region_name': self._region_name(),
+                    'password': self._get_or_generate_password(
+                        user, common.HELM_NS_OPENSTACK, user)
+                }
+            })
+
+        return overrides
 
     def _get_virt_type(self):
         if utils.is_virtual():
