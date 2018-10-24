@@ -203,7 +203,7 @@ class openstack::cinder
   cinder_config {
     'DEFAULT/my_ip': value => $controller_address;
     'DEFAULT/state_path': value => "${cinder_directory}/data";
-    # Reduce the number of RPCs that can be handled in parallel from the the
+    # Reduce the number of RPCs that can be handled in parallel from the
     # default of 64. Doing too much at once (e.g. creating volumes) results
     # in a lot of thrashing and operations time out.
     # Liberty renamed this from rpc_thread_pool_size to executor_thread_pool_size

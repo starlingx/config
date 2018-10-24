@@ -504,7 +504,7 @@ def _update_vswitch_cpu_counts(host, cpu, counts, capabilities=None):
             raise wsme.exc.ClientSideError(_('vSwitch cpus must be non-negative.'))
         if host.hyperthreading:
             # the data structures track the number of logical cpus and the
-            # API expects the the requested count to refer to the number
+            # API expects the requested count to refer to the number
             # of physical cores requested therefore if HT is enabled then
             # multiply the requested number by 2 so that we always reserve a
             # full physical core
@@ -536,7 +536,7 @@ def _update_shared_cpu_counts(host, cpu, counts, capabilities=None):
             raise wsme.exc.ClientSideError(_('Shared count cannot be > 1.'))
         if host.hyperthreading:
             # the data structures track the number of logical cpus and the
-            # API expects the the requested count to refer to the number
+            # API expects the requested count to refer to the number
             # of physical cores requested therefore if HT is enabled then
             # multiply the requested number by 2 so that we always reserve a
             # full physical core
@@ -566,7 +566,7 @@ def _update_platform_cpu_counts(host, cpu, counts, capabilities=None):
             raise wsme.exc.ClientSideError(_('Platform cpus must be non-negative.'))
         if host.hyperthreading:
             # the data structures track the number of logical cpus and the
-            # API expects the the requested count to refer to the number
+            # API expects the requested count to refer to the number
             # of physical cores requested therefore if HT is enabled then
             # multiply the requested number by 2 so that we always reserve a
             # full physical core

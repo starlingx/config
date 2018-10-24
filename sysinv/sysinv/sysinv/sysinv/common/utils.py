@@ -365,7 +365,7 @@ def is_valid_boolstr(val):
 
 
 def is_valid_mac(address):
-    """Verify the format of a MAC addres."""
+    """Verify the format of a MAC address."""
     m = "[0-9a-f]{2}([-:])[0-9a-f]{2}(\\1[0-9a-f]{2}){4}$"
     if isinstance(address, six.string_types) and re.match(m, address.lower()):
         return True
@@ -940,7 +940,7 @@ def is_virtual_compute(ihost):
 def is_low_core_system(ihost, dba):
     """
     Determine if the hosts core count is less than or equal to a xeon-d cpu
-    used with get_required_platform_reserved_memory to set the the required
+    used with get_required_platform_reserved_memory to set the required
     platform memory for xeon-d systems
     """
     cpu_list = dba.icpu_get_by_ihost(ihost['uuid'])

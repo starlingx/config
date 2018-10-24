@@ -20,8 +20,7 @@ Puppet::Type.type(:proxy_config).provide(
   end
 
   # assumes that the name was the setting
-  # this is to maintain backwards compat with the the older
-  # stuff
+  # this is to maintain backwards compat with the older stuff
   def setting
     resource[:name].split('/', 2)[1]
   end
