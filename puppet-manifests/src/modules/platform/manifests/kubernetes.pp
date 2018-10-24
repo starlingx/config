@@ -231,11 +231,13 @@ class platform::kubernetes::master
   if $enabled {
     contain ::platform::kubernetes::kubeadm
     contain ::platform::kubernetes::master::init
+    contain ::platform::kubernetes::firewall
 
     Class['::platform::etcd'] -> Class[$name]
     Class['::platform::docker::config'] -> Class[$name]
     Class['::platform::kubernetes::kubeadm'] ->
-    Class['::platform::kubernetes::master::init']
+    Class['::platform::kubernetes::master::init'] ->
+    Class['::platform::kubernetes::firewall']
   }
 }
 
@@ -275,5 +277,42 @@ class platform::kubernetes::worker
       ensure => file,
       replace => no,
     }
+  }
+}
+
+class platform::kubernetes::firewall::params (
+  $transport = 'tcp',
+  $table = 'nat',
+  $dports = [80, 443],
+  $chain = 'POSTROUTING',
+  $jump = 'SNAT',
+) {}
+
+class platform::kubernetes::firewall
+  inherits ::platform::kubernetes::firewall::params {
+
+  include ::platform::params
+  include ::platform::network::oam::params
+  include ::platform::network::mgmt::params
+
+  $system_mode = $::platform::params::system_mode
+  $oam_float_ip = $::platform::network::oam::params::controller_address
+  $mgmt_subnet = $::platform::network::mgmt::params::subnet_network
+  $mgmt_prefixlen = $::platform::network::mgmt::params::subnet_prefixlen
+
+  $s_mgmt_subnet = "${mgmt_subnet}/${mgmt_prefixlen}"
+  $d_mgmt_subnet = "! ${s_mgmt_subnet}"
+
+  if $system_mode != 'simplex' {
+    firewall { '000 kubernetes nat':
+      table       => $table,
+      chain       => $chain,
+      proto       => $transport,
+      jump        => $jump,
+      dport       => $dports,
+      destination => $d_mgmt_subnet,
+      source      => $s_mgmt_subnet,
+      tosource    => $oam_float_ip
+    } 
   }
 }
