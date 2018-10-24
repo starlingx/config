@@ -21,6 +21,7 @@ from sysinv.common import utils as cutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
+
 LOG = log.getLogger(__name__)
 
 
@@ -276,36 +277,48 @@ class StorageBackendConfig(object):
             return 0
 
     @staticmethod
-    def get_ceph_pool_replication(api):
+    def get_ceph_max_replication(api):
+        """
+        Replication in some tiers may be smaller than for other tiers.
+        Get maximum replication configured in the cluster.
+        """
+        replication = 1
+        min_replication = 1
+        backends = api.storage_ceph_get_list()
+        for bk in backends:
+            tier_replication, tier_min_replication = \
+                StorageBackendConfig.get_ceph_pool_replication(api, bk)
+            if tier_replication > replication:
+                replication = tier_replication
+            if tier_min_replication > min_replication:
+                tier_min_replication = min_replication
+        if not backends:
+            # No backend configured? - return defaults
+            replication = constants.CEPH_REPLICATION_FACTOR_DEFAULT
+            min_replication = constants.CEPH_REPLICATION_MAP_DEFAULT[replication]
+        return replication, min_replication
+
+    @staticmethod
+    def get_ceph_pool_replication(api, ceph_backend=None):
         """
         return the values of 'replication' and 'min_replication'
         capabilities as configured in ceph backend
         :param api:
+        :param ceph_backend: ceph backend object type for a tier
         :return: replication, min_replication
         """
         # Get ceph backend from db
-        ceph_backend = StorageBackendConfig.get_backend(
-            api,
-            constants.CINDER_BACKEND_CEPH
-        )
+        if not ceph_backend:
+            # get replication of primary tier
+            ceph_backend = StorageBackendConfig.get_backend(
+                api,
+                constants.CINDER_BACKEND_CEPH
+            )
 
-        # Workaround for upgrade from R4 to R5, where 'capabilities' field
-        # does not exist in R4 backend entry
-        if hasattr(ceph_backend, 'capabilities'):
-            if constants.CEPH_BACKEND_REPLICATION_CAP in ceph_backend.capabilities:
-                pool_size = int(ceph_backend.capabilities[
-                                constants.CEPH_BACKEND_REPLICATION_CAP])
-
-                pool_min_size = constants.CEPH_REPLICATION_MAP_DEFAULT[pool_size]
-            else:
-                # Should not get here
-                pool_size = constants.CEPH_REPLICATION_FACTOR_DEFAULT
-                pool_min_size = constants.CEPH_REPLICATION_MAP_DEFAULT[pool_size]
-        else:
-            # upgrade compatibility with R4
-            pool_size = constants.CEPH_REPLICATION_FACTOR_DEFAULT
-            pool_min_size = constants.CEPH_REPLICATION_MAP_DEFAULT[pool_size]
-
+        pool_size = int(ceph_backend.capabilities[
+                constants.CEPH_BACKEND_REPLICATION_CAP])
+        pool_min_size = int(ceph_backend.capabilities[
+                constants.CEPH_BACKEND_MIN_REPLICATION_CAP])
         return pool_size, pool_min_size
 
     @staticmethod

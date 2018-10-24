@@ -66,6 +66,7 @@ from sysinv.api.controllers.v1 import mtce_api
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import constants
+from sysinv.common import ceph as cceph
 from sysinv.common import exception
 from sysinv.common import fm
 from sysinv.common import health
@@ -1522,6 +1523,17 @@ class ConductorManager(service.PeriodicService):
         self._allocate_addresses_for_host(context, host)
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
+
+    def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
+        """Configure or update configuration of the OSD pools.
+        If none of the optionals are provided then all pools are updated based on DB configuration.
+
+        :param context: an admin context.
+        :param ceph_backend: Optional ceph backend object of a tier
+        :param new_pool_size: Optional override for replication number.
+        :param new_pool_min_size: Optional override for minimum replication number.
+        """
+        self._ceph.configure_osd_pools(ceph_backend, new_pool_size, new_pool_min_size)
 
     def remove_host_config(self, context, host_uuid):
         """Remove configuration files for a host.
@@ -5141,13 +5153,14 @@ class ConductorManager(service.PeriodicService):
         return self._ceph.restore_ceph_config(
             after_storage_enabled=after_storage_enabled)
 
-    def get_ceph_pool_replication(self, context):
+    def get_ceph_pool_replication(self, context, ceph_backend=None):
         """Get ceph storage backend pool replication parameters
 
         :param context: request context.
+        :param ceph_backend: ceph backend object type
         :returns: tuple with (replication, min_replication)
         """
-        return StorageBackendConfig.get_ceph_pool_replication(self.dbapi)
+        return StorageBackendConfig.get_ceph_pool_replication(self.dbapi, ceph_backend)
 
     def delete_osd_pool(self, context, pool_name):
         """delete an OSD pool
@@ -5624,72 +5637,66 @@ class ConductorManager(service.PeriodicService):
     def update_ceph_config(self, context, sb_uuid, services):
         """Update the manifests for Cinder Ceph backend"""
 
-        if (constants.SB_SVC_CINDER in services or
-                constants.SB_SVC_GLANCE in services):
-            personalities = [constants.CONTROLLER]
+        personalities = [constants.CONTROLLER]
 
-            # Update service table
-            self.update_service_table_for_cinder()
+        # Update service table
+        self.update_service_table_for_cinder()
 
-            # TODO(oponcea): Uncomment when SM supports in-service config reload
-            # ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-            # valid_ctrls = [ctrl for ctrl in ctrls if
-            #                ctrl.administrative == constants.ADMIN_UNLOCKED and
-            #                ctrl.availability == constants.AVAILABILITY_AVAILABLE]
-            host = utils.HostHelper.get_active_controller(self.dbapi)
-            classes = ['platform::partitions::runtime',
-                       'platform::lvm::controller::runtime',
-                       'platform::haproxy::runtime',
-                       'openstack::keystone::endpoint::runtime',
-                       'platform::filesystem::img_conversions::runtime',
-                       'platform::ceph::controller::runtime',
-                       ]
-            if constants.SB_SVC_GLANCE in services:
-                classes.append('openstack::glance::api::runtime')
-            if constants.SB_SVC_CINDER in services:
-                classes.append('openstack::cinder::runtime')
-            classes.append('platform::sm::norestart::runtime')
-            config_dict = {"personalities": personalities,
-                           "host_uuids": host.uuid,
-                           # "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
-                           "classes": classes,
-                           puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
-                           }
+        # TODO(oponcea): Uncomment when SM supports in-service config reload
+        # ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        # valid_ctrls = [ctrl for ctrl in ctrls if
+        #                ctrl.administrative == constants.ADMIN_UNLOCKED and
+        #                ctrl.availability == constants.AVAILABILITY_AVAILABLE]
+        host = utils.HostHelper.get_active_controller(self.dbapi)
+        classes = ['platform::partitions::runtime',
+                   'platform::lvm::controller::runtime',
+                   'platform::haproxy::runtime',
+                   'openstack::keystone::endpoint::runtime',
+                   'platform::filesystem::img_conversions::runtime',
+                   'platform::ceph::controller::runtime',
+                   ]
+        if constants.SB_SVC_GLANCE in services:
+            classes.append('openstack::glance::api::runtime')
+        if constants.SB_SVC_CINDER in services:
+            classes.append('openstack::cinder::runtime')
+        classes.append('platform::sm::norestart::runtime')
+        config_dict = {"personalities": personalities,
+                       "host_uuids": host.uuid,
+                       # "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
+                       "classes": classes,
+                       puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
+                       }
 
-            # TODO(oponcea) once sm supports in-service config reload always
-            # set reboot=False
-            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-            if utils.is_host_simplex_controller(active_controller):
-                reboot = False
-            else:
-                reboot = True
-
-            # Set config out-of-date for controllers
-            config_uuid = self._config_update_hosts(context,
-                                                    personalities,
-                                                    reboot=reboot)
-
-            # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
-            # Once sm supports in-service config reload, allways set config_uuid=config_uuid
-            # in _config_apply_runtime_manifest and remove code bellow.
-            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-            if utils.is_host_simplex_controller(active_controller):
-                new_uuid = config_uuid
-            else:
-                new_uuid = str(uuid.uuid4())
-
-            self._config_apply_runtime_manifest(context,
-                                                config_uuid=new_uuid,
-                                                config_dict=config_dict)
-
-            # Update initial task states
-            values = {'state': constants.SB_STATE_CONFIGURING,
-                      'task': constants.SB_TASK_APPLY_MANIFESTS}
-            self.dbapi.storage_ceph_update(sb_uuid, values)
+        # TODO(oponcea) once sm supports in-service config reload always
+        # set reboot=False
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        if utils.is_host_simplex_controller(active_controller):
+            reboot = False
         else:
-            values = {'state': constants.SB_STATE_CONFIGURED,
-                      'task': None}
-            self.dbapi.storage_ceph_update(sb_uuid, values)
+            reboot = True
+
+        # Set config out-of-date for controllers
+        config_uuid = self._config_update_hosts(context,
+                                                personalities,
+                                                reboot=reboot)
+
+        # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
+        # Once sm supports in-service config reload, allways set config_uuid=config_uuid
+        # in _config_apply_runtime_manifest and remove code bellow.
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        if utils.is_host_simplex_controller(active_controller):
+            new_uuid = config_uuid
+        else:
+            new_uuid = str(uuid.uuid4())
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid=new_uuid,
+                                            config_dict=config_dict)
+
+        # Update initial task states
+        values = {'state': constants.SB_STATE_CONFIGURING,
+                  'task': constants.SB_TASK_APPLY_MANIFESTS}
+        self.dbapi.storage_ceph_update(sb_uuid, values)
 
     def config_update_nova_local_backed_hosts(self, context, instance_backing):
         hosts_uuid = self.hosts_with_nova_local(instance_backing)
@@ -6311,8 +6318,16 @@ class ConductorManager(service.PeriodicService):
         if ceph_conf.state != constants.SB_STATE_CONFIGURED:
             active_controller = utils.HostHelper.get_active_controller(self.dbapi)
             if utils.is_host_simplex_controller(active_controller):
-                values = {'state': constants.SB_STATE_CONFIGURED,
-                          'task': constants.SB_TASK_PROVISION_STORAGE}
+                state = constants.SB_STATE_CONFIGURED
+                if utils.is_aio_simplex_system(self.dbapi):
+                    task = None
+                    cceph.fix_crushmap(self.dbapi)
+                    # Ceph is up, update rbd-provisioner config if needed.
+                    self.check_and_update_rbd_provisioner(context)
+                else:
+                    task = constants.SB_TASK_PROVISION_STORAGE
+                values = {'state': state,
+                          'task': task}
             else:
                 # TODO(oponcea): Remove when sm supports in-service config reload
                 # and any logic dealing with constants.SB_TASK_RECONFIG_CONTROLLER.

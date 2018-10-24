@@ -387,9 +387,14 @@ def _discover_and_validate_backend_config_data(caps_dict, confirmed):
             raise wsme.exc.ClientSideError("Missing required backend "
                                            "parameter: %s" % k)
 
+        if utils.is_aio_simplex_system(pecan.request.dbapi):
+            supported_replication = constants.AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED
+        else:
+            supported_replication = constants.CEPH_REPLICATION_FACTOR_SUPPORTED
+
         # Validate replication factor
         if k == constants.CEPH_BACKEND_REPLICATION_CAP:
-            v_supported = constants.CEPH_REPLICATION_FACTOR_SUPPORTED
+            v_supported = supported_replication
             msg = _("Required backend parameter "
                     "\'%s\' has invalid value \'%s\'. "
                     "Supported values are %s." %
@@ -407,7 +412,7 @@ def _discover_and_validate_backend_config_data(caps_dict, confirmed):
         # constants.CEPH_REPLICATION_MAP_DEFAULT.
         elif k == constants.CEPH_BACKEND_MIN_REPLICATION_CAP:
             rep = int(caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP])
-            v_supported = [constants.CEPH_REPLICATION_MAP_DEFAULT[rep]]
+            v_supported = constants.CEPH_REPLICATION_MAP_SUPPORTED[rep]
             msg = _("Missing or invalid value for "
                     "backend parameter \'%s\', when "
                     "replication is set as \'%s\'. "
@@ -583,13 +588,17 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
     if not confirmed and api_helper.is_primary_ceph_tier(tier.name):
         _options_str = _get_options_string(storage_ceph)
         replication = capabilities[constants.CEPH_BACKEND_REPLICATION_CAP]
+        if utils.is_aio_simplex_system(pecan.request.dbapi):
+            what = 'osds'
+        else:
+            what = 'storage nodes'
         raise wsme.exc.ClientSideError(
             _("%s\nWARNING : THIS OPERATION IS NOT REVERSIBLE AND CANNOT BE "
               "CANCELLED. \n\nBy confirming this operation, Ceph backend will "
-              "be created.\nA minimum of %s storage nodes are required to "
+              "be created.\nA minimum of %s %s are required to "
               "complete the configuration.\nPlease set the 'confirmed' field "
               "to execute this operation for the %s "
-              "backend.") % (_options_str, replication,
+              "backend.") % (_options_str, replication, what,
                              constants.SB_TYPE_CEPH))
 
 
@@ -660,17 +669,27 @@ def _check_and_update_rbd_provisioner(new_storceph, remove=False):
         validate_k8s_namespaces(K8RbdProvisioner.getListFromNamespaces(new_storceph))
 
     # Check if cluster is configured
-    storage_hosts = pecan.request.dbapi.ihost_get_by_personality(
-        constants.STORAGE
-    )
-    available_storage_hosts = [h for h in storage_hosts if
-                               h['availability'] == constants.AVAILABILITY_AVAILABLE]
-    if not available_storage_hosts:
-        LOG.info("No storage hosts installed, delaying "
-                 "rbd-provisioner configuration.")
-        # Configuration will be resumed when first storage node comes up and
-        # after pools are configured.
-        return new_storceph
+    if not utils.is_aio_simplex_system(pecan.request.dbapi):
+        # On multinode is enough if storage hosts are available
+        storage_hosts = pecan.request.dbapi.ihost_get_by_personality(
+            constants.STORAGE
+        )
+        available_storage_hosts = [h for h in storage_hosts if
+                                   h['availability'] == constants.AVAILABILITY_AVAILABLE]
+        if not available_storage_hosts:
+            LOG.info("No storage hosts installed, delaying "
+                     "rbd-provisioner configuration.")
+            # Configuration will be resumed when first storage node comes up and
+            # after pools are configured.
+            return new_storceph
+    else:
+        # On 1 node system check if primary backend is configured
+        ceph_bk = StorageBackendConfig.get_configured_backend(pecan.request.dbapi,
+                                                              constants.SB_TYPE_CEPH)
+        if not ceph_bk:
+            # Configuration will be resumed after backend configuration completes
+            LOG.info("Ceph not configured, delaying rbd-provisioner configuration.")
+            return new_storceph
 
     # Cluster is configured, run live.
     try:
@@ -696,7 +715,6 @@ def _apply_backend_changes(op, sb_obj):
     if op == constants.SB_API_OP_CREATE:
         if sb_obj.name == constants.SB_DEFAULT_NAMES[
                 constants.SB_TYPE_CEPH]:
-
             # Apply manifests for primary tier
             pecan.request.rpcapi.update_ceph_config(pecan.request.context,
                                                     sb_obj.uuid,
@@ -749,10 +767,25 @@ def _apply_nova_specific_changes(sb_obj, old_sb_obj=None):
 
 
 def _set_defaults(storage_ceph):
+    if utils.is_aio_simplex_system(pecan.request.dbapi):
+        def_replication = str(constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT)
+    else:
+        def_replication = str(constants.CEPH_REPLICATION_FACTOR_DEFAULT)
 
-    def_replication = str(constants.CEPH_REPLICATION_FACTOR_DEFAULT)
     def_min_replication = \
         str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
+
+    # When primary backend is configured then get defaults from there if configured
+    ceph_backend = StorageBackendConfig.get_backend(
+        pecan.request.dbapi,
+        constants.CINDER_BACKEND_CEPH
+    )
+    if ceph_backend:
+        cap = ceph_backend['capabilities']
+        def_replication = cap.get(constants.CEPH_BACKEND_REPLICATION_CAP,
+                                  def_replication)
+        def_min_replication = cap.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP,
+                                      def_min_replication)
 
     # If 'replication' parameter is provided with a valid value and optional
     # 'min_replication' parameter is not provided, default its value
@@ -889,7 +922,7 @@ def _pre_patch_checks(storage_ceph_obj, patch_obj):
 
             # If 'replication' parameter is provided with a valid value and optional
             # 'min_replication' parameter is not provided, default its value
-            # depending on the 'replication' value
+            # depending on the 'replication' value.
             if constants.CEPH_BACKEND_REPLICATION_CAP in patch_caps_dict:
                 req_replication = patch_caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP]
                 if int(req_replication) in constants.CEPH_REPLICATION_FACTOR_SUPPORTED:
@@ -932,6 +965,54 @@ def _pre_patch_checks(storage_ceph_obj, patch_obj):
                         _("Removing %s is not supported.") % ','.join(
                             current_svcs - updated_svcs))
             p['value'] = ','.join(updated_svcs)
+
+
+def _check_replication_number(new_cap, orig_cap):
+    ceph_task = StorageBackendConfig.get_ceph_backend_task(pecan.request.dbapi)
+    ceph_state = StorageBackendConfig.get_ceph_backend_state(pecan.request.dbapi)
+    if utils.is_aio_simplex_system(pecan.request.dbapi):
+        # On single node install we allow both increasing and decreasing
+        # replication on the fly.
+        if ceph_state != constants.SB_STATE_CONFIGURED:
+            raise wsme.exc.ClientSideError(
+                _("Can not modify ceph replication factor when "
+                  "storage backend state is '%s'. Operation is "
+                  "supported for state '%s'" %
+                  (ceph_state, constants.SB_STATE_CONFIGURED)))
+
+    else:
+        # On a standard install we allow modifications of ceph storage
+        # backend parameters after the manifests have been applied and
+        # before first storage node has been configured.
+        if ceph_task != constants.SB_TASK_PROVISION_STORAGE and \
+                        ceph_state != constants.SB_STATE_CONFIGURING:
+            raise wsme.exc.ClientSideError(
+                _("Can not modify ceph replication factor when "
+                  "storage backend state is \'%s\' and task is \'%s.\' "
+                  "Operation supported for state \'%s\' and task \'%s.\'" %
+                  (ceph_state, ceph_task,
+                   constants.SB_STATE_CONFIGURING,
+                   constants.SB_TASK_PROVISION_STORAGE)))
+
+        # Changing replication factor once the first storage node
+        # has been installed (pools created) is not supported.
+        storage_hosts = pecan.request.dbapi.ihost_get_by_personality(
+            constants.STORAGE)
+        if storage_hosts:
+            raise wsme.exc.ClientSideError(
+                _("Can not modify ceph replication factor once "
+                  "a storage node has been installed. This operation "
+                  "is not supported."))
+
+        # Changing ceph replication to a smaller factor
+        # than previously configured is not supported.
+        if int(new_cap[constants.CEPH_BACKEND_REPLICATION_CAP]) < \
+             int(orig_cap[constants.CEPH_BACKEND_REPLICATION_CAP]):
+            raise wsme.exc.ClientSideError(
+                _("Can not modify ceph replication factor from %s to "
+                  "a smaller value %s. This operation is not supported." %
+                  (orig_cap[constants.CEPH_BACKEND_REPLICATION_CAP],
+                   new_cap[constants.CEPH_BACKEND_REPLICATION_CAP])))
 
 
 def _is_quotaconfig_changed(ostorceph, storceph):
@@ -1118,9 +1199,12 @@ def _update_pool_quotas(storceph):
                                                     pool_max_bytes)
 
 
-def _check_object_gateway_install():
+def _check_object_gateway_install(dbapi):
     # Ensure we have the required number of monitors
-    api_helper.check_minimal_number_of_controllers(2)
+    if utils.is_aio_simplex_system(dbapi):
+        api_helper.check_minimal_number_of_controllers(1)
+    else:
+        api_helper.check_minimal_number_of_controllers(2)
     api_helper.check_swift_enabled()
 
 
@@ -1188,7 +1272,11 @@ def _patch(storceph_uuid, patch):
     # these services depend on will not trigger manifest application.
     fast_config = False
     if not (delta - set(['capabilities']) - set(['services'])):
-        fast_cfg_services = [constants.SB_SVC_NOVA, constants.SB_SVC_RBD_PROVISIONER]
+        if utils.is_kubernetes_config(pecan.request.dbapi):
+            fast_cfg_services = [constants.SB_SVC_NOVA, constants.SB_SVC_RBD_PROVISIONER,
+                                 constants.SB_SVC_CINDER, constants.SB_SVC_GLANCE]
+        else:
+            fast_cfg_services = [constants.SB_SVC_NOVA, constants.SB_SVC_RBD_PROVISIONER]
 
         # Changes to unrelated capabilities?
         storceph_cap = storceph_config.as_dict()['capabilities'].items()
@@ -1209,6 +1297,7 @@ def _patch(storceph_uuid, patch):
             fast_config = True
 
     quota_only_update = True
+    replication_only_update = False
     for d in delta:
         if d not in allowed_attributes:
             raise wsme.exc.ClientSideError(
@@ -1259,43 +1348,18 @@ def _patch(storceph_uuid, patch):
 
             # Semantic checks on new or modified parameters:
             orig_cap = ostorceph.as_dict()['capabilities']
-            if constants.CEPH_BACKEND_REPLICATION_CAP in new_cap and \
-                 constants.CEPH_BACKEND_REPLICATION_CAP in orig_cap:
-
-                # Currently, the only moment when we allow modification of ceph
-                # storage backend parameters is after the manifests have been
-                # applied and before first storage node has been configured.
-                ceph_task = StorageBackendConfig.get_ceph_backend_task(pecan.request.dbapi)
-                ceph_state = StorageBackendConfig.get_ceph_backend_state(pecan.request.dbapi)
-                if ceph_task != constants.SB_TASK_PROVISION_STORAGE and \
-                                ceph_state != constants.SB_STATE_CONFIGURING:
-                    raise wsme.exc.ClientSideError(
-                        _("Can not modify ceph replication factor when "
-                          "storage backend state is \'%s\' and task is \'%s.\' "
-                          "Operation supported for state \'%s\' and task \'%s.\'" %
-                          (ceph_state, ceph_task,
-                           constants.SB_STATE_CONFIGURING,
-                           constants.SB_TASK_PROVISION_STORAGE)))
-
-                # Changing replication factor once the first storage node
-                # has been installed (pools created) is not supported in R5
-                storage_hosts = pecan.request.dbapi.ihost_get_by_personality(
-                    constants.STORAGE)
-                if storage_hosts:
-                    raise wsme.exc.ClientSideError(
-                        _("Can not modify ceph replication factor once "
-                          "a storage node has been installed. This operation "
-                          "is not supported."))
-
-                # Changing ceph replication to a smaller factor
-                # than previously configured is not supported
-                if int(new_cap[constants.CEPH_BACKEND_REPLICATION_CAP]) < \
-                     int(orig_cap[constants.CEPH_BACKEND_REPLICATION_CAP]):
-                    raise wsme.exc.ClientSideError(
-                        _("Can not modify ceph replication factor from %s to "
-                          "a smaller value %s. This operation is not supported." %
-                          (orig_cap[constants.CEPH_BACKEND_REPLICATION_CAP],
-                           new_cap[constants.CEPH_BACKEND_REPLICATION_CAP])))
+            if ((constants.CEPH_BACKEND_REPLICATION_CAP in new_cap and
+                    constants.CEPH_BACKEND_REPLICATION_CAP in orig_cap) or
+                    (constants.CEPH_BACKEND_MIN_REPLICATION_CAP in new_cap and
+                     constants.CEPH_BACKEND_MIN_REPLICATION_CAP in orig_cap)):
+                # Semantic checks for replication number change
+                _check_replication_number(new_cap, orig_cap)
+                if len(new_cap) == 1 and (constants.CEPH_BACKEND_REPLICATION_CAP in new_cap or
+                                          constants.CEPH_BACKEND_MIN_REPLICATION_CAP in new_cap):
+                    replication_only_update = True
+                if len(new_cap) == 2 and (constants.CEPH_BACKEND_REPLICATION_CAP in new_cap and
+                                          constants.CEPH_BACKEND_MIN_REPLICATION_CAP in new_cap):
+                    replication_only_update = True
 
     LOG.info("SYS_I orig    storage_ceph: %s " % ostorceph.as_dict())
     LOG.info("SYS_I patched storage_ceph: %s " % storceph_config.as_dict())
@@ -1321,14 +1385,22 @@ def _patch(storceph_uuid, patch):
         # attribute and DB column. This should be driven by if the service
         # is added to the services list
         if object_gateway_install:
-            _check_object_gateway_install()
+            _check_object_gateway_install(pecan.request.dbapi)
 
-    # Update current ceph storage object again for object_gateway delta
-    # adjustments.
     for field in objects.storage_ceph.fields:
         if (field in storceph_config.as_dict() and
                 rpc_storceph[field] != storceph_config.as_dict()[field]):
             rpc_storceph[field] = storceph_config.as_dict()[field]
+
+    # Update replication on the fly on a single node install.
+    if (replication_only_update and
+            utils.is_aio_simplex_system(pecan.request.dbapi)):
+        # For single node setups update replication number on the fly.
+        min_replication = new_cap.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP, None)
+        replication = new_cap.get(constants.CEPH_BACKEND_REPLICATION_CAP, None)
+        pecan.request.rpcapi.configure_osd_pools(pecan.request.context,
+                                                 rpc_storceph,
+                                                 replication, min_replication)
 
     # Perform changes to the RBD Provisioner service
     remove_rbd_provisioner = constants.SB_SVC_RBD_PROVISIONER in services_removed
@@ -1341,7 +1413,9 @@ def _patch(storceph_uuid, patch):
 
         rpc_storceph.save()
 
-        if ((not quota_only_update and not fast_config) or
+        if ((not quota_only_update and
+             not fast_config and
+             not replication_only_update) or
              (storceph_config.state == constants.SB_STATE_CONFIG_ERR)):
             # Enable the backend changes:
             _apply_backend_changes(constants.SB_API_OP_MODIFY,

@@ -62,6 +62,7 @@ install -p -D -m 640 etc/sysinv/profileSchema.xsd %{buildroot}%{local_etc_sysinv
 #In order to decompile crushmap.bin please use this command:
 #crushtool -d crushmap.bin -o {decompiled-crushmap-filename}
 install -p -D -m 655 etc/sysinv/crushmap.bin %{buildroot}%{local_etc_sysinv}/crushmap.bin
+install -p -D -m 655 etc/sysinv/crushmap-aio-sx.bin %{buildroot}%{local_etc_sysinv}/crushmap-aio-sx.bin
 
 install -d -m 755 %{buildroot}%{local_etc_motdd}
 install -p -D -m 755 etc/sysinv/motd-system %{buildroot}%{local_etc_motdd}/10-system

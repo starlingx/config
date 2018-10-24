@@ -32,6 +32,7 @@ class platform::ceph::params(
   $rgw_gc_obj_min_wait = '600',
   $rgw_gc_processor_max_time = '300',
   $rgw_gc_processor_period = '300',
+  $restapi_public_addr = undef,
   $configure_ceph_mon_info = false,
   $ceph_config_ready_path = '/var/run/.ceph_started',
 ) { }
@@ -40,22 +41,38 @@ class platform::ceph::params(
 class platform::ceph
   inherits ::platform::ceph::params {
 
+  $system_mode = $::platform::params::system_mode
+  $system_type = $::platform::params::system_type
   if $service_enabled or $configure_ceph_mon_info {
     class { '::ceph':
       fsid => $cluster_uuid,
       authentication_type => $authentication_type,
+      mon_initial_members => $mon_0_host
     } ->
     ceph_config {
-      "mon.${mon_0_host}/host":      value => $mon_0_host;
-      "mon.${mon_0_host}/mon_addr":  value => $mon_0_addr;
-      "mon.${mon_1_host}/host":      value => $mon_1_host;
-      "mon.${mon_1_host}/mon_addr":  value => $mon_1_addr;
-      "mon.${mon_2_host}/host":      value => $mon_2_host;
-      "mon.${mon_2_host}/mon_addr":  value => $mon_2_addr;
-      "mon/mon clock drift allowed": value => ".1";
+       "mon/mon clock drift allowed": value => ".1";
+       "mon.${mon_0_host}/host":      value => $mon_0_host;
+       "mon.${mon_0_host}/mon_addr":  value => $mon_0_addr;
+       "client.restapi/public_addr":  value => $restapi_public_addr;
+    }
+    if $system_type == 'All-in-one' {
+      if 'duplex' in $system_mode {
+        Class['::ceph'] ->
+        ceph_config {
+          "mon.${mon_1_host}/host":      value => $mon_1_host;
+          "mon.${mon_1_host}/mon_addr":  value => $mon_1_addr;
+        }
+      }
+    } else {
+      Class['::ceph'] ->
+      ceph_config {
+        "mon.${mon_1_host}/host":      value => $mon_1_host;
+        "mon.${mon_1_host}/mon_addr":  value => $mon_1_addr;
+        "mon.${mon_2_host}/host":      value => $mon_2_host;
+        "mon.${mon_2_host}/mon_addr":  value => $mon_2_addr;
+      }
     }
   }
-
   class { '::platform::ceph::post':
     stage => post
   }
@@ -105,10 +122,11 @@ class platform::ceph::monitor
     # ensure configuration is complete before creating monitors
     Class['::ceph'] -> Ceph::Mon <| |>
 
-    # On active controller ensure service is started to
-    # allow in-service configuration.
-    # TODO(oponcea): Remove the pmon flag file created by systemctl start ceph
-    if str2bool($::is_controller_active) {
+    # Start service on AIO SX and on active controller
+    # to allow in-service configuration.
+    $system_mode = $::platform::params::system_mode
+    $system_type = $::platform::params::system_type
+    if str2bool($::is_controller_active) or ($system_type == 'All-in-one' and $system_mode == 'simplex') {
       $service_ensure = "running"
     } else {
       $service_ensure = "stopped"
@@ -329,6 +347,15 @@ class platform::ceph::rgw::keystone::auth(
 class platform::ceph::controller::runtime {
   include ::platform::ceph::monitor
   include ::platform::ceph
+
+  # Make sure ceph-rest-api is running as it is needed by sysinv config
+  # TODO(oponcea): Remove when sm supports in-service config reload
+  if str2bool($::is_controller_active) {
+    Ceph::Mon <| |> ->
+    exec { "/etc/init.d/ceph-rest-api start":
+      command => "/etc/init.d/ceph-rest-api start"
+    }
+  }
 }
 
 class platform::ceph::compute::runtime {

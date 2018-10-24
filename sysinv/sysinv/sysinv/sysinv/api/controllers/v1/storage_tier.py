@@ -410,6 +410,27 @@ def _check(op, tier):
             raise wsme.exc.ClientSideError(_("Storage tier (%s) "
                                              "already present." %
                                              tier['name']))
+        if utils.is_aio_simplex_system(pecan.request.dbapi):
+            # Deny adding secondary tiers if primary tier backend is not configured
+            # for cluster. When secondary tier is added we also query ceph to create
+            # pools and set replication therefore cluster has to be up.
+            clusterId = tier.get('forclusterid') or tier.get('cluster_uuid')
+            cluster_tiers = pecan.request.dbapi.storage_tier_get_by_cluster(clusterId)
+            configured = False if cluster_tiers else True
+            for t in cluster_tiers:
+                if t.forbackendid:
+                    bk = pecan.request.dbapi.storage_backend_get(t.forbackendid)
+                    if bk.state != constants.SB_STATE_CONFIGURED:
+                        msg = _("Operation denied. Storage backend '%s' "
+                                "of tier '%s' must be in '%s' state."
+                                % (bk.name, t['name'], constants.SB_STATE_CONFIGURED))
+                        raise wsme.exc.ClientSideError(msg)
+                    configured = True
+            if not configured:
+                msg = _("Operation denied. Adding secondary tiers to a cluster requires "
+                        "primary tier storage backend of this cluster to be configured.")
+                raise wsme.exc.ClientSideError(msg)
+
     elif op == "delete":
 
         if tier['name'] == constants.SB_TIER_DEFAULT_NAMES[
@@ -480,7 +501,12 @@ def _create(self, tier, iprofile=None):
         crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
                                           constants.CEPH_CRUSH_MAP_APPLIED)
         if not os.path.isfile(crushmap_flag_file):
-            self._ceph.set_crushmap()
+            try:
+                self._ceph.set_crushmap()
+            except exception.CephCrushMapNotApplied as e:
+                LOG.warning("Crushmap not applied, seems like ceph cluster is not ""configured. "
+                            "Operation will be retried with first occasion. "
+                            "Reason: %s" % str(e))
         else:
             self._ceph.crushmap_tiers_add()
     except (exception.CephCrushMaxRecursion,
@@ -501,7 +527,11 @@ def _delete(self, tier_uuid):
     _check("delete", tier.as_dict())
 
     # update the crushmap by removing the tier
-    self._ceph.crushmap_tier_delete(tier.name)
+    try:
+        self._ceph.crushmap_tier_delete(tier.name)
+    except exception.CephCrushMapNotApplied:
+        # If crushmap has not been applied then there is no rule to update.
+        pass
 
     try:
         pecan.request.dbapi.storage_tier_destroy(tier.id)

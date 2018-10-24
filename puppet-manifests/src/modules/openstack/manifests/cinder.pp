@@ -663,7 +663,9 @@ class openstack::cinder::api
     include ::openstack::cinder::firewall
     include ::openstack::cinder::haproxy
   }
-  include ::openstack::cinder::api::backends
+  if $service_enabled {
+    include ::openstack::cinder::api::backends
+  }
 
   class { '::openstack::cinder::pre':
     stage => pre
@@ -805,8 +807,10 @@ class openstack::cinder::backends::ceph::runtime
     enabled_backends => $enabled_backends
   }
 
-  include ::openstack::cinder::backends::ceph
-  include ::openstack::cinder::api::backends
+  if $service_enabled {
+    include ::openstack::cinder::backends::ceph
+    include ::openstack::cinder::api::backends
+  }
 
   class { '::openstack::cinder::reload':
     stage => post

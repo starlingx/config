@@ -202,8 +202,8 @@ class CephOperator(object):
 
         hostname = host_obj.hostname
 
-        # Get configured ceph replication
-        replication, min_replication = StorageBackendConfig.get_ceph_pool_replication(self._db_api)
+        # Get configured ceph base replication
+        replication, _ = StorageBackendConfig.get_ceph_max_replication(self._db_api)
 
         host_to_peer, stats = self._get_db_peer_groups(replication)
 
@@ -779,11 +779,8 @@ class CephOperator(object):
             backend = self._db_api.storage_ceph_get(tier_obj.forbackendid)
 
         # Make sure OSD exist for this tier before creating ceph pools
-        LOG.info("calling _configure_secondary_tier_pools to create ceph pools")
-        if not tier_obj.stors:
-            LOG.info("No need to create ceph pools as no OSD exists in tier %s"
-                     % tier_obj.name)
-            return
+        LOG.info("Calling _configure_secondary_tier_pools "
+                 "to create/update ceph pools for tier: %s" % tier_obj.name)
 
         for p in constants.SB_TIER_CEPH_POOLS:
             # If we have a backend for the tier, then set the quota
@@ -810,7 +807,7 @@ class CephOperator(object):
             if response.ok:
                 ruleset = body['output']['ruleset']
 
-                # create the pool
+                # create/update the pool
                 self._pool_create(pool_name, p['pg_num'], p['pgp_num'],
                                   ruleset, size, min_size)
 
@@ -824,20 +821,32 @@ class CephOperator(object):
                     name=rule_name, reason=body['status'])
                 raise e
 
-    def configure_osd_pools(self):
+    def configure_osd_pools(self, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
         """Create or resize all of the osd pools as needed
            ceph backend could be 2nd backend which is in configuring state
         """
-
-        # Get pool replication parameters
-        pool_size, pool_min_size = StorageBackendConfig.get_ceph_pool_replication(self._db_api)
-
         # Handle pools for multiple tiers
         tiers = self._db_api.storage_tier_get_by_cluster(self.cluster_db_uuid)
         ceph_tiers = filter(lambda t: t.type == constants.SB_TIER_TYPE_CEPH, tiers)
-        for t in ceph_tiers:
-            if t.uuid == self.primary_tier_uuid:
+        ceph_backends = self._db_api.storage_ceph_get_list()
 
+        for t in ceph_tiers:
+            # Get corresponding ceph backend for the tier, if any
+            bk = None
+            for bk in ceph_backends:
+                if t.forbackendid == bk.id:
+                    break
+
+            # Get pool replication parameters
+            pool_size, pool_min_size = StorageBackendConfig.get_ceph_pool_replication(self._db_api, bk)
+            if bk and ceph_backend and bk.name == ceph_backend.name:
+                # Override replication
+                pool_size = new_pool_size if new_pool_size else pool_size
+                pool_min_size = new_pool_min_size if new_pool_min_size else pool_min_size
+
+            # Configure tier OSD pools
+            if t.uuid == self.primary_tier_uuid:
+                # This is primary tier
                 # In case we're updating pool_size to a different value than
                 # default. Just update pool size for ceph's default pool 'rbd'
                 # as well
@@ -1003,6 +1012,7 @@ class CephOperator(object):
         #    2. One or more K8S keys with the Ceph pool key for each namespace
         #       we allow RBD PV and PVC creations.
 
+        LOG.info("Updating rbd-provisioner configuration.")
         # Manage Ceph cluster wide admin key and associated secret - we create
         # it if needed or remove it if no longer needed.
         admin_secret_exists = False
@@ -1294,7 +1304,7 @@ class CephOperator(object):
         """
         # Get configured ceph replication
         replication, min_replication = \
-            StorageBackendConfig.get_ceph_pool_replication(self._db_api)
+            StorageBackendConfig.get_ceph_pool_replication(self._db_api, tiers_obj)
 
         if tiers_obj.uuid == self.primary_tier_uuid:
             is_primary_tier = True

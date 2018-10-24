@@ -497,9 +497,13 @@ def _check_host(stor):
     if ihost['administrative'] != constants.ADMIN_LOCKED:
         raise wsme.exc.ClientSideError(_("Host must be locked"))
 
-    # semantic check: whether personality == storage
-    if ihost['personality'] != constants.STORAGE:
-        raise wsme.exc.ClientSideError(_("Host personality must be 'storage'"))
+    # semantic check: whether personality == storage or we have k8s AIO SX
+    is_k8s_aio_sx = (utils.is_aio_simplex_system(pecan.request.dbapi) and
+                     utils.is_kubernetes_config(pecan.request.dbapi))
+    if not is_k8s_aio_sx and ihost['personality'] != constants.STORAGE:
+            msg = ("Host personality must be 'storage' or "
+                   "one node system with kubernetes enabled.")
+            raise wsme.exc.ClientSideError(_(msg))
 
     # semantic check: whether system has a ceph backend
     if not StorageBackendConfig.has_backend_configured(
@@ -510,19 +514,20 @@ def _check_host(stor):
             "System must have a %s backend" % constants.SB_TYPE_CEPH))
 
     # semantic check: whether at least 2 unlocked hosts are monitors
-    ceph_helper = ceph.CephApiOperator()
-    num_monitors, required_monitors, quorum_names = \
-        ceph_helper.get_monitors_status(pecan.request.dbapi)
-    # CGTS 503 for now update monitors requirement until controller-0 is
-    # inventoried
-    # CGTS 1448
-    if num_monitors < required_monitors:
-        raise wsme.exc.ClientSideError(_(
-            "Only %d storage monitor available. "
-            "At least %s unlocked and enabled hosts with monitors are "
-            "required. Please ensure hosts with monitors are unlocked and "
-            "enabled - candidates: controller-0, controller-1, storage-0") %
-            (num_monitors, required_monitors))
+    if not utils.is_aio_simplex_system(pecan.request.dbapi):
+        ceph_helper = ceph.CephApiOperator()
+        num_monitors, required_monitors, quorum_names = \
+            ceph_helper.get_monitors_status(pecan.request.dbapi)
+        # CGTS 503 for now update monitors requirement until controller-0 is
+        # inventoried
+        # CGTS 1448
+        if num_monitors < required_monitors:
+            raise wsme.exc.ClientSideError(_(
+                "Only %d storage monitor available. "
+                "At least %s unlocked and enabled hosts with monitors are "
+                "required. Please ensure hosts with monitors are unlocked "
+                "and enabled - candidates: controller-0, controller-1, "
+                "storage-0") % (num_monitors, required_monitors))
 
 
 def _check_disk(stor):

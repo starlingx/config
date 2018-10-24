@@ -12,6 +12,8 @@
 
 from __future__ import absolute_import
 
+from sysinv.api.controllers.v1 import utils
+
 from cephclient import wrapper as ceph
 from sysinv.common import constants
 from sysinv.common import exception
@@ -217,9 +219,11 @@ class CephApiOperator(object):
                 LOG.debug("Unexpected recursion level seen while deleting "
                           "crushmap hierarchy")
 
-    def _insert_crush_rule(self, file_contents, root_name, rule_name,
-                           rule_count):
-        """ Insert a new crush rule for a new storage tier. """
+    def _insert_crush_rule(self, file_contents, root_name, rule_name, rule_count,
+                           replicate_by='host'):
+        """ Insert a new crush rule for a new storage tier.
+        Valid replicate_by options are 'host' or 'osd'.
+        """
 
         # generate rule
         rule = [
@@ -230,7 +234,7 @@ class CephApiOperator(object):
             "    max_size 10\n",
             "    step take %s\n" % root_name,
             "    step choose firstn 1 type chassis\n",
-            "    step chooseleaf firstn 0 type host\n",
+            "    step chooseleaf firstn 0 type %s\n" % replicate_by,
             "    step emit\n",
             "}\n"
         ]
@@ -240,8 +244,8 @@ class CephApiOperator(object):
         for l in reversed(rule):
             file_contents.insert(insertion_index, l)
 
-    def _crushmap_rule_add(self, name):
-        """Add a tier crushmap rule. """
+    def _crushmap_rule_add(self, name, replicate_by):
+        """Add a tier crushmap rule."""
 
         crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
                                           constants.CEPH_CRUSH_MAP_APPLIED)
@@ -290,7 +294,7 @@ class CephApiOperator(object):
                     contents = fp.readlines()
 
                 self._insert_crush_rule(contents, root_name,
-                                        rule_name, rule_count)
+                                        rule_name, rule_count, replicate_by)
 
                 with open(tmp_crushmap_txt_file, 'w') as fp:
                     contents = "".join(contents)
@@ -303,6 +307,8 @@ class CephApiOperator(object):
                 stdout, __ = cutils.execute(*cmd, run_as_root=False)
 
                 # Load the new crushmap
+                LOG.info("Loading updated crushmap with elements for "
+                         "crushmap root: %s" % root_name)
                 cmd = ["ceph", "osd", "setcrushmap",
                        "-i", tmp_crushmap_bin_file]
                 stdout, __ = cutils.execute(*cmd, run_as_root=False)
@@ -381,7 +387,16 @@ class CephApiOperator(object):
                     self._crushmap_root_mirror(self._default_tier, t.name)
 
                     # Second: Add ruleset
-                    self._crushmap_rule_add(t.name)
+                    # PG replication can be done per OSD or per host, hence replicate_by
+                    # is set to either 'osd' or 'host'.
+                    if utils.is_aio_simplex_system(pecan.request.dbapi):
+                        # Since we have a single host replication is done on OSDs
+                        # to ensure disk based redundancy.
+                        self._crushmap_rule_add(t.name, replicate_by='osd')
+                    else:
+                        # Replication is done on different nodes of the same peer
+                        # group ensuring host based redundancy.
+                        self._crushmap_rule_add(t.name, replicate_by='host')
                 except exception.CephCrushInvalidTierUse as e:
                     if 'already exists' in e:
                         continue
@@ -528,72 +543,13 @@ class CephApiOperator(object):
                 # all osds are up
                 return True
 
-    def _upgrade_update_crushmap(self, hostname):
-        # call ceph api osd_tree in order to extract
-        # osds and their weights
-        dict_storage = {}
-        if hostname is None:
-            return dict_storage
-        response, body = self._ceph_api.osd_tree(body='json')
-        osd_tree = body['output']['nodes']
-        size = len(osd_tree)
-        # if hostname=storage-0 is first upgraded, return dict_storage
-        # that contains the osds of storage-1
-        # if hostname=storage-1 is first upgraded, dict_storage
-        # will contain osds of storage-0
-        for i in range(1, size):
-            if osd_tree[i]['type'] != "host":
-                continue
-            children_list = osd_tree[i]['children']
-            children_num = len(children_list)
-            if osd_tree[i]['name'] != hostname:
-                dict_storage[osd_tree[i]['name']] = {}
-                for j in range(1, children_num + 1):
-                    if osd_tree[i + j]['type'] != constants.STOR_FUNCTION_OSD:
-                        break
-                    osd_name = osd_tree[i + j]['name']
-                    weight = str(osd_tree[i + j]['crush_weight'])
-                    dict_storage[osd_tree[i]['name']][osd_name] = weight
-                return dict_storage
-
     def host_crush_remove(self, hostname):
         # remove host from crushmap when system host-delete is executed
         response, body = self._ceph_api.osd_crush_remove(
             hostname, body='json')
 
-    def set_crushmap(self, upgrade=None, hostname=None):
-        # Crush Map: Replication of PGs across storage node pairs
-        stor_dict = {}
-        if upgrade:
-            # only when upgrade happens, method _upgrade_update_crushmap()
-            # is called
-            stor_dict = self.upgrade_update_crushmap(hostname)
-        crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
-                                          constants.CEPH_CRUSH_MAP_APPLIED)
-        if not os.path.isfile(crushmap_flag_file):
-            subprocess.call("ceph osd setcrushmap -i /etc/sysinv/crushmap.bin", shell=True)
-            try:
-                open(crushmap_flag_file, "w").close()
-            except IOError as e:
-                LOG.warn(_('Failed to create flag file: {}. '
-                           'Reason: {}').format(crushmap_flag_file, e))
-            # At first storage upgrade, crushmap is updated with group-0
-            # Group-0 will contain the upgrade storage node and the other
-            # storage node with its osds and weights
-            # When the second storage is upgraded, no storage node bucket
-            # will be added in crushmap because everything is added when first
-            # upgrade is done
-            if stor_dict:
-                for storage_key in stor_dict.keys():
-                    osd_dict = stor_dict[storage_key]
-                    for osd_key in osd_dict.keys():
-                        osd_weight = round(float(osd_dict[osd_key]), 5)
-                        string = 'host=' + storage_key
-                        self._ceph_api.osd_crush_add(osd_key, osd_weight,
-                                                     string, body='json')
-
-            # Now that the default tier config has been added, add any
-            # additionally required tiers.
+    def set_crushmap(self):
+        if fix_crushmap():
             self.crushmap_tiers_add()
 
     def update_crushmap(self, hostupdate):
@@ -710,3 +666,31 @@ class CephApiOperator(object):
             raise e
         else:
             return pools['output']
+
+
+def fix_crushmap(dbapi=None):
+    # Crush Map: Replication of PGs across storage node pairs
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
+                                      constants.CEPH_CRUSH_MAP_APPLIED)
+    if not os.path.isfile(crushmap_flag_file):
+        if utils.is_aio_simplex_system(dbapi):
+            crushmap_file = "/etc/sysinv/crushmap-aio-sx.bin"
+        else:
+            crushmap_file = "/etc/sysinv/crushmap.bin"
+        LOG.info("Updating crushmap with: %s" % crushmap_file)
+        try:
+            subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_file,
+                                    stderr=subprocess.STDOUT, shell=True)
+        except subprocess.CalledProcessError as e:
+            # May not be critical, depends on where this is called.
+            reason = "Error: %s Output: %s" % (str(e), e.output)
+            raise exception.CephCrushMapNotApplied(reason=reason)
+        try:
+            open(crushmap_flag_file, "w").close()
+        except IOError as e:
+            LOG.warn(_('Failed to create flag file: {}. '
+                       'Reason: {}').format(crushmap_flag_file, e))
+
+        return True

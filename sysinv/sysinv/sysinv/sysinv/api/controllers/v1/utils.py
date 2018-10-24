@@ -382,6 +382,14 @@ def is_kubernetes_config(dbapi=None):
     return system.capabilities.get('kubernetes_enabled', False)
 
 
+def is_aio_simplex_system(dbapi=None):
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    system = dbapi.isystem_get_one()
+    return (system.system_type == constants.TIS_AIO_BUILD and
+            system.system_mode == constants.SYSTEM_MODE_SIMPLEX)
+
+
 def is_aio_duplex_system():
     return get_system_mode() == constants.SYSTEM_MODE_DUPLEX and \
            SystemHelper.get_product_build() == constants.TIS_AIO_BUILD
@@ -588,7 +596,7 @@ class SBApiHelper(object):
                 service=constants.SERVICE_TYPE_SWIFT,
                 section=constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
                 name=constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED)
-            if swift_enabled.value.lower() == 'true':
+            if swift_enabled and swift_enabled.value.lower() == 'true':
                 raise wsme.exc.ClientSideError(
                     "Swift is already enabled through service parameter.")
         except exception.SysinvException:
