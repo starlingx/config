@@ -24,6 +24,7 @@ from . import common
 from . import barbican
 from . import cinder
 from . import glance
+from . import gnocchi
 from . import heat
 from . import horizon
 from . import ironic
@@ -87,6 +88,7 @@ class HelmOperator(object):
             constants.HELM_CHART_BARBICAN: barbican.BarbicanHelm(self),
             constants.HELM_CHART_CINDER: cinder.CinderHelm(self),
             constants.HELM_CHART_GLANCE: glance.GlanceHelm(self),
+            constants.HELM_CHART_GNOCCHI: gnocchi.GnocchiHelm(self),
             constants.HELM_CHART_HEAT: heat.HeatHelm(self),
             constants.HELM_CHART_HORIZON: horizon.HorizonHelm(self),
             constants.HELM_CHART_INGRESS: ingress.IngressHelm(self),
