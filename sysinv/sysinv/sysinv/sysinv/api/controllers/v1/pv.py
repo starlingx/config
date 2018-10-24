@@ -569,7 +569,7 @@ def _instances_lv_min_allowed_mib(vg_size_mib):
     # normal disk. Use a similar cutoff here for the volume group size. If the
     # volume group is large enough then bump the min_mib value. The min_mib
     # value is set to provide a reasonable minimum amount of space for
-    # /etc/nova/instances
+    # /var/lib/nova/instances
 
     # Note: A range based on this calculation is displayed in horizon to help
     # provide guidance to the end user. Any changes here should be reflected

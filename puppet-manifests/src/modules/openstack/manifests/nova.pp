@@ -454,8 +454,8 @@ class openstack::nova::storage (
       "libvirt/images_rbd_pool": value => $images_rbd_pool_real;
       "libvirt/images_rbd_ceph_conf": value => $images_rbd_ceph_conf_real;
   } ->
-  exec { 'umount /etc/nova/instances':
-    command => 'umount /etc/nova/instances; true',
+  exec { 'umount /var/lib/nova/instances':
+    command => 'umount /var/lib/nova/instances; true',
   } ->
   exec { 'umount /dev/nova-local/instances_lv':
     command => 'umount /dev/nova-local/instances_lv; true',
@@ -490,15 +490,15 @@ class openstack::nova::storage (
     options => '-F -F',
     require => Logical_volume['instances_lv']
   } ->
-  file { '/etc/nova/instances':
+  file { '/var/lib/nova/instances':
     ensure => 'directory',
     owner  => 'root',
     group  => 'root',
     mode   => '0755',
   } ->
   exec { 'mount /dev/nova-local/instances_lv':
-    unless  => 'mount | grep -q /etc/nova/instances',
-    command => 'mount -t ext4 /dev/nova-local/instances_lv /etc/nova/instances',
+    unless  => 'mount | grep -q /var/lib/nova/instances',
+    command => 'mount -t ext4 /dev/nova-local/instances_lv /var/lib/nova/instances',
   }
 }
 
