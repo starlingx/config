@@ -22,6 +22,7 @@ from . import common
 # Import Chart Override Helpers:
 # Chart source: https://github.com/openstack/openstack-helm.git
 from . import barbican
+from . import ceilometer
 from . import cinder
 from . import glance
 from . import gnocchi
@@ -86,6 +87,7 @@ class HelmOperator(object):
         # register chart operators for lookup
         self.chart_operators = {
             constants.HELM_CHART_BARBICAN: barbican.BarbicanHelm(self),
+            constants.HELM_CHART_CEILOMETER: ceilometer.CeilometerHelm(self),
             constants.HELM_CHART_CINDER: cinder.CinderHelm(self),
             constants.HELM_CHART_GLANCE: glance.GlanceHelm(self),
             constants.HELM_CHART_GNOCCHI: gnocchi.GnocchiHelm(self),

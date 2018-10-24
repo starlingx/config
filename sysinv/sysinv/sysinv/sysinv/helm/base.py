@@ -106,6 +106,13 @@ class BaseHelm(object):
             return None
         return service
 
+    def _get_shared_services(self):
+        if self.dbapi is None:
+            return []
+
+        system = self._get_system()
+        return system.capabilities.get('shared_services', [])
+
     def _get_service_parameter(self, service, section, name):
         if self.dbapi is None:
             return None
