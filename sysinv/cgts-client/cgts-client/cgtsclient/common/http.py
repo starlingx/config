@@ -23,7 +23,7 @@ import socket
 import httplib2
 
 import six
-import urlparse
+from six.moves.urllib.parse import urlparse
 
 try:
     import ssl
@@ -35,11 +35,6 @@ try:
     import json
 except ImportError:
     import simplejson as json
-
-# Python 2.5 compat fix
-if not hasattr(urlparse, 'parse_qsl'):
-    import cgi
-    urlparse.parse_qsl = cgi.parse_qsl
 
 from cgtsclient import exc as exceptions
 from neutronclient.common import utils
@@ -430,7 +425,7 @@ class HTTPClient(httplib2.Http):
 
     @staticmethod
     def get_connection_params(endpoint, **kwargs):
-        parts = urlparse.urlparse(endpoint)
+        parts = urlparse(endpoint)
 
         _args = (parts.hostname, parts.port, parts.path)
         _kwargs = {'timeout': (float(kwargs.get('timeout'))

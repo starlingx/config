@@ -44,7 +44,7 @@ postgres=# create database openstack_citest with owner openstack_citest;
 import commands
 from six.moves import configparser
 import os
-import urlparse
+from six.moves.urllib.parse import urlparse
 
 import mock
 import sqlalchemy
@@ -235,7 +235,7 @@ class BaseMigrationTestCase(test_utils.BaseTestCase):
     def _reset_databases(self):
         for key, engine in self.engines.items():
             conn_string = self.test_databases[key]
-            conn_pieces = urlparse.urlparse(conn_string)
+            conn_pieces = urlparse(conn_string)
 
             engine.dispose()
             if conn_string.startswith('sqlite'):
@@ -565,7 +565,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         connect_string = _get_connect_string("mysql", self.USER, self.PASSWD,
                                             self.DATABASE)
         (user, password, database, host) = \
-            get_db_connection_info(urlparse.urlparse(connect_string))
+            get_db_connection_info(urlparse(connect_string))
         engine = sqlalchemy.create_engine(connect_string)
         self.engines[database] = engine
         self.test_databases[database] = connect_string
@@ -601,7 +601,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
                                             self.PASSWD, self.DATABASE)
         engine = sqlalchemy.create_engine(connect_string)
         (user, password, database, host) = \
-            get_db_connection_info(urlparse.urlparse(connect_string))
+            get_db_connection_info(urlparse(connect_string))
         self.engines[database] = engine
         self.test_databases[database] = connect_string
 
