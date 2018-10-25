@@ -12,6 +12,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+
 from sysinv.openstack.common import log as logging
 
 from . import common
@@ -176,3 +177,8 @@ class BaseHelm(object):
             utils._format_ceph_mon_address(mon, port) for mon in monitor_ips
         ]
         return formatted_monitor_ips
+
+    def _get_management_address(self):
+        address = self._get_address_by_name(
+            constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)
+        return address.address
