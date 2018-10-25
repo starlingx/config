@@ -743,7 +743,7 @@ def _call(addr, context, topic, msg, timeout=None,
     # One effect of this is that we're checking all
     # responses for Exceptions.
     for resp in responses:
-        if isinstance(resp, types.DictType) and 'exc' in resp:
+        if isinstance(resp, dict) and 'exc' in resp:
             raise rpc_common.deserialize_remote_exception(CONF, resp['exc'])
 
     return responses[-1]
