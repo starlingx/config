@@ -41,6 +41,7 @@ from . import nfs_provisioner
 from . import mariadb
 from . import memcached
 from . import openvswitch
+from . import panko
 from . import rabbitmq
 
 # Chart source: Custom
@@ -108,6 +109,7 @@ class HelmOperator(object):
                 nova_api_proxy.NovaApiProxyHelm(self),
             constants.HELM_CHART_OPENVSWITCH:
                 openvswitch.OpenvswitchHelm(self),
+            constants.HELM_CHART_PANKO: panko.PankoHelm(self),
             constants.HELM_CHART_RABBITMQ: rabbitmq.RabbitmqHelm(self),
             constants.HELM_CHART_RBD_PROVISIONER:
                 rbd_provisioner.RbdProvisionerHelm(self)
