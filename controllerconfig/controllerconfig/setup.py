@@ -23,7 +23,8 @@ setup(
             'config_management = controllerconfig.config_management:main',
             'upgrade_controller = controllerconfig.upgrades.controller:main',
             'upgrade_controller_simplex = '
-            'controllerconfig.upgrades.controller:simplex_main'
+            'controllerconfig.upgrades.controller:simplex_main',
+            'tidy_storage_post_restore = controllerconfig.tidy_storage:main'
         ],
     }
 )

@@ -35,7 +35,6 @@ import utils
 import sysinv_api as sysinv
 from six.moves import input
 
-
 LOG = log.get_logger(__name__)
 
 DEVNULL = open(os.devnull, 'w')
@@ -1253,7 +1252,7 @@ def restore_complete():
         return True
 
 
-def restore_system(backup_file, clone=False):
+def restore_system(backup_file, include_storage_reinstall=False, clone=False):
     """Restoring system configuration."""
 
     if (os.path.exists(constants.CGCS_CONFIG_FILE) or
@@ -1596,6 +1595,22 @@ def restore_system(backup_file, clone=False):
 
                 failed_lock_host = False
                 skip_hosts = ['controller-0']
+                if not include_storage_reinstall:
+                    storage_hosts = \
+                        sysinv.get_hosts(client.admin_token,
+                                         client.conf['region_name'],
+                                         personality='storage')
+                    if storage_hosts:
+                        install_uuid = utils.get_install_uuid()
+                        for h in storage_hosts:
+                            skip_hosts.append(h.name)
+
+                            # Update install_uuid on the storage node
+                            client.sysinv.ihost.update_install_uuid(
+                                h.uuid,
+                                install_uuid)
+
+                skip_hosts_count = len(skip_hosts)
 
                 # Wait for nodes to be identified as disabled before attempting
                 # to lock hosts. Even if after 3 minute nodes are still not
@@ -1629,18 +1644,26 @@ def restore_system(backup_file, clone=False):
                         LOG.exception(e)
                         # this is somehow expected
 
-                if failed_lock_host or len(skip_hosts) > 1:
-                    print textwrap.fill(
-                        "Failed to lock at least one node. " +
-                        "Please lock the unlocked nodes manually.", 80
-                    )
+                if failed_lock_host or len(skip_hosts) > skip_hosts_count:
+                    if include_storage_reinstall:
+                        print textwrap.fill(
+                            "Failed to lock at least one node. " +
+                            "Please lock the unlocked nodes manually.", 80
+                        )
+                    else:
+                        print textwrap.fill(
+                            "Failed to lock at least one node. " +
+                            "Please lock the unlocked controller-1 or " +
+                            "compute nodes manually.", 80
+                        )
 
                 if not clone:
                     print textwrap.fill(
                         "Before continuing to the next step in the restore, " +
                         "please ensure all nodes other than controller-0 " +
-                        "are powered off. Please refer to the system " +
-                        "administration guide for more details.", 80
+                        "and storage nodes, if they are not being " +
+                        "reinstalled, are powered off. Please refer to the " +
+                        "system administration guide for more details.", 80
                     )
 
     finally:

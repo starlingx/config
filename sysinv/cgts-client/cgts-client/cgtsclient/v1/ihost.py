@@ -107,6 +107,11 @@ class ihostManager(base.Manager):
             data = [data]
         return [obj_class(self, res, loaded=True) for res in data if res]
 
+    def update_install_uuid(self, hostid, install_uuid):
+        path = self._path(hostid) + "/state/update_install_uuid"
+
+        self.api.json_request('PUT', path, body=install_uuid)
+
     def delete(self, ihost_id):
         return self._delete(self._path(ihost_id))
 

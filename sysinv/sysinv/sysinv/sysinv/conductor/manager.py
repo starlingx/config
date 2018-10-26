@@ -5640,6 +5640,14 @@ class ConductorManager(service.PeriodicService):
                       'capabilities': capabilities}
             self.dbapi.service_update(cinder_service.name, values)
 
+    def update_install_uuid(self, context, host_uuid, install_uuid):
+        """ Update install_uuid on the specified host """
+
+        LOG.info("update_install_uuid host_uuid=%s install_uuid=%s "
+                 % (host_uuid, install_uuid))
+        rpcapi = agent_rpcapi.AgentAPI()
+        rpcapi.iconfig_update_install_uuid(context, host_uuid, install_uuid)
+
     def update_ceph_config(self, context, sb_uuid, services):
         """Update the manifests for Cinder Ceph backend"""
 

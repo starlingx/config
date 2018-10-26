@@ -35,6 +35,7 @@ Commands (from conductors) are received via RPC calls.
 
 import errno
 import fcntl
+import fileinput
 import os
 import retrying
 import shutil
@@ -1290,6 +1291,30 @@ class AgentManager(service.PeriodicService):
             self.configure_lldp_systemname(context, systemname)
 
         return
+
+    def iconfig_update_install_uuid(self, context, host_uuid, install_uuid):
+        """Update install_uuid in /etc/platform/platform.conf
+
+        :param context: request context.
+        :param host_uuid: The host uuid to update the install_uuid
+        :param install_uuid: The updated install_uuid that will be
+        :                    written into /etc/platform/platform.conf
+        """
+
+        LOG.debug("iconfig_update_install_uuid "
+                  "host_uuid=%s install_uuid=%s" % (host_uuid, install_uuid))
+
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            temp_platform_conf_file = os.path.join(tsc.PLATFORM_CONF_PATH,
+                                                   'platform.conf.temp')
+            shutil.copyfile(tsc.PLATFORM_CONF_FILE, temp_platform_conf_file)
+            for line in fileinput.FileInput(temp_platform_conf_file, inplace=1):
+                if line.startswith("INSTALL_UUID="):
+                    print "INSTALL_UUID=%s" % install_uuid
+                else:
+                    print line,
+            fileinput.close()
+            os.rename(temp_platform_conf_file, tsc.PLATFORM_CONF_FILE)
 
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def iconfig_update_file(self, context, iconfig_uuid, iconfig_dict):
