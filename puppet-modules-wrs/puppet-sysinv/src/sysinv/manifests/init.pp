@@ -71,6 +71,7 @@ class sysinv (
   $nova_region_name            = 'RegionOne',
   $magnum_region_name          = 'RegionOne',
   $fm_catalog_info             = undef,
+  $fernet_key_repository       = undef,
 ) {
 
   include sysinv::params
@@ -205,9 +206,10 @@ class sysinv (
   sysinv_config {
     'fm/catalog_info':    value => $fm_catalog_info;
     'fm/os_region_name':  value => $region_name;
+    'fernet_repo/key_repository':  value => $fernet_key_repository;
   }
 
- sysinv_api_paste_ini {
+  sysinv_api_paste_ini {
     'filter:authtoken/region_name': value => $region_name;
- }
+  }
 }

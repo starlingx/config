@@ -69,6 +69,7 @@ from sysinv.common import constants
 from sysinv.common import ceph as cceph
 from sysinv.common import exception
 from sysinv.common import fm
+from sysinv.common import fernet
 from sysinv.common import health
 from sysinv.common import kubernetes
 from sysinv.common import retrying
@@ -154,6 +155,7 @@ class ConductorManager(service.PeriodicService):
         self._ceph_api = ceph.CephWrapper(
             endpoint='http://localhost:5001/api/v0.1/')
         self._kube = None
+        self._fernet = None
 
         self._openstack = None
         self._api_token = None
@@ -180,6 +182,7 @@ class ConductorManager(service.PeriodicService):
         self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
         self._kube = kubernetes.KubeOperator(self.dbapi)
+        self._fernet = fernet.FernetOperator()
 
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
@@ -10332,3 +10335,21 @@ class ConductorManager(service.PeriodicService):
 
         rpcapi = agent_rpcapi.AgentAPI()
         rpcapi.update_host_memory(context, host.uuid)
+
+    def update_fernet_keys(self, context, keys):
+        """Update the fernet repo with the new keys.
+
+          :param context: request context.
+          :param keys: a list of keys
+          :returns: nothing
+          """
+        self._fernet.update_fernet_keys(keys)
+
+    def get_fernet_keys(self, context, key_id=None):
+        """Get the keys from the fernet repo.
+
+          :param context: request context.
+          :param key_id: Optionally, it can be used to retrieve a specified key
+          :returns: a list of keys
+          """
+        return self._fernet.get_fernet_keys(key_id)

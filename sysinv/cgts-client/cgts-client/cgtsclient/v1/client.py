@@ -26,6 +26,7 @@ from cgtsclient.v1 import cluster
 from cgtsclient.v1 import controller_fs
 from cgtsclient.v1 import drbdconfig
 from cgtsclient.v1 import ethernetport
+from cgtsclient.v1 import fernet
 from cgtsclient.v1 import firewallrules
 from cgtsclient.v1 import health
 from cgtsclient.v1 import helm
@@ -150,3 +151,4 @@ class Client(http.HTTPClient):
             storage_ceph_external.StorageCephExternalManager(self)
         self.helm = helm.HelmManager(self)
         self.label = label.KubernetesLabelManager(self)
+        self.fernet = fernet.FernetManager(self)

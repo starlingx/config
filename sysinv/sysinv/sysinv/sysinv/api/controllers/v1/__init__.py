@@ -32,6 +32,7 @@ from sysinv.api.controllers.v1 import disk
 from sysinv.api.controllers.v1 import dns
 from sysinv.api.controllers.v1 import drbdconfig
 from sysinv.api.controllers.v1 import ethernet_port
+from sysinv.api.controllers.v1 import fernet_repo
 from sysinv.api.controllers.v1 import firewallrules
 from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
@@ -232,6 +233,9 @@ class V1(base.APIBase):
 
     label = [link.Link]
     "Links to the label resource "
+
+    fernet_repo = [link.Link]
+    "Links to the fernet repo resource"
 
     @classmethod
     def convert(self):
@@ -726,6 +730,14 @@ class V1(base.APIBase):
                                          pecan.request.host_url,
                                          'labels', '',
                                          bookmark=True)]
+
+        v1.fernet_repo = [link.Link.make_link('self', pecan.request.host_url,
+                                              'fernet_repo', ''),
+                          link.Link.make_link('bookmark',
+                                              pecan.request.host_url,
+                                              'fernet_repo', '',
+                                              bookmark=True)
+                          ]
         return v1
 
 
@@ -790,6 +802,7 @@ class Controller(rest.RestController):
     firewallrules = firewallrules.FirewallRulesController()
     license = license.LicenseController()
     labels = label.LabelController()
+    fernet_repo = fernet_repo.FernetKeyController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

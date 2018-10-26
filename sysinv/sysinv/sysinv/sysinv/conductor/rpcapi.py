@@ -1708,3 +1708,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                  " host memory update request to conductor")
         return self.cast(context, self.make_msg('update_host_memory',
                                                 host_uuid=host_uuid))
+
+    def update_fernet_keys(self, context, keys):
+        """Synchronously, have the conductor update fernet keys.
+
+        :param context: request context.
+        :param keys: a list of fernet keys
+        """
+        return self.call(context, self.make_msg('update_fernet_keys',
+                                                keys=keys))
+
+    def get_fernet_keys(self, context, key_id=None):
+        """Synchronously, have the conductor to retrieve fernet keys.
+
+        :param context: request context.
+        :param key_id: (optional)
+        :returns: a list of fernet keys.
+        """
+        return self.call(context, self.make_msg('get_fernet_keys',
+                                                key_id=key_id))

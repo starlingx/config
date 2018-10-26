@@ -110,19 +110,21 @@ class openstack::keystone (
 
     include ::keystone::ldap
 
-    # Set up cron job that will rotate fernet keys. This is done every month on
-    # the first day of the month at 00:25 by default. The cron job only runs on
-    # the active controller.
-    cron { 'keystone-fernet-keys-rotater':
-      ensure      => 'present',
-      command     => '/usr/bin/keystone-fernet-keys-rotate-active',
-      environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-      minute      => $fernet_keys_rotation_minute,
-      hour        => $fernet_keys_rotation_hour,
-      month       => $fernet_keys_rotation_month,
-      monthday    => $fernet_keys_rotation_monthday,
-      weekday     => $fernet_keys_rotation_weekday,
-      user        => 'root',
+    if $::platform::params::distributed_cloud_role == undef {
+      # Set up cron job that will rotate fernet keys. This is done every month on
+      # the first day of the month at 00:25 by default. The cron job runs on both
+      # controllers, but the script will only take action on the active controller.
+      cron { 'keystone-fernet-keys-rotater':
+        ensure      => 'present',
+        command     => '/usr/bin/keystone-fernet-keys-rotate-active',
+        environment => 'PATH=/bin:/usr/bin:/usr/sbin',
+        minute      => $fernet_keys_rotation_minute,
+        hour        => $fernet_keys_rotation_hour,
+        month       => $fernet_keys_rotation_month,
+        monthday    => $fernet_keys_rotation_monthday,
+        weekday     => $fernet_keys_rotation_weekday,
+        user        => 'root',
+      }
     }
   } else {
       class { '::keystone':
