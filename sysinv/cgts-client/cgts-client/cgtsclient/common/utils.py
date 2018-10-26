@@ -46,6 +46,7 @@ from functools import wraps
 from wrapping_formatters import _get_width
 
 from cgtsclient.common import wrapping_formatters
+from six.moves import input
 
 
 class HelpFormatter(argparse.HelpFormatter):
@@ -277,7 +278,7 @@ def pt_builder(field_labels, fields, formatters, paging, printer=default_printer
                 if self.terminal_lines_left > 0:
                     printer("\n" * (self.terminal_lines_left - 1))
 
-                s = raw_input("Press Enter to continue or 'q' to exit...")
+                s = input("Press Enter to continue or 'q' to exit...")
                 if s == 'q':
                     self.quit = True
                     return False

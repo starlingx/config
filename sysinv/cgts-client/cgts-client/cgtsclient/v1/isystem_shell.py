@@ -13,6 +13,7 @@
 from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
+from six.moves import input
 
 
 def _print_isystem_show(isystem):
@@ -126,7 +127,7 @@ def do_modify(cc, args):
             'before continue.\n'
             'Are you sure you want to continue [yes/N]: ' % mode_text)
 
-        confirm = raw_input(warning_message)
+        confirm = input(warning_message)
         if confirm != 'yes':
             print "Operation cancelled."
             return

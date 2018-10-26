@@ -33,6 +33,7 @@ import openstack
 import tsconfig.tsconfig as tsconfig
 import utils
 import sysinv_api as sysinv
+from six.moves import input
 
 
 LOG = log.get_logger(__name__)
@@ -1348,7 +1349,7 @@ def restore_system(backup_file, clone=False):
                     print ("After the reboot is complete, " +
                            "re-execute the restore command.")
                     while True:
-                        user_input = raw_input(
+                        user_input = input(
                             "Enter 'reboot' to reboot controller: ")
                         if user_input == 'reboot':
                             break
