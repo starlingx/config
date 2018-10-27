@@ -12,9 +12,12 @@ class platform::sysinv
 
   include ::platform::params
   include ::platform::amqp::params
+  include ::platform::drbd::cgcs::params
 
   # sysinv-agent is started on all hosts
   include ::sysinv::agent
+
+  $keystone_key_repo_path = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
 
   group { 'sysinv':
     ensure => 'present',
@@ -47,6 +50,7 @@ class platform::sysinv
     rabbit_userid => $::platform::amqp::params::auth_user,
     rabbit_password => $::platform::amqp::params::auth_password,
     fm_catalog_info => $fm_catalog_info,
+    fernet_key_repository => "$keystone_key_repo_path/fernet-keys",
   }
 
   # Note: The log format strings are prefixed with "sysinv" because it is
