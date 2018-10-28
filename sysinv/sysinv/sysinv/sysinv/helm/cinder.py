@@ -72,10 +72,6 @@ class CinderHelm(openstack.OpenstackBaseHelm):
         if not ceph_backend:
             return {}
 
-        # Get Ceph monitors.
-        ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
-            self.dbapi).values()
-
         replication, min_replication =\
             StorageBackendConfig.get_ceph_pool_replication(self.dbapi)
 
@@ -84,11 +80,7 @@ class CinderHelm(openstack.OpenstackBaseHelm):
         ruleset = 0
 
         conf_ceph = {
-            'monitors': [
-                "%s:6789" % ceph_mon_ips[0],
-                "%s:6789" % ceph_mon_ips[1],
-                "%s:6789" % ceph_mon_ips[2]
-            ],
+            'monitors': self._get_formatted_ceph_monitor_ips(),
             'admin_keyring': 'null',
             'pools': {
                 'backup': {

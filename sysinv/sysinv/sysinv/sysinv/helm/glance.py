@@ -6,8 +6,6 @@
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import utils as cutils
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.openstack.common import log as logging
 
 from . import common
@@ -116,19 +114,11 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
         return constants.GLANCE_BACKEND_RBD  # radosgw| rbd | swift | pvc
 
     def _get_ceph_overrides(self):
-        SERVICE_PORT_MON = 6789
-        # Get Ceph monitors.
-        ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
-            self.dbapi).values()
         conf_ceph = {
             'admin_keyring': self._get_ceph_password(
                 self.SERVICE_NAME, 'admin_keyring'
             ),
-            'monitors': [
-                cutils._format_ceph_mon_address(ceph_mon_ips[0], SERVICE_PORT_MON),
-                cutils._format_ceph_mon_address(ceph_mon_ips[1], SERVICE_PORT_MON),
-                cutils._format_ceph_mon_address(ceph_mon_ips[2], SERVICE_PORT_MON),
-            ]
+            'monitors': self._get_formatted_ceph_monitor_ips()
         }
 
         return conf_ceph

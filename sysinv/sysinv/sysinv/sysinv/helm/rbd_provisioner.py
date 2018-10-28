@@ -4,11 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import netaddr
-
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.openstack.common import log as logging
 
@@ -49,18 +46,11 @@ class RbdProvisionerHelm(base.BaseHelm):
         if not rbd_provisioner_bks:
             return {}  # ceph is not configured
 
-        ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
-            self.dbapi).values()
-
         classdefaults = {
-                          "monitors": [
-                              self._format_ceph_mon_address(ceph_mon_ips[0]),
-                              self._format_ceph_mon_address(ceph_mon_ips[1]),
-                              self._format_ceph_mon_address(ceph_mon_ips[2])
-                          ],
-                          "adminId": constants.K8S_RBD_PROV_USER_NAME,
-                          "adminSecretName": constants.K8S_RBD_PROV_ADMIN_SECRET_NAME
-                        }
+            "monitors": self._get_formatted_ceph_monitor_ips(),
+            "adminId": constants.K8S_RBD_PROV_USER_NAME,
+            "adminSecretName": constants.K8S_RBD_PROV_ADMIN_SECRET_NAME
+        }
 
         classes = []
         for bk in rbd_provisioner_bks:
@@ -86,9 +76,3 @@ class RbdProvisionerHelm(base.BaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _format_ceph_mon_address(self, ip_address):
-        if netaddr.IPAddress(ip_address).version == constants.IPV4_FAMILY:
-            return '%s:%d' % (ip_address, self.SERVICE_PORT_MON)
-        else:
-            return '[%s]:%d' % (ip_address, self.SERVICE_PORT_MON)
