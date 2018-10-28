@@ -7,6 +7,7 @@
 import netaddr
 import uuid
 
+from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
@@ -48,7 +49,15 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
             self.dbapi)
 
-        mon_0_ip = ceph_mon_ips['ceph-mon-0-ip']
+        # TODO: k8s on AIO-SX: Temporarily need to move the ceph monitor address
+        # from a loopback address to the OAM address so the ceph monitor is
+        # reachable from the cluster pods.
+        if (utils.is_kubernetes_config(self.dbapi) and
+            (self.dbapi.isystem_get_one().system_mode ==
+                 constants.SYSTEM_MODE_SIMPLEX)):
+            mon_0_ip = self._get_oam_address()
+        else:
+            mon_0_ip = ceph_mon_ips['ceph-mon-0-ip']
         mon_1_ip = ceph_mon_ips['ceph-mon-1-ip']
         mon_2_ip = ceph_mon_ips['ceph-mon-2-ip']
 
