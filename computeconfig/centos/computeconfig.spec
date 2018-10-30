@@ -15,23 +15,23 @@ Requires: systemd
 %description
 Initial compute node configuration
 
-%package -n computeconfig-standalone                                            
+%package -n computeconfig-standalone
 Summary: computeconfig
-Group: base                                                                     
-                                                                                
-%description -n computeconfig-standalone                                        
-Initial compute node configuration                                              
+Group: base
 
-%package -n computeconfig-subfunction                                           
+%description -n computeconfig-standalone
+Initial compute node configuration
+
+%package -n computeconfig-subfunction
 Summary: computeconfig
-Group: base                                                                     
+Group: base
 
-%description -n computeconfig-subfunction                                       
-Initial compute node configuration                                              
+%description -n computeconfig-subfunction
+Initial compute node configuration
 
-%define local_etc_initd /etc/init.d/
-%define local_goenabledd /etc/goenabled.d/
-%define local_etc_systemd /etc/systemd/system/
+%define initddir /etc/init.d/
+%define goenableddir /etc/goenabled.d/
+%define systemddir /etc/systemd/system/
 
 %prep
 %setup
@@ -39,61 +39,47 @@ Initial compute node configuration
 %build
 
 %install
-install -d -m 755 %{buildroot}%{local_etc_initd}
-install -p -D -m 700 compute_config %{buildroot}%{local_etc_initd}/compute_config
-install -p -D -m 700 compute_services %{buildroot}%{local_etc_initd}/compute_services
-
-install -d -m 755 %{buildroot}%{local_goenabledd}
-install -p -D -m 755 config_goenabled_check.sh %{buildroot}%{local_goenabledd}/config_goenabled_check.sh
-
-install -d -m 755 %{buildroot}%{local_etc_systemd}
-install -d -m 755 %{buildroot}%{local_etc_systemd}/config
-install -p -D -m 664 computeconfig.service %{buildroot}%{local_etc_systemd}/config/computeconfig-standalone.service
-install -p -D -m 664 computeconfig-combined.service %{buildroot}%{local_etc_systemd}/config/computeconfig-combined.service
-#install -p -D -m 664 config.service %{buildroot}%{local_etc_systemd}/config.service
+make install INITDDIR=%{buildroot}%{initddir} GOENABLEDDIR=%{buildroot}%{goenableddir} SYSTEMDDIR=%{buildroot}%{systemddir}
 
 %post -n computeconfig-standalone
-if [ ! -e $D%{local_etc_systemd}/computeconfig.service ]; then
-    cp $D%{local_etc_systemd}/config/computeconfig-standalone.service $D%{local_etc_systemd}/computeconfig.service
+if [ ! -e $D%{systemddir}/computeconfig.service ]; then
+    cp $D%{systemddir}/config/computeconfig-standalone.service $D%{systemddir}/computeconfig.service
 else
-    cmp -s $D%{local_etc_systemd}/config/computeconfig-standalone.service $D%{local_etc_systemd}/computeconfig.service
+    cmp -s $D%{systemddir}/config/computeconfig-standalone.service $D%{systemddir}/computeconfig.service
     if [ $? -ne 0 ]; then
-        rm -f $D%{local_etc_systemd}/computeconfig.service
-        cp $D%{local_etc_systemd}/config/computeconfig-standalone.service $D%{local_etc_systemd}/computeconfig.service
+        rm -f $D%{systemddir}/computeconfig.service
+        cp $D%{systemddir}/config/computeconfig-standalone.service $D%{systemddir}/computeconfig.service
     fi
 fi
 systemctl enable computeconfig.service
 
 
 %post -n computeconfig-subfunction
-if [ ! -e $D%{local_etc_systemd}/computeconfig.service ]; then
-    cp $D%{local_etc_systemd}/config/computeconfig-combined.service $D%{local_etc_systemd}/computeconfig.service
+if [ ! -e $D%{systemddir}/computeconfig.service ]; then
+    cp $D%{systemddir}/config/computeconfig-combined.service $D%{systemddir}/computeconfig.service
 else
-    cmp -s $D%{local_etc_systemd}/config/computeconfig-combined.service $D%{local_etc_systemd}/computeconfig.service
+    cmp -s $D%{systemddir}/config/computeconfig-combined.service $D%{systemddir}/computeconfig.service
     if [ $? -ne 0 ]; then
-        rm -f $D%{local_etc_systemd}/computeconfig.service
-        cp $D%{local_etc_systemd}/config/computeconfig-combined.service $D%{local_etc_systemd}/computeconfig.service
+        rm -f $D%{systemddir}/computeconfig.service
+        cp $D%{systemddir}/config/computeconfig-combined.service $D%{systemddir}/computeconfig.service
     fi
 fi
 systemctl enable computeconfig.service
 
 %clean
-# rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root,-)
 %doc LICENSE
-%{local_etc_initd}/*
+%{initddir}/*
 
 %files -n computeconfig-standalone
 %defattr(-,root,root,-)
-%dir %{local_etc_systemd}/config
-%{local_etc_systemd}/config/computeconfig-standalone.service
-#%{local_etc_systemd}/config.service
-%{local_goenabledd}/*
+%dir %{systemddir}/config
+%{systemddir}/config/computeconfig-standalone.service
+%{goenableddir}/*
 
 %files -n computeconfig-subfunction
 %defattr(-,root,root,-)
-%dir %{local_etc_systemd}/config
-%{local_etc_systemd}/config/computeconfig-combined.service
-
+%dir %{systemddir}/config
+%{systemddir}/config/computeconfig-combined.service
