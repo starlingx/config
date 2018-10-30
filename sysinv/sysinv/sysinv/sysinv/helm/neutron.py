@@ -218,6 +218,9 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         return {
             'agent': agent,
             'ovs': ovs,
+            'securitygroup': {
+                'firewall_driver': 'noop',
+            },
         }
 
     def _get_neutron_config(self):
