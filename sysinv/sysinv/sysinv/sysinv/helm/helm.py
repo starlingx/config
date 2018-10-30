@@ -45,7 +45,7 @@ from . import rabbitmq
 
 # Chart source: Custom
 from . import rbd_provisioner
-
+from . import nova_api_proxy
 
 LOG = logging.getLogger(__name__)
 
@@ -104,6 +104,8 @@ class HelmOperator(object):
             constants.HELM_CHART_NFS_PROVISIONER:
                 nfs_provisioner.NfsProvisionerHelm(self),
             constants.HELM_CHART_NOVA: nova.NovaHelm(self),
+            constants.HELM_CHART_NOVA_API_PROXY:
+                nova_api_proxy.NovaApiProxyHelm(self),
             constants.HELM_CHART_OPENVSWITCH:
                 openvswitch.OpenvswitchHelm(self),
             constants.HELM_CHART_RABBITMQ: rabbitmq.RabbitmqHelm(self),
