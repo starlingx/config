@@ -61,7 +61,7 @@ def _load():
     config.readfp(ini_fp)
 
     try:
-        value = config.get('build_info', 'SW_VERSION')
+        value = str(config.get('build_info', 'SW_VERSION'))
 
         SW_VERSION = value.strip('"')
     except configparser.Error:
@@ -77,75 +77,76 @@ def _load():
     config.readfp(ini_fp)
 
     try:
-        value = config.get('platform_conf', 'nodetype')
+        value = str(config.get('platform_conf', 'nodetype'))
 
         nodetype = value
 
-        value = config.get('platform_conf', 'subfunction')
+        value = str(config.get('platform_conf', 'subfunction'))
 
         subfunctions = value.split(",")
 
         global region_config
         if config.has_option('platform_conf', 'region_config'):
-            region_config = config.get('platform_conf', 'region_config')
+            region_config = str(config.get('platform_conf', 'region_config'))
 
         global region_1_name
         if config.has_option('platform_conf', 'region_1_name'):
-            region_1_name = config.get('platform_conf', 'region_1_name')
+            region_1_name = str(config.get('platform_conf', 'region_1_name'))
 
         global region_2_name
         if config.has_option('platform_conf', 'region_2_name'):
-            region_2_name = config.get('platform_conf', 'region_2_name')
+            region_2_name = str(config.get('platform_conf', 'region_2_name'))
 
         global vswitch_type
         if config.has_option('platform_conf', 'vswitch_type'):
-            vswitch_type = config.get('platform_conf', 'vswitch_type')
+            vswitch_type = str(config.get('platform_conf', 'vswitch_type'))
 
         global management_interface
         if config.has_option('platform_conf', 'management_interface'):
-            management_interface = config.get('platform_conf',
-                                              'management_interface')
+            management_interface = str(config.get('platform_conf',
+                                       'management_interface'))
 
         global oam_interface
         if config.has_option('platform_conf', 'oam_interface'):
-            oam_interface = config.get('platform_conf', 'oam_interface')
+            oam_interface = str(config.get('platform_conf', 'oam_interface'))
 
         global infrastructure_interface
         if config.has_option('platform_conf', 'infrastructure_interface'):
-            infrastructure_interface = config.get('platform_conf',
-                                                  'infrastructure_interface')
+            infrastructure_interface = str(config.get('platform_conf',
+                                           'infrastructure_interface'))
         global sdn_enabled
         if config.has_option('platform_conf', 'sdn_enabled'):
-            sdn_enabled = config.get('platform_conf', 'sdn_enabled')
+            sdn_enabled = str(config.get('platform_conf', 'sdn_enabled'))
 
         global host_uuid
         if config.has_option('platform_conf', 'UUID'):
-            host_uuid = config.get('platform_conf', 'UUID')
+            host_uuid = str(config.get('platform_conf', 'UUID'))
 
         global install_uuid
         if config.has_option('platform_conf', 'INSTALL_UUID'):
-            install_uuid = config.get('platform_conf', 'INSTALL_UUID')
+            install_uuid = str(config.get('platform_conf', 'INSTALL_UUID'))
 
         global system_type
         if config.has_option('platform_conf', 'system_type'):
-            system_type = config.get('platform_conf', 'system_type')
+            system_type = str(config.get('platform_conf', 'system_type'))
 
         global system_mode
         if config.has_option('platform_conf', 'system_mode'):
-            system_mode = config.get('platform_conf', 'system_mode')
+            system_mode = str(config.get('platform_conf', 'system_mode'))
 
         global security_profile
         if config.has_option('platform_conf', 'security_profile'):
-            security_profile = config.get('platform_conf', 'security_profile')
+            security_profile = str(config.get('platform_conf',
+                                   'security_profile'))
 
         global distributed_cloud_role
         if config.has_option('platform_conf', 'distributed_cloud_role'):
-            distributed_cloud_role = config.get('platform_conf',
-                                                'distributed_cloud_role')
+            distributed_cloud_role = str(config.get('platform_conf',
+                                         'distributed_cloud_role'))
 
         global security_feature
         if config.has_option('platform_conf', 'security_feature'):
-            security_feature = config.get('platform_conf', 'security_feature')
+            security_feature = str(config.get('platform_conf', 'security_feature'))
 
     except configparser.Error:
         logging.exception("Failed to read platform.conf")
