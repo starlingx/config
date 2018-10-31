@@ -14,12 +14,14 @@ apiServerCertSANs:
 - "127.0.0.1"
 networking:
   podSubnet: <%= @pod_network_cidr %>
-nodeRegistrationOptions:
-  kubeletExtraArgs:
-    cgroup-driver: "cgroupfs"
-    node-status-update-frequency: "4s"
-    fail-swap-on: false
 controllerManagerExtraArgs:
   node-monitor-period: "2s"
   node-monitor-grace-period: "20s"
   pod-eviction-timeout: "30s"
+---
+kind: KubeletConfiguration
+apiVersion: kubelet.config.k8s.io/v1beta1
+nodeStatusUpdateFrequency: "4s"
+failSwapOn: false
+featureGates:
+  HugePages: false
