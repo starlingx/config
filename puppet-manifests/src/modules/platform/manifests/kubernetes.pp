@@ -277,6 +277,13 @@ class platform::kubernetes::worker
       ensure => file,
       replace => no,
     }
+    # TODO: The following exec is a workaround. Once kubernetes becomes the
+    # default installation, /etc/pmon.d/libvirtd.conf needs to be removed from
+    # the load.
+    exec { 'Update PMON libvirtd.conf':
+      command => "/bin/sed -i 's#mode  = passive#mode  = ignore #' /etc/pmon.d/libvirtd.conf",
+      onlyif => '/usr/bin/test -e /etc/pmon.d/libvirtd.conf'
+    }
   }
 }
 
