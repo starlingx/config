@@ -36,6 +36,7 @@ from sysinv.objects import port_ethernet
 from sysinv.objects import helm_overrides
 from sysinv.objects import host
 from sysinv.objects import host_upgrade
+from sysinv.objects import kube_app
 from sysinv.objects import network_infra
 from sysinv.objects import interface
 from sysinv.objects import interface_ae
@@ -181,6 +182,7 @@ storage_tier = storage_tier.StorageTier
 storage_ceph_external = storage_ceph_external.StorageCephExternal
 helm_overrides = helm_overrides.HelmOverrides
 label = label.Label
+kube_app = kube_app.KubeApp
 
 __all__ = (system,
            cluster,
@@ -248,6 +250,7 @@ __all__ = (system,
            storage_tier,
            storage_ceph_external,
            helm_overrides,
+           kube_app,
            # alias objects for RPC compatibility
            ihost,
            ilvg,

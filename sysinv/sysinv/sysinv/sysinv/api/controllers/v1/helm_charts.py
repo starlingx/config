@@ -4,11 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import os
 import pecan
 from pecan import rest
-import subprocess
-import tempfile
 import yaml
 
 import wsme
@@ -24,72 +21,8 @@ from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 
-SYSTEM_CHARTS = ['mariadb', 'rabbitmq', 'ingress']
-
 
 class HelmChartsController(rest.RestController):
-
-    def merge_overrides(self, file_overrides=[], set_overrides=[]):
-        """ Merge helm overrides together.
-
-        :param values: A dict of different types of user override values,
-                       'files' (which generally specify many overrides) and
-                       'set' (which generally specify one override).
-        """
-
-        # At this point we have potentially two separate types of overrides
-        # specified by system or user, values from files and values passed in
-        # via --set .  We need to ensure that we call helm using the same
-        # mechanisms to ensure the same behaviour.
-        cmd = ['helm', 'install', '--dry-run', '--debug']
-
-        # Process the newly-passed-in override values
-        tmpfiles = []
-        for value_file in file_overrides:
-            # For values passed in from files, write them back out to
-            # temporary files.
-            tmpfile = tempfile.NamedTemporaryFile(delete=False)
-            tmpfile.write(value_file)
-            tmpfile.close()
-            tmpfiles.append(tmpfile.name)
-            cmd.extend(['--values', tmpfile.name])
-
-        for value_set in set_overrides:
-            cmd.extend(['--set', value_set])
-
-        env = os.environ.copy()
-        env['KUBECONFIG'] = '/etc/kubernetes/admin.conf'
-
-        # Make a temporary directory with a fake chart in it
-        try:
-            tmpdir = tempfile.mkdtemp()
-            chartfile = tmpdir + '/Chart.yaml'
-            with open(chartfile, 'w') as tmpchart:
-                tmpchart.write('name: mychart\napiVersion: v1\n'
-                               'version: 0.1.0\n')
-            cmd.append(tmpdir)
-
-            # Apply changes by calling out to helm to do values merge
-            # using a dummy chart.
-            # NOTE: this requires running sysinv-api as root, will fix it
-            # to use RPC in a followup patch.
-            output = subprocess.check_output(cmd, env=env)
-
-            # Check output for failure
-
-            # Extract the info we want.
-            values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
-                                  '\nCOMPUTED VALUES:')[0]
-        except Exception:
-            raise
-        finally:
-            os.remove(chartfile)
-            os.rmdir(tmpdir)
-
-        for tmpfile in tmpfiles:
-            os.remove(tmpfile)
-
-        return values
 
     @wsme_pecan.wsexpose(wtypes.text)
     def get_all(self):
@@ -133,8 +66,8 @@ class HelmChartsController(rest.RestController):
         # with user-specified overrides taking priority over the system
         # overrides.
         file_overrides = [system_overrides, user_overrides]
-        combined_overrides = self.merge_overrides(
-            file_overrides=file_overrides)
+        combined_overrides = pecan.request.rpcapi.merge_overrides(
+             pecan.request.context, file_overrides=file_overrides)
 
         rpc_chart = {'name': name,
                      'namespace': namespace,
@@ -173,7 +106,7 @@ class HelmChartsController(rest.RestController):
             db_chart = objects.helm_overrides.get_by_name(
                 pecan.request.context, name, namespace)
         except exception.HelmOverrideNotFound:
-            if name in SYSTEM_CHARTS:
+            if name in constants.SUPPORTED_HELM_CHARTS:
                 pecan.request.dbapi.helm_override_create({
                     'name': name,
                     'namespace': namespace,
@@ -191,8 +124,9 @@ class HelmChartsController(rest.RestController):
             raise wsme.exc.ClientSideError(_("Invalid flag: %s must be either "
                                              "'reuse' or 'reset'.") % flag)
 
-        user_overrides = self.merge_overrides(
-            file_overrides=file_overrides, set_overrides=set_overrides)
+        user_overrides = pecan.request.rpcapi.merge_overrides(
+            pecan.request.context, file_overrides=file_overrides,
+            set_overrides=set_overrides)
 
         # save chart overrides back to DB
         db_chart.user_overrides = user_overrides

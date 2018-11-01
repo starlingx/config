@@ -79,6 +79,7 @@ from sysinv.common.retrying import retry
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
+from sysinv.conductor import kube_app
 from sysinv.conductor import openstack
 from sysinv.db import api as dbapi
 from sysinv.objects import base as objects_base
@@ -151,6 +152,7 @@ class ConductorManager(service.PeriodicService):
         self.dbapi = None
         self.fm_api = None
         self.fm_log = None
+        self._app = None
         self._ceph = None
         self._ceph_api = ceph.CephWrapper(
             endpoint='http://localhost:5001/api/v0.1/')
@@ -179,6 +181,7 @@ class ConductorManager(service.PeriodicService):
 
         self._openstack = openstack.OpenStackOperator(self.dbapi)
         self._puppet = puppet.PuppetOperator(self.dbapi)
+        self._app = kube_app.AppOperator(self.dbapi)
         self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
         self._kube = kubernetes.KubeOperator(self.dbapi)
@@ -10302,6 +10305,17 @@ class ConductorManager(service.PeriodicService):
         """
         return self._helm.get_helm_application_overrides(app_name, cnamespace)
 
+    def merge_overrides(self, context, file_overrides=[], set_overrides=[]):
+        """Merge the file and set overrides into a single chart overrides.
+
+        :param context: request context.
+        :param file_overrides: (optional) list of overrides from files
+        :param set_overrides: (optional) list of parameter overrides
+        :returns: merged overrides string
+
+        """
+        return self._helm.merge_overrides(file_overrides, set_overrides)
+
     def update_kubernetes_label(self, context,
                                 host_uuid, label_dict):
         """Synchronously, have the conductor update kubernetes label
@@ -10353,3 +10367,40 @@ class ConductorManager(service.PeriodicService):
           :returns: a list of keys
           """
         return self._fernet.get_fernet_keys(key_id)
+
+    def perform_app_upload(self, context, rpc_app, tarfile):
+        """Handling of application upload request (via AppOperator)
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+        :param tarfile: location of the application tarfile to be exracted
+
+        """
+        self._app.perform_app_upload(rpc_app, tarfile)
+
+    def perform_app_apply(self, context, rpc_app):
+        """Handling of application install request (via AppOperator)
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        return self._app.perform_app_apply(rpc_app)
+
+    def perform_app_remove(self, context, rpc_app):
+        """Handling of application removal request (via AppOperator)
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        return self._app.perform_app_remove(rpc_app)
+
+    def perform_app_delete(self, context, rpc_app):
+        """Handling of application delete request (via AppOperator)
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        return self._app.perform_app_delete(rpc_app)

@@ -1686,6 +1686,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        app_name=app_name,
                                        cnamespace=cnamespace))
 
+    def merge_overrides(self, context, file_overrides=[], set_overrides=[]):
+        """Merge the file and set overrides into a single chart overrides.
+
+        :param context: request context.
+        :param file_overrides: (optional) list of overrides from files
+        :param set_overrides: (optional) list of parameter overrides
+        :returns: merged overrides string
+
+        """
+        return self.call(context,
+                         self.make_msg('merge_overrides',
+                                       file_overrides=file_overrides,
+                                       set_overrides=set_overrides))
+
     def update_kubernetes_label(self, context, host_uuid, label_dict):
         """Synchronously, have the conductor update kubernetes label.
 
@@ -1727,3 +1741,47 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
+
+    def perform_app_upload(self, context, rpc_app, tarfile):
+        """Handle application upload request
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+        :param tafile: location of application tarfile to be extracted
+        """
+        return self.cast(context,
+                         self.make_msg('perform_app_upload',
+                                       rpc_app=rpc_app,
+                                       tarfile=tarfile))
+
+    def perform_app_apply(self, context, rpc_app):
+        """Handle application apply request
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+        """
+        return self.cast(context,
+                         self.make_msg('perform_app_apply',
+                                       rpc_app=rpc_app))
+
+    def perform_app_remove(self, context, rpc_app):
+        """Handle application remove request
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        return self.cast(context,
+                         self.make_msg('perform_app_remove',
+                                       rpc_app=rpc_app))
+
+    def perform_app_delete(self, context, rpc_app):
+        """Handle application delete request
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        return self.call(context,
+                         self.make_msg('perform_app_delete',
+                                       rpc_app=rpc_app))

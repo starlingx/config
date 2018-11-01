@@ -20,6 +20,7 @@
 from cgtsclient.common import http
 from cgtsclient.v1 import address
 from cgtsclient.v1 import address_pool
+from cgtsclient.v1 import app
 from cgtsclient.v1 import ceph_mon
 from cgtsclient.v1 import certificate
 from cgtsclient.v1 import cluster
@@ -152,3 +153,4 @@ class Client(http.HTTPClient):
         self.helm = helm.HelmManager(self)
         self.label = label.KubernetesLabelManager(self)
         self.fernet = fernet.FernetManager(self)
+        self.app = app.AppManager(self)

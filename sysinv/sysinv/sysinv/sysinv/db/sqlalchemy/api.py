@@ -7517,3 +7517,65 @@ class Connection(api.Connection):
         query = model_query(models.Label, read_deleted="no")
         query = query.filter(models.Label.label_key == label)
         return query.count()
+
+    def _kube_app_get(self, name):
+        query = model_query(models.KubeApp)
+        query = query.filter_by(name=name)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.KubeAppNotFound(name=name)
+        return result
+
+    @objects.objectify(objects.kube_app)
+    def kube_app_create(self, values):
+        app = models.KubeApp()
+        app.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(app)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add application %s. "
+                          "Already exists with this name" %
+                          (values['name']))
+                raise exception.KubeAppAlreadyExists(
+                    name=values['name'])
+            return self.kube_app_get(values['name'])
+
+    @objects.objectify(objects.kube_app)
+    def kube_app_get_all(self):
+        query = model_query(models.KubeApp)
+        return query.all()
+
+    @objects.objectify(objects.kube_app)
+    def kube_app_get(self, name):
+        return self._kube_app_get(name)
+
+    @objects.objectify(objects.kube_app)
+    def kube_app_update(self, name, values):
+        with _session_for_write() as session:
+            query = model_query(models.KubeApp, session=session)
+            query = query.filter_by(name=name)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count == 0:
+                raise exception.KubeAppNotFound(name)
+            return query.one()
+
+    def kube_app_destroy(self, name):
+        with _session_for_write() as session:
+            query = model_query(models.KubeApp, session=session)
+            query = query.filter_by(name=name)
+            try:
+                app = query.one()
+                if app.status not in [constants.APP_UPLOAD_SUCCESS,
+                                      constants.APP_UPLOAD_FAILURE]:
+                    failure_reason =\
+                        "operation is not allowed while status is " + app.status
+                    raise exception.KubeAppDeleteFailure(
+                        name=name,
+                        reason=failure_reason)
+            except NoResultFound:
+                raise exception.KubeAppNotFound(name)
+            query.delete()

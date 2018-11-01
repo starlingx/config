@@ -16,13 +16,13 @@
 #    under the License.
 
 
-from six.moves import configparser
 import logging
 import logging.handlers
 import os
 import string
 
 from cgtsclient.openstack.common.rootwrap import filters
+from six.moves import configparser
 
 
 class NoFilterMatched(Exception):

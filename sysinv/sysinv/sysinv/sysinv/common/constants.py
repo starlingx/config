@@ -1404,7 +1404,7 @@ SUPPORTED_HELM_CHARTS = [
 #                 until we fully integrate our k8s openstack application. Not
 #                 sure at this point if we'll need an AIO flavor (without Ceph
 #                 but with NFS support)
-HELM_APP_OPENSTACK = 'wr-openstack'
+HELM_APP_OPENSTACK = 'stx-openstack'
 HELM_APP_OSHELM_DEVELOPER = 'openstack-helm-developer'
 HELM_APP_OSHELM_MULTINODE = 'openstack-helm-multinode'
 
@@ -1480,3 +1480,35 @@ K8S_RBD_PROV_NAMESPACE_DEFAULT = "kube-system"
 K8S_RBD_PROV_USER_NAME = 'admin'
 K8S_RBD_PROV_ADMIN_SECRET_NAME = 'ceph-admin'
 K8S_RBD_PROV_STOR_CLASS_NAME = 'general'
+
+##################################
+# Kubernetes application section #
+##################################
+# Working paths
+APP_INSTALL_PATH = '/scratch/apps'
+APP_MANIFEST_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
+
+# State constants
+APP_UPLOAD_IN_PROGRESS = 'uploading'
+APP_UPLOAD_SUCCESS = 'uploaded'
+APP_UPLOAD_FAILURE = 'upload-failed'
+APP_APPLY_IN_PROGRESS = 'applying'
+APP_APPLY_SUCCESS = 'applied'
+APP_APPLY_FAILURE = 'apply-failed'
+APP_REMOVE_IN_PROGRESS = 'removing'
+APP_REMOVE_FAILURE = 'remove-failed'
+
+# Operation constants
+APP_UPLOAD_OP = 'upload'
+APP_APPLY_OP = 'apply'
+APP_REMOVE_OP = 'remove'
+APP_DELETE_OP = 'delete'
+
+# Node label operation constants
+LABEL_ASSIGN_OP = 'assign'
+LABEL_REMOVE_OP = 'remove'
+
+# Default node labels
+CONTROL_PLANE_LABEL = 'openstack-control-plane=enabled'
+COMPUTE_NODE_LABEL = 'openstack-compute-node=enabled'
+OPENVSWITCH_LABEL = 'openvswitch=enabled'

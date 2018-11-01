@@ -37,6 +37,7 @@ from sysinv.api.controllers.v1 import firewallrules
 from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
+from sysinv.api.controllers.v1 import kube_app
 from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import interface
 from sysinv.api.controllers.v1 import interface_network
@@ -236,6 +237,9 @@ class V1(base.APIBase):
 
     fernet_repo = [link.Link]
     "Links to the fernet repo resource"
+
+    apps = [link.Link]
+    "Links to the application resource "
 
     @classmethod
     def convert(self):
@@ -738,6 +742,15 @@ class V1(base.APIBase):
                                               'fernet_repo', '',
                                               bookmark=True)
                           ]
+
+        v1.apps = [link.Link.make_link('self',
+                                       pecan.request.host_url,
+                                       'apps', ''),
+                   link.Link.make_link('bookmark',
+                                       pecan.request.host_url,
+                                       'apps', '',
+                                       bookmark=True)]
+
         return v1
 
 
@@ -803,6 +816,7 @@ class Controller(rest.RestController):
     license = license.LicenseController()
     labels = label.LabelController()
     fernet_repo = fernet_repo.FernetKeyController()
+    apps = kube_app.KubeAppController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

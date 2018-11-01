@@ -8,8 +8,10 @@
 
 from __future__ import absolute_import
 
+import copy
 import eventlet
 import os
+import subprocess
 import tempfile
 import yaml
 
@@ -47,6 +49,7 @@ from . import rabbitmq
 # Chart source: Custom
 from . import rbd_provisioner
 from . import nova_api_proxy
+
 
 LOG = logging.getLogger(__name__)
 
@@ -290,6 +293,67 @@ class HelmOperator(object):
         }
         return new_overrides
 
+    def merge_overrides(self, file_overrides=[], set_overrides=[]):
+        """ Merge helm overrides together.
+
+        :param values: A dict of different types of user override values,
+                       'files' (which generally specify many overrides) and
+                       'set' (which generally specify one override).
+        """
+
+        # At this point we have potentially two separate types of overrides
+        # specified by system or user, values from files and values passed in
+        # via --set .  We need to ensure that we call helm using the same
+        # mechanisms to ensure the same behaviour.
+        cmd = ['helm', 'install', '--dry-run', '--debug']
+
+        # Process the newly-passed-in override values
+        tmpfiles = []
+
+        for value_file in file_overrides:
+            # For values passed in from files, write them back out to
+            # temporary files.
+            tmpfile = tempfile.NamedTemporaryFile(delete=False)
+            tmpfile.write(value_file)
+            tmpfile.close()
+            tmpfiles.append(tmpfile.name)
+            cmd.extend(['--values', tmpfile.name])
+
+        for value_set in set_overrides:
+            cmd.extend(['--set', value_set])
+
+        env = os.environ.copy()
+        env['KUBECONFIG'] = '/etc/kubernetes/admin.conf'
+
+        # Make a temporary directory with a fake chart in it
+        try:
+            tmpdir = tempfile.mkdtemp()
+            chartfile = tmpdir + '/Chart.yaml'
+            with open(chartfile, 'w') as tmpchart:
+                tmpchart.write('name: mychart\napiVersion: v1\n'
+                               'version: 0.1.0\n')
+            cmd.append(tmpdir)
+
+            # Apply changes by calling out to helm to do values merge
+            # using a dummy chart.
+            output = subprocess.check_output(cmd, env=env)
+
+            # Check output for failure
+
+            # Extract the info we want.
+            values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
+                                  '\nCOMPUTED VALUES:')[0]
+        except Exception:
+            raise
+        finally:
+            os.remove(chartfile)
+            os.rmdir(tmpdir)
+
+        for tmpfile in tmpfiles:
+            os.remove(tmpfile)
+
+        return values
+
     @helm_context
     def generate_helm_chart_overrides(self, chart_name, cnamespace=None):
         """Generate system helm chart overrides
@@ -326,7 +390,8 @@ class HelmOperator(object):
 
     @helm_context
     def generate_helm_application_overrides(self, app_name, cnamespace=None,
-                                            armada_format=False):
+                                            armada_format=False,
+                                            combined=False):
         """Create the system overrides files for a supported application
 
         This method will generate system helm chart overrides yaml files for a
@@ -339,12 +404,29 @@ class HelmOperator(object):
         :param cnamespace: (optional) namespace
         :param armada_format: (optional) whether to emit in armada format
                               instead of helm format (with extra header)
+        :param combined: (optional) whether to apply user overrides on top of
+                         system overrides
         """
 
         if app_name in constants.SUPPORTED_HELM_APP_NAMES:
             app_overrides = self._get_helm_application_overrides(app_name,
                                                                  cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
+                if combined:
+                    try:
+                        db_chart = self.dbapi.helm_override_get(
+                            chart_name, 'openstack')
+                        user_overrides = db_chart.user_overrides
+                        if user_overrides:
+                            system_overrides = yaml.dump(overrides)
+                            file_overrides = [system_overrides, user_overrides]
+                            combined_overrides = self.merge_overrides(
+                                file_overrides=file_overrides)
+                            combined_overrides = yaml.load(combined_overrides)
+                            overrides = copy.deepcopy(combined_overrides)
+                    except exception.HelmOverrideNotFound:
+                        pass
+
                 # If armada formatting is wanted, we need to change the
                 # structure of the yaml file somewhat
                 if armada_format:
@@ -363,7 +445,7 @@ class HelmOperator(object):
         """Remove the overrides files for a chart"""
 
         if chart_name in self.implemented_charts:
-            namespaces = self.chart_operators[chart_name].get_namespaces
+            namespaces = self.chart_operators[chart_name].get_namespaces()
 
             filenames = []
             if cnamespace and cnamespace in namespaces:

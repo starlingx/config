@@ -75,6 +75,7 @@ class sysinv (
 ) {
 
   include sysinv::params
+  include ::platform::kubernetes::params
 
   Package['sysinv'] -> Sysinv_config<||>
   Package['sysinv'] -> Sysinv_api_paste_ini<||>
@@ -211,5 +212,12 @@ class sysinv (
 
   sysinv_api_paste_ini {
     'filter:authtoken/region_name': value => $region_name;
+  }
+
+  if $::platform::kubernetes::params::enabled == true {
+    $armada_img_tag = "quay.io/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9"
+    sysinv_config {
+      'DEFAULT/armada_image_tag':    value =>  $armada_img_tag;
+    }
   }
 }

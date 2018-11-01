@@ -266,6 +266,18 @@ class CephPoolSetParamFailure(CephFailure):
                 "Reason: %(reason)s")
 
 
+class KubeAppUploadFailure(SysinvException):
+    message = _("Upload of application %(name)s failed: %(reason)s")
+
+
+class KubeAppApplyFailure(SysinvException):
+    message = _("Deployment of application %(name)s failed: %(reason)s")
+
+
+class KubeAppDeleteFailure(SysinvException):
+    message = _("Delete of application %(name)s failed: %(reason)s")
+
+
 class InvalidCPUInfo(Invalid):
     message = _("Unacceptable CPU info") + ": %(reason)s"
 
@@ -589,6 +601,10 @@ class CertificateAlreadyExists(Conflict):
 class HelmOverrideAlreadyExists(Conflict):
     message = _("A HelmOverride with name %(name)s and namespace "
                 "%(namespace)s already exists.")
+
+
+class KubeAppAlreadyExists(Conflict):
+    message = _("An application with name %(name)s already exists.")
 
 
 class InstanceDeployFailure(Invalid):
@@ -943,6 +959,10 @@ class HelmOverrideNotFound(NotFound):
 
 class CertificateTypeNotFound(NotFound):
     message = _("No certificate type of %(certtype)s")
+
+
+class KubeAppNotFound(NotFound):
+    message = _("No application with name %(name)s.")
 
 
 class SDNNotEnabled(SysinvException):

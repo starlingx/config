@@ -1788,3 +1788,20 @@ def _format_ceph_mon_address(ip_address, service_port_mon):
         return '%s:%d' % (ip_address, service_port_mon)
     else:
         return '[%s]:%d' % (ip_address, service_port_mon)
+
+
+def get_files_matching(path, pattern):
+    return [(root, file) for root, dirs, files in os.walk(path, topdown=True)
+            for file in files if file.endswith(pattern)]
+
+
+def extract_tarfile(target_dir, tarfile):
+    with open(os.devnull, "w") as fnull:
+        try:
+            subprocess.check_call(['tar', '-xf', tarfile, '-m', '--no-same-owner',
+                                   '--no-same-permissions', '-C', target_dir],
+                                  stdout=fnull, stderr=fnull)
+            return True
+        except subprocess.CalledProcessError as e:
+            LOG.error("Error while extracting tarfile %s: %s" % (tarfile, e))
+            return False

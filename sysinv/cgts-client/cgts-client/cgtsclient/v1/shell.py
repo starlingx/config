@@ -8,6 +8,7 @@
 from cgtsclient.common import utils
 from cgtsclient.v1 import address_pool_shell
 from cgtsclient.v1 import address_shell
+from cgtsclient.v1 import app_shell
 from cgtsclient.v1 import ceph_mon_shell
 from cgtsclient.v1 import certificate_shell
 from cgtsclient.v1 import cluster_shell
@@ -113,6 +114,7 @@ COMMAND_MODULES = [
     storage_tier_shell,
     helm_shell,
     label_shell,
+    app_shell,
 ]
 
 
