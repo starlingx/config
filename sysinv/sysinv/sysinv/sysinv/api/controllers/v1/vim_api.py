@@ -217,3 +217,34 @@ def vim_host_get_instances(token, uuid, hostname, timeout):
     response = rest_api_request(token, "GET", api_cmd, api_cmd_headers,
                                 json.dumps(api_cmd_payload), timeout)
     return response
+
+
+def vim_host_update(token, uuid, hostname, timeout):
+    """
+    Inform VIM of host change
+    """
+
+    api_cmd = None
+    if token:
+        api_cmd = token.get_service_url("nfvi", "nfv")
+
+    if not api_cmd:
+        api_cmd = "http://localhost:30001"
+
+    api_cmd += "/nfvi-plugins/v1/hosts"
+
+    api_cmd_headers = dict()
+    api_cmd_headers['Content-type'] = "application/json"
+    api_cmd_headers['User-Agent'] = "sysinv/1.0"
+
+    api_cmd_payload = dict()
+    api_cmd_payload['uuid'] = uuid
+    api_cmd_payload['hostname'] = hostname
+
+    response = rest_api_request(token, "PATCH", api_cmd, api_cmd_headers,
+                                json.dumps(api_cmd_payload), timeout)
+
+    LOG.debug("vim_host_update api_cmd=%s headers=%s payload=%s" %
+              (api_cmd, api_cmd_headers, api_cmd_payload))
+
+    return response
