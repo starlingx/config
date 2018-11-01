@@ -28,38 +28,14 @@ Initial compute node hugepages and reserved cpus configuration
 %setup
 
 %build
-%{__python} -m compileall topology.py
+make
 
 %install
-
-# compute init scripts
-install -d -m 755 %{buildroot}%{local_etc_initd}
-install -p -D -m 755 affine-platform.sh %{buildroot}%{local_etc_initd}/affine-platform.sh
-
-# utility scripts
-install -p -D -m 755 cpumap_functions.sh %{buildroot}%{local_etc_initd}/cpumap_functions.sh
-install -p -D -m 755 task_affinity_functions.sh %{buildroot}%{local_etc_initd}/task_affinity_functions.sh
-install -p -D -m 755 log_functions.sh %{buildroot}%{local_etc_initd}/log_functions.sh
-install -d -m 755 %{buildroot}%{local_bindir}
-install -p -D -m 755 ps-sched.sh %{buildroot}%{local_bindir}/ps-sched.sh
-# TODO: Only ship pyc ?
-install -p -D -m 755 topology.py %{buildroot}%{local_bindir}/topology.py
-install -p -D -m 755 topology.pyc %{buildroot}%{local_bindir}/topology.pyc
-install -p -D -m 755 affine-interrupts.sh %{buildroot}%{local_bindir}/affine-interrupts.sh
-install -p -D -m 755 set-cpu-wakeup-latency.sh %{buildroot}%{local_bindir}/set-cpu-wakeup-latency.sh
-install -p -D -m 755 bin/topology %{buildroot}%{local_bindir}/topology
-
-# compute config data
-install -d -m 755 %{buildroot}%{local_etc_nova}
-install -p -D -m 755 compute_reserved.conf %{buildroot}%{local_etc_nova}/compute_reserved.conf
-
-# goenabled check
-install -d -m 755 %{buildroot}%{local_etc_goenabledd}
-install -p -D -m 755 compute-huge-goenabled.sh %{buildroot}%{local_etc_goenabledd}/compute-huge-goenabled.sh
-
-# systemd services
-install -d -m 755 %{buildroot}%{_unitdir}
-install -p -D -m 664 affine-platform.sh.service %{buildroot}%{_unitdir}/affine-platform.sh.service
+make install BINDIR=%{buildroot}%{local_bindir} \
+     INITDDIR=%{buildroot}%{local_etc_initd} \
+     GOENABLEDDIR=%{buildroot}%{local_etc_goenabledd} \
+     NOVACONFDIR=%{buildroot}%{local_etc_nova} \
+     SYSTEMDDIR=%{buildroot}%{_unitdir}
 
 %post
 /bin/systemctl enable affine-platform.sh.service >/dev/null 2>&1
