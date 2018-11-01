@@ -20,6 +20,7 @@ class HelmOverrides(base.SysinvObject):
     fields = {'name': utils.str_or_none,
               'namespace': utils.str_or_none,
               'user_overrides': utils.str_or_none,
+              'system_overrides': utils.dict_or_none,
               }
 
     @base.remotable_classmethod

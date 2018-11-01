@@ -246,33 +246,26 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
         else:
             return super(KeystoneHelm, self)._region_config()
 
-    def _get_endpoints_identity_users_overrides(self):
-        return self._get_common_users_overrides(self.SERVICE_NAME)
-
-    def _get_endpoints_identity_overrides(self):
-        return {'auth': self._get_endpoints_identity_users_overrides()}
-
-    def _get_endpoints_oslo_db_overrides(self):
-        # Keep the default overrides for db scheme/host/port/path
-
-        # dbpass = self._get_database_password(self.SERVICE_NAME)
-        return {
-            'auth': {
-                'admin': {
-                    'username': 'root',
-                    # 'password': dbpass
-                },
-                'keystone': {
-                    'username': self._get_database_username(self.SERVICE_NAME),
-                    # 'password': dbpass
-                }
-            }
-        }
-
     def _get_endpoints_overrides(self):
         return {
-            'identity': self._get_endpoints_identity_overrides(),
-            'oslo_db': self._get_endpoints_oslo_db_overrides(),
+            'identity': {
+                'auth': self._get_endpoints_identity_overrides(
+                    self.SERVICE_NAME, []),
+            },
+            'oslo_cache': {
+                'auth': {
+                    'memcached_secret_key':
+                        self._get_common_password('auth_memcache_key')
+                }
+            },
+            'oslo_db': {
+                'auth': self._get_endpoints_oslo_db_overrides(
+                    self.SERVICE_NAME, [self.SERVICE_NAME])
+            },
+            'oslo_messaging': {
+                'auth': self._get_endpoints_oslo_messaging_overrides(
+                    self.SERVICE_NAME, [self.SERVICE_NAME])
+            },
         }
 
     def get_admin_user_name(self):
