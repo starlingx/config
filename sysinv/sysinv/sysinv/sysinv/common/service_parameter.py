@@ -1226,6 +1226,7 @@ CINDER_HPE3PAR_PARAMETER_MANDATORY = [
 ]
 
 CINDER_HPE3PAR_PARAMETER_PROTECTED = [
+    'san_login', 'san_password',
 ]
 
 # If the lists:
@@ -1248,7 +1249,7 @@ CINDER_HPE3PAR_PARAMETER_OPTIONAL = (
     CINDER_HPE3PAR_PARAMETER_REQUIRED +
     CINDER_HPE3PAR_PARAMETER_PROTECTED + [
         'hpe3par_debug', 'hpe3par_iscsi_chap_enabled',
-        'san_login', 'san_password', 'san_ip'
+        'san_ip'
     ]
 )
 
