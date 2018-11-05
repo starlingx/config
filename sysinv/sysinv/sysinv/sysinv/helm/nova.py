@@ -80,6 +80,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     'nova': {
                         'DEFAULT': {
                             'default_mempages_size': 2048,
+                            'reserved_host_memory_mb': 0,
+                            'compute_monitors': 'cpu.virt_driver',
                             'running_deleted_instance_poll_interval': 60,
                             'mkisofs_cmd': '/usr/bin/genisoimage',
                             'network_allocate_retries': 2,
@@ -139,10 +141,17 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                             'soft_affinity_weight_multiplier': 0.0,
                             'soft_anti_affinity_weight_multiplier': 0.0
                         },
+                        'scheduler': {
+                            'periodic_task_interval': -1
+                        },
                         'metrics': {
                             'required': False,
                             'weight_setting_multi': 'vswitch.multi_avail=100.0',
                             'weight_setting': 'vswitch.max_avail=100.0'
+                        },
+                        'vnc': {
+                            'novncproxy_host': self._get_management_address(),
+                            'novncproxy_base_url': self._get_novncproxy_base_url(),
                         },
                         'upgrade_levels': 'None'
                     },
@@ -229,6 +238,11 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             })
 
         return overrides
+
+    def _get_novncproxy_base_url(self):
+        oam_addr = self._get_oam_address(),
+        url = "http://%s:6080/vnc_auto.html" % oam_addr
+        return url
 
     def _get_virt_type(self):
         if utils.is_virtual():
@@ -324,10 +338,14 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 primary_mgmt = iface
 
         migration_iface = primary_infra or primary_mgmt
+        if migration_iface is None:
+            return
         for addr in addresses:
             if addr.interface_uuid == migration_iface.uuid:
                 migration_ip = addr.address
                 ip_family = addr.family
+            if addr.interface_uuid == primary_mgmt.uuid:
+                mgmt_ip = addr.address
 
         default_config.update({'my_ip': migration_ip})
         if ip_family == 4:
@@ -336,6 +354,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             vnc_config.update({'vncserver_listen': '::0'})
 
         libvirt_config.update({'live_migration_inbound_addr': str(host.hostname) + '-infra'})
+        vnc_config.update({'vncserver_proxyclient_address': mgmt_ip})
 
     def _update_host_memory(self, host, default_config):
         vswitch_2M_pages = []
