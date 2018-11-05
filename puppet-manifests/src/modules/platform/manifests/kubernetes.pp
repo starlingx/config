@@ -45,6 +45,18 @@ class platform::kubernetes::kubeadm {
     command => "sysctl --system",
   } ->
 
+  # TODO: Update /etc/resolv.conf.k8s to be controlled by sysinv, as is done
+  # for /etc/resolv.conf.  Is should contain all the user-specified DNS
+  # servers, but not the coredns IP.
+  # Create custom resolv.conf file for kubelet
+  file { "/etc/resolv.conf.k8s":
+    ensure => file,
+    content => "nameserver 8.8.8.8",
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+  } ->
+
   # Start kubelet.
   service { 'kubelet':
     ensure => 'running',
