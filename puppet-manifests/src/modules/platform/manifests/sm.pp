@@ -110,6 +110,10 @@ class platform::sm
   include ::platform::kubernetes::params
   $kubernetes_enabled             = $::platform::kubernetes::params::enabled
 
+  include ::platform::mtce::params
+  $sm_client_port                 = $::platform::mtce::params::sm_client_port
+  $sm_server_port                 = $::platform::mtce::params::sm_server_port
+
   ############ NFS Parameters ################
 
   # Platform NFS network is over the management network
@@ -328,6 +332,10 @@ class platform::sm
       exec { 'Configure Management IP':
         command => "sm-configure service_instance management-ip management-ip \"ip=${mgmt_ip_param_ip},cidr_netmask=${mgmt_ip_param_mask},nic=${mgmt_ip_interface},arp_count=7\"",
       }
+  }
+
+  exec { 'Configure sm server and client port':
+      command => "sm-configure system --sm_client_port=${sm_client_port} --sm_server_port=${sm_server_port}",
   }
 
   # Create the PXEBoot IP service if it is configured
