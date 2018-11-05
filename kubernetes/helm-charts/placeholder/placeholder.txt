@@ -1,1 +1,0 @@
-This is a placeholder, remove when there are actual helm charts.

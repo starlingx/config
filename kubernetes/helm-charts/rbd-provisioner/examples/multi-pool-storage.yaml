@@ -1,0 +1,22 @@
+#
+# Copyright (c) 2018 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+classdefaults:
+  adminId: admin
+  adminSecretName: ceph-admin
+  monitors:
+  - 192.168.204.4:6789
+  - 192.168.204.3:6789
+  - 192.168.204.22:6789
+classes:
+- name: rbd
+  pool: kube-rbd
+  userId: ceph-pool-kube-rbd
+  userSecretName: ceph-pool-kube-rbd
+- name: gold-rbd
+  pool: kube-rbd-gold
+  userId: ceph-pool-gold-kube-rbd-gold
+  userSecretName: ceph-pool-gold-kube-rbd-gold

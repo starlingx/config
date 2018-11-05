@@ -1,2 +1,3 @@
 SRC_DIR="stx-openstack-helm"
+COPY_LIST_TO_TAR="$PKG_BASE/../../../helm-charts/rbd-provisioner"
 TIS_PATCH_VER=1

@@ -1,0 +1,138 @@
+{{/*
+#
+# Copyright (c) 2018 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if .Values.global.doPreInstallVerification }}
+{{ $root := . }}
+{{ $defaults := .Values.classdefaults}}
+{{ $mount := "/tmp/mount" }}
+{{- range $classConfig := .Values.classes }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  creationTimestamp: 2016-02-18T19:14:38Z
+  name: config-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+  namespace: {{ $root.Values.global.namespace }}
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded, hook-failed
+data:
+  ceph.conf: |
+    {{ $monitors := or $classConfig.monitors $defaults.monitors }}{{ range $index, $element := $monitors}}
+    [mon.{{- $index }}]
+    mon_addr = {{ $element }}
+    {{- end }}
+
+  check_ceph.sh: |-
+    #!/bin/bash
+    # Copy from read only mount to Ceph config folder
+    cp {{ $mount -}}/ceph.conf /etc/ceph/
+
+    # Set up admin key in Ceph format
+    CEPH_ADMIN_KEY="/etc/ceph/ceph.client.admin.keyring"
+    if [ ! -z "$CEPH_ADMIN_SECRET" ]; then
+    cat <<EOF > $CEPH_ADMIN_KEY
+    [client.admin]
+          key = $CEPH_ADMIN_SECRET
+    EOF
+    else
+      touch $CEPH_ADMIN_KEY
+    fi
+
+    # Set up pool key in Ceph format
+    CEPH_USER_KEY=/etc/ceph/ceph.client.{{- $classConfig.userId -}}.keyring
+    echo $CEPH_USER_SECRET > $CEPH_USER_KEY
+
+    # Check if ceph is accessible
+    echo "===================================="
+    ceph -s
+    ret=$?
+    if [ $ret -ne 0 ]; then
+      msg="Error: Ceph cluster is not accessible, check Pod logs for details."
+      echo "$msg"
+      echo "$msg" > /dev/termination-log
+      exit $ret
+    fi
+
+    # Check if pool exists
+    echo "===================================="
+    ceph osd lspools | grep {{ $classConfig.pool }}
+    ret=$?
+    if [ $ret -ne 0 ]; then
+      msg="Error: Ceph pool {{ $classConfig.pool }} is not accessible, check Pod logs for details."
+      echo "$msg"
+      echo "$msg" > /dev/termination-log
+      exit $ret
+    fi
+
+    # Check if pool is accessible using provided credentials
+    echo "===================================="
+    rbd -p {{ $classConfig.pool }} --user {{ $classConfig.userId }} ls -K $CEPH_USER_KEY
+    ret=$?
+    if [ $ret -ne 0 ]; then
+      msg="Error: Ceph pool {{ $classConfig.pool }} is not accessible using \
+    credentials for user {{ $classConfig.userId }}, check Pod logs for details."
+      echo "$msg"
+      echo "$msg" > /dev/termination-log
+      exit $ret
+    fi
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: check-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    heritage: {{$root.Release.Service | quote }}
+    release: {{$root.Release.Name | quote }}
+    chart: "{{$root.Chart.Name}}-{{$root.Chart.Version}}"
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  # Note due to https://github.com/kubernetes/kubernetes/issues/62382
+  # backoffLimit doesn't work in 1.10.x
+  backoffLimit: 1  # Limit the number of job restart in case of failure
+  activeDeadlineSeconds: 60
+  template:
+    metadata:
+      name: "{{$root.Release.Name}}"
+      namespace: {{ $root.Values.global.namespace }}
+      labels:
+        heritage: {{$root.Release.Service | quote }}
+        release: {{$root.Release.Name | quote }}
+        chart: "{{$root.Chart.Name}}-{{$root.Chart.Version}}"
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: config-volume-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+          configMap:
+            name: config-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+      containers:
+        - name: pre-install-job-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+          image: {{ $root.Values.global.image | quote }}
+          command: [ "/bin/bash", "{{ $mount }}/check_ceph.sh" ]
+          volumeMounts:
+            - name: config-volume-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+              mountPath: {{ $mount }}
+          env:
+            - name: CEPH_ADMIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ or $classConfig.adminSecretName $defaults.adminSecretName }}
+                  key: key
+            - name: CEPH_USER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ or $classConfig.userSecretName }}
+                  key: key
+---
+{{- end }}
+{{- end }}

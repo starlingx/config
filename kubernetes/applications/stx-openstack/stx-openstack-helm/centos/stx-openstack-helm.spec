@@ -36,6 +36,7 @@ helm repo add local http://localhost:8879/charts
 
 # Make the charts. These produce a tgz file
 make nova-api-proxy
+make rbd-provisioner
 
 # remove helm-toolkit. This will be packaged with openstack-helm-infra
 rm  ./helm-toolkit-%{toolkit_version}.tgz

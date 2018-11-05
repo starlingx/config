@@ -1,0 +1,142 @@
+#
+# Copyright (c) 2018 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
+# Global options.
+# Defaults should be fine in most cases.
+global:
+  #
+  # Defines the name of a Provisioner.
+  #
+  name: "rbd-provisioner"
+  #
+  # Defines the namespace where provisioner runs.
+  #
+  namespace: kube-system
+  #
+  # Run pre-install verifications or skip them.
+  # Skipping them is not recommended
+  #
+  doPreInstallVerification: True
+  #
+  # Defines Provisioner's image name including container registry.
+  #
+  image: quay.io/external_storage/rbd-provisioner:latest
+  #
+  # Defines whether to reuse an already defined RBAC policy.
+  # Make sure that the serviceAccount defined in the RBAC section matches the one
+  # in the policy you reuse.
+  #
+  reuseRbac: false
+  #
+  # Defines whether to generate service account and role bindings.
+  #
+  rbac: true
+  #
+  # Provision storage class. If false you have to provision storage classes by hand.
+  #
+  provisionStorageClass: true
+  #
+  # Choose if rbd-provisioner pod should be deployed as deplyment or DaemonSet
+  # Values: none, Deployment, DaemonSet
+  #
+  deployAs: Deployment
+  #
+  # If configured, tolerations will add a toleration field to the Pod.
+  #
+  # Node tolerations for rbd-volume-provisioner scheduling to nodes with taints.
+  # Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  # Example:
+  #  [
+  #    {
+  #      "key": "node-role.kubernetes.io/master",
+  #      "operator": "Exists"
+  #    }
+  #  ]
+  #
+  tolerations: []
+  # If configured, resources will set the requests/limits field to the Pod.
+  # Ref: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+  # Example:
+  #  {
+  #    "limits": {
+  #      "memory": "200Mi"
+  #    },
+  #    "requests": {
+  #      "cpu": "100m",
+  #      "memory": "200Mi"
+  #    }
+  #  }
+  resources: {}
+  #
+  # Number of replicas to start when configured as deployment
+  #
+  replicas: 1
+  #
+  # Node Selector
+  #
+  nodeSelector: { node-role.kubernetes.io/master: "" }
+#
+# RBAC options.
+# Defaults should be fine in most cases.
+rbac:
+  #
+  # Cluster Role name
+  #
+  clusterRole: rbd-provisioner
+  #
+  # Cluster Role Binding name
+  #
+  clusterRoleBinding: rbd-provisioner
+  #
+  # Role name
+  #
+  role: rbd-provisioner
+  #
+  # Role Binding name
+  #
+  roleBinding: rbd-provisioner
+  #
+  # Defines a name of the service account which Provisioner will use to communicate with API server.
+  #
+  serviceAccount: rbd-provisioner
+
+#
+# Configure storage classes.
+# Defaults for storage classes. Update this if you have a single Ceph storage cluster.
+# No need to add them to each class.
+#
+classdefaults:
+  # Define ip addresses of Ceph Monitors
+  monitors:
+    - 192.168.204.3:6789
+    - 192.168.204.150:6789
+    - 192.168.204.4:6789
+  # Ceph admin account
+  adminId: admin
+  # K8 secret name for the admin context
+  adminSecretName: ceph-secret
+  # Ceph RBD image format version
+  imageFormat: 2
+  # Ceph RBD image features.
+  imageFeatures: layering
+
+#
+# Configure storage classes.
+# This section should be tailored to your setup. It allows you to define multiple storage
+# classes for the same cluster (e.g. if you have tiers of drives with different speeds).
+# If you have multiple Ceph clusters take attributes from classdefaults and add them here.
+classes:
+- name: fast-rbd # Name of storage class.
+  # Ceph pool name
+  pool: kube
+  # Ceph user name to access this pool
+  userId: kube
+  # K8 secret name with key for accessing the Ceph pool
+  userSecretName: ceph-secret-kube
+
+
+

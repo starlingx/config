@@ -1,0 +1,48 @@
+{{/*
+#
+# Copyright (c) 2018 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if eq .Values.global.deployAs "DaemonSet" }}
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: {{ .Values.global.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.global.name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.global.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.global.name }}
+    spec:
+{{- if (.Values.global.rbac) or (.Values.global.reuseRbac)}}
+      serviceAccountName: {{.Values.rbac.serviceAccount}}
+{{- end}}
+{{- if .Values.global.tolerations }}
+      tolerations:
+{{ .Values.global.tolerations | toYaml | trim | indent 8 }}
+{{- end }}
+{{- if .Values.global.nodeSelector }}
+      nodeSelector:
+{{ .Values.global.nodeSelector | toYaml | trim | indent 8 }}
+{{- end }}
+      containers:
+        - image: {{ .Values.global.image | quote }}
+          name: {{ .Values.global.name }}
+{{- if .Values.global.resources }}
+          resources:
+{{ .Values.global.resources | toYaml | trim | indent 12 }}
+{{- end }}
+          env:
+          - name: PROVISIONER_NAME
+            value: ceph.com/rbd
+{{- end}}
+
