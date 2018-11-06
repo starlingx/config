@@ -30,13 +30,7 @@ Startup compute configuration gate
 %build
 
 %install
-install -d -m 755 %{buildroot}%{_sbindir}
-install -p -D -m 555 wait_for_config_init.sh %{buildroot}%{_sbindir}/
-install -p -D -m 555 wait_for_compute_config_init.sh %{buildroot}%{_sbindir}/
-
-install -d -m 755 %{buildroot}%{local_etc_systemd}
-install -p -D -m 444 config.service %{buildroot}%{local_etc_systemd}/config.service
-install -p -D -m 444 compute-config-gate.service %{buildroot}%{local_etc_systemd}/compute-config-gate.service
+make install SBINDIR=%{buildroot}%{_sbindir} SYSTEMDDIR=%{buildroot}%{local_etc_systemd}
 
 %post
 systemctl enable config.service
@@ -45,7 +39,6 @@ systemctl enable config.service
 systemctl enable compute-config-gate.service
 
 %clean
-# rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root,-)
