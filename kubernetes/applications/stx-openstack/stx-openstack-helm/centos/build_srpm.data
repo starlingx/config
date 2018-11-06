@@ -1,0 +1,2 @@
+SRC_DIR="stx-openstack-helm"
+TIS_PATCH_VER=1
