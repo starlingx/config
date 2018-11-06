@@ -91,6 +91,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                         },
                     }
                 },
+                'labels': self._get_labels_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
                 'images': self._get_images_overrides(),
             }
@@ -365,5 +366,16 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                         user, common.HELM_NS_OPENSTACK, user)
                 }
             })
+
+        return overrides
+
+    def _get_labels_overrides(self):
+        overrides = {
+            'agent': {
+                'dhcp': {'node_selector_key': 'openvswitch'},
+                'l3': {'node_selector_key': 'openvswitch'},
+                'metadata': {'node_selector_key': 'openvswitch'},
+            },
+        }
 
         return overrides
