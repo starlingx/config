@@ -12,6 +12,8 @@ from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
+from sysinv.api.controllers.v1 import vim_api
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.openstack.common import excutils
@@ -196,6 +198,8 @@ class LabelController(rest.RestController):
         LOG.info("patch_data: %s" % body)
         host = objects.host.get_by_uuid(pecan.request.context, uuid)
 
+        _check_host_locked(host)
+
         try:
             pecan.request.rpcapi.update_kubernetes_label(
                 pecan.request.context,
@@ -215,11 +219,23 @@ class LabelController(rest.RestController):
                 'label_key': key,
                 'label_value': value
             }
+
             try:
                 new_label = pecan.request.dbapi.label_create(uuid, values)
                 new_records.append(new_label)
             except exception.HostLabelAlreadyExists:
                 pass
+
+        try:
+            vim_api.vim_host_update(
+                None,
+                uuid,
+                host.hostname,
+                constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
+        except Exception as e:
+            LOG.warn(_("No response vim_api host:%s e=%s" %
+                     (host.hostname, e)))
+            pass
 
         return LabelCollection.convert_with_links(
             new_records, limit=None, url=None, expand=False,
@@ -235,6 +251,8 @@ class LabelController(rest.RestController):
         lbl_obj = objects.label.get_by_uuid(pecan.request.context, uuid)
         host = objects.host.get_by_uuid(pecan.request.context, lbl_obj.host_id)
         label_dict = {lbl_obj.label_key: None}
+
+        _check_host_locked(host)
 
         try:
             pecan.request.rpcapi.update_kubernetes_label(
@@ -253,3 +271,28 @@ class LabelController(rest.RestController):
             msg = _("Delete host label failed: host %s label %s=%s"
                     % (host.hostname, lbl_obj.label_key, lbl_obj.label_value))
             raise wsme.exc.ClientSideError(msg)
+
+        try:
+            vim_api.vim_host_update(
+                None,
+                host.uuid,
+                host.hostname,
+                constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
+        except Exception as e:
+            LOG.warn(_("No response vim_api host:%s e=%s" %
+                     (host.hostname, e)))
+            pass
+
+
+###########
+# UTILS
+###########
+def _check_host_locked(host):
+
+    # TODO(ksmith):
+    # turn this on later
+    return
+
+    if (utils.is_aio_simplex_host_unlocked(host) or
+            host.administrative != constants.ADMIN_LOCKED):
+        raise wsme.exc.ClientSideError(_("Host must be locked."))
