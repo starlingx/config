@@ -17,8 +17,8 @@ class platform::mtce::params (
   $mtce_multicast = undef,
   $mnfa_threshold = undef,
   $mnfa_timeout = undef,
-  $sm_client_port = undef,
-  $sm_server_port = undef,
+  $sm_client_port = 2224,
+  $sm_server_port = 2124,
 ) { }
 
 

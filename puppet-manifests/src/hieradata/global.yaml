@@ -11,6 +11,9 @@ platform::params::security_feature: nopti nospectre_v2
 platform::amqp::auth_user: guest
 platform::users::params::wrsroot_password_max_age: 45
 
+# mtce
+platform::mtce::params::sm_server_port: 2124
+platform::mtce::params::sm_client_port: 2224
 
 # sysinv
 sysinv::database_idle_timeout: 60
