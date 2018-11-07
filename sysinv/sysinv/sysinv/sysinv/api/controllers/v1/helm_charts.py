@@ -146,6 +146,7 @@ class HelmChartsController(rest.RestController):
         """
         self.validate_name_and_namespace(name, namespace)
         try:
-            pecan.request.dbapi.helm_override_destroy(name, namespace)
+            pecan.request.dbapi.helm_override_update(name, namespace,
+                                                     {'user_overrides': None})
         except exception.HelmOverrideNotFound:
             pass
