@@ -1532,7 +1532,7 @@ data:
 
             # Set this to True if running on multi-domain model. When this is enabled, it
             # will require user to enter the Domain name in addition to username for login.
-            OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = '{{ .Values.conf.horizon.local_settings.config.keystone_multidomain_support }}'
+            OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = {{ .Values.conf.horizon.local_settings.config.keystone_multidomain_support }}
 
             # Overrides the default domain used when running on single-domain model
             # with Keystone V3. All entities will be created in the default domain.
@@ -2148,13 +2148,7 @@ data:
 
             # Use reigon configuration to access platform depoloyment and containerized
             # deployment from a single horizon deployment
-            OPENSTACK_KEYSTONE_URL = "{{ tuple "identity" "internal" "api" . | include "helm-toolkit.endpoints.keystone_endpoint_uri_lookup" }}" # Default region is still containerized services
-            AVAILABLE_REGIONS = [
-                # Containerized Keystone
-                (OPENSTACK_KEYSTONE_URL, "RegionOne"),
-                # Platform Keystone
-                ("http://controller:5000/v3", "{{ .Values.conf.horizon.local_settings.config.system_region_name }}-platform"),
-            ]
+            OPENSTACK_KEYSTONE_URL = "{{ tuple "identity" "internal" "api" . | include "helm-toolkit.endpoints.keystone_endpoint_uri_lookup" }}"
 
             OPENSTACK_NEUTRON_NETWORK['enable_distributed_router'] = True
 
