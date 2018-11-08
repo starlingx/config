@@ -1402,7 +1402,7 @@ def upgrade_controller_simplex(backup_file):
         'controller-0')
 
     hieradata_tmpdir = os.path.join(staging_dir,
-                                    constants.HIERADATA_PERMDIR.strip('//'))
+                                    constants.HIERADATA_PERMDIR.strip('/'))
     print_log_info("Applying Bootstrap manifest...")
     cutils.apply_manifest(controller_0_address,
                           sysinv_constants.CONTROLLER,
