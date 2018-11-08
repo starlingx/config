@@ -25,6 +25,9 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
         return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
+        # NOTE: there is an intentional typo in "force_recovey" to match
+        # a typo in the upstream helm chart.  This will eventually go away
+        # when we upgrade to the latest chart.
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': {
@@ -33,6 +36,7 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
                     }
                 },
                 'endpoints': self._get_endpoints_overrides(),
+                'force_recovey': 'mariadb-server-0',
             }
         }
 
