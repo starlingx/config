@@ -15,6 +15,7 @@
         - configutilities-tox-flake8
         - stx-devstack-config:
             voting: false
+        - cgtsclient-tox-py27
     gate:
       jobs:
         - build-openstack-api-ref
@@ -26,6 +27,7 @@
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - configutilities-tox-flake8
+        - cgtsclient-tox-py27
     post:
       jobs:
         - publish-stx-api-ref
@@ -140,3 +142,18 @@
         stx-update: git://git.starlingx.io/stx-update
     files:
       - ^devstack/.*
+
+- job:
+    name: cgtsclient-tox-py27
+    parent: tox
+    description: |
+      Run py27 test for cgts-client
+    files:
+      - sysinv/*
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+      - openstack/stx-integ
+    vars:
+      tox_envlist: py27
+      tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
