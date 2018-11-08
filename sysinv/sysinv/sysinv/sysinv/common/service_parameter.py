@@ -17,8 +17,8 @@ import re
 import rpm
 import six
 import wsme
-import urlparse
 
+from six.moves.urllib.parse import urlparse
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import StorageBackendConfig
@@ -107,7 +107,7 @@ def _validate_zero_or_range(name, value, min, max):
 
 def _validate_ldap_url(name, value):
 
-    url = urlparse.urlparse(value)
+    url = urlparse(value)
 
     if cutils.is_valid_ip(url.hostname):
         try:
@@ -194,7 +194,7 @@ def _validate_neutron_service_plugins(name, value):
 
 
 def _validate_odl_connection_uri(name, value):
-    url = urlparse.urlparse(value)
+    url = urlparse(value)
 
     if cutils.is_valid_ip(url.hostname):
         try:
@@ -293,7 +293,7 @@ def _validate_emc_vnx_data_network_type(name, value):
 
 
 def _validate_hpe_api_url(name, value):
-    url = urlparse.urlparse(value)
+    url = urlparse(value)
 
     if cutils.is_valid_ip(url.hostname):
         try:

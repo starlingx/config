@@ -20,7 +20,7 @@
 #
 
 import time
-import urlparse
+from six.moves.urllib.parse import urlparse
 import webob
 
 from oslo_config import cfg
@@ -256,7 +256,7 @@ class AuditLogging(hooks.PecanHook):
         domain_name = state.request.headers.get('X-User-Domain-Name')
         request_id = state.request.context.request_id
 
-        url_path = urlparse.urlparse(state.request.path_qs).path
+        url_path = urlparse(state.request.path_qs).path
 
         def json_post_data(rest_state):
             if not hasattr(rest_state.request, 'json'):

@@ -14,8 +14,8 @@ from pecan import rest
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
-import urlparse
 
+from six.moves.urllib.parse import urlparse
 from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -1079,7 +1079,7 @@ class ServiceParameterController(rest.RestController):
             section=section,
             name="hpe3par_api_url")
 
-        url = urlparse.urlparse(api_url.value)
+        url = urlparse(api_url.value)
         ip = netaddr.IPAddress(url.hostname)
         pool = service_parameter._get_network_pool_from_ip_address(ip, service_parameter.HPE_DATA_NETWORKS)
 
@@ -1221,7 +1221,7 @@ class ServiceParameterController(rest.RestController):
             section=constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND,
             name="hpelefthand_api_url")
 
-        url = urlparse.urlparse(api_url.value)
+        url = urlparse(api_url.value)
         ip = netaddr.IPAddress(url.hostname)
 
         pool = service_parameter._get_network_pool_from_ip_address(ip, service_parameter.HPE_DATA_NETWORKS)
