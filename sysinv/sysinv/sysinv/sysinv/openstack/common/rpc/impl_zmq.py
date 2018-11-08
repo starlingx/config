@@ -554,8 +554,8 @@ def unflatten_envelope(packenv):
     h = {}
     try:
         while True:
-            k = i.next()
-            h[k] = i.next()
+            k = next(i)
+            h[k] = next(i)
     except StopIteration:
         return h
 
