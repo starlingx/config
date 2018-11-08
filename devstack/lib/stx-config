@@ -1,15 +1,14 @@
 #!/bin/bash
 #
 # lib/stx-config
-# Functions to control the configuration and operation of the **sysinv** service
+# Functions to control the configuration and operation of stx-config
 
 # Dependencies:
 #
 # - ``functions`` file
 # - ``DEST``, ``DATA_DIR``, ``STACK_USER`` must be defined
-# - ``SERVICE_{TENANT_NAME|PASSWORD}`` must be defined
-# - ``SERVICE_HOST``
-# - ``KEYSTONE_TOKEN_FORMAT`` must be defined
+
+# - The stx-update and stx-fault plugins must be enabled
 
 # ``stack.sh`` calls the entry points in this order:
 #
@@ -31,22 +30,8 @@ set -o xtrace
 SYSINV_CLIENT_NAME=cgts-client
 GITDIR["$SYSINV_CLIENT_NAME"]=$DEST/stx-config/sysinv/cgts-client/cgts-client
 GITDIR["sysinv"]=$DEST/stx-config/sysinv/sysinv/sysinv
-#this is sysinv dependence , if stx-update support devstack, we need use depends
-STXUPDATE_REPO=${STXUPDATE_REPO:-${GIT_BASE}/openstack/stx-update.git}
-STXUPDATE_DIR=$DEST/stx-update
-STXUPDATE_BRANCH=${STXUPDATE_BRANCH:-master}
 STXCONFIG_CONTROL=$DEST/stx-config/controllerconfig/controllerconfig
 STXCONFIG_CONFUTILS=$DEST/stx-config/configutilities/configutilities
-GITDIR["tsconfig"]=$STXUPDATE_DIR/tsconfig/tsconfig/
-TSCONFIG_DIR=$STXUPDATE_DIR/tsconfig/
-CGCS_PATCH_DIR=$STXUPDATE_DIR/cgcs-patch/
-STXFAULT_REPO=${STXFAULT_REPO:-${GIT_BASE}/openstack/stx-fault.git}
-STXFAULT_DIR=$DEST/stx-fault
-STXFAULT_BRANCH=${STXFAULT_BRANCH:-master}
-STXUTILS_PLATFORM_DIR=$STXUTILS_DIR/middleware/util/recipes-common/platform-util
-STXUTILS_BRANCH=${STXUTILS_BRANCH:-master}
-GITDIR["fm-api"]=$STXFAULT_DIR/fm-api
-#TSCONFIG_DIR=$STXFAULT_DIR/tsconfig
 SYSINV_SERVICE_PROTOCOL=${SYSINV_SERVICE_PROTOCOL:-$SERVICE_PROTOCOL}
 SYSINV_SERVICE_PORT=${SYSINV_SERVICE_PORT:-6385}
 SYSINV_SERVICE_HOST=${SYSINV_SERVICE_HOST:-$SERVICE_HOST}
@@ -146,6 +131,8 @@ function create_sysinv_user_group {
 
 function init_sysinv {
     echo "trigger init sysinv"
+    # Migrations need this
+    sudo install -d -m 755 -o ${USER} /var/run/sysinv
     if [[ "$HOST_TOPOLOGY_ROLE" != "subnode" ]]; then
         # (Re)create  sysinv database
         echo "recreate_database sysinv and dbsync"
@@ -168,13 +155,6 @@ function install_configutilities {
 
 function install_controllerconfig {
     pushd $STXCONFIG_CONTROL
-    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
-    popd
-}
-
-function install_fm_api {
-    git_clone $STXFAULT_REPO $STXFAULT_DIR $STXFAULT_BRANCH
-    pushd $STXFAULT_DIR/fm-api
     sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
     popd
 }
@@ -210,34 +190,6 @@ function install_sysinv {
 function install_sysinv_depends {
     install_configutilities
     install_controllerconfig
-    install_tsconfig
-    install_fm_api
-}
-
-function install_tsconfig {
-    git_clone $STXUPDATE_REPO $STXUPDATE_DIR $STXUPDATE_BRANCH
-    # no setup.cfg in tsconfig, so we can not use pip install -e
-    # setup_dev_lib "tsconfig"
-    pushd $TSCONFIG_DIR/tsconfig
-    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
-    popd
-    sudo install -d -m 755 $SYSINV_BIN_DIR
-    sudo install -p -D -m 700 $TSCONFIG_DIR/scripts/tsconfig $SYSINV_BIN_DIR/tsconfig
-    pushd $CGCS_PATCH_DIR/cgcs-patch
-    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
-    popd
-    local cgcs_patch_sbindir=/etc/sbin/
-    local cgcs_patch_sysconfdir=/etc/
-    sudo install -m 755 -d ${cgcs_patch_sbindir}
-    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/bash_completion.d
-    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/goenabled.d
-    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/init.d
-    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/logrotate.d
-    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/patching
-    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/patching/patch-scripts
-    sudo install -m 755 -d ${cgcs_patch_sysconfdir}/pmon.d
-    sudo install -m 500 $CGCS_PATCH_DIR/bin/sw-patch-agent ${cgcs_patch_sbindir}/sw-patch-agent
-    #still a lots of bin need to install , but might not need for stx-config
 }
 
 function start_sysinv {
