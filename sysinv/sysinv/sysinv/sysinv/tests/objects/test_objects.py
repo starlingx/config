@@ -17,6 +17,7 @@ import datetime
 import gettext
 import iso8601
 import netaddr
+import six
 
 gettext.install('sysinv')
 
@@ -87,8 +88,8 @@ class MyObj2(object):
 class TestMetaclass(test_base.TestCase):
     def test_obj_tracking(self):
 
+        @six.add_metaclass(base.SysinvObjectMetaclass)
         class NewBaseClass(object):
-            __metaclass__ = base.SysinvObjectMetaclass
             fields = {}
 
             @classmethod

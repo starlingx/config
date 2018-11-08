@@ -185,12 +185,11 @@ def check(rule, target, creds, exc=None, *args, **kwargs):
     return result
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseCheck(object):
     """
     Abstract base class for Check classes.
     """
-
-    __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def __str__(self):
@@ -545,6 +544,7 @@ def reducer(*tokens):
     return decorator
 
 
+@six.add_metaclass(ParseStateMeta)
 class ParseState(object):
     """
     Implement the core of parsing the policy language.  Uses a greedy
@@ -556,8 +556,6 @@ class ParseState(object):
     Fortunately, the policy language is simple enough that this
     shouldn't be that big a problem.
     """
-
-    __metaclass__ = ParseStateMeta
 
     def __init__(self):
         """Initialize the ParseState."""
