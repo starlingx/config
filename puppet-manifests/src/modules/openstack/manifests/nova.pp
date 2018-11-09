@@ -99,14 +99,7 @@ class openstack::nova::controller
 
   # TODO(mpeters): move to nova puppet module as formal parameters
   nova_config{
-    # network load balance, vswitch available utilization weigher
-    'metrics/weight_multiplier': value => 1.0;
-    'metrics/weight_setting': value => 'vswitch.max_avail=100.0';
-    'metrics/weight_setting_multi': value => 'vswitch.multi_avail=100.0';
     'metrics/required': value => false;
-    'metrics/weight_of_unavailable': value => -10000.0;
-    'metrics/platform_cpu_threshold': value => 80;
-    'metrics/platform_mem_threshold': value => 80;
   }
 
   class { '::nova::conductor':
