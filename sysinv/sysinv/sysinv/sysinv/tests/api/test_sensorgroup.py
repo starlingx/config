@@ -116,14 +116,14 @@ class sensorgroupTestCase(base.FunctionalTest):
             'sensortype': 'testsensortype',
             'sensorname': 'defaultSensorName',
         }
-        for i in xrange(numOfSensors):
+        for i in range(numOfSensors):
             sensor.append(self.post_json('/isensors', sensorVals, headers={'User-Agent': 'hwmon'}))
             self.patch_dict_json('/isensors/%s/' % sensor[i].json['uuid'],
                                  headers={'User-Agent': 'hwmon'},
                                  sensorgroup_uuid=sensorgroup.json['uuid'])
 
         # Assert sensors created properly in DB
-        for i in xrange(numOfSensors):
+        for i in range(numOfSensors):
             self.assertEqual('defaultSensorName',  # Expected
                              self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['sensorname'])  # Result
             self.assertEqual(sensorgroup.json['uuid'],  # Expected
@@ -151,7 +151,7 @@ class sensorgroupTestCase(base.FunctionalTest):
                          self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['suppress'])  # Result
 
         # Assert values got propagated to sensor
-        for i in xrange(numOfSensors):
+        for i in range(numOfSensors):
             self.assertEqual(42,  # Expected
                              self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['audit_interval'])  # Result
             self.assertEqual('action minor',  # Expected
@@ -165,12 +165,12 @@ class sensorgroupTestCase(base.FunctionalTest):
 
         # Delete sensorgroup and sensors
         self.delete('/isensorgroups/%s/' % sensorgroup.json['uuid'])
-        for i in xrange(numOfSensors):
+        for i in range(numOfSensors):
             self.delete('/isensors/%s/' % sensor[i].json['uuid'])
 
         # Assert deletion of sensorgroup and sensors
         self.assertDeleted('/isensorgroups/%s/' % sensorgroup.json['uuid'])
-        for i in xrange(numOfSensors):
+        for i in range(numOfSensors):
             self.assertDeleted('/isensors/%s/' % sensor[i].json['uuid'])
 
     def test_sensorgroup_post(self):

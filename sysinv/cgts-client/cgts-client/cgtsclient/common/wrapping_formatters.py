@@ -784,7 +784,7 @@ def _simpleTestHarness(no_wrap):
         formatterSpec[f] = buildFormatter(f, formatterSpecX[f])
 
     logs = []
-    for i in xrange(0, 30):
+    for i in range(0, 30):
         log = {}
         for f in fields:
             if f == 'number':

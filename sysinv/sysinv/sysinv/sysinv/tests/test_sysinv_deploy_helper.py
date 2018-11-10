@@ -76,7 +76,7 @@ class WorkerTestCase(base.DbTestCase):
         # super(WorkerTestCase, self).tearDown()
 
     def wait_queue_empty(self, timeout):
-        for _ in xrange(int(timeout / 0.1)):
+        for _ in range(int(timeout / 0.1)):
             if bmdh.QUEUE.empty():
                 break
             time.sleep(0.1)
