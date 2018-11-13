@@ -1077,10 +1077,6 @@ class platform::sm
     command => "sm-configure service_instance mtc-agent mtc-agent \"state=active,logging=true,mode=normal,dbg=false\"",
   }
 
-  exec { 'Configure Heartbeat Service Agent':
-    command => "sm-configure service_instance hbs-agent hbs-agent \"state=active,logging=true,dbg=false\"",
-  }
-
   exec { 'Configure DNS Mask':
     command => "sm-configure service_instance dnsmasq dnsmasq \"\"",
   }
