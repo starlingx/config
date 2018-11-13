@@ -157,6 +157,9 @@ class HostProvisionStateController(rest.RestController):
         raise NotImplementedError()
 
 
+LOCK_NAME_STATE = 'HostStatesController'
+
+
 class HostStates(base.APIBase):
     """API representation of the states of a ihost."""
 
@@ -180,6 +183,7 @@ class HostStates(base.APIBase):
 class HostStatesController(rest.RestController):
     _custom_actions = {
         'host_cpus_modify': ['PUT'],
+        'update_install_uuid': ['PUT'],
     }
 
     # GET ihosts/<uuid>/state
@@ -199,6 +203,22 @@ class HostStatesController(rest.RestController):
                                                         expand=None,
                                                         sort_key=None,
                                                         sort_dir=None)
+
+    # PUT ihosts/<uuid>/state/update_install_uuid
+    @cutils.synchronized(LOCK_NAME_STATE)
+    @wsme_pecan.wsexpose(HostStates, types.uuid, body=unicode)
+    def update_install_uuid(self, host_uuid, install_uuid):
+        """ Update install_uuid in /etc/platform/platform.conf
+            on the specified host.
+            :param host_uuid: UUID of the host
+            :param install_uuid: install_uuid.
+        """
+        LOG.info("update_install_uuid host_uuid=%s install_uuid=%s" %
+                 (host_uuid, install_uuid))
+
+        pecan.request.rpcapi.update_install_uuid(pecan.request.context,
+                                                 host_uuid,
+                                                 install_uuid)
 
     # PUT ihosts/<uuid>/state/host_cpus_modify
     @cutils.synchronized(cpu_api.LOCK_NAME)

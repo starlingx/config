@@ -286,13 +286,16 @@ def show_help():
            "the given file name\n"
            "--clone-status           Status of the last installation of "
            "cloned image\n"
-           "--restore-system <name>  Restore system configuration from backup "
+           "--restore-system "
+           "<include-storage-reinstall | exclude-storage-reinstall> "
+           "<name>\n"
+           "                         Restore system configuration from backup "
            "file with\n"
            "                         the given name, full path required\n"
            "--restore-images <name>  Restore images from backup file with the "
            "given name,\n"
            "                         full path required\n"
-           "--restore-complete       Complete restore of controller-0"
+           "--restore-complete       Complete restore of controller-0\n"
            "--allow-ssh              Allow configuration to be executed in "
            "ssh\n"
            % sys.argv[0])
@@ -327,6 +330,7 @@ def main():
     do_default_config = False
     do_backup = False
     do_system_restore = False
+    include_storage_reinstall = False
     do_images_restore = False
     do_complete_restore = False
     do_clone = False
@@ -365,9 +369,24 @@ def main():
         elif sys.argv[arg] == "--restore-system":
             arg += 1
             if arg < len(sys.argv):
-                backup_name = sys.argv[arg]
+                if sys.argv[arg] in ["include-storage-reinstall",
+                                     "exclude-storage-reinstall"]:
+                    if sys.argv[arg] == "include-storage-reinstall":
+                        include_storage_reinstall = True
+                    arg += 1
+                    if arg < len(sys.argv):
+                        backup_name = sys.argv[arg]
+                    else:
+                        print textwrap.fill(
+                            "--restore-system requires the filename "
+                            " of the backup", 80)
+                        exit(1)
+                else:
+                    backup_name = sys.argv[arg]
             else:
-                print "--restore-system requires the filename of the backup"
+                print textwrap.fill(
+                    "--restore-system requires the filename "
+                    "of the backup", 80)
                 exit(1)
             do_system_restore = True
         elif sys.argv[arg] == "--restore-images":
@@ -473,7 +492,8 @@ def main():
             backup_restore.backup(backup_name, archive_dir)
             print "\nBackup complete"
         elif do_system_restore:
-            backup_restore.restore_system(backup_name)
+            backup_restore.restore_system(backup_name,
+                                          include_storage_reinstall)
             print "\nSystem restore complete"
         elif do_images_restore:
             backup_restore.restore_images(backup_name)

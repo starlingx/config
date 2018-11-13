@@ -837,6 +837,19 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_lvm_cinder_config'))
 
+    def update_install_uuid(self, context, host_uuid, install_uuid):
+        """Synchronously, have an agent update install_uuid on
+           a host.
+
+        :param context: request context.
+        :parm host_uuid: host uuid to update the install_uuid
+        :parm install_uuid: install_uuid
+        """
+        return self.call(context,
+                         self.make_msg('update_install_uuid',
+                                       host_uuid=host_uuid,
+                                       install_uuid=install_uuid))
+
     def update_ceph_config(self, context, sb_uuid, services):
         """Synchronously, have the conductor update Ceph on a controller
 

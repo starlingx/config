@@ -49,3 +49,8 @@ class UserQuit(ConfigError):
 class CloneFail(ConfigError):
     """Clone error."""
     pass
+
+
+class TidyStorageFail(ConfigError):
+    """Tidy storage error."""
+    pass
