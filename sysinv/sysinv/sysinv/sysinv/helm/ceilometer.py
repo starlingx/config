@@ -126,8 +126,22 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
         else:
             batch_timeout = 5
 
-        notification_overrides.update({'batch_timeout': batch_timeout})
+        notification_overrides.update(
+            {'batch_timeout': batch_timeout,
+             'messaging_urls': {'values': self._get_notification_messaging_urls()}})
         return notification_overrides
+
+    def _get_notification_messaging_urls(self):
+        rabbit_user = 'rabbitmq-admin'
+        rabbit_pass = self._get_common_password(rabbit_user)
+        rabbit_paths = ['/ceilometer', '/cinder', '/glance', '/nova', '/keystone', '/neutron', '/heat']
+
+        messaging_urls = []
+        for rabbit_path in rabbit_paths:
+            messaging_urls += \
+                ['rabbit://%s:%s@rabbitmq.openstack.svc.cluster.local:5672%s' % (rabbit_user, rabbit_pass, rabbit_path)]
+
+        return messaging_urls
 
     def _get_endpoints_overrides(self):
         return {
