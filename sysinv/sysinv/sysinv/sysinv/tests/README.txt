@@ -124,7 +124,7 @@ tests/api/test_invservers.py
 tests/conductor/test_manager.py
     test_configure_ihost_new
         IOError: [Errno 13] Permission denied: '/tmp/dnsmasq.hosts'
-        This directory does not exist. I am not sure if this this directory is
+        This directory does not exist. I am not sure if this directory is
         still supposed to exist, if it has moved, or if this entire test is
         based on deprecated/replaced functionality.
 
