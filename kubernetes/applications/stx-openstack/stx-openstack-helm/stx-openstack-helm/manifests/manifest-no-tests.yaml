@@ -911,16 +911,6 @@ data:
         oslo_messaging_notifications:
           topics:
             - notifications
-        notification:
-          messaging_urls:
-            values:
-              - rabbit://rabbitmq-admin:4xWhfGjdQts1SyvXJXs5@rabbitmq.openstack.svc.cluster.local:5672/ceilometer
-              - rabbit://rabbitmq-admin:4xWhfGjdQts1SyvXJXs5@rabbitmq.openstack.svc.cluster.local:5672/cinder
-              - rabbit://rabbitmq-admin:4xWhfGjdQts1SyvXJXs5@rabbitmq.openstack.svc.cluster.local:5672/glance
-              - rabbit://rabbitmq-admin:4xWhfGjdQts1SyvXJXs5@rabbitmq.openstack.svc.cluster.local:5672/nova
-              - rabbit://rabbitmq-admin:4xWhfGjdQts1SyvXJXs5@rabbitmq.openstack.svc.cluster.local:5672/keystone
-              - rabbit://rabbitmq-admin:4xWhfGjdQts1SyvXJXs5@rabbitmq.openstack.svc.cluster.local:5672/neutron
-              - rabbit://rabbitmq-admin:4xWhfGjdQts1SyvXJXs5@rabbitmq.openstack.svc.cluster.local:5672/heat
       pipeline:
         sources:
           - name: meter_source
