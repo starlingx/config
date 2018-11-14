@@ -555,6 +555,41 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-nova-api-proxy
+data:
+  chart_name: nova-api-proxy
+  release: openstack-nova-api-proxy
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-nova-api-proxy
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-nova-api-proxy
+        - type: pod
+          labels:
+            release_group: osh-openstack-nova-api-proxy
+            component: test
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/nova-api-proxy-0.1.0.tgz
+    subpath: nova-api-proxy
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-neutron
 data:
   chart_name: neutron
@@ -2358,6 +2393,7 @@ data:
   chart_group:
     - openstack-libvirt
     - openstack-nova
+    - openstack-nova-api-proxy
     - openstack-neutron
 ---
 schema: armada/ChartGroup/v1
