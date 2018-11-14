@@ -228,7 +228,8 @@ def _get_free_space(device_node):
     return free_spaces
 
 
-def _get_partition_start_end_size(disk_device_path, part_number):
+def _get_partition_start_end_size(disk_device_path, part_number,
+                                  sector_size_bytes):
     """Return the start, end and size of a partitions.
     :param   disk_device_path: disk's device path
     :param   part_number: partition's number
@@ -248,7 +249,8 @@ def _get_partition_start_end_size(disk_device_path, part_number):
         row = next((row for row in rows if value in row), None)
         if row:
             part_attr = re.findall('\d+', row)[0].rstrip()
-            partition[key] = math.ceil(float(part_attr) * 512 / (1024 ** 2))
+            partition[key] = math.ceil(
+                float(part_attr) * sector_size_bytes / (1024 ** 2))
 
     return partition
 
@@ -330,7 +332,9 @@ def _create_partition(disk_device_path, part_number, start_mib, size_mib,
     _wait_for_partition(part_device_path,
                         loop_wait_time=PARTITION_LOOP_WAIT_TIME)
 
-    partition = _get_partition_start_end_size(disk_device_path, part_number)
+    partition = _get_partition_start_end_size(disk_device_path,
+                                              part_number,
+                                              sector_size_bytes)
     return partition
 
 
