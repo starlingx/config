@@ -28,9 +28,9 @@ data:
     labels:
       release_group: osh-kube-system-ingress
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -69,9 +69,9 @@ data:
     labels:
       release_group: osh-openstack-ingress
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -110,9 +110,9 @@ data:
     labels:
       app: rbd-provisioner
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -139,9 +139,9 @@ data:
     labels:
       release_group: osh-openstack-mariadb
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -150,7 +150,7 @@ data:
   values:
     monitoring:
       prometheus:
-        enabled: True
+        enabled: true
     labels:
       server:
         node_selector_key: openstack-control-plane
@@ -178,9 +178,9 @@ data:
     labels:
       release_group: osh-openstack-memcached
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -218,11 +218,11 @@ data:
     labels:
       release_group: osh-openstack-rabbitmq
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -235,7 +235,7 @@ data:
   values:
     monitoring:
       prometheus:
-        enabled: True
+        enabled: true
     labels:
       server:
         node_selector_key: openstack-control-plane
@@ -264,11 +264,11 @@ data:
     labels:
       release_group: osh-openstack-keystone
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -314,11 +314,11 @@ data:
     labels:
       release_group: osh-openstack-glance
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -364,11 +364,11 @@ data:
     labels:
       release_group: osh-openstack-cinder
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -422,9 +422,9 @@ data:
   release: openstack-libvirt
   namespace: openstack
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
   values:
     labels:
       agent:
@@ -448,11 +448,11 @@ data:
   release: openstack-nova
   namespace: openstack
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -561,11 +561,11 @@ data:
   release: openstack-neutron
   namespace: openstack
   install:
-    no_hooks: False
+    no_hooks: false
   test:
-    enabled: False
+    enabled: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -628,7 +628,7 @@ data:
     conf:
       neutron:
         DEFAULT:
-          l3_ha: True
+          l3_ha: true
           min_l3_agents_per_router: 2
           max_l3_agents_per_router: 5
           l3_ha_network_type: vxlan
@@ -663,11 +663,11 @@ data:
     labels:
       release_group: osh-openstack-heat
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -721,11 +721,11 @@ data:
     labels:
       release_group: osh-openstack-gnocchi
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -817,11 +817,11 @@ data:
     labels:
       release_group: osh-openstack-ceilometer
   test:
-    enabled: False
+    enabled: false
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -856,7 +856,7 @@ data:
           services:
             - endpoint: internal
               service: event
-      db_sync:
+        db_sync:
           jobs:
             - ceilometer-ks-user
             - ceilometer-ks-service
@@ -866,14 +866,14 @@ data:
             - endpoint: internal
               service: metric
     manifests:
-      deployment_api: False
-      deployment_collector: False
-      service_api: False
-      job_db_init: False
-      job_db_init_mongodb: False
-      job_ks_endpoints: False
-      secret_db: False
-      secret_mongodb: False
+      deployment_api: false
+      deployment_collector: false
+      service_api: false
+      job_db_init: false
+      job_db_init_mongodb: false
+      job_ks_endpoints: false
+      secret_db: false
+      secret_mongodb: false
     endpoints:
       oslo_cache:
         hosts:
@@ -897,9 +897,9 @@ data:
       ceilometer:
         DEFAULT:
           csv_location: /var/lib/ceilometer/
-          csv_location_strict: True
+          csv_location_strict: true
           shuffle_time_before_polling_task: 30
-          batch_polled_samples: True
+          batch_polled_samples: true
         dispatcher_gnocchi:
           archive_policy: null
           filter_project: null
@@ -979,7 +979,7 @@ data:
                 parameters:
                   target:
                     name: "cpu.delta"
-                    growth_only: True
+                    growth_only: true
             publishers:
               - gnocchi://
           - name: vcpu_sink
@@ -1469,9 +1469,9 @@ data:
     labels:
       release_group: osh-openstack-horizon
   install:
-    no_hooks: False
+    no_hooks: false
   upgrade:
-    no_hooks: False
+    no_hooks: false
     pre:
       delete:
         - type: job
@@ -1479,7 +1479,7 @@ data:
             release_group: osh-openstack-horizon
   values:
     conf:
-          horizon:
+      horizon:
         local_settings:
           template: |
             import os
@@ -2276,7 +2276,7 @@ metadata:
   name: kube-system-ingress
 data:
   description: "System Ingress Controller"
-  sequenced: False
+  sequenced: false
   chart_group:
     - kube-system-ingress
 ---
@@ -2286,7 +2286,7 @@ metadata:
   name: openstack-ingress
 data:
   description: "OpenStack Ingress Controller"
-  sequenced: False
+  sequenced: false
   chart_group:
     - openstack-ingress
 ---
@@ -2296,7 +2296,7 @@ metadata:
   name: provisioner
 data:
   description: "Provisioner"
-  sequenced: False
+  sequenced: false
   chart_group:
     - kube-system-rbd-provisioner
 ---
@@ -2306,7 +2306,7 @@ metadata:
   name: openstack-mariadb
 data:
   description: "Mariadb"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-mariadb
 ---
@@ -2316,7 +2316,7 @@ metadata:
   name: openstack-memcached
 data:
   description: "Memcached"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-memcached
 ---
@@ -2326,7 +2326,7 @@ metadata:
   name: openstack-rabbitmq
 data:
   description: "Rabbitmq"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-rabbitmq
 ---
@@ -2336,7 +2336,7 @@ metadata:
   name: openstack-keystone
 data:
   description: "Deploy keystone"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-keystone
 ---
@@ -2346,7 +2346,7 @@ metadata:
   name: openstack-glance
 data:
   description: "Deploy glance"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-glance
 ---
@@ -2356,7 +2356,7 @@ metadata:
   name: openstack-cinder
 data:
   description: "Deploy cinder"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-cinder
 ---
@@ -2366,7 +2366,7 @@ metadata:
   name: openstack-compute-kit
 data:
   description: "Deploy nova and neutron, as well as supporting services"
-  sequenced: False
+  sequenced: false
   chart_group:
     - openstack-libvirt
     - openstack-nova
@@ -2378,7 +2378,7 @@ metadata:
   name: openstack-heat
 data:
   description: "Deploy heat"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-heat
 ---
@@ -2388,7 +2388,7 @@ metadata:
   name: openstack-horizon
 data:
   description: "Deploy horizon"
-  sequenced: False
+  sequenced: false
   chart_group:
     - openstack-horizon
 ---
@@ -2398,7 +2398,7 @@ metadata:
   name: openstack-telemetry
 data:
   description: "Deploy telemetry"
-  sequenced: True
+  sequenced: true
   chart_group:
     - openstack-gnocchi
     - openstack-ceilometer
@@ -2422,4 +2422,3 @@ data:
     - openstack-heat
     - openstack-horizon
     - openstack-cinder
-    - openstack-telemetry
