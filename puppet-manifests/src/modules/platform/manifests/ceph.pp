@@ -44,10 +44,17 @@ class platform::ceph
   $system_mode = $::platform::params::system_mode
   $system_type = $::platform::params::system_type
   if $service_enabled or $configure_ceph_mon_info {
+    if $system_type == 'All-in-one' and 'simplex' in $system_mode {
+      # Allow 1 node configurations to work with a single monitor
+      $mon_initial_members = $mon_0_host
+    } else {
+      $mon_initial_members = undef
+    }
+
     class { '::ceph':
       fsid => $cluster_uuid,
       authentication_type => $authentication_type,
-      mon_initial_members => $mon_0_host
+      mon_initial_members => $mon_initial_members
     } ->
     ceph_config {
        "mon/mon clock drift allowed": value => ".1";
