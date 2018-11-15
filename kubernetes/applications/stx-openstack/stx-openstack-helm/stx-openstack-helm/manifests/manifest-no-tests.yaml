@@ -746,6 +746,50 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-aodh
+data:
+  chart_name: aodh
+  release: openstack-aodh
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-aodh
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-aodh
+        - type: pod
+          labels:
+            release_group: osh-openstack-aodh
+            component: test
+  values:
+    pod:
+      user:
+        aodh:
+          uid: 0
+    jobs:
+      alarms_cleaner:
+        # daily at the 35 minute mark
+        cron: "35 */24 * * *"
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/aodh-0.1.0.tgz
+    subpath: aodh
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-gnocchi
 data:
   chart_name: gnocchi
@@ -835,6 +879,50 @@ data:
     type: tar
     location: http://172.17.0.1/helm_charts/gnocchi-0.1.0.tgz
     subpath: gnocchi
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-panko
+data:
+  chart_name: panko
+  release: openstack-panko
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-panko
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-panko
+        - type: pod
+          labels:
+            release_group: osh-openstack-panko
+            component: test
+  values:
+    pod:
+      user:
+        panko:
+          uid: 0
+    jobs:
+      events_cleaner:
+        # hourly at the 10 minute mark
+        cron: "10 * * * *"
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/panko-0.1.0.tgz
+    subpath: panko
     reference: master
   dependencies:
     - helm-toolkit
@@ -2420,7 +2508,9 @@ data:
   description: "Deploy telemetry"
   sequenced: true
   chart_group:
+    - openstack-aodh
     - openstack-gnocchi
+    - openstack-panko
     - openstack-ceilometer
 ---
 schema: armada/Manifest/v1
