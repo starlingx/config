@@ -43,6 +43,7 @@ nova::compute::libvirt::live_migration_downtime_steps: 10
 nova::compute::libvirt::live_migration_downtime_delay: 75
 nova::compute::libvirt::live_migration_completion_timeout: 180
 nova::compute::libvirt::live_migration_progress_timeout: 0
+nova::compute::libvirt::mem_stats_period_seconds: 0
 nova::compute::libvirt::remove_unused_base_images: true
 nova::compute::libvirt::remove_unused_resized_minimum_age_seconds: 86400
 nova::compute::libvirt::remove_unused_original_minimum_age_seconds: 3600

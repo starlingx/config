@@ -105,6 +105,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                             'cpu_mode': 'none',
                             'live_migration_completion_timeout': 180,
                             'live_migration_permit_auto_converge': True,
+                            'mem_stats_period_seconds': 0,
                             # Allow up to 1 day for resize confirm
                             'remove_unused_resized_minimum_age_seconds': 86400
                         },
