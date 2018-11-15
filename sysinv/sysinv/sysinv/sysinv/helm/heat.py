@@ -100,3 +100,6 @@ class HeatHelm(openstack.OpenstackBaseHelm):
                     self.SERVICE_NAME, [self.SERVICE_NAME])
             },
         }
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)

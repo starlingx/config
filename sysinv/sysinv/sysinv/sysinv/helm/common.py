@@ -42,6 +42,10 @@ LABEL_CONTROLLER = 'openstack-control-plane'
 LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
 
+# Label values
+LABEL_VALUE_ENABLED = 'enabled'
+LABEL_VALUE_DISABLED = 'disabled'
+
 # Image Tagging
 DOCKER_SRC_OSH = 'openstackhelm'
 DOCKER_SRC_STX = 'starlingx'

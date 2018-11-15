@@ -379,3 +379,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         }
 
         return overrides
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)

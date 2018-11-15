@@ -35,11 +35,15 @@ class platform::nfv {
   include ::nfv
   include ::nfv::vim
 
-  class { '::nfv::nfvi':
-    rabbit_host => $::platform::amqp::params::host,
-    rabbit_port => $::platform::amqp::params::port,
-    rabbit_userid => $::platform::amqp::params::auth_user,
-    rabbit_password => $::platform::amqp::params::auth_password,
+  if !$::platform::kubernetes::params::enabled {
+    class { '::nfv::nfvi':
+      rabbit_host     => $::platform::amqp::params::host,
+      rabbit_port     => $::platform::amqp::params::port,
+      rabbit_userid   => $::platform::amqp::params::auth_user,
+      rabbit_password => $::platform::amqp::params::auth_password,
+    }
+  } else {
+    include ::nfv::nfvi
   }
 }
 

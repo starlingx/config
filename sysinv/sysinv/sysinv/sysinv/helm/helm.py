@@ -508,3 +508,109 @@ class HelmOperator(object):
         except Exception:
             LOG.exception("failed to delete overrides file: %s" % filepath)
             raise
+
+
+class HelmOperatorData(HelmOperator):
+    """Class to allow retrieval of helm managed data"""
+
+    @helm_context
+    def get_keystone_auth_data(self):
+        keystone_operator = self.chart_operators[constants.HELM_CHART_KEYSTONE]
+        auth_data = {
+            'admin_user_name':
+                keystone_operator.get_admin_user_name(),
+            'admin_project_name':
+                keystone_operator.get_admin_project_name(),
+            'auth_host':
+                'keystone-api.openstack.svc.cluster.local',
+            'admin_user_domain':
+                keystone_operator.get_admin_user_domain(),
+            'admin_project_domain':
+                keystone_operator.get_admin_project_domain(),
+        }
+        return auth_data
+
+    @helm_context
+    def get_nova_endpoint_data(self):
+        nova_operator = self.chart_operators[constants.HELM_CHART_NOVA]
+        endpoint_data = {
+            'endpoint_override':
+                'http://nova-api.openstack.svc.cluster.local:8774',
+            'region_name':
+                nova_operator.get_region_name(),
+        }
+        return endpoint_data
+
+    @helm_context
+    def get_nova_oslo_messaging_data(self):
+        nova_operator = self.chart_operators[constants.HELM_CHART_NOVA]
+        endpoints_overrides = nova_operator._get_endpoints_overrides()
+        auth_data = {
+            'host':
+                'rabbitmq.openstack.svc.cluster.local',
+            'port':
+                5672,
+            'virt_host':
+                'nova',
+            'username':
+                endpoints_overrides['oslo_messaging']['auth']['nova']
+                ['username'],
+            'password':
+                endpoints_overrides['oslo_messaging']['auth']['nova']
+                ['password'],
+        }
+        return auth_data
+
+    @helm_context
+    def get_cinder_endpoint_data(self):
+        cinder_operator = self.chart_operators[constants.HELM_CHART_CINDER]
+        endpoint_data = {
+            'region_name':
+                cinder_operator.get_region_name(),
+            'service_name':
+                cinder_operator.get_service_name_v2(),
+            'service_type':
+                cinder_operator.get_service_type_v2(),
+        }
+        return endpoint_data
+
+    @helm_context
+    def get_glance_endpoint_data(self):
+        glance_operator = self.chart_operators[constants.HELM_CHART_GLANCE]
+        endpoint_data = {
+            'region_name':
+                glance_operator.get_region_name(),
+            'service_name':
+                glance_operator.get_service_name(),
+            'service_type':
+                glance_operator.get_service_type(),
+        }
+        return endpoint_data
+
+    @helm_context
+    def get_neutron_endpoint_data(self):
+        neutron_operator = self.chart_operators[constants.HELM_CHART_NEUTRON]
+        endpoint_data = {
+            'region_name':
+                neutron_operator.get_region_name(),
+        }
+        return endpoint_data
+
+    @helm_context
+    def get_heat_endpoint_data(self):
+        heat_operator = self.chart_operators[constants.HELM_CHART_HEAT]
+        endpoint_data = {
+            'region_name':
+                heat_operator.get_region_name(),
+        }
+        return endpoint_data
+
+    @helm_context
+    def get_ceilometer_endpoint_data(self):
+        ceilometer_operator = \
+            self.chart_operators[constants.HELM_CHART_CEILOMETER]
+        endpoint_data = {
+            'region_name':
+                ceilometer_operator.get_region_name(),
+        }
+        return endpoint_data

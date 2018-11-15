@@ -76,6 +76,31 @@ class OpenstackBaseHelm(base.BaseHelm):
 
         return self._region_name()
 
+    def _get_configured_service_name(self, service, version=None):
+        if self._region_config():
+            service_config = self._get_service_config(service)
+            if service_config is not None:
+                name = 'service_name'
+                if version is not None:
+                    name = version + '_' + name
+                service_name = service_config.capabilities.get(name)
+                if service_name is not None:
+                    return service_name
+        elif version is not None:
+            return service + version
+        else:
+            return service
+
+    def _get_configured_service_type(self, service, version=None):
+        if self._region_config():
+            service_config = self._get_service_config(service)
+            if service_config is not None:
+                stype = 'service_type'
+                if version is not None:
+                    stype = version + '_' + stype
+                return service_config.capabilities.get(stype)
+        return None
+
     def _get_or_generate_password(self, chart, namespace, field):
         # Get password from the db for the specified chart overrides
         if not self.dbapi:

@@ -160,3 +160,6 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
                     self.SERVICE_NAME, self.AUTH_USERS)
             },
         }
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)
