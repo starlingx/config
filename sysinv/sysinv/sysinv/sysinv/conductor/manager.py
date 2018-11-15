@@ -5656,11 +5656,10 @@ class ConductorManager(service.PeriodicService):
         self.update_service_table_for_cinder()
 
         # TODO(oponcea): Uncomment when SM supports in-service config reload
-        # ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        # valid_ctrls = [ctrl for ctrl in ctrls if
-        #                ctrl.administrative == constants.ADMIN_UNLOCKED and
-        #                ctrl.availability == constants.AVAILABILITY_AVAILABLE]
-        host = utils.HostHelper.get_active_controller(self.dbapi)
+        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        valid_ctrls = [ctrl for ctrl in ctrls if
+                       ctrl.administrative == constants.ADMIN_UNLOCKED and
+                       ctrl.availability == constants.AVAILABILITY_AVAILABLE]
         classes = ['platform::partitions::runtime',
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
@@ -5668,14 +5667,20 @@ class ConductorManager(service.PeriodicService):
                    'platform::filesystem::img_conversions::runtime',
                    'platform::ceph::controller::runtime',
                    ]
+
+        if utils.is_aio_duplex_system(self.dbapi):
+            # On 2 node systems we have a floating Ceph monitor.
+            classes.append('platform::drbd::cephmon::runtime')
+            classes.append('platform::drbd::runtime')
+
         if constants.SB_SVC_GLANCE in services:
             classes.append('openstack::glance::api::runtime')
         if constants.SB_SVC_CINDER in services:
             classes.append('openstack::cinder::runtime')
         classes.append('platform::sm::norestart::runtime')
         config_dict = {"personalities": personalities,
-                       "host_uuids": host.uuid,
-                       # "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
+                       # "host_uuids": host.uuid,
+                       "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
                        "classes": classes,
                        puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
                        }
@@ -5706,9 +5711,13 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid=new_uuid,
                                             config_dict=config_dict)
 
+        tasks = {}
+        for ctrl in valid_ctrls:
+            tasks[ctrl.hostname] = constants.SB_TASK_APPLY_MANIFESTS
+
         # Update initial task states
         values = {'state': constants.SB_STATE_CONFIGURING,
-                  'task': constants.SB_TASK_APPLY_MANIFESTS}
+                  'task': str(tasks)}
         self.dbapi.storage_ceph_update(sb_uuid, values)
 
     def config_update_nova_local_backed_hosts(self, context, instance_backing):
@@ -6332,7 +6341,7 @@ class ConductorManager(service.PeriodicService):
             active_controller = utils.HostHelper.get_active_controller(self.dbapi)
             if utils.is_host_simplex_controller(active_controller):
                 state = constants.SB_STATE_CONFIGURED
-                if utils.is_aio_simplex_system(self.dbapi):
+                if utils.is_aio_system(self.dbapi):
                     task = None
                     cceph.fix_crushmap(self.dbapi)
                 else:
@@ -6342,7 +6351,41 @@ class ConductorManager(service.PeriodicService):
             else:
                 # TODO(oponcea): Remove when sm supports in-service config reload
                 # and any logic dealing with constants.SB_TASK_RECONFIG_CONTROLLER.
-                values = {'task': constants.SB_TASK_RECONFIG_CONTROLLER}
+                ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+                # Note that even if nodes are degraded we still accept the answer.
+                valid_ctrls = [ctrl for ctrl in ctrls if
+                               (ctrl.administrative == constants.ADMIN_LOCKED and
+                                ctrl.availability == constants.AVAILABILITY_ONLINE) or
+                               (ctrl.administrative == constants.ADMIN_UNLOCKED and
+                                ctrl.operational == constants.OPERATIONAL_ENABLED)]
+
+                # Set state for current node
+                for host in valid_ctrls:
+                    if host.uuid == host_uuid:
+                        break
+                else:
+                    LOG.error("Host %(host) is not in the required state!" % host_uuid)
+                    host = self.dbapi.ihost_get(host_uuid)
+                    if not host:
+                        LOG.error("Host %s is invalid!" % host_uuid)
+                        return
+
+                tasks = eval(ceph_conf.get('task', '{}'))
+                if tasks:
+                    tasks[host.hostname] = constants.SB_STATE_CONFIGURED
+                else:
+                    tasks = {host.hostname: constants.SB_STATE_CONFIGURED}
+
+                config_success = True
+                for host in valid_ctrls:
+                    if tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED:
+                        config_success = False
+
+                if ceph_conf.state != constants.SB_STATE_CONFIG_ERR:
+                    if config_success:
+                        values = {'task': constants.SB_TASK_RECONFIG_CONTROLLER}
+                    else:
+                        values = {'task': str(tasks)}
             self.dbapi.storage_backend_update(ceph_conf.uuid, values)
 
             # The VIM needs to know when a cinder backend was added.

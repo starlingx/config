@@ -498,11 +498,11 @@ def _check_host(stor):
         raise wsme.exc.ClientSideError(_("Host must be locked"))
 
     # semantic check: whether personality == storage or we have k8s AIO SX
-    is_k8s_aio_sx = (utils.is_aio_simplex_system(pecan.request.dbapi) and
-                     utils.is_kubernetes_config(pecan.request.dbapi))
-    if not is_k8s_aio_sx and ihost['personality'] != constants.STORAGE:
-            msg = ("Host personality must be 'storage' or "
-                   "one node system with kubernetes enabled.")
+    is_k8s_aio = (utils.is_aio_system(pecan.request.dbapi) and
+                  utils.is_kubernetes_config(pecan.request.dbapi))
+    if not is_k8s_aio and ihost['personality'] != constants.STORAGE:
+            msg = ("Host personality must be 'storage' or kubernetes enabled "
+                   "1 or 2 node system")
             raise wsme.exc.ClientSideError(_(msg))
 
     # semantic check: whether system has a ceph backend
@@ -514,7 +514,7 @@ def _check_host(stor):
             "System must have a %s backend" % constants.SB_TYPE_CEPH))
 
     # semantic check: whether at least 2 unlocked hosts are monitors
-    if not utils.is_aio_simplex_system(pecan.request.dbapi):
+    if not utils.is_aio_system(pecan.request.dbapi):
         ceph_helper = ceph.CephApiOperator()
         num_monitors, required_monitors, quorum_names = \
             ceph_helper.get_monitors_status(pecan.request.dbapi)

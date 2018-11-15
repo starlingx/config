@@ -394,6 +394,64 @@ class platform::drbd::dockerdistribution ()
   }
 }
 
+class platform::drbd::cephmon::params (
+  $device = '/dev/drbd9',
+  $lv_name = 'ceph-mon-lv',
+  $mountpoint = '/var/lib/ceph/mon',
+  $port = '7788',
+  $resource_name = 'drbd-cephmon',
+  $vg_name = 'cgts-vg',
+) {}
+
+class platform::drbd::cephmon ()
+  inherits ::platform::drbd::cephmon::params {
+
+  include ::platform::ceph::params
+
+  $system_mode = $::platform::params::system_mode
+  $system_type = $::platform::params::system_type
+
+  #TODO: This will change once we remove the native cinder service
+  if (str2bool($::is_initial_config_primary) or
+      (str2bool($::is_controller_active) and str2bool($::is_initial_cinder_ceph_config))
+  ){
+    # Active controller, first time configuration.
+    $drbd_primary = true
+    $drbd_initial = true
+    $drbd_automount = true
+
+  } elsif str2bool($::is_standalone_controller){
+    # Active standalone controller, successive reboots.
+    $drbd_primary = true
+    $drbd_initial = undef
+    $drbd_automount = true
+  } else {
+    # Node unlock, reboot or standby configuration
+    # Do not mount ceph
+    $drbd_primary = undef
+    $drbd_initial = undef
+    $drbd_automount = undef
+  }
+
+  if ($::platform::ceph::params::service_enabled and
+    $system_type == 'All-in-one' and 'duplex' in $system_mode) {
+    platform::drbd::filesystem { $resource_name:
+      vg_name    => $vg_name,
+      lv_name    => $lv_name,
+      lv_size    => $::platform::ceph::params::mon_lv_size,
+      port       => $port,
+      device     => $device,
+      mountpoint => $mountpoint,
+      resync_after => undef,
+      manage_override => true,
+      ha_primary_override => $drbd_primary,
+      initial_setup_override => $drbd_initial,
+      automount_override => $drbd_automount,
+    } -> Class['::ceph']
+  }
+}
+
+
 class platform::drbd(
   $service_enable = false,
   $service_ensure = 'stopped',
@@ -427,6 +485,7 @@ class platform::drbd(
   include ::platform::drbd::patch_vault
   include ::platform::drbd::etcd
   include ::platform::drbd::dockerdistribution
+  include ::platform::drbd::cephmon
 
   # network changes need to be applied prior to DRBD resources
   Anchor['platform::networking'] ->
@@ -497,4 +556,9 @@ class platform::drbd::etcd::runtime {
 class platform::drbd::dockerdistribution::runtime {
   include ::platform::drbd::params
   include ::platform::drbd::dockerdistribution
+}
+
+class platform::drbd::cephmon::runtime {
+  include ::platform::drbd::params
+  include ::platform::drbd::cephmon
 }

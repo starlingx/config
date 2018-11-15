@@ -667,7 +667,7 @@ def _check_and_update_rbd_provisioner(new_storceph, remove=False):
         validate_k8s_namespaces(K8RbdProvisioner.getListFromNamespaces(new_storceph))
 
     # Check if cluster is configured
-    if not utils.is_aio_simplex_system(pecan.request.dbapi):
+    if not utils.is_aio_system(pecan.request.dbapi):
         # On multinode is enough if storage hosts are available
         storage_hosts = pecan.request.dbapi.ihost_get_by_personality(
             constants.STORAGE
@@ -969,6 +969,11 @@ def _check_replication_number(new_cap, orig_cap):
                   (ceph_state, constants.SB_STATE_CONFIGURED)))
 
     else:
+        if utils.is_aio_duplex_system(pecan.request.dbapi):
+            # Replication change is not allowed on two node configuration
+            raise wsme.exc.ClientSideError(
+                _("Can not modify ceph replication factor on "
+                  "two node configuration."))
         # On a standard install we allow modifications of ceph storage
         # backend parameters after the manifests have been applied and
         # before first storage node has been configured.
@@ -1192,7 +1197,7 @@ def _update_pool_quotas(storceph):
 
 def _check_object_gateway_install(dbapi):
     # Ensure we have the required number of monitors
-    if utils.is_aio_simplex_system(dbapi):
+    if utils.is_aio_system(dbapi):
         api_helper.check_minimal_number_of_controllers(1)
     else:
         api_helper.check_minimal_number_of_controllers(2)

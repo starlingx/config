@@ -5187,7 +5187,6 @@ class HostController(rest.RestController):
         elif StorageBackendConfig.has_backend_configured(
                 pecan.request.dbapi,
                 constants.CINDER_BACKEND_CEPH):
-            ihost_stors = []
             if utils.is_aio_simplex_system(pecan.request.dbapi):
                 # Check if host has enough OSDs configured for each tier
                 tiers = pecan.request.dbapi.storage_tier_get_all()
@@ -5208,27 +5207,51 @@ class HostController(rest.RestController):
                                % {'replication': str(replication), 'word': word, 'tier': tier['name']})
                         raise wsme.exc.ClientSideError(msg)
             else:
-                try:
-                    ihost_stors = pecan.request.dbapi.ihost_get_by_personality(
-                        personality=constants.STORAGE)
-                except Exception:
-                    raise wsme.exc.ClientSideError(
-                        _("Can not unlock a compute node until at "
-                          "least one storage node is unlocked and enabled."))
-                ihost_stor_unlocked = False
-                if ihost_stors:
-                    for ihost_stor in ihost_stors:
-                        if (ihost_stor.administrative == constants.ADMIN_UNLOCKED and
-                           (ihost_stor.operational ==
-                                constants.OPERATIONAL_ENABLED)):
+                if utils.is_aio_duplex_system(pecan.request.dbapi):
+                    host_stors = pecan.request.dbapi.istor_get_by_ihost(ihost['id'])
+                    if not host_stors:
+                        raise wsme.exc.ClientSideError(
+                            _("Can not unlock node until at least one OSD is configured."))
 
-                            ihost_stor_unlocked = True
-                            break
+                    tiers = pecan.request.dbapi.storage_tier_get_all()
+                    ceph_tiers = filter(lambda t: t.type == constants.SB_TIER_TYPE_CEPH, tiers)
+                    # On a two-node configuration, both nodes should have at least one OSD
+                    # in each tier. Otherwise, the cluster is remains in an error state.
+                    for tier in ceph_tiers:
+                        stors = tier['stors']
+                        host_has_osd_in_tier = False
+                        for stor in stors:
+                            if stor['forihostid'] == ihost['id']:
+                                host_has_osd_in_tier = True
 
-                if not ihost_stor_unlocked:
-                    raise wsme.exc.ClientSideError(
-                        _("Can not unlock a compute node until at "
-                          "least one storage node is unlocked and enabled."))
+                        if not host_has_osd_in_tier:
+                            raise wsme.exc.ClientSideError(
+                                "Can not unlock node until every storage tier has at least one OSD "
+                                "configured. Tier \"%s\" has no OSD configured." % tier['name'])
+
+                else:
+                    storage_nodes = []
+                    try:
+                        storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
+                            personality=constants.STORAGE)
+                    except Exception:
+                        raise wsme.exc.ClientSideError(
+                            _("Can not unlock a compute node until at "
+                              "least one storage node is unlocked and enabled."))
+                    is_storage_host_unlocked = False
+                    if storage_nodes:
+                        for node in storage_nodes:
+                            if (node.administrative == constants.ADMIN_UNLOCKED and
+                               (node.operational ==
+                                    constants.OPERATIONAL_ENABLED)):
+
+                                is_storage_host_unlocked = True
+                                break
+
+                    if not is_storage_host_unlocked:
+                        raise wsme.exc.ClientSideError(
+                            _("Can not unlock a compute node until at "
+                              "least one storage node is unlocked and enabled."))
 
         # Local Storage checks
         self._semantic_check_nova_local_storage(ihost['uuid'],

@@ -60,10 +60,12 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             mon_0_ip = ceph_mon_ips['ceph-mon-0-ip']
         mon_1_ip = ceph_mon_ips['ceph-mon-1-ip']
         mon_2_ip = ceph_mon_ips['ceph-mon-2-ip']
+        floating_mon_ip = ceph_mon_ips['ceph-floating-mon-ip']
 
         mon_0_addr = self._format_ceph_mon_address(mon_0_ip)
         mon_1_addr = self._format_ceph_mon_address(mon_1_ip)
         mon_2_addr = self._format_ceph_mon_address(mon_2_ip)
+        floating_mon_addr = self._format_ceph_mon_address(floating_mon_ip)
 
         # ceph can not bind to multiple address families, so only enable IPv6
         # if the monitors are IPv6 addresses
@@ -77,6 +79,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
             'platform::ceph::params::service_enabled': True,
 
+            'platform::ceph::params::floating_mon_host':
+                constants.CONTROLLER_HOSTNAME,
             'platform::ceph::params::mon_0_host':
                 constants.CONTROLLER_0_HOSTNAME,
             'platform::ceph::params::mon_1_host':
@@ -84,10 +88,12 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             'platform::ceph::params::mon_2_host':
                 constants.STORAGE_0_HOSTNAME,
 
+            'platform::ceph::params::floating_mon_ip': floating_mon_ip,
             'platform::ceph::params::mon_0_ip': mon_0_ip,
             'platform::ceph::params::mon_1_ip': mon_1_ip,
             'platform::ceph::params::mon_2_ip': mon_2_ip,
 
+            'platform::ceph::params::floating_mon_addr': floating_mon_addr,
             'platform::ceph::params::mon_0_addr': mon_0_addr,
             'platform::ceph::params::mon_1_addr': mon_1_addr,
             'platform::ceph::params::mon_2_addr': mon_2_addr,
