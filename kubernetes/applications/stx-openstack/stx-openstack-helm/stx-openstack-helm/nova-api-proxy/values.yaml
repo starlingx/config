@@ -155,6 +155,7 @@ dependencies:
   static:
     ks_endpoints:
       jobs:
+        - nova-ks-user
         - nova-ks-service
       services:
         - endpoint: internal
@@ -203,15 +204,14 @@ endpoints:
     scheme:
       default: http
     port:
-      admin:
-        default: 35357
       api:
         default: 80
+        internal: 5000
   compute:
     name: nova
     hosts:
       default: nova-api-proxy
-      public: nova-api-proxy
+      public: nova
     host_fqdn_override:
       default: null
       # NOTE(portdirect): this chart supports TLS for fqdn over-ridden public
@@ -295,7 +295,9 @@ manifests:
   configmap_etc: true
   deployment_api_proxy: true
   ingress_api: true
-  job_ks_endpoints: false
+  service_api: true
+  service_ingress_api: true
+  job_ks_endpoints: true
 
 resources: {}
 
