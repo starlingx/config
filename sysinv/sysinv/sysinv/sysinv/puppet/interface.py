@@ -807,9 +807,15 @@ def get_ethernet_network_config(context, iface, config):
     if is_bridged_interface(context, iface):
         options['BRIDGE'] = get_bridge_interface_name(context, iface)
     elif is_slave_interface(context, iface):
-        options['SLAVE'] = 'yes'
-        options['MASTER'] = get_master_interface(context, iface)
-        options['PROMISC'] = 'yes'
+        if not is_data_interface(context, iface):
+            # Data interfaces that require a network configuration are not
+            # candidates for bonding.  They exist because their DPDK drivers
+            # rely on the Linux device driver to setup some or all functions
+            # on the device (e.g., the Mellanox DPDK driver relies on the
+            # Linux driver to set the proper MTU value).
+            options['SLAVE'] = 'yes'
+            options['MASTER'] = get_master_interface(context, iface)
+            options['PROMISC'] = 'yes'
     elif interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
         if not is_a_mellanox_cx3_device(context, iface):
             # CX3 device can only use kernel module options to enable vfs
