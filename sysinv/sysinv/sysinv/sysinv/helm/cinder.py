@@ -24,6 +24,7 @@ class CinderHelm(openstack.OpenstackBaseHelm):
     ]
 
     SERVICE_NAME = 'cinder'
+    SERVICE_TYPE = 'volume'
     AUTH_USERS = ['cinder']
 
     @property
@@ -237,3 +238,17 @@ class CinderHelm(openstack.OpenstackBaseHelm):
             pass
 
         return backend
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)
+
+    def get_service_name_v2(self):
+        return self._get_configured_service_name(self.SERVICE_NAME, 'v2')
+
+    def get_service_type_v2(self):
+        service_type = self._get_configured_service_type(
+            self.SERVICE_NAME, 'v2')
+        if service_type is None:
+            return self.SERVICE_TYPE + 'v2'
+        else:
+            return service_type

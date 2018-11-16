@@ -22,7 +22,6 @@ class nfv::nfvi (
   $openstack_auth_host           = '127.0.0.1',
   $openstack_auth_port           = 5000,
   $openstack_keyring_service     = undef,
-  $openstack_nova_api_host       = '127.0.0.1',
   $keystone_region_name          = 'RegionOne',
   $keystone_service_name         = 'keystone',
   $keystone_service_type         = 'identity',

@@ -26,6 +26,7 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
     ]
 
     SERVICE_NAME = 'glance'
+    SERVICE_TYPE = 'image'
     AUTH_USERS = ['glance']
 
     @property
@@ -161,3 +162,16 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
             pass
 
         return backend
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)
+
+    def get_service_name(self):
+        return self._get_configured_service_name(self.SERVICE_NAME)
+
+    def get_service_type(self):
+        service_type = self._get_configured_service_type(self.SERVICE_NAME)
+        if service_type is None:
+            return self.SERVICE_TYPE
+        else:
+            return service_type

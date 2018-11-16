@@ -104,6 +104,18 @@ dhcp-boot=tag:efi,tag:mgmt,EFI/grubx64.efi,<%= @mgmt_hostname %>,<%= @mgmt_contr
 
 # Do not forward queries for plain names (no dots)
 domain-needed
+# Query the upstream servers in the order they appear. This is necessary when
+# kubernetes is configured, to ensure we send queries for kubernetes names
+# (ending in .cluster.local) to the kubernetes dns server first. In the future,
+# we could add the kubernetes dns server using the "server" option, which would
+# allow us to force all cluster.local names to go to that server.
+strict-order
+# Only keep entries in the cache for 5 seconds. This is required because the
+# kubernetes dns server will reply to queries for services that do not yet
+# exist with an SOA record containing a long TTL, which will result in dns
+# queries failing for a very long time, even after the service comes up (e.g.
+# after a host is rebooted).
+max-cache-ttl=5
 local=//
 port=53
 bogus-priv

@@ -421,3 +421,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     }
                     host_list.append(host_nova)
         return host_list
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)

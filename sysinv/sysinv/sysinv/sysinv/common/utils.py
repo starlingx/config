@@ -57,6 +57,7 @@ from oslo_config import cfg
 
 from sysinv.common import exception
 from sysinv.common import constants
+from sysinv.helm import common as helm_common
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common.gettextutils import _
 from oslo_concurrency import lockutils
@@ -1805,3 +1806,16 @@ def extract_tarfile(target_dir, tarfile):
         except subprocess.CalledProcessError as e:
             LOG.error("Error while extracting tarfile %s: %s" % (tarfile, e))
             return False
+
+
+def is_openstack_installed(dbapi):
+    """ Checks whether the OpenStack application is installed. """
+    # TODO(Bart): When the sysinv/armada integration is complete, this will
+    # be updated to check the status of the openstack application.
+    controller_0 = dbapi.ihost_get_by_hostname(constants.CONTROLLER_0_HOSTNAME)
+    labels = dbapi.label_get_all(hostid=controller_0.id)
+    for label in labels:
+        if label.label_key == helm_common.LABEL_CONTROLLER and \
+                label.label_value == helm_common.LABEL_VALUE_ENABLED:
+            return True
+    return False
