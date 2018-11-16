@@ -46,7 +46,7 @@ def datetime_or_none(dt):
 
 
 def datetime_or_str_or_none(val):
-    if isinstance(val, basestring):
+    if isinstance(val, six.string_types):
         return timeutils.parse_isotime(val)
     return datetime_or_none(val)
 
@@ -55,7 +55,7 @@ def bool_or_none(val):
     """Attempt to parse an boolean value, or None."""
     if val is None:
         return False
-    elif isinstance(val, basestring):
+    elif isinstance(val, six.string_types):
         return bool(val.lower() in ['y', 'n', 'yes', 'no', 'true', 'false'])
     else:
         return bool(int(val) != 0)
@@ -98,7 +98,7 @@ def list_of_strings_or_none(val):
         return val
     if not isinstance(val, list):
         raise ValueError(_('A list of strings is required here'))
-    if not all([isinstance(x, basestring) for x in val]):
+    if not all([isinstance(x, six.string_types) for x in val]):
         raise ValueError(_('Invalid values found in list '
                            '(strings are required)'))
     return val
@@ -121,7 +121,7 @@ def uuid_or_none(val):
     """Attempt to dictify a value, or None."""
     if val is None:
         return None
-    elif isinstance(val, basestring):
+    elif isinstance(val, six.string_types):
         return str(uuid.UUID(val.strip()))
     raise ValueError(_('Invalid UUID value %s') % val)
 
@@ -130,7 +130,7 @@ def ipv4_mode_or_none(val):
     """Attempt to validate an IPv4 address mode."""
     if val is None:
         return None
-    elif not isinstance(val, basestring):
+    elif not isinstance(val, six.string_types):
         raise ValueError(_('Invalid IPv4 address mode %s') % val)
     elif val not in constants.IPV4_ADDRESS_MODES:
         raise ValueError(_('Unsupported IPv4 address mode %s') % val)
@@ -141,7 +141,7 @@ def ipv6_mode_or_none(val):
     """Attempt to validate an IPv4 address mode."""
     if val is None:
         return None
-    elif not isinstance(val, basestring):
+    elif not isinstance(val, six.string_types):
         raise ValueError(_('Invalid IPv6 address mode %s') % val)
     elif val not in constants.IPV6_ADDRESS_MODES:
         raise ValueError(_('Unsupported IPv6 address mode %s') % val)
