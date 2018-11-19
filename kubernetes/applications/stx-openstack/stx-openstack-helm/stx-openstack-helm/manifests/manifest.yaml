@@ -1026,8 +1026,8 @@ data:
           shuffle_time_before_polling_task: 30
           batch_polled_samples: true
         dispatcher_gnocchi:
-          archive_policy: null
-          filter_project: null
+          archive_policy: ''
+          filter_project: ''
         cache:
           expiration_time: 86400
         compute:

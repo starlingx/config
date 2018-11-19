@@ -66,6 +66,7 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
                 'db_sync': self.docker_image,
                 'gnocchi_api': self.docker_image,
                 'gnocchi_metricd': self.docker_image,
+                'gnocchi_resources_cleaner': self.docker_image,
                 'ks_endpoints': heat_image,
                 'ks_service': heat_image,
                 'ks_user': heat_image,

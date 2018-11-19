@@ -55,7 +55,7 @@ class PankoHelm(openstack.OpenstackBaseHelm):
                 'bootstrap': heat_image,
                 'db_drop': heat_image,
                 'db_init': self.docker_image,
-                'db_sync': self.docker_image,
+                'panko_db_sync': self.docker_image,
                 'panko_api': self.docker_image,
                 'panko_events_cleaner': self.docker_image,
                 'ks_endpoints': heat_image,
