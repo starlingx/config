@@ -72,6 +72,7 @@ IMG_PREFIX_LOC = 'stx-'
 
 TAGS_PIKE = 'pike'
 TAGS_LATEST = 'latest'
+TAGS_STX_LATEST = 'dev-centos-pike-latest'
 
 DOCKER_SRCS = {
     DOCKER_SRC_OSH: {
@@ -83,7 +84,7 @@ DOCKER_SRCS = {
     DOCKER_SRC_STX: {
         IMG_BASE_KEY: '{}/{}'.format(REGISTRY_STX, REPO_STX),
         IMG_PREFIX_KEY: IMG_PREFIX_STX,
-        IMG_TAG_KEY: TAGS_LATEST
+        IMG_TAG_KEY: TAGS_STX_LATEST
     },
     DOCKER_SRC_LOC: {
         IMG_BASE_KEY: '{}/{}'.format(REGISTRY_LOC, REPO_LOC),
