@@ -7556,11 +7556,19 @@ class ConductorManager(service.PeriodicService):
         cmd = []
         try:
             if delayed:
-                # Wait for drbd connect
                 cmd = ["drbdadm", "cstate", constants.CINDER_LVM_DRBD_RESOURCE]
                 stdout, __ = cutils.execute(*cmd, run_as_root=True)
                 if utils.get_system_mode(self.dbapi) != constants.SYSTEM_MODE_SIMPLEX:
-                    if "Connected" not in stdout:
+                    # Wait for drbd connect.
+                    # It is possible that drbd is already in sync state
+                    # (e.g. When the disk partition for the cinder-volumes is
+                    # increased on the newly standby controller after controller
+                    # swact), so we check for drbd "Connected" and "SyncSource".
+                    # It is also possible that drbd is in "PausedSyncS" if we are
+                    # doing serial syncing and another FS is syncing.
+                    if ("Connected" not in stdout and
+                            "SyncSource" not in stdout and
+                            "PausedSyncS" not in stdout):
                         return constants.CINDER_RESIZE_FAILURE
                 else:
                     # For simplex we just need to have drbd up
@@ -7568,7 +7576,7 @@ class ConductorManager(service.PeriodicService):
                         return constants.CINDER_RESIZE_FAILURE
 
             # Force a drbd resize on AIO SX as peer is not configured.
-            # DDRBD resize is automatic when both peers are connected.
+            # DRBD resize is automatic when both peers are connected.
             if utils.get_system_mode(self.dbapi) == constants.SYSTEM_MODE_SIMPLEX:
                 # get the commands executed by 'drbdadm resize' and append some options
                 cmd = ["drbdadm", "--dry-run", "resize", constants.CINDER_LVM_DRBD_RESOURCE]
