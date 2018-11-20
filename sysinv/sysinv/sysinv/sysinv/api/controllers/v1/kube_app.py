@@ -315,6 +315,7 @@ class KubeAppController(rest.RestController):
             return KubeApp.convert_with_links(db_app)
         else:
             if db_app.status not in [constants.APP_APPLY_SUCCESS,
+                                     constants.APP_REMOVE_FAILURE,
                                      constants.APP_APPLY_FAILURE]:
                 raise wsme.exc.ClientSideError(_(
                     "Application-remove rejected: operation is not allowed while "
