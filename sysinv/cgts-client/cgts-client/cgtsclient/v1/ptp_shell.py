@@ -67,7 +67,7 @@ def do_ptp_modify(cc, args):
     if args.mechanism is not None:
         attributes.append('mechanism=%s' % args.mechanism)
     if len(attributes) == 0:
-        print "No options provided."
+        print("No options provided.")
         return
 
     patch = utils.args_array_to_patch("replace", attributes)

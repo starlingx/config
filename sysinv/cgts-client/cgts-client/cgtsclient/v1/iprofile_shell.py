@@ -163,7 +163,7 @@ def do_ifprofile_delete(cc, args):
             cc.iprofile.delete(iprofile.uuid)
         except exc.HTTPNotFound:
             raise exc.CommandError('if profile delete failed: %s' % n)
-        print 'Deleted if profile %s' % n
+        print('Deleted if profile %s' % n)
 
 #
 # CPU PROFILES
@@ -281,7 +281,7 @@ def do_cpuprofile_delete(cc, args):
             cc.iprofile.delete(iprofile.uuid)
         except exc.HTTPNotFound:
             raise exc.CommandError('Cpu profile delete failed: %s' % n)
-        print 'Deleted cpu profile %s' % n
+        print('Deleted cpu profile %s' % n)
 
 
 #
@@ -420,9 +420,9 @@ def do_storprofile_list(cc, args):
             storprofiles.append(profile)
 
     if profile_disk_invalid:
-        print "WARNING: Storage profiles from a previous release are " \
-              "missing the persistent disk name in the disk config field. " \
-              "These profiles need to be deleted and recreated."
+        print("WARNING: Storage profiles from a previous release are "
+              "missing the persistent disk name in the disk config field. "
+              "These profiles need to be deleted and recreated.")
 
     if storprofiles:
         field_labels = ['uuid', 'name', 'disk config', 'partition config',
@@ -469,9 +469,9 @@ def do_storprofile_show(cc, args):
 
     profile_disk_invalid = get_storprofile_data(cc, iprofile, detailed=True)
     if profile_disk_invalid:
-        print "WARNING: This storage profile, from a previous release, is " \
-              "missing the persistent disk name in the disk config field. " \
-              "This profile needs to be deleted and recreated."
+        print("WARNING: This storage profile, from a previous release, is "
+              "missing the persistent disk name in the disk config field. "
+              "This profile needs to be deleted and recreated.")
     _print_storprofile_show(iprofile)
 
 
@@ -518,7 +518,7 @@ def do_storprofile_delete(cc, args):
             cc.iprofile.delete(iprofile.uuid)
         except exc.HTTPNotFound:
             raise exc.CommandError('Storage profile delete failed: %s' % n)
-        print 'Deleted storage profile %s' % n
+        print('Deleted storage profile %s' % n)
 
 #
 # MEMORY PROFILES
@@ -642,7 +642,7 @@ def do_memprofile_delete(cc, args):
             cc.iprofile.delete(iprofile.uuid)
         except exc.HTTPNotFound:
             raise exc.CommandError('Memory profile delete failed: %s' % n)
-        print 'Deleted memory profile %s' % n
+        print('Deleted memory profile %s' % n)
 
 
 @utils.arg('profilefilename',
@@ -662,9 +662,9 @@ def do_profile_import(cc, args):
     if results:
         for result in results:
             if(result['result'] == 'Invalid'):
-                print 'error: %s is not a valid profile file.' % (filename)
+                print('error: %s is not a valid profile file.' % (filename))
             else:
-                print result['msg']
+                print(result['msg'])
 
             if result['detail']:
-                print '       %s' % (result['detail'])
+                print('       %s' % (result['detail']))

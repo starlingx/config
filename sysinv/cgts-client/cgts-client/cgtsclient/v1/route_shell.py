@@ -51,7 +51,7 @@ def do_host_route_list(cc, args):
 def do_host_route_delete(cc, args):
     """Delete an IP route."""
     cc.route.delete(args.route_uuid)
-    print 'Deleted Route: %s' % (args.route_uuid)
+    print('Deleted Route: %s' % (args.route_uuid))
 
 
 @utils.arg('hostnameorid',

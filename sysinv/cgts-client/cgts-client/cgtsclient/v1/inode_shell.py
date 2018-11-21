@@ -85,7 +85,7 @@ def do_host_node_delete(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError('Delete node failed: host %s if %s' %
                                (args.hostnameorid, args.inodeuuid))
-    print 'Deleted node: host %s if %s' % (args.hostnameorid, args.inodeuuid)
+    print('Deleted node: host %s if %s' % (args.hostnameorid, args.inodeuuid))
 
 
 @utils.arg('hostnameorid',

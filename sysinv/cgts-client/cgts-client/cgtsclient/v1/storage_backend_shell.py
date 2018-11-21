@@ -145,4 +145,4 @@ def do_storage_backend_delete(cc, args):
         storage_backend_utils.backend_delete(
             cc, args.backend_name_or_uuid)
     else:
-        print "Deleting a storage backend is not supported."
+        print("Deleting a storage backend is not supported.")

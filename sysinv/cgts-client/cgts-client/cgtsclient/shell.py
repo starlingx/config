@@ -18,6 +18,7 @@
 Command-line interface for System Inventory and Maintenance
 """
 
+from __future__ import print_function
 import argparse
 import httplib2
 import logging
@@ -338,14 +339,14 @@ def main():
         CgtsShell().main(sys.argv[1:])
 
     except KeyboardInterrupt as e:
-        print >> sys.stderr, ('caught: %r, aborting' % (e))
+        print(('caught: %r, aborting' % (e)), file=sys.stderr)
         sys.exit(0)
 
     except IOError as e:
         sys.exit(0)
 
     except Exception as e:
-        print >> sys.stderr, e
+        print(e, file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ def do_host_addr_list(cc, args):
 def do_host_addr_delete(cc, args):
     """Delete an IP address."""
     cc.address.delete(args.address_uuid)
-    print 'Deleted Address: %s' % (args.address_uuid)
+    print('Deleted Address: %s' % (args.address_uuid))
 
 
 @utils.arg('hostnameorid',

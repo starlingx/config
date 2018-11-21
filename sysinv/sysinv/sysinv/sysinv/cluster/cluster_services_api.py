@@ -166,19 +166,19 @@ def get_cluster_controller_services(host_names, print_to_screen=False,
 
     for service in services.list:
         if print_to_screen:
-            print " "
-            print "servicename: %s" % service.name
-            print "status     : %s" % service.state
+            print(" ")
+            print("servicename: %s" % service.name)
+            print("status     : %s" % service.state)
 
         instances_data = []
 
         for instance in service.instances:
             if print_to_screen:
-                print "\thostname: %s" % instance.host_name
-                print "\tactivity: %s" % instance.activity
-                print "\tstate   : %s" % instance.state
-                print "\treason  : %s" % instance.reason
-                print " "
+                print("\thostname: %s" % instance.host_name)
+                print("\tactivity: %s" % instance.activity)
+                print("\tstate   : %s" % instance.state)
+                print("\treason  : %s" % instance.reason)
+                print(" ")
 
             instances_data += ([{'hostname': instance.host_name,
                                  'activity': instance.activity,
@@ -190,7 +190,7 @@ def get_cluster_controller_services(host_names, print_to_screen=False,
                             'instances': instances_data}])
 
     if print_json_str:
-        print (json.dumps(services_data))
+        print(json.dumps(services_data))
 
     return json.dumps(services_data)
 
@@ -232,14 +232,14 @@ def get_cluster_controller_node_state(host_name, print_to_screen=False,
             state = "unknown"
 
     if print_to_screen:
-        print " "
-        print "%s state is %s" % (host_name, state)
+        print(" ")
+        print("%s state is %s" % (host_name, state))
 
     # Build Json Data
     node_data = ({'hostname': host_name, 'state': state})
 
     if print_json_str:
-        print (json.dumps(node_data))
+        print(json.dumps(node_data))
 
     return json.dumps(node_data)
 

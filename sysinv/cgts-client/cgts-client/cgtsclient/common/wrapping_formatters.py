@@ -800,7 +800,7 @@ def _simpleTestHarness(no_wrap):
     utils.print_list(logs, fields, field_labels, formatters=formatters, sortby=6,
                      reversesort=True, no_wrap_fields=['entity_instance_id'])
 
-    print "nowrap = {}".format(is_nowrap_set())
+    print("nowrap = {}".format(is_nowrap_set()))
 
 if __name__ == "__main__":
     _simpleTestHarness(True)

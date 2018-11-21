@@ -82,7 +82,7 @@ def do_remotelogging_modify(cc, args):
     if len(attributes) > 0:
         attributes.append('action=apply')
     else:
-        print "No options provided."
+        print("No options provided.")
         return
 
     patch = utils.args_array_to_patch("replace", attributes)

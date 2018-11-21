@@ -12,9 +12,9 @@
 
 def do_health_query(cc, args):
     """Run the Health Check."""
-    print cc.health.get()
+    print(cc.health.get())
 
 
 def do_health_query_upgrade(cc, args):
     """Run the Health Check for an Upgrade."""
-    print cc.health.get_upgrade()
+    print(cc.health.get_upgrade())

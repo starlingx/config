@@ -91,7 +91,7 @@ def do_service_delete(cc, args):
             cc.iservice.delete(c)
         except exc.HTTPNotFound:
             raise exc.CommandError('Service not found: %s' % c)
-        print 'Deleted service %s' % c
+        print('Deleted service %s' % c)
 
 
 @utils.arg('iservice',

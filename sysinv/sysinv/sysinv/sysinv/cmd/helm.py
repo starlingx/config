@@ -89,4 +89,4 @@ def main():
                              CONF.action.repository,
                              CONF.action.namespace)
         except Exception as e:
-            print e
+            print(e)

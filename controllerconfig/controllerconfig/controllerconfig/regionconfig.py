@@ -5,6 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
+from __future__ import print_function
 from six.moves import configparser
 import os
 import subprocess
@@ -545,16 +546,16 @@ def configure_region(config_file, config_type=REGION_CONFIG):
     """Configure the region"""
 
     # Parse the region/subcloud config file
-    print "Parsing configuration file... ",
+    print("Parsing configuration file... ", end=' ')
     region_config = parse_system_config(config_file)
-    print "DONE"
+    print("DONE")
 
     if config_type == SUBCLOUD_CONFIG:
         # Set defaults in region_config for subclouds
         set_subcloud_config_defaults(region_config)
 
     # Validate the region/subcloud config file
-    print "Validating configuration file... ",
+    print("Validating configuration file... ", end=' ')
     try:
         create_cgcs_config_file(None, region_config, None, None, None,
                                 config_type=config_type,
@@ -562,15 +563,15 @@ def configure_region(config_file, config_type=REGION_CONFIG):
     except configparser.Error as e:
         raise ConfigFail("Error parsing configuration file %s: %s" %
                          (config_file, e))
-    print "DONE"
+    print("DONE")
 
     # Bring up management interface to allow us to reach Region 1
-    print "Configuring management interface... ",
+    print("Configuring management interface... ", end=' ')
     configure_management_interface(region_config, config_type=config_type)
-    print "DONE"
+    print("DONE")
 
     # Get token from keystone
-    print "Retrieving keystone token...",
+    print("Retrieving keystone token...", end=' ')
     sys.stdout.flush()
     auth_url = region_config.get('SHARED_SERVICES', 'KEYSTONE_ADMINURL')
     if region_config.has_option('SHARED_SERVICES', 'ADMIN_TENANT_NAME'):
@@ -604,18 +605,19 @@ def configure_region(config_file, config_type=REGION_CONFIG):
         if not token:
             attempts += 1
             if attempts < 10:
-                print "\rRetrieving keystone token...{}".format(
-                    '.' * attempts),
+                print("\rRetrieving keystone token...{}".format(
+                    '.' * attempts), end=' ')
                 sys.stdout.flush()
                 time.sleep(10)
             else:
                 raise ConfigFail(
                     "Unable to obtain keystone token. Please ensure "
                     "networking and keystone configuration is correct.")
-    print "DONE"
+    print("DONE")
 
     # Get services, endpoints, users and domains from keystone
-    print "Retrieving services, endpoints and users from keystone... ",
+    print("Retrieving services, endpoints and users from keystone... ",
+          end=' ')
     region_name = region_config.get('SHARED_SERVICES', 'REGION_NAME')
     service_name = region_config.get('SHARED_SERVICES',
                                      'KEYSTONE_SERVICE_NAME')
@@ -634,12 +636,12 @@ def configure_region(config_file, config_type=REGION_CONFIG):
         raise ConfigFail(
             "Unable to retrieve services, endpoints or users from keystone. "
             "Please ensure networking and keystone configuration is correct.")
-    print "DONE"
+    print("DONE")
 
     user_config = None
     if config_type == SUBCLOUD_CONFIG:
         # Retrieve subcloud configuration from dcmanager
-        print "Retrieving configuration from dcmanager... ",
+        print("Retrieving configuration from dcmanager... ", end=' ')
         dcmanager_url = token.get_service_url(
             'SystemController', 'dcmanager', 'dcmanager', "admin")
         subcloud_name = region_config.get('REGION_2_SERVICES',
@@ -651,7 +653,7 @@ def configure_region(config_file, config_type=REGION_CONFIG):
                                                      subcloud_name,
                                                      hash_string)
         user_config = subcloud_config['users']
-        print "DONE"
+        print("DONE")
 
     try:
         # Configure missing region one keystone entries
@@ -659,28 +661,28 @@ def configure_region(config_file, config_type=REGION_CONFIG):
         # Prepare region configuration for puppet to create keystone identities
         if (region_config.has_option('REGION_2_SERVICES', 'CREATE') and
                 region_config.get('REGION_2_SERVICES', 'CREATE') == 'Y'):
-            print "Preparing keystone configuration... ",
+            print("Preparing keystone configuration... ", end=' ')
         # If keystone configuration for this region already in place,
         # validate it only
         else:
             # Validate region one keystone config
             create = False
-            print "Validating keystone configuration... ",
+            print("Validating keystone configuration... ", end=' ')
 
         validate_region_one_keystone_config(region_config, token, api_url,
                                             users, services, endpoints, create,
                                             config_type=config_type,
                                             user_config=user_config)
-        print "DONE"
+        print("DONE")
 
         # validate ldap if it is shared
         if region_config.has_option('SHARED_SERVICES', 'LDAP_SERVICE_URL'):
-            print "Validating ldap configuration... ",
+            print("Validating ldap configuration... ", end=' ')
             validate_region_one_ldap_config(region_config)
-            print "DONE"
+            print("DONE")
 
         # Create cgcs_config file
-        print "Creating config apply file... ",
+        print("Creating config apply file... ", end=' ')
         try:
             create_cgcs_config_file(TEMP_CGCS_CONFIG_FILE, region_config,
                                     services, endpoints, domains,
@@ -688,33 +690,33 @@ def configure_region(config_file, config_type=REGION_CONFIG):
         except configparser.Error as e:
             raise ConfigFail("Error parsing configuration file %s: %s" %
                              (config_file, e))
-        print "DONE"
+        print("DONE")
 
         # Configure controller
         assistant = ConfigAssistant()
         assistant.configure(TEMP_CGCS_CONFIG_FILE, display_config=False)
 
     except ConfigFail as e:
-        print "A configuration failure has occurred.",
+        print("A configuration failure has occurred.", end=' ')
         raise e
 
 
 def show_help_region():
-    print ("Usage: %s [OPTIONS] <CONFIG_FILE>" % sys.argv[0])
-    print textwrap.fill(
+    print("Usage: %s [OPTIONS] <CONFIG_FILE>" % sys.argv[0])
+    print(textwrap.fill(
         "Perform region configuration using the region "
-        "configuration from CONFIG_FILE.", 80)
-    print ("--allow-ssh              Allow configuration to be executed in "
-           "ssh\n")
+        "configuration from CONFIG_FILE.", 80))
+    print("--allow-ssh              Allow configuration to be executed in "
+          "ssh\n")
 
 
 def show_help_subcloud():
-    print ("Usage: %s [OPTIONS] <CONFIG_FILE>" % sys.argv[0])
-    print textwrap.fill(
-        "Perform subcloud configuration using the subcloud "
-        "configuration from CONFIG_FILE.", 80)
-    print ("--allow-ssh              Allow configuration to be executed in "
-           "ssh\n")
+    print("Usage: %s [OPTIONS] <CONFIG_FILE>" % sys.argv[0])
+    print(textwrap.fill(
+          "Perform subcloud configuration using the subcloud "
+          "configuration from CONFIG_FILE.", 80))
+    print("--allow-ssh              Allow configuration to be executed in "
+          "ssh\n")
 
 
 def config_main(config_type=REGION_CONFIG):
@@ -739,7 +741,7 @@ def config_main(config_type=REGION_CONFIG):
         elif arg == len(sys.argv) - 1:
             config_file = sys.argv[arg]
         else:
-            print "Invalid option. Use --help for more information."
+            print("Invalid option. Use --help for more information.")
             exit(1)
         arg += 1
 
@@ -748,26 +750,26 @@ def config_main(config_type=REGION_CONFIG):
     # Check if that the command is being run from the console
     if utils.is_ssh_parent():
         if allow_ssh:
-            print textwrap.fill(constants.SSH_WARNING_MESSAGE, 80)
-            print
+            print(textwrap.fill(constants.SSH_WARNING_MESSAGE, 80))
+            print('')
         else:
-            print textwrap.fill(constants.SSH_ERROR_MESSAGE, 80)
+            print(textwrap.fill(constants.SSH_ERROR_MESSAGE, 80))
             exit(1)
 
     if not os.path.isfile(config_file):
-        print "Config file %s does not exist." % config_file
+        print("Config file %s does not exist." % config_file)
         exit(1)
 
     try:
         configure_region(config_file, config_type=config_type)
     except KeyboardInterrupt:
-        print "\nAborting configuration"
+        print("\nAborting configuration")
     except ConfigFail as e:
         LOG.exception(e)
-        print "\nConfiguration failed: {}".format(e)
+        print("\nConfiguration failed: {}".format(e))
     except Exception as e:
         LOG.exception(e)
-        print "\nConfiguration failed: {}".format(e)
+        print("\nConfiguration failed: {}".format(e))
     else:
         print("\nConfiguration finished successfully.")
     finally:

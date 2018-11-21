@@ -5,6 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
+from __future__ import print_function
 from six.moves import configparser
 import difflib
 import filecmp
@@ -436,16 +437,16 @@ FAKE_DOMAIN_DATA = {u'domains': [
 def _dump_config(config):
     """ Prints contents of config object """
     for section in config.sections():
-        print "[%s]" % section
+        print("[%s]" % section)
         for (name, value) in config.items(section):
-            print "%s=%s" % (name, value)
+            print("%s=%s" % (name, value))
 
 
 def _replace_in_file(filename, old, new):
     """ Replaces old with new in file filename. """
     for line in fileinput.FileInput(filename, inplace=1):
         line = line.replace(old, new)
-        print line,
+        print(line, end=' ')
     fileinput.close()
 
 
@@ -463,7 +464,7 @@ def _test_region_config(tmpdir, inputfile, resultfile,
     region_config = cr.parse_system_config(inputfile)
 
     # Dump results for debugging
-    print "Parsed region_config:\n"
+    print("Parsed region_config:\n")
     _dump_config(region_config)
 
     # Validate the region config file
@@ -477,7 +478,7 @@ def _test_region_config(tmpdir, inputfile, resultfile,
     shutil.copyfile(resultfile, local_resultfile)
 
     # Do a diff between the output and the expected results
-    print "\n\nDiff of output file vs. expected results file:\n"
+    print("\n\nDiff of output file vs. expected results file:\n")
     with open(outputfile) as a, open(local_resultfile) as b:
         a_lines = a.readlines()
         b_lines = b.readlines()
@@ -515,7 +516,7 @@ def test_region_config_simple(tmpdir):
 
 def test_region_config_simple_can_ips(tmpdir):
     """ Test import of simple region_config file with unit ips for CAN """
-    print "IN TEST ################################################"
+    print("IN TEST ################################################")
     regionfile = os.path.join(
         os.getcwd(), "controllerconfig/tests/files/",
         "region_config.simple.can_ips")

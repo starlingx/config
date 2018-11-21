@@ -53,7 +53,7 @@ def do_load_delete(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError('Delete load failed: load %s' % args.loadid)
 
-    print 'Deleted load: load %s' % args.loadid
+    print('Deleted load: load %s' % args.loadid)
 
 
 @utils.arg('isopath',

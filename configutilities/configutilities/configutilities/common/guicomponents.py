@@ -18,7 +18,7 @@ HGAP = 10
 
 def debug(msg):
     if DEBUG:
-        print msg
+        print(msg)
 
 
 # Tracks what type of controls will implement a config question

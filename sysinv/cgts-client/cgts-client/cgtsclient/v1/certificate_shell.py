@@ -40,14 +40,14 @@ def do_certificate_show(cc, args):
                 args.certificate_uuid = cert.uuid
                 break
         else:
-            print "No TPM certificate installed"
+            print("No TPM certificate installed")
             return
 
     certificate = cc.certificate.get(args.certificate_uuid)
     if certificate:
         _print_certificate_show(certificate)
     else:
-        print "No Certificates installed"
+        print("No Certificates installed")
 
 
 def do_certificate_list(cc, args):
@@ -85,9 +85,9 @@ def do_certificate_install(cc, args):
             'mode': args.mode,
             'certificate_file': os.path.abspath(args.certificate_file)}
 
-    print "WARNING: For security reasons, the original certificate, "
-    print "containing the private key, will be removed, "
-    print "once the private key is processed."
+    print("WARNING: For security reasons, the original certificate, ")
+    print("containing the private key, will be removed, ")
+    print("once the private key is processed.")
 
     try:
         response = cc.certificate.certificate_install(sec_file, data=data)

@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import print_function
 try:
     import tsconfig.tsconfig as tsc
     is_remote = False
@@ -225,7 +226,7 @@ def _sort_for_list(objs, fields, formatters={}, sortby=0, reversesort=False):
 
 
 def default_printer(s):
-    print s
+    print(s)
 
 
 def pt_builder(field_labels, fields, formatters, paging, printer=default_printer):
@@ -410,7 +411,7 @@ def print_tuple_list(tuples, tuple_labels=[], formatters={}):
                     v = formatters[f](v)
                 pt.add_row([l, v])
 
-    print pt.get_string()
+    print(pt.get_string())
 
 
 def str_height(text):
@@ -465,7 +466,7 @@ def print_dict(d, dict_property="Property", wrap=0):
                 col1 = ''
         else:
             pt.add_row([k, v])
-    print pt.get_string()
+    print(pt.get_string())
 
 
 def find_resource(manager, name_or_id):
@@ -561,7 +562,7 @@ def dict_to_patch(values, op='replace'):
 
 def exit(msg=''):
     if msg:
-        print >> sys.stderr, msg
+        print(msg, file=sys.stderr)
     sys.exit(1)
 
 

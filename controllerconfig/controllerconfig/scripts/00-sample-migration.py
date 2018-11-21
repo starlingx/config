@@ -52,7 +52,7 @@ def main():
         elif arg == 3:
             action = sys.argv[arg]
         else:
-            print ("Invalid option %s." % sys.argv[arg])
+            print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
 
@@ -65,7 +65,7 @@ def main():
             do_migration_work()
         except Exception as ex:
             LOG.exception(ex)
-            print ex
+            print(ex)
             return 1
 
 

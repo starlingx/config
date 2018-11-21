@@ -191,9 +191,9 @@ def do_host_bulk_add(cc, args):
     success = response.get('success')
     error = response.get('error')
     if success:
-        print "Success: " + success + "\n"
+        print("Success: " + success + "\n")
     if error:
-        print "Error:\n" + error
+        print("Error:\n" + error)
 
 
 @utils.arg('-m', '--mgmt_mac',
@@ -235,7 +235,7 @@ def do_host_delete(cc, args):
     for n in args.hostnameorid:
         try:
             cc.ihost.delete(n)
-            print 'Deleted host %s' % n
+            print('Deleted host %s' % n)
         except exc.HTTPNotFound:
             raise exc.CommandError('host not found: %s' % n)
 
@@ -642,17 +642,17 @@ def do_host_patch_reboot(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError('Host not found: %s' % args.hostnameorid)
 
-    print "The host-patch-reboot command has been deprecated."
-    print "Please use the following procedure:"
-    print "1. Lock the node:"
-    print "     system host-lock %s" % ihost.hostname
-    print "2. Issue patch install request:"
-    print "     sudo sw-patch host-install %s" % ihost.hostname
-    print "   Or to issue non-blocking requests for parallel install:"
-    print "     sudo sw-patch host-install-async %s" % ihost.hostname
-    print "     sudo sw-patch query-hosts"
-    print "3. Unlock node once install completes:"
-    print "     system host-unlock %s" % ihost.hostname
+    print("The host-patch-reboot command has been deprecated.")
+    print("Please use the following procedure:")
+    print("1. Lock the node:")
+    print("     system host-lock %s" % ihost.hostname)
+    print("2. Issue patch install request:")
+    print("     sudo sw-patch host-install %s" % ihost.hostname)
+    print("   Or to issue non-blocking requests for parallel install:")
+    print("     sudo sw-patch host-install-async %s" % ihost.hostname)
+    print("     sudo sw-patch query-hosts")
+    print("3. Unlock node once install completes:")
+    print("     system host-unlock %s" % ihost.hostname)
 
 
 @utils.arg('--filename',
@@ -668,9 +668,9 @@ def do_host_bulk_export(cc, args):
     try:
         with open(config_filename, 'wb') as fw:
             fw.write(xml_content)
-        print _('Export successfully to %s') % config_filename
+        print(_('Export successfully to %s') % config_filename)
     except IOError:
-        print _('Cannot write to file: %s') % config_filename
+        print(_('Cannot write to file: %s') % config_filename)
 
     return
 
@@ -697,7 +697,7 @@ def do_host_downgrade(cc, args):
             'Are you absolutely sure you want to continue?  [yes/N]: ')
         confirm = input(warning_message)
         if confirm != 'yes':
-            print "Operation cancelled."
+            print("Operation cancelled.")
             return
 
     ihost = cc.ihost.downgrade(args.hostid, args.force)
@@ -726,7 +726,7 @@ def do_host_upgrade(cc, args):
             'Are you absolutely sure you want to continue?  [yes/N]: ')
         confirm = input(warning_message)
         if confirm != 'yes':
-            print "Operation cancelled."
+            print("Operation cancelled.")
             return
 
     ihost = cc.ihost.upgrade(args.hostid, args.force)

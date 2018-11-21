@@ -8,6 +8,7 @@
 Backup & Restore
 """
 
+from __future__ import print_function
 import copy
 import filecmp
 import fileinput
@@ -336,7 +337,7 @@ def restore_configuration(archive, staging_dir):
             # The INSTALL_UUID must be updated to match the new INSTALL_UUID
             # which was generated when this controller was installed prior to
             # doing the restore.
-            print "INSTALL_UUID=%s" % install_uuid
+            print("INSTALL_UUID=%s" % install_uuid)
         elif line.startswith("management_interface=") or \
                 line.startswith("oam_interface=") or \
                 line.startswith("infrastructure_interface=") or \
@@ -346,7 +347,7 @@ def restore_configuration(archive, staging_dir):
             # platform_conf manifest will add these back in.
             pass
         else:
-            print line,
+            print(line, end=' ')
     fileinput.close()
     # Move updated platform.conf file into place.
     os.rename(temp_platform_conf_file, tsconfig.PLATFORM_CONF_FILE)
@@ -965,10 +966,10 @@ def check_size(archive_dir, cinder_config):
         utils.filesystem_get_free_space(archive_dir)
 
     if backup_size > archive_dir_free_space:
-        print ("Archive directory (%s) does not have enough free "
-               "space (%s), estimated backup size is %s." %
-               (archive_dir, utils.print_bytes(archive_dir_free_space),
-                utils.print_bytes(backup_size)))
+        print("Archive directory (%s) does not have enough free "
+              "space (%s), estimated backup size is %s." %
+              (archive_dir, utils.print_bytes(archive_dir_free_space),
+               utils.print_bytes(backup_size)))
 
         raise BackupFail("Not enough free space for backup.")
 
@@ -1155,12 +1156,12 @@ def backup(backup_name, archive_dir, clone=False):
         system_msg += ": " + system_tar_path
         images_msg += ": " + images_tar_path
 
-    print system_msg
+    print(system_msg)
     if tsconfig.region_config != "yes":
-        print images_msg
+        print(images_msg)
     if warnings != '':
-        print "WARNING: The following problems occurred:"
-        print textwrap.fill(warnings, 80)
+        print("WARNING: The following problems occurred:")
+        print(textwrap.fill(warnings, 80))
 
 
 def create_restore_runtime_config(filename):
@@ -1206,11 +1207,11 @@ def restore_complete():
     """
     if utils.get_system_type() == sysinv_constants.TIS_AIO_BUILD:
         if not os.path.isfile(restore_system_ready):
-            print textwrap.fill(
+            print(textwrap.fill(
                 "--restore-complete can only be run "
                 "after restore-system has completed "
                 "successfully", 80
-            )
+            ))
             return False
 
         # The iscsi target config file must be overwritten with the
@@ -1222,9 +1223,9 @@ def restore_complete():
         # we use use that.
         overwrite_iscsi_target_config()
 
-        print ("\nApplying compute manifests for %s. " %
-               (utils.get_controller_hostname()))
-        print ("Node will reboot on completion.")
+        print("\nApplying compute manifests for %s. " %
+              (utils.get_controller_hostname()))
+        print("Node will reboot on completion.")
 
         sysinv.do_compute_config_complete(utils.get_controller_hostname())
 
@@ -1241,11 +1242,11 @@ def restore_complete():
 
     else:
         if not os.path.isfile(restore_system_ready):
-            print textwrap.fill(
+            print(textwrap.fill(
                 "--restore-complete can only be run "
                 "after restore-system has completed "
                 "successfully", 80
-            )
+            ))
             return False
         overwrite_iscsi_target_config()
         os.remove(restore_system_ready)
@@ -1258,11 +1259,11 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
     if (os.path.exists(constants.CGCS_CONFIG_FILE) or
             os.path.exists(tsconfig.CONFIG_PATH) or
             os.path.exists(constants.INITIAL_CONFIG_COMPLETE_FILE)):
-        print textwrap.fill(
+        print(textwrap.fill(
             "Configuration has already been done. "
             "A system restore operation can only be done "
-            "immediately after the load has been installed.", 80)
-        print
+            "immediately after the load has been installed.", 80))
+        print('')
         raise RestoreFail("System configuration already completed")
 
     if not os.path.isabs(backup_file):
@@ -1288,7 +1289,7 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
             LOG.error("The cgts-vg volume group was not found")
             raise RestoreFail("Volume groups not configured")
 
-        print "\nRestoring system (this will take several minutes):"
+        print("\nRestoring system (this will take several minutes):")
         # Use /scratch for the staging dir for now,
         # until /opt/backups is available
         staging_dir = tempfile.mkdtemp(dir='/scratch')
@@ -1343,10 +1344,10 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
             # If the controller was impacted by patches, we need to reboot.
             if os.path.isfile(node_is_patched):
                 if not clone:
-                    print ("\nThis controller has been patched. " +
-                           "A reboot is required.")
-                    print ("After the reboot is complete, " +
-                           "re-execute the restore command.")
+                    print("\nThis controller has been patched. " +
+                          "A reboot is required.")
+                    print("After the reboot is complete, " +
+                          "re-execute the restore command.")
                     while True:
                         user_input = input(
                             "Enter 'reboot' to reboot controller: ")
@@ -1581,7 +1582,7 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
 
         if tsconfig.system_mode != sysinv_constants.SYSTEM_MODE_SIMPLEX:
 
-            print "\nRestoring node states (this will take several minutes):"
+            print("\nRestoring node states (this will take several minutes):")
 
             backend_services = sysinv.get_storage_backend_services()
 
@@ -1621,7 +1622,7 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
                     LOG.info("At least one node is not in a disabling state. "
                              "Continuing.")
 
-                print "\nLocking nodes:"
+                print("\nLocking nodes:")
                 try:
                     failed_hosts = client.lock_hosts(skip_hosts,
                                                      utils.progress,
@@ -1635,7 +1636,7 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
                     failed_lock_host = True
 
                 if not failed_lock_host:
-                    print "\nPowering-off nodes:"
+                    print("\nPowering-off nodes:")
                     try:
                         client.power_off_hosts(skip_hosts,
                                                utils.progress,
@@ -1646,25 +1647,25 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
 
                 if failed_lock_host or len(skip_hosts) > skip_hosts_count:
                     if include_storage_reinstall:
-                        print textwrap.fill(
+                        print(textwrap.fill(
                             "Failed to lock at least one node. " +
                             "Please lock the unlocked nodes manually.", 80
-                        )
+                        ))
                     else:
-                        print textwrap.fill(
+                        print(textwrap.fill(
                             "Failed to lock at least one node. " +
                             "Please lock the unlocked controller-1 or " +
                             "compute nodes manually.", 80
-                        )
+                        ))
 
                 if not clone:
-                    print textwrap.fill(
+                    print(textwrap.fill(
                         "Before continuing to the next step in the restore, " +
                         "please ensure all nodes other than controller-0 " +
                         "and storage nodes, if they are not being " +
                         "reinstalled, are powered off. Please refer to the " +
                         "system administration guide for more details.", 80
-                    )
+                    ))
 
     finally:
         os.remove(restore_in_progress)
@@ -1705,11 +1706,11 @@ def restore_images(backup_file, clone=False):
     """Restoring images."""
 
     if not os.path.exists(constants.INITIAL_CONFIG_COMPLETE_FILE):
-        print textwrap.fill(
+        print(textwrap.fill(
             "System restore has not been done. "
             "An image restore operation can only be done after "
-            "the system restore has been completed.", 80)
-        print
+            "the system restore has been completed.", 80))
+        print('')
         raise RestoreFail("System restore required")
 
     if not os.path.isabs(backup_file):
@@ -1725,7 +1726,7 @@ def restore_images(backup_file, clone=False):
     newline = clone
 
     try:
-        print "\nRestoring images (this will take several minutes):"
+        print("\nRestoring images (this will take several minutes):")
         os.chdir('/')
 
         step = 1

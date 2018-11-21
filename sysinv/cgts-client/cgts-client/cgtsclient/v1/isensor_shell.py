@@ -206,5 +206,5 @@ def donot_host_sensor_delete(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     i = _find_sensor(cc, ihost, args.sensor_uuid)
     cc.isensor.delete(i.uuid)
-    print 'Deleted sensor: host %s sensor %s' % (args.hostnameorid,
-                                                 args.sensor_uuid)
+    print('Deleted sensor: host %s sensor %s' % (args.hostnameorid,
+                                                 args.sensor_uuid))

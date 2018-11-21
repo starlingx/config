@@ -76,4 +76,4 @@ def do_network_add(cc, args):
 def do_network_delete(cc, args):
     """Delete a network"""
     cc.network.delete(args.network_uuid)
-    print 'Deleted Network: %s' % args.network_uuid
+    print('Deleted Network: %s' % args.network_uuid)

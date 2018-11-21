@@ -247,5 +247,5 @@ def apply_upgrade_manifest(controller_address):
             subprocess.check_call(cmd, stdout=flog, stderr=flog)
     except subprocess.CalledProcessError:
         msg = "Failed to execute upgrade manifest"
-        print msg
+        print(msg)
         raise Exception(msg)

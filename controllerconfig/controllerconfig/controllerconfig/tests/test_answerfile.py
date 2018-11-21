@@ -35,7 +35,7 @@ def _test_answerfile(tmpdir, filename,
     assistant.input_config_from_file(answerfile)
 
     # Test the display method
-    print "Output from display_config:"
+    print("Output from display_config:")
     assistant.display_config()
 
     # Ensure we can write the configuration
@@ -50,7 +50,7 @@ def _test_answerfile(tmpdir, filename,
         f.write("\n[cAUTHENTICATION]\nADMIN_PASSWORD=Li69nux*\n")
 
     # Do a diff between the answerfile and the generated config file
-    print "\n\nDiff of answerfile vs. generated config file:\n"
+    print("\n\nDiff of answerfile vs. generated config file:\n")
     with open(answerfile) as a, open(constants.CGCS_CONFIG_FILE) as b:
         a_lines = a.readlines()
         b_lines = b.readlines()

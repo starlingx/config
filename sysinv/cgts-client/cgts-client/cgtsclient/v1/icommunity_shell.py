@@ -77,4 +77,4 @@ def do_snmp_comm_delete(cc, args):
             cc.icommunity.delete(c)
         except exc.HTTPNotFound:
             raise exc.CommandError('Community not found: %s' % c)
-        print 'Deleted community %s' % c
+        print('Deleted community %s' % c)

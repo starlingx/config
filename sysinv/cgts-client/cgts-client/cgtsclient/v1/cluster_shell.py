@@ -141,4 +141,4 @@ if os.path.exists('/var/run/.sysinv_running_in_lab'):
     def do_cluster_delete(cc, args):
         """Delete a Cluster."""
         cc.cluster.delete(args.cluster_uuid)
-        print 'Deleted cluster: %s' % args.cluster_uuid
+        print('Deleted cluster: %s' % args.cluster_uuid)

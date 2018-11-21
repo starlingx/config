@@ -129,9 +129,9 @@ def do_modify(cc, args):
 
         confirm = input(warning_message)
         if confirm != 'yes':
-            print "Operation cancelled."
+            print("Operation cancelled.")
             return
-        print 'Please follow the admin guide to complete the reconfiguration.'
+        print('Please follow the admin guide to complete the reconfiguration.')
 
     field_list = ['name', 'system_mode', 'description', 'location', 'contact',
                   'timezone', 'sdn_enabled', 'https_enabled', 'vswitch_type', 'security_feature']
@@ -158,5 +158,5 @@ def do_modify(cc, args):
     _print_isystem_show(isystem)
 
     if print_https_warning:
-        print "HTTPS enabled with a self-signed certificate.\nThis should be " \
-              "changed to a CA-signed certificate with 'system certificate-install'. "
+        print("HTTPS enabled with a self-signed certificate.\nThis should be "
+              "changed to a CA-signed certificate with 'system certificate-install'. ")

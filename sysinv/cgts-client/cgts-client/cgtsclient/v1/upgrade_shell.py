@@ -28,7 +28,7 @@ def do_upgrade_show(cc, args):
     if upgrades:
         _print_upgrade_show(upgrades[0])
     else:
-        print 'No upgrade in progress'
+        print('No upgrade in progress')
 
 
 @utils.arg('-f', '--force',
@@ -131,12 +131,12 @@ def do_upgrade_abort(cc, args):
 
     confirm = input(warning_message)
     if confirm != 'yes':
-        print "Operation cancelled."
+        print("Operation cancelled.")
         return
     elif abort_required:
         confirm = input("Type 'abort' to confirm: ")
         if confirm != 'abort':
-            print "Operation cancelled."
+            print("Operation cancelled.")
             return
 
     data = dict()

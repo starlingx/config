@@ -72,7 +72,7 @@ def prompt_for(prompt_text, default_input, validator):
             valid = True
 
         if not valid:
-            print "Invalid choice"
+            print("Invalid choice")
 
     return user_input
 
@@ -533,19 +533,19 @@ class ConfigAssistant():
     def set_time():
         """Allow user to set the system date and time."""
 
-        print "System date and time:"
-        print "---------------------\n"
-        print textwrap.fill(
-            "The system date and time must be set now. Note that UTC "
-            "time must be used and that the date and time must be set as "
-            "accurately as possible, even if NTP/PTP is to be configured "
-            "later.", 80)
-        print
+        print("System date and time:")
+        print("---------------------\n")
+        print(textwrap.fill(
+              "The system date and time must be set now. Note that UTC "
+              "time must be used and that the date and time must be set as "
+              "accurately as possible, even if NTP/PTP is to be configured "
+              "later.", 80))
+        print('')
 
         now = datetime.datetime.utcnow()
         date_format = '%Y-%m-%d %H:%M:%S'
-        print ("Current system date and time (UTC): " +
-               now.strftime(date_format))
+        print("Current system date and time (UTC): " +
+              now.strftime(date_format))
 
         while True:
             user_input = input(
@@ -553,12 +553,12 @@ class ConfigAssistant():
             if user_input.lower() == 'q':
                 raise UserQuit
             elif user_input.lower() == 'y':
-                print "Current system date and time will be used."
+                print("Current system date and time will be used.")
                 return
             elif user_input.lower() == 'n':
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
 
         new_time = None
         while True:
@@ -572,7 +572,7 @@ class ConfigAssistant():
                                                           date_format)
                     break
                 except ValueError:
-                    print "Invalid date and time specified"
+                    print("Invalid date and time specified")
                     continue
 
         # Set the system clock
@@ -594,13 +594,13 @@ class ConfigAssistant():
     def set_timezone(self):
         """Allow user to set the system timezone."""
 
-        print "\nSystem timezone:"
-        print "----------------\n"
-        print textwrap.fill(
-            "The system timezone must be set now. The timezone "
-            "must be a valid timezone from /usr/share/zoneinfo "
-            "(e.g. UTC, Asia/Hong_Kong, etc...)", 80)
-        print
+        print("\nSystem timezone:")
+        print("----------------\n")
+        print(textwrap.fill(
+              "The system timezone must be set now. The timezone "
+              "must be a valid timezone from /usr/share/zoneinfo "
+              "(e.g. UTC, Asia/Hong_Kong, etc...)", 80))
+        print('')
 
         while True:
             user_input = input(
@@ -612,7 +612,7 @@ class ConfigAssistant():
                     break
             else:
                 if not os.path.isfile("/usr/share/zoneinfo/%s" % user_input):
-                    print "Invalid timezone specified, please try again."
+                    print("Invalid timezone specified, please try again.")
                     continue
                 self.timezone = user_input
                 break
@@ -648,18 +648,18 @@ class ConfigAssistant():
 
     def input_system_mode_config(self):
         """Allow user to input system mode"""
-        print "\nSystem Configuration:"
-        print "---------------------\n"
-        print "System mode. Available options are:\n"
-        print textwrap.fill(
-            "1) duplex-direct - two node redundant configuration. "
-            "Management and infrastructure networks "
-            "are directly connected to peer ports", 80)
-        print textwrap.fill(
-            "2) duplex - two node redundant configuration. ", 80)
+        print("\nSystem Configuration:")
+        print("---------------------\n")
+        print("System mode. Available options are:\n")
+        print(textwrap.fill(
+              "1) duplex-direct - two node redundant configuration. "
+              "Management and infrastructure networks "
+              "are directly connected to peer ports", 80))
+        print(textwrap.fill(
+              "2) duplex - two node redundant configuration. ", 80))
 
-        print textwrap.fill(
-            "3) simplex - single node non-redundant configuration.", 80)
+        print(textwrap.fill(
+              "3) simplex - single node non-redundant configuration.", 80))
 
         value_mapping = {
             "1": sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT,
@@ -674,8 +674,8 @@ class ConfigAssistant():
 
     def input_dc_selection(self):
         """Allow user to input dc role"""
-        print "\nDistributed Cloud Configuration:"
-        print "--------------------------------\n"
+        print("\nDistributed Cloud Configuration:")
+        print("--------------------------------\n")
 
         value_mapping = {
             "y": sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
@@ -691,12 +691,12 @@ class ConfigAssistant():
         """Check basic storage config."""
 
         if get_root_disk_size() < constants.MINIMUM_ROOT_DISK_SIZE:
-            print textwrap.fill(
-                "Warning: Root Disk %s size is less than %d GiB.  "
-                "Please consult the Software Installation Guide "
-                "for details." %
-                (self.rootfs_node, constants.MINIMUM_ROOT_DISK_SIZE), 80)
-            print
+            print(textwrap.fill(
+                  "Warning: Root Disk %s size is less than %d GiB.  "
+                  "Please consult the Software Installation Guide "
+                  "for details." %
+                  (self.rootfs_node, constants.MINIMUM_ROOT_DISK_SIZE), 80))
+            print('')
 
     def is_interface_in_bond(self, interface_name):
         """
@@ -748,22 +748,22 @@ class ConfigAssistant():
     def is_valid_pxeboot_address(self, ip_address):
         """Determine whether a pxeboot address is valid."""
         if ip_address.version != 4:
-            print "Invalid IP version - only IPv4 supported"
+            print("Invalid IP version - only IPv4 supported")
             return False
         elif ip_address == self.pxeboot_subnet.network:
-            print "Cannot use network address"
+            print("Cannot use network address")
             return False
         elif ip_address == self.pxeboot_subnet.broadcast:
-            print "Cannot use broadcast address"
+            print("Cannot use broadcast address")
             return False
         elif ip_address.is_multicast():
-            print "Invalid network address - multicast address not allowed"
+            print("Invalid network address - multicast address not allowed")
             return False
         elif ip_address.is_loopback():
-            print "Invalid network address - loopback address not allowed"
+            print("Invalid network address - loopback address not allowed")
             return False
         elif ip_address not in self.pxeboot_subnet:
-            print "Address must be in the PXEBoot subnet"
+            print("Address must be in the PXEBoot subnet")
             return False
         else:
             return True
@@ -784,22 +784,22 @@ class ConfigAssistant():
     def input_pxeboot_config(self):
         """Allow user to input pxeboot config and perform validation."""
 
-        print "\nPXEBoot Network:"
-        print "----------------\n"
+        print("\nPXEBoot Network:")
+        print("----------------\n")
 
-        print textwrap.fill(
-            "The PXEBoot network is used for initial booting and installation "
-            "of each node. IP addresses on this network are reachable only "
-            "within the data center.", 80)
-        print
-        print textwrap.fill(
-            "The default configuration combines the PXEBoot network and the "
-            "management network. If a separate PXEBoot network is used, it "
-            "will share the management interface, which requires the "
-            "management network to be placed on a VLAN.", 80)
+        print(textwrap.fill(
+            "The PXEBoot network is used for initial booting and installation"
+            " of each node. IP addresses on this network are reachable only "
+            "within the data center.", 80))
+        print('')
+        print(textwrap.fill(
+              "The default configuration combines the PXEBoot network and the "
+              "management network. If a separate PXEBoot network is used, it "
+              "will share the management interface, which requires the "
+              "management network to be placed on a VLAN.", 80))
 
         while True:
-            print
+            print('')
             user_input = input(
                 "Configure a separate PXEBoot network [y/N]: ")
             if user_input.lower() == 'q':
@@ -813,7 +813,7 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         if self.separate_pxeboot_network:
@@ -828,24 +828,24 @@ class ConfigAssistant():
                 try:
                     ip_input = IPNetwork(user_input)
                     if ip_input.version != 4:
-                        print "Invalid IP version - only IPv4 supported"
+                        print("Invalid IP version - only IPv4 supported")
                         continue
                     elif ip_input.ip != ip_input.network:
-                        print "Invalid network address"
+                        print("Invalid network address")
                         continue
                     elif ip_input.size < 16:
-                        print "PXEBoot subnet too small " \
-                              + "- must have at least 16 addresses"
+                        print("PXEBoot subnet too small "
+                              "- must have at least 16 addresses")
                         continue
 
                     if ip_input.size < 255:
-                        print "WARNING: Subnet allows only %d addresses." \
-                              % ip_input.size
+                        print("WARNING: Subnet allows only %d addresses."
+                              % ip_input.size)
 
                     self.pxeboot_subnet = ip_input
                     break
                 except AddrFormatError:
-                    print "Invalid subnet - please enter a valid IPv4 subnet"
+                    print("Invalid subnet - please enter a valid IPv4 subnet")
         else:
             # Use private subnet for pxe booting
             self.pxeboot_subnet = self.private_pxeboot_subnet
@@ -875,25 +875,25 @@ class ConfigAssistant():
     def input_management_config(self):
         """Allow user to input management config and perform validation."""
 
-        print "\nManagement Network:"
-        print "-------------------\n"
+        print("\nManagement Network:")
+        print("-------------------\n")
 
-        print textwrap.fill(
+        print(textwrap.fill(
             "The management network is used for internal communication "
             "between platform components. IP addresses on this network "
-            "are reachable only within the data center.", 80)
+            "are reachable only within the data center.", 80))
 
         while True:
-            print
-            print textwrap.fill(
+            print('')
+            print(textwrap.fill(
                 "A management bond interface provides redundant "
-                "connections for the management network.", 80)
+                "connections for the management network.", 80))
             if self.system_mode == sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT:
-                print textwrap.fill(
+                print(textwrap.fill(
                     "It is strongly recommended to configure Management "
                     "interface link aggregation, for All-in-one duplex-direct."
-                )
-            print
+                ))
+            print('')
             user_input = input(
                 "Management interface link aggregation [y/N]: ")
             if user_input.lower() == 'q':
@@ -907,7 +907,7 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
@@ -921,17 +921,17 @@ class ConfigAssistant():
             elif user_input == "":
                 user_input = self.management_interface
             elif self.lag_management_interface:
-                print textwrap.fill(
-                    "Warning: The default name for the management bond "
-                    "interface (%s) cannot be changed." %
-                    self.management_interface, 80)
-                print
+                print(textwrap.fill(
+                      "Warning: The default name for the management bond "
+                      "interface (%s) cannot be changed." %
+                      self.management_interface, 80))
+                print('')
                 user_input = self.management_interface
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
-                    "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                print(textwrap.fill(
+                      "Interface is already configured as part of an "
+                      "aggregated interface.", 80))
                 continue
             elif self.lag_management_interface:
                 self.management_interface = user_input
@@ -942,7 +942,7 @@ class ConfigAssistant():
                 self.management_interface_name = user_input
                 break
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 continue
 
         while True:
@@ -957,7 +957,7 @@ class ConfigAssistant():
                 self.management_mtu = user_input
                 break
             else:
-                print "MTU is invalid/unsupported"
+                print("MTU is invalid/unsupported")
                 continue
 
         while True:
@@ -973,18 +973,18 @@ class ConfigAssistant():
                 self.management_link_capacity = user_input
                 break
             else:
-                print "Invalid choice, select from: %s" \
-                    % (', '.join(map(str, constants.VALID_LINK_SPEED_MGMT)))
+                print("Invalid choice, select from: %s"
+                      % (', '.join(map(str, constants.VALID_LINK_SPEED_MGMT))))
                 continue
 
         while True:
             if not self.lag_management_interface:
                 break
 
-            print
-            print "Specify one of the bonding policies. Possible values are:"
-            print "  1) 802.3ad (LACP) policy"
-            print "  2) Active-backup policy"
+            print('')
+            print("Specify one of the bonding policies. Possible values are:")
+            print("  1) 802.3ad (LACP) policy")
+            print("  2) Active-backup policy")
 
             user_input = input(
                 "\nManagement interface bonding policy [" +
@@ -1003,17 +1003,17 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
             if not self.lag_management_interface:
                 break
 
-            print textwrap.fill(
-                "A maximum of 2 physical interfaces can be attached to the "
-                "management interface.", 80)
-            print
+            print(textwrap.fill(
+                  "A maximum of 2 physical interfaces can be attached to the "
+                  "management interface.", 80))
+            print('')
 
             user_input = input(
                 "First management interface member [" +
@@ -1024,17 +1024,17 @@ class ConfigAssistant():
                 user_input = self.lag_management_interface_member0
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.is_interface_in_use(user_input):
-                print "Interface is already in use"
+                print("Interface is already in use")
                 continue
             elif interface_exists(user_input):
                 self.lag_management_interface_member0 = user_input
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 self.lag_management_interface_member0 = ""
                 continue
 
@@ -1044,24 +1044,24 @@ class ConfigAssistant():
             if user_input.lower() == 'q':
                 raise UserQuit
             elif user_input == self.lag_management_interface_member0:
-                print "Cannot use member 0 as member 1"
+                print("Cannot use member 0 as member 1")
                 continue
             elif user_input == "":
                 user_input = self.lag_management_interface_member1
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.is_interface_in_use(user_input):
-                print "Interface is already in use"
+                print("Interface is already in use")
                 continue
             elif interface_exists(user_input):
                 self.lag_management_interface_member1 = user_input
                 break
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 self.lag_management_interface_member1 = ""
                 user_input = input(
                     "Do you want a single physical member in the bond "
@@ -1074,11 +1074,11 @@ class ConfigAssistant():
                     continue
 
         if self.separate_pxeboot_network:
-            print
-            print textwrap.fill(
+            print('')
+            print(textwrap.fill(
                 "A management VLAN is required because a separate PXEBoot "
-                "network was configured on the management interface.", 80)
-            print
+                "network was configured on the management interface.", 80))
+            print('')
 
             while True:
                 user_input = input(
@@ -1092,7 +1092,7 @@ class ConfigAssistant():
                         self.management_interface + '.' + self.management_vlan
                     break
                 else:
-                    print "VLAN is invalid/unsupported"
+                    print("VLAN is invalid/unsupported")
                     continue
 
         min_addresses = 8
@@ -1109,16 +1109,16 @@ class ConfigAssistant():
                                                              min_addresses)
                 if (tmp_management_subnet.version == 6 and
                    not self.separate_pxeboot_network):
-                    print ("Using IPv6 management network requires " +
-                           "use of separate PXEBoot network")
+                    print("Using IPv6 management network requires " +
+                          "use of separate PXEBoot network")
                     continue
                 self.management_subnet = tmp_management_subnet
                 self.management_start_address = self.management_subnet[2]
                 self.management_end_address = self.management_subnet[-2]
                 if self.management_subnet.size < 255:
-                    print "WARNING: Subnet allows only %d addresses.\n" \
-                          "This will not allow you to provision a Cinder LVM" \
-                          " or Ceph backend." % self.management_subnet.size
+                    print("WARNING: Subnet allows only %d addresses.\n"
+                          "This will not allow you to provision a Cinder LVM"
+                          " or Ceph backend." % self.management_subnet.size)
                     while True:
                         user_input = raw_input(
                             "Do you want to continue with the current "
@@ -1129,11 +1129,11 @@ class ConfigAssistant():
                         elif user_input.lower() == 'y' or user_input == "":
                             break
                         else:
-                            print "Invalid choice"
+                            print("Invalid choice")
                             continue
                 break
             except ValidateFail as e:
-                print "{}".format(e)
+                print("{}".format(e))
 
         if (self.system_dc_role !=
                 sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
@@ -1151,15 +1151,15 @@ class ConfigAssistant():
                 elif user_input == "":
                     break
                 else:
-                    print "Invalid choice"
+                    print("Invalid choice")
                     continue
         else:
             self.use_entire_mgmt_subnet = False
-            print textwrap.fill(
+            print(textwrap.fill(
                 "Configured as Distributed Cloud System Controller,"
                 " disallowing use of entire management subnet.  "
                 "Ensure management ip range does not include System"
-                " Controller gateway address(es)", 80)
+                " Controller gateway address(es)", 80))
 
         if not self.use_entire_mgmt_subnet:
             while True:
@@ -1179,7 +1179,7 @@ class ConfigAssistant():
                             user_input, self.management_subnet)
                         break
                     except ValidateFail as e:
-                        print ("Invalid start address. \n Reason: %s" % e)
+                        print("Invalid start address. \n Reason: %s" % e)
 
                 while True:
                     user_input = input(
@@ -1195,19 +1195,19 @@ class ConfigAssistant():
                             user_input, self.management_subnet)
                         break
                     except ValidateFail as e:
-                        print ("Invalid management end address. \n"
-                               "Reason: %s" % e)
+                        print("Invalid management end address. \n"
+                              "Reason: %s" % e)
 
                 if not self.management_start_address < \
                         self.management_end_address:
-                    print "Start address not less than end address. "
-                    print
+                    print("Start address not less than end address. ")
+                    print('')
                     continue
 
                 address_range = IPRange(str(self.management_start_address),
                                         str(self.management_end_address))
                 if not address_range.size >= min_addresses:
-                    print (
+                    print(
                         "Address range must contain at least %d addresses. " %
                         min_addresses)
                     continue
@@ -1219,23 +1219,23 @@ class ConfigAssistant():
                     # used to communicate with the subclouds. - 2 because of
                     # subnet and broadcast addresses.
                     if address_range.size >= (self.management_subnet.size - 2):
-                        print textwrap.fill(
+                        print(textwrap.fill(
                             "Address range too large, no addresses left "
-                            "for System Controller gateway(s). ", 80)
+                            "for System Controller gateway(s). ", 80))
                         continue
                 break
         while True:
-            print
-            print textwrap.fill(
+            print('')
+            print(textwrap.fill(
                 "IP addresses can be assigned to hosts dynamically or "
                 "a static IP address can be specified for each host. "
                 "This choice applies to both the management network "
-                "and infrastructure network (if configured). ", 80)
-            print textwrap.fill(
+                "and infrastructure network (if configured). ", 80))
+            print(textwrap.fill(
                 "Warning: Selecting 'N', or static IP address allocation, "
                 "disables automatic provisioning of new hosts in System "
                 "Inventory, requiring the user to manually provision using "
-                "the 'system host-add' command. ", 80)
+                "the 'system host-add' command. ", 80))
             user_input = input(
                 "Dynamic IP address allocation [Y/n]: ")
             if user_input.lower() == 'q':
@@ -1249,7 +1249,7 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         default_controller0_mgmt_float_ip = self.management_start_address
@@ -1317,9 +1317,9 @@ class ConfigAssistant():
                 self.management_multicast_subnet = ip_input
                 break
             except AddrFormatError:
-                print ("Invalid subnet - "
-                       "please enter a valid IPv4 or IPv6 subnet"
-                       )
+                print("Invalid subnet - "
+                      "please enter a valid IPv4 or IPv6 subnet"
+                      )
 
         """ Management interface configuration complete"""
         self.management_interface_configured = True
@@ -1331,14 +1331,14 @@ class ConfigAssistant():
         if management_subnet is not None:
             self.management_subnet = management_subnet
         else:
-            print "\nManagement Network:"
-            print "-------------------\n"
+            print("\nManagement Network:")
+            print("-------------------\n")
 
-            print textwrap.fill(
+            print(textwrap.fill(
                 "The management network is used for internal communication "
                 "between platform components. IP addresses on this network "
-                "are reachable only within the host.", 80)
-            print
+                "are reachable only within the host.", 80))
+            print('')
 
             self.management_subnet = IPNetwork(
                 constants.DEFAULT_MGMT_ON_LOOPBACK_SUBNET_IPV4)
@@ -1355,13 +1355,13 @@ class ConfigAssistant():
                     tmp_management_subnet = validate_network_str(user_input,
                                                                  min_addresses)
                     if tmp_management_subnet.version == 6:
-                        print ("IPv6 management network not supported on " +
-                               "simplex configuration")
+                        print("IPv6 management network not supported on " +
+                              "simplex configuration")
                         continue
                     self.management_subnet = tmp_management_subnet
                     break
                 except ValidateFail as e:
-                    print "{}".format(e)
+                    print("{}".format(e))
 
         self.management_interface = constants.LOOPBACK_IFNAME
         self.management_interface_name = constants.LOOPBACK_IFNAME
@@ -1381,19 +1381,19 @@ class ConfigAssistant():
     def is_valid_infrastructure_address(self, ip_address):
         """Determine whether an infrastructure address is valid."""
         if ip_address == self.infrastructure_subnet.network:
-            print "Cannot use network address"
+            print("Cannot use network address")
             return False
         elif ip_address == self.infrastructure_subnet.broadcast:
-            print "Cannot use broadcast address"
+            print("Cannot use broadcast address")
             return False
         elif ip_address.is_multicast():
-            print "Invalid network address - multicast address not allowed"
+            print("Invalid network address - multicast address not allowed")
             return False
         elif ip_address.is_loopback():
-            print "Invalid network address - loopback address not allowed"
+            print("Invalid network address - loopback address not allowed")
             return False
         elif ip_address not in self.infrastructure_subnet:
-            print "Address must be in the infrastructure subnet"
+            print("Address must be in the infrastructure subnet")
             return False
         else:
             return True
@@ -1401,26 +1401,26 @@ class ConfigAssistant():
     def input_infrastructure_config(self):
         """Allow user to input infrastructure config and perform validation."""
 
-        print "\nInfrastructure Network:"
-        print "-----------------------\n"
+        print("\nInfrastructure Network:")
+        print("-----------------------\n")
 
-        print textwrap.fill(
+        print(textwrap.fill(
             "The infrastructure network is used for internal communication "
             "between platform components to offload the management network "
             "of high bandwidth services. "
             "IP addresses on this network are reachable only within the data "
-            "center.", 80)
-        print
-        print textwrap.fill(
+            "center.", 80))
+        print('')
+        print(textwrap.fill(
             "If a separate infrastructure interface is not configured the "
-            "management network will be used.", 80)
-        print
+            "management network will be used.", 80))
+        print('')
 
         if self.system_mode == sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT:
-            print textwrap.fill(
+            print(textwrap.fill(
                 "It is NOT recommended to configure infrastructure network "
                 "for All-in-one duplex-direct."
-            )
+            ))
 
         infra_vlan_required = False
 
@@ -1435,15 +1435,15 @@ class ConfigAssistant():
                 self.infrastructure_interface = ""
                 return
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
-            print
-            print textwrap.fill(
+            print('')
+            print(textwrap.fill(
                 "An infrastructure bond interface provides redundant "
-                "connections for the infrastructure network.", 80)
-            print
+                "connections for the infrastructure network.", 80))
+            print('')
             user_input = input(
                 "Infrastructure interface link aggregation [y/N]: ")
             if user_input.lower() == 'q':
@@ -1455,7 +1455,7 @@ class ConfigAssistant():
                 self.lag_infrastructure_interface = False
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
@@ -1469,20 +1469,20 @@ class ConfigAssistant():
             elif user_input == '':
                 user_input = self.infrastructure_interface
                 if user_input == '':
-                    print "Invalid interface"
+                    print("Invalid interface")
                     continue
             elif self.lag_infrastructure_interface:
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Warning: The default name for the infrastructure bond "
                     "interface (%s) cannot be changed." %
-                    self.infrastructure_interface, 80)
-                print
+                    self.infrastructure_interface, 80))
+                print('')
                 user_input = self.infrastructure_interface
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.lag_infrastructure_interface:
                 self.infrastructure_interface = user_input
@@ -1499,7 +1499,7 @@ class ConfigAssistant():
                     infra_vlan_required = True
                 break
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 continue
 
         while True:
@@ -1516,10 +1516,10 @@ class ConfigAssistant():
                         raise UserQuit
                     elif is_valid_vlan(user_input):
                         if user_input == self.management_vlan:
-                            print textwrap.fill(
+                            print(textwrap.fill(
                                 "Invalid VLAN Identifier. Configured VLAN "
                                 "Identifier is already in use by another "
-                                "network.", 80)
+                                "network.", 80))
                             continue
                         self.infrastructure_vlan = user_input
                         self.infrastructure_interface_name = \
@@ -1527,21 +1527,21 @@ class ConfigAssistant():
                             self.infrastructure_vlan
                         break
                     else:
-                        print "VLAN is invalid/unsupported"
+                        print("VLAN is invalid/unsupported")
                         continue
                 break
             elif user_input.lower() in ('n', ''):
                 if infra_vlan_required:
-                    print textwrap.fill(
+                    print(textwrap.fill(
                         "An infrastructure VLAN is required since the "
                         "configured infrastructure interface is the "
                         "same as the configured management or external "
-                        "OAM interface.", 80)
+                        "OAM interface.", 80))
                     continue
                 self.infrastructure_vlan = ""
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
@@ -1557,14 +1557,14 @@ class ConfigAssistant():
                     self.management_interface and
                     self.infrastructure_vlan and
                     user_input > self.management_mtu):
-                print ("Infrastructure VLAN MTU must not be larger than "
-                       "underlying management interface MTU")
+                print("Infrastructure VLAN MTU must not be larger than "
+                      "underlying management interface MTU")
                 continue
             elif is_mtu_valid(user_input):
                 self.infrastructure_mtu = user_input
                 break
             else:
-                print "MTU is invalid/unsupported"
+                print("MTU is invalid/unsupported")
                 continue
 
         while True:
@@ -1580,18 +1580,18 @@ class ConfigAssistant():
                 self.infrastructure_link_capacity = user_input
                 break
             else:
-                print "Invalid choice, select from: %s" \
-                    % (', '.join(map(str, constants.VALID_LINK_SPEED_INFRA)))
+                print("Invalid choice, select from: %s" %
+                      (', '.join(map(str, constants.VALID_LINK_SPEED_INFRA))))
                 continue
 
         while True:
             if not self.lag_infrastructure_interface:
                 break
-            print
-            print "Specify one of the bonding policies. Possible values are:"
-            print "  1) Active-backup policy"
-            print "  2) Balanced XOR policy"
-            print "  3) 802.3ad (LACP) policy"
+            print('')
+            print("Specify one of the bonding policies. Possible values are:")
+            print("  1) Active-backup policy")
+            print("  2) Balanced XOR policy")
+            print("  3) 802.3ad (LACP) policy")
 
             user_input = input(
                 "\nInfrastructure interface bonding policy [" +
@@ -1618,17 +1618,17 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
             if not self.lag_infrastructure_interface:
                 break
 
-            print textwrap.fill(
+            print(textwrap.fill(
                 "A maximum of 2 physical interfaces can be attached to the "
-                "infrastructure interface.", 80)
-            print
+                "infrastructure interface.", 80))
+            print('')
 
             user_input = input(
                 "First infrastructure interface member [" +
@@ -1639,17 +1639,17 @@ class ConfigAssistant():
                 user_input = self.lag_infrastructure_interface_member0
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.is_interface_in_use(user_input):
-                print "Interface is already in use"
+                print("Interface is already in use")
                 continue
             elif interface_exists(user_input):
                 self.lag_infrastructure_interface_member0 = user_input
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 self.lag_infrastructure_interface_member0 = ""
                 continue
 
@@ -1662,22 +1662,22 @@ class ConfigAssistant():
                 user_input = self.lag_infrastructure_interface_member1
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.is_interface_in_use(user_input):
-                print "Interface is already in use"
+                print("Interface is already in use")
                 continue
             elif interface_exists(user_input):
                 if user_input == self.lag_infrastructure_interface_member0:
-                    print "Cannot use member 0 as member 1"
+                    print("Cannot use member 0 as member 1")
                     continue
                 else:
                     self.lag_infrastructure_interface_member1 = user_input
                     break
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 self.lag_infrastructure_interface_member1 = ""
                 user_input = input(
                     "Do you want a single physical member in the bond "
@@ -1689,7 +1689,7 @@ class ConfigAssistant():
                 elif user_input.lower() in ('n', ''):
                     continue
                 else:
-                    print "Invalid choice"
+                    print("Invalid choice")
                     continue
 
         min_addresses = 8
@@ -1704,33 +1704,33 @@ class ConfigAssistant():
             try:
                 ip_input = IPNetwork(user_input)
                 if ip_input.ip != ip_input.network:
-                    print "Invalid network address"
+                    print("Invalid network address")
                     continue
                 elif ip_input.version != self.management_subnet.version:
-                    print "IP version must match management network"
+                    print("IP version must match management network")
                     continue
                 elif ip_input.size < min_addresses:
-                    print ("Infrastructure subnet too small - "
-                           "must have at least 16 addresses")
+                    print("Infrastructure subnet too small - "
+                          "must have at least 16 addresses")
                     continue
                 elif ip_input.version == 6 and ip_input.prefixlen < 64:
-                    print ("IPv6 minimum prefix length is 64")
+                    print("IPv6 minimum prefix length is 64")
                     continue
                 elif ((self.separate_pxeboot_network and
                        ip_input.ip in self.pxeboot_subnet) or
                       ip_input.ip in self.management_subnet):
-                    print ("Infrastructure subnet overlaps with an already "
-                           "configured subnet")
+                    print("Infrastructure subnet overlaps with an already "
+                          "configured subnet")
                     continue
 
                 if ip_input.size < 255:
-                    print "WARNING: Subnet allows only %d addresses." \
-                          % ip_input.size
+                    print("WARNING: Subnet allows only %d addresses."
+                          % ip_input.size)
 
                 self.infrastructure_subnet = ip_input
                 break
             except AddrFormatError:
-                print "Invalid subnet - please enter a valid IPv4 subnet"
+                print("Invalid subnet - please enter a valid IPv4 subnet")
 
         self.infrastructure_start_address = \
             self.infrastructure_subnet[2]
@@ -1750,7 +1750,7 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         if not self.use_entire_infra_subnet:
@@ -1770,7 +1770,7 @@ class ConfigAssistant():
                                 user_input, self.infrastructure_subnet)
                         break
                     except ValidateFail as e:
-                        print ("Invalid start address. \n Reason: %s" % e)
+                        print("Invalid start address. \n Reason: %s" % e)
 
                 while True:
                     user_input = input(
@@ -1786,19 +1786,19 @@ class ConfigAssistant():
                             user_input, self.infrastructure_subnet)
                         break
                     except ValidateFail as e:
-                        print ("Invalid infrastructure end address. \n"
-                               "Reason: %s" % e)
+                        print("Invalid infrastructure end address. \n"
+                              "Reason: %s" % e)
 
                 if not self.infrastructure_start_address < \
                         self.infrastructure_end_address:
-                    print "Start address not less than end address. "
-                    print
+                    print("Start address not less than end address. ")
+                    print('')
                     continue
 
                 address_range = IPRange(str(self.infrastructure_start_address),
                                         str(self.infrastructure_end_address))
                 if not address_range.size >= min_addresses:
-                    print (
+                    print(
                         "Address range must contain at least %d addresses. " %
                         min_addresses)
                     continue
@@ -1831,27 +1831,27 @@ class ConfigAssistant():
     def is_valid_external_oam_subnet(self, ip_subnet):
         """Determine whether an OAM subnet is valid."""
         if ip_subnet.size < 8:
-            print "Subnet too small - must have at least 8 addresses"
+            print("Subnet too small - must have at least 8 addresses")
             return False
         elif ip_subnet.ip != ip_subnet.network:
-            print "Invalid network address"
+            print("Invalid network address")
             return False
         elif ip_subnet.version == 6 and ip_subnet.prefixlen < 64:
-            print ("IPv6 minimum prefix length is 64")
+            print("IPv6 minimum prefix length is 64")
             return False
         elif ip_subnet.is_multicast():
-            print "Invalid network address - multicast address not allowed"
+            print("Invalid network address - multicast address not allowed")
             return False
         elif ip_subnet.is_loopback():
-            print "Invalid network address - loopback address not allowed"
+            print("Invalid network address - loopback address not allowed")
             return False
         elif ((self.separate_pxeboot_network and
                 ip_subnet.ip in self.pxeboot_subnet) or
                 (ip_subnet.ip in self.management_subnet) or
                 (self.infrastructure_interface and
                  ip_subnet.ip in self.infrastructure_subnet)):
-            print ("External OAM subnet overlaps with an already "
-                   "configured subnet")
+            print("External OAM subnet overlaps with an already "
+                  "configured subnet")
             return False
         else:
             return True
@@ -1859,19 +1859,19 @@ class ConfigAssistant():
     def is_valid_external_oam_address(self, ip_address):
         """Determine whether an OAM address is valid."""
         if ip_address == self.external_oam_subnet.network:
-            print "Cannot use network address"
+            print("Cannot use network address")
             return False
         elif ip_address == self.external_oam_subnet.broadcast:
-            print "Cannot use broadcast address"
+            print("Cannot use broadcast address")
             return False
         elif ip_address.is_multicast():
-            print "Invalid network address - multicast address not allowed"
+            print("Invalid network address - multicast address not allowed")
             return False
         elif ip_address.is_loopback():
-            print "Invalid network address - loopback address not allowed"
+            print("Invalid network address - loopback address not allowed")
             return False
         elif ip_address not in self.external_oam_subnet:
-            print "Address must be in the external OAM subnet"
+            print("Address must be in the external OAM subnet")
             return False
         else:
             return True
@@ -1896,10 +1896,10 @@ class ConfigAssistant():
                 self.external_oam_address_1 = ip_input
                 break
             except (AddrFormatError, ValueError):
-                print ("Invalid address - "
-                       "please enter a valid %s address" %
-                       ip_version_to_string(self.external_oam_subnet.version)
-                       )
+                print("Invalid address - "
+                      "please enter a valid %s address" %
+                      ip_version_to_string(self.external_oam_subnet.version)
+                      )
 
     def input_oam_ip_address(self):
         """Allow user to input external OAM IP and perform validation."""
@@ -1919,10 +1919,10 @@ class ConfigAssistant():
                 self.external_oam_floating_address = ip_input
                 break
             except (AddrFormatError, ValueError):
-                print ("Invalid address - "
-                       "please enter a valid %s address" %
-                       ip_version_to_string(self.external_oam_subnet.version)
-                       )
+                print("Invalid address - "
+                      "please enter a valid %s address" %
+                      ip_version_to_string(self.external_oam_subnet.version)
+                      )
 
         while True:
             user_input = input("External OAM address for first "
@@ -1941,10 +1941,10 @@ class ConfigAssistant():
                 self.external_oam_address_0 = ip_input
                 break
             except (AddrFormatError, ValueError):
-                print ("Invalid address - "
-                       "please enter a valid %s address" %
-                       ip_version_to_string(self.external_oam_subnet.version)
-                       )
+                print("Invalid address - "
+                      "please enter a valid %s address" %
+                      ip_version_to_string(self.external_oam_subnet.version)
+                      )
 
         while True:
             user_input = input("External OAM address for second "
@@ -1963,30 +1963,30 @@ class ConfigAssistant():
                 self.external_oam_address_1 = ip_input
                 break
             except (AddrFormatError, ValueError):
-                print ("Invalid address - "
-                       "please enter a valid %s address" %
-                       ip_version_to_string(self.external_oam_subnet.version)
-                       )
+                print("Invalid address - "
+                      "please enter a valid %s address" %
+                      ip_version_to_string(self.external_oam_subnet.version)
+                      )
 
     def input_external_oam_config(self):
         """Allow user to input external OAM config and perform validation."""
 
-        print "\nExternal OAM Network:"
-        print "---------------------\n"
-        print textwrap.fill(
-            "The external OAM network is used for management of the "
-            "cloud. It also provides access to the "
-            "platform APIs. IP addresses on this network are reachable "
-            "outside the data center.", 80)
-        print
+        print("\nExternal OAM Network:")
+        print("---------------------\n")
+        print(textwrap.fill(
+              "The external OAM network is used for management of the "
+              "cloud. It also provides access to the "
+              "platform APIs. IP addresses on this network are reachable "
+              "outside the data center.", 80))
+        print('')
 
         ext_oam_vlan_required = False
 
         while True:
-            print textwrap.fill(
+            print(textwrap.fill(
                 "An external OAM bond interface provides redundant "
-                "connections for the OAM network.", 80)
-            print
+                "connections for the OAM network.", 80))
+            print('')
             user_input = input(
                 "External OAM interface link aggregation [y/N]: ")
             if user_input.lower() == 'q':
@@ -2000,7 +2000,7 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
@@ -2014,17 +2014,17 @@ class ConfigAssistant():
             elif user_input == "":
                 user_input = self.external_oam_interface
             elif self.lag_external_oam_interface:
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Warning: The default name for the external OAM bond "
                     "interface (%s) cannot be changed." %
-                    self.external_oam_interface, 80)
-                print
+                    self.external_oam_interface, 80))
+                print('')
                 user_input = self.external_oam_interface
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.lag_external_oam_interface:
                 self.external_oam_interface = user_input
@@ -2043,7 +2043,7 @@ class ConfigAssistant():
                     ext_oam_vlan_required = True
                 break
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 continue
 
         while True:
@@ -2061,10 +2061,10 @@ class ConfigAssistant():
                     elif is_valid_vlan(user_input):
                         if ((user_input == self.management_vlan) or
                                 (user_input == self.infrastructure_vlan)):
-                            print textwrap.fill(
+                            print(textwrap.fill(
                                 "Invalid VLAN Identifier. Configured VLAN "
                                 "Identifier is already in use by another "
-                                "network.", 80)
+                                "network.", 80))
                             continue
                         self.external_oam_vlan = user_input
                         self.external_oam_interface_name = \
@@ -2072,21 +2072,21 @@ class ConfigAssistant():
                             self.external_oam_vlan
                         break
                     else:
-                        print "VLAN is invalid/unsupported"
+                        print("VLAN is invalid/unsupported")
                         continue
                 break
             elif user_input.lower() in ('n', ''):
                 if ext_oam_vlan_required:
-                    print textwrap.fill(
+                    print(textwrap.fill(
                         "An external oam VLAN is required since the "
                         "configured external oam interface is the "
                         "same as either the configured management "
-                        "or infrastructure interface.", 80)
+                        "or infrastructure interface.", 80))
                     continue
                 self.external_oam_vlan = ""
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
@@ -2102,16 +2102,16 @@ class ConfigAssistant():
                     self.management_interface and
                     self.external_oam_vlan and
                     user_input > self.management_mtu):
-                print ("External OAM VLAN MTU must not be larger than "
-                       "underlying management interface MTU")
+                print("External OAM VLAN MTU must not be larger than "
+                      "underlying management interface MTU")
                 continue
             elif (self.infrastructure_interface_configured and
                     self.external_oam_interface ==
                     self.infrastructure_interface and
                     self.external_oam_vlan and
                     user_input > self.infrastructure_mtu):
-                print ("External OAM VLAN MTU must not be larger than "
-                       "underlying infrastructure interface MTU")
+                print("External OAM VLAN MTU must not be larger than "
+                      "underlying infrastructure interface MTU")
                 continue
             elif (self.infrastructure_interface_configured and
                     self.external_oam_interface ==
@@ -2119,25 +2119,25 @@ class ConfigAssistant():
                     self.infrastructure_vlan and
                     not self.external_oam_vlan and
                     user_input < self.infrastructure_mtu):
-                print ("External OAM interface MTU must not be smaller than "
-                       "infrastructure VLAN interface MTU")
+                print("External OAM interface MTU must not be smaller than "
+                      "infrastructure VLAN interface MTU")
                 continue
             elif is_mtu_valid(user_input):
                 self.external_oam_mtu = user_input
                 break
             else:
-                print "MTU is invalid/unsupported"
+                print("MTU is invalid/unsupported")
                 continue
 
         while True:
             if not self.lag_external_oam_interface:
                 break
 
-            print
-            print "Specify one of the bonding policies. Possible values are:"
-            print "  1) Active-backup policy"
-            print "  2) Balanced XOR policy"
-            print "  3) 802.3ad (LACP) policy"
+            print('')
+            print("Specify one of the bonding policies. Possible values are:")
+            print("  1) Active-backup policy")
+            print("  2) Balanced XOR policy")
+            print("  3) 802.3ad (LACP) policy")
 
             user_input = input(
                 "\nExternal OAM interface bonding policy [" +
@@ -2163,17 +2163,17 @@ class ConfigAssistant():
             elif user_input == "":
                 break
             else:
-                print "Invalid choice"
+                print("Invalid choice")
                 continue
 
         while True:
             if not self.lag_external_oam_interface:
                 break
 
-            print textwrap.fill(
+            print(textwrap.fill(
                 "A maximum of 2 physical interfaces can be attached to the "
-                "external OAM interface.", 80)
-            print
+                "external OAM interface.", 80))
+            print('')
 
             user_input = input(
                 "First external OAM interface member [" +
@@ -2184,17 +2184,17 @@ class ConfigAssistant():
                 user_input = self.lag_external_oam_interface_member0
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.is_interface_in_use(user_input):
-                print "Interface is already in use"
+                print("Interface is already in use")
                 continue
             elif interface_exists(user_input):
                 self.lag_external_oam_interface_member0 = user_input
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 self.lag_external_oam_interface_member0 = ""
                 continue
 
@@ -2207,21 +2207,21 @@ class ConfigAssistant():
                 user_input = self.lag_external_oam_interface_member1
 
             if self.is_interface_in_bond(user_input):
-                print textwrap.fill(
+                print(textwrap.fill(
                     "Interface is already configured as part of an "
-                    "aggregated interface.", 80)
+                    "aggregated interface.", 80))
                 continue
             elif self.is_interface_in_use(user_input):
-                print "Interface is already in use"
+                print("Interface is already in use")
                 continue
             elif user_input == self.lag_external_oam_interface_member0:
-                print "Cannot use member 0 as member 1"
+                print("Cannot use member 0 as member 1")
                 continue
             if interface_exists(user_input):
                 self.lag_external_oam_interface_member1 = user_input
                 break
             else:
-                print "Interface does not exist"
+                print("Interface does not exist")
                 self.lag_external_oam_interface_member1 = ""
                 user_input = input(
                     "Do you want a single physical member in the bond "
@@ -2248,9 +2248,9 @@ class ConfigAssistant():
                 self.external_oam_subnet = ip_input
                 break
             except AddrFormatError:
-                print ("Invalid subnet - "
-                       "please enter a valid IPv4 or IPv6 subnet"
-                       )
+                print("Invalid subnet - "
+                      "please enter a valid IPv4 or IPv6 subnet"
+                      )
 
         while True:
             user_input = input("External OAM gateway address [" +
@@ -2267,10 +2267,10 @@ class ConfigAssistant():
                 self.external_oam_gateway_address = ip_input
                 break
             except (AddrFormatError, ValueError):
-                print ("Invalid address - "
-                       "please enter a valid %s address" %
-                       ip_version_to_string(self.external_oam_subnet.version)
-                       )
+                print("Invalid address - "
+                      "please enter a valid %s address" %
+                      ip_version_to_string(self.external_oam_subnet.version)
+                      )
 
         if self.system_mode == sysinv_constants.SYSTEM_MODE_SIMPLEX:
             self.input_aio_simplex_oam_ip_address()
@@ -2284,12 +2284,12 @@ class ConfigAssistant():
         """Allow user to input authentication config and perform validation.
         """
 
-        print "\nCloud Authentication:"
-        print "-------------------------------\n"
-        print textwrap.fill(
+        print("\nCloud Authentication:")
+        print("-------------------------------\n")
+        print(textwrap.fill(
             "Configure a password for the Cloud admin user "
             "The Password must have a minimum length of 7 character, "
-            "and conform to password complexity rules", 80)
+            "and conform to password complexity rules", 80))
 
         password_input = ""
         while True:
@@ -2299,7 +2299,7 @@ class ConfigAssistant():
 
             password_input = user_input
             if len(password_input) < 1:
-                print "Password cannot be empty"
+                print("Password cannot be empty")
                 continue
 
             user_input = getpass.getpass("Repeat admin user password: ")
@@ -2307,10 +2307,10 @@ class ConfigAssistant():
                 raise UserQuit
 
             if user_input != password_input:
-                print "Password did not match"
+                print("Password did not match")
                 continue
             else:
-                print "\n"
+                print("\n")
                 self.admin_password = user_input
                 # the admin password will be validated
                 self.add_password_for_validation('ADMIN_PASSWORD',
@@ -2332,9 +2332,9 @@ class ConfigAssistant():
 
     def input_config(self):
         """Allow user to input configuration."""
-        print "System Configuration"
-        print "===================="
-        print "Enter Q at any prompt to abort...\n"
+        print("System Configuration")
+        print("====================")
+        print("Enter Q at any prompt to abort...\n")
 
         self.set_time()
         self.set_timezone(self)
@@ -2365,21 +2365,21 @@ class ConfigAssistant():
         # The multicast subnet must belong to the same Address Family
         # as the management network
         if ip_subnet.version != self.management_subnet.version:
-            print textwrap.fill(
+            print(textwrap.fill(
                 "Invalid network address - Management Multicast Subnet and "
-                " Network IP Families must be the same.", 80)
+                " Network IP Families must be the same.", 80))
             return False
         elif ip_subnet.size < 16:
-            print "Subnet too small - must have at least 16 addresses"
+            print("Subnet too small - must have at least 16 addresses")
             return False
         elif ip_subnet.ip != ip_subnet.network:
-            print "Invalid network address"
+            print("Invalid network address")
             return False
         elif ip_subnet.version == 6 and ip_subnet.prefixlen < 64:
-            print ("IPv6 minimum prefix length is 64")
+            print("IPv6 minimum prefix length is 64")
             return False
         elif not ip_subnet.is_multicast():
-            print "Invalid network address - must be multicast"
+            print("Invalid network address - must be multicast")
             return False
         else:
             return True
@@ -2391,7 +2391,7 @@ class ConfigAssistant():
            that translates region config to this format in regionconfig.py.
         """
         if not os.path.isfile(configfile):
-            print "Specified answer or config file not found"
+            print("Specified answer or config file not found")
             raise ConfigFail("Answer or Config file not found")
 
         config = configparser.RawConfigParser()
@@ -2678,7 +2678,7 @@ class ConfigAssistant():
                         'cAUTHENTICATION', 'ADMIN_PASSWORD')
 
             if self.admin_password == "" and not restore:
-                print "Admin password must be set in answer file"
+                print("Admin password must be set in answer file")
                 raise ConfigFail("Admin password not set in answer file")
             # the admin password will be validated
             self.add_password_for_validation('ADMIN_PASSWORD',
@@ -2923,205 +2923,207 @@ class ConfigAssistant():
                                  "no longer supported")
 
         except Exception:
-            print "Error parsing answer file"
+            print("Error parsing answer file")
             raise
 
         return config_sections
 
     def display_config(self):
         """Display configuration that will be applied."""
-        print "\nThe following configuration will be applied:"
+        print("\nThe following configuration will be applied:")
 
-        print "\nSystem Configuration"
-        print "--------------------"
-        print "Time Zone: " + str(self.timezone)
-        print "System mode: %s" % self.system_mode
+        print("\nSystem Configuration")
+        print("--------------------")
+        print("Time Zone: " + str(self.timezone))
+        print("System mode: %s" % self.system_mode)
         if self.system_type != sysinv_constants.TIS_AIO_BUILD:
             dc_role_true = "no"
             if (self.system_dc_role ==
                     sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
                 dc_role_true = "yes"
-            print "Distributed Cloud System Controller: %s" % dc_role_true
+            print("Distributed Cloud System Controller: %s" % dc_role_true)
 
-        print "\nPXEBoot Network Configuration"
-        print "-----------------------------"
+        print("\nPXEBoot Network Configuration")
+        print("-----------------------------")
         if not self.separate_pxeboot_network:
-            print "Separate PXEBoot network not configured"
+            print("Separate PXEBoot network not configured")
         else:
-            print "PXEBoot subnet: " + str(self.pxeboot_subnet.cidr)
-            print ("PXEBoot floating address: " +
-                   str(self.controller_pxeboot_floating_address))
-            print ("Controller 0 PXEBoot address: " +
-                   str(self.controller_pxeboot_address_0))
-            print ("Controller 1 PXEBoot address: " +
-                   str(self.controller_pxeboot_address_1))
-        print ("PXEBoot Controller floating hostname: " +
-               str(self.pxecontroller_floating_hostname))
+            print("PXEBoot subnet: " + str(self.pxeboot_subnet.cidr))
+            print("PXEBoot floating address: " +
+                  str(self.controller_pxeboot_floating_address))
+            print("Controller 0 PXEBoot address: " +
+                  str(self.controller_pxeboot_address_0))
+            print("Controller 1 PXEBoot address: " +
+                  str(self.controller_pxeboot_address_1))
+        print("PXEBoot Controller floating hostname: " +
+              str(self.pxecontroller_floating_hostname))
 
-        print "\nManagement Network Configuration"
-        print "--------------------------------"
-        print "Management interface name: " + self.management_interface_name
-        print "Management interface: " + self.management_interface
+        print("\nManagement Network Configuration")
+        print("--------------------------------")
+        print("Management interface name: " + self.management_interface_name)
+        print("Management interface: " + self.management_interface)
         if self.management_vlan:
-            print "Management vlan: " + self.management_vlan
-        print "Management interface MTU: " + self.management_mtu
-        print ("Management interface link capacity Mbps: " +
-               str(self.management_link_capacity))
+            print("Management vlan: " + self.management_vlan)
+        print("Management interface MTU: " + self.management_mtu)
+        print("Management interface link capacity Mbps: " +
+              str(self.management_link_capacity))
         if self.lag_management_interface:
-            print ("Management ae member 0: " +
-                   self.lag_management_interface_member0)
-            print ("Management ae member 1: " +
-                   self.lag_management_interface_member1)
-            print ("Management ae policy : " +
-                   self.lag_management_interface_policy)
-        print "Management subnet: " + str(self.management_subnet.cidr)
+            print("Management ae member 0: " +
+                  self.lag_management_interface_member0)
+            print("Management ae member 1: " +
+                  self.lag_management_interface_member1)
+            print("Management ae policy : " +
+                  self.lag_management_interface_policy)
+        print("Management subnet: " + str(self.management_subnet.cidr))
         if self.management_gateway_address:
-            print ("Management gateway address: " +
-                   str(self.management_gateway_address))
-        print ("Controller floating address: " +
-               str(self.controller_floating_address))
-        print "Controller 0 address: " + str(self.controller_address_0)
-        print "Controller 1 address: " + str(self.controller_address_1)
-        print ("NFS Management Address 1: " +
-               str(self.nfs_management_address_1))
+            print("Management gateway address: " +
+                  str(self.management_gateway_address))
+        print("Controller floating address: " +
+              str(self.controller_floating_address))
+        print("Controller 0 address: " + str(self.controller_address_0))
+        print("Controller 1 address: " + str(self.controller_address_1))
+        print("NFS Management Address 1: " +
+              str(self.nfs_management_address_1))
         if not self.infrastructure_interface:
-            print ("NFS Management Address 2: " +
-                   str(self.nfs_management_address_2))
-        print ("Controller floating hostname: " +
-               str(self.controller_floating_hostname))
-        print "Controller hostname prefix: " + self.controller_hostname_prefix
-        print ("OAM Controller floating hostname: " +
-               str(self.oamcontroller_floating_hostname))
+            print("NFS Management Address 2: " +
+                  str(self.nfs_management_address_2))
+        print("Controller floating hostname: " +
+              str(self.controller_floating_hostname))
+        print("Controller hostname prefix: " + self.controller_hostname_prefix)
+        print("OAM Controller floating hostname: " +
+              str(self.oamcontroller_floating_hostname))
         if not self.use_entire_mgmt_subnet:
-            print "Management start address: " + \
-                  str(self.management_start_address)
-            print "Management end address: " + \
-                  str(self.management_end_address)
+            print("Management start address: " +
+                  str(self.management_start_address))
+            print("Management end address: " +
+                  str(self.management_end_address))
         if self.dynamic_address_allocation:
-            print "Dynamic IP address allocation is selected"
-        print ("Management multicast subnet: " +
-               str(self.management_multicast_subnet))
+            print("Dynamic IP address allocation is selected")
+        print("Management multicast subnet: " +
+              str(self.management_multicast_subnet))
 
-        print "\nInfrastructure Network Configuration"
-        print "------------------------------------"
+        print("\nInfrastructure Network Configuration")
+        print("------------------------------------")
         if not self.infrastructure_interface:
-            print "Infrastructure interface not configured"
+            print("Infrastructure interface not configured")
         else:
-            print ("Infrastructure interface name: " +
-                   self.infrastructure_interface_name)
-            print "Infrastructure interface: " + self.infrastructure_interface
+            print("Infrastructure interface name: " +
+                  self.infrastructure_interface_name)
+            print("Infrastructure interface: " + self.infrastructure_interface)
             if self.infrastructure_vlan:
-                print "Infrastructure vlan: " + self.infrastructure_vlan
-            print "Infrastructure interface MTU: " + self.infrastructure_mtu
-            print ("Infrastructure interface link capacity Mbps: " +
-                   str(self.infrastructure_link_capacity))
+                print("Infrastructure vlan: " + self.infrastructure_vlan)
+            print("Infrastructure interface MTU: " + self.infrastructure_mtu)
+            print("Infrastructure interface link capacity Mbps: " +
+                  str(self.infrastructure_link_capacity))
             if self.lag_infrastructure_interface:
-                print ("Infrastructure ae member 0: " +
-                       self.lag_infrastructure_interface_member0)
-                print ("Infrastructure ae member 1: " +
-                       self.lag_infrastructure_interface_member1)
-                print ("Infrastructure ae policy : " +
-                       self.lag_infrastructure_interface_policy)
-            print ("Infrastructure subnet: " +
-                   str(self.infrastructure_subnet.cidr))
-            print ("Controller 0 infrastructure address: " +
-                   str(self.controller_infrastructure_address_0))
-            print ("Controller 1 infrastructure address: " +
-                   str(self.controller_infrastructure_address_1))
-            print ("NFS Infrastructure Address 1: " +
-                   str(self.nfs_infrastructure_address_1))
-            print ("Controller infrastructure hostname suffix: " +
-                   self.controller_infrastructure_hostname_suffix)
+                print("Infrastructure ae member 0: " +
+                      self.lag_infrastructure_interface_member0)
+                print("Infrastructure ae member 1: " +
+                      self.lag_infrastructure_interface_member1)
+                print("Infrastructure ae policy : " +
+                      self.lag_infrastructure_interface_policy)
+            print("Infrastructure subnet: " +
+                  str(self.infrastructure_subnet.cidr))
+            print("Controller 0 infrastructure address: " +
+                  str(self.controller_infrastructure_address_0))
+            print("Controller 1 infrastructure address: " +
+                  str(self.controller_infrastructure_address_1))
+            print("NFS Infrastructure Address 1: " +
+                  str(self.nfs_infrastructure_address_1))
+            print("Controller infrastructure hostname suffix: " +
+                  self.controller_infrastructure_hostname_suffix)
             if not self.use_entire_infra_subnet:
-                print "Infrastructure start address: " + \
-                      str(self.infrastructure_start_address)
-                print "Infrastructure end address: " + \
-                      str(self.infrastructure_end_address)
+                print("Infrastructure start address: " +
+                      str(self.infrastructure_start_address))
+                print("Infrastructure end address: " +
+                      str(self.infrastructure_end_address))
 
-        print "\nExternal OAM Network Configuration"
-        print "----------------------------------"
-        print ("External OAM interface name: " +
-               self.external_oam_interface_name)
-        print "External OAM interface: " + self.external_oam_interface
+        print("\nExternal OAM Network Configuration")
+        print("----------------------------------")
+        print("External OAM interface name: " +
+              self.external_oam_interface_name)
+        print("External OAM interface: " + self.external_oam_interface)
         if self.external_oam_vlan:
-            print "External OAM vlan: " + self.external_oam_vlan
-        print "External OAM interface MTU: " + self.external_oam_mtu
+            print("External OAM vlan: " + self.external_oam_vlan)
+        print("External OAM interface MTU: " + self.external_oam_mtu)
         if self.lag_external_oam_interface:
-            print ("External OAM ae member 0: " +
-                   self.lag_external_oam_interface_member0)
-            print ("External OAM ae member 1: " +
-                   self.lag_external_oam_interface_member1)
-            print ("External OAM ae policy : " +
-                   self.lag_external_oam_interface_policy)
-        print "External OAM subnet: " + str(self.external_oam_subnet)
+            print("External OAM ae member 0: " +
+                  self.lag_external_oam_interface_member0)
+            print("External OAM ae member 1: " +
+                  self.lag_external_oam_interface_member1)
+            print("External OAM ae policy : " +
+                  self.lag_external_oam_interface_policy)
+        print("External OAM subnet: " + str(self.external_oam_subnet))
         if self.external_oam_gateway_address:
-            print ("External OAM gateway address: " +
-                   str(self.external_oam_gateway_address))
+            print("External OAM gateway address: " +
+                  str(self.external_oam_gateway_address))
         if self.system_mode != sysinv_constants.SYSTEM_MODE_SIMPLEX:
-            print ("External OAM floating address: " +
-                   str(self.external_oam_floating_address))
-            print "External OAM 0 address: " + str(self.external_oam_address_0)
-            print "External OAM 1 address: " + str(self.external_oam_address_1)
+            print("External OAM floating address: " +
+                  str(self.external_oam_floating_address))
+            print("External OAM 0 address: " +
+                  str(self.external_oam_address_0))
+            print("External OAM 1 address: " +
+                  str(self.external_oam_address_1))
         else:
-            print "External OAM address: " + str(self.external_oam_address_0)
+            print("External OAM address: " + str(self.external_oam_address_0))
 
         if self.region_config:
-            print "\nRegion Configuration"
-            print "--------------------"
-            print "Region 1 name: " + self.region_1_name
-            print "Region 2 name: " + self.region_2_name
-            print "Admin user name: " + self.admin_username
-            print "Admin user domain: " + self.admin_user_domain
-            print "Admin project name: " + self.admin_project_name
-            print "Admin project domain: " + self.admin_project_domain
-            print "Service project name: " + self.service_project_name
-            print "Service user domain: " + self.service_user_domain
-            print "Service project domain: " + self.service_project_domain
-            print "Keystone auth URI: " + self.keystone_auth_uri
-            print "Keystone identity URI: " + self.keystone_identity_uri
-            print "Keystone admin URI: " + self.keystone_admin_uri
-            print "Keystone internal URI: " + self.keystone_internal_uri
-            print "Keystone public URI: " + self.keystone_public_uri
-            print "Keystone service name: " + self.keystone_service_name
-            print "Keystone service type: " + self.keystone_service_type
-            print "Glance user name: " + self.glance_ks_user_name
-            print "Glance service name: " + self.glance_service_name
-            print "Glance service type: " + self.glance_service_type
-            print "Glance cached: " + str(self.glance_cached)
-            print "Glance region: " + self.glance_region_name
-            print "Glance admin URI: " + self.glance_admin_uri
-            print "Glance internal URI: " + self.glance_internal_uri
-            print "Glance public URI: " + self.glance_public_uri
-            print "LDAP service name: " + self.ldap_service_name
-            print "LDAP region: " + self.ldap_region_name
-            print "LDAP service URI:" + self.ldap_service_uri
-            print "Nova user name: " + self.nova_ks_user_name
-            print "Nova service name: " + self.nova_service_name
-            print "Nova service type: " + self.nova_service_type
-            print "Placement user name: " + self.placement_ks_user_name
-            print "Placement service name: " + self.placement_service_name
-            print "Placement service type: " + self.placement_service_type
-            print "Neutron user name: " + self.neutron_ks_user_name
-            print "Neutron region name: " + self.neutron_region_name
-            print "Neutron service name: " + self.neutron_service_name
-            print "Neutron service type: " + self.neutron_service_type
-            print "Ceilometer user name: " + self.ceilometer_ks_user_name
-            print "Ceilometer service name: " + self.ceilometer_service_name
-            print "Ceilometer service type: " + self.ceilometer_service_type
-            print "Patching user name: " + self.patching_ks_user_name
-            print "Sysinv user name: " + self.sysinv_ks_user_name
-            print "Sysinv service name: " + self.sysinv_service_name
-            print "Sysinv service type: " + self.sysinv_service_type
-            print "Heat user name: " + self.heat_ks_user_name
-            print "Heat admin user name: " + self.heat_admin_ks_user_name
+            print("\nRegion Configuration")
+            print("--------------------")
+            print("Region 1 name: " + self.region_1_name)
+            print("Region 2 name: " + self.region_2_name)
+            print("Admin user name: " + self.admin_username)
+            print("Admin user domain: " + self.admin_user_domain)
+            print("Admin project name: " + self.admin_project_name)
+            print("Admin project domain: " + self.admin_project_domain)
+            print("Service project name: " + self.service_project_name)
+            print("Service user domain: " + self.service_user_domain)
+            print("Service project domain: " + self.service_project_domain)
+            print("Keystone auth URI: " + self.keystone_auth_uri)
+            print("Keystone identity URI: " + self.keystone_identity_uri)
+            print("Keystone admin URI: " + self.keystone_admin_uri)
+            print("Keystone internal URI: " + self.keystone_internal_uri)
+            print("Keystone public URI: " + self.keystone_public_uri)
+            print("Keystone service name: " + self.keystone_service_name)
+            print("Keystone service type: " + self.keystone_service_type)
+            print("Glance user name: " + self.glance_ks_user_name)
+            print("Glance service name: " + self.glance_service_name)
+            print("Glance service type: " + self.glance_service_type)
+            print("Glance cached: " + str(self.glance_cached))
+            print("Glance region: " + self.glance_region_name)
+            print("Glance admin URI: " + self.glance_admin_uri)
+            print("Glance internal URI: " + self.glance_internal_uri)
+            print("Glance public URI: " + self.glance_public_uri)
+            print("LDAP service name: " + self.ldap_service_name)
+            print("LDAP region: " + self.ldap_region_name)
+            print("LDAP service URI:" + self.ldap_service_uri)
+            print("Nova user name: " + self.nova_ks_user_name)
+            print("Nova service name: " + self.nova_service_name)
+            print("Nova service type: " + self.nova_service_type)
+            print("Placement user name: " + self.placement_ks_user_name)
+            print("Placement service name: " + self.placement_service_name)
+            print("Placement service type: " + self.placement_service_type)
+            print("Neutron user name: " + self.neutron_ks_user_name)
+            print("Neutron region name: " + self.neutron_region_name)
+            print("Neutron service name: " + self.neutron_service_name)
+            print("Neutron service type: " + self.neutron_service_type)
+            print("Ceilometer user name: " + self.ceilometer_ks_user_name)
+            print("Ceilometer service name: " + self.ceilometer_service_name)
+            print("Ceilometer service type: " + self.ceilometer_service_type)
+            print("Patching user name: " + self.patching_ks_user_name)
+            print("Sysinv user name: " + self.sysinv_ks_user_name)
+            print("Sysinv service name: " + self.sysinv_service_name)
+            print("Sysinv service type: " + self.sysinv_service_type)
+            print("Heat user name: " + self.heat_ks_user_name)
+            print("Heat admin user name: " + self.heat_admin_ks_user_name)
 
         if self.subcloud_config():
-            print "\nSubcloud Configuration"
-            print "----------------------"
-            print "System controller subnet: " + \
-                  str(self.system_controller_subnet.cidr)
-            print "System controller floating ip: " + \
-                  str(self.system_controller_floating_ip)
+            print("\nSubcloud Configuration")
+            print("----------------------")
+            print("System controller subnet: " +
+                  str(self.system_controller_subnet.cidr))
+            print("System controller floating ip: " +
+                  str(self.system_controller_floating_ip))
 
     def write_config_file(self):
         """Write configuration to a text file for later reference."""
@@ -3521,12 +3523,12 @@ class ConfigAssistant():
         if not self.infrastructure_interface_configured and \
                 int(self.management_link_capacity) < \
                 sysinv_constants.LINK_SPEED_10G:
-            print
-            print textwrap.fill(
-                "Warning: The infrastructure network was not configured, "
-                "and the management interface link capacity is less than "
-                "10000 Mbps. This is not a supported configuration and "
-                "will result in unacceptable DRBD sync times.", 80)
+            print('')
+            print(textwrap.fill(
+                  "Warning: The infrastructure network was not configured, "
+                  "and the management interface link capacity is less than "
+                  "10000 Mbps. This is not a supported configuration and "
+                  "will result in unacceptable DRBD sync times.", 80))
 
     def verify_branding(self):
         """ Verify the constraints for custom branding procedure """
@@ -3664,7 +3666,7 @@ class ConfigAssistant():
                     # one of the openstack passwords failed validation!
                     fail_msg = ("%s: %s" % (stanza.keys()[0], msg))
                     if console:
-                        print textwrap.fill(fail_msg, 80)
+                        print(textwrap.fill(fail_msg, 80))
                         return False
                     raise ConfigFail(fail_msg)
             except Exception as e:
@@ -4665,7 +4667,7 @@ class ConfigAssistant():
                 elif user_input.lower() == 'n':
                     raise UserQuit
                 else:
-                    print "Invalid choice"
+                    print("Invalid choice")
 
         # Verify at most one branding tarball is present
         self.verify_branding()
@@ -4673,7 +4675,7 @@ class ConfigAssistant():
         self.write_config_file()
         utils.write_simplex_flag()
 
-        print "\nApplying configuration (this will take several minutes):"
+        print("\nApplying configuration (this will take several minutes):")
 
         runner = progress.ProgressRunner()
         runner.add(self.create_bootstrap_config,
@@ -4697,33 +4699,33 @@ class ConfigAssistant():
     def check_required_interfaces_status(self):
         if self.management_interface_configured:
             if not is_interface_up(self.management_interface):
-                print
+                print('')
                 if (self.system_mode !=
                         sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT
                         and self.system_mode !=
                         sysinv_constants.SYSTEM_MODE_SIMPLEX):
-                    print textwrap.fill(
+                    print(textwrap.fill(
                         "Warning: The interface (%s) is not operational "
                         "and some platform services will not start properly. "
                         "Bring up the interface to enable the required "
-                        "services." % self.management_interface, 80)
+                        "services." % self.management_interface, 80))
 
         if self.infrastructure_interface_configured:
             if not is_interface_up(self.infrastructure_interface):
                 if self.system_mode != \
                         sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT:
-                    print
-                    print textwrap.fill(
+                    print('')
+                    print(textwrap.fill(
                         "Warning: The interface (%s) is not operational "
                         "and some platform services will not start properly. "
                         "Bring up the interface to enable the required "
-                        "services." % self.infrastructure_interface, 80)
+                        "services." % self.infrastructure_interface, 80))
 
         if self.external_oam_interface_configured:
             if not is_interface_up(self.external_oam_interface):
-                print
-                print textwrap.fill(
-                    "Warning: The interface (%s) is not operational "
-                    "and some OAM services will not start properly. "
-                    "Bring up the interface to enable the required "
-                    "services." % self.external_oam_interface, 80)
+                print('')
+                print(textwrap.fill(
+                      "Warning: The interface (%s) is not operational "
+                      "and some OAM services will not start properly. "
+                      "Bring up the interface to enable the required "
+                      "services." % self.external_oam_interface, 80))

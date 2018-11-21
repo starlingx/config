@@ -5,6 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 
+from __future__ import print_function
 import sys
 import os
 from six.moves import configparser
@@ -24,11 +25,11 @@ def parse_config(config_file):
 
 
 def show_help():
-    print ("Usage: %s\n"
-           "Perform validation of a given configuration file\n\n"
-           "--system-config <name>   Validate a system configuration file\n"
-           "--region-config <name>   Validate a region configuration file\n"
-           % sys.argv[0])
+    print("Usage: %s\n"
+          "Perform validation of a given configuration file\n\n"
+          "--system-config <name>   Validate a system configuration file\n"
+          "--region-config <name>   Validate a region configuration file\n"
+          % sys.argv[0])
     exit(1)
 
 
@@ -44,8 +45,8 @@ def main():
             if arg < len(sys.argv):
                 config_file = sys.argv[arg]
             else:
-                print "--system-config requires the filename of the config " \
-                      "file"
+                print("--system-config requires the filename of the config "
+                      "file")
                 exit(1)
             system_config = True
         elif sys.argv[arg] == "--region-config":
@@ -53,19 +54,19 @@ def main():
             if arg < len(sys.argv):
                 config_file = sys.argv[arg]
             else:
-                print "--region-config requires the filename of the config " \
-                      "file"
+                print("--region-config requires the filename of the config "
+                      "file")
                 exit(1)
             region_config = True
         elif sys.argv[arg] in ["--help", "-h", "-?"]:
             show_help()
         else:
-            print "Invalid option."
+            print("Invalid option.")
             show_help()
         arg += 1
 
     if [system_config, region_config].count(True) != 1:
-        print "Invalid combination of options selected"
+        print("Invalid combination of options selected")
         show_help()
 
     if system_config:
@@ -78,12 +79,12 @@ def main():
         exit(1)
 
     # Parse the system config file
-    print "Parsing configuration file... ",
+    print("Parsing configuration file... ", end=' ')
     system_config = parse_config(config_file)
-    print "DONE"
+    print("DONE")
 
     # Validate the system config file
-    print "Validating configuration file... ",
+    print("Validating configuration file... ", end=' ')
     try:
         # we use the presence of tsconfig to determine if we are onboard or
         # not since it will not be available in the offboard case
@@ -97,4 +98,4 @@ def main():
         print("Error parsing configuration file %s: %s" % (config_file, e))
     except (ConfigFail, ValidateFail) as e:
         print("\nValidation failed: %s" % e)
-    print "DONE"
+    print("DONE")

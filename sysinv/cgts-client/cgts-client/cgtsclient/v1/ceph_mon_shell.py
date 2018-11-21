@@ -62,13 +62,13 @@ def do_ceph_mon_modify(cc, args):
         for ceph_mon in cc.ceph_mon.list():
             cc.ceph_mon.update(ceph_mon.uuid, patch)
         _print_ceph_mon_list(cc)
-        print "\nNOTE: ceph_mon_gib for both controllers are changed."
+        print("\nNOTE: ceph_mon_gib for both controllers are changed.")
     else:
         ceph_mon = cc.ceph_mon.update(ceph_mon.uuid, patch)
         _print_ceph_mon_show(ceph_mon)
 
-    print "\nSystem configuration has changed.\nplease follow the " \
-          "administrator guide to complete configuring system.\n"
+    print("\nSystem configuration has changed.\nplease follow the "
+          "administrator guide to complete configuring system.\n")
 
 
 def do_ceph_mon_list(cc, args):

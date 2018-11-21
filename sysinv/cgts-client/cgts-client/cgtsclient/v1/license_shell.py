@@ -47,6 +47,6 @@ def do_license_install(cc, args):
     success = response.get('success')
     error = response.get('error')
     if success:
-        print success + "\n"
+        print(success + "\n")
     if error:
-        print error + "\n"
+        print(error + "\n")

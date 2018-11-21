@@ -93,7 +93,7 @@ def donot_servicegroup_delete(cc, args):
             cc.smapiClient.iservicegroup.delete(c)
         except exc.HTTPNotFound:
             raise exc.CommandError('Service not found: %s' % c)
-        print 'Deleted servicegroup %s' % c
+        print('Deleted servicegroup %s' % c)
 
 
 @utils.arg('iservicegroup',

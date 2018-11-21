@@ -22,9 +22,9 @@ import controllerconfig.systemconfig as cr  # noqa: E402
 def _dump_config(config):
     """ Prints contents of config object """
     for section in config.sections():
-        print "[%s]" % section
+        print("[%s]" % section)
         for (name, value) in config.items(section):
-            print "%s=%s" % (name, value)
+            print("%s=%s" % (name, value))
 
 
 def _test_system_config(filename):
@@ -34,7 +34,7 @@ def _test_system_config(filename):
     system_config = cr.parse_system_config(filename)
 
     # Dump results for debugging
-    print "Parsed system_config:\n"
+    print("Parsed system_config:\n")
     _dump_config(system_config)
 
     # Validate the system config file

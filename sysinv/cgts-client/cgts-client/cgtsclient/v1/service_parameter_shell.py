@@ -61,7 +61,7 @@ def do_service_parameter_delete(cc, args):
     """Delete a Service Parameter."""
 
     cc.service_parameter.delete(args.uuid)
-    print 'Deleted service parameter: %s' % args.uuid
+    print('Deleted service parameter: %s' % args.uuid)
 
 
 def _find_service_parameter(cc, service, section, name):
@@ -132,7 +132,7 @@ def do_service_parameter_apply(cc, args):
         cc.service_parameter.apply(args.service)
     except exc.HTTPNotFound:
         raise exc.CommandError('Failed to apply service parameters')
-    print 'Applying %s service parameters' % args.service
+    print('Applying %s service parameters' % args.service)
 
 
 @utils.arg('service',

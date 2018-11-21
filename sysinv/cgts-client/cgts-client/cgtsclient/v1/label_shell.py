@@ -75,7 +75,7 @@ def do_host_label_remove(cc, args):
         lbl = _find_host_label(cc, ihost, i)
         if lbl:
             cc.label.remove(lbl.uuid)
-            print 'Deleted host label %s for host %s' % (i, ihost.hostname)
+            print('Deleted host label %s for host %s' % (i, ihost.hostname))
 
 
 def _find_host_label(cc, host, label):

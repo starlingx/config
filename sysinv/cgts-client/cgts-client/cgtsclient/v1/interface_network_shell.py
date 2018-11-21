@@ -92,4 +92,4 @@ def do_interface_network_assign(cc, args):
 def do_interface_network_remove(cc, args):
     """Remove an assigned network from an interface."""
     cc.interface_network.remove(args.interface_network_uuid)
-    print 'Deleted Interface Network: %s' % args.interface_network_uuid
+    print('Deleted Interface Network: %s' % args.interface_network_uuid)

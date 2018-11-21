@@ -124,10 +124,10 @@ class OpenStack(object):
 
 
 def show_help():
-    print ("Usage: %s  <user_action_log_file>" % sys.argv[0])
-    print textwrap.fill(
+    print("Usage: %s  <user_action_log_file>" % sys.argv[0])
+    print(textwrap.fill(
         "Tidy storage post system restore. Check user actions "
-        "in the generated user_action_log_file.", 80)
+        "in the generated user_action_log_file.", 80))
 
 
 def tidy_storage(result_file):
@@ -219,7 +219,7 @@ def tidy_storage(result_file):
                     'rbd://{}/images/{}/snap'.format(ceph_cluster[0],
                                                      image)
 
-                print ("Creating a Glance image %s ...\n " % fields['name'])
+                print("Creating a Glance image %s ...\n " % fields['name'])
                 g_client_v1.images.create(**fields)
             except subprocess.CalledProcessError:
                 LOG.error("Failed to access rbd image %s" % image)
@@ -242,7 +242,7 @@ def tidy_storage(result_file):
 
         snaps_no_backend_vol = []
         for snap in snap_l:
-            print ("Check if volume snapshot %s has backend " % snap.name)
+            print("Check if volume snapshot %s has backend " % snap.name)
             try:
                 output = subprocess.check_output(
                     ["rbd", "ls", "--pool", "cinder-volumes"],
@@ -278,8 +278,8 @@ def tidy_storage(result_file):
 
                 if not keep_snap:
                     try:
-                        print ("Volume snapshot %s has no backend data. "
-                               "Deleting it from Cinder...\n" % snap.name)
+                        print("Volume snapshot %s has no backend data. "
+                              "Deleting it from Cinder...\n" % snap.name)
 
                         c_client.volume_snapshots.delete(c_utils.find_resource(
                             c_client.volume_snapshots, snap.id), force=True)
@@ -387,9 +387,9 @@ def tidy_storage(result_file):
                         # supported in rbd. So we just remove the snapshot.
 
                         # Remove the snapshot
-                        print (textwrap.fill(
-                               "Removing snapshot %s from volume %s "
-                               "in rbd...\n" % (snap, vol_id), 76))
+                        print(textwrap.fill(
+                              "Removing snapshot %s from volume %s "
+                              "in rbd...\n" % (snap, vol_id), 76))
                         del_snap = '{}@{}'.format(volume, snap)
                         output = subprocess.check_output(
                             ["rbd", "snap", "unprotect", del_snap],
@@ -440,8 +440,8 @@ def tidy_storage(result_file):
 
                 for snap in snap_l:
                     if snap not in cinder_snap_l:
-                        print ("Creating volume snapshot found-%s "
-                               "in Cinder...\n" % snap)
+                        print("Creating volume snapshot found-%s "
+                              "in Cinder...\n" % snap)
 
                         c_client.volume_snapshots.manage(
                             volume_id=vol_id,

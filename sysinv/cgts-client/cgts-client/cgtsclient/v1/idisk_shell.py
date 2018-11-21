@@ -106,7 +106,7 @@ def do_host_disk_wipe(cc, args):
              "Continue [yes/N]: ")
         confirm = input(warning_message)
         if confirm != 'yes':
-            print "Operation cancelled."
+            print("Operation cancelled.")
             return
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)

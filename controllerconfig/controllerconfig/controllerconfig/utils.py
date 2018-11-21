@@ -626,7 +626,7 @@ def apply_manifest(controller_address_0, personality, manifest, hieradata,
             subprocess.check_call(cmd, stdout=flog, stderr=flog)
     except subprocess.CalledProcessError:
         msg = "Failed to execute %s manifest" % manifest
-        print msg
+        print(msg)
         raise Exception(msg)
 
 
@@ -657,7 +657,7 @@ def create_static_config():
         subprocess.check_call(cmd)
     except subprocess.CalledProcessError:
         msg = "Failed to create puppet hiera static config"
-        print msg
+        print(msg)
         raise Exception(msg)
 
 
@@ -669,7 +669,7 @@ def create_system_config():
         subprocess.check_call(cmd)
     except subprocess.CalledProcessError:
         msg = "Failed to update puppet hiera system config"
-        print msg
+        print(msg)
         raise Exception(msg)
 
 
@@ -684,7 +684,7 @@ def create_host_config(hostname=None):
         subprocess.check_call(cmd)
     except subprocess.CalledProcessError:
         msg = "Failed to update puppet hiera host config"
-        print msg
+        print(msg)
         raise Exception(msg)
 
 
@@ -821,7 +821,7 @@ def apply_banner_customization():
                                   stdout=blog, stderr=blog)
     except subprocess.CalledProcessError:
         error_text = "Failed to apply banner customization"
-        print "%s; see %s for detail" % (error_text, logfile)
+        print("%s; see %s for detail" % (error_text, logfile))
 
 
 def mtce_restart():

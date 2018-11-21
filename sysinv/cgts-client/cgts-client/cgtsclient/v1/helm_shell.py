@@ -53,8 +53,8 @@ def do_helm_override_delete(cc, args):
     """Delete overrides for a chart."""
     try:
         cc.helm.delete_overrides(args.chart, args.namespace)
-        print 'Deleted chart overrides for %s:%s' % (
-            args.chart, args.namespace)
+        print('Deleted chart overrides for %s:%s' % (
+            args.chart, args.namespace))
     except exc.HTTPNotFound:
         raise exc.CommandError('chart overrides not found: %s:%s' % (
             args.chart, args.namespace))

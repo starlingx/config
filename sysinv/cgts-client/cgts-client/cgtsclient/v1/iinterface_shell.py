@@ -111,7 +111,7 @@ def do_host_if_delete(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     i = _find_interface(cc, ihost, args.ifnameoruuid)
     cc.iinterface.delete(i.uuid)
-    print 'Deleted interface: host %s if %s' % (args.hostnameorid, args.ifnameoruuid)
+    print('Deleted interface: host %s if %s' % (args.hostnameorid, args.ifnameoruuid))
 
 
 @utils.arg('hostnameorid',

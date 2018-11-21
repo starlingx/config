@@ -80,7 +80,7 @@ def do_servicegroup_delete(cc, args):
             cc.iservicegroup.delete(c)
         except exc.HTTPNotFound:
             raise exc.CommandError('Service not found: %s' % c)
-        print 'Deleted servicegroup %s' % c
+        print('Deleted servicegroup %s' % c)
 
 
 @utils.arg('iservicegroup',

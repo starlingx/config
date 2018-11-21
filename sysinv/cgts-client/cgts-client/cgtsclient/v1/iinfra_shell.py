@@ -26,7 +26,7 @@ def do_infra_show(cc, args):
 
     iinfras = cc.iinfra.list()
     if not iinfras:
-        print "Infrastructure network not configured"
+        print("Infrastructure network not configured")
         return
 
     iinfra = iinfras[0]
@@ -73,7 +73,7 @@ def do_infra_modify(cc, args):
 
     iinfras = cc.iinfra.list()
     if not iinfras:
-        print "Infrastructure network not configured"
+        print("Infrastructure network not configured")
         return
 
     iinfra = iinfras[0]
@@ -97,7 +97,7 @@ def do_infra_modify(cc, args):
 def do_infra_apply(cc, args):
     infras = cc.iinfra.list()
     if not infras:
-        print "Infrastructure network not configured"
+        print("Infrastructure network not configured")
         return
 
     infra = infras[0]

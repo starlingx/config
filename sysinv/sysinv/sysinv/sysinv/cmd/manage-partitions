@@ -151,7 +151,7 @@ def _gpt_table_present(device_node):
     output, _, _ = _command(["parted", "-s", device_node, "print"],
                             device_node=device_node)
     if not re.search('Partition Table: gpt', output):
-        print "Format of disk node %s is not GPT, returning" % device_node
+        print("Format of disk node %s is not GPT, returning" % device_node)
         return False
 
     return True
@@ -395,7 +395,7 @@ def _send_inventory_update(partition_update):
     sw_mismatch = os.environ.get('CONTROLLER_SW_VERSIONS_MISMATCH', None)
     hostname = socket.gethostname()
     if sw_mismatch and hostname == constants.CONTROLLER_1_HOSTNAME:
-        print "Don't send information to N-1 sysinv conductor, return."
+        print("Don't send information to N-1 sysinv conductor, return.")
         return
 
     ctxt = context.get_admin_context()
@@ -411,14 +411,14 @@ def _send_inventory_update(partition_update):
             rpcapi.update_partition_information(ctxt, partition_update)
             break
         except Exception as ex:
-            print "Exception trying to contact sysinv conductor: %s: %s " % \
-                  (type(ex).__name__, str(ex))
+            print("Exception trying to contact sysinv conductor: %s: %s " %
+                  (type(ex).__name__, str(ex)))
             if num_of_try < max_tries and "Timeout" in type(ex).__name__:
-                print "Could not contact sysinv conductor, try one more time.."
+                print("Could not contact sysinv conductor, try one more time..")
                 continue
             else:
-                print "Quit trying to send extra info to the conductor, " \
-                      "sysinv agent will provide this info later..."
+                print("Quit trying to send extra info to the conductor, "
+                      "sysinv agent will provide this info later...")
 
 
 def _wipe_partition(disk_node, start_in_sectors, size_in_sectors, sector_size):
@@ -472,7 +472,7 @@ def create_partitions(data, mode, pfile):
                     _send_inventory_update(p)
             return
 
-    print data
+    print(data)
 
     json_body = json.loads(data)
     for p in json_body:
@@ -484,8 +484,8 @@ def create_partitions(data, mode, pfile):
             # Obtain parted device and parted disk for the given disk device
             # path.
             if _partition_exists(part_device_path):
-                print "Partition %s already exists, returning." % \
-                      part_device_path
+                print("Partition %s already exists, returning." %
+                      part_device_path)
                 continue
 
             # If we only allow to add and remove partition to/from the end,
@@ -493,7 +493,7 @@ def create_partitions(data, mode, pfile):
             # the beginning and the rest of the available disk, if any).
             free_spaces = _get_free_space(device_node=disk_device_path)
             if len(free_spaces) > 2:
-                print ("Disk %s is fragmented. Partition creation aborted." %
+                print("Disk %s is fragmented. Partition creation aborted." %
                        disk_device_path)
 
             free_space = free_spaces[-1]
@@ -501,7 +501,7 @@ def create_partitions(data, mode, pfile):
             number_of_partitions = _get_no_of_partitions(disk_device_path)
             # If this is the 1st partition, allocate an extra 1MiB.
             if number_of_partitions == 0:
-                print "First partition, use an extra MiB"
+                print("First partition, use an extra MiB")
                 start_mib = 1
             else:
                 # Free space in sectors.
@@ -787,8 +787,8 @@ def delete_partitions(data, mode, pfile):
 
             try:
                 # Delete the partition.
-                print "Delete partition %s from %s" % (disk_device_path,
-                                                       part_number)
+                print("Delete partition %s from %s" % (disk_device_path,
+                                                       part_number))
                 _delete_partition(disk_device_path, part_number)
                 disk_available_mib = _get_available_space(disk_device_path)
                 response.update({'available_mib': disk_available_mib,
@@ -836,8 +836,8 @@ def check_partitions(data, mode, pfile):
                         lambda p, q: p.get('start_mib') - q.get('start_mib')):
             disk = _get_disk_device_path(p.get('device_path'))
             if _partition_exists(p.get('device_path')):
-                print 'Partition {} already exists on disk {}'.format(
-                    p.get('device_path'), disk)
+                print('Partition {} already exists on disk {}'.format(
+                    p.get('device_path'), disk))
                 continue
             partition_number = _get_partition_number(p.get('device_path'))
             _create_partition(disk, partition_number, p.get('start_mib'),
@@ -881,7 +881,7 @@ def main(argv):
                 "pfile": CONF.action.pfile,
                 "data": CONF.action.data})
         LOG.info(msg)
-        print msg
+        print(msg)
         run(CONF.action.func, CONF.action.data,
             CONF.action.mode, CONF.action.pfile)
     else:

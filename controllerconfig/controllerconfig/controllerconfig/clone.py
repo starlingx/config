@@ -9,6 +9,7 @@ Clone a Configured System and Install the image on another
 identical hardware or the same hardware.
 """
 
+from __future__ import print_function
 import os
 import re
 import glob
@@ -116,11 +117,11 @@ def check_size(archive_dir):
         utils.filesystem_get_free_space(archive_dir)
 
     if clone_size > archive_dir_free_space:
-        print ("\nArchive directory (%s) does not have enough free "
-               "space (%s), estimated size to create image is %s." %
-               (archive_dir,
-                utils.print_bytes(archive_dir_free_space),
-                utils.print_bytes(clone_size)))
+        print("\nArchive directory (%s) does not have enough free "
+              "space (%s), estimated size to create image is %s." %
+              (archive_dir,
+               utils.print_bytes(archive_dir_free_space),
+               utils.print_bytes(clone_size)))
         raise CloneFail("Not enough free space.\n")
 
 
@@ -475,7 +476,7 @@ def find_and_replace_in_file(target, find, replace):
                 fpat = r'\b' + find + r'\b'
                 line = re.sub(fpat, replace, line)
                 found = True
-            print line,
+            print(line, end=' ')
 
     except Exception as e:
         LOG.error("Failed to replace [{}] with [{}] in [{}]: {}"

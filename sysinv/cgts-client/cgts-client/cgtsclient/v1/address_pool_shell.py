@@ -59,7 +59,7 @@ def do_addrpool_list(cc, args):
 def do_addrpool_delete(cc, args):
     """Delete an IP address pool."""
     cc.address_pool.delete(args.address_pool_uuid)
-    print 'Deleted address pool: %s' % (args.address_pool_uuid)
+    print('Deleted address pool: %s' % (args.address_pool_uuid))
 
 
 def _get_range_tuples(data):

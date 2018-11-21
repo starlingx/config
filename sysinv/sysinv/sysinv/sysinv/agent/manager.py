@@ -33,6 +33,7 @@ Commands (from conductors) are received via RPC calls.
 
 """
 
+from __future__ import print_function
 import errno
 import fcntl
 import fileinput
@@ -1310,9 +1311,9 @@ class AgentManager(service.PeriodicService):
             shutil.copyfile(tsc.PLATFORM_CONF_FILE, temp_platform_conf_file)
             for line in fileinput.FileInput(temp_platform_conf_file, inplace=1):
                 if line.startswith("INSTALL_UUID="):
-                    print "INSTALL_UUID=%s" % install_uuid
+                    print("INSTALL_UUID=%s" % install_uuid)
                 else:
-                    print line,
+                    print(line, end=' ')
             fileinput.close()
             os.rename(temp_platform_conf_file, tsc.PLATFORM_CONF_FILE)
 

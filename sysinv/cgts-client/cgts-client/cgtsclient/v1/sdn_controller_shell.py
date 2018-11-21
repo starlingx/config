@@ -100,7 +100,7 @@ def do_sdn_controller_delete(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError("Failed to delete SDN controller entry: "
                                "invalid uuid: %s" % args.uuid)
-    print 'Deleted SDN controller: uuid %s' % args.uuid
+    print('Deleted SDN controller: uuid %s' % args.uuid)
 
 
 @utils.arg('uuid',

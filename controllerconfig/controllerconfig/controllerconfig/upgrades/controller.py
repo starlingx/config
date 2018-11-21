@@ -450,7 +450,7 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
     # Execute import commands
     for cmd in import_commands:
         try:
-            print "Importing %s" % cmd[0]
+            print("Importing %s" % cmd[0])
             LOG.info("Executing import command: %s" % cmd[1])
             subprocess.check_call([cmd[1]],
                                   shell=True, stdout=devnull)
@@ -483,7 +483,7 @@ def create_databases(from_release, to_release, db_credentials):
         with conn:
             with conn.cursor() as cur:
                 for database in databases_to_create:
-                    print "Creating %s database" % database
+                    print("Creating %s database" % database)
                     username = psycopg2.extensions.AsIs(
                         '\"%s\"' % db_credentials[database]['username'])
                     db_name = psycopg2.extensions.AsIs('\"%s\"' % database)
@@ -513,7 +513,7 @@ def migrate_sysinv_database():
 
     sysinv_cmd = 'sysinv-dbsync'
     try:
-        print "Migrating sysinv"
+        print("Migrating sysinv")
         LOG.info("Executing migrate command: %s" % sysinv_cmd)
         subprocess.check_call([sysinv_cmd],
                               shell=True, stdout=devnull, stderr=devnull)
@@ -686,7 +686,7 @@ def migrate_databases(from_release, shared_services, db_credentials,
     # Execute migrate commands
     for cmd in migrate_commands:
         try:
-            print "Migrating %s" % cmd[0]
+            print("Migrating %s" % cmd[0])
             LOG.info("Executing migrate command: %s" % cmd[1])
             subprocess.check_call([cmd[1]],
                                   shell=True, stdout=devnull, stderr=devnull)
@@ -826,19 +826,19 @@ def upgrade_controller(from_release, to_release):
     nfs_mount_filesystem(utils.POSTGRES_PATH, POSTGRES_MOUNT_PATH)
 
     # Migrate keyring data
-    print "Migrating keyring data..."
+    print("Migrating keyring data...")
     migrate_keyring_data(from_release, to_release)
 
     # Migrate pxeboot config
-    print "Migrating pxeboot configuration..."
+    print("Migrating pxeboot configuration...")
     migrate_pxeboot_config(from_release, to_release)
 
     # Migrate sysinv data.
-    print "Migrating sysinv configuration..."
+    print("Migrating sysinv configuration...")
     migrate_sysinv_data(from_release, to_release)
 
     # Prepare for database migration
-    print "Preparing for database migration..."
+    print("Preparing for database migration...")
     prepare_postgres_filesystems()
 
     # Create the postgres database
@@ -863,7 +863,7 @@ def upgrade_controller(from_release, to_release):
     time.sleep(5)
 
     # Import databases
-    print "Importing databases..."
+    print("Importing databases...")
     import_databases(from_release, to_release)
 
     shared_services = get_shared_services()
@@ -881,17 +881,17 @@ def upgrade_controller(from_release, to_release):
     db_credentials = get_db_credentials(shared_services, from_release)
 
     # Create any new databases
-    print "Creating new databases..."
+    print("Creating new databases...")
     create_databases(from_release, to_release, db_credentials)
 
-    print "Migrating databases..."
+    print("Migrating databases...")
     # Migrate sysinv database
     migrate_sysinv_database()
 
     # Migrate databases
     migrate_databases(from_release, shared_services, db_credentials)
 
-    print "Applying configuration..."
+    print("Applying configuration...")
 
     # Execute migration scripts
     utils.execute_migration_scripts(
@@ -934,7 +934,7 @@ def upgrade_controller(from_release, to_release):
         LOG.info("Failed to update hiera configuration")
         raise
 
-    print "Shutting down upgrade processes..."
+    print("Shutting down upgrade processes...")
 
     # Stop postgres service
     LOG.info("Stopping postgresql service")
@@ -957,7 +957,7 @@ def upgrade_controller(from_release, to_release):
         raise
 
     # Copy upgraded database back to controller-0
-    print "Writing upgraded databases..."
+    print("Writing upgraded databases...")
     LOG.info("Copying upgraded database to controller-0")
     try:
         subprocess.check_call(
@@ -1003,13 +1003,13 @@ def upgrade_controller(from_release, to_release):
     unmount_filesystem("/tmp/etc_platform")
     os.rmdir("/tmp/etc_platform")
 
-    print "Controller-1 upgrade complete"
+    print("Controller-1 upgrade complete")
     LOG.info("Controller-1 upgrade complete!!!")
 
 
 def show_help():
-    print ("Usage: %s <FROM_RELEASE> <TO_RELEASE>" % sys.argv[0])
-    print "Upgrade controller-1. For internal use only."
+    print("Usage: %s <FROM_RELEASE> <TO_RELEASE>" % sys.argv[0])
+    print("Upgrade controller-1. For internal use only.")
 
 
 def main():
@@ -1026,22 +1026,22 @@ def main():
         elif arg == 2:
             to_release = sys.argv[arg]
         else:
-            print ("Invalid option %s. Use --help for more information." %
-                   sys.argv[arg])
+            print("Invalid option %s. Use --help for more information." %
+                  sys.argv[arg])
             exit(1)
         arg += 1
 
     log.configure()
 
     if not from_release or not to_release:
-        print "Both the FROM_RELEASE and TO_RELEASE must be specified"
+        print("Both the FROM_RELEASE and TO_RELEASE must be specified")
         exit(1)
 
     try:
         upgrade_controller(from_release, to_release)
     except Exception as e:
         LOG.exception(e)
-        print "Upgrade failed: {}".format(e)
+        print("Upgrade failed: {}".format(e))
 
         # Set upgrade fail flag on mate controller
         LOG.info("Set upgrade fail flag on mate controller")
@@ -1520,13 +1520,13 @@ def upgrade_controller_simplex(backup_file):
 
 
 def print_log_info(string):
-    print string
+    print(string)
     LOG.info(string)
 
 
 def show_help_simplex():
-    print ("Usage: %s <BACKUP_FILE>" % sys.argv[0])
-    print "Upgrade controller-0 simplex. For internal use only."
+    print("Usage: %s <BACKUP_FILE>" % sys.argv[0])
+    print("Upgrade controller-0 simplex. For internal use only.")
 
 
 def simplex_main():
@@ -1539,8 +1539,8 @@ def simplex_main():
         elif arg == 1:
             backup_file = sys.argv[arg]
         else:
-            print ("Invalid option %s. Use --help for more information." %
-                   sys.argv[arg])
+            print("Invalid option %s. Use --help for more information." %
+                  sys.argv[arg])
             exit(1)
         arg += 1
 
@@ -1554,14 +1554,14 @@ def simplex_main():
         exit(1)
 
     if not backup_file:
-        print "The BACKUP_FILE must be specified"
+        print("The BACKUP_FILE must be specified")
         exit(1)
 
     try:
         upgrade_controller_simplex(backup_file)
     except Exception as e:
         LOG.exception(e)
-        print "Upgrade failed: {}".format(e)
+        print("Upgrade failed: {}".format(e))
         # TODO SET Upgrade fail flag
         # Set upgrade fail flag on mate controller
         exit(1)
