@@ -25,6 +25,7 @@ import jsonpatch
 import pecan
 from pecan import rest
 
+import six
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -259,7 +260,7 @@ class InfraNetworkController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "VLAN id must be between 1 and 4094."))
             else:
-                infra['infra_vlan_id'] = unicode(infra['infra_vlan_id'])
+                infra['infra_vlan_id'] = six.text_type(infra['infra_vlan_id'])
         return infra
 
     @staticmethod

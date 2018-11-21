@@ -26,6 +26,7 @@ SHOULD include dedicated exception logging.
 """
 
 import functools
+import six
 
 from oslo_config import cfg
 
@@ -158,7 +159,7 @@ class SysinvException(Exception):
         if self.__class__.__name__.endswith('_Remote'):
             return self.args[0]
         else:
-            return unicode(self)
+            return six.text_type(self)
 
 
 class NotAuthorized(SysinvException):

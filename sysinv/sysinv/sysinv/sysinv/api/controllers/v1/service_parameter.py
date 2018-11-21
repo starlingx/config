@@ -11,6 +11,7 @@ import copy
 import netaddr
 import pecan
 from pecan import rest
+import six
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -996,7 +997,7 @@ class ServiceParameterController(rest.RestController):
         return service
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose('json', body=unicode)
+    @wsme_pecan.wsexpose('json', body=six.text_type)
     def apply(self, body):
         """ Apply the service parameters."""
         service = self._get_service(body)

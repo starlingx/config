@@ -140,7 +140,7 @@ class HostProvisionState(state.State):
 
 class HostProvisionStateController(rest.RestController):
     # GET ihosts/<uuid>/state/provision
-    @wsme_pecan.wsexpose(HostProvisionState, unicode)
+    @wsme_pecan.wsexpose(HostProvisionState, six.text_type)
     def get(self, ihost_id):
         ihost = objects.host.get_by_uuid(pecan.request.context,
                                          ihost_id)
@@ -149,7 +149,7 @@ class HostProvisionStateController(rest.RestController):
         return provision_state
 
     # PUT ihosts/<uuid>/state/provision
-    @wsme_pecan.wsexpose(HostProvisionState, unicode, unicode, status=202)
+    @wsme_pecan.wsexpose(HostProvisionState, six.text_type, six.text_type, status=202)
     def put(self, ihost_id, target):
         """Set the provision state of the machine."""
         # TODO(lucasagomes): Test if target is a valid state and if it's able
@@ -188,7 +188,7 @@ class HostStatesController(rest.RestController):
     }
 
     # GET ihosts/<uuid>/state
-    @wsme_pecan.wsexpose(HostStates, unicode)
+    @wsme_pecan.wsexpose(HostStates, six.text_type)
     def get(self, ihost_id):
         """List or update the state of a ihost."""
         ihost = objects.host.get_by_uuid(pecan.request.context,
@@ -207,7 +207,7 @@ class HostStatesController(rest.RestController):
 
     # PUT ihosts/<uuid>/state/update_install_uuid
     @cutils.synchronized(LOCK_NAME_STATE)
-    @wsme_pecan.wsexpose(HostStates, types.uuid, body=unicode)
+    @wsme_pecan.wsexpose(HostStates, types.uuid, body=six.text_type)
     def update_install_uuid(self, host_uuid, install_uuid):
         """ Update install_uuid in /etc/platform/platform.conf
             on the specified host.
@@ -223,7 +223,7 @@ class HostStatesController(rest.RestController):
 
     # PUT ihosts/<uuid>/state/host_cpus_modify
     @cutils.synchronized(cpu_api.LOCK_NAME)
-    @wsme_pecan.wsexpose(cpu_api.CPUCollection, types.uuid, body=[unicode])
+    @wsme_pecan.wsexpose(cpu_api.CPUCollection, types.uuid, body=[six.text_type])
     def host_cpus_modify(self, host_uuid, capabilities):
         """ Perform bulk host cpus modify.
             :param host_uuid: UUID of the host
@@ -1170,8 +1170,8 @@ class HostController(rest.RestController):
                 activity = 'Controller-Standby'
             host['capabilities'].update({'Personality': activity})
 
-    @wsme_pecan.wsexpose(HostCollection, unicode, unicode, int, unicode,
-                         unicode, unicode)
+    @wsme_pecan.wsexpose(HostCollection, six.text_type, six.text_type, int, six.text_type,
+                         six.text_type, six.text_type)
     def get_all(self, isystem_id=None, marker=None, limit=None,
                 personality=None,
                 sort_key='id', sort_dir='asc'):
@@ -1182,7 +1182,7 @@ class HostController(rest.RestController):
                                                  sort_key=sort_key,
                                                  sort_dir=sort_dir)
 
-    @wsme_pecan.wsexpose(unicode, unicode, body=unicode)
+    @wsme_pecan.wsexpose(six.text_type, six.text_type, body=six.text_type)
     def install_progress(self, uuid, install_state,
                          install_state_info=None):
         """ Update the install status for the given host."""
@@ -1200,8 +1200,8 @@ class HostController(rest.RestController):
                                          'install_state_info':
                                           install_state_info})
 
-    @wsme_pecan.wsexpose(HostCollection, unicode, unicode, int, unicode,
-                         unicode, unicode)
+    @wsme_pecan.wsexpose(HostCollection, six.text_type, six.text_type, int, six.text_type,
+                         six.text_type, six.text_type)
     def detail(self, isystem_id=None, marker=None, limit=None,
                personality=None,
                sort_key='id', sort_dir='asc'):
@@ -1220,7 +1220,7 @@ class HostController(rest.RestController):
                                                  sort_key=sort_key,
                                                  sort_dir=sort_dir)
 
-    @wsme_pecan.wsexpose(Host, unicode)
+    @wsme_pecan.wsexpose(Host, six.text_type)
     def get_one(self, uuid):
         """Retrieve information about the given ihost."""
         if self._from_isystem:
@@ -1708,7 +1708,7 @@ class HostController(rest.RestController):
 
         return self._do_post(ihost_dict)
 
-    @wsme_pecan.wsexpose(Host, unicode, body=[unicode])
+    @wsme_pecan.wsexpose(Host, six.text_type, body=[six.text_type])
     def patch(self, uuid, patch):
         """ Update an existing ihost.
         """
@@ -2230,7 +2230,7 @@ class HostController(rest.RestController):
         return True
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, unicode, status_code=204)
+    @wsme_pecan.wsexpose(None, six.text_type, status_code=204)
     def delete(self, ihost_id):
         """Delete an ihost.
         """
@@ -2487,7 +2487,7 @@ class HostController(rest.RestController):
                                              target_load)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(Host, unicode, body=unicode)
+    @wsme_pecan.wsexpose(Host, six.text_type, body=six.text_type)
     def upgrade(self, uuid, body):
         """Upgrade the host to the specified load"""
 
@@ -2571,7 +2571,7 @@ class HostController(rest.RestController):
         return Host.convert_with_links(rpc_ihost)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(Host, unicode, body=unicode)
+    @wsme_pecan.wsexpose(Host, six.text_type, body=six.text_type)
     def downgrade(self, uuid, body):
         """Downgrade the host to the specified load"""
 

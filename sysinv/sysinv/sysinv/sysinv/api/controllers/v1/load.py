@@ -23,6 +23,7 @@ import jsonpatch
 import socket
 
 import pecan
+import six
 from pecan import rest
 
 import wsme
@@ -192,7 +193,7 @@ class LoadController(rest.RestController):
         return self._get_loads_collection(marker, limit, sort_key, sort_dir,
                                           expand, resource_url)
 
-    @wsme_pecan.wsexpose(Load, unicode)
+    @wsme_pecan.wsexpose(Load, six.text_type)
     def get_one(self, load_uuid):
         """Retrieve information about the given Load."""
 
@@ -285,8 +286,8 @@ class LoadController(rest.RestController):
         return Load.convert_with_links(new_load)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme.validate(unicode, [LoadPatchType])
-    @wsme_pecan.wsexpose(Load, unicode,
+    @wsme.validate(six.text_type, [LoadPatchType])
+    @wsme_pecan.wsexpose(Load, six.text_type,
                          body=[LoadPatchType])
     def patch(self, load_id, patch):
         """Update an existing load."""
@@ -317,7 +318,7 @@ class LoadController(rest.RestController):
         return Load.convert_with_links(rpc_load)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, unicode, status_code=204)
+    @wsme_pecan.wsexpose(None, six.text_type, status_code=204)
     def delete(self, load_id):
         """Delete a load."""
 

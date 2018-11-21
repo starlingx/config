@@ -10,6 +10,7 @@
 import pecan
 from pecan import rest, expose
 import os
+import six
 import socket
 import wsme
 from wsme import types as wtypes
@@ -185,7 +186,7 @@ class UpgradeController(rest.RestController):
         return Upgrade.convert_with_links(rpc_upgrade)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(Upgrade, body=unicode)
+    @wsme_pecan.wsexpose(Upgrade, body=six.text_type)
     def post(self, body):
         """Create a new Software Upgrade instance and start upgrade."""
 
@@ -420,7 +421,7 @@ class UpgradeController(rest.RestController):
 
         return Upgrade.convert_with_links(upgrade)
 
-    @wsme_pecan.wsexpose(wtypes.text, unicode)
+    @wsme_pecan.wsexpose(wtypes.text, six.text_type)
     def in_upgrade(self, uuid):
         # uuid is added here for potential future use
         try:

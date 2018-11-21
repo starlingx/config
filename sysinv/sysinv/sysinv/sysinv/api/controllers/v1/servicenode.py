@@ -5,6 +5,7 @@
 #
 
 from pecan import rest
+import six
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -51,7 +52,7 @@ class SMServiceNodeCollection(base.APIBase):
 
 class SMServiceNodeController(rest.RestController):
 
-    @wsme_pecan.wsexpose(SMServiceNode, unicode)
+    @wsme_pecan.wsexpose(SMServiceNode, six.text_type)
     def get_one(self, uuid):
         sm_servicenode = sm_api.servicenode_show(uuid)
         if sm_servicenode is None:

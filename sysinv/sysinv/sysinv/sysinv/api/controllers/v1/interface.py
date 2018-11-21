@@ -827,7 +827,7 @@ def _check_interface_vlan_id(op, interface, ihost, from_profile=False):
         if interface['vlan_id'] < 1 or interface['vlan_id'] > 4094:
             raise wsme.exc.ClientSideError(_("VLAN id must be between 1 and 4094."))
         else:
-            interface['vlan_id'] = unicode(interface['vlan_id'])
+            interface['vlan_id'] = six.text_type(interface['vlan_id'])
     return interface
 
 

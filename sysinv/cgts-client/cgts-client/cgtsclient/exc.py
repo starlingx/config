@@ -10,6 +10,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
 import sys
 
 
@@ -207,7 +208,7 @@ class CgtsclientException(Exception):
         if self.__class__.__name__.endswith('_Remote'):
             return self.args[0]
         else:
-            return unicode(self)
+            return six.text_type(self)
 
 
 class AmbiguousEndpoints(CgtsclientException):

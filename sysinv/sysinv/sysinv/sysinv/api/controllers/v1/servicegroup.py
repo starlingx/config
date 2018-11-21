@@ -7,6 +7,7 @@
 # this file is used for service group requests. Keeping naming consistent with sm client
 
 from pecan import rest
+import six
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -55,7 +56,7 @@ class SMServiceGroupCollection(base.APIBase):
 
 class SMServiceGroupController(rest.RestController):
 
-    @wsme_pecan.wsexpose(SMServiceGroup, unicode)
+    @wsme_pecan.wsexpose(SMServiceGroup, six.text_type)
     def get_one(self, uuid):
         sm_servicegroup = sm_api.sm_servicegroup_show(uuid)
         if sm_servicegroup is None:

@@ -414,7 +414,7 @@ class SensorGroupController(rest.RestController):
             raise wsme.exc.ClientSideError("_get_host_uuid lookup failed")
         return host.uuid
 
-    @wsme_pecan.wsexpose('json', body=unicode)
+    @wsme_pecan.wsexpose('json', body=six.text_type)
     def relearn(self, body):
         """ Handle Sensor Model Relearn Request."""
         host_uuid = self._get_host_uuid(body)

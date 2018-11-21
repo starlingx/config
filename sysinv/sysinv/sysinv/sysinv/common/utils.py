@@ -536,7 +536,7 @@ def convert_to_list_dict(lst, label):
 
 def sanitize_hostname(hostname):
     """Return a hostname which conforms to RFC-952 and RFC-1123 specs."""
-    if isinstance(hostname, unicode):
+    if isinstance(hostname, six.string_types):
         hostname = hostname.encode('latin-1', 'ignore')
 
     hostname = re.sub('[ _]', '-', hostname)

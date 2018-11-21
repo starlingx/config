@@ -150,7 +150,7 @@ LOCK_NAME = 'SMServiceController'
 
 class SMServiceController(rest.RestController):
 
-    @wsme_pecan.wsexpose(SMService, unicode)
+    @wsme_pecan.wsexpose(SMService, six.text_type)
     def get_one(self, uuid):
         sm_service = sm_api.service_show(uuid)
         if sm_service is None:
@@ -172,7 +172,7 @@ class SMServiceController(rest.RestController):
                     "Bad response from SM API"))
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(Service, wtypes.text, body=[unicode])
+    @wsme_pecan.wsexpose(Service, wtypes.text, body=[six.text_type])
     def patch(self, service_name, patch):
         """Update the service configuration."""
 

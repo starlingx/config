@@ -809,8 +809,8 @@ class ProfileController(rest.RestController):
 
         return stor_profiles
 
-    @wsme_pecan.wsexpose(ProfileCollection, unicode, unicode, int,
-                         unicode, unicode)
+    @wsme_pecan.wsexpose(ProfileCollection, six.text_type, six.text_type, int,
+                         six.text_type, six.text_type)
     def get_all(self, chassis_id=None, marker=None, limit=None,
                 sort_key='id', sort_dir='asc'):
         """Retrieve a list of ihosts."""
@@ -820,8 +820,8 @@ class ProfileController(rest.RestController):
                                                     sort_key=sort_key,
                                                     sort_dir=sort_dir)
 
-    @wsme_pecan.wsexpose(ProfileCollection, unicode, unicode, int,
-                         unicode, unicode)
+    @wsme_pecan.wsexpose(ProfileCollection, six.text_type, six.text_type, int,
+                         six.text_type, six.text_type)
     def detail(self, chassis_id=None, marker=None, limit=None,
                sort_key='id', sort_dir='asc'):
         """Retrieve a list of ihosts with detail."""
@@ -839,7 +839,7 @@ class ProfileController(rest.RestController):
                                                     sort_key=sort_key,
                                                     sort_dir=sort_dir)
 
-    @wsme_pecan.wsexpose(Profile, unicode)
+    @wsme_pecan.wsexpose(Profile, six.text_type)
     def get_one(self, uuid):
         """Retrieve information about the given ihost."""
         if self._from_chassis:
@@ -944,7 +944,7 @@ class ProfileController(rest.RestController):
         return iprofile.convert_with_links(new_ihost)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(Profile, unicode, body=[unicode])
+    @wsme_pecan.wsexpose(Profile, six.text_type, body=[six.text_type])
     def patch(self, uuid, patch):
         """Update an existing iprofile.
         """
@@ -999,7 +999,7 @@ class ProfileController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, unicode, status_code=204)
+    @wsme_pecan.wsexpose(None, six.text_type, status_code=204)
     def delete(self, ihost_id):
         """Delete an ihost profile.
         """
@@ -2694,9 +2694,9 @@ def ifprofile_apply_to_host(host, profile):
             uses_list = []
             usedby_list = []
             for u in iinterfaces:
-                if unicode(u.ifname) in i.uses or u.uuid in i.uses:
+                if six.text_type(u.ifname) in i.uses or u.uuid in i.uses:
                     uses_list.append(u.uuid)
-                if unicode(u.ifname) in i.used_by or u.uuid in i.used_by:
+                if six.text_type(u.ifname) in i.used_by or u.uuid in i.used_by:
                     usedby_list.append(u.uuid)
 
             idict['uses'] = uses_list

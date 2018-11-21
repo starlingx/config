@@ -358,7 +358,7 @@ class SystemController(rest.RestController):
         raise exception.OperationNotPermitted
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(System, types.uuid, body=[unicode])
+    @wsme_pecan.wsexpose(System, types.uuid, body=[six.text_type])
     def patch(self, isystem_uuid, patch):
         """Update an existing isystem.
 
