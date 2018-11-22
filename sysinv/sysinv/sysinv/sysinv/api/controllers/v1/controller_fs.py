@@ -253,22 +253,10 @@ def _check_controller_multi_fs(controller_fs_new_list,
 
     LOG.info("_check_controller__multi_fs ceph_mon_gib_new = %s" % ceph_mon_gib_new)
 
-    device_path_ctrl0 = None
-    device_path_ctrl1 = None
+    cgtsvg_max_free_GiB = _get_controller_cgtsvg_limit()
 
-    if ceph_mons:
-        for ceph_mon in ceph_mons:
-            ihost = pecan.request.dbapi.ihost_get(ceph_mon.forihostid)
-            if ihost.hostname == constants.CONTROLLER_0_HOSTNAME:
-                device_path_ctrl0 = ceph_mon.device_path
-            if ihost.hostname == constants.CONTROLLER_1_HOSTNAME:
-                device_path_ctrl1 = ceph_mon.device_path
-
-    rootfs_max_GiB, cgtsvg_max_free_GiB = \
-        _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1)
-
-    LOG.info("_check_controller_multi_fs rootfs_max_GiB = %s cgtsvg_max_free_GiB = %s " %
-             (rootfs_max_GiB, cgtsvg_max_free_GiB))
+    LOG.info("_check_controller_multi_fs cgtsvg_max_free_GiB = %s " %
+             cgtsvg_max_free_GiB)
 
     _check_relative_controller_multi_fs(controller_fs_new_list)
 
@@ -392,19 +380,11 @@ def _check_controller_state():
     return True
 
 
-def _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1):
-    """Calculate space for controller rootfs plus ceph_mon_dev
-       returns: fs_max_GiB
-                cgtsvg_max_free_GiB
+def _get_controller_cgtsvg_limit():
+    """Calculate space for controller fs
+       returns: cgtsvg_max_free_GiB
 
     """
-    reserved_space = constants.CONTROLLER_ROOTFS_RESERVED
-
-    max_disk_size_controller0 = 0
-    max_disk_size_controller1 = 0
-
-    idisks0 = None
-    idisks1 = None
     cgtsvg0_free_mib = 0
     cgtsvg1_free_mib = 0
     cgtsvg_max_free_GiB = 0
@@ -413,8 +393,6 @@ def _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1):
         constants.CONTROLLER)
     for chost in chosts:
         if chost.hostname == constants.CONTROLLER_0_HOSTNAME:
-            idisks0 = pecan.request.dbapi.idisk_get_by_ihost(chost.uuid)
-
             ipvs = pecan.request.dbapi.ipv_get_by_ihost(chost.uuid)
             for ipv in ipvs:
                 if (ipv.lvm_vg_name == constants.LVG_CGTS_VG and
@@ -433,8 +411,6 @@ def _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1):
                     break
 
         else:
-            idisks1 = pecan.request.dbapi.idisk_get_by_ihost(chost.uuid)
-
             ipvs = pecan.request.dbapi.ipv_get_by_ihost(chost.uuid)
             for ipv in ipvs:
                 if (ipv.lvm_vg_name == constants.LVG_CGTS_VG and
@@ -452,58 +428,8 @@ def _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1):
                         ilvg.lvm_vg_total_pe)) / (1024 * 1024)
                     break
 
-    LOG.info("_get_controller_fs_limit cgtsvg0_free_mib=%s, "
+    LOG.info("_get_controller_cgtsvg_limit cgtsvg0_free_mib=%s, "
              "cgtsvg1_free_mib=%s" % (cgtsvg0_free_mib, cgtsvg1_free_mib))
-
-    # relies on the sizes of the partitions allocated in
-    # cgcs/common-bsp/files/TEMPLATE_controller_disk.add.
-
-    for chost in chosts:
-        if chost.hostname == constants.CONTROLLER_0_HOSTNAME and idisks0:
-            idisks = idisks0
-        elif chost.hostname == constants.CONTROLLER_1_HOSTNAME and idisks1:
-            idisks = idisks1
-        else:
-            LOG.error("SYS_I unexpected chost uuid %s hostname %s" %
-                      (chost.uuid, chost.hostname))
-            continue
-
-        # find the largest disk for each controller
-        for idisk in idisks:
-            capabilities = idisk['capabilities']
-            if 'stor_function' in capabilities:
-                if capabilities['stor_function'] == 'rootfs':
-                    disk_size_gib = idisk.size_mib / 1024
-                    if chost.hostname == constants.CONTROLLER_0_HOSTNAME:
-                        if disk_size_gib > max_disk_size_controller0:
-                            max_disk_size_controller0 = disk_size_gib
-                    else:
-                        if disk_size_gib > max_disk_size_controller1:
-                            max_disk_size_controller1 = disk_size_gib
-
-            if (device_path_ctrl0 == idisk.device_path and
-                    chost.hostname == constants.CONTROLLER_0_HOSTNAME):
-                disk_size_gib = idisk.size_mib / 1024
-                max_disk_size_controller0 += disk_size_gib
-
-            elif (device_path_ctrl1 == idisk.device_path and
-                    chost.hostname == constants.CONTROLLER_1_HOSTNAME):
-                disk_size_gib = idisk.size_mib / 1024
-                max_disk_size_controller1 += disk_size_gib
-
-    if max_disk_size_controller0 > 0 and max_disk_size_controller1 > 0:
-        minimax = min(max_disk_size_controller0, max_disk_size_controller1)
-        LOG.info("_get_controller_fs_limit minimax=%s" % minimax)
-        fs_max_GiB = minimax - reserved_space
-    elif max_disk_size_controller1 > 0:
-        fs_max_GiB = max_disk_size_controller1 - reserved_space
-    else:
-        fs_max_GiB = max_disk_size_controller0 - reserved_space
-
-    LOG.info("SYS_I filesystem limits max_disk_size_controller0=%s, "
-             "max_disk_size_controller1=%s, reserved_space=%s, fs_max_GiB=%s" %
-             (max_disk_size_controller0, max_disk_size_controller1,
-              reserved_space, int(fs_max_GiB)))
 
     if cgtsvg0_free_mib > 0 and cgtsvg1_free_mib > 0:
         cgtsvg_max_free_GiB = min(cgtsvg0_free_mib, cgtsvg1_free_mib) / 1024
@@ -515,37 +441,11 @@ def _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1):
     else:
         cgtsvg_max_free_GiB = cgtsvg0_free_mib / 1024
 
-    cgtsvg_max_free_GiB -= constants.CFS_RESIZE_BUFFER_GIB
-
     LOG.info("SYS_I filesystem limits cgtsvg0_free_mib=%s, "
              "cgtsvg1_free_mib=%s, cgtsvg_max_free_GiB=%s"
              % (cgtsvg0_free_mib, cgtsvg1_free_mib, cgtsvg_max_free_GiB))
 
-    return fs_max_GiB, cgtsvg_max_free_GiB
-
-
-def get_controller_fs_limit():
-    ceph_mons = pecan.request.dbapi.ceph_mon_get_list()
-
-    if ceph_mons:
-        ceph_mon_gib_new = ceph_mons[0].ceph_mon_gib
-    else:
-        ceph_mon_gib_new = 0
-
-    LOG.debug("_check_controller_fs ceph_mon_gib_new = %s" % ceph_mon_gib_new)
-
-    device_path_ctrl0 = None
-    device_path_ctrl1 = None
-
-    if ceph_mons:
-        for ceph_mon in ceph_mons:
-            ihost = pecan.request.dbapi.ihost_get(ceph_mon.forihostid)
-            if ihost.hostname == constants.CONTROLLER_0_HOSTNAME:
-                device_path_ctrl0 = ceph_mon.device_path
-            if ihost.hostname == constants.CONTROLLER_1_HOSTNAME:
-                device_path_ctrl1 = ceph_mon.device_path
-
-    return _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1)
+    return cgtsvg_max_free_GiB
 
 
 def _check_controller_fs(controller_fs_new=None,
@@ -569,23 +469,10 @@ def _check_controller_fs(controller_fs_new=None,
         else:
             cgtsvg_growth_gib = ceph_mon_gib_new
 
-    device_path_ctrl0 = None
-    device_path_ctrl1 = None
-
-    if ceph_mons:
-        for ceph_mon in ceph_mons:
-            ihost = pecan.request.dbapi.ihost_get(ceph_mon.forihostid)
-            if ihost.hostname == constants.CONTROLLER_0_HOSTNAME:
-                device_path_ctrl0 = ceph_mon.device_path
-            if ihost.hostname == constants.CONTROLLER_1_HOSTNAME:
-                device_path_ctrl1 = ceph_mon.device_path
-
-    rootfs_max_GiB, cgtsvg_max_free_GiB = \
-        _get_controller_fs_limit(device_path_ctrl0, device_path_ctrl1)
+    cgtsvg_max_free_GiB = _get_controller_cgtsvg_limit()
 
     LOG.info("_check_controller_fs ceph_mon_gib_new = %s" % ceph_mon_gib_new)
     LOG.info("_check_controller_fs cgtsvg_growth_gib = %s" % cgtsvg_growth_gib)
-    LOG.info("_check_controller_fs rootfs_max_GiB = %s" % rootfs_max_GiB)
     LOG.info("_check_controller_fs cgtsvg_max_free_GiB = %s" % cgtsvg_max_free_GiB)
 
     _check_relative_controller_fs(controller_fs_new, controller_fs_list)

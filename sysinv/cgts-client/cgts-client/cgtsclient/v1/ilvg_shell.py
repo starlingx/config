@@ -9,7 +9,6 @@
 # All Rights Reserved.
 #
 
-from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
@@ -20,17 +19,20 @@ from oslo_serialization import jsonutils
 def _print_ilvg_show(ilvg):
     labels = ['lvm_vg_name', 'vg_state', 'uuid', 'ihost_uuid', 'lvm_vg_access',
               'lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv', 'lvm_cur_pv',
-              'lvm_vg_size_gib', 'lvm_vg_total_pe', 'lvm_vg_free_pe', 'created_at',
-              'updated_at', 'parameters']
+              'lvm_vg_size_gib', 'lvm_vg_avail_size_gib', 'lvm_vg_total_pe',
+              'lvm_vg_free_pe', 'created_at', 'updated_at', 'parameters']
 
     fields = ['lvm_vg_name', 'vg_state', 'uuid', 'ihost_uuid', 'lvm_vg_access',
               'lvm_max_lv', 'lvm_cur_lv', 'lvm_max_pv', 'lvm_cur_pv',
-              'lvm_vg_size', 'lvm_vg_total_pe', 'lvm_vg_free_pe', 'created_at',
-              'updated_at']
+              'lvm_vg_size', 'lvm_vg_avail_size', 'lvm_vg_total_pe',
+              'lvm_vg_free_pe', 'created_at', 'updated_at']
 
     # convert size from Byte to GiB
-    ilvg.lvm_vg_size = utils.convert_size_from_bytes(ilvg.lvm_vg_size,
-                                                     constants.GiB)
+    ilvg.lvm_vg_avail_size = \
+        utils.size_unit_conversion(ilvg.lvm_vg_avail_size, 3)
+
+    # convert size from Byte to GiB
+    ilvg.lvm_vg_size = utils.size_unit_conversion(ilvg.lvm_vg_size, 3)
 
     data = [(f, getattr(ilvg, f, '')) for f in fields]
 
@@ -95,13 +97,18 @@ def do_host_lvg_list(cc, args):
         lvg.vg_state = _adjust_state_data(lvg.lvm_vg_name, lvg.vg_state)
 
         # convert size from Byte to GiB
-        lvg.lvm_vg_size = utils.convert_size_from_bytes(lvg.lvm_vg_size,
-                                                        constants.GiB)
+        lvg.lvm_vg_avail_size = \
+            utils.size_unit_conversion(lvg.lvm_vg_avail_size, 3)
+
+        # convert size from Byte to GiB
+        lvg.lvm_vg_size = \
+            utils.size_unit_conversion(lvg.lvm_vg_size, 3)
 
     field_labels = ['UUID', 'LVG Name', 'State', 'Access',
-                    'Size (GiB)', 'Current PVs', 'Current LVs']
+                    'Total Size (GiB)', 'Avail Size (GiB)',
+                    'Current PVs', 'Current LVs']
     fields = ['uuid', 'lvm_vg_name', 'vg_state', 'lvm_vg_access',
-              'lvm_vg_size', 'lvm_cur_pv', 'lvm_cur_lv']
+              'lvm_vg_size', 'lvm_vg_avail_size', 'lvm_cur_pv', 'lvm_cur_lv']
     utils.print_list(ilvgs, fields, field_labels, sortby=0)
 
 

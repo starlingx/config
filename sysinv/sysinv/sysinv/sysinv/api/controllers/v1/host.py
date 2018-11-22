@@ -23,6 +23,7 @@ import ast
 import cgi
 import copy
 import json
+import math
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -3872,17 +3873,13 @@ class HostController(rest.RestController):
                  str(standby_controller_allocated_space))
 
         if (active_controller_used > standby_controller_allocated_space):
-            # Since we allocate space that is measured in GiB, the human
-            # readable information shown in case of an error should also
-            # be in GiB. We add a 2GB buffer (the same used when changing
-            # filesystem sizes) to ensure no rounding errors
-            needed_space = (float(
+            # Round up the needed space from float to integer
+            needed_space = math.ceil(float(
                 active_controller_used -
-                standby_controller_allocated_space) / (1024 ** 3) +
-                constants.CFS_RESIZE_BUFFER_GIB)
+                standby_controller_allocated_space) / (1024 ** 3))
             msg = _("Standby controller does not have enough space allocated to "
                     "%(vg_name)s volume-group in order to create all filesystems. "
-                    "Please assign an extra %(needed).2f GB to the volume group.") % {
+                    "Please assign an extra %(needed)d GB to the volume group.") % {
                     'vg_name': constants.LVG_CGTS_VG, 'needed': needed_space}
             raise wsme.exc.ClientSideError(msg)
 

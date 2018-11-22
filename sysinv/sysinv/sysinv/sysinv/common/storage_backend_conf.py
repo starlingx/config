@@ -387,7 +387,7 @@ class StorageBackendConfig(object):
                 return
 
         # Check if there is enough space available
-        rootfs_max_GiB, cgtsvg_max_free_GiB = controller_fs_api.get_controller_fs_limit()
+        cgtsvg_max_free_GiB = controller_fs_api._get_controller_cgtsvg_limit()
         args = {'avail': cgtsvg_max_free_GiB,
                 'min': constants.DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE,
                 'lvg': constants.LVG_CGTS_VG}
