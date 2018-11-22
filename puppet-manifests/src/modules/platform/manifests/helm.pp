@@ -14,6 +14,12 @@ class platform::helm
         logoutput => true,
       } ->
 
+      # TODO(tngo): If and when tiller image is upversioned, please ensure armada compatibility as part of the test
+      exec { "load armada docker image":
+        command => "docker image pull quay.io/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9",
+        logoutput => true,
+      } ->
+
       exec { "create service account for tiller":
         command => "kubectl --kubeconfig=/etc/kubernetes/admin.conf create serviceaccount --namespace kube-system tiller",
         logoutput => true,
