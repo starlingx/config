@@ -87,7 +87,7 @@ function configure_sysinv {
 }
 
 function create_sysinv_accounts {
-    get_or_create_service "sysinv" "sysinv" "SysInv services"
+    get_or_create_service "sysinv" "platform" "SysInv services"
     create_service_user "sysinv" "admin"
     sysinv_api_url="$SYSINV_SERVICE_PROTOCOL://$SYSINV_SERVICE_HOST:$SYSINV_SERVICE_PORT"
     get_or_create_endpoint \
