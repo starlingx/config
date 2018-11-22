@@ -50,7 +50,7 @@ class Manager(object):
     def _create(self, url, body):
         _, body = self.api.json_request('POST', url, body=body)
         if body:
-            return self.resource_class(self, body)  # noqa
+            return self.resource_class(self, body)  # noqa pylint: disable=not-callable
 
     def _upload(self, url, body, data=None):
         resp = self.api.upload_request_with_data(
@@ -84,7 +84,7 @@ class Manager(object):
         _, body = self.api.json_request(http_method, url, body=body)
         # PATCH/PUT requests may not return a body
         if body:
-            return self.resource_class(self, body)  # noqa
+            return self.resource_class(self, body)  # noqa pylint: disable=not-callable
 
     def _delete(self, url):
         self.api.raw_request('DELETE', url)

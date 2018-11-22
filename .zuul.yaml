@@ -16,6 +16,8 @@
         - stx-devstack-config:
             voting: false
         - cgtsclient-tox-py27
+        - cgtsclient-tox-pep8
+        - cgtsclient-tox-pylint
     gate:
       jobs:
         - build-openstack-api-ref
@@ -28,6 +30,8 @@
         - controllerconfig-tox-pylint
         - configutilities-tox-flake8
         - cgtsclient-tox-py27
+        - cgtsclient-tox-pep8
+        - cgtsclient-tox-pylint
     post:
       jobs:
         - publish-stx-api-ref
@@ -44,7 +48,7 @@
       - openstack/stx-fault
       - openstack/stx-integ
     files:
-      - sysinv/*
+      - sysinv/sysinv/*
     vars:
       tox_envlist: py27
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
@@ -54,12 +58,8 @@
     parent: tox
     description: |
       Run flake8 test for sysinv
-    required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
     files:
-      - sysinv/*
+      - sysinv/sysinv/*
     vars:
       tox_envlist: flake8
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
@@ -68,9 +68,6 @@
     name: controllerconfig-tox-flake8
     parent: tox
     description: Run flake8 tests for controllerconfig
-    required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
     files:
       - controllerconfig/*
     vars:
@@ -149,11 +146,37 @@
     description: |
       Run py27 test for cgts-client
     files:
-      - sysinv/*
+      - sysinv/cgts-client/*
     required-projects:
       - openstack/stx-update
       - openstack/stx-fault
       - openstack/stx-integ
     vars:
       tox_envlist: py27
+      tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
+
+- job:
+    name: cgtsclient-tox-pep8
+    parent: tox
+    description: |
+      Run pep8 test for cgts-client
+    files:
+      - sysinv/cgts-client/*
+    vars:
+      tox_envlist: pep8
+      tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
+
+- job:
+    name: cgtsclient-tox-pylint
+    parent: tox
+    description: |
+      Run pylint test for cgts-client
+    files:
+      - sysinv/cgts-client/*
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+      - openstack/stx-integ
+    vars:
+      tox_envlist: pylint
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
