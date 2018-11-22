@@ -23,10 +23,10 @@
 import imp
 import os
 import re
+import six
 import socket
 import sys
 import textwrap
-import six
 
 from oslo_config import cfg
 

@@ -61,9 +61,8 @@ class AppOperator(object):
     def _cleanup(self, app):
         """" Remove application directories and override files """
         try:
-            # TODO(tngo): Disable node labeling for system app for now until
-            # vim integration with sysinv for container support is ready
-            if not app.system_app and app.status != constants.APP_UPLOAD_FAILURE:
+            if (app.status != constants.APP_UPLOAD_FAILURE and
+                    os.path.exists(os.path.join(app.path, 'metadata.yaml'))):
                 self._process_node_labels(app, op=constants.LABEL_REMOVE_OP)
             if app.system_app and app.status != constants.APP_UPLOAD_FAILURE:
                 self._remove_chart_overrides(app.mfile_abs)
@@ -358,7 +357,10 @@ class AppOperator(object):
                     name=app.name,
                     reason="compute labels are malformed.")
 
-        # Add the default labels for system app
+        # Add the default labels for system app. They must exist for
+        # the app manifest to be applied successfully. If the nodes have
+        # been assigned these labels manually before, these
+        # reassignments are simply ignored.
         if app.system_app:
             controller_labels_set.add(constants.CONTROL_PLANE_LABEL)
             compute_labels_set.add(constants.COMPUTE_NODE_LABEL)
@@ -496,10 +498,7 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         LOG.info("Application (%s) apply started." % app.name)
 
-        # TODO(tngo): Disable node labeling for system app for now until
-        # vim integration with sysinv for container support is ready
-        if not app.system_app:
-            self._process_node_labels(app)
+        self._process_node_labels(app)
 
         overrides_str = ''
         ready = True

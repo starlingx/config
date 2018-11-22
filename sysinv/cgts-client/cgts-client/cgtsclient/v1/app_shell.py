@@ -52,7 +52,8 @@ def do_application_upload(cc, args):
         raise exc.CommandError("Error: Tar file %s does not exist" % tarfile)
     if not tarfile.endswith('.tgz') and not tarfile.endswith('.tar.gz'):
         raise exc.CommandError("Error: File %s has unrecognizable tar file "
-                               "extension." % tarfile)
+                               "extension. Supported extensions are: .tgz "
+                               "and .tar.gz" % tarfile)
 
     data = {'name': args.name,
             'tarfile': tarfile}
