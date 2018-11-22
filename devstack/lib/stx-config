@@ -14,10 +14,13 @@
 #
 # - install_cgtsclient
 # - install_sysinv
+# - install_sysinv_agent
 # - configure_sysinv
 # - init_sysinv
 # - start_sysinv
+# - start_sysinv_agent
 # - stop_sysinv
+# - stop_sysinv_agent
 # - cleanup_sysinv
 
 _XTRACE_STX_CONFIG=$(set +o | grep xtrace)
@@ -36,6 +39,7 @@ SYSINV_SERVICE_PROTOCOL=${SYSINV_SERVICE_PROTOCOL:-$SERVICE_PROTOCOL}
 SYSINV_SERVICE_PORT=${SYSINV_SERVICE_PORT:-6385}
 SYSINV_SERVICE_HOST=${SYSINV_SERVICE_HOST:-$SERVICE_HOST}
 SYSINV_DIR=$DEST/stx-config/sysinv/sysinv/sysinv
+SYSINV_AGENT_DIR=$DEST/stx-config/sysinv/sysinv-agent
 SYSINV_ETC_GOENABLEDD=/etc/goenabled.d
 SYSINV_CONF_DIR=/etc/sysinv
 SYSINV_CONF_FILE=$SYSINV_CONF_DIR/sysinv.conf
@@ -185,6 +189,14 @@ function install_sysinv {
     sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/partition_info.sh $SYSINV_BIN_DIR/partition_info.sh
     sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/manage-partitions $SYSINV_BIN_DIR/manage-partitions
     sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/query_pci_id $SYSINV_BIN_DIR/query_pci_id
+    if is_service_enabled sysinv-agent; then
+        echo_summary "Installing sysinv-agent service"
+        install_sysinv_agent
+    fi
+}
+
+function install_sysinv_agent {
+    sudo install -p -D -m 755 $SYSINV_AGENT_DIR/sysinv-agent $SYSINV_BIN_DIR/sysinv-agent
 }
 
 function install_sysinv_depends {
@@ -199,7 +211,18 @@ function start_sysinv {
     fi
     if is_service_enabled sysinv-cond; then
         echo "start sysinv-cond service"
-	start_sysinv_conductor
+        start_sysinv_conductor
+    fi
+    if is_service_enabled sysinv-agent; then
+        echo "start sysinv-agent service"
+        start_sysinv_agent
+    fi
+}
+
+function start_sysinv_agent {
+    if is_service_enabled sysinv-agent; then
+        echo "start sysinv-agent service"
+        run_process sysinv-agent "$SYSINV_BIN_DIR/sysinv-agent"
     fi
 }
 
@@ -236,6 +259,11 @@ function start_sysinv_conductor {
 function stop_sysinv {
     stop_sysinv_api
     stop_sysinv_conductor
+    stop_sysinv_agent
+}
+
+function stop_sysinv_agent {
+    stop_process sysinv-agent
 }
 
 function stop_sysinv_api {

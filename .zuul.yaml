@@ -127,6 +127,7 @@
         fm-api: true
         # fm-rest-api: true
         # fm-mgr: true
+        sysinv-agent: true
         sysinv-api: true
         sysinv-cond: true
         mysql: false
