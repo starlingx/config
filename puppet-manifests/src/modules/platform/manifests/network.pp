@@ -86,10 +86,20 @@ define network_address (
   $address,
   $ifname,
 ) {
+  # In AIO simplex configurations, the management addresses are assigned to the
+  # loopback interface. These addresses must be assigned using the host scope
+  # or assignment is prevented (can't have multiple global scope addresses on
+  # the loopback interface).
+  if $ifname == 'lo' {
+    $options = 'scope host'
+  } else {
+    $options = ''
+  }
+
   # addresses should only be configured if running in simplex, otherwise SM
   # will configure them on the active controller.
   exec { "Configuring ${name} IP address":
-    command => "ip addr replace ${address} dev ${ifname}",
+    command => "ip addr replace ${address} dev ${ifname} ${options}",
     onlyif => "test -f /etc/platform/simplex",
   }
 }

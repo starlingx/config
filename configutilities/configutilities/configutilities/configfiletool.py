@@ -288,6 +288,10 @@ class ConfigPage(WizardPage):
         if mode:
             validator.set_system_mode(mode)
 
+        dc_role = get_opt('SYSTEM', 'DISTRIBUTED_CLOUD_ROLE')
+        if dc_role:
+            validator.set_system_dc_role(dc_role)
+
         for method in self.validator_methods:
             getattr(validator, method)()
 
@@ -808,14 +812,12 @@ class SYSTEMPage(ConfigPage):
         event.Skip()
 
     def skip_not_required_pages(self, skip):
-        # Skip PXEBOOT, MGMT, BMC and INFRA pages
+        # Skip PXEBOOT, BMC and INFRA pages
         self.parent.skip_page(PXEBootPage, skip)
-        self.parent.skip_page(MGMTPage, skip)
         self.parent.skip_page(INFRAPage, skip)
 
         # Remove the sections that are not required
         config.remove_section("PXEBOOT_NETWORK")
-        config.remove_section("MGMT_NETWORK")
         config.remove_section("BOARD_MANAGEMENT_NETWORK")
         config.remove_section("INFRA_NETWORK")
 
@@ -894,117 +896,134 @@ class MGMTPage(ConfigPage):
                                    LINK_SPEED_10G,
                                    LINK_SPEED_25G]
         self.section = "MGMT_NETWORK"
-        self.validator_methods = ["validate_pxeboot", "validate_mgmt"]
+        if get_opt('SYSTEM', 'SYSTEM_MODE') != 'simplex':
+            self.validator_methods = ["validate_pxeboot", "validate_mgmt"]
+            self.help_text = (
+                "The management network is used for internal communication "
+                "between platform components. IP addresses on this network "
+                "are reachable only within the data center.")
+        else:
+            self.validator_methods = ["validate_aio_simplex_mgmt"]
+            self.help_text = (
+                "The management network is used for internal communication "
+                "between platform components. IP addresses on this network "
+                "are reachable only within the host.")
         self.title = "Management Network"
-        self.help_text = (
-            "The management network is used for internal communication "
-            "between platform components. IP addresses on this network "
-            "are reachable only within the data center.")
 
         self.set_fields()
         self.do_setup()
         self.bind_events()
 
     def set_fields(self):
-        self.fields['mgmt_port1'] = Field(
-            text="Management interface",
-            type=TYPES.string,
-            initial="enp0s8",
-            transient=True
-        )
-        self.fields['lag_help'] = Field(
-            text="A management bond interface provides redundant "
-                 "connections for the management network.  When selected, the "
-                 "field above specifies the first member of the bond.",
-            type=TYPES.help,
-        )
-        self.fields['LAG_INTERFACE'] = Field(
-            text="Use management interface link aggregation",
-            type=TYPES.checkbox,
-            shows=["LAG_MODE", "mgmt_port2"],
-            transient=True
-        )
-        self.fields['LAG_MODE'] = Field(
-            text="Management interface bonding policy",
-            type=TYPES.choice,
-            choices=self.lag_choices.keys(),
-            transient=True
-        )
-        self.fields['mgmt_port2'] = Field(
-            text="Second management interface member",
-            type=TYPES.string,
-            initial="",
-            transient=True
-        )
-        self.fields['INTERFACE_MTU'] = Field(
-            text="Management interface MTU",
-            type=TYPES.int,
-            initial="1500",
-            transient=True
-        )
-        self.fields['INTERFACE_LINK_CAPACITY'] = Field(
-            text="Management interface link capacity Mbps",
-            type=TYPES.choice,
-            choices=self.mgmt_speed_choices,
-            initial=self.mgmt_speed_choices[0],
-            transient=True
-        )
-        if config.has_option('PXEBOOT_NETWORK', 'PXEBOOT_CIDR') or \
-                config.has_option('REGION2_PXEBOOT_NETWORK', 'PXEBOOT_CIDR'):
-            self.fields['vlan_help'] = Field(
-                text=("A management VLAN is required because a separate "
-                      "PXEBoot network was configured on the management "
-                      "interface."),
-                type=TYPES.help
+        if get_opt('SYSTEM', 'SYSTEM_MODE') != 'simplex':
+            self.fields['mgmt_port1'] = Field(
+                text="Management interface",
+                type=TYPES.string,
+                initial="enp0s8",
+                transient=True
             )
-            self.fields['VLAN'] = Field(
-                text="Management VLAN Identifier",
-                type=TYPES.int,
+            self.fields['lag_help'] = Field(
+                text="A management bond interface provides redundant "
+                     "connections for the management network.  When selected, "
+                     "the field above specifies the first member of the bond.",
+                type=TYPES.help,
+            )
+            self.fields['LAG_INTERFACE'] = Field(
+                text="Use management interface link aggregation",
+                type=TYPES.checkbox,
+                shows=["LAG_MODE", "mgmt_port2"],
+                transient=True
+            )
+            self.fields['LAG_MODE'] = Field(
+                text="Management interface bonding policy",
+                type=TYPES.choice,
+                choices=self.lag_choices.keys(),
+                transient=True
+            )
+            self.fields['mgmt_port2'] = Field(
+                text="Second management interface member",
+                type=TYPES.string,
                 initial="",
+                transient=True
             )
-        self.fields['CIDR'] = Field(
-            text="Management subnet",
-            type=TYPES.string,
-            initial="192.168.204.0/24",
-        )
-        self.fields['MULTICAST_CIDR'] = Field(
-            text="Management multicast subnet",
-            type=TYPES.string,
-            initial='239.1.1.0/28'
-        )
+            self.fields['INTERFACE_MTU'] = Field(
+                text="Management interface MTU",
+                type=TYPES.int,
+                initial="1500",
+                transient=True
+            )
+            self.fields['INTERFACE_LINK_CAPACITY'] = Field(
+                text="Management interface link capacity Mbps",
+                type=TYPES.choice,
+                choices=self.mgmt_speed_choices,
+                initial=self.mgmt_speed_choices[0],
+                transient=True
+            )
+            if config.has_option('PXEBOOT_NETWORK', 'PXEBOOT_CIDR') or \
+                    config.has_option('REGION2_PXEBOOT_NETWORK',
+                                      'PXEBOOT_CIDR'):
+                self.fields['vlan_help'] = Field(
+                    text=("A management VLAN is required because a separate "
+                          "PXEBoot network was configured on the management "
+                          "interface."),
+                    type=TYPES.help
+                )
+                self.fields['VLAN'] = Field(
+                    text="Management VLAN Identifier",
+                    type=TYPES.int,
+                    initial="",
+                )
 
-        # Start/end ranges
-        self.fields['use_entire_subnet'] = Field(
-            text="Restrict management subnet address range",
-            type=TYPES.checkbox,
-            shows=["IP_START_ADDRESS", "IP_END_ADDRESS"],
-            transient=True
-        )
-        self.fields['IP_START_ADDRESS'] = Field(
-            text="Management network start address",
-            type=TYPES.string,
-            initial="192.168.204.2",
-        )
-        self.fields['IP_END_ADDRESS'] = Field(
-            text="Management network end address",
-            type=TYPES.string,
-            initial="192.168.204.254",
-        )
+            self.fields['CIDR'] = Field(
+                text="Management subnet",
+                type=TYPES.string,
+                initial="192.168.204.0/24",
+            )
 
-        # Dynamic addressing
-        self.fields['dynamic_help'] = Field(
-            text=(
-                "IP addresses can be assigned to hosts dynamically or "
-                "a static IP address can be specified for each host. "
-                "Note: This choice applies to both the management network "
-                "and infrastructure network."),
-            type=TYPES.help,
-        )
-        self.fields['DYNAMIC_ALLOCATION'] = Field(
-            text="Use dynamic IP address allocation",
-            type=TYPES.checkbox,
-            initial='Y'
-        )
+            self.fields['MULTICAST_CIDR'] = Field(
+                text="Management multicast subnet",
+                type=TYPES.string,
+                initial='239.1.1.0/28'
+            )
+
+            # Start/end ranges
+            self.fields['use_entire_subnet'] = Field(
+                text="Restrict management subnet address range",
+                type=TYPES.checkbox,
+                shows=["IP_START_ADDRESS", "IP_END_ADDRESS"],
+                transient=True
+            )
+            self.fields['IP_START_ADDRESS'] = Field(
+                text="Management network start address",
+                type=TYPES.string,
+                initial="192.168.204.2",
+            )
+            self.fields['IP_END_ADDRESS'] = Field(
+                text="Management network end address",
+                type=TYPES.string,
+                initial="192.168.204.254",
+            )
+
+            # Dynamic addressing
+            self.fields['dynamic_help'] = Field(
+                text=(
+                    "IP addresses can be assigned to hosts dynamically or "
+                    "a static IP address can be specified for each host. "
+                    "Note: This choice applies to both the management network "
+                    "and infrastructure network."),
+                type=TYPES.help,
+            )
+            self.fields['DYNAMIC_ALLOCATION'] = Field(
+                text="Use dynamic IP address allocation",
+                type=TYPES.checkbox,
+                initial='Y'
+            )
+        else:
+            self.fields['CIDR'] = Field(
+                text="Management subnet",
+                type=TYPES.string,
+                initial="192.168.204.0/28",
+            )
 
     def validate_page(self):
         super(MGMTPage, self).validate_page()
@@ -1013,19 +1032,21 @@ class MGMTPage(ConfigPage):
     def get_config(self):
         super(MGMTPage, self).get_config()
 
-        # Add logical interface
-        ports = self.fields['mgmt_port1'].get_value()
-        if self.fields['mgmt_port2'].get_value():
-            ports += "," + self.fields['mgmt_port2'].get_value()
-        li = create_li(
-            lag=self.fields['LAG_INTERFACE'].get_value(),
-            mode=self.lag_choices.get(self.fields['LAG_MODE'].get_value()),
-            mtu=self.fields['INTERFACE_MTU'].get_value(),
-            link_capacity=self.fields['INTERFACE_LINK_CAPACITY'].get_value(),
-            ports=ports
-        )
-        config.set(self.section, 'LOGICAL_INTERFACE', li)
-        clean_lis()
+        if get_opt('SYSTEM', 'SYSTEM_MODE') != 'simplex':
+            # Add logical interface
+            ports = self.fields['mgmt_port1'].get_value()
+            if self.fields['mgmt_port2'].get_value():
+                ports += "," + self.fields['mgmt_port2'].get_value()
+            li = create_li(
+                lag=self.fields['LAG_INTERFACE'].get_value(),
+                mode=self.lag_choices.get(self.fields['LAG_MODE'].get_value()),
+                mtu=self.fields['INTERFACE_MTU'].get_value(),
+                link_capacity=self.fields[
+                    'INTERFACE_LINK_CAPACITY'].get_value(),
+                ports=ports
+            )
+            config.set(self.section, 'LOGICAL_INTERFACE', li)
+            clean_lis()
 
 
 class INFRAPage(ConfigPage):

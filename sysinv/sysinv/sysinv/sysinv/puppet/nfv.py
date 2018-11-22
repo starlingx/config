@@ -181,6 +181,13 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                         nova_oslo_messaging_data['password'],
                 }
                 config.update(rabbit_config)
+
+                # Listen to nova api proxy on management address
+                nova_api_proxy_config = {
+                    'nfv::nfvi::compute_rest_api_host':
+                        self._get_management_address(),
+                }
+                config.update(nova_api_proxy_config)
             else:
                 # The openstack auth info is still required as the VIM will
                 # audit some keystone entities (e.g. tenants). Point it to
