@@ -43,6 +43,7 @@ CONF = cfg.CONF
 CONF.register_opts(kube_app_opts)
 ARMADA_CONTAINER_NAME = 'armada_service'
 MAX_DOWNLOAD_THREAD = 20
+INSTALLATION_TIMEOUT = 3600
 
 
 Chart = namedtuple('Chart', 'name namespace')
@@ -698,7 +699,7 @@ class DockerHelper(object):
     def make_armada_request(self, request, manifest_file, overrides_str=''):
         rc = True
         try:
-            client = docker.from_env()
+            client = docker.from_env(timeout=INSTALLATION_TIMEOUT)
             armada_svc = self._start_armada_service(client)
             if armada_svc:
                 if request == 'validate':
@@ -750,7 +751,7 @@ class DockerHelper(object):
         start = time.time()
         try:
             LOG.info("Image %s download started" % img_tag)
-            c = docker.from_env()
+            c = docker.from_env(timeout=INSTALLATION_TIMEOUT)
             c.images.pull(img_tag)
         except Exception as e:
             rc = False
