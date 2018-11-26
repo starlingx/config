@@ -355,9 +355,6 @@ def get_ilvg_config(iprofile):
         for k, v in ilvg.capabilities.iteritems():
             if capabilities_str != '':
                 capabilities_str += "; "
-            if k == "instances_lv_size_mib":
-                k = "instances_lv_size_gib"
-                v = v / 1024
             capabilities_str += "%s: %s " % (k, v)
 
         str += "%s, %s" % (ilvg.lvm_vg_name, capabilities_str)

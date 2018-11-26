@@ -324,7 +324,6 @@ class OpenStackOperator(object):
             nova_aggset_provider.add(aggregate.name)
 
         aggset_storage = set([
-            constants.HOST_AGG_NAME_LOCAL_LVM,
             constants.HOST_AGG_NAME_LOCAL_IMAGE,
             constants.HOST_AGG_NAME_REMOTE])
         agglist_missing = list(aggset_storage - nova_aggset_provider)
@@ -345,9 +344,7 @@ class OpenStackOperator(object):
 
             # Add the metadata
             try:
-                if agg_name == constants.HOST_AGG_NAME_LOCAL_LVM:
-                    metadata = {'storage': constants.HOST_AGG_META_LOCAL_LVM}
-                elif agg_name == constants.HOST_AGG_NAME_LOCAL_IMAGE:
+                if agg_name == constants.HOST_AGG_NAME_LOCAL_IMAGE:
                     metadata = {'storage': constants.HOST_AGG_META_LOCAL_IMAGE}
                 else:
                     metadata = {'storage': constants.HOST_AGG_META_REMOTE}
@@ -405,8 +402,6 @@ class OpenStackOperator(object):
             agg_add_to = {
                 constants.LVG_NOVA_BACKING_IMAGE:
                 constants.HOST_AGG_NAME_LOCAL_IMAGE,
-                constants.LVG_NOVA_BACKING_LVM:
-                constants.HOST_AGG_NAME_LOCAL_LVM,
                 constants.LVG_NOVA_BACKING_REMOTE:
                 constants.HOST_AGG_NAME_REMOTE
             }.get(lvg_backing)
@@ -656,7 +651,6 @@ class OpenStackOperator(object):
 
         # setup the valid set of storage aggregates for host removal
         aggset_storage = set([
-            constants.HOST_AGG_NAME_LOCAL_LVM,
             constants.HOST_AGG_NAME_LOCAL_IMAGE,
             constants.HOST_AGG_NAME_REMOTE])
 

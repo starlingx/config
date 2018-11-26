@@ -385,7 +385,6 @@ class openstack::nova::storage (
   $lvm_global_filter = '[]',
   $lvm_update_filter = '[]',
   $instance_backing = 'image',
-  $instances_lv_size = 0,
   $concurrent_disk_operations = 2,
   $images_rbd_pool = 'ephemeral',
   $images_rbd_ceph_conf = '/etc/ceph/ceph.conf'
@@ -402,16 +401,6 @@ class openstack::nova::storage (
       $images_volume_group = absent
       $round_to_extent = false
       $local_monitor_state = 'disabled'
-      $instances_lv_size_real = 'max'
-      $images_rbd_pool_real = absent
-      $images_rbd_ceph_conf_real = absent
-    }
-    'lvm': {
-      $images_type = 'lvm'
-      $images_volume_group = 'nova-local'
-      $round_to_extent = true
-      $local_monitor_state = 'enabled'
-      $instances_lv_size_real = $instances_lv_size
       $images_rbd_pool_real = absent
       $images_rbd_ceph_conf_real = absent
     }
@@ -420,7 +409,6 @@ class openstack::nova::storage (
       $images_volume_group = absent
       $round_to_extent = false
       $local_monitor_state = 'disabled'
-      $instances_lv_size_real = 'max'
       $images_rbd_pool_real = $images_rbd_pool
       $images_rbd_ceph_conf_real = $images_rbd_ceph_conf
     }
@@ -472,7 +460,7 @@ class openstack::nova::storage (
     ensure => 'present',
     vg => 'nova-local',
     pv => $final_pvs,
-    size => $instances_lv_size_real,
+    size => 'max',
     round_to_extent => $round_to_extent,
     allow_reduce => true,
     nuke_fs_on_resize_failure => true,

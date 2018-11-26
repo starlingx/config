@@ -1551,7 +1551,7 @@ badMediaType (415)
    :widths: 20, 20, 20, 60
 
    "volumegroup_id", "URI", "csapi:UUID", "The unique identifier of an existing LVM volume group."
-   "capabilites (Optional)", "plain", "xsd:string", "A dictionary of key-value pairs prepresenting volume group parameters and values. Valid nova-local parameters are: ``instances_lv_size_mib``, ``instance_backing``, and ``concurrent_disk_operations``. Valid cinder-volumes parameters are: ``lvm_type``"
+   "capabilities (Optional)", "plain", "xsd:string", "A dictionary of key-value pairs prepresenting volume group parameters and values. Valid nova-local parameters are: ``instance_backing``, and ``concurrent_disk_operations``. Valid cinder-volumes parameters are: ``lvm_type``"
 
 **Response parameters**
 
@@ -1582,7 +1582,7 @@ badMediaType (415)
    [
       {
          "path": "/capabilities",
-         "value": "{\\"instances_lv_size_mib\\": 10240}",
+         "value": "{}",
          "op": "replace"
       }
    ]
@@ -1610,7 +1610,6 @@ badMediaType (415)
       "lvm_max_pv": 0,
       "updated_at": null,
       "capabilities": {
-         "instances_lv_size_mib": 10240
       },
       "vg_state": "adding",
       "ihost_uuid": "6b55a4c8-4194-4e3b-8d32-ca658473314e",

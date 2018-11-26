@@ -151,28 +151,14 @@
             <disk path="/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0" size="50" volumeFunc="osd" tier="gold"/>
         </storageProfile>
 
-        <localstorageProfile name="localstorage-profile_lvm">
-		<!--The disk tags below define each device,
-		        node: device node
-		        size: minimum size (in GiB).
-                    The lvg tags below define the local volume group 
-                        lvm_vg_name: local volume group name
-                        instance_backing: lvm, image, or remote
-                        instances_lv_size_gib: local volume size in GiB
-                        concurrent_disk_operations: number of parallel I/O intensive disk operaions
-                -->
-           <disk path="/dev/sdb" size="223" />
-           <lvg lvm_vg_name="nova-local" instance_backing="lvm" instances_lv_size_gib="2" concurrent_disk_operations="2" />
-        </localstorageProfile>
-
         <localstorageProfile name="localstorage-profile_localimage">
 		<!--The disk tags below define each device,
 		        node: device node
 		        size: minimum size (in GiB).
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
-                        instance_backing: lvm, image, or remote
-                        concurrent_disk_operations: number of parallel I/O intensive disk operaions
+                        instance_backing: image, or remote
+                        concurrent_disk_operations: number of parallel I/O intensive disk operations
                 -->
            <disk path="/dev/sdb" size="223" />
            <lvg lvm_vg_name="nova-local" instance_backing="image" concurrent_disk_operations="2" />
@@ -184,8 +170,8 @@
 		        size: minimum size (in MB).
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
-                        instance_backing: lvm, image, or remote
-                        concurrent_disk_operations: number of parallel I/O intensive disk operaions
+                        instance_backing: image, or remote
+                        concurrent_disk_operations: number of parallel I/O intensive disk operations
                 -->
            <disk path="/dev/sdb" size="223" />
            <lvg lvm_vg_name="nova-local" instance_backing="remote" concurrent_disk_operations="2" />
