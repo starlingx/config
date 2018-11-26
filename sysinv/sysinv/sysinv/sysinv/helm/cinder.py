@@ -170,7 +170,6 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                 'rbd_ceph_conf':
                     (constants.CEPH_CONF_PATH +
                      constants.SB_TYPE_CEPH_CONF_FILENAME),
-                'rbd_user': 'cinder',
             }
 
         return conf_backends
