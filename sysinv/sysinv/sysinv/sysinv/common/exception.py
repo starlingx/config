@@ -1093,6 +1093,10 @@ class SysInvSignalTimeout(SysinvException):
     message = "Sysinv Timeout."
 
 
+class KubeAppProgressMonitorTimeout(SysinvException):
+    message = "Armada execution progress monitor timed out."
+
+
 class InvalidEndpoint(SysinvException):
     message = "The provided endpoint is invalid"
 

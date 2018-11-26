@@ -18,11 +18,16 @@ def _print_application_show(app):
     utils.print_dict(ordereddata, wrap=72)
 
 
+def _print_reminder_msg(app_name):
+    print("Please use 'system application-list' or 'system "
+          "application-show %s' to view the current progress." % app_name)
+
+
 def do_application_list(cc, args):
     """List all containerized applications"""
     apps = cc.app.list()
-    labels = ['application', 'manifest name', 'manifest file', 'status']
-    fields = ['name', 'manifest_name', 'manifest_file', 'status']
+    labels = ['application', 'manifest name', 'manifest file', 'status', 'progress']
+    fields = ['name', 'manifest_name', 'manifest_file', 'status', 'progress']
     utils.print_list(apps, fields, labels, sortby=0)
 
 
@@ -59,6 +64,7 @@ def do_application_upload(cc, args):
             'tarfile': tarfile}
     response = cc.app.upload(data)
     _print_application_show(response)
+    _print_reminder_msg(args.name)
 
 
 @utils.arg('name', metavar='<app name>',
@@ -68,6 +74,7 @@ def do_application_apply(cc, args):
     try:
         response = cc.app.apply(args.name)
         _print_application_show(response)
+        _print_reminder_msg(args.name)
     except exc.HTTPNotFound:
         raise exc.CommandError('Application not found: %s' % args.name)
 
@@ -79,6 +86,7 @@ def do_application_remove(cc, args):
     try:
         response = cc.app.remove(args.name)
         _print_application_show(response)
+        _print_reminder_msg(args.name)
     except exc.HTTPNotFound:
         raise exc.CommandError('Application not found: %s' % args.name)
 

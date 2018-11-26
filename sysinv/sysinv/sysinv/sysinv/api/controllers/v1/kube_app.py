@@ -68,6 +68,9 @@ class KubeApp(base.APIBase):
     status = wtypes.text
     "Represents the installation status of the application"
 
+    progress = wtypes.text
+    "Represents the installation progress of the application"
+
     def __init__(self, **kwargs):
         self.fields = objects.kube_app.fields.keys()
         for k in self.fields:
@@ -80,7 +83,7 @@ class KubeApp(base.APIBase):
         app = KubeApp(**rpc_app.as_dict())
         if not expand:
             app.unset_fields_except(['name', 'manifest_name',
-                                     'manifest_file', 'status'])
+                                     'manifest_file', 'status', 'progress'])
 
         # skip the id
         app.id = wtypes.Unset
@@ -320,6 +323,7 @@ class KubeAppController(rest.RestController):
                     "Application-apply rejected: operation is not allowed "
                     "while the current status is {}.".format(db_app.status)))
             db_app.status = constants.APP_APPLY_IN_PROGRESS
+            db_app.progress = None
             db_app.save()
             pecan.request.rpcapi.perform_app_apply(pecan.request.context,
                                                    db_app)
@@ -332,6 +336,7 @@ class KubeAppController(rest.RestController):
                     "Application-remove rejected: operation is not allowed while "
                     "the current status is {}.".format(db_app.status)))
             db_app.status = constants.APP_REMOVE_IN_PROGRESS
+            db_app.progress = None
             db_app.save()
             pecan.request.rpcapi.perform_app_remove(pecan.request.context,
                                                     db_app)
