@@ -12,19 +12,19 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ tuple "nova" "internal" . | include "helm-toolkit.endpoints.hostname_short_endpoint_lookup" }}
+  name: {{ tuple "compute" "internal" . | include "helm-toolkit.endpoints.hostname_short_endpoint_lookup" }}
 spec:
   ports:
     - name: n-api-proxy
       port: {{ tuple "compute" "internal" "api" . | include "helm-toolkit.endpoints.endpoint_port_lookup" }}
-    {{ if .Values.network.api.node_port.enabled }}
-      nodePort: {{ .Values.network.api.node_port.port }}
+    {{ if .Values.network.api_proxy.node_port.enabled }}
+      nodePort: {{ .Values.network.api_proxy.node_port.port }}
     {{ end }}
   selector:
-{{ tuple $envAll "nova" "api" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
-  {{ if .Values.network.api.node_port.enabled }}
+{{ tuple $envAll "nova" "api-proxy" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
+  {{ if .Values.network.api_proxy.node_port.enabled }}
   type: NodePort
-  {{ if .Values.network.api.external_policy_local }}
+  {{ if .Values.network.api_proxy.external_policy_local }}
   externalTrafficPolicy: Local
   {{ end }}
   {{ end }}

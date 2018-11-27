@@ -6,7 +6,7 @@
 #
 */}}
 
-{{- if and .Values.manifests.ingress .Values.network.api_proxy.ingress.public }}
-{{- $ingressOpts := dict "envAll" . "backendServiceType" "compute" "backendPort" "n-api-proxy" -}}
+{{- if and .Values.manifests.ingress_api .Values.network.api_proxy.ingress.public }}
+{{- $ingressOpts := dict "envAll" . "backendService" "api_proxy" "backendServiceType" "compute" "backendPort" "n-api-proxy" -}}
 {{ $ingressOpts | include "helm-toolkit.manifests.ingress" }}
 {{- end }}

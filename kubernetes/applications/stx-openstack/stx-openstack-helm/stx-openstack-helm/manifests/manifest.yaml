@@ -492,6 +492,10 @@ data:
             application: nova
             component: cell-setup
   values:
+    manifests:
+      job_ks_endpoints: false
+      ingress_osapi: false
+      service_ingress_osapi: false
     labels:
       agent:
         compute:
