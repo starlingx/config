@@ -36,6 +36,7 @@ def upgrade(migrate_engine):
         Column('manifest_name', String(255), nullable=False),
         Column('manifest_file', String(255), nullable=True),
         Column('status', String(255), nullable=False),
+        Column('progress', String(255), nullable=True),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,

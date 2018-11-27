@@ -1507,6 +1507,16 @@ APP_APPLY_OP = 'apply'
 APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
 
+# Progress constants
+APP_PROGRESS_ABORTED = 'operation aborted, check logs for detail'
+APP_PROGRESS_APPLY_MANIFEST = 'applying application manifest'
+APP_PROGRESS_COMPLETED = 'completed'
+APP_PROGRESS_DELETE_MANIFEST = 'deleting application manifest'
+APP_PROGRESS_DOWNLOAD_IMAGES = 'retrieving docker images'
+APP_PROGRESS_EXTRACT_TARFILE = 'extracting application tar file'
+APP_PROGRESS_GENERATE_OVERRIDES = 'generating application overrides'
+APP_PROGRESS_VALIDATE_UPLOAD_CHARTS = 'validating and uploading charts'
+
 # Node label operation constants
 LABEL_ASSIGN_OP = 'assign'
 LABEL_REMOVE_OP = 'remove'

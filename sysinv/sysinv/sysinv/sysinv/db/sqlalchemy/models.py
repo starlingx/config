@@ -1644,3 +1644,4 @@ class KubeApp(Base):
     manifest_name = Column(String(255), nullable=False)
     manifest_file = Column(String(255), nullable=False)
     status = Column(String(255), nullable=False)
+    progress = Column(String(255), nullable=True)
