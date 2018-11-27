@@ -1322,13 +1322,47 @@ class ConfigAssistant():
         """ Management interface configuration complete"""
         self.management_interface_configured = True
 
-    def populate_aio_management_config(self):
-        """Populate management on aio interface config."""
+    def input_aio_simplex_management_config(self, management_subnet=None):
+        """Allow user to input AIO simplex management config and perform
+        validation."""
+
+        if management_subnet is not None:
+            self.management_subnet = management_subnet
+        else:
+            print "\nManagement Network:"
+            print "-------------------\n"
+
+            print textwrap.fill(
+                "The management network is used for internal communication "
+                "between platform components. IP addresses on this network "
+                "are reachable only within the host.", 80)
+            print
+
+            self.management_subnet = IPNetwork(
+                constants.DEFAULT_MGMT_ON_LOOPBACK_SUBNET_IPV4)
+            min_addresses = 16
+            while True:
+                user_input = input("Management subnet [" +
+                                   str(self.management_subnet) + "]: ")
+                if user_input.lower() == 'q':
+                    raise UserQuit
+                elif user_input == "":
+                    user_input = self.management_subnet
+
+                try:
+                    tmp_management_subnet = validate_network_str(user_input,
+                                                                 min_addresses)
+                    if tmp_management_subnet.version == 6:
+                        print ("IPv6 management network not supported on " +
+                               "simplex configuration")
+                        continue
+                    self.management_subnet = tmp_management_subnet
+                    break
+                except ValidateFail as e:
+                    print "{}".format(e)
 
         self.management_interface = constants.LOOPBACK_IFNAME
         self.management_interface_name = constants.LOOPBACK_IFNAME
-        self.management_subnet = IPNetwork(
-            constants.DEFAULT_MGMT_ON_LOOPBACK_SUBNET_IPV4)
         self.management_start_address = self.management_subnet[2]
         self.management_end_address = self.management_subnet[-2]
         self.controller_floating_address = self.management_start_address
@@ -2307,7 +2341,7 @@ class ConfigAssistant():
         self.check_storage_config()
         if self.system_mode == sysinv_constants.SYSTEM_MODE_SIMPLEX:
             self.default_pxeboot_config()
-            self.populate_aio_management_config()
+            self.input_aio_simplex_management_config()
         else:
             # An AIO system cannot function as a Distributed Cloud System
             # Controller
@@ -2425,9 +2459,16 @@ class ConfigAssistant():
             # Management network configuration
             if self.system_mode == sysinv_constants.SYSTEM_MODE_SIMPLEX and \
                     not self.subcloud_config():
-                # For AIO-SX subcloud, mgmt n/w will be on a separate
-                # physical interface instead of the loopback interface.
-                self.populate_aio_management_config()
+                # For AIO-SX, only the management subnet is configurable
+                # (unless this is a subcloud).
+                if config.has_option('cMGMT', 'MANAGEMENT_SUBNET'):
+                    management_subnet = IPNetwork(config.get(
+                        'cMGMT', 'MANAGEMENT_SUBNET'))
+                else:
+                    management_subnet = IPNetwork(
+                        constants.DEFAULT_MGMT_ON_LOOPBACK_SUBNET_IPV4)
+                self.input_aio_simplex_management_config(
+                    management_subnet=management_subnet)
             else:
                 self.management_interface_name = config.get(
                     'cMGMT', 'MANAGEMENT_INTERFACE_NAME')

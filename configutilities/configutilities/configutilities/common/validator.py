@@ -69,6 +69,7 @@ class ConfigValidator(object):
         self.glance_region = None
         self.system_mode = None
         self.system_type = None
+        self.system_dc_role = None
 
     def is_simplex_cpe(self):
         return self.system_mode == SYSTEM_MODE_SIMPLEX
@@ -78,6 +79,9 @@ class ConfigValidator(object):
 
     def set_system_mode(self, mode):
         self.system_mode = mode
+
+    def set_system_dc_role(self, dc_role):
+        self.system_dc_role = dc_role
 
     def set_oam_config(self, use_lag, external_oam_interface_name):
         if self.cgcs_conf is not None:
@@ -165,6 +169,45 @@ class ConfigValidator(object):
         except Exception as e:
             raise ConfigFail("Error parsing configuration file: %s" % e)
 
+    def validate_aio_simplex_mgmt(self):
+        # AIO simplex management network configuration
+        mgmt_prefix = NETWORK_PREFIX_NAMES[self.naming_type][MGMT_TYPE]
+        self.mgmt_network = Network()
+
+        min_addresses = 16
+
+        try:
+            self.mgmt_network.parse_config(self.conf, self.config_type,
+                                           MGMT_TYPE,
+                                           min_addresses=min_addresses,
+                                           multicast_addresses=0,
+                                           naming_type=self.naming_type,
+                                           logical_interface_required=False)
+
+        except ConfigFail:
+            raise
+        except Exception as e:
+            raise ConfigFail("Error parsing configuration file: %s" % e)
+
+        if self.mgmt_network.vlan or self.mgmt_network.multicast_cidr or \
+                self.mgmt_network.start_end_in_config or \
+                self.mgmt_network.floating_address or \
+                self.mgmt_network.address_0 or self.mgmt_network.address_1 or \
+                self.mgmt_network.dynamic_allocation or \
+                self.mgmt_network.gateway_address or \
+                self.mgmt_network.logical_interface:
+            raise ConfigFail("For AIO simplex, only the %s network CIDR can "
+                             "be specified" % mgmt_prefix)
+
+        if self.mgmt_network.cidr.version == 6:
+            raise ConfigFail("IPv6 management network not supported on "
+                             "simplex configuration.")
+
+        if self.cgcs_conf is not None:
+            self.cgcs_conf.add_section('cMGMT')
+            self.cgcs_conf.set('cMGMT', 'MANAGEMENT_SUBNET',
+                               self.mgmt_network.cidr)
+
     def validate_aio_network(self, subcloud=False):
         if not subcloud:
             # AIO-SX subcloud supports MGMT_NETWORK & PXEBOOT_NETWORK
@@ -172,8 +215,7 @@ class ConfigValidator(object):
                 raise ConfigFail("PXEBoot Network configuration is not "
                                  "supported.")
             if self.conf.has_section('MGMT_NETWORK'):
-                raise ConfigFail("Management Network configuration is not "
-                                 "supported.")
+                self.validate_aio_simplex_mgmt()
         if self.conf.has_section('INFRA_NETWORK'):
             raise ConfigFail("Infrastructure Network configuration is not "
                              "supported.")
@@ -191,6 +233,17 @@ class ConfigValidator(object):
             raise ConfigFail(
                 "No gateway specified -  %s_GATEWAY must be specified"
                 % oam_prefix)
+
+        # Check overlap with management network
+        if self.mgmt_network is not None:
+            try:
+                self.configured_networks.append(self.mgmt_network.cidr)
+                check_network_overlap(self.oam_network.cidr,
+                                      self.configured_networks)
+            except ValidateFail:
+                raise ConfigFail("%s CIDR %s overlaps with another configured "
+                                 "network" %
+                                 (oam_prefix, str(self.mgmt_network.cidr)))
 
         self.set_oam_config(use_lag, external_oam_interface_name)
 

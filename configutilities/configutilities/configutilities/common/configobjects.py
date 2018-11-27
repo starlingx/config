@@ -133,7 +133,8 @@ class Network(object):
 
     def parse_config(self, system_config, config_type, network_type,
                      min_addresses=0, multicast_addresses=0, optional=False,
-                     naming_type=DEFAULT_NAMES):
+                     naming_type=DEFAULT_NAMES,
+                     logical_interface_required=True):
         network_prefix = NETWORK_PREFIX_NAMES[naming_type][network_type]
         network_name = network_prefix + '_NETWORK'
 
@@ -375,8 +376,10 @@ class Network(object):
                      gateway_address_str, network_name, e))
 
         # Parse/validate the logical interface
-        logical_interface_name = system_config.get(
-            network_name, attr_prefix + 'LOGICAL_INTERFACE')
-        self.logical_interface = LogicalInterface()
-        self.logical_interface.parse_config(system_config,
-                                            logical_interface_name)
+        if logical_interface_required or system_config.has_option(
+                network_name, attr_prefix + 'LOGICAL_INTERFACE'):
+            logical_interface_name = system_config.get(
+                network_name, attr_prefix + 'LOGICAL_INTERFACE')
+            self.logical_interface = LogicalInterface()
+            self.logical_interface.parse_config(system_config,
+                                                logical_interface_name)

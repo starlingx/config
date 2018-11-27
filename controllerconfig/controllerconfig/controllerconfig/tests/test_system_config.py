@@ -107,6 +107,62 @@ def test_system_config_simplex():
     _test_system_config(systemfile)
 
 
+def test_system_config_simplex_mgmt():
+    """ Test import of system_config file for AIO-simplex with management
+    configuration"""
+
+    # Create the path to the system_config file
+    systemfile = os.path.join(
+        os.getcwd(), "controllerconfig/tests/files/",
+        "system_config.simplex_mgmt")
+
+    _test_system_config(systemfile)
+
+    # Test MGMT_NETWORK parameters that are not allowed
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('MGMT_NETWORK', 'GATEWAY', '192.168.42.1')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('MGMT_NETWORK', 'LOGICAL_INTERFACE',
+                      'LOGICAL_INTERFACE_1')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test overlap with OAM network
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('MGMT_NETWORK', 'CIDR', '10.10.10.0/24')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test IPv6 management CIDR (not supported)
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('MGMT_NETWORK', 'CIDR', 'FD01::0000/64')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test management CIDR that is too small
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('MGMT_NETWORK', 'CIDR', '192.168.42.0/29')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+
 def test_system_config_validation():
     """ Test detection of various errors in system_config file """
 
