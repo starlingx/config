@@ -36,12 +36,6 @@ def _print_ilvg_show(ilvg):
 
     attr = getattr(ilvg, 'capabilities', '')
 
-    if attr:
-        lv_size_mib = attr.pop('instances_lv_size_mib', None)
-        if lv_size_mib:
-            lv_size_gib = float(lv_size_mib) / 1024
-            attr.update({'instances_lv_size_gib': lv_size_gib})
-
     # rename capabilities for display purposes and add to display list
     data.append(('parameters', attr))
 
@@ -176,21 +170,14 @@ def do_host_lvg_delete(cc, args):
            help="Name or UUID of lvg [REQUIRED]")
 @utils.arg('-b', '--instance_backing',
            metavar='<instance backing>',
-           choices=['lvm', 'image', 'remote'],
+           choices=['image', 'remote'],
            help=("Type of instance backing. "
-                 "Allowed values: lvm, image, remote. [nova-local]"))
+                 "Allowed values: image, remote. [nova-local]"))
 @utils.arg('-c', '--concurrent_disk_operations',
            metavar='<concurrent disk operations>',
            help=("Set the number of concurrent I/O intensive disk operations "
                  "such as glance image downloads, image format conversions, "
                  "etc. [nova-local]"))
-@utils.arg('-s', '--instances_lv_size_gib',
-           metavar='<instances_lv size in GiB>',
-           help=("Set the desired size (in GiB) of the instances LV that is "
-                 "used for /var/lib/nova/instances. "
-                 "Example: For a 50GB volume, use 50. "
-                 "Required when instance backing is \"lvm\". "
-                 "[nova-local]"))
 @utils.arg('-l', '--lvm_type',
            metavar='<lvm_type>',
            choices=['thick', 'thin'],
@@ -201,14 +188,13 @@ def do_host_lvg_modify(cc, args):
 
     # Get all the fields from the command arguments
     field_list = ['hostnameorid', 'lvgnameoruuid',
-                  'instance_backing', 'instances_lv_size_gib',
-                  'concurrent_disk_operations', 'lvm_type']
+                  'instance_backing', 'concurrent_disk_operations', 'lvm_type']
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
 
-    all_caps_list = ['instance_backing', 'instances_lv_size_gib',
-                     'concurrent_disk_operations', 'lvm_type']
-    integer_fields = ['instances_lv_size_gib', 'concurrent_disk_operations']
+    all_caps_list = ['instance_backing', 'concurrent_disk_operations',
+                     'lvm_type']
+    integer_fields = ['concurrent_disk_operations']
     requested_caps_dict = {}
 
     for cap in all_caps_list:
@@ -218,12 +204,9 @@ def do_host_lvg_modify(cc, args):
                     requested_caps_dict[cap] = int(fields[cap])
                 else:
                     requested_caps_dict[cap] = fields[cap]
-                if cap == 'instances_lv_size_gib':
-                    requested_caps_dict['instances_lv_size_mib'] = \
-                        requested_caps_dict.pop('instances_lv_size_gib') * 1024
             except ValueError:
-                raise exc.CommandError('instances_lv size must be an integer '
-                                       'greater than 0: %s' % fields[cap])
+                raise exc.CommandError(
+                    '{0} value {1} is invalid'.format(cap, fields[cap]))
 
     # Get the ihost object
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)

@@ -564,52 +564,6 @@ def _get_vg_size_from_pvs(lvg, filter_pv=None):
     return size
 
 
-def _instances_lv_min_allowed_mib(vg_size_mib):
-    # 80GB is the cutoff in the kickstart files for a virtualbox disk vs. a
-    # normal disk. Use a similar cutoff here for the volume group size. If the
-    # volume group is large enough then bump the min_mib value. The min_mib
-    # value is set to provide a reasonable minimum amount of space for
-    # /var/lib/nova/instances
-
-    # Note: A range based on this calculation is displayed in horizon to help
-    # provide guidance to the end user. Any changes here should be reflected
-    # in dashboards/admin/inventory/storages/lvg_params/views.py as well
-    if (vg_size_mib < (80 * 1024)):
-        min_mib = 2 * 1024
-    else:
-        min_mib = 5 * 1024
-    return min_mib
-
-
-def _instances_lv_max_allowed_mib(vg_size_mib):
-    return vg_size_mib >> 1
-
-
-def _check_instances_lv_if_deleted(lvg, ignore_pv):
-    # get the volume group capabilities
-    lvg_caps = lvg['capabilities']
-
-    # get the new volume group size assuming that the physical volume is
-    # removed
-    vg_size_mib = _get_vg_size_from_pvs(lvg, filter_pv=ignore_pv)
-
-    # Get the valid range of the instances_lv
-    allowed_min_mib = _instances_lv_min_allowed_mib(vg_size_mib)
-    allowed_max_mib = _instances_lv_max_allowed_mib(vg_size_mib)
-
-    if (constants.LVG_NOVA_PARAM_INST_LV_SZ in lvg_caps and
-        ((lvg_caps[constants.LVG_NOVA_PARAM_INST_LV_SZ] < allowed_min_mib) or
-         (lvg_caps[constants.LVG_NOVA_PARAM_INST_LV_SZ] > allowed_max_mib))):
-        raise wsme.exc.ClientSideError(
-            _("Cannot delete physical volume: %s from %s. The resulting "
-              "volume group size would leave an invalid "
-              "instances_lv_size_mib: %d. The valid range, based on the new "
-              "volume group size is %d <= instances_lv_size_mib <= %d." %
-              (ignore_pv['uuid'], lvg.lvm_vg_name,
-               lvg_caps[constants.LVG_NOVA_PARAM_INST_LV_SZ],
-               allowed_min_mib, allowed_max_mib)))
-
-
 def _check_lvg(op, pv):
     # semantic check whether idisk is associated
     ilvgid = pv.get('forilvgid') or pv.get('ilvg_uuid')
@@ -645,23 +599,6 @@ def _check_lvg(op, pv):
                     raise wsme.exc.ClientSideError(msg)
 
     elif op == "delete":
-        if (constants.LVG_NOVA_PARAM_BACKING in ilvg.capabilities and
-            (ilvg.capabilities[constants.LVG_NOVA_PARAM_BACKING] ==
-             constants.LVG_NOVA_BACKING_LVM)):
-
-            # Semantic Check: nova-local: Make sure that VG does not contain
-            # any instance volumes
-            if ((ilvg.lvm_vg_name == constants.LVG_NOVA_LOCAL) and
-                    (ilvg.lvm_cur_lv > 1)):
-                raise wsme.exc.ClientSideError(
-                    _("Can't delete physical volume: %s from %s. Instance "
-                      "logical volumes are present in the volume group. Total "
-                      "= %d. To remove physical volumes you must "
-                      "terminate/migrate all instances associated with this "
-                      "node." %
-                      (pv['uuid'], ilvg.lvm_vg_name, ilvg.lvm_cur_lv - 1)))
-
-            _check_instances_lv_if_deleted(ilvg, pv)
         # Possible Kubernetes issue, do we want to allow this on compute nodes?
         if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
             raise wsme.exc.ClientSideError(

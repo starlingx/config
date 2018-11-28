@@ -1813,41 +1813,12 @@ def _create_localstorage_profile(profile_name, profile_node):
         ilvg = ilvgs_local[0]
         instance_backing = ilvg.get(constants.LVG_NOVA_PARAM_BACKING)
         concurrent_disk_operations = ilvg.get(constants.LVG_NOVA_PARAM_DISK_OPS)
-        if instance_backing == constants.LVG_NOVA_BACKING_LVM:
-            instances_lv_size_mib = \
-                int(ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB)) * 1024
-            if not instances_lv_size_mib:
-                return ("Error", _('error: importing Local Storage profile %s '
-                        'failed.') %
-                        profile_name, "instances_lv_size_mib required.")
-            capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
-                                     constants.LVG_NOVA_BACKING_LVM,
-                                 constants.LVG_NOVA_PARAM_INST_LV_SZ:
-                                     int(instances_lv_size_mib),
-                                 constants.LVG_NOVA_PARAM_DISK_OPS:
-                                     int(concurrent_disk_operations)}
-        elif instance_backing == constants.LVG_NOVA_BACKING_IMAGE:
-            if ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB):
-                return ("Error",
-                        _('error: Local Storage profile %s is invalid')
-                        % profile_name,
-                        _('instances_lv_size_gib (%s) must not be set for '
-                          'image backed instance')
-                        % ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB))
-
+        if instance_backing == constants.LVG_NOVA_BACKING_IMAGE:
             capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
                                      constants.LVG_NOVA_BACKING_IMAGE,
                                  constants.LVG_NOVA_PARAM_DISK_OPS:
                                      int(concurrent_disk_operations)}
         elif instance_backing == constants.LVG_NOVA_BACKING_REMOTE:
-            if ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB):
-                return ("Error",
-                        _('error: Local Storage profile %s is invalid')
-                        % profile_name,
-                        _('instances_lv_size_gib (%s) must not be set for '
-                          'remote backed instance')
-                        % ilvg.get(constants.LVG_NOVA_PARAM_INST_LV_SZ_GIB))
-
             capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
                                      constants.LVG_NOVA_BACKING_REMOTE,
                                  constants.LVG_NOVA_PARAM_DISK_OPS:

@@ -394,7 +394,6 @@ def _cinder_volumes_patch_semantic_checks(caps_dict):
 def _nova_local_patch_semantic_checks(caps_dict):
     # make sure that only valid capabilities are provided
     valid_caps = set([constants.LVG_NOVA_PARAM_BACKING,
-                      constants.LVG_NOVA_PARAM_INST_LV_SZ,
                       constants.LVG_NOVA_PARAM_DISK_OPS])
     invalid_caps = set(caps_dict.keys()) - valid_caps
 
@@ -437,29 +436,6 @@ def _lvg_pre_patch_checks(lvg_obj, patch_obj):
                 for k in (set(current_caps_dict.keys()) -
                           set(patch_caps_dict.keys())):
                     patch_caps_dict[k] = current_caps_dict[k]
-
-                # Make further adjustments to the patch based on the current
-                # value to account for switching storage modes
-                if (patch_caps_dict[constants.LVG_NOVA_PARAM_BACKING] ==
-                        constants.LVG_NOVA_BACKING_LVM):
-                    if constants.LVG_NOVA_PARAM_INST_LV_SZ not in patch_caps_dict:
-                        # Switched to LVM mode so set the minimum sized
-                        # instances_lv_size_mib. This will populate it in
-                        # horizon allowing for further configuration
-                        vg_size_mib = pv_api._get_vg_size_from_pvs(lvg_dict)
-                        allowed_min_mib = \
-                            pv_api._instances_lv_min_allowed_mib(vg_size_mib)
-                        patch_caps_dict.update({constants.LVG_NOVA_PARAM_INST_LV_SZ:
-                                                allowed_min_mib})
-                elif (patch_caps_dict[constants.LVG_NOVA_PARAM_BACKING] in [
-                        constants.LVG_NOVA_BACKING_IMAGE,
-                        constants.LVG_NOVA_BACKING_REMOTE]):
-                    if constants.LVG_NOVA_PARAM_INST_LV_SZ in patch_caps_dict:
-                        # Switched to image backed or remote backed modes.
-                        # Remove the instances_lv_size_mib. It is not
-                        # configurable as we will use the entire nova-local
-                        # VG
-                        del patch_caps_dict[constants.LVG_NOVA_PARAM_INST_LV_SZ]
 
                 p['value'] = patch_caps_dict
     elif lvg_dict['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
@@ -641,34 +617,6 @@ def _check(op, lvg):
                     _('Internal Error: %s parameter missing for volume '
                       'group.') % constants.LVG_NOVA_PARAM_BACKING)
             else:
-                # Check instances_lv_size_mib
-                if ((lvg_caps.get(constants.LVG_NOVA_PARAM_BACKING) ==
-                     constants.LVG_NOVA_BACKING_LVM) and
-                        constants.LVG_NOVA_PARAM_INST_LV_SZ in lvg_caps):
-
-                    # Get the volume group size
-                    vg_size_mib = pv_api._get_vg_size_from_pvs(lvg)
-
-                    # Apply a "usability" check on the value provided to make
-                    # sure it operates within an acceptable range
-
-                    allowed_min_mib = pv_api._instances_lv_min_allowed_mib(
-                        vg_size_mib)
-                    allowed_max_mib = pv_api._instances_lv_max_allowed_mib(
-                        vg_size_mib)
-
-                    lv_size_mib = lvg_caps[constants.LVG_NOVA_PARAM_INST_LV_SZ]
-                    if ((lv_size_mib < allowed_min_mib) or
-                            (lv_size_mib > allowed_max_mib)):
-                        raise wsme.exc.ClientSideError(
-                            _('Invalid size provided for '
-                              'instances_lv_size_gib: %.2f. The valid range, '
-                              'based on the volume group size is %.2f <= '
-                              'instances_lv_size_gib <= %.2f.' %
-                              (float(lvg_caps[constants.LVG_NOVA_PARAM_INST_LV_SZ]) / 1024,
-                               float(allowed_min_mib) / 1024,
-                               float(allowed_max_mib) / 1024)))
-
                 # Instances backed by remote ephemeral storage can only be
                 # used on systems that have a Ceph (internal or external)
                 # backend.
@@ -785,11 +733,10 @@ def _create(lvg, iprofile=None, applyprofile=None):
         if lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL and not iprofile:
             lvg_caps = lvg['capabilities']
 
-            if (constants.LVG_NOVA_PARAM_INST_LV_SZ in lvg_caps) or applyprofile:
+            if applyprofile:
                 # defined from create or inherit the capabilities
-                LOG.info("%s defined from create %s applyprofile=%s" %
-                         (constants.LVG_NOVA_PARAM_INST_LV_SZ, lvg_caps,
-                          applyprofile))
+                LOG.info("LVG create %s applyprofile=%s" %
+                         (lvg_caps, applyprofile))
             else:
                 lvg_caps_dict = {
                     constants.LVG_NOVA_PARAM_BACKING:

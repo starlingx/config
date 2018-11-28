@@ -445,7 +445,6 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         pvs = self.dbapi.ipv_get_by_ihost(host.id)
 
         instance_backing = constants.LVG_NOVA_BACKING_IMAGE
-        instances_lv_size = constants.LVG_NOVA_PARAM_INST_LV_SZ_DEFAULT
         concurrent_disk_operations = constants.LVG_NOVA_PARAM_DISK_OPS_DEFAULT
 
         final_pvs = []
@@ -480,8 +479,6 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
                 constants.LVG_NOVA_PARAM_BACKING)
             concurrent_disk_operations = lvg.capabilities.get(
                 constants.LVG_NOVA_PARAM_DISK_OPS)
-            instances_lv_size = lvg.capabilities.get(
-                constants.LVG_NOVA_PARAM_INST_LV_SZ)
 
         global_filter, update_filter = self._get_lvm_global_filter(host)
 
@@ -492,8 +489,6 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             'openstack::nova::storage::lvm_global_filter': global_filter,
             'openstack::nova::storage::lvm_update_filter': update_filter,
             'openstack::nova::storage::instance_backing': instance_backing,
-            'openstack::nova::storage::instances_lv_size':
-                "%sm" % instances_lv_size,
             'openstack::nova::storage::concurrent_disk_operations':
                 concurrent_disk_operations, }
 
