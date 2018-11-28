@@ -23,7 +23,16 @@ class RbdProvisionerHelm(base.BaseHelm):
         common.HELM_NS_KUBE_SYSTEM
     ]
 
+    SERVICE_NAME = 'rbd-provisioner'
     SERVICE_PORT_MON = 6789
+
+    @property
+    def docker_repo_source(self):
+        return common.DOCKER_SRC_STX
+
+    @property
+    def docker_repo_tag(self):
+        return common.DOCKER_SRCS[self.docker_repo_source][common.IMG_TAG_KEY]
 
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
@@ -52,20 +61,84 @@ class RbdProvisionerHelm(base.BaseHelm):
             "adminSecretName": constants.K8S_RBD_PROV_ADMIN_SECRET_NAME
         }
 
+        # Get tier info.
+        tiers = self.dbapi.storage_tier_get_list()
+        primary_tier_name = \
+            constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]
+
         classes = []
         for bk in rbd_provisioner_bks:
+            # Get the ruleset for the new kube-rbd pool.
+            tier = next((t for t in tiers if t.forbackendid == bk.id), None)
+            if not tier:
+                raise Exception("No tier present for backend %s" % bk.name)
+
+            rule_name = "{0}{1}{2}".format(
+                tier.name,
+                constants.CEPH_CRUSH_TIER_SUFFIX,
+                "-ruleset").replace('-', '_')
+
+            # Check namespaces. We need to know on what namespaces to create
+            # the secrets for the kube-rbd pools.
+            pool_secrets_namespaces = bk.capabilities.get(
+                constants.K8S_RBD_PROV_NAMESPACES)
+            if not pool_secrets_namespaces:
+                raise Exception("Please specify the rbd_provisioner_namespaces"
+                                " for the %s backend." % bk.name)
+
             cls = {
                     "name": K8RbdProvisioner.get_storage_class_name(bk),
-                    "pool": K8RbdProvisioner.get_pool(bk),
+                    "pool_name": K8RbdProvisioner.get_pool(bk),
+                    "pool_secrets_namespaces": pool_secrets_namespaces.encode(
+                            'utf8', 'strict'),
+                    "replication": int(bk.capabilities.get("replication")),
+                    "crush_rule_name": rule_name,
+                    "chunk_size": 64,
                     "userId": K8RbdProvisioner.get_user_id(bk),
                     "userSecretName": K8RbdProvisioner.get_user_secret_name(bk)
                   }
             classes.append(cls)
 
+        # Get all the info for creating the ephemeral pool.
+        ephemeral_pools = []
+        # Right now the ephemeral pool will only use the primary tier.
+        rule_name = "{0}{1}{2}".format(
+            primary_tier_name,
+            constants.CEPH_CRUSH_TIER_SUFFIX,
+            "-ruleset").replace('-', '_')
+
+        sb_list_ext = self.dbapi.storage_backend_get_list_by_type(
+            backend_type=constants.SB_TYPE_CEPH_EXTERNAL)
+        sb_list = self.dbapi.storage_backend_get_list_by_type(
+            backend_type=constants.SB_TYPE_CEPH)
+
+        if sb_list_ext:
+            for sb in sb_list_ext:
+                if constants.SB_SVC_NOVA in sb.services:
+                    rbd_pool = sb.capabilities.get('ephemeral_pool')
+                    ephemeral_pool = {
+                        "pool_name": rbd_pool,
+                        "replication": int(sb.capabilities.get("replication")),
+                        "crush_rule_name": rule_name,
+                        "chunk_size": 64,
+                    }
+                    ephemeral_pools.append(ephemeral_pool)
+        # Treat internal CEPH.
+        if sb_list:
+            ephemeral_pool = {
+                "pool_name": constants.CEPH_POOL_EPHEMERAL_NAME,
+                "replication": int(sb_list[0].capabilities.get("replication")),
+                "crush_rule_name": rule_name,
+                "chunk_size": 64,
+            }
+            ephemeral_pools.append(ephemeral_pool)
+
         overrides = {
             common.HELM_NS_KUBE_SYSTEM: {
                 "classdefaults": classdefaults,
-                "classes": classes
+                "classes": classes,
+                "ephemeral_pools": ephemeral_pools,
+                "images": self._get_images_overrides(),
             }
         }
 
@@ -76,3 +149,21 @@ class RbdProvisionerHelm(base.BaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_images_overrides(self):
+        # TODO: Remove after ceph upgrade
+        # Format the name of the stx specific ceph config helper
+        ceph_config_helper_image = "{}/{}{}:{}".format(
+            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_BASE_KEY],
+            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
+            'ceph-config-helper', self.docker_repo_tag)
+
+        rbd_provisioner_image = \
+            'quay.io/external_storage/rbd-provisioner:latest'
+
+        return {
+            'tags': {
+                'rbd_provisioner': rbd_provisioner_image,
+                'rbd_provisioner_storage_init': ceph_config_helper_image,
+            }
+        }

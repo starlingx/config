@@ -1512,13 +1512,12 @@ class ConductorManager(service.PeriodicService):
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
 
+                # TODO(CephPoolsDecouple): remove
                 # Ensure the OSD pools exists. In the case of a system restore,
                 # the pools must be re-created when the first storage node is
                 # unlocked.
-                self._ceph.configure_osd_pools()
-
-                # Generate CEPH keys for k8s pools.
-                self.check_and_update_rbd_provisioner(context)
+                if not utils.is_kubernetes_config(self.dbapi):
+                    self._ceph.configure_osd_pools()
 
                 # Generate host configuration files
                 self._puppet.update_host_config(host)
@@ -1530,6 +1529,7 @@ class ConductorManager(service.PeriodicService):
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
 
+    # TODO(CephPoolsDecouple): remove
     def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
         """Configure or update configuration of the OSD pools.
         If none of the optionals are provided then all pools are updated based on DB configuration.
@@ -4941,14 +4941,21 @@ class ConductorManager(service.PeriodicService):
                 continue
             self._audit_ihost_action(host)
 
+    # TODO(CephPoolsDecouple): remove
     @periodic_task.periodic_task(spacing=60)
     def _osd_pool_audit(self, context):
+        if utils.is_kubernetes_config(self.dbapi):
+            LOG.debug("_osd_pool_audit skip")
+            return
+
         # Only do the audit if ceph is configured.
         if not StorageBackendConfig.has_backend(
             self.dbapi,
             constants.CINDER_BACKEND_CEPH
         ):
             return
+
+        LOG.debug("_osd_pool_audit")
 
         # Only run the pool audit task if we have at least one storage node
         # available. Pools are created with initial PG num values and quotas
@@ -5002,32 +5009,13 @@ class ConductorManager(service.PeriodicService):
             cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
                    'get', 'namespaces', '-o',
                    'go-template=\'{{range .items}}{{.metadata.name}}\'{{end}}\'']
-            stdout, _ = cutils.execute(*cmd, run_as_root=False)
+            stdout, stderr = cutils.execute(*cmd, run_as_root=False)
             namespaces = [n for n in stdout.split("\'") if n]
             return namespaces
         except exception.ProcessExecutionError as e:
             raise exception.SysinvException(
                 _("Error getting Kubernetes list of namespaces, "
-                  "Details: %s" % str(e)))
-
-    def check_and_update_rbd_provisioner(self, context, new_storceph=None):
-        """ Check and/or update RBD Provisioner configuration for all Ceph
-        internal backends.
-
-        This function should be called in two cases:
-           1. When making any changes to the rbd-provisioner service.
-           2. When delaying changes due to Ceph not being up.
-
-        To allow delayed executions we check DB entries for changes and only
-        then proceed with time consuming modifications.
-
-        Note: This function assumes a functional Ceph cluster
-
-        :param   new_storceph a storage backend object as_dict() with updated
-                 data. This is required as database updates can happen later.
-        :returns an updated version of new_storceph or None
-        """
-        return self._ceph.check_and_update_rbd_provisioner(new_storceph)
+                  "Details: %s") % str(e))
 
     def configure_isystemname(self, context, systemname):
         """Configure the systemname with the supplied data.
@@ -5146,7 +5134,9 @@ class ConductorManager(service.PeriodicService):
         # Update the osdid in the stor object
         istor_obj['osdid'] = body['output']['osdid']
 
-        self._ceph.configure_osd_pools()
+        # TODO(CephPoolsDecouple): remove
+        if not utils.is_kubernetes_config(self.dbapi):
+            self._ceph.configure_osd_pools()
 
         return istor_obj
 
@@ -6336,8 +6326,6 @@ class ConductorManager(service.PeriodicService):
                 if utils.is_aio_simplex_system(self.dbapi):
                     task = None
                     cceph.fix_crushmap(self.dbapi)
-                    # Ceph is up, update rbd-provisioner config if needed.
-                    self.check_and_update_rbd_provisioner(context)
                 else:
                     task = constants.SB_TASK_PROVISION_STORAGE
                 values = {'state': state,

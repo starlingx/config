@@ -117,6 +117,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        host=host,
                                        do_compute_apply=do_compute_apply))
 
+    # TODO(CephPoolsDecouple): remove
     def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
         """Configure or update configuration of the OSD pools.
         If none of the optionals are provided then all pools are updated based on DB configuration.
@@ -911,27 +912,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('get_k8s_namespaces'))
-
-    def check_and_update_rbd_provisioner(self, context, new_storceph=None):
-        """ Check and/or update RBD Provisioner is correctly configured
-        for all Ceph internal backends.
-
-        This function should be called in two cases:
-           1. When making any change to rbd-provisioner
-           2. When delaying changes due to Ceph not being up
-
-        To allow delayed executions we check DB entries for changes and only
-        then proceed with time consuming modifications.
-
-        Note: This function assumes a fully functional Ceph cluster
-
-        :param   new_storceph a storage backend object as_dict() with updated
-                 data. This is needed as database updates can happen later.
-        :returns an updated version of new_storceph
-        """
-        return self.call(context,
-                         self.make_msg('check_and_update_rbd_provisioner',
-                                       new_storceph=new_storceph))
 
     def report_config_status(self, context, iconfig,
                              status, error=None):

@@ -413,11 +413,9 @@ def _discover_and_validate_backend_config_data(caps_dict, confirmed):
         elif k == constants.CEPH_BACKEND_MIN_REPLICATION_CAP:
             rep = int(caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP])
             v_supported = constants.CEPH_REPLICATION_MAP_SUPPORTED[rep]
-            msg = _("Missing or invalid value for "
-                    "backend parameter \'%s\', when "
-                    "replication is set as \'%s\'. "
-                    "Supported values are %s." %
-                    (k, rep, str(v_supported)))
+            msg = _("Missing or invalid value for backend parameter \'%s\', "
+                    "when replication is set as \'%s\'. Supported values are "
+                    "%s." % (k, rep, str(v_supported)))
             try:
                 v = int(v)
             except ValueError:
@@ -690,16 +688,6 @@ def _check_and_update_rbd_provisioner(new_storceph, remove=False):
             # Configuration will be resumed after backend configuration completes
             LOG.info("Ceph not configured, delaying rbd-provisioner configuration.")
             return new_storceph
-
-    # Cluster is configured, run live.
-    try:
-        new_storceph = \
-            pecan.request.rpcapi.check_and_update_rbd_provisioner(pecan.request.context,
-                                                                  new_storceph)
-    except Exception as e:
-        msg = _("Error configuring rbd-provisioner service. Please "
-                "investigate and try again: %s." % str(e))
-        raise wsme.exc.ClientSideError(msg)
 
     return new_storceph
 
@@ -1015,6 +1003,7 @@ def _check_replication_number(new_cap, orig_cap):
                    new_cap[constants.CEPH_BACKEND_REPLICATION_CAP])))
 
 
+# TODO(CephPoolsDecouple): remove
 def _is_quotaconfig_changed(ostorceph, storceph):
     if storceph and ostorceph:
         if (storceph.cinder_pool_gib != ostorceph.cinder_pool_gib or
@@ -1026,6 +1015,7 @@ def _is_quotaconfig_changed(ostorceph, storceph):
     return False
 
 
+# TODO(CephPoolsDecouple): remove
 def _check_pool_quotas_data(ostorceph, storceph):
     # Only relevant for ceph backend
     if not StorageBackendConfig.has_backend_configured(
@@ -1161,6 +1151,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                 % (total_quota_gib, int(tier_size)))
 
 
+# TODO(CephPoolsDecouple): remove
 def _update_pool_quotas(storceph):
     # In R4, the object data pool name could be either
     # CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER or CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL
@@ -1241,6 +1232,7 @@ def _patch(storceph_uuid, patch):
 
     # Obtain the fields that have changed.
     delta = rpc_storceph.obj_what_changed()
+    # TODO(CephPoolsDecouple): remove quota values
     allowed_attributes = ['services', 'capabilities', 'task',
                           'cinder_pool_gib',
                           'glance_pool_gib',
@@ -1248,6 +1240,7 @@ def _patch(storceph_uuid, patch):
                           'object_pool_gib',
                           'kube_pool_gib',
                           'object_gateway']
+    # TODO(CephPoolsDecouple): remove variable
     quota_attributes = ['cinder_pool_gib', 'glance_pool_gib',
                         'ephemeral_pool_gib', 'object_pool_gib',
                         'kube_pool_gib']
@@ -1296,6 +1289,7 @@ def _patch(storceph_uuid, patch):
             # We only have changes to fast configurable services and/or to their capabilities
             fast_config = True
 
+    # TODO(CephPoolsDecouple): remove variable
     quota_only_update = True
     replication_only_update = False
     for d in delta:
@@ -1303,12 +1297,13 @@ def _patch(storceph_uuid, patch):
             raise wsme.exc.ClientSideError(
                 _("Can not modify '%s' with this operation." % d))
 
+        # TODO(CephPoolsDecouple): remove condition
         if d not in quota_attributes:
             quota_only_update = False
 
         # TODO (rchurch): In R6, refactor and remove object_gateway attribute
-        # and DB column. This should be driven by if the service is added to the
-        # services list
+        # and DB column. This should be driven by if the service is added to
+        # the services list
         if d == 'object_gateway':
             if ostorceph[d]:
                 raise wsme.exc.ClientSideError(
@@ -1364,15 +1359,20 @@ def _patch(storceph_uuid, patch):
     LOG.info("SYS_I orig    storage_ceph: %s " % ostorceph.as_dict())
     LOG.info("SYS_I patched storage_ceph: %s " % storceph_config.as_dict())
 
-    if _is_quotaconfig_changed(ostorceph, storceph_config):
-        _check_pool_quotas_data(ostorceph, storceph_config.as_dict())
-        _update_pool_quotas(storceph_config.as_dict())
-        # check again after update
-        _check_pool_quotas_data(ostorceph, storceph_config.as_dict())
+    # TODO(CephPoolsDecouple): remove block
+    if not utils.is_kubernetes_config():
+        if _is_quotaconfig_changed(ostorceph, storceph_config):
+            _check_pool_quotas_data(ostorceph, storceph_config.as_dict())
+            _update_pool_quotas(storceph_config.as_dict())
+            # check again after update
+            _check_pool_quotas_data(ostorceph, storceph_config.as_dict())
+    else:
+        LOG.info("Don't check quotas")
 
-    if not quota_only_update:
-        # Execute the common semantic checks for all backends, if backend is
-        # not present this will not return.
+    # TODO(CephPoolsDecouple): remove condition
+    if not quota_only_update or utils.is_kubernetes_config():
+        # Execute the common semantic checks for all backends, if backend
+        # is not present this will not return.
         api_helper.common_checks(constants.SB_API_OP_MODIFY,
                                  rpc_storceph.as_dict())
 
@@ -1392,20 +1392,18 @@ def _patch(storceph_uuid, patch):
                 rpc_storceph[field] != storceph_config.as_dict()[field]):
             rpc_storceph[field] = storceph_config.as_dict()[field]
 
+    # TODO(CephPoolsDecouple): remove - on a containerized deployment,
+    # replication is updated through the helm charts.
     # Update replication on the fly on a single node install.
-    if (replication_only_update and
-            utils.is_aio_simplex_system(pecan.request.dbapi)):
-        # For single node setups update replication number on the fly.
-        min_replication = new_cap.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP, None)
-        replication = new_cap.get(constants.CEPH_BACKEND_REPLICATION_CAP, None)
-        pecan.request.rpcapi.configure_osd_pools(pecan.request.context,
-                                                 rpc_storceph,
-                                                 replication, min_replication)
-
-    # Perform changes to the RBD Provisioner service
-    remove_rbd_provisioner = constants.SB_SVC_RBD_PROVISIONER in services_removed
-    ret = _check_and_update_rbd_provisioner(rpc_storceph.as_dict(), remove_rbd_provisioner)
-    rpc_storceph['capabilities'] = ret['capabilities']
+    if not utils.is_kubernetes_config():
+        if (replication_only_update and
+                utils.is_aio_simplex_system(pecan.request.dbapi)):
+            # For single node setups update replication number on the fly.
+            min_replication = new_cap.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP, None)
+            replication = new_cap.get(constants.CEPH_BACKEND_REPLICATION_CAP, None)
+            pecan.request.rpcapi.configure_osd_pools(
+                pecan.request.context, rpc_storceph, replication,
+                min_replication)
 
     LOG.info("SYS_I new     storage_ceph: %s " % rpc_storceph.as_dict())
     try:
@@ -1413,10 +1411,11 @@ def _patch(storceph_uuid, patch):
 
         rpc_storceph.save()
 
+        # TODO(CephPoolsDecouple): rework - remove quota_only_update
         if ((not quota_only_update and
              not fast_config and
              not replication_only_update) or
-             (storceph_config.state == constants.SB_STATE_CONFIG_ERR)):
+                (storceph_config.state == constants.SB_STATE_CONFIG_ERR)):
             # Enable the backend changes:
             _apply_backend_changes(constants.SB_API_OP_MODIFY,
                                    rpc_storceph)

@@ -17,14 +17,12 @@ global:
   #
   namespace: kube-system
   #
-  # Run pre-install verifications or skip them.
-  # Skipping them is not recommended
+  # Execute initialization job to verify external Ceph cluster access
+  # and setup additional dependencies assumed by dependent helm charts
+  # (i.e. configmap and secrets).
+  # Skipping is not recommended.
   #
-  doPreInstallVerification: True
-  #
-  # Defines Provisioner's image name including container registry.
-  #
-  image: quay.io/external_storage/rbd-provisioner:latest
+  job_storage_init: true
   #
   # Defines whether to reuse an already defined RBAC policy.
   # Make sure that the serviceAccount defined in the RBAC section matches the one
@@ -132,11 +130,40 @@ classdefaults:
 classes:
 - name: fast-rbd # Name of storage class.
   # Ceph pool name
-  pool: kube
+  pool_name: kube
   # Ceph user name to access this pool
   userId: kube
   # K8 secret name with key for accessing the Ceph pool
   userSecretName: ceph-secret-kube
+  # Namespaces for creating the k8s secrets for accessing the Ceph pools
+  pool_secrets_namespaces: kube-system
+  # Name of pool to configure
+  pool_name: kube-rbd
+  # Pool replication
+  replication: 1
+  # Pool crush rule name
+  crush_rule_name: storage_tier_ruleset
+  # Pool chunk size / PG_NUM
+  chunk_size: 8
+# Configuration data for the ephemeral pool(s)
+ephemeral_pools:
+- chunk_size: 8
+  crush_rule_name: storage_tier_ruleset
+  pool_name: ephemeral
+  replication: 1
 
-
-
+#
+# Defines:
+# - Provisioner's image name including container registry.
+# - CEPH helper image
+#
+images:
+  tags:
+    rbd_provisioner: quay.io/external_storage/rbd-provisioner:latest
+    rbd_provisioner_storage_init: docker.io/port/ceph-config-helper:v1.10.3
+  pull_policy: "IfNotPresent"
+  local_registry:
+    active: false
+    exclude:
+      - dep_check
+      - image_repo_sync

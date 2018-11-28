@@ -31,4 +31,7 @@ rules:
     resources: ["services"]
     resourceNames: ["kube-dns"]
     verbs: ["list", "get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "list", "update"]
 {{- end}}

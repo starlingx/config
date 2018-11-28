@@ -395,6 +395,13 @@ def is_aio_duplex_system():
            SystemHelper.get_product_build() == constants.TIS_AIO_BUILD
 
 
+def is_aio_kubernetes(dbapi=None):
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    return SystemHelper.get_product_build() == constants.TIS_AIO_BUILD and \
+           is_kubernetes_config(dbapi)
+
+
 def get_compute_count(dbapi=None):
     if not dbapi:
         dbapi = pecan.request.dbapi
