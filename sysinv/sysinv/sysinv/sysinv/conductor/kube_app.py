@@ -602,6 +602,7 @@ class AppOperator(object):
                correct/update a previous manifest apply.
 
         :param rpc_app: application object in the RPC request
+        :return boolean: whether application apply was successful
         """
 
         app = AppOperator.Application(rpc_app)
@@ -649,12 +650,13 @@ class AppOperator(object):
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS)
                     LOG.info("Application (%s) apply completed." % app.name)
-                    return
+                    return True
         except Exception as e:
             LOG.exception(e)
 
         # If it gets here, something went wrong
         self._abort_operation(app, constants.APP_APPLY_OP)
+        return False
 
     def perform_app_remove(self, rpc_app):
         """Process application remove request

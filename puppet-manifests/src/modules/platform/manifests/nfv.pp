@@ -8,6 +8,7 @@ class platform::nfv::params (
 class platform::nfv {
   include ::platform::params
   include ::platform::amqp::params
+  include ::platform::kubernetes::params
 
   group { 'nfv':
     ensure => 'present',
