@@ -264,6 +264,10 @@ class platform::firewall::custom (
     'ipv4' => 'iptables-restore',
     'ipv6' => 'ip6tables-restore'}
 
+  platform::firewall::hooks { '::platform:firewall:hooks':
+    version => $version,
+  } ->
+
   exec { 'Flush firewall custom pre rules':
     command => "iptables --flush INPUT-custom-pre",
   } ->
@@ -334,17 +338,10 @@ class platform::firewall::oam (
 
   if $rules_file {
 
-    platform::firewall::hooks { '::platform:firewall:hooks':
-      version => $version,
-    }
-
     class { '::platform::firewall::custom':
       version => $version,
       rules_file => $rules_file,
     }
-
-    # ensure custom rules are applied before system rules
-    Class['::platform::firewall::custom'] -> Firewall <| |>
   }
 }
 
