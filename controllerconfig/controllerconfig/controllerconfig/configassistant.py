@@ -509,6 +509,8 @@ class ConfigAssistant():
         self.nfv_ks_password = ""
         self.fm_ks_user_name = ""
         self.fm_ks_password = ""
+        self.barbican_ks_user_name = ""
+        self.barbican_ks_password = ""
 
         self.ldap_region_name = ""
         self.ldap_service_name = ""
@@ -2894,6 +2896,13 @@ class ConfigAssistant():
                 self.add_password_for_validation('FM_PASSWORD',
                                                  self.fm_ks_password)
 
+                self.barbican_ks_user_name = config.get(
+                    'cREGION', 'BARBICAN_USER_NAME')
+                self.barbican_ks_password = config.get(
+                    'cREGION', 'BARBICAN_PASSWORD')
+                self.add_password_for_validation('BARBICAN_PASSWORD',
+                                                 self.barbican_ks_password)
+
                 self.shared_services.append(self.keystone_service_type)
                 if self.glance_region_name == self.region_1_name:
                     self.shared_services.append(self.glance_service_type)
@@ -3469,6 +3478,10 @@ class ConfigAssistant():
                             self.fm_ks_user_name)
                     f.write("FM_PASSWORD=%s\n" %
                             self.fm_ks_password)
+                    f.write("BARBICAN_USER_NAME=%s\n" %
+                            self.barbican_ks_user_name)
+                    f.write("BARBICAN_PASSWORD=%s\n" %
+                            self.barbican_ks_password)
 
                 # Subcloud configuration
                 if self.subcloud_config():
@@ -3974,6 +3987,14 @@ class ConfigAssistant():
                   'capabilities': capabilities}
         client.sysinv.sm_service.service_create(**values)
 
+        # barbican service config
+        capabilities = {'user_name': self.barbican_ks_user_name}
+        values = {'name': "barbican",
+                  'enabled': True,
+                  'region_name': self.region_2_name,
+                  'capabilities': capabilities}
+        client.sysinv.sm_service.service_create(**values)
+
     def _store_service_password(self):
         # store service password in the temporary keyring vault
 
@@ -4034,6 +4055,10 @@ class ConfigAssistant():
 
         keyring.set_password('fm', constants.DEFAULT_SERVICE_PROJECT_NAME,
                              self.fm_ks_password)
+
+        keyring.set_password('barbican',
+                             constants.DEFAULT_SERVICE_PROJECT_NAME,
+                             self.barbican_ks_password)
 
         del os.environ["XDG_DATA_HOME"]
 

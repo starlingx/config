@@ -70,7 +70,7 @@ def get_backup_databases(cinder_config=False):
     REGION_LOCAL_DATABASES = ('postgres', 'template1', 'nova', 'sysinv',
                               'neutron', 'heat', 'nova_api',
                               'aodh', 'murano', 'magnum', 'panko', 'ironic',
-                              'nova_cell0', 'gnocchi', 'fm')
+                              'nova_cell0', 'gnocchi', 'fm', 'barbican')
     REGION_SHARED_DATABASES = ('glance', 'keystone')
 
     if cinder_config:

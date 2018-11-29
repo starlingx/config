@@ -56,7 +56,8 @@ EXPECTED_USERS = [
     ('REGION_2_SERVICES', 'MTCE', 'mtce'),
     ('REGION_2_SERVICES', 'PANKO', 'panko'),
     ('REGION_2_SERVICES', 'GNOCCHI', 'gnocchi'),
-    ('REGION_2_SERVICES', 'FM', 'fm')]
+    ('REGION_2_SERVICES', 'FM', 'fm'),
+    ('REGION_2_SERVICES', 'BARBICAN', 'barbican')]
 
 EXPECTED_SHARED_SERVICES_NEUTRON_USER = ('SHARED_SERVICES', 'NEUTRON',
                                          'neutron')
@@ -135,6 +136,11 @@ EXPECTED_REGION2_ENDPOINTS = [
      'http://{}:18002',
      'http://{}:18002',
      'Fault Management Service'),
+    ('BARBICAN_SERVICE_NAME', 'BARBICAN_SERVICE_TYPE',
+     'http://{}:9311',
+     'http://{}:9311',
+     'http://{}:9311',
+     'OpenStack Key Manager Service'),
 ]
 
 EXPECTED_NEUTRON_ENDPOINT = (

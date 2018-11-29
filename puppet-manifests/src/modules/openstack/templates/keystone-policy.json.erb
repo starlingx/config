@@ -13,6 +13,7 @@
     "protected_admins": "'admin':%(target.user.name)s or 'heat_admin':%(target.user.name)s or 'dcmanager':%(target.user.name)s",
     "protected_roles": "'admin':%(target.role.name)s or 'heat_admin':%(target.user.name)s",
     "protected_services": [["'aodh':%(target.user.name)s"],
+                           ["'barbican':%(target.user.name)s"],
                            ["'ceilometer':%(target.user.name)s"],
                            ["'cinder':%(target.user.name)s"],
                            ["'glance':%(target.user.name)s"],

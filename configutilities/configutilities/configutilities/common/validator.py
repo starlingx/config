@@ -1048,6 +1048,14 @@ class ConfigValidator(object):
         fm_password = get_optional(self.conf, 'REGION_2_SERVICES',
                                    'FM_PASSWORD')
 
+        # validate barbican service name and type
+        get_service(self.conf, 'REGION_2_SERVICES', 'BARBICAN_SERVICE_NAME')
+        get_service(self.conf, 'REGION_2_SERVICES', 'BARBICAN_SERVICE_TYPE')
+        barbican_user_name = self.conf.get('REGION_2_SERVICES',
+                                           'BARBICAN_USER_NAME')
+        barbican_password = get_optional(self.conf, 'REGION_2_SERVICES',
+                                         'BARBICAN_PASSWORD')
+
         if self.conf.has_option('REGION_2_SERVICES', 'USER_DOMAIN_NAME'):
             user_domain = self.conf.get('REGION_2_SERVICES',
                                         'USER_DOMAIN_NAME')
@@ -1158,6 +1166,10 @@ class ConfigValidator(object):
             self.cgcs_conf.set('cREGION', 'GNOCCHI_PASSWORD', gnocchi_password)
             self.cgcs_conf.set('cREGION', 'FM_USER_NAME', fm_user_name)
             self.cgcs_conf.set('cREGION', 'FM_PASSWORD', fm_password)
+            self.cgcs_conf.set('cREGION', 'BARBICAN_USER_NAME',
+                               barbican_user_name)
+            self.cgcs_conf.set('cREGION', 'BARBICAN_PASSWORD',
+                               barbican_password)
 
             self.cgcs_conf.set('cREGION', 'USER_DOMAIN_NAME',
                                user_domain)

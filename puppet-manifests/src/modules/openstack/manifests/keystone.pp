@@ -395,6 +395,11 @@ class openstack::keystone::endpoint::runtime {
       include ::platform::ceph::rgw::keystone::auth
     }
 
+    include ::openstack::barbican::params
+    if $::openstack::barbican::params::service_enabled {
+      include ::barbican::keystone::auth
+    }
+
     if $::platform::params::distributed_cloud_role =='systemcontroller' {
       include ::dcorch::keystone::auth
       include ::dcmanager::keystone::auth
