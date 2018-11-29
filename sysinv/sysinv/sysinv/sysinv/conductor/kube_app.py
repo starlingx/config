@@ -719,25 +719,43 @@ class AppOperator(object):
         if self._make_armada_request_with_monitor(app, constants.APP_DELETE_OP):
             if app.system_app:
                 try:
-                    p1 = subprocess.Popen(['kubectl', 'get', 'pods', '-n',
-                                          'openstack'],
-                                          stdout=subprocess.PIPE)
-                    p2 = subprocess.Popen(['awk', '/osh-.*-test/{print $1}'],
+                    # TODO convert these kubectl commands to use the k8s api
+                    p1 = subprocess.Popen(
+                        ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                         'get', 'pvc', '--no-headers', '-n', 'openstack'],
+                        stdout=subprocess.PIPE)
+                    p2 = subprocess.Popen(['awk', '{print $3}'],
                                           stdin=p1.stdout,
                                           stdout=subprocess.PIPE)
-                    p3 = subprocess.Popen(['xargs', '-i', 'kubectl',
-                                          'delete', 'pods', '-n', 'openstack',
-                                          '{}'], stdin=p2.stdout,
-                                          stdout=subprocess.PIPE,
-                                          stderr=subprocess.PIPE)
+                    p3 = subprocess.Popen(
+                        ['xargs', '-i', 'kubectl',
+                         '--kubeconfig=/etc/kubernetes/admin.conf', 'delete',
+                         'pv', '{}', '--wait=false'],
+                        stdin=p2.stdout,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
+
                     p1.stdout.close()
                     p2.stdout.close()
                     out, err = p3.communicate()
                     if not err:
-                        LOG.info("Old test pods cleanup completed.")
+                        LOG.info("Persistent Volumes marked for deletion.")
                 except Exception as e:
-                    LOG.exception("Failed to clean up test pods after app "
+                    LOG.exception("Failed to clean up PVs after app "
                                   "removal: %s" % e)
+
+                try:
+                    p1 = subprocess.Popen(
+                        ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                         'delete', 'namespace', 'openstack'],
+                        stdout=subprocess.PIPE)
+                    out, err = p1.communicate()
+                    if not err:
+                        LOG.info("Openstack namespace delete completed.")
+                except Exception as e:
+                    LOG.exception("Failed to clean up openstack namespace "
+                                  "after app removal: %s" % e)
+
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
             LOG.info("Application (%s) remove completed." % app.name)
         else:
