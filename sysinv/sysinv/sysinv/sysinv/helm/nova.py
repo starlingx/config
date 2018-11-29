@@ -356,7 +356,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         elif ip_family == 6:
             vnc_config.update({'vncserver_listen': '::0'})
 
-        libvirt_config.update({'live_migration_inbound_addr': str(host.hostname) + '-infra'})
+        libvirt_config.update({'live_migration_inbound_addr': migration_ip})
         vnc_config.update({'vncserver_proxyclient_address': mgmt_ip})
 
     def _update_host_memory(self, host, default_config):
