@@ -299,10 +299,11 @@ class platform::kubernetes::worker
   }
 }
 
+# TODO: remove port 9001 once we have a public docker image registry using standard ports.
 class platform::kubernetes::firewall::params (
   $transport = 'tcp',
   $table = 'nat',
-  $dports = [80, 443],
+  $dports = [80, 443, 9001],
   $chain = 'POSTROUTING',
   $jump = 'SNAT',
 ) {}
