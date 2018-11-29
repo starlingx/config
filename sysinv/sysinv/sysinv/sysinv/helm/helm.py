@@ -16,40 +16,11 @@ import tempfile
 import yaml
 
 from six import iteritems
+from stevedore import extension
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from . import common
-
-# Import Chart Override Helpers:
-# Chart source: https://github.com/openstack/openstack-helm.git
-from . import aodh
-from . import barbican
-from . import ceilometer
-from . import cinder
-from . import glance
-from . import gnocchi
-from . import heat
-from . import horizon
-from . import ironic
-from . import keystone
-from . import magnum
-from . import neutron
-from . import nova
-
-# Chart source: https://github.com/openstack/openstack-helm-infra.git
-from . import ingress
-from . import libvirt
-from . import nfs_provisioner
-from . import mariadb
-from . import memcached
-from . import openvswitch
-from . import panko
-from . import rabbitmq
-
-# Chart source: Custom
-from . import rbd_provisioner
-from . import nova_api_proxy
 
 
 LOG = logging.getLogger(__name__)
@@ -90,35 +61,15 @@ class HelmOperator(object):
         self.docker_repo_source = docker_repository
 
         # register chart operators for lookup
-        self.chart_operators = {
-            constants.HELM_CHART_AODH: aodh.AodhHelm(self),
-            constants.HELM_CHART_BARBICAN: barbican.BarbicanHelm(self),
-            constants.HELM_CHART_CEILOMETER: ceilometer.CeilometerHelm(self),
-            constants.HELM_CHART_CINDER: cinder.CinderHelm(self),
-            constants.HELM_CHART_GLANCE: glance.GlanceHelm(self),
-            constants.HELM_CHART_GNOCCHI: gnocchi.GnocchiHelm(self),
-            constants.HELM_CHART_HEAT: heat.HeatHelm(self),
-            constants.HELM_CHART_HORIZON: horizon.HorizonHelm(self),
-            constants.HELM_CHART_INGRESS: ingress.IngressHelm(self),
-            constants.HELM_CHART_IRONIC: ironic.IronicHelm(self),
-            constants.HELM_CHART_KEYSTONE: keystone.KeystoneHelm(self),
-            constants.HELM_CHART_LIBVIRT: libvirt.LibvirtHelm(self),
-            constants.HELM_CHART_MAGNUM: magnum.MagnumHelm(self),
-            constants.HELM_CHART_MARIADB: mariadb.MariadbHelm(self),
-            constants.HELM_CHART_MEMCACHED: memcached.MemcachedHelm(self),
-            constants.HELM_CHART_NEUTRON: neutron.NeutronHelm(self),
-            constants.HELM_CHART_NFS_PROVISIONER:
-                nfs_provisioner.NfsProvisionerHelm(self),
-            constants.HELM_CHART_NOVA: nova.NovaHelm(self),
-            constants.HELM_CHART_NOVA_API_PROXY:
-                nova_api_proxy.NovaApiProxyHelm(self),
-            constants.HELM_CHART_OPENVSWITCH:
-                openvswitch.OpenvswitchHelm(self),
-            constants.HELM_CHART_PANKO: panko.PankoHelm(self),
-            constants.HELM_CHART_RABBITMQ: rabbitmq.RabbitmqHelm(self),
-            constants.HELM_CHART_RBD_PROVISIONER:
-                rbd_provisioner.RbdProvisionerHelm(self)
-        }
+        self.chart_operators = {}
+
+        helm_plugins = extension.ExtensionManager(
+            namespace='systemconfig.helm_plugins',
+            invoke_on_load=True, invoke_args=(self,))
+
+        for plugin in helm_plugins.extensions:
+            self.chart_operators.update({plugin.name: plugin.obj})
+            LOG.debug("Loaded helm plugin %s" % plugin.name)
 
         # build the list of registered supported charts
         self.implemented_charts = []
