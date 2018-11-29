@@ -1481,7 +1481,7 @@ K8S_RBD_PROV_STOR_CLASS_NAME = 'general'
 ##################################
 # Working paths
 APP_INSTALL_PATH = '/scratch/apps'
-APP_MANIFEST_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
+APP_SYNCED_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
 
 # State constants
 APP_UPLOAD_IN_PROGRESS = 'uploading'
