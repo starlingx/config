@@ -77,10 +77,14 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
         }
 
     def _get_pod_overrides(self):
+        replicas_count = 1
+        ceph_backend = self._get_primary_ceph_backend()
+        if ceph_backend:
+            replicas_count = self._num_controllers()
+
         return {
             'replicas': {
-                'api': 1,
-                'registry': 1,
+                'api': replicas_count,
             }
         }
 
