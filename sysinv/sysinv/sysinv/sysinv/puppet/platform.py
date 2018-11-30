@@ -592,7 +592,7 @@ class PlatformPuppet(base.BasePuppet):
 
             # non-vswitch CPUs = all cores - vswitch cores
             non_vswitch_cpus = host_cpu_list
-            for i in [int(s) for s in vswitch_cpu_list.split(',')]:
+            for i in [c.cpu for c in vswitch_cpus]:
                 non_vswitch_cpus.remove(i)
 
             # change the CPU list to ranges
