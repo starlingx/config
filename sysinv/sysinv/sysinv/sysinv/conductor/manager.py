@@ -5319,9 +5319,8 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context.
         """
 
-        # update manifest files and nofity agents to apply timezone files
-        personalities = [constants.CONTROLLER,
-                         constants.COMPUTE,
+        # update manifest files and notify agents to apply timezone files
+        personalities = [constants.COMPUTE,
                          constants.STORAGE]
         config_uuid = self._config_update_hosts(context, personalities)
 
@@ -5329,6 +5328,16 @@ class ConductorManager(service.PeriodicService):
         # platform::config will be applied that will configure the timezone
         config_dict = {"personalities": personalities}
 
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+        # for controller nodes, we also update the horizon interface
+        # so that it can see the new timezone setting
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['openstack::horizon::runtime']
+        }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_route_config(self, context):
