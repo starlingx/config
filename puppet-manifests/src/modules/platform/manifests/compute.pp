@@ -280,18 +280,22 @@ class platform::compute::pmqos (
 
     $script = "/usr/bin/set-cpu-wakeup-latency.sh"
 
-    # Set low wakeup latency (shallow C-state) for vswitch CPUs using PM QoS interface
-    exec { "low-wakeup-latency":
-      command => "${script} low ${low_wakeup_cpus}",
-      onlyif => "test -f ${script}",
-      logoutput => true,
+    if $low_wakeup_cpus != '""' {
+      # Set low wakeup latency (shallow C-state) for vswitch CPUs using PM QoS interface
+      exec { "low-wakeup-latency":
+        command => "${script} low ${low_wakeup_cpus}",
+        onlyif => "test -f ${script}",
+        logoutput => true,
+      }
     }
 
-    #Set high wakeup latency (deep C-state) for non-vswitch CPUs using PM QoS interface
-    exec { "high-wakeup-latency":
-      command => "${script} high ${hight_wakeup_cpus}",
-      onlyif => "test -f ${script}",
-      logoutput => true,
+    if $hight_wakeup_cpus != '""' {
+      #Set high wakeup latency (deep C-state) for non-vswitch CPUs using PM QoS interface
+      exec { "high-wakeup-latency":
+        command => "${script} high ${hight_wakeup_cpus}",
+        onlyif => "test -f ${script}",
+        logoutput => true,
+      }
     }
   }
 }
