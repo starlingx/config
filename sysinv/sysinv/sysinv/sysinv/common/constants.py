@@ -435,12 +435,6 @@ SB_CONFIGURATION_TIMEOUT = 1200
 # Storage: Minimum number of monitors
 MIN_STOR_MONITORS = 2
 
-# Storage: reserved space for calculating controller rootfs limit
-CONTROLLER_ROOTFS_RESERVED = 38
-
-# Controller filesystem reserved space to ensure no rounding errors
-CFS_RESIZE_BUFFER_GIB = 2
-
 BACKUP_OVERHEAD = 20
 
 # Suffix used in LVM volume name to indicate that the

@@ -92,7 +92,10 @@ class LVG(base.APIBase):
     "LVM Volume Group's current physical volumes"
 
     lvm_vg_size = int
-    "LVM Volume Group's size"
+    "LVM Volume Group's total size"
+
+    lvm_vg_avail_size = int
+    "LVM Volume Group's available size. API only attribute"
 
     lvm_vg_total_pe = int
     "LVM Volume Group's total PEs"
@@ -124,6 +127,9 @@ class LVG(base.APIBase):
         if not self.uuid:
             self.uuid = uuidutils.generate_uuid()
 
+        self.fields.append('lvm_vg_avail_size')
+        setattr(self, 'lvm_vg_avail_size', kwargs.get('lvm_vg_avail_size', 0))
+
     @classmethod
     def convert_with_links(cls, rpc_lvg, expand=True):
         lvg = LVG(**rpc_lvg.as_dict())
@@ -132,10 +138,21 @@ class LVG(base.APIBase):
                                      'lvm_vg_uuid', 'lvm_vg_access',
                                      'lvm_max_lv', 'lvm_cur_lv',
                                      'lvm_max_pv', 'lvm_cur_pv',
-                                     'lvm_vg_size', 'lvm_vg_total_pe',
+                                     'lvm_vg_size', 'lvm_vg_avail_size',
+                                     'lvm_vg_total_pe',
                                      'lvm_vg_free_pe', 'capabilities',
                                      'created_at', 'updated_at',
                                      'ihost_uuid', 'forihostid'])
+
+        # To calculate Volume Group's available size in byte:
+        # lvm_vg_size is Volume Group's total size in byte
+        # lvm_vg_free_pe is Volume Group's free Physical Extents
+        # lvm_vg_total_pe is Volume Group's total Physical Extents
+        if lvg.lvm_vg_total_pe > 0:
+            lvg.lvm_vg_avail_size = \
+                lvg.lvm_vg_size * lvg.lvm_vg_free_pe / lvg.lvm_vg_total_pe
+        else:
+            lvg.lvm_vg_avail_size = 0
 
         # never expose the ihost_id attribute, allow exposure for now
         lvg.forihostid = wtypes.Unset
@@ -466,6 +483,7 @@ def _set_defaults(lvg):
         'lvm_max_pv': 0,
         'lvm_cur_pv': 0,
         'lvm_vg_size': 0,
+        'lvm_vg_avail_size': 0,
         'lvm_vg_total_pe': 0,
         'lvm_vg_free_pe': 0,
         'capabilities': {},
