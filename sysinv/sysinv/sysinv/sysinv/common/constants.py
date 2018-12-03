@@ -704,6 +704,7 @@ CEPH_POOL_KUBE_QUOTA_GIB = 20
 # Ceph RADOS Gateway default data pool
 # Hammer version pool name will be kept if upgrade from R3 and
 # Swift/Radosgw was configured/enabled in R3.
+CEPH_POOL_OBJECT_GATEWAY_NAME_PART = 'rgw'
 CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL = 'default.rgw.buckets.data'
 CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER = '.rgw.buckets'
 CEPH_POOL_OBJECT_GATEWAY_ROOT_NAME = '.rgw.root'
@@ -1461,8 +1462,6 @@ SUPPORTED_HELM_APP_CHARTS = {
 K8S_RBD_PROV_STORAGECLASS_NAME = 'rbd_storageclass_name'             # Customer
 K8S_RBD_PROV_NAMESPACES = 'rbd_provisioner_namespaces'               # Customer
 K8S_RBD_PROV_NAMESPACES_READY = '.rbd_provisioner_namespaces_ready'  # Hidden
-K8S_RBD_PROV_ADMIN_SECRET_READY = '.k8s_admin_secret_ready'          # Hidden
-K8S_RBD_PROV_CEPH_POOL_KEY_READY = '.k8s_pool_secret_ready'          # Hidden
 
 # RBD Provisioner defaults and constants
 K8S_RBD_PROV_NAMESPACE_DEFAULT = "kube-system"

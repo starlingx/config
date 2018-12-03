@@ -6,47 +6,47 @@
 #
 */}}
 
-{{- if .Values.global.doPreInstallVerification }}
+{{- if .Values.global.job_storage_init }}
 {{ $root := . }}
 {{ $defaults := .Values.classdefaults}}
 {{ $mount := "/tmp/mount" }}
-{{- range $classConfig := .Values.classes }}
-kind: ConfigMap
+---
 apiVersion: v1
+kind: ConfigMap
 metadata:
   creationTimestamp: 2016-02-18T19:14:38Z
-  name: config-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+  name: config-{{- $root.Values.global.name }}
   namespace: {{ $root.Values.global.namespace }}
-  annotations:
-    "helm.sh/hook": pre-install
-    "helm.sh/hook-weight": "-6"
-    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded, hook-failed
 data:
   ceph.conf: |
-    {{ $monitors := or $classConfig.monitors $defaults.monitors }}{{ range $index, $element := $monitors}}
+    {{ $monitors := $defaults.monitors }}{{ range $index, $element := $monitors}}
     [mon.{{- $index }}]
     mon_addr = {{ $element }}
     {{- end }}
 
   check_ceph.sh: |-
     #!/bin/bash
+
     # Copy from read only mount to Ceph config folder
     cp {{ $mount -}}/ceph.conf /etc/ceph/
 
-    # Set up admin key in Ceph format
-    CEPH_ADMIN_KEY="/etc/ceph/ceph.client.admin.keyring"
-    if [ ! -z "$CEPH_ADMIN_SECRET" ]; then
-    cat <<EOF > $CEPH_ADMIN_KEY
-    [client.admin]
-          key = $CEPH_ADMIN_SECRET
-    EOF
-    else
-      touch $CEPH_ADMIN_KEY
+    if [ ! -z $CEPH_ADMIN_SECRET ]; then
+      kubectl get secret -n kube-system | grep $CEPH_ADMIN_SECRET
+      ret=$?
+      if [ $ret -ne 0 ]; then
+          msg="Create $CEPH_ADMIN_SECRET secret"
+          echo "$msg"
+          kubectl create secret generic $CEPH_ADMIN_SECRET --type="kubernetes.io/rbd" --from-literal=key= --namespace=$NAMESPACE
+          ret=$?
+          if [ $ret -ne 0 ]; then
+            msg="Error creating secret $CEPH_ADMIN_SECRET, exit"
+            echo "$msg"
+            exit $ret
+          fi
+      fi
     fi
 
-    # Set up pool key in Ceph format
-    CEPH_USER_KEY=/etc/ceph/ceph.client.{{- $classConfig.userId -}}.keyring
-    echo $CEPH_USER_SECRET > $CEPH_USER_KEY
+    touch /etc/ceph/ceph.client.admin.keyring
 
     # Check if ceph is accessible
     echo "===================================="
@@ -55,52 +55,67 @@ data:
     if [ $ret -ne 0 ]; then
       msg="Error: Ceph cluster is not accessible, check Pod logs for details."
       echo "$msg"
-      echo "$msg" > /dev/termination-log
       exit $ret
     fi
 
-    # Check if pool exists
-    echo "===================================="
-    ceph osd lspools | grep {{ $classConfig.pool }}
-    ret=$?
-    if [ $ret -ne 0 ]; then
-      msg="Error: Ceph pool {{ $classConfig.pool }} is not accessible, check Pod logs for details."
+    set -ex
+
+    # Get the ruleset from the rule name.
+    ruleset=$(ceph osd crush rule dump $POOL_CRUSH_RULE_NAME | grep "\"ruleset\":" | grep -Eo '[0-9]*')
+    # Make sure the pool exists.
+    ceph osd pool stats $POOL_NAME || ceph osd pool create $POOL_NAME $POOL_CHUNK_SIZE
+    # Set pool configuration.
+    ceph osd pool set $POOL_NAME size $POOL_REPLICATION
+    ceph osd pool set $POOL_NAME crush_rule $ruleset
+
+    if [[ -z $USER_ID && -z $CEPH_USER_SECRET ]]; then
+      msg="No need to create secrets for pool $POOL_NAME"
       echo "$msg"
-      echo "$msg" > /dev/termination-log
-      exit $ret
+      exit 0
     fi
+
+    KEYRING=$(ceph auth get-or-create client.$USER_ID mon "allow r" osd "allow rwx pool=${POOL_NAME}" | sed -n 's/^[[:blank:]]*key[[:blank:]]\+=[[:blank:]]\(.*\)/\1/p')
+    # Set up pool key in Ceph format
+    CEPH_USER_KEYRING=/etc/ceph/ceph.client.$USER_ID.keyring
+    echo $KEYRING > $CEPH_USER_KEYRING
+    IFS=',' read -a POOL_SECRET_NAMESPACES_ARR <<< "${POOL_SECRET_NAMESPACES}"
+
+    for pool_secret_namespace in "${POOL_SECRET_NAMESPACES_ARR[@]}"
+    do
+      kubectl create secret generic $CEPH_USER_SECRET --type="kubernetes.io/rbd" --from-literal=key=$KEYRING --namespace=$pool_secret_namespace
+    done
+
+    set +ex
 
     # Check if pool is accessible using provided credentials
-    echo "===================================="
-    rbd -p {{ $classConfig.pool }} --user {{ $classConfig.userId }} ls -K $CEPH_USER_KEY
+    echo "====================================="
+    rbd -p $POOL_NAME --user $USER_ID ls -K $CEPH_USER_KEYRING
     ret=$?
     if [ $ret -ne 0 ]; then
-      msg="Error: Ceph pool {{ $classConfig.pool }} is not accessible using \
-    credentials for user {{ $classConfig.userId }}, check Pod logs for details."
+      msg="Error: Ceph pool $POOL_NAME is not accessible using \
+    credentials for user $USER_ID, check Pod logs for details."
       echo "$msg"
-      echo "$msg" > /dev/termination-log
       exit $ret
+    else
+      msg="Pool $POOL_NAME accessible"
+      echo "$msg"
     fi
+
+    ceph -s
 
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: check-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+  name: rbd-provisioner-storage-init
   namespace: {{ $root.Values.global.namespace }}
   labels:
     heritage: {{$root.Release.Service | quote }}
     release: {{$root.Release.Name | quote }}
     chart: "{{$root.Chart.Name}}-{{$root.Chart.Version}}"
-  annotations:
-    "helm.sh/hook": pre-install
-    "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
 spec:
-  # Note due to https://github.com/kubernetes/kubernetes/issues/62382
-  # backoffLimit doesn't work in 1.10.x
-  backoffLimit: 1  # Limit the number of job restart in case of failure
-  activeDeadlineSeconds: 60
+  backoffLimit: 3  # Limit the number of job restart in case of failure
+  activeDeadlineSeconds: 180
   template:
     metadata:
       name: "{{$root.Release.Name}}"
@@ -110,29 +125,57 @@ spec:
         release: {{$root.Release.Name | quote }}
         chart: "{{$root.Chart.Name}}-{{$root.Chart.Version}}"
     spec:
-      restartPolicy: Never
+      serviceAccountName: {{ $root.Values.rbac.serviceAccount }}
+      restartPolicy: OnFailure
       volumes:
-        - name: config-volume-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+        - name: config-volume-{{- $root.Values.global.name }}
           configMap:
-            name: config-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
+            name: config-{{- $root.Values.global.name }}
       containers:
-        - name: pre-install-job-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
-          image: {{ $root.Values.global.image | quote }}
+        {{- range $classConfig := $root.Values.classes }}
+        - name: storage-init-{{- $classConfig.name }}
+          image: {{ $root.Values.images.tags.rbd_provisioner_storage_init | quote }}
           command: [ "/bin/bash", "{{ $mount }}/check_ceph.sh" ]
-          volumeMounts:
-            - name: config-volume-{{- $root.Values.global.name -}}-{{- $classConfig.name }}
-              mountPath: {{ $mount }}
           env:
+            - name: NAMESPACE
+              value: {{ $root.Values.global.namespace }}
+            - name: POOL_SECRET_NAMESPACES
+              value: {{ $classConfig.pool_secrets_namespaces }}
             - name: CEPH_ADMIN_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ or $classConfig.adminSecretName $defaults.adminSecretName }}
-                  key: key
+              value: {{ $defaults.adminSecretName }}
             - name: CEPH_USER_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ or $classConfig.userSecretName }}
-                  key: key
----
-{{- end }}
+              value: {{ $classConfig.userSecretName }}
+            - name: USER_ID
+              value: {{ $classConfig.userId }}
+            - name: POOL_NAME
+              value: {{ $classConfig.pool_name }}
+            - name: POOL_REPLICATION
+              value: {{ $classConfig.replication | quote }}
+            - name: POOL_CRUSH_RULE_NAME
+              value: {{ $classConfig.crush_rule_name | quote }}
+            - name: POOL_CHUNK_SIZE
+              value: {{ $classConfig.chunk_size | quote }}
+          volumeMounts:
+            - name: config-volume-{{- $root.Values.global.name }}
+              mountPath: {{ $mount }}
+        {{- end }}
+        {{- range $ephemeralPool := $root.Values.ephemeral_pools }}
+        - name: storage-init-{{- $ephemeralPool.pool_name }}
+          image: {{ $root.Values.images.tags.rbd_provisioner_storage_init | quote }}
+          command: [ "/bin/bash", "{{ $mount }}/check_ceph.sh" ]
+          env:
+            - name: NAMESPACE
+              value: {{ $root.Values.global.namespace }}
+            - name: POOL_NAME
+              value: {{ $ephemeralPool.pool_name }}
+            - name: POOL_REPLICATION
+              value: {{ $ephemeralPool.replication | quote }}
+            - name: POOL_CRUSH_RULE_NAME
+              value: {{ $ephemeralPool.crush_rule_name | quote }}
+            - name: POOL_CHUNK_SIZE
+              value: {{ $ephemeralPool.chunk_size | quote }}
+          volumeMounts:
+            - name: config-volume-{{- $root.Values.global.name }}
+              mountPath: {{ $mount }}
+        {{- end }}
 {{- end }}

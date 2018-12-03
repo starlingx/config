@@ -21,15 +21,15 @@ spec:
       labels:
         app: {{ .Values.global.name }}
     spec:
+    {{- if (.Values.global.rbac) or (.Values.global.reuseRbac)}}
+      serviceAccount: {{ .Values.rbac.serviceAccount }}
+    {{- end }}
       containers:
       - name: {{ .Values.global.name }}
-        image: {{ .Values.global.image | quote }}
+        image: {{ .Values.images.tags.rbd_provisioner | quote }}
         env:
         - name: PROVISIONER_NAME
           value: ceph.com/rbd
-{{- if (.Values.global.rbac) or (.Values.global.reuseRbac)}}
-      serviceAccount: {{ .Values.rbac.serviceAccount }}
-{{- end }}
 {{- if .Values.global.nodeSelector }}
       nodeSelector:
 {{ .Values.global.nodeSelector | toYaml | trim | indent 8 }}

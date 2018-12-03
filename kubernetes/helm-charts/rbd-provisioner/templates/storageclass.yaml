@@ -20,7 +20,7 @@ parameters:
     adminId: {{ or $classConfig.adminId $defaults.adminId}}
     adminSecretName: {{ or $classConfig.adminSecretName $defaults.adminSecretName }}
     adminSecretNamespace: {{ $namespace }}
-    pool: {{ or $classConfig.pool $defaults.pool }}
+    pool: {{ or $classConfig.pool_name $defaults.pool_name }}
     userId: {{ or $classConfig.userId $defaults.userId }}
     userSecretName: {{ $classConfig.userSecretName }}
     imageFormat: {{ or $classConfig.imageFormat $defaults.imageFormat | quote }}

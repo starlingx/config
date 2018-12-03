@@ -15,6 +15,7 @@ from __future__ import absolute_import
 import os
 import uuid
 import copy
+import tsconfig.tsconfig as tsc
 from requests.exceptions import RequestException, ReadTimeout
 
 from cephclient import wrapper as ceph
@@ -25,7 +26,6 @@ from sysinv.common import utils as cutils
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import uuidutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
-from sysinv.common.storage_backend_conf import K8RbdProvisioner
 
 from sysinv.api.controllers.v1 import utils
 
@@ -273,6 +273,7 @@ class CephOperator(object):
                 reason=response.reason)
         return response, body
 
+    # TODO(CephPoolsDecouple): remove
     def osd_set_pool_param(self, pool_name, param, value):
         response, body = self._ceph_api.osd_set_pool_param(
             pool_name, param, value,
@@ -391,6 +392,7 @@ class CephOperator(object):
         LOG.info("osdmap is empty, restoring Ceph config...")
         return self.rebuild_osdmap()
 
+    # TODO(CephPoolsDecouple): remove
     def _pool_create(self, name, pg_num, pgp_num, ruleset,
                      size, min_size):
         """Create Ceph pool and ruleset.
@@ -447,7 +449,7 @@ class CephOperator(object):
                            "pool_name={}, ruleset={}").format(
                                name, ruleset))
             else:
-                msg = _("Failed to to complete parameter assignment on OSD pool"
+                msg = _("Failed to complete parameter assignment on OSD pool"
                         ": {0}. reason: {1}").format(name, response.reason)
                 e = exception.CephFailure(reason=msg)
                 LOG.error(e)
@@ -472,13 +474,14 @@ class CephOperator(object):
                             "pool_name={}, min_size={}").format(name,
                                                                 min_size))
             else:
-                msg = _("Failed to to complete parameter assignment on existing"
+                msg = _("Failed to complete parameter assignment on existing "
                         "OSD pool: {0}. reason: {1}").format(name,
                                                              response.reason)
                 e = exception.CephFailure(reason=msg)
                 LOG.error(e)
                 raise e
 
+    # TODO(CephPoolsDecouple): remove
     def create_or_resize_osd_pool(self, pool_name, pg_num, pgp_num,
                                   size, min_size):
         """Create or resize an osd pool as needed
@@ -588,6 +591,7 @@ class CephOperator(object):
             return {"max_objects": quota["output"]["quota_max_objects"],
                     "max_bytes": quota["output"]["quota_max_bytes"]}
 
+    # TODO(CephPoolsDecouple): remove
     def set_osd_pool_quota(self, pool, max_bytes=0, max_objects=0):
         """Set the quota for an OSD pool
         Setting max_bytes or max_objects to 0 will disable that quota param
@@ -622,6 +626,8 @@ class CephOperator(object):
                 LOG.error(e)
                 raise e
 
+    # TODO(CephPoolsDecouple): rework if needed: we determine the existing
+    # pools on the spot
     def get_pools_values(self):
         """Create or resize all of the osd pools as needed
         """
@@ -652,6 +658,7 @@ class CephOperator(object):
         LOG.debug("Pool Quotas: %s" % quotas)
         return tuple(quotas)
 
+    # TODO(CephPoolsDecouple): remove
     def set_quota_gib(self, pool_name):
         quota_gib_value = None
         cinder_pool_gib, glance_pool_gib, ephemeral_pool_gib, \
@@ -754,6 +761,7 @@ class CephOperator(object):
 
         return rc
 
+    # TODO(CephPoolsDecouple): remove
     def _configure_primary_tier_pool(self, pool, size, min_size):
         """Configure the default Ceph tier pools."""
 
@@ -769,6 +777,7 @@ class CephOperator(object):
         except exception.CephFailure:
             pass
 
+    # TODO(CephPoolsDecouple): remove
     def _configure_secondary_tier_pools(self, tier_obj, size, min_size):
         """Configure the service pools that are allowed for additional ceph tiers.
         """
@@ -821,6 +830,7 @@ class CephOperator(object):
                     name=rule_name, reason=body['status'])
                 raise e
 
+    # TODO(CephPoolsDecouple): remove
     def configure_osd_pools(self, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
         """Create or resize all of the osd pools as needed
            ceph backend could be 2nd backend which is in configuring state
@@ -881,74 +891,6 @@ class CephOperator(object):
                 except exception.CephFailure as e:
                     LOG.info("Cannot add pools: %s" % e)
 
-    def _update_k8s_ceph_pool_secrets(self, ceph_backend):
-        """Create CEPH pool secrets for k8s namespaces.
-        :param ceph_backend input/output storage backend data
-        """
-
-        pool_name = K8RbdProvisioner.get_pool(ceph_backend)
-
-        namespaces_to_add, namespaces_to_rm = \
-            K8RbdProvisioner.getNamespacesDelta(ceph_backend)
-
-        # Get or create Ceph pool key. One per pool.
-        # This key will be used by the K8S secrets from the rbd-provisioner.
-        if namespaces_to_add:
-            key = self._configure_pool_key(pool_name)
-
-        # Get the capabilities of the backend directly from DB to avoid
-        # committing changes unrelated to ceph pool keys.
-        try:
-            orig_ceph_backend = self._db_api.storage_backend_get(ceph_backend['id'])
-            orig_capab = orig_ceph_backend['capabilities']
-        except exception.InvalidParameterValue:
-            # This is a new backend, not yet stored in DB.
-            orig_ceph_backend = None
-
-        configured_namespaces = \
-            K8RbdProvisioner.getListFromNamespaces(orig_ceph_backend,
-                                                   get_configured=True)
-
-        # Adding secrets to namespaces
-        for namespace in namespaces_to_add:
-            K8RbdProvisioner.create_k8s_pool_secret(
-                ceph_backend, key=key,
-                namespace=namespace, force=(True if not ceph_backend else False))
-
-            # Update the backend's capabilities to reflect that a secret
-            # has been created for the k8s pool in the given namespace.
-            # Update DB for each item to reflect reality in case of error.
-            configured_namespaces.append(namespace)
-            if orig_ceph_backend:
-                orig_capab[constants.K8S_RBD_PROV_NAMESPACES_READY] = \
-                    ','.join(configured_namespaces)
-                self._db_api.storage_backend_update(ceph_backend['id'],
-                                                    {'capabilities': orig_capab})
-
-        # Removing secrets from namespaces
-        for namespace in namespaces_to_rm:
-            K8RbdProvisioner.remove_k8s_pool_secret(ceph_backend,
-                                                    namespace)
-            configured_namespaces.remove(namespace)
-            if orig_ceph_backend:
-                if configured_namespaces:
-                    orig_capab[constants.K8S_RBD_PROV_NAMESPACES_READY] = \
-                        ','.join(configured_namespaces)
-                elif constants.K8S_RBD_PROV_NAMESPACES_READY in orig_capab:
-                    # No RBD Provisioner configured, cleanup
-                    del orig_capab[constants.K8S_RBD_PROV_NAMESPACES_READY]
-                self._db_api.storage_backend_update(ceph_backend['id'],
-                                                    {'capabilities': orig_capab})
-
-        # Done, store the updated capabilities in the ceph_backend reference
-        capab = ceph_backend['capabilities']
-        if configured_namespaces:
-            capab[constants.K8S_RBD_PROV_NAMESPACES_READY] = \
-                ','.join(configured_namespaces)
-        elif constants.K8S_RBD_PROV_NAMESPACES_READY in capab:
-            # No RBD Provisioner configured, cleanup
-            del capab[constants.K8S_RBD_PROV_NAMESPACES_READY]
-
     def _update_db_capabilities(self, bk, new_storceph):
         # Avoid updating DB for all capabilities in new_storceph as we
         # don't manage them. Leave the callers deal with it.
@@ -958,96 +900,6 @@ class CephOperator(object):
                 bk['id'],
                 {'capabilities': bk['capabilities']}
             )
-
-    def check_and_update_rbd_provisioner(self, new_storceph=None):
-        """ Check and/or update RBD Provisioner configuration for all Ceph
-        internal backends.
-
-        This function should be called when:
-           1. Making any changes to rbd-provisioner service
-              (adding a new, removing or updating an existing provisioner)
-           2. Synchronizing changes with the DB.
-
-        To speed up synchronization, DB entries are used to determine when
-        changes are needed and only then proceed with more time consuming
-        operations.
-
-        Note: This function assumes a functional Ceph cluster
-
-        :param   new_storceph a storage backend object as_dict() with updated
-                 data. This is required as database updates can happen later.
-        :returns an updated version of new_storceph or None
-        """
-        # Get an updated list of backends
-        if new_storceph:
-            ceph_backends = [b.as_dict() for b in
-                             self._db_api.storage_backend_get_list()
-                             if b['backend'] == constants.SB_TYPE_CEPH and
-                                b['name'] != new_storceph['name']]
-            ceph_backends.append(new_storceph)
-        else:
-            ceph_backends = [b.as_dict() for b in
-                             self._db_api.storage_backend_get_list()
-                             if b['backend'] == constants.SB_TYPE_CEPH]
-
-        # Nothing to do if rbd-provisioner is not configured and was never
-        # configured on any backend.
-        for bk in ceph_backends:
-            svcs = utils.SBApiHelper.getListFromServices(bk)
-            if (constants.SB_SVC_RBD_PROVISIONER in svcs or
-                    bk['capabilities'].get(constants.K8S_RBD_PROV_NAMESPACES_READY) or
-                    bk['capabilities'].get(constants.K8S_RBD_PROV_ADMIN_SECRET_READY)):
-                break
-        else:
-            return new_storceph
-
-        # In order for an RBD provisioner to work we need:
-        # - A couple of Ceph keys:
-        #    1. A cluster wide admin key (e.g. the one in
-        #       /etc/ceph/ceph.client.admin.keyring)
-        #    2. A key for accessing the pool (e.g. client.kube-rbd)
-        # - The Ceph keys above passed into Kubernetes secrets:
-        #    1. An admin secret in the RBD Provisioner POD namespace with the
-        #       Ceph cluster wide admin key.
-        #    2. One or more K8S keys with the Ceph pool key for each namespace
-        #       we allow RBD PV and PVC creations.
-
-        LOG.info("Updating rbd-provisioner configuration.")
-        # Manage Ceph cluster wide admin key and associated secret - we create
-        # it if needed or remove it if no longer needed.
-        admin_secret_exists = False
-        remove_admin_secret = True
-        for bk in ceph_backends:
-            svcs = utils.SBApiHelper.getListFromServices(bk)
-
-            # Create secret
-            # Check to see if we need the admin Ceph key. This key is created
-            # once per cluster and references to it are kept in all Ceph tiers
-            # of that cluster. So make sure they are up to date.
-            if constants.SB_SVC_RBD_PROVISIONER in svcs:
-                remove_admin_secret = False
-                if bk['capabilities'].get(constants.K8S_RBD_PROV_ADMIN_SECRET_READY):
-                    admin_secret_exists = True
-                else:
-                    if not admin_secret_exists:
-                        K8RbdProvisioner.create_k8s_admin_secret()
-                        admin_secret_exists = True
-                    bk['capabilities'][constants.K8S_RBD_PROV_ADMIN_SECRET_READY] = True
-                    self._update_db_capabilities(bk, new_storceph)
-        # Remove admin secret and any references to it if RBD Provisioner is
-        # unconfigured.
-        if remove_admin_secret:
-            K8RbdProvisioner.remove_k8s_admin_secret()
-            for bk in ceph_backends:
-                if bk['capabilities'].get(constants.K8S_RBD_PROV_ADMIN_SECRET_READY):
-                    del bk['capabilities'][constants.K8S_RBD_PROV_ADMIN_SECRET_READY]
-                    self._update_db_capabilities(bk, new_storceph)
-
-        for bk in ceph_backends:
-            self._update_k8s_ceph_pool_secrets(bk)
-
-        # Return updated new_storceph reference
-        return new_storceph
 
     def get_osd_tree(self):
         """Get OSD tree info
@@ -1174,13 +1026,24 @@ class CephOperator(object):
             return body["output"]
 
     def get_ceph_cluster_info_availability(self):
+        # TODO(CephPoolsDecouple): rework
         # Check if the ceph cluster is ready to return statistics
         storage_hosts = self._db_api.ihost_get_by_personality(
             constants.STORAGE)
+
+        is_aio_kubernetes = (
+            tsc.system_type == constants.TIS_AIO_BUILD and
+            utils.is_kubernetes_config(self._db_api))
+
+        if not storage_hosts and is_aio_kubernetes:
+            storage_hosts = self._db_api.ihost_get_by_personality(
+                constants.CONTROLLER)
+
         # If there is no storage node present, ceph usage
         # information is not relevant
         if not storage_hosts:
             return False
+
         # At least one storage node must be in available state
         for host in storage_hosts:
             if host['availability'] == constants.AVAILABILITY_AVAILABLE:
@@ -1190,6 +1053,7 @@ class CephOperator(object):
             return False
         return True
 
+    # TODO(CephPoolsDecouple): rework - determine the existing pools
     def get_pools_config(self):
         for pool in CEPH_POOLS:
             # Here it is okay for object pool name is either
@@ -1249,6 +1113,7 @@ class CephOperator(object):
 
         return storage_hosts_upgraded
 
+    # TODO(CephPoolsDecouple): remove
     # TIER SUPPORT
     def _calculate_target_pg_num_for_tier_pool(self, tiers_obj, pool_name,
                                                storage_hosts):
@@ -1364,6 +1229,7 @@ class CephOperator(object):
 
         return target_pg_num, osds_raw
 
+    # TODO(CephPoolsDecouple): remove
     def audit_osd_pool_on_tier(self, tier_obj, storage_hosts, pool_name):
         """ Audit an osd pool and update pg_num, pgp_num accordingly.
             storage_hosts; list of known storage host objects
@@ -1453,6 +1319,7 @@ class CephOperator(object):
                 # we attempt to increase the pgp number. We will wait for the
                 # audit to call us and increase the pgp number at that point.
 
+    # TODO(CephPoolsDecouple): remove
     def audit_osd_quotas_for_tier(self, tier_obj):
 
         # TODO(rchurch): Make this smarter.Just look at the OSD for the tier to
@@ -1639,6 +1506,7 @@ class CephOperator(object):
                 # Special case: For now with one pool allow no quota
                 self.executed_default_quota_check_by_tier[tier_obj.name] = True
 
+    # TODO(CephPoolsDecouple): remove
     def audit_osd_pools_by_tier(self):
         """ Check osd pool pg_num vs calculated target pg_num.
             Set pool quotas default values dynamically depending

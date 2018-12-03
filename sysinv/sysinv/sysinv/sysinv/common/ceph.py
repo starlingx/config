@@ -605,6 +605,41 @@ class CephApiOperator(object):
             osd_list.append(osd_id)
         return constants.CEPH_HEALTH_OK
 
+    def ceph_pools_empty(self, db_api, pools_usage):
+        """ Determine if data CEPH pools are empty.
+        :return True if the data CEPH pools are empty
+        :return False if the data CEPH pools are not empty
+        """
+        # TODO(CephPoolsDecouple): rework
+        if utils.is_kubernetes_config(db_api):
+            for ceph_pool in pools_usage:
+                # We only need to check data pools.
+                if (constants.CEPH_POOL_OBJECT_GATEWAY_NAME_PART in
+                        ceph_pool['name']):
+                    if not (
+                        ceph_pool['name'].startswith(
+                            constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL) or
+                        ceph_pool['name'].startswith(
+                            constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER)):
+                        continue
+
+                # Ceph pool is not empty.
+                if int(ceph_pool['stats']['bytes_used']) > 0:
+                    return False
+
+            return True
+
+        # TODO(CephPoolsDecouple): remove iteration below
+        for ceph_pool in pools_usage:
+            # We only need to check data pools.
+            if ([pool for pool in constants.ALL_CEPH_POOLS
+                 if ceph_pool['name'].startswith(pool)] and
+                        int(ceph_pool['stats']['bytes_used']) > 0):
+                # Ceph pool is not empty.
+                return False
+
+        return True
+
     def get_monitors_status(self, db_api):
         # first check that the monitors are available in sysinv
         num_active_monitors = 0

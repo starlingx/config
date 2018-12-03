@@ -2293,12 +2293,16 @@ class HostController(rest.RestController):
             storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
                 constants.STORAGE)
             if len(storage_nodes) == 1:
+                # TODO(CephPoolsDecouple): rework
                 # delete osd pools
                 # It would be nice if we have a ceph API that can delete
                 # all osd pools at once.
-                pools = pecan.request.rpcapi.list_osd_pools(pecan.request.context)
-                for ceph_pool in pools:
-                    pecan.request.rpcapi.delete_osd_pool(pecan.request.context, ceph_pool)
+                if not utils.is_kubernetes_config():
+                    pools = pecan.request.rpcapi.list_osd_pools(
+                        pecan.request.context)
+                    for ceph_pool in pools:
+                        pecan.request.rpcapi.delete_osd_pool(
+                            pecan.request.context, ceph_pool)
 
                 # update tier status
                 tier_list = pecan.request.dbapi.storage_tier_get_list()
@@ -5198,7 +5202,7 @@ class HostController(rest.RestController):
                             StorageBackendConfig.get_ceph_pool_replication(pecan.request.dbapi, bk)
                     stors = pecan.request.dbapi.istor_get_by_tier(tier.id)
                     if len(stors) < replication:
-                        word = 'is' if len(replication) == 1 else 'are'
+                        word = 'is' if replication == 1 else 'are'
                         msg = ("Can not unlock node until at least %(replication)s osd stor %(word)s "
                               "configured for tier '%(tier)s'."
                                % {'replication': str(replication), 'word': word, 'tier': tier['name']})
@@ -5534,7 +5538,7 @@ class HostController(rest.RestController):
         )
         if not backend:
             raise wsme.exc.ClientSideError(
-                        _("Ceph must be configured as a backend."))
+                _("Ceph must be configured as a backend."))
 
         if (backend.task == constants.SB_TASK_RESTORE and force):
             LOG.info("%s Allow force-locking as ceph backend is in "
@@ -5589,19 +5593,18 @@ class HostController(rest.RestController):
                 if not pools_usage:
                     raise wsme.exc.ClientSideError(
                         _("Cannot lock a storage node when ceph pool usage is undetermined."))
-                for ceph_pool in pools_usage:
-                    # We only need to check data pools
-                    if ([pool for pool in constants.ALL_CEPH_POOLS
-                            if ceph_pool['name'].startswith(pool)] and
-                            int(ceph_pool['stats']['bytes_used']) > 0):
-                        # Ceph pool is not empty and no other enabled storage
-                        # in set, so locking this storage node is not allowed.
-                        msg = _("Cannot lock a storage node when ceph pools are"
-                                " not empty and replication is lost. This may"
-                                " result in data loss. ")
-                        raise wsme.exc.ClientSideError(msg)
 
-                ceph_pools_empty = True
+                ceph_pools_empty = self._ceph.ceph_pools_empty(
+                    pecan.request.dbapi, pools_usage)
+
+                if not ceph_pools_empty:
+                    msg = _(
+                        "Cannot lock a storage node when ceph pools are"
+                        " not empty and replication is lost. This may"
+                        " result in data loss. ")
+                    # Ceph pool is not empty and no other enabled storage
+                    # in set, so locking this storage node is not allowed.
+                    raise wsme.exc.ClientSideError(msg)
 
         # Perform checks on storage regardless of operational state
         # as a minimum number of monitor is required.
