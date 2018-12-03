@@ -8,13 +8,10 @@ import os
 import pecan
 from pecan import rest
 import shutil
-import subprocess
 import tempfile
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
-
-import yaml
 
 from contextlib import contextmanager
 from sysinv import objects
@@ -141,7 +138,7 @@ class KubeAppController(rest.RestController):
                         "{}.".format(os.path.basename(app_tarfile))))
 
                 # If checksum file is included in the tarball, verify its contents.
-                if not self._verify_checksum(app_path):
+                if not cutils.verify_checksum(app_path):
                     raise wsme.exc.ClientSideError(_(
                         "Application-upload rejected: checksum validation failed."))
 
@@ -171,60 +168,15 @@ class KubeAppController(rest.RestController):
                 "Application-upload rejected: both application name and tar "
                 "file must be specified."))
 
-    def _verify_checksum(self, app_path):
-        rc = True
-        for file in os.listdir(app_path):
-            if file.endswith('.md5'):
-                cwd = os.getcwd()
-                os.chdir(app_path)
-                with open(os.devnull, "w") as fnull:
-                    try:
-                        subprocess.check_call(['md5sum', '-c', file],
-                                              stdout=fnull, stderr=fnull)
-                        LOG.info("Checksum file is included and validated.")
-                    except subprocess.CalledProcessError as e:
-                        LOG.exception(e)
-                        rc = False
-                    finally:
-                        os.chdir(cwd)
-                        return rc
-
-        # Do we need to make the inclusion of md5 file a hard requirement?
-        LOG.info("Checksum file is not included, skipping validation.")
-        return rc
-
     def _find_manifest_file(self, app_path):
         # It is expected that there is only one manifest file
         # per application and the file exists at top level of
         # the application path.
+        mfiles = cutils.find_manifest_file(app_path)
 
-        def _is_manifest(yaml_file):
-            with open(yaml_file, 'r') as f:
-                docs = yaml.load_all(f)
-                for doc in docs:
-                    try:
-                        if "armada/Manifest" in doc['schema']:
-                            manifest_name = doc['metadata']['name']
-                            return manifest_name, yaml_file
-                    except KeyError:
-                        # Could be some other yaml files
-                        pass
-            return None, None
-
-        mfiles = []
-        for file in os.listdir(app_path):
-            if file.endswith('.yaml'):
-                yaml_file = os.path.join(app_path, file)
-                try:
-                    mname, mfile = _is_manifest(yaml_file)
-                    if mfile:
-                        mfiles.append((mname, mfile))
-                except Exception as e:
-                    # Included yaml file is corrupted
-                    LOG.exception(e)
-                    raise wsme.exc.ClientSideError(_(
-                        "Application-upload rejected: failed to process "
-                        "file {}.".format(file)))
+        if mfiles is None:
+            raise wsme.exc.ClientSideError(_(
+                "Application-upload rejected: manifest file is corrupted."))
 
         if mfiles:
             if len(mfiles) == 1:
@@ -272,7 +224,15 @@ class KubeAppController(rest.RestController):
         except exception.KubeAppNotFound:
             pass
 
-        mname, mfile = self._check_tarfile(name, tarfile)
+        if not cutils.is_url(tarfile):
+            mname, mfile = self._check_tarfile(name, tarfile)
+        else:
+            # For tarfile that is downloaded remotely, defer the checksum, manifest
+            # and tarfile content validations to sysinv-conductor as download can
+            # take some time depending on network traffic, target server and file
+            # size.
+            mname = constants.APP_MANIFEST_NAME_PLACEHOLDER
+            mfile = constants.APP_TARFILE_NAME_PLACEHOLDER
 
         # Create a database entry and make an rpc async request to upload
         # the application
