@@ -8,7 +8,6 @@
 
 from __future__ import absolute_import
 
-import copy
 import eventlet
 import os
 import subprocess
@@ -366,19 +365,35 @@ class HelmOperator(object):
                                                                  cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
                 if combined:
-                    try:
-                        db_chart = self.dbapi.helm_override_get(
-                            chart_name, 'openstack')
-                        user_overrides = db_chart.user_overrides
-                        if user_overrides:
-                            system_overrides = yaml.dump(overrides)
-                            file_overrides = [system_overrides, user_overrides]
-                            combined_overrides = self.merge_overrides(
-                                file_overrides=file_overrides)
-                            combined_overrides = yaml.load(combined_overrides)
-                            overrides = copy.deepcopy(combined_overrides)
-                    except exception.HelmOverrideNotFound:
-                        pass
+                    # The overrides at this point is the system overrides. For charts
+                    # with multiple namespaces, the overrides would contain multiple keys,
+                    # one for each namespace.
+                    #
+                    # Retrieve the user overrides of each namespace from the database
+                    # and merge this list of user overrides if exists with the
+                    # system overrides. Both system and user overrides contents
+                    # are then merged based on the namespace, prepended with required
+                    # header and written to corresponding files (<namespace>-<chart>.yaml).
+                    file_overrides = []
+                    for chart_namespace in overrides.keys():
+                        try:
+                            db_chart = self.dbapi.helm_override_get(
+                                chart_name, chart_namespace)
+                            db_user_overrides = db_chart.user_overrides
+                            if db_user_overrides:
+                                file_overrides.append(yaml.dump(
+                                    {chart_namespace: yaml.load(db_user_overrides)}))
+                        except exception.HelmOverrideNotFound:
+                            pass
+
+                    if file_overrides:
+                        # Use dump() instead of safe_dump() as the latter is
+                        # not agreeable with password regex in some overrides
+                        system_overrides = yaml.dump(overrides)
+                        file_overrides.insert(0, system_overrides)
+                        combined_overrides = self.merge_overrides(
+                            file_overrides=file_overrides)
+                        overrides = yaml.load(combined_overrides)
 
                 # If armada formatting is wanted, we need to change the
                 # structure of the yaml file somewhat
