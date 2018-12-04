@@ -9,6 +9,7 @@
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-flake8
+        - sysinv-tox-pylint
         - controllerconfig-tox-flake8
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
@@ -25,6 +26,7 @@
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-flake8
+        - sysinv-tox-pylint
         - controllerconfig-tox-flake8
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
@@ -62,6 +64,21 @@
       - sysinv/sysinv/*
     vars:
       tox_envlist: flake8
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: sysinv-tox-pylint
+    parent: tox
+    description: |
+      Run pylint test for sysinv
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+      - openstack/stx-integ
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: pylint
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
