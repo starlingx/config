@@ -153,7 +153,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                             'weight_setting': 'vswitch.max_avail=100.0'
                         },
                         'vnc': {
-                            'novncproxy_host': self._get_management_address(),
                             'novncproxy_base_url': self._get_novncproxy_base_url(),
                         },
                         'upgrade_levels': 'None'
