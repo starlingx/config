@@ -43,7 +43,7 @@ Bug tracker
     http://launchpad.net/ironic
 
 Mailing list (prefix subjects with ``[ironic]`` for faster responses)
-    http://lists.openstack.org/cgi-bin/mailman/listinfo/openstack-dev
+    http://lists.openstack.org/cgi-bin/mailman/listinfo/openstack-discuss
     
 Wiki
     http://wiki.openstack.org/Ironic
