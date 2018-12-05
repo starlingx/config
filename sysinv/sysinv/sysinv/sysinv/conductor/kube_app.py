@@ -12,9 +12,9 @@
 import docker
 import grp
 import os
+import pwd
 import re
 import shutil
-import stat
 import subprocess
 import threading
 import time
@@ -35,6 +35,7 @@ from sysinv.helm import common
 from sysinv.helm import helm
 
 
+# Log and config
 LOG = logging.getLogger(__name__)
 kube_app_opts = [
     cfg.StrOpt('armada_image_tag',
@@ -44,13 +45,56 @@ kube_app_opts = [
                 ]
 CONF = cfg.CONF
 CONF.register_opts(kube_app_opts)
-ARMADA_CONTAINER_NAME = 'armada_service'
-MAX_DOWNLOAD_THREAD = 20
-INSTALLATION_TIMEOUT = 3600
+
+
+# Constants
 APPLY_SEARCH_PATTERN = 'Processing Chart,'
-DELETE_SEARCH_PATTERN = 'Deleting release'
+ARMADA_CONTAINER_NAME = 'armada_service'
 ARMADA_MANIFEST_APPLY_SUCCESS_MSG = 'Done applying manifest'
 CONTAINER_ABNORMAL_EXIT_CODE = 137
+DELETE_SEARCH_PATTERN = 'Deleting release'
+INSTALLATION_TIMEOUT = 3600
+MAX_DOWNLOAD_THREAD = 20
+TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
+TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
+
+
+# Helper functions
+def generate_armada_manifest_filename(app_name, manifest_filename):
+    return os.path.join('/manifests', app_name + '-' + manifest_filename)
+
+
+def generate_armada_manifest_filename_abs(app_name, manifest_filename):
+    return os.path.join(constants.APP_SYNCED_DATA_PATH,
+                        app_name + '-' + manifest_filename)
+
+
+def generate_manifest_filename_abs(app_name, manifest_filename):
+    return os.path.join(constants.APP_INSTALL_PATH,
+                        app_name, manifest_filename)
+
+
+def generate_images_filename_abs(app_name):
+    return os.path.join(constants.APP_SYNCED_DATA_PATH,
+                        app_name + '-images.yaml')
+
+
+def create_app_path(path):
+    uid = pwd.getpwnam(constants.SYSINV_USERNAME).pw_uid
+    gid = os.getgid()
+
+    if not os.path.exists(constants.APP_INSTALL_PATH):
+        os.makedirs(constants.APP_INSTALL_PATH)
+        os.chown(constants.APP_INSTALL_PATH, uid, gid)
+
+    os.makedirs(path)
+    os.chown(path, uid, gid)
+
+
+def get_app_install_root_path_ownership():
+    uid = os.stat(constants.APP_INSTALL_ROOT_PATH).st_uid
+    gid = os.stat(constants.APP_INSTALL_ROOT_PATH).st_gid
+    return (uid, gid)
 
 
 Chart = namedtuple('Chart', 'name namespace')
@@ -75,12 +119,15 @@ class AppOperator(object):
             if app.system_app and app.status != constants.APP_UPLOAD_FAILURE:
                 self._remove_chart_overrides(app.armada_mfile_abs)
 
-            os.unlink(app.armada_mfile_abs)
-            os.unlink(app.imgfile_abs)
+            if os.path.exists(app.armada_mfile_abs):
+                os.unlink(app.armada_mfile_abs)
+            if os.path.exists(app.imgfile_abs):
+                os.unlink(app.imgfile_abs)
+
             if os.path.exists(app.path):
                 shutil.rmtree(app.path)
         except OSError as e:
-            LOG.exception(e)
+            LOG.error(e)
 
     def _update_app_status(self, app, new_status=None, new_progress=None):
         """ Persist new app status """
@@ -94,46 +141,151 @@ class AppOperator(object):
         with self._lock:
             app.update_status(new_status, new_progress)
 
-    def _abort_operation(self, app, operation):
+    def _abort_operation(self, app, operation,
+                         progress=constants.APP_PROGRESS_ABORTED):
         if (app.status == constants.APP_UPLOAD_IN_PROGRESS):
             self._update_app_status(app, constants.APP_UPLOAD_FAILURE,
-                                    constants.APP_PROGRESS_ABORTED)
+                                    progress)
         elif (app.status == constants.APP_APPLY_IN_PROGRESS):
             self._update_app_status(app, constants.APP_APPLY_FAILURE,
-                                    constants.APP_PROGRESS_ABORTED)
+                                    progress)
         elif (app.status == constants.APP_REMOVE_IN_PROGRESS):
             self._update_app_status(app, constants.APP_REMOVE_FAILURE,
-                                    constants.APP_PROGRESS_ABORTED)
+                                    progress)
         LOG.error("Application %s aborted!." % operation)
 
-    def _extract_tarfile(self, app):
-        def _handle_extract_failure():
+    def _download_tarfile(self, app):
+        from six.moves.urllib.request import urlopen
+        from six.moves.urllib.error import HTTPError
+        from six.moves.urllib.error import URLError
+        from socket import timeout as socket_timeout
+
+        try:
+            import urlparse
+        except ImportError:
+            from urllib2 import urlparse
+
+        def _handle_download_failure(reason):
             raise exception.KubeAppUploadFailure(
                 name=app.name,
-                reason="failed to extract tarfile content.")
-        try:
-            # One time set up of install path per controller
-            if not os.path.isdir(constants.APP_INSTALL_PATH):
-                os.makedirs(constants.APP_INSTALL_PATH)
+                reason=reason)
 
+        try:
+            remote_file = urlopen(
+                app.tarfile, timeout=TARFILE_DOWNLOAD_CONNECTION_TIMEOUT)
+            try:
+                remote_filename = remote_file.info()['Content-Disposition']
+            except KeyError:
+                remote_filename = os.path.basename(
+                    urlparse.urlsplit(remote_file.url).path)
+
+            filename_avail = True if (remote_filename is None or
+                                      remote_filename == '') else False
+
+            if filename_avail:
+                if (not remote_filename.endswith('.tgz') and
+                        not remote_filename.endswith('.tar.gz')):
+                    reason = app.tarfile + ' has unrecognizable tar file ' + \
+                        'extension. Supported extensions are: .tgz and .tar.gz.'
+                    _handle_download_failure(reason)
+                    return None
+
+                filename = '/tmp/' + remote_filename
+            else:
+                filename = '/tmp/' + app.name + '.tgz'
+
+            with open(filename, 'wb') as dest:
+                shutil.copyfileobj(remote_file, dest, TARFILE_TRANSFER_CHUNK_SIZE)
+            return filename
+
+        except HTTPError as err:
+            LOG.error(err)
+            reason = 'failed to download tarfile ' + app.tarfile + \
+                     ', error code = ' + str(err.code)
+            _handle_download_failure(reason)
+        except URLError as err:
+            LOG.error(err)
+            reason = app.tarfile + ' is unreachable.'
+            _handle_download_failure(reason)
+        except shutil.Error as err:
+            LOG.error(err)
+            err_file = os.path.basename(filename) if filename_avail else app.tarfile
+            reason = 'failed to process tarfile ' + err_file
+            _handle_download_failure(reason)
+        except socket_timeout as e:
+            LOG.error(e)
+            reason = 'failed to download tarfile ' + app.tarfile + \
+                     ', connection timed out.'
+            _handle_download_failure(reason)
+
+    def _extract_tarfile(self, app):
+        def _handle_extract_failure(
+                reason='failed to extract tarfile content.'):
+            raise exception.KubeAppUploadFailure(
+                name=app.name,
+                reason=reason)
+
+        def _find_manifest_file(app_path):
+            mfiles = cutils.find_manifest_file(app_path)
+
+            if mfiles is None:
+                _handle_extract_failure('manifest file is corrupted.')
+
+            if mfiles:
+                if len(mfiles) == 1:
+                    return mfiles[0]
+                else:
+                    _handle_extract_failure(
+                        'tarfile contains more than one manifest file.')
+            else:
+                _handle_extract_failure('manifest file is missing.')
+
+        orig_uid, orig_gid = get_app_install_root_path_ownership()
+
+        try:
             # One time set up of Armada manifest path for the system
             if not os.path.isdir(constants.APP_SYNCED_DATA_PATH):
                 os.makedirs(constants.APP_SYNCED_DATA_PATH)
 
             if not os.path.isdir(app.path):
-                os.makedirs(app.path)
-            if not cutils.extract_tarfile(app.path, app.tarfile):
+                create_app_path(app.path)
+
+            # Temporarily change /scratch group ownership to wrs_protected
+            os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid,
+                     grp.getgrnam(constants.SYSINV_WRS_GRPNAME).gr_gid)
+
+            # Extract the tarfile as sysinv user
+            if not cutils.extract_tarfile(app.path, app.tarfile, demote_user=True):
                 _handle_extract_failure()
 
+            if app.downloaded_tarfile:
+                if not cutils.verify_checksum(app.path):
+                    _handle_extract_failure('checksum validation failed.')
+                mname, mfile = _find_manifest_file(app.path)
+                # Save the official manifest file info. They will be persisted
+                # in the next status update
+                app.regenerate_manifest_filename(mname, os.path.basename(mfile))
+
             if os.path.isdir(app.charts_dir):
+                if len(os.listdir(app.charts_dir)) == 0:
+                    _handle_extract_failure('tarfile contains no Helm charts.')
+
                 tar_filelist = cutils.get_files_matching(app.charts_dir,
                                                          '.tgz')
+                if not tar_filelist:
+                    reason = 'tarfile contains no Helm charts of expected ' + \
+                             'file extension (.tgz).'
+                    _handle_extract_failure(reason)
+
                 for p, f in tar_filelist:
-                    if not cutils.extract_tarfile(p, os.path.join(p, f)):
+                    if not cutils.extract_tarfile(
+                            p, os.path.join(p, f), demote_user=True):
                         _handle_extract_failure()
         except OSError as e:
             LOG.error(e)
             _handle_extract_failure()
+        finally:
+            os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
     def _get_image_tags_by_path(self, path):
         """ Mine the image tags from values.yaml files in the chart directory,
@@ -218,6 +370,9 @@ class AppOperator(object):
             images_to_download = self._get_image_tags_by_path(app.path)
 
         if not images_to_download:
+            # TODO(tngo): We may want to support the deployment of apps that
+            # set up resources only in the future. In which case, generate
+            # an info log and let it advance to the next step.
             raise exception.KubeAppUploadFailure(
                 name=app.name,
                 reason="charts specify no docker images.")
@@ -300,15 +455,21 @@ class AppOperator(object):
         charts = [os.path.join(r, f)
                   for r, f in cutils.get_files_matching(app.charts_dir, '.tgz')]
 
-        with open(os.devnull, "w") as fnull:
-            for chart in charts:
-                try:
+        orig_uid, orig_gid = get_app_install_root_path_ownership()
+        try:
+            # Temporarily change /scratch group ownership to wrs_protected
+            os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid,
+                     grp.getgrnam(constants.SYSINV_WRS_GRPNAME).gr_gid)
+            with open(os.devnull, "w") as fnull:
+                for chart in charts:
                     subprocess.check_call(['helm-upload', chart], env=env,
                                           stdout=fnull, stderr=fnull)
                     LOG.info("Helm chart %s uploaded" % os.path.basename(chart))
-                except Exception as e:
-                    raise exception.KubeAppUploadFailure(
-                        name=app.name, reason=str(e))
+        except Exception as e:
+            raise exception.KubeAppUploadFailure(
+                name=app.name, reason=str(e))
+        finally:
+            os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
     def _validate_labels(self, labels):
         expr = re.compile(r'[a-z0-9]([-a-z0-9]*[a-z0-9])')
@@ -596,14 +757,28 @@ class AppOperator(object):
         LOG.info("Application (%s) upload started." % app.name)
 
         try:
+            app.tarfile = tarfile
+
+            if cutils.is_url(app.tarfile):
+                self._update_app_status(
+                    app, new_progress=constants.APP_PROGRESS_TARFILE_DOWNLOAD)
+                downloaded_tarfile = self._download_tarfile(app)
+
+                if downloaded_tarfile is None:
+                    self._abort_operation(app, constants.APP_UPLOAD_OP)
+                else:
+                    app.tarfile = downloaded_tarfile
+
+                app.downloaded_tarfile = True
+
             # Full extraction of application tarball at /scratch/apps.
             # Manifest file is placed under /opt/platform/armada
             # which is managed by drbd-sync and visible to Armada.
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_EXTRACT_TARFILE)
-            orig_mode = stat.S_IMODE(os.lstat("/scratch").st_mode)
-            app.tarfile = tarfile
-            self._extract_tarfile(app)
+
+            with self._lock:
+                self._extract_tarfile(app)
             shutil.copy(app.mfile_abs, app.armada_mfile_abs)
 
             if not self._docker.make_armada_request('validate', app.armada_mfile):
@@ -613,19 +788,18 @@ class AppOperator(object):
                 app, new_progress=constants.APP_PROGRESS_VALIDATE_UPLOAD_CHARTS)
             if os.path.isdir(app.charts_dir):
                 self._validate_helm_charts(app)
-                # Temporarily allow read and execute access to /scratch so www
-                # user can upload helm charts
-                os.chmod('/scratch', 0o755)
-                self._upload_helm_charts(app)
+                with self._lock:
+                    self._upload_helm_charts(app)
 
             self._save_images_list(app)
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
             LOG.info("Application (%s) upload completed." % app.name)
+        except exception.KubeAppUploadFailure as e:
+            LOG.exception(e)
+            self._abort_operation(app, constants.APP_UPLOAD_OP, str(e))
         except Exception as e:
             LOG.exception(e)
             self._abort_operation(app, constants.APP_UPLOAD_OP)
-        finally:
-            os.chmod('/scratch', orig_mode)
 
     def perform_app_apply(self, rpc_app):
         """Process application install request
@@ -779,31 +953,27 @@ class AppOperator(object):
             self.charts_dir = os.path.join(self.path, 'charts')
             self.images_dir = os.path.join(self.path, 'images')
             self.tarfile = None
+            self.downloaded_tarfile = False
             self.system_app =\
                 (self._kube_app.get('name') == constants.HELM_APP_OPENSTACK)
-            self.armada_mfile =\
-                os.path.join('/manifests', self._kube_app.get('name') + "-" +
-                             self._kube_app.get('manifest_file'))
-            self.armada_mfile_abs =\
-                os.path.join(constants.APP_SYNCED_DATA_PATH,
-                             self._kube_app.get('name') + "-" +
-                             self._kube_app.get('manifest_file'))
-            self.mfile_abs =\
-                os.path.join(constants.APP_INSTALL_PATH,
-                             self._kube_app.get('name'),
-                             self._kube_app.get('manifest_file'))
-            self.imgfile_abs =\
-                os.path.join(constants.APP_SYNCED_DATA_PATH,
-                             self._kube_app.get('name') + "-images.yaml")
+
+            self.armada_mfile = generate_armada_manifest_filename(
+                self._kube_app.get('name'),
+                self._kube_app.get('manifest_file'))
+            self.armada_mfile_abs = generate_armada_manifest_filename_abs(
+                self._kube_app.get('name'),
+                self._kube_app.get('manifest_file'))
+            self.mfile_abs = generate_manifest_filename_abs(
+                self._kube_app.get('name'),
+                self._kube_app.get('manifest_file'))
+            self.imgfile_abs = generate_images_filename_abs(
+                self._kube_app.get('name'))
+
             self.charts = []
 
         @property
         def name(self):
             return self._kube_app.get('name')
-
-        @property
-        def mfile(self):
-            return self._kube_app.get('manifest_file')
 
         @property
         def status(self):
@@ -818,6 +988,16 @@ class AppOperator(object):
             if new_progress:
                 self._kube_app.progress = new_progress
             self._kube_app.save()
+
+        def regenerate_manifest_filename(self, new_mname, new_mfile):
+            self._kube_app.manifest_name = new_mname
+            self._kube_app.manifest_file = new_mfile
+            self.armada_mfile = generate_armada_manifest_filename(
+                self.name, new_mfile)
+            self.armada_mfile_abs = generate_armada_manifest_filename_abs(
+                self.name, new_mfile)
+            self.mfile_abs = generate_manifest_filename_abs(
+                self.name, new_mfile)
 
 
 class DockerHelper(object):

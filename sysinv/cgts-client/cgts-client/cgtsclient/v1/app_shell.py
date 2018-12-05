@@ -6,6 +6,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import os
+import re
 
 from cgtsclient.common import utils
 from cgtsclient import exc
@@ -21,6 +22,24 @@ def _print_application_show(app):
 def _print_reminder_msg(app_name):
     print("Please use 'system application-list' or 'system "
           "application-show %s' to view the current progress." % app_name)
+
+
+def _is_url(url_str):
+    # Django url validation patterns
+    r = re.compile(
+        r'^(?:http|ftp)s?://'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
+        r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
+    url = r.match(url_str)
+    if url:
+        return True
+    else:
+        return False
 
 
 def do_application_list(cc, args):
@@ -50,15 +69,17 @@ def do_application_show(cc, args):
 def do_application_upload(cc, args):
     """Upload application Helm chart(s) and manifest"""
     tarfile = args.tarfile
-    if not os.path.isabs(tarfile):
-        tarfile = os.path.join(os.getcwd(), tarfile)
 
-    if not os.path.isfile(tarfile):
-        raise exc.CommandError("Error: Tar file %s does not exist" % tarfile)
-    if not tarfile.endswith('.tgz') and not tarfile.endswith('.tar.gz'):
-        raise exc.CommandError("Error: File %s has unrecognizable tar file "
-                               "extension. Supported extensions are: .tgz "
-                               "and .tar.gz" % tarfile)
+    if not _is_url(tarfile):
+        if not os.path.isabs(tarfile):
+            tarfile = os.path.join(os.getcwd(), tarfile)
+
+        if not os.path.isfile(tarfile):
+            raise exc.CommandError("Error: Tar file %s does not exist" % tarfile)
+        if not tarfile.endswith('.tgz') and not tarfile.endswith('.tar.gz'):
+            raise exc.CommandError("Error: File %s has unrecognizable tar file "
+                                   "extension. Supported extensions are: .tgz "
+                                   "and .tar.gz" % tarfile)
 
     data = {'name': args.name,
             'tarfile': tarfile}

@@ -1231,6 +1231,7 @@ NETWORK_CONFIG_LOCK_FILE = os.path.join(
 
 SYSINV_USERNAME = "sysinv"
 SYSINV_GRPNAME = "sysinv"
+SYSINV_WRS_GRPNAME = "wrs_protected"
 
 # SSL configuration
 CERT_TYPE_SSL = 'ssl'
@@ -1474,7 +1475,8 @@ K8S_RBD_PROV_STOR_CLASS_NAME = 'general'
 # Kubernetes application section #
 ##################################
 # Working paths
-APP_INSTALL_PATH = '/scratch/apps'
+APP_INSTALL_ROOT_PATH = '/scratch'
+APP_INSTALL_PATH = APP_INSTALL_ROOT_PATH + '/apps'
 APP_SYNCED_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
 
 # State constants
@@ -1501,11 +1503,16 @@ APP_PROGRESS_DELETE_MANIFEST = 'deleting application manifest'
 APP_PROGRESS_DOWNLOAD_IMAGES = 'retrieving docker images'
 APP_PROGRESS_EXTRACT_TARFILE = 'extracting application tar file'
 APP_PROGRESS_GENERATE_OVERRIDES = 'generating application overrides'
+APP_PROGRESS_TARFILE_DOWNLOAD = 'downloading tarfile'
 APP_PROGRESS_VALIDATE_UPLOAD_CHARTS = 'validating and uploading charts'
 
 # Node label operation constants
 LABEL_ASSIGN_OP = 'assign'
 LABEL_REMOVE_OP = 'remove'
+
+# Placeholder constants
+APP_MANIFEST_NAME_PLACEHOLDER = 'manifest-placeholder'
+APP_TARFILE_NAME_PLACEHOLDER = 'tarfile-placeholder'
 
 # Default node labels
 CONTROL_PLANE_LABEL = 'openstack-control-plane=enabled'

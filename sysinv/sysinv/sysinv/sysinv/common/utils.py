@@ -48,6 +48,7 @@ import tempfile
 import time
 import uuid
 import wsme
+import yaml
 
 from eventlet.green import subprocess
 from eventlet import greenthread
@@ -1795,12 +1796,20 @@ def get_files_matching(path, pattern):
             for file in files if file.endswith(pattern)]
 
 
-def extract_tarfile(target_dir, tarfile):
+def extract_tarfile(target_dir, tarfile, demote_user=False):
     with open(os.devnull, "w") as fnull:
         try:
-            subprocess.check_call(['tar', '-xf', tarfile, '-m', '--no-same-owner',
-                                   '--no-same-permissions', '-C', target_dir],
-                                  stdout=fnull, stderr=fnull)
+            if demote_user:
+                tarcmd_str = 'tar -xf ' + tarfile + ' -m --no-same-owner ' +\
+                          '--no-same-permissions -C ' + target_dir
+                cmd = ['su', '-s', '/bin/bash', constants.SYSINV_USERNAME,
+                       '-c', tarcmd_str]
+            else:
+                cmd = ['tar', '-xf', tarfile, '-m', '--no-same-owner',
+                       '--no-same-permissions', '-C', target_dir]
+
+            subprocess.check_call(cmd, stdout=fnull, stderr=fnull)
+
             return True
         except subprocess.CalledProcessError as e:
             LOG.error("Error while extracting tarfile %s: %s" % (tarfile, e))
@@ -1817,3 +1826,74 @@ def is_openstack_installed(dbapi):
             return False
     except exception.KubeAppNotFound:
         return False
+
+
+def is_url(url_str):
+    # Django URL validation patterns
+    r = re.compile(
+        r'^(?:http|ftp)s?://'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
+        r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
+    url = r.match(url_str)
+    if url:
+        return True
+    else:
+        return False
+
+
+def verify_checksum(path):
+    """ Find and validate the checksum file in a given directory. """
+    rc = True
+    for f in os.listdir(path):
+        if f.endswith('.md5'):
+            cwd = os.getcwd()
+            os.chdir(path)
+            with open(os.devnull, "w") as fnull:
+                try:
+                    subprocess.check_call(['md5sum', '-c', f],
+                                          stdout=fnull, stderr=fnull)
+                    LOG.info("Checksum file is included and validated.")
+                except Exception as e:
+                    LOG.exception(e)
+                    rc = False
+                finally:
+                    os.chdir(cwd)
+                    return rc
+    LOG.info("Checksum file is not included, skipping validation.")
+    return rc
+
+
+def find_manifest_file(path):
+    """ Find all manifest files in a given directory. """
+    def _is_manifest(yaml_file):
+        with open(yaml_file, 'r') as f:
+            docs = yaml.load_all(f)
+            for doc in docs:
+                try:
+                    if "armada/Manifest" in doc['schema']:
+                        manifest_name = doc['metadata']['name']
+                        return manifest_name, yaml_file
+                except KeyError:
+                    # Could be some other yaml files
+                    pass
+        return None, None
+
+    mfiles = []
+    for file in os.listdir(path):
+        if file.endswith('.yaml'):
+            yaml_file = os.path.join(path, file)
+            try:
+                mname, mfile = _is_manifest(yaml_file)
+                if mfile:
+                    mfiles.append((mname, mfile))
+            except Exception as e:
+                # Included yaml file is corrupted
+                LOG.exception(e)
+                return None
+
+    return mfiles
