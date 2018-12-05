@@ -28,7 +28,7 @@ def get_upgrade_databases(shared_services):
 
     UPGRADE_DATABASES = ('postgres', 'template1', 'nova', 'sysinv', 'murano',
                          'ceilometer', 'neutron', 'heat', 'nova_api', 'aodh',
-                         'magnum', 'panko', 'ironic')
+                         'magnum', 'panko', 'ironic', 'barbican')
 
     UPGRADE_DATABASE_SKIP_TABLES = {'postgres': (), 'template1': (),
                                     'heat': (), 'nova': (), 'nova_api': (),
@@ -39,6 +39,7 @@ def get_upgrade_databases(shared_services):
                                     'magnum': (),
                                     'panko': (),
                                     'ironic': (),
+                                    'barbican': (),
                                     'ceilometer': ('metadata_bool',
                                                    'metadata_float',
                                                    'metadata_int',

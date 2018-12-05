@@ -72,6 +72,9 @@ def get_db_credentials(shared_services, from_release):
         {'aodh': {'hiera_user_key': 'aodh::db::postgresql::user',
                   'keyring_password_key': 'aodh',
                   },
+         'barbican': {'hiera_user_key': 'barbican::db::postgresql::user',
+                      'keyring_password_key': 'barbican',
+                      },
          'ceilometer': {'hiera_user_key': 'ceilometer::db::postgresql::user',
                         'keyring_password_key': 'ceilometer',
                         },
@@ -583,10 +586,18 @@ def migrate_databases(from_release, shared_services, db_credentials,
             f.write("[database]\n")
             f.write(get_connection_string(db_credentials, 'keystone'))
 
+    with open("/etc/barbican/barbican-dbsync.conf", "w") as f:
+        f.write("[database]\n")
+        f.write(get_connection_string(db_credentials, 'barbican'))
+
     migrate_commands = [
         # Migrate aodh (new in R3)
         ('aodh',
          'aodh-dbsync --config-file /etc/aodh/aodh-dbsync.conf'),
+        # Migrate barbican
+        ('barbican',
+         'barbican-manage --config-file /etc/barbican/barbican-dbsync.conf ' +
+         'db upgrade'),
         # Migrate ceilometer
         ('ceilometer',
          'ceilometer-upgrade --skip-gnocchi-resource-types --config-file ' +

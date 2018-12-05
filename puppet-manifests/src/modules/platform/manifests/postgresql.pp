@@ -198,6 +198,7 @@ class platform::postgresql::upgrade
   }
 
   include ::aodh::db::postgresql
+  include ::barbican::db::postgresql
   include ::cinder::db::postgresql
   include ::glance::db::postgresql
   include ::gnocchi::db::postgresql

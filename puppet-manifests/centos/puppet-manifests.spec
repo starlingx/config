@@ -25,6 +25,7 @@ Requires: puppet-fm
 
 # Openstack puppet modules
 Requires: puppet-aodh
+Requires: puppet-barbican
 Requires: puppet-ceilometer
 Requires: puppet-ceph
 Requires: puppet-cinder

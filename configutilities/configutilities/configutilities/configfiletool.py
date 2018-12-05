@@ -731,11 +731,19 @@ class REG2SERVICESPage2(ConfigPage):
         self.fields['GNOCCHI_PASSWORD'] = Field(
             text="GNOCCHI user password",
             type=TYPES.string, initial="")
+
         self.fields['FM_USER_NAME'] = Field(
             text="FM username",
             type=TYPES.string, initial="fm")
         self.fields['FM_PASSWORD'] = Field(
             text="FM user password",
+            type=TYPES.string, initial="")
+
+        self.fields['BARBICAN_USER_NAME'] = Field(
+            text="Barbican username",
+            type=TYPES.string, initial="barbican")
+        self.fields['BARBICAN_PASSWORD'] = Field(
+            text="Barbican user password",
             type=TYPES.string, initial="")
 
     def validate_page(self):

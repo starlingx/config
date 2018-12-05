@@ -132,6 +132,9 @@ include ::platform::smapi
 include ::openstack::swift
 include ::openstack::swift::api
 
+include ::openstack::barbican
+include ::openstack::barbican::api
+
 include ::platform::sm
 
 class { '::platform::config::controller::post':
