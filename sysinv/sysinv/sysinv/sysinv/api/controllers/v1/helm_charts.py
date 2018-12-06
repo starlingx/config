@@ -42,6 +42,7 @@ class HelmChartsController(rest.RestController):
         :param name: name of helm chart
         :param namespace: namespace of chart overrides
         """
+        self.validate_name_and_namespace(name, namespace)
 
         # Get any user-specified overrides.
         try:
@@ -52,20 +53,24 @@ class HelmChartsController(rest.RestController):
             if name in constants.SUPPORTED_HELM_CHARTS:
                 user_overrides = ''
             else:
-                raise
+                # Unsupported/invalid chart name (and namespace)
+                raise wsme.exc.ClientSideError(_("Override not found."))
 
         # Get any system overrides.
         try:
             system_overrides = pecan.request.rpcapi.get_helm_chart_overrides(
                 pecan.request.context, name, namespace)
             system_overrides = yaml.safe_dump(system_overrides)
-        except (exception.InvalidHelmChart, exception.InvalidHelmNamespace):
-            raise
+        except Exception:
+            # Unsupported/invalid namespace
+            raise wsme.exc.ClientSideError(_("Override not found."))
 
         # Merge the system overrides with the saved user-specified overrides,
         # with user-specified overrides taking priority over the system
         # overrides.
-        file_overrides = [system_overrides, user_overrides]
+        file_overrides = [system_overrides, user_overrides] \
+            if user_overrides else [system_overrides]
+
         combined_overrides = pecan.request.rpcapi.merge_overrides(
              pecan.request.context, file_overrides=file_overrides)
 
@@ -79,11 +84,9 @@ class HelmChartsController(rest.RestController):
 
     def validate_name_and_namespace(self, name, namespace):
         if not name:
-                raise wsme.exc.ClientSideError(_(
-                    "Helm-override-update rejected: name must be specified"))
+                raise wsme.exc.ClientSideError(_("Name must be specified."))
         if not namespace:
-            raise wsme.exc.ClientSideError(_(
-                "Helm-override-update rejected: namespace must be specified"))
+            raise wsme.exc.ClientSideError(_("Namespace must be specified."))
 
     @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text, wtypes.text)
     def patch(self, name, namespace, flag, values):
