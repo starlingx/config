@@ -83,8 +83,9 @@ def _get_range_tuples(data):
            metavar='<network prefix>',
            help="Network IP address prefix length [REQUIRED]")
 @utils.arg('--ranges',
-           metavar='<start-end>,[<start-end],...',
-           help="The inclusive range of addresses to allocate")
+           metavar='<ranges>',
+           help="The inclusive range of addresses to allocate "
+           "<startaddr1-endaddr1>[,<startaddr2-endaddr2>,...]")
 @utils.arg('--order',
            metavar='<sequential | random>',
            help="The allocation order within the start/end range")
@@ -116,8 +117,9 @@ def do_addrpool_add(cc, args):
            metavar='<name>',
            help="Name of the Address Pool]")
 @utils.arg('--ranges',
-           metavar='<start-end>,[<start-end],...',
-           help="The inclusive range of addresses to allocate")
+           metavar='<ranges>',
+           help="The inclusive range of addresses to allocate "
+           "<startaddr1-endaddr1>[,<startaddr2-endaddr2>,...]")
 @utils.arg('--order',
            metavar='<sequential | random>',
            help="The allocation order within the start/end range")

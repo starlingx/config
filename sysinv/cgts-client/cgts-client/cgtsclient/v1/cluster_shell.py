@@ -86,8 +86,9 @@ if os.path.exists('/var/run/.sysinv_running_in_lab'):
                metavar='<name>',
                help='Name of the Cluster [REQUIRED]')
     @utils.arg('--peers',
-               metavar='<name~status>,[<name~status],...',
-               help='The inclusive range of peers to allocate')
+               metavar='<peers>',
+               help='The inclusive range of peers to allocate '
+               "<name~status>[,<name~status>,...]")
     def do_cluster_add(cc, args):
         """Add Cluster."""
 
@@ -115,8 +116,9 @@ if os.path.exists('/var/run/.sysinv_running_in_lab'):
                metavar='<name>',
                help="Name of the Cluster")
     @utils.arg('--peers',
-               metavar='<name-status>,[<name-status],...',
-               help="The inclusive range of peers to allocate")
+               metavar='<peers>',
+               help="The inclusive range of peers to allocate "
+               "<name~status>[,<name~status>,...]")
     def do_cluster_modify(cc, args):
         """Modify Cluster attributes."""
 
