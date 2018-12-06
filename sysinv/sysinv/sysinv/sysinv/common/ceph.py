@@ -712,6 +712,8 @@ def fix_crushmap(dbapi=None):
     if not os.path.isfile(crushmap_flag_file):
         if utils.is_aio_simplex_system(dbapi):
             crushmap_file = "/etc/sysinv/crushmap-aio-sx.bin"
+        elif utils.is_aio_duplex_system(dbapi):
+            crushmap_file = "/etc/sysinv/crushmap-aio-dx.bin"
         else:
             crushmap_file = "/etc/sysinv/crushmap.bin"
         LOG.info("Updating crushmap with: %s" % crushmap_file)

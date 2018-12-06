@@ -25,7 +25,6 @@ class openstack::cinder::params (
   $initial_cinder_lvm_config_flag = "${::platform::params::config_path}/.initial_cinder_lvm_config_complete",
   $initial_cinder_ceph_config_flag = "${::platform::params::config_path}/.initial_cinder_ceph_config_complete",
   $node_cinder_lvm_config_flag = '/etc/platform/.node_cinder_lvm_config_complete',
-  $node_cinder_ceph_config_flag = '/etc/platform/.node_cinder_ceph_config_complete',
   ) {
   $cinder_disk = regsubst($cinder_device, '-part\d+$', '')
 
@@ -75,16 +74,8 @@ class openstack::cinder::params (
       } else {
         $is_initial_cinder_ceph = false
       }
-      # Check if we should configure/reconfigure cinder LVM for this node.
-      # True in case of node reinstalls etc.
-      if str2bool($::is_node_cinder_ceph_config) {
-        $is_node_cinder_ceph = true
-      } else {
-        $is_node_cinder_ceph = false
-      }
     } else {
       $is_initial_cinder_ceph = false
-      $is_node_cinder_ceph = false
     }
     
     # Cinder needs to be running on initial configuration of either Ceph or LVM
@@ -723,12 +714,6 @@ class openstack::cinder::post
 
   if $is_node_cinder_lvm {
     file { $node_cinder_lvm_config_flag:
-      ensure => present
-    }
-  }
-
-  if $is_node_cinder_ceph {
-    file { $node_cinder_ceph_config_flag:
       ensure => present
     }
   }

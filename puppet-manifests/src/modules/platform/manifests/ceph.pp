@@ -8,6 +8,9 @@ class platform::ceph::params(
   $mon_fs_type = 'ext4',
   $mon_fs_options = ' ',
   $mon_mountpoint = '/var/lib/ceph/mon',
+  $floating_mon_host = undef,
+  $floating_mon_ip = undef,
+  $floating_mon_addr = undef,
   $mon_0_host = undef,
   $mon_0_ip = undef,
   $mon_0_addr = undef,
@@ -35,6 +38,7 @@ class platform::ceph::params(
   $restapi_public_addr = undef,
   $configure_ceph_mon_info = false,
   $ceph_config_ready_path = '/var/run/.ceph_started',
+  $node_ceph_configured_flag = '/etc/platform/.node_ceph_configured',
 ) { }
 
 
@@ -44,10 +48,17 @@ class platform::ceph
   $system_mode = $::platform::params::system_mode
   $system_type = $::platform::params::system_type
   if $service_enabled or $configure_ceph_mon_info {
-    if $system_type == 'All-in-one' and 'simplex' in $system_mode {
-      # Allow 1 node configurations to work with a single monitor
-      $mon_initial_members = $mon_0_host
+    # Set the minimum set of monitors that form a valid cluster
+    if $system_type == 'All-in-one' {
+      if $system_mode == 'simplex' {
+        # 1 node configuration, a single monitor is available
+        $mon_initial_members = $mon_0_host
+      } else {
+        # 2 node configuration, we have a floating monitor
+        $mon_initial_members = $floating_mon_host
+      }
     } else {
+      # Multinode, any 2 monitors form a cluster
       $mon_initial_members = undef
     }
 
@@ -58,21 +69,31 @@ class platform::ceph
     } ->
     ceph_config {
        "mon/mon clock drift allowed": value => ".1";
-       "mon.${mon_0_host}/host":      value => $mon_0_host;
-       "mon.${mon_0_host}/mon_addr":  value => $mon_0_addr;
        "client.restapi/public_addr":  value => $restapi_public_addr;
     }
     if $system_type == 'All-in-one' {
+      # 1 and 2 node configurations have a single monitor
       if 'duplex' in $system_mode {
+        # Floating monitor, running on active controller.
         Class['::ceph'] ->
         ceph_config {
-          "mon.${mon_1_host}/host":      value => $mon_1_host;
-          "mon.${mon_1_host}/mon_addr":  value => $mon_1_addr;
+          "mon.${floating_mon_host}/host":      value => $floating_mon_host;
+          "mon.${floating_mon_host}/mon_addr":  value => $floating_mon_addr;
+        }
+      } else {
+        # Simplex case, a single monitor binded to the controller.
+        Class['::ceph'] ->
+        ceph_config {
+          "mon.${mon_0_host}/host":      value => $mon_0_host;
+          "mon.${mon_0_host}/mon_addr": value => $mon_0_addr;
         }
       }
     } else {
+      # Multinode has 3 monitors.
       Class['::ceph'] ->
       ceph_config {
+        "mon.${mon_0_host}/host":      value => $mon_0_host;
+        "mon.${mon_0_host}/mon_addr":  value => $mon_0_addr;
         "mon.${mon_1_host}/host":      value => $mon_1_host;
         "mon.${mon_1_host}/mon_addr":  value => $mon_1_addr;
         "mon.${mon_2_host}/host":      value => $mon_2_host;
@@ -86,44 +107,79 @@ class platform::ceph
 }
 
 
-class platform::ceph::post {
-  include ::platform::ceph::params
+class platform::ceph::post
+  inherits ::platform::ceph::params {
   # Enable ceph process recovery after all configuration is done
-  file { $::platform::ceph::params::ceph_config_ready_path:
+  file { $ceph_config_ready_path:
     ensure => present,
     content => '',
     owner => 'root',
     group => 'root',
     mode => '0644',
   }
+
+  if $service_enabled {
+    file { $node_ceph_configured_flag:
+      ensure => present
+    }
+  }
+
 }
 
 
 class platform::ceph::monitor
   inherits ::platform::ceph::params {
 
+  $system_mode = $::platform::params::system_mode
+  $system_type = $::platform::params::system_type
+
   if $service_enabled {
+     if $system_type == 'All-in-one' and 'duplex' in $system_mode {
+       if str2bool($::is_controller_active) {
+         # Ceph mon is configured on a DRBD partition, on the active controller,
+         # when 'ceph' storage backend is added in sysinv.
+         # Then SM takes care of starting ceph after manifests are applied.
+         $configure_ceph_mon = true
+       } else {
+         $configure_ceph_mon = false
+       }
+     } else {
+       # Simplex, multinode. Ceph is pmon managed.
+       $configure_ceph_mon = true
+     }
+  }
+  else {
+    $configure_ceph_mon = false
+  }
+
+  if $configure_ceph_mon {
     file { '/var/lib/ceph':
       ensure  => 'directory',
       owner   => 'root',
       group   => 'root',
       mode    => '0755',
-    } ->
+    }
 
-    platform::filesystem { $mon_lv_name:
-      lv_name    => $mon_lv_name,
-      lv_size    => $mon_lv_size,
-      mountpoint => $mon_mountpoint,
-      fs_type    => $mon_fs_type,
-      fs_options => $mon_fs_options,
-    } -> Class['::ceph']
+    if $system_type == 'All-in-one' and 'duplex' in $system_mode {
+      # ensure DRBD config is complete before enabling the ceph monitor
+      Drbd::Resource <| |> -> Class['::ceph']
+    } else {
+      File['/var/lib/ceph'] ->
+      platform::filesystem { $mon_lv_name:
+        lv_name    => $mon_lv_name,
+        lv_size    => $mon_lv_size,
+        mountpoint => $mon_mountpoint,
+        fs_type    => $mon_fs_type,
+        fs_options => $mon_fs_options,
+      } -> Class['::ceph']
 
-    file { "/etc/pmon.d/ceph.conf":
-      ensure  => link,
-      target  => "/etc/ceph/ceph.conf.pmon",
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0640',
+      file { "/etc/pmon.d/ceph.conf":
+        ensure  => link,
+        target  => "/etc/ceph/ceph.conf.pmon",
+        owner   => 'root',
+        group   => 'root',
+        mode    => '0640',
+      }
     }
 
     # ensure configuration is complete before creating monitors
@@ -131,9 +187,7 @@ class platform::ceph::monitor
 
     # Start service on AIO SX and on active controller
     # to allow in-service configuration.
-    $system_mode = $::platform::params::system_mode
-    $system_type = $::platform::params::system_type
-    if str2bool($::is_controller_active) or ($system_type == 'All-in-one' and $system_mode == 'simplex') {
+    if str2bool($::is_controller_active) or $system_type == 'All-in-one' {
       $service_ensure = "running"
     } else {
       $service_ensure = "stopped"
@@ -146,19 +200,53 @@ class platform::ceph::monitor
       service_ensure => $service_ensure,
     }
 
-    if $::hostname == $mon_0_host {
-      ceph::mon { $mon_0_host:
-        public_addr => $mon_0_ip,
+    if $system_type == 'All-in-one' and 'duplex' in $system_mode {
+      ceph::mon { $floating_mon_host:
+        public_addr => $floating_mon_ip,
       }
-    }
-    elsif $::hostname == $mon_1_host {
-      ceph::mon { $mon_1_host:
-        public_addr => $mon_1_ip,
+
+      if (str2bool($::is_controller_active) and
+          str2bool($::is_initial_cinder_ceph_config) and
+          !str2bool($::is_standalone_controller)) {
+
+
+        # When we configure ceph after both controllers are active,
+        # we need to stop the monitor, unmount the monitor partition
+        # and set the drbd role to secondary, so that the handoff to
+        # SM is done properly once we swact to the standby controller.
+        # TODO: Remove this once SM supports in-service config reload.
+        Ceph::Mon <| |> ->
+        exec { "Stop Ceph monitor":
+          command =>"/etc/init.d/ceph stop mon",
+          onlyif => "/etc/init.d/ceph status mon",
+          logoutput => true,
+        } ->
+        exec { "umount ceph-mon partition":
+          command => "umount $mon_mountpoint",
+          onlyif => "mount | grep -q $mon_mountpoint",
+          logoutput => true,
+        } ->
+        exec { 'Set cephmon secondary':
+          command => "drbdadm secondary drbd-cephmon",
+          unless  => "drbdadm role drbd-cephmon | egrep '^Secondary'",
+          logoutput => true,
+        }
+     }
+    } else {
+      if $::hostname == $mon_0_host {
+        ceph::mon { $mon_0_host:
+          public_addr => $mon_0_ip,
+        }
       }
-    }
-    elsif $::hostname == $mon_2_host {
-      ceph::mon { $mon_2_host:
-        public_addr => $mon_2_ip,
+      elsif $::hostname == $mon_1_host {
+        ceph::mon { $mon_1_host:
+          public_addr => $mon_1_ip,
+        }
+      }
+      elsif $::hostname == $mon_2_host {
+        ceph::mon { $mon_2_host:
+          public_addr => $mon_2_ip,
+        }
       }
     }
   }

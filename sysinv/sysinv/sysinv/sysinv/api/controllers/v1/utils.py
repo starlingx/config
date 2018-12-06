@@ -382,6 +382,13 @@ def is_kubernetes_config(dbapi=None):
     return system.capabilities.get('kubernetes_enabled', False)
 
 
+def is_aio_system(dbapi=None):
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    system = dbapi.isystem_get_one()
+    return (system.system_type == constants.TIS_AIO_BUILD)
+
+
 def is_aio_simplex_system(dbapi=None):
     if not dbapi:
         dbapi = pecan.request.dbapi
@@ -390,9 +397,13 @@ def is_aio_simplex_system(dbapi=None):
             system.system_mode == constants.SYSTEM_MODE_SIMPLEX)
 
 
-def is_aio_duplex_system():
-    return get_system_mode() == constants.SYSTEM_MODE_DUPLEX and \
-           SystemHelper.get_product_build() == constants.TIS_AIO_BUILD
+def is_aio_duplex_system(dbapi=None):
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    system = dbapi.isystem_get_one()
+    return (system.system_type == constants.TIS_AIO_BUILD and
+            (system.system_mode == constants.SYSTEM_MODE_DUPLEX or
+             system.system_mode == constants.SYSTEM_MODE_DUPLEX_DIRECT))
 
 
 def is_aio_kubernetes(dbapi=None):

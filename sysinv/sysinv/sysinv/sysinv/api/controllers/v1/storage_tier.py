@@ -410,7 +410,7 @@ def _check(op, tier):
             raise wsme.exc.ClientSideError(_("Storage tier (%s) "
                                              "already present." %
                                              tier['name']))
-        if utils.is_aio_simplex_system(pecan.request.dbapi):
+        if utils.is_aio_system(pecan.request.dbapi):
             # Deny adding secondary tiers if primary tier backend is not configured
             # for cluster. When secondary tier is added we also query ceph to create
             # pools and set replication therefore cluster has to be up.
