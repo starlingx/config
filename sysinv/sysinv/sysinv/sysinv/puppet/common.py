@@ -33,6 +33,7 @@ REPORT_EXTERNAL_BACKEND_CONFIG = 'external_config'
 REPORT_CEPH_BACKEND_CONFIG = 'ceph_config'
 REPORT_CEPH_EXTERNAL_BACKEND_CONFIG = 'ceph_external_config'
 REPORT_CEPH_SERVICES_CONFIG = 'ceph_services'
+REPORT_CEPH_MONITOR_CONFIG = 'ceph_monitor'
 
 
 def puppet_apply_manifest(ip_address, personality,

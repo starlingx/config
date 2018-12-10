@@ -4452,8 +4452,8 @@ class HostController(rest.RestController):
                 LOG.info(
                     'Apply new Ceph manifest to provisioned worker nodes.'
                 )
-                pecan.request.rpcapi.config_worker_for_ceph(
-                    pecan.request.context
+                pecan.request.rpcapi.update_ceph_base_config(
+                    pecan.request.context, personalities=[constants.WORKER]
                 )
                 # mark all tasks completed after updating the manifests for
                 # all worker nodes.

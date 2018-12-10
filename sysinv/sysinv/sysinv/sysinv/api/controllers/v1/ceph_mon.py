@@ -16,10 +16,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 import jsonpatch
+import six
 
 import pecan
 from pecan import rest
@@ -75,6 +76,9 @@ class CephMon(base.APIBase):
     forihostid = int
     "The id of the host the ceph mon belongs to."
 
+    ihost_uuid = types.uuid
+    "The UUID of the host this ceph mon belongs to"
+
     hostname = wtypes.text
     "The name of host this ceph mon belongs to."
 
@@ -85,13 +89,11 @@ class CephMon(base.APIBase):
     ceph_mon_gib = int
     "The ceph-mon-lv size in GiB, for Ceph backend only."
 
-    ceph_mon_dev_ctrl0 = wtypes.text
-    "The disk device on controller-0 that cgts-vg will be extended " \
-        "to create ceph-mon-lv"
+    state = wtypes.text
+    "The state of the monitor. It can be configured or configuring."
 
-    ceph_mon_dev_ctrl1 = wtypes.text
-    "The disk device on controller-1 that cgts-vg will be extended " \
-        "to create ceph-mon-lv"
+    task = wtypes.text
+    "Current task of the corresponding ceph monitor."
 
     links = [link.Link]
     "A list containing a self link and associated ceph_mon links"
@@ -100,27 +102,17 @@ class CephMon(base.APIBase):
     updated_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
+
+        defaults = {'state': constants.SB_STATE_CONFIGURED,
+                    'task': constants.SB_TASK_NONE}
+
         self.fields = objects.ceph_mon.fields.keys()
 
         for k in self.fields:
-            setattr(self, k, kwargs.get(k))
+            setattr(self, k, kwargs.get(k, defaults.get(k)))
 
         if not self.uuid:
             self.uuid = uuidutils.generate_uuid()
-
-        self.fields.append('ceph_mon_dev')
-        setattr(self, 'ceph_mon_dev', kwargs.get('ceph_mon_dev', None))
-
-        self.fields.append('ceph_mon_dev_ctrl0')
-        setattr(self, 'ceph_mon_dev_ctrl0',
-                kwargs.get('ceph_mon_dev_ctrl0', None))
-
-        self.fields.append('ceph_mon_dev_ctrl1')
-        setattr(self, 'ceph_mon_dev_ctrl1',
-                kwargs.get('ceph_mon_dev_ctrl1', None))
-
-        self.fields.append('device_node')
-        setattr(self, 'device_node', kwargs.get('device_node', None))
 
     @classmethod
     def convert_with_links(cls, rpc_ceph_mon, expand=True):
@@ -129,12 +121,15 @@ class CephMon(base.APIBase):
         if not expand:
             ceph_mon.unset_fields_except(['created_at',
                                           'updated_at',
+                                          'ihost_uuid',
                                           'forihostid',
                                           'uuid',
                                           'device_path',
                                           'device_node',
                                           'ceph_mon_dev',
                                           'ceph_mon_gib',
+                                          'state',
+                                          'task',
                                           'ceph_mon_dev_ctrl0',
                                           'ceph_mon_dev_ctrl1',
                                           'hostname'])
@@ -381,13 +376,21 @@ class CephMonController(rest.RestController):
         return StorageBackendConfig.get_ceph_mon_ip_addresses(
             pecan.request.dbapi)
 
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(None, six.text_type, status_code=204)
+    def delete(self, host_uuid):
+        """Delete a ceph_mon."""
+
+        _delete(host_uuid)
+
 
 def _set_defaults(ceph_mon):
     defaults = {
+        'uuid': None,
         'ceph_mon_gib': constants.SB_CEPH_MON_GIB,
         'ceph_mon_dev': None,
-        'ceph_mon_dev_ctrl0': None,
-        'ceph_mon_dev_ctrl1': None,
+        'state': constants.SB_STATE_CONFIGURED,
+        'task': constants.SB_TASK_NONE,
     }
 
     storage_ceph_merged = ceph_mon.copy()
@@ -407,30 +410,74 @@ def _create(ceph_mon):
 
     _check_ceph_mon(ceph_mon)
 
+    chost = pecan.request.dbapi.ihost_get(ceph_mon['ihost_uuid'])
+    ceph_mon['forihostid'] = chost['id']
+
     controller_fs_utils._check_controller_fs(
         ceph_mon_gib_new=ceph_mon['ceph_mon_gib'])
 
     pecan.request.rpcapi.reserve_ip_for_first_storage_node(
         pecan.request.context)
 
-    new_ceph_mons = list()
-    chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-    for chost in chosts:
-        # Check if mon exists
-        ceph_mons = pecan.request.dbapi.ceph_mon_get_by_ihost(chost.uuid)
-        if ceph_mons:
-                pecan.request.dbapi.ceph_mon_update(
-                    ceph_mons[0].uuid, {'ceph_mon_gib': ceph_mon['ceph_mon_gib']}
-                )
-                new_ceph_mons.append(ceph_mons[0])
-        else:
-            ceph_mon_new = dict()
-            ceph_mon_new['uuid'] = None
-            ceph_mon_new['forihostid'] = chost.id
-            ceph_mon_new['ceph_mon_gib'] = ceph_mon['ceph_mon_gib']
+    # Size of ceph-mon logical volume must be the same for all
+    # monitors so we get the size from any or use default.
+    ceph_mons = pecan.request.dbapi.ceph_mon_get_list()
+    if ceph_mons:
+        ceph_mon['ceph_mon_gib'] = ceph_mons[0]['ceph_mon_gib']
 
-            LOG.info("creating ceph_mon_new for %s: %s" %
-                     (chost.hostname, str(ceph_mon_new)))
-            new_ceph_mons.append(pecan.request.dbapi.ceph_mon_create(ceph_mon_new))
+    # In case we add the monitor on a worker node, the state
+    # and task must be set properly.
+    if chost.personality == constants.WORKER:
+        ceph_mon['state'] = constants.SB_STATE_CONFIGURING
+        ctrls = pecan.request.dbapi.ihost_get_by_personality(
+             constants.CONTROLLER)
+        valid_ctrls = [
+                ctrl for ctrl in ctrls if
+                (ctrl.administrative == constants.ADMIN_LOCKED and
+                 ctrl.availability == constants.AVAILABILITY_ONLINE) or
+                (ctrl.administrative == constants.ADMIN_UNLOCKED and
+                 ctrl.operational == constants.OPERATIONAL_ENABLED)]
 
-    return new_ceph_mons
+        tasks = {}
+        for ctrl in valid_ctrls:
+            tasks[ctrl.hostname] = constants.SB_STATE_CONFIGURING
+
+        ceph_mon['task'] = str(tasks)
+
+    LOG.info("Creating ceph-mon DB entry for host uuid %s: %s" %
+             (ceph_mon['ihost_uuid'], str(ceph_mon)))
+    new_ceph_mon = pecan.request.dbapi.ceph_mon_create(ceph_mon)
+
+    # We update the base config when adding a dynamic monitor.
+    # At this moment the only possibility to add a dynamic monitor
+    # is on a worker node, so we check for that.
+    if chost.personality == constants.WORKER:
+        # Storage nodes are not supported on a controller based
+        # storage model.
+        personalities = [constants.CONTROLLER, constants.WORKER]
+        pecan.request.rpcapi.update_ceph_base_config(
+            pecan.request.context,
+            personalities)
+
+    # The return value needs to be iterable, so make it a list.
+    return [new_ceph_mon]
+
+
+def _delete(host_uuid):
+    ceph_mon = pecan.request.dbapi.ceph_mon_get_by_ihost(host_uuid)
+    if ceph_mon:
+        ceph_mon = ceph_mon[0]
+    else:
+        raise wsme.exc.ClientSideError(
+            _("No Ceph Monitor defined for host with uuid: %s" % host_uuid))
+
+    if ceph_mon.state == constants.SB_STATE_CONFIG_ERR:
+        try:
+            pecan.request.dbapi.ceph_mon_destroy(ceph_mon.uuid)
+        except exception.HTTPNotFound:
+            raise wsme.exc.ClientSideError("Deleting Ceph Monitor failed!")
+    else:
+        raise wsme.exc.ClientSideError(
+            _("Direct Ceph monitor delete only allowed for state '%s'. "
+              "Please lock and delete node to remove the configured Ceph Monitor."
+              % constants.SB_STATE_CONFIG_ERR))

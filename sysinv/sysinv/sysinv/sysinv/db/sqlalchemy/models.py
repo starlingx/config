@@ -953,6 +953,8 @@ class CephMon(Base):
     uuid = Column(String(36))
     device_path = Column(String(255))
     ceph_mon_gib = Column(Integer)
+    state = Column(String(255))
+    task = Column(String(255))
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
     host = relationship("ihost", lazy="joined", join_depth=1)

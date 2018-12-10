@@ -1415,24 +1415,29 @@ class ConductorManager(service.PeriodicService):
                 ceph_mon_gib = ceph_mons[0].ceph_mon_gib
             values = {'forisystemid': system.id,
                       'forihostid': host.id,
-                      'ceph_mon_gib': ceph_mon_gib}
+                      'ceph_mon_gib': ceph_mon_gib,
+                      'state': constants.SB_STATE_CONFIGURED,
+                      'task': constants.SB_TASK_NONE}
             LOG.info("creating ceph_mon for host %s with ceph_mon_gib=%s."
                      % (host.hostname, ceph_mon_gib))
             self.dbapi.ceph_mon_create(values)
 
-    def config_worker_for_ceph(self, context):
-        """
-        configure worker nodes for adding ceph
-        :param context:
-        :return: none
-        """
-        personalities = [constants.WORKER]
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::ceph::compute::runtime']
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+    def _remove_ceph_mon(self, host):
+        if not StorageBackendConfig.has_backend(
+            self.dbapi,
+            constants.CINDER_BACKEND_CEPH
+        ):
+            return
+
+        mon = self.dbapi.ceph_mon_get_by_ihost(host.uuid)
+        if mon:
+            LOG.info("Deleting ceph monitor for host %s"
+                     % str(host.hostname))
+            self.dbapi.ceph_mon_destroy(mon[0].uuid)
+        else:
+            LOG.info("No ceph monitor present for host %s. "
+                     "Skipping deleting ceph monitor."
+                     % str(host.hostname))
 
     def update_remotelogging_config(self, context):
         """Update the remotelogging configuration"""
@@ -1529,6 +1534,8 @@ class ConductorManager(service.PeriodicService):
         self._allocate_addresses_for_host(context, host)
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
+        if host['hostname'] == constants.STORAGE_0_HOSTNAME:
+            self._ceph_mon_create(host)
 
     # TODO(CephPoolsDecouple): remove
     def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
@@ -1590,6 +1597,7 @@ class ConductorManager(service.PeriodicService):
             self._remove_addresses_for_host(host)
         self._puppet.remove_host_config(host)
         self._remove_pxe_config(host)
+        self._remove_ceph_mon(host)
 
     def _unconfigure_storage_host(self, host):
         """Unconfigure a storage host.
@@ -5649,7 +5657,7 @@ class ConductorManager(service.PeriodicService):
         rpcapi.iconfig_update_install_uuid(context, host_uuid, install_uuid)
 
     def update_ceph_config(self, context, sb_uuid, services):
-        """Update the manifests for Cinder Ceph backend"""
+        """Update the manifests for Ceph backend and services"""
 
         personalities = [constants.CONTROLLER]
 
@@ -5666,7 +5674,7 @@ class ConductorManager(service.PeriodicService):
                    'platform::haproxy::runtime',
                    'openstack::keystone::endpoint::runtime',
                    'platform::filesystem::img_conversions::runtime',
-                   'platform::ceph::controller::runtime',
+                   'platform::ceph::runtime',
                    ]
 
         if utils.is_aio_duplex_system(self.dbapi):
@@ -5720,6 +5728,27 @@ class ConductorManager(service.PeriodicService):
         values = {'state': constants.SB_STATE_CONFIGURING,
                   'task': str(tasks)}
         self.dbapi.storage_ceph_update(sb_uuid, values)
+
+    def update_ceph_base_config(self, context, personalities):
+        """ Update Ceph configuration, monitors and ceph.conf only"""
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        valid_nodes = []
+        for personality in personalities:
+            nodes = self.dbapi.ihost_get_by_personality(personality)
+            valid_nodes += [
+                node for node in nodes if
+                (node.administrative == constants.ADMIN_UNLOCKED and
+                 node.operational == constants.OPERATIONAL_ENABLED)]
+
+        # TODO: check what other puppet class need to be called
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": [node.uuid for node in valid_nodes],
+            "classes": ['platform::ceph::runtime'],
+            puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_MONITOR_CONFIG
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def config_update_nova_local_backed_hosts(self, context, instance_backing):
         hosts_uuid = self.hosts_with_nova_local(instance_backing)
@@ -5996,6 +6025,19 @@ class ConductorManager(service.PeriodicService):
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
                 self.report_ceph_services_config_failure(host_uuid, error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
+        elif reported_cfg == puppet_common.REPORT_CEPH_MONITOR_CONFIG:
+            host_uuid = iconfig['host_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                self.report_ceph_base_config_success(host_uuid)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Configuration has failed
+                self.report_ceph_base_config_failure(host_uuid, error)
             else:
                 args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
                 LOG.error("No match for sysinv-agent manifest application reported! "
@@ -6494,6 +6536,89 @@ class ConductorManager(service.PeriodicService):
         # Set external backend to error state
         values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
         self.dbapi.storage_backend_update(backend.uuid, values)
+
+    def report_ceph_base_config_success(self, host_uuid):
+        """
+           Callback for Sysinv Agent
+        """
+
+        LOG.info("Ceph monitor update succeeded on host: %s" % host_uuid)
+
+        # Get the monitor that is configuring
+        monitor_list = self.dbapi.ceph_mon_get_list()
+        monitor = None
+        for mon in monitor_list:
+            if mon.state == constants.SB_STATE_CONFIGURING:
+                monitor = mon
+                break
+
+        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        # Note that even if nodes are degraded we still accept the answer.
+        valid_ctrls = [ctrl for ctrl in ctrls if
+                       (ctrl.administrative == constants.ADMIN_LOCKED and
+                        ctrl.availability == constants.AVAILABILITY_ONLINE) or
+                       (ctrl.administrative == constants.ADMIN_UNLOCKED and
+                        ctrl.operational == constants.OPERATIONAL_ENABLED)]
+
+        # Set state for current node
+        for host in valid_ctrls:
+            if host.uuid == host_uuid:
+                break
+        else:
+            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            host = self.dbapi.ihost_get(host_uuid)
+            if not host:
+                LOG.error("Host %s is invalid!" % host_uuid)
+                return
+            elif host.personality == constants.WORKER:
+                LOG.info("Ignoring report from worker hosts")
+                return
+        tasks = eval(monitor.get('task', '{}'))
+        if tasks:
+            tasks[host.hostname] = constants.SB_STATE_CONFIGURED
+        else:
+            tasks = {host.hostname: constants.SB_STATE_CONFIGURED}
+
+        # Check if all hosts configurations have applied correctly
+        # and mark config success
+        config_success = True
+        for host in valid_ctrls:
+            if tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED:
+                config_success = False
+
+        values = None
+        if monitor.state != constants.SB_STATE_CONFIG_ERR:
+            if config_success:
+                # All hosts have completed configuration
+                values = {'state': constants.SB_STATE_CONFIGURED, 'task': None}
+            else:
+                # This host_uuid has completed configuration
+                values = {'task': str(tasks)}
+        if values:
+            self.dbapi.ceph_mon_update(monitor.uuid, values)
+
+    def report_ceph_base_config_failure(self, host_uuid, error):
+        """
+           Callback for Sysinv Agent
+        """
+        LOG.error("Ceph monitor update failed on host: %(host)s. Error: "
+                  "%(error)s" % {'host': host_uuid, 'error': error})
+
+        host = self.dbapi.ihost_get(host_uuid)
+        if host and host.personality == constants.WORKER:
+            # Ignoring report from worker
+            return
+
+        monitor_list = self.dbapi.ceph_mon_get_list()
+        monitor = None
+        for mon in monitor_list:
+            if mon.state == constants.SB_STATE_CONFIGURING:
+                monitor = mon
+                break
+
+        # Set monitor to error state
+        values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
+        self.dbapi.ceph_mon_update(monitor.uuid, values)
 
     def create_controller_filesystems(self, context, rootfs_device):
         """ Create the storage config based on disk size for
