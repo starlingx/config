@@ -11,7 +11,7 @@ apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
   name: {{ .Values.global.name }}
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.global.name }}
 spec:

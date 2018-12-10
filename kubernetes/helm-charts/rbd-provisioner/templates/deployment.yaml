@@ -11,7 +11,7 @@ apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
   name: {{ .Values.global.name }}
-  namespace: {{ .Values.global.namespace }}
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.global.replicas }}
   strategy:

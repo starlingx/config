@@ -16,7 +16,7 @@ kind: ConfigMap
 metadata:
   creationTimestamp: 2016-02-18T19:14:38Z
   name: config-{{- $root.Values.global.name }}
-  namespace: {{ $root.Values.global.namespace }}
+  namespace: {{ $root.Release.Namespace }}
 data:
   ceph.conf: |
     {{ $monitors := $defaults.monitors }}{{ range $index, $element := $monitors}}
@@ -31,7 +31,7 @@ data:
     cp {{ $mount -}}/ceph.conf /etc/ceph/
 
     if [ ! -z $CEPH_ADMIN_SECRET ]; then
-      kubectl get secret -n kube-system | grep $CEPH_ADMIN_SECRET
+      kubectl get secret -n $NAMESPACE | grep $CEPH_ADMIN_SECRET
       ret=$?
       if [ $ret -ne 0 ]; then
           msg="Create $CEPH_ADMIN_SECRET secret"
@@ -78,12 +78,8 @@ data:
     # Set up pool key in Ceph format
     CEPH_USER_KEYRING=/etc/ceph/ceph.client.$USER_ID.keyring
     echo $KEYRING > $CEPH_USER_KEYRING
-    IFS=',' read -a POOL_SECRET_NAMESPACES_ARR <<< "${POOL_SECRET_NAMESPACES}"
 
-    for pool_secret_namespace in "${POOL_SECRET_NAMESPACES_ARR[@]}"
-    do
-      kubectl create secret generic $CEPH_USER_SECRET --type="kubernetes.io/rbd" --from-literal=key=$KEYRING --namespace=$pool_secret_namespace
-    done
+    kubectl create secret generic $CEPH_USER_SECRET --type="kubernetes.io/rbd" --from-literal=key=$KEYRING --namespace=$NAMESPACE
 
     set +ex
 
@@ -108,7 +104,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: rbd-provisioner-storage-init
-  namespace: {{ $root.Values.global.namespace }}
+  namespace: {{ $root.Release.Namespace }}
   labels:
     heritage: {{$root.Release.Service | quote }}
     release: {{$root.Release.Name | quote }}
@@ -119,7 +115,7 @@ spec:
   template:
     metadata:
       name: "{{$root.Release.Name}}"
-      namespace: {{ $root.Values.global.namespace }}
+      namespace: {{ $root.Release.Namespace }}
       labels:
         heritage: {{$root.Release.Service | quote }}
         release: {{$root.Release.Name | quote }}
@@ -138,9 +134,7 @@ spec:
           command: [ "/bin/bash", "{{ $mount }}/check_ceph.sh" ]
           env:
             - name: NAMESPACE
-              value: {{ $root.Values.global.namespace }}
-            - name: POOL_SECRET_NAMESPACES
-              value: {{ $classConfig.pool_secrets_namespaces }}
+              value: {{ $root.Release.Namespace }}
             - name: CEPH_ADMIN_SECRET
               value: {{ $defaults.adminSecretName }}
             - name: CEPH_USER_SECRET
@@ -165,7 +159,7 @@ spec:
           command: [ "/bin/bash", "{{ $mount }}/check_ceph.sh" ]
           env:
             - name: NAMESPACE
-              value: {{ $root.Values.global.namespace }}
+              value: {{ $root.Release.Namespace }}
             - name: POOL_NAME
               value: {{ $ephemeralPool.pool_name }}
             - name: POOL_REPLICATION
@@ -185,7 +179,7 @@ kind: ConfigMap
 metadata:
   name: ceph-etc
   # This is the name of the openstack application's namespace
-  namespace: openstack
+  namespace: {{ $root.Release.Namespace }}
 data:
   ceph.conf: |
     [global]
@@ -194,4 +188,13 @@ data:
     [mon.{{- $index }}]
     mon_addr = {{ $element }}
     {{- end }}
+---
+# Create the pvc-ceph-client-key. We need this here as we're not launching
+# Ceph using the Helm chart.
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/rbd
+metadata:
+  name: pvc-ceph-client-key
+  namespace: {{ $root.Release.Namespace }}
 {{- end }}

@@ -20,7 +20,7 @@ class RbdProvisionerHelm(base.BaseHelm):
 
     CHART = constants.HELM_CHART_RBD_PROVISIONER
     SUPPORTED_NAMESPACES = [
-        common.HELM_NS_KUBE_SYSTEM
+        common.HELM_NS_OPENSTACK
     ]
 
     SERVICE_NAME = 'rbd-provisioner'
@@ -39,20 +39,10 @@ class RbdProvisionerHelm(base.BaseHelm):
 
     def get_overrides(self, namespace=None):
 
-        def is_rbd_provisioner_bk(bk):
-            if bk.services is None:
-                return False
-
-            # Note: No support yet for external ceph. For it to work we need to
-            # get the ip addresses of the monitors from external ceph conf file
-            # or add them as overrides.
-            return (bk.backend == constants.CINDER_BACKEND_CEPH and
-                    constants.SB_SVC_RBD_PROVISIONER in bk.services)
-
         backends = self.dbapi.storage_backend_get_list()
-        rbd_provisioner_bks = [bk for bk in backends if is_rbd_provisioner_bk(bk)]
+        ceph_bks = [bk for bk in backends if bk.backend == constants.SB_TYPE_CEPH]
 
-        if not rbd_provisioner_bks:
+        if not ceph_bks:
             return {}  # ceph is not configured
 
         classdefaults = {
@@ -67,7 +57,7 @@ class RbdProvisionerHelm(base.BaseHelm):
             constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]
 
         classes = []
-        for bk in rbd_provisioner_bks:
+        for bk in ceph_bks:
             # Get the ruleset for the new kube-rbd pool.
             tier = next((t for t in tiers if t.forbackendid == bk.id), None)
             if not tier:
@@ -78,19 +68,9 @@ class RbdProvisionerHelm(base.BaseHelm):
                 constants.CEPH_CRUSH_TIER_SUFFIX,
                 "-ruleset").replace('-', '_')
 
-            # Check namespaces. We need to know on what namespaces to create
-            # the secrets for the kube-rbd pools.
-            pool_secrets_namespaces = bk.capabilities.get(
-                constants.K8S_RBD_PROV_NAMESPACES)
-            if not pool_secrets_namespaces:
-                raise Exception("Please specify the rbd_provisioner_namespaces"
-                                " for the %s backend." % bk.name)
-
             cls = {
                     "name": K8RbdProvisioner.get_storage_class_name(bk),
                     "pool_name": K8RbdProvisioner.get_pool(bk),
-                    "pool_secrets_namespaces": pool_secrets_namespaces.encode(
-                            'utf8', 'strict'),
                     "replication": int(bk.capabilities.get("replication")),
                     "crush_rule_name": rule_name,
                     "chunk_size": 64,
@@ -109,8 +89,6 @@ class RbdProvisionerHelm(base.BaseHelm):
 
         sb_list_ext = self.dbapi.storage_backend_get_list_by_type(
             backend_type=constants.SB_TYPE_CEPH_EXTERNAL)
-        sb_list = self.dbapi.storage_backend_get_list_by_type(
-            backend_type=constants.SB_TYPE_CEPH)
 
         if sb_list_ext:
             for sb in sb_list_ext:
@@ -124,17 +102,16 @@ class RbdProvisionerHelm(base.BaseHelm):
                     }
                     ephemeral_pools.append(ephemeral_pool)
         # Treat internal CEPH.
-        if sb_list:
-            ephemeral_pool = {
-                "pool_name": constants.CEPH_POOL_EPHEMERAL_NAME,
-                "replication": int(sb_list[0].capabilities.get("replication")),
-                "crush_rule_name": rule_name,
-                "chunk_size": 64,
-            }
-            ephemeral_pools.append(ephemeral_pool)
+        ephemeral_pool = {
+            "pool_name": constants.CEPH_POOL_EPHEMERAL_NAME,
+            "replication": int(ceph_bks[0].capabilities.get("replication")),
+            "crush_rule_name": rule_name,
+            "chunk_size": 64,
+        }
+        ephemeral_pools.append(ephemeral_pool)
 
         overrides = {
-            common.HELM_NS_KUBE_SYSTEM: {
+            common.HELM_NS_OPENSTACK: {
                 "classdefaults": classdefaults,
                 "classes": classes,
                 "ephemeral_pools": ephemeral_pools,
