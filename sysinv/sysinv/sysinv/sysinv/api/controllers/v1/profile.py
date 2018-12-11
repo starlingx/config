@@ -2596,7 +2596,7 @@ def ifprofile_apply_to_host(host, profile):
                 raise wsme.exc.ClientSideError(_("Corrupt interface profile: %s." % profile.hostname))
             try:
                 fields = INTERFACE_PROFILE_FIELDS
-                data = dict((k, v) for k, v in interface.as_dict().iteritems() if k in fields)
+                data = dict((k, v) for k, v in interface.as_dict().items() if k in fields)
                 data['forihostid'] = host.id
                 data['imac'] = hport.mac
                 interface_found = False
@@ -2628,7 +2628,7 @@ def ifprofile_apply_to_host(host, profile):
                 for host_interface in host.interfaces:
                     try:
                         fields = INTERFACE_PROFILE_FIELDS
-                        data = dict((k, v) for k, v in host_interface.as_dict().iteritems() if k in fields)
+                        data = dict((k, v) for k, v in host_interface.as_dict().items() if k in fields)
                         data['forihostid'] = host.id
                         hinterface = interface_api._create(data, from_profile=True)
                     except Exception as e:
@@ -2668,7 +2668,7 @@ def ifprofile_apply_to_host(host, profile):
                 break
         if found_interface is False:
             fields = INTERFACE_PROFILE_FIELDS
-            data = dict((k, v) for k, v in i.as_dict().iteritems() if k in fields)
+            data = dict((k, v) for k, v in i.as_dict().items() if k in fields)
             data['forihostid'] = host.id
             hinterface = interface_api._create(data, from_profile=True)
 
@@ -2843,7 +2843,7 @@ def _create_stor(host, profile, diskPairs, function, tier_map,  # input
                     if pstor.function == constants.STOR_FUNCTION_OSD:
                         # OSDs have more attributes
                         fields += ['journal_location', 'journal_size']
-                    data = dict((k, v) for k, v in pstor.as_dict().iteritems()
+                    data = dict((k, v) for k, v in pstor.as_dict().items()
                                 if k in fields and v)
                     data['forihostid'] = host.id
                     data['idisk_uuid'] = hdisk.uuid
@@ -3108,7 +3108,7 @@ def localstorageprofile_apply_to_host(host, profile):
                         'lvm_vg_name']
             # 'lvm_pv_name', from Agent: not in profile
 
-            pvdict = (dict((k, v) for k, v in pipv.as_dict().iteritems()
+            pvdict = (dict((k, v) for k, v in pipv.as_dict().items()
                       if k in pvfields and v))
             pvdict['forihostid'] = host_id
             pvdict['disk_or_part_uuid'] = disk_or_part_uuid

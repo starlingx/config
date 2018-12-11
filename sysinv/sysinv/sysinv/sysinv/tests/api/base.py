@@ -113,7 +113,7 @@ class FunctionalTest(base.TestCase):
         newargs = {}
         newargs['method'] = 'patch'
         patch = []
-        for key, value in kwargs.iteritems():
+        for key, value in kwargs.items():
             pathkey = '/' + key
             patch.append({'op': 'replace', 'path': pathkey, 'value': value})
         newargs['params'] = patch

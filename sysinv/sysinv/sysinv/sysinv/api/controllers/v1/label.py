@@ -213,7 +213,7 @@ class LabelController(rest.RestController):
                 LOG.exception(e)
 
         new_records = []
-        for key, value in body.iteritems():
+        for key, value in body.items():
             values = {
                 'host_id': host.id,
                 'label_key': key,

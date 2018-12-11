@@ -76,5 +76,5 @@ class BaseTestCase(testtools.TestCase):
         test by the tearDown() method.
         """
         group = kw.pop('group', None)
-        for k, v in kw.iteritems():
+        for k, v in kw.items():
             self.conf.set_override(k, v, group)

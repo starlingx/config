@@ -121,7 +121,7 @@ class RpcDispatcher(object):
         :returns: A new set of deserialized args
         """
         new_kwargs = dict()
-        for argname, arg in kwargs.iteritems():
+        for argname, arg in kwargs.items():
             new_kwargs[argname] = self.serializer.deserialize_entity(context,
                                                                      arg)
         return new_kwargs

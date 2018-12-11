@@ -80,7 +80,7 @@ class OAMNetwork(base.SysinvObject):
                 obj[field] = network[field]
 
         # update address specific fields
-        for field, name in obj.address_names.iteritems():
+        for field, name in obj.address_names.items():
             address = addresses.get(name)
             obj[field] = address.address if address else None
 
@@ -114,7 +114,7 @@ class OAMNetwork(base.SysinvObject):
         self.dbapi.address_pool_update(address_pool.uuid, values)
 
         # update address entries
-        for field, name in self.address_names.iteritems():
+        for field, name in self.address_names.items():
             address = addresses.get(name)
             if address:
                 values = {'address': self[field],

@@ -95,7 +95,7 @@ class RpcProxy(object):
         :returns: A new set of serialized arguments
         """
         new_kwargs = dict()
-        for argname, arg in kwargs.iteritems():
+        for argname, arg in kwargs.items():
             new_kwargs[argname] = self.serializer.serialize_entity(context,
                                                                    arg)
         return new_kwargs

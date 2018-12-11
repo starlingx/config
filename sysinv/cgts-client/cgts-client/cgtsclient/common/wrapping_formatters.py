@@ -718,7 +718,7 @@ def set_no_wrap_on_formatters(no_wrap, formatters):
     global_orig_no_wrap = is_nowrap_set()
     set_no_wrap(no_wrap)
 
-    for k, f in formatters.iteritems():
+    for k, f in formatters.items():
         if WrapperFormatter.is_wrapper_formatter(f):
             formatter_no_wrap_settings[k] = (f.wrapper_formatter.no_wrap, f.wrapper_formatter)
             f.wrapper_formatter.no_wrap = no_wrap
@@ -741,7 +741,7 @@ def unset_no_wrap_on_formatters(orig_no_wrap_settings):
 
     formatters = {}
 
-    for k, v in formatter_no_wrap_settings.iteritems():
+    for k, v in formatter_no_wrap_settings.items():
         formatters[k] = v[1]
         formatters[k].no_wrap = v[0]
 

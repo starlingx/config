@@ -116,7 +116,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service.start()
         res = self.service.create_ihost(self.context, ihost_dict)
 
-        for k, v in ihost_dict.iteritems():
+        for k, v in ihost_dict.items():
             self.assertEqual(res[k], v)
 
     def test_update_ihost(self):

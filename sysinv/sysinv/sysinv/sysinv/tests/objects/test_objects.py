@@ -283,7 +283,7 @@ class _TestObject(object):
         self.assertEqual(obj['foo'], 123)
         self.assertEqual(sorted(obj.items(), key=lambda x: x[0]),
                          [('bar', 'bar'), ('foo', 123)])
-        self.assertEqual(sorted(list(obj.iteritems()), key=lambda x: x[0]),
+        self.assertEqual(sorted(list(obj.items()), key=lambda x: x[0]),
                          [('bar', 'bar'), ('foo', 123)])
 
     def test_load(self):

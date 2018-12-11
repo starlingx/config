@@ -1890,7 +1890,7 @@ Return:
 def _get_providernetworksdict(pn_all, pn_names):
     pn_dict = {}
     if pn_names:
-        for name, body in pn_all.iteritems():
+        for name, body in pn_all.items():
             if name in pn_names.split(','):
                 pn_dict.update({name: body})
     return pn_dict

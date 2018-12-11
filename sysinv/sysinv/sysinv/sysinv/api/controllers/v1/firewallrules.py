@@ -77,7 +77,7 @@ class FirewallRules(base.APIBase):
 def firewallrules_as_dict(sp_firewallrules):
     sp_firewallrules_dict = sp_firewallrules.as_dict()
     keys = objects.firewallrules.fields.keys()
-    for k, v in sp_firewallrules.as_dict().iteritems():
+    for k, v in sp_firewallrules.as_dict().items():
         if k == 'value':
             sp_firewallrules_dict['firewall_sig'] = \
                 sp_firewallrules_dict.pop('value')

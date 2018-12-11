@@ -2071,7 +2071,7 @@ class ConductorManager(service.PeriodicService):
 
     def lldp_tlv_dict(self, agent_neighbour_dict):
         tlv_dict = {}
-        for k, v in agent_neighbour_dict.iteritems():
+        for k, v in agent_neighbour_dict.items():
             if v is not None and k in constants.LLDP_TLV_VALID_LIST:
                 tlv_dict.update({k: v})
         return tlv_dict
@@ -2083,7 +2083,7 @@ class ConductorManager(service.PeriodicService):
         agent_uuid = agent['uuid']
 
         tlvs = self.dbapi.lldp_tlv_get_by_agent(agent_uuid)
-        for k, v in tlv_dict.iteritems():
+        for k, v in tlv_dict.items():
             for tlv in tlvs:
                 if tlv['type'] == k:
                     tlv_value = tlv_dict.get(tlv['type'])
@@ -2120,7 +2120,7 @@ class ConductorManager(service.PeriodicService):
         neighbour_uuid = neighbour['uuid']
 
         tlvs = self.dbapi.lldp_tlv_get_by_neighbour(neighbour_uuid)
-        for k, v in tlv_dict.iteritems():
+        for k, v in tlv_dict.items():
             for tlv in tlvs:
                 if tlv['type'] == k:
                     tlv_value = tlv_dict.get(tlv['type'])
@@ -4157,7 +4157,7 @@ class ConductorManager(service.PeriodicService):
         # Send update request if required
         if update_hosts:
             rpcapi = agent_rpcapi.AgentAPI()
-            for host_id, update_set in update_hosts.iteritems():
+            for host_id, update_set in update_hosts.items():
 
                 ihost = self.dbapi.ihost_get(host_id)
                 if (ihost.invprovision != constants.PROVISIONED and

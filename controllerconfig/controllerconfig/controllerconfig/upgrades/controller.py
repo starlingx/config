@@ -134,7 +134,7 @@ def get_db_credentials(shared_services, from_release):
         static_config = yaml.load(file)
 
     db_credentials = dict()
-    for database, values in db_credential_keys.iteritems():
+    for database, values in db_credential_keys.items():
         username = static_config[values['hiera_user_key']]
         password = utils.get_password_from_keyring(
             values['keyring_password_key'], "database")

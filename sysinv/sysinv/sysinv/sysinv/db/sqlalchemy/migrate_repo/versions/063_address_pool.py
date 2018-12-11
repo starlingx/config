@@ -27,7 +27,7 @@ def _populate_address_fields(address_pool_table, addresses_table, networks_table
     if len(networks) > 0:
         for net in networks:
             fields = {}
-            for prefix, field_name in prefix_to_field_name.iteritems():
+            for prefix, field_name in prefix_to_field_name.items():
                 address_name = cutils.format_address_name(prefix,
                                                           net.type)
                 addr = list(addresses_table.select().

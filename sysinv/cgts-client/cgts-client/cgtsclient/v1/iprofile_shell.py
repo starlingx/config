@@ -352,7 +352,7 @@ def get_ilvg_config(iprofile):
             str += "; "
 
         capabilities_str = ''
-        for k, v in ilvg.capabilities.iteritems():
+        for k, v in ilvg.capabilities.items():
             if capabilities_str != '':
                 capabilities_str += "; "
             capabilities_str += "%s: %s " % (k, v)

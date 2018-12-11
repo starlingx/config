@@ -71,7 +71,7 @@ class ProcessExecutionError(IOError):
 
 def _cleanse_dict(original):
     """Strip all admin_password, new_pass, rescue_pass keys from a dict."""
-    return dict((k, v) for k, v in original.iteritems() if "_pass" not in k)
+    return dict((k, v) for k, v in original.items() if "_pass" not in k)
 
 
 def wrap_exception(notifier=None, publisher_id=None, event_type=None,
@@ -144,7 +144,7 @@ class SysinvException(Exception):
                 # kwargs doesn't match a variable in the message
                 # log the issue and the kwargs
                 LOG.exception(_('Exception in string format operation'))
-                for name, value in kwargs.iteritems():
+                for name, value in kwargs.items():
                     LOG.error("%s: %s" % (name, value))
 
                 if CONF.fatal_exception_format_errors:

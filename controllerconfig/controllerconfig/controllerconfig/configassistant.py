@@ -4247,7 +4247,7 @@ class ConfigAssistant():
         client.sysinv.network.create(**values)
 
     def _populate_network_addresses(self, client, pool, network, addresses):
-        for name, address in addresses.iteritems():
+        for name, address in addresses.items():
             values = {
                 'pool_uuid': pool.uuid,
                 'address': str(address),

@@ -42,7 +42,7 @@ def get_attrname(name):
 def make_class_properties(cls):
     # NOTE(danms): Inherit SysinvObject's base fields only
     cls.fields.update(SysinvObject.fields)
-    for name, typefn in cls.fields.iteritems():
+    for name, typefn in cls.fields.items():
 
         def getter(self, name=name):
             attrname = get_attrname(name)
@@ -123,7 +123,7 @@ def remotable(fn):
         if SysinvObject.indirection_api:
             updates, result = SysinvObject.indirection_api.object_action(
                 ctxt, self, fn.__name__, args, kwargs)
-            for key, value in updates.iteritems():
+            for key, value in updates.items():
                 if key in self.fields:
                     self[key] = self._attr_from_primitive(key, value)
             self._changed_fields = set(updates.get('obj_what_changed', []))
@@ -450,7 +450,7 @@ class SysinvObject(object):
     def get_defaults(cls):
         """Return a dict of its fields with their default value."""
         return dict((k, v(None))
-                    for k, v in cls.fields.iteritems()
+                    for k, v in cls.fields.items()
                     if k != "id" and callable(v))
 
     @staticmethod
@@ -586,7 +586,7 @@ def obj_to_primitive(obj):
         return [obj_to_primitive(x) for x in obj]
     elif isinstance(obj, SysinvObject):
         result = {}
-        for key, value in obj.iteritems():
+        for key, value in obj.items():
             result[key] = obj_to_primitive(value)
         return result
     else:

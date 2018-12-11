@@ -449,7 +449,7 @@ def print_dict(d, dict_property="Property", wrap=0):
     pt = prettytable.PrettyTable([dict_property, 'Value'],
                                  caching=False, print_empty=False)
     pt.align = 'l'
-    for k, v in sorted(d.iteritems()):
+    for k, v in sorted(d.items()):
         v = parse_date(v)
         # convert dict to str to check length
         if isinstance(v, dict):
@@ -554,7 +554,7 @@ def args_array_to_patch(op, attributes):
 
 def dict_to_patch(values, op='replace'):
     patch = []
-    for key, value in values.iteritems():
+    for key, value in values.items():
         path = '/' + key
         patch.append({'op': op, 'path': path, 'value': value})
     return patch
@@ -601,7 +601,7 @@ def objectify(func):
             # Create that simple generic object.
             ret_obj = Object()
             # Assign the attributes given the dictionary keys.
-            for key, val in value.iteritems():
+            for key, val in value.items():
                 ret_obj[key] = val
                 setattr(ret_obj, key, val)
             return ret_obj
