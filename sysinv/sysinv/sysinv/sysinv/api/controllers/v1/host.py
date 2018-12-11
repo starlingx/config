@@ -5207,7 +5207,7 @@ class HostController(rest.RestController):
             if utils.is_aio_simplex_system(pecan.request.dbapi):
                 # Check if host has enough OSDs configured for each tier
                 tiers = pecan.request.dbapi.storage_tier_get_all()
-                ceph_tiers = filter(lambda t: t.type == constants.SB_TIER_TYPE_CEPH, tiers)
+                ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
                 max_replication, __ = \
                     StorageBackendConfig.get_ceph_max_replication(pecan.request.dbapi)
                 for tier in ceph_tiers:
@@ -5231,7 +5231,7 @@ class HostController(rest.RestController):
                             _("Can not unlock node until at least one OSD is configured."))
 
                     tiers = pecan.request.dbapi.storage_tier_get_all()
-                    ceph_tiers = filter(lambda t: t.type == constants.SB_TIER_TYPE_CEPH, tiers)
+                    ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
                     # On a two-node configuration, both nodes should have at least one OSD
                     # in each tier. Otherwise, the cluster is remains in an error state.
                     for tier in ceph_tiers:

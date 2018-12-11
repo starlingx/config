@@ -43,7 +43,7 @@ def getcallargs(function, *args, **kwargs):
         else:
             keyed_args[argnames[0]] = None
 
-    remaining_argnames = filter(lambda x: x not in keyed_args, argnames)
+    remaining_argnames = [x for x in argnames if x not in keyed_args]
     keyed_args.update(dict(zip(remaining_argnames, args)))
 
     if defaults:

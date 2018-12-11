@@ -168,15 +168,13 @@ class CephApiOperator(object):
         response, body = self._ceph_api.osd_crush_tree(body='json')
         if response.status_code == requests.codes.ok:
             # Scan for the destination root, should not be present
-            dest_root = filter(lambda r: r['name'] == dest_root_name,
-                               body['output'])
+            dest_root = [r for r in body['output'] if r['name'] == dest_root_name]
             if dest_root:
                 reason = "Tier '%s' already exists." % dest_root_name
                 raise exception.CephCrushInvalidTierUse(tier=dest_root_name,
                                                         reason=reason)
 
-            src_root = filter(lambda r: r['name'] == src_root_name,
-                              body['output'])
+            src_root = [r for r in body['output'] if r['name'] == src_root_name]
             if not src_root:
                 reason = ("The required source root '%s' does not exist." %
                           src_root_name)
@@ -205,7 +203,7 @@ class CephApiOperator(object):
         response, body = self._ceph_api.osd_crush_tree(body='json')
         if response.status_code == requests.codes.ok:
             # Scan for the destinaion root, should not be present
-            root = filter(lambda r: r['name'] == root_name, body['output'])
+            root = [r for r in body['output'] if r['name'] == root_name]
 
             if not root:
                 reason = "The crushmap root '%s' does not exist." % root_name

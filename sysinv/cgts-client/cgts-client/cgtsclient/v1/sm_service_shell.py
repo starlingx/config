@@ -42,7 +42,7 @@ def do_service_list(cc, args):
         fields = ['id', 'name', 'node_name', 'state']
         field_labels = ['id', 'service_name', 'hostname', 'state']
         # remove the entry in the initial state
-        clean_list = filter(lambda x: x.state != 'initial', service)
+        clean_list = [x for x in service if x.state != 'initial']
         for s in clean_list:
             if s.status:
                 setattr(s, 'state', s.state + '-' + s.status)

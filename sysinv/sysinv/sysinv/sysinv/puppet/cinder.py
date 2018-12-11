@@ -788,9 +788,8 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
                 is_service_enabled, enabled_backends)
 
         # Build the list of possible HPE3PAR backends
-        possible_hpe3pars = filter(
-            lambda s: constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR in s,
-            SP_CINDER_SECTION_MAPPING.keys())
+        possible_hpe3pars = [s for s in SP_CINDER_SECTION_MAPPING.keys()
+                             if constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR in s]
         config.update({'openstack::cinder::backends::hpe3par::sections': possible_hpe3pars})
         return config
 

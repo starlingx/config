@@ -225,7 +225,7 @@ class StorageBackendController(rest.RestController):
             return ""
 
         output = process.stdout.read()
-        fs_list = filter(None, output.split('\n'))
+        fs_list = [_f for _f in output.split('\n') if _f]
         output = fs_list[1].split()
         mib = float(1024 * 1024)
         total = round(float(output[1].strip('K')) / mib, 2)

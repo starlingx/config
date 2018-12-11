@@ -837,7 +837,7 @@ class CephOperator(object):
         """
         # Handle pools for multiple tiers
         tiers = self._db_api.storage_tier_get_by_cluster(self.cluster_db_uuid)
-        ceph_tiers = filter(lambda t: t.type == constants.SB_TIER_TYPE_CEPH, tiers)
+        ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
         ceph_backends = self._db_api.storage_ceph_get_list()
 
         for t in ceph_tiers:
@@ -1189,12 +1189,12 @@ class CephOperator(object):
 
             # either cinder or ceph
             stors = self._db_api.istor_get_by_ihost(i.uuid)
-            osds += len(filter(lambda s: s.tier_name == tiers_obj.name, stors))
+            osds += len([s for s in stors if s.tier_name == tiers_obj.name])
 
         osds_raw = osds
         stors = self._db_api.istor_get_by_ihost(last_storage.uuid)
         storage_gap = len(storage_hosts) % replication
-        stors_number = len(filter(lambda s: s.tier_name == tiers_obj.name, stors))
+        stors_number = len([s for s in stors if s.tier_name == tiers_obj.name])
         if storage_gap != 0 and stors_number != 0:
             osds_adjust = (replication - storage_gap) * stors_number
             osds += osds_adjust
@@ -1514,7 +1514,7 @@ class CephOperator(object):
         """
 
         tiers = self._db_api.storage_tier_get_by_cluster(self.cluster_db_uuid)
-        ceph_tiers = filter(lambda t: t.type == constants.SB_TIER_TYPE_CEPH, tiers)
+        ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
         for t in ceph_tiers:
 
             # Only provision default quotas once

@@ -72,7 +72,7 @@ def __set_service_instance_state__(instance, resource_name, crm_resource):
 
     # Remove any empty strings from reason if the state is not enabled.
     if instance.state != cluster.SERVICE_STATE_ENABLED:
-        instance.reason = filter(None, instance.reason)
+        instance.reason = [_f for _f in instance.reason if _f]
 
 
 def __set_service_instance_activity__(instance, crm_resource):

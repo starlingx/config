@@ -7335,7 +7335,7 @@ class ConductorManager(service.PeriodicService):
 
         output = subprocess.check_output("drbd-overview",
                                          stderr=subprocess.STDOUT)
-        output = filter(None, output.split('\n'))
+        output = [_f for _f in output.split('\n') if _f]
 
         for row in output:
             if "Connected" in row:
@@ -7349,7 +7349,7 @@ class ConductorManager(service.PeriodicService):
     def _drbd_fs_sync(self):
         output = subprocess.check_output("drbd-overview",
                                          stderr=subprocess.STDOUT)
-        output = filter(None, output.split('\n'))
+        output = [_f for _f in output.split('\n') if _f]
 
         fs = []
         for row in output:
@@ -7371,7 +7371,7 @@ class ConductorManager(service.PeriodicService):
     def _drbd_fs_updated(self, context):
         drbd_dict = subprocess.check_output("drbd-overview",
                                             stderr=subprocess.STDOUT)
-        drbd_dict = filter(None, drbd_dict.split('\n'))
+        drbd_dict = [_f for _f in drbd_dict.split('\n') if _f]
 
         drbd_patch_size = 0
         patch_lv_size = 0
@@ -7383,7 +7383,7 @@ class ConductorManager(service.PeriodicService):
         for row in drbd_dict:
             if "sync\'ed" not in row:
                 try:
-                    size = (filter(None, row.split(' ')))[8]
+                    size = ([_f for _f in row.split(' ') if _f])[8]
                 except IndexError:
                     LOG.error("Skipping unexpected drbd-overview output: %s" % row)
                     continue

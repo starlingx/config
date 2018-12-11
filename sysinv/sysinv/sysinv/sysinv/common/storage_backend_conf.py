@@ -53,10 +53,8 @@ class StorageBackendConfig(object):
         elif target == constants.SB_TYPE_CEPH:
             # Support multiple ceph backends
             storage_cephs = api.storage_ceph_get_list()
-            primary_backends = filter(
-                lambda b: b['name'] == constants.SB_DEFAULT_NAMES[
-                    constants.SB_TYPE_CEPH],
-                storage_cephs)
+            primary_backends = [b for b in storage_cephs if b['name'] == constants.SB_DEFAULT_NAMES[
+                    constants.SB_TYPE_CEPH]]
             if primary_backends:
                 return primary_backends[0]
         elif target == constants.SB_TYPE_EXTERNAL:

@@ -552,7 +552,7 @@ def restart_networking(stdout=None, stderr=None):
 
 def output_to_dict(output):
     dict = {}
-    output = filter(None, output.split('\n'))
+    output = [_f for _f in output.split('\n') if _f]
 
     for row in output:
         values = row.split()

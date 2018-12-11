@@ -63,9 +63,11 @@ class LogicalInterface(object):
                              "Valid values: 576 - 9216" % logical_interface)
 
         # Parse the ports
-        self.ports = filter(None, [x.strip() for x in
-                            system_config.get(logical_interface,
-                                              'INTERFACE_PORTS').split(',')])
+        self.ports = [_f for _f in
+                      [x.strip() for x in
+                       system_config.get(logical_interface,
+                                         'INTERFACE_PORTS').split(',')]
+                      if _f]
 
         # Parse/validate the LAG config
         lag_interface = system_config.get(logical_interface,
