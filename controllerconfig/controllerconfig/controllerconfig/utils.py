@@ -61,7 +61,7 @@ def directory_get_size(start_dir, regex=None):
                 filep = os.path.join(dirpath, filename)
                 try:
                     total_size += os.path.getsize(filep)
-                except OSError, e:
+                except OSError as e:
                     if e.errno != errno.ENOENT:
                         raise e
     return total_size
