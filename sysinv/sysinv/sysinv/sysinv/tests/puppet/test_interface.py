@@ -504,29 +504,29 @@ class InterfaceTestCase(BaseTestCase):
         self.assertEqual(index[constants.NETWORK_TYPE_OAM],
                          str(self.oam_gateway_address.ip))
 
-    def test_is_compute_subfunction_true(self):
-        self.host['personality'] = constants.COMPUTE
-        self.host['subfunctions'] = constants.COMPUTE
+    def test_is_worker_subfunction_true(self):
+        self.host['personality'] = constants.WORKER
+        self.host['subfunctions'] = constants.WORKER
         self._update_context()
-        self.assertTrue(interface.is_compute_subfunction(self.context))
+        self.assertTrue(interface.is_worker_subfunction(self.context))
 
-    def test_is_compute_subfunction_true_cpe(self):
+    def test_is_worker_subfunction_true_cpe(self):
         self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.COMPUTE
+        self.host['subfunctions'] = constants.WORKER
         self._update_context()
-        self.assertTrue(interface.is_compute_subfunction(self.context))
+        self.assertTrue(interface.is_worker_subfunction(self.context))
 
-    def test_is_compute_subfunction_false(self):
+    def test_is_worker_subfunction_false(self):
         self.host['personality'] = constants.STORAGE
         self.host['subfunctions'] = constants.STORAGE
         self._update_context()
-        self.assertFalse(interface.is_compute_subfunction(self.context))
+        self.assertFalse(interface.is_worker_subfunction(self.context))
 
-    def test_is_compute_subfunction_false_cpe(self):
+    def test_is_worker_subfunction_false_cpe(self):
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.CONTROLLER
         self._update_context()
-        self.assertFalse(interface.is_compute_subfunction(self.context))
+        self.assertFalse(interface.is_worker_subfunction(self.context))
 
     def test_is_pci_interface_true(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
@@ -670,10 +670,10 @@ class InterfaceTestCase(BaseTestCase):
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
-    def test_get_interface_address_method_for_pxeboot_compute(self):
+    def test_get_interface_address_method_for_pxeboot_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_PXEBOOT
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         method = interface.get_interface_address_method(
             self.context, self.iface)
@@ -697,10 +697,10 @@ class InterfaceTestCase(BaseTestCase):
             self.context, self.iface)
         self.assertEqual(method, 'static')
 
-    def test_get_interface_address_method_for_mgmt_compute(self):
+    def test_get_interface_address_method_for_mgmt_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         method = interface.get_interface_address_method(
             self.context, self.iface)
@@ -724,10 +724,10 @@ class InterfaceTestCase(BaseTestCase):
             self.context, self.iface)
         self.assertEqual(method, 'static')
 
-    def test_get_interface_address_method_for_infra_compute(self):
+    def test_get_interface_address_method_for_infra_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         method = interface.get_interface_address_method(
             self.context, self.iface)
@@ -889,84 +889,84 @@ class InterfaceTestCase(BaseTestCase):
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
-    def test_needs_interface_config_data_slow_compute(self):
+    def test_needs_interface_config_data_slow_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self.port['dpdksupport'] = False
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_data_mlx4_compute(self):
+    def test_needs_interface_config_data_mlx4_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self.port['driver'] = interface.DRIVER_MLX_CX3
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_data_mlx5_compute(self):
+    def test_needs_interface_config_data_mlx5_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self.port['driver'] = interface.DRIVER_MLX_CX4
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_sriov_compute(self):
+    def test_needs_interface_config_sriov_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_pthru_compute(self):
+    def test_needs_interface_config_pthru_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_data_cpe_compute(self):
+    def test_needs_interface_config_data_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.COMPUTE
+        self.host['subfunctions'] = constants.WORKER
         self.port['dpdksupport'] = True
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
-    def test_needs_interface_config_data_slow_cpe_compute(self):
+    def test_needs_interface_config_data_slow_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.COMPUTE
+        self.host['subfunctions'] = constants.WORKER
         self.port['dpdksupport'] = False
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_data_mlx4_cpe_compute(self):
+    def test_needs_interface_config_data_mlx4_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.COMPUTE
+        self.host['subfunctions'] = constants.WORKER
         self.port['driver'] = interface.DRIVER_MLX_CX3
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_data_mlx5_cpe_compute(self):
+    def test_needs_interface_config_data_mlx5_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.COMPUTE
+        self.host['subfunctions'] = constants.WORKER
         self.port['driver'] = interface.DRIVER_MLX_CX4
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
@@ -981,20 +981,20 @@ class InterfaceTestCase(BaseTestCase):
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
-    def test_needs_interface_config_sriov_cpe_compute(self):
+    def test_needs_interface_config_sriov_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.COMPUTE
+        self.host['subfunctions'] = constants.WORKER
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_pthru_cpe_compute(self):
+    def test_needs_interface_config_pthru_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
         self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.COMPUTE
+        self.host['subfunctions'] = constants.WORKER
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
@@ -1192,10 +1192,10 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_mgmt(self):
+    def test_get_worker_ethernet_config_mgmt(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         for network in self.networks:
             if network['type'] == constants.NETWORK_TYPE_MGMT:
                 net_id = network['id']
@@ -1213,10 +1213,10 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_infra(self):
+    def test_get_worker_ethernet_config_infra(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         for network in self.networks:
             if network['type'] == constants.NETWORK_TYPE_INFRA:
                 net_id = network['id']
@@ -1234,10 +1234,10 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_pci_sriov(self):
+    def test_get_worker_ethernet_config_pci_sriov(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1251,10 +1251,10 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_pci_pthru(self):
+    def test_get_worker_ethernet_config_pci_pthru(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1268,11 +1268,11 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_data_slow(self):
+    def test_get_worker_ethernet_config_data_slow(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.port['dpdksupport'] = False
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
@@ -1284,10 +1284,10 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_data_slow_as_bond_slave(self):
+    def test_get_worker_ethernet_config_data_slow_as_bond_slave(self):
         bond = self._create_bond_test("data1", constants.INTERFACE_CLASS_DATA,
                                       constants.NETWORK_TYPE_DATA)
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         lower_ifname = bond['uses'][0]
         lower_iface = self.context['interfaces'][lower_ifname]
@@ -1305,11 +1305,11 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_compute_ethernet_config_data_slow_bridge(self):
+    def test_get_worker_ethernet_config_data_slow_bridge(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.port['dpdksupport'] = False
-        self.host['personality'] = constants.COMPUTE
+        self.host['personality'] = constants.WORKER
         self._update_context()
         avp_config, bridge_config = interface.get_bridged_network_config(
             self.context, self.iface)
@@ -1453,10 +1453,10 @@ class InterfaceTestCase(BaseTestCase):
 
 class InterfaceHostTestCase(BaseTestCase):
     def _setup_configuration(self):
-        # Personality is set to compute to avoid issues due to missing OAM
+        # Personality is set to worker to avoid issues due to missing OAM
         # interface in this empty/dummy configuration
         self._create_test_common()
-        self._create_test_host(constants.COMPUTE)
+        self._create_test_host(constants.WORKER)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -1572,7 +1572,7 @@ class InterfaceHostTestCase(BaseTestCase):
     def test_needs_interface_config(self):
         expected_configured = (self.expected_platform_interfaces +
                                [self.expected_bmc_interface])
-        if interface.is_compute_subfunction(self.context):
+        if interface.is_worker_subfunction(self.context):
             expected_configured += (self.expected_pci_interfaces +
                                     self.expected_slow_interfaces +
                                     self.expected_mlx_interfaces)
@@ -1670,9 +1670,9 @@ class InterfaceControllerVlanOverEthernet(InterfaceHostTestCase):
 class InterfaceComputeEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are ethernet interfaces.
+        # worker and all interfaces are ethernet interfaces.
         self._create_test_common()
-        self._create_test_host(constants.COMPUTE)
+        self._create_test_host(constants.WORKER)
         self._create_ethernet_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
         self._create_ethernet_test('infra', None, constants.NETWORK_TYPE_INFRA)
         self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
@@ -1710,10 +1710,10 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
 class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are vlan interfaces over ethernet
+        # worker and all interfaces are vlan interfaces over ethernet
         # interfaces.
         self._create_test_common()
-        self._create_test_host(constants.COMPUTE)
+        self._create_test_host(constants.WORKER)
         port, iface = self._create_ethernet_test(
             'pxeboot', None, constants.NETWORK_TYPE_PXEBOOT)
         self._create_vlan_test('mgmt', None, constants.NETWORK_TYPE_MGMT, 2,
@@ -1739,8 +1739,8 @@ class InterfaceComputeBond(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
         self._create_test_common()
-        # compute and all interfaces are aggregated ethernet interfaces.
-        self._create_test_host(constants.COMPUTE)
+        # worker and all interfaces are aggregated ethernet interfaces.
+        self._create_test_host(constants.WORKER)
         self._create_bond_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
         self._create_bond_test('infra', None, constants.NETWORK_TYPE_INFRA)
         self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
@@ -1768,10 +1768,10 @@ class InterfaceComputeBond(InterfaceHostTestCase):
 class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are vlan interfaces over ethernet
+        # worker and all interfaces are vlan interfaces over ethernet
         # interfaces.
         self._create_test_common()
-        self._create_test_host(constants.COMPUTE)
+        self._create_test_host(constants.WORKER)
         bond = self._create_bond_test('pxeboot', None,
                                       constants.NETWORK_TYPE_PXEBOOT)
         self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, bond)
@@ -1937,10 +1937,10 @@ class InterfaceCpeVlanOverBond(InterfaceHostTestCase):
 class InterfaceCpeComputeEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # ethernet interfaces.
         self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
+        self._create_test_host(constants.CONTROLLER, constants.WORKER)
         self._create_ethernet_test('oam', None, constants.NETWORK_TYPE_OAM)
         self._create_ethernet_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
         self._create_ethernet_test('infra', None, constants.NETWORK_TYPE_INFRA)
@@ -1979,10 +1979,10 @@ class InterfaceCpeComputeEthernet(InterfaceHostTestCase):
 class InterfaceCpeComputeVlanOverEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # vlan interfaces over ethernet interfaces.
         self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
+        self._create_test_host(constants.CONTROLLER, constants.WORKER)
         port, iface = self._create_ethernet_test(
             'pxeboot', None, constants.NETWORK_TYPE_PXEBOOT)
         self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, iface)
@@ -2008,10 +2008,10 @@ class InterfaceCpeComputeVlanOverEthernet(InterfaceHostTestCase):
 class InterfaceCpeComputeBond(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # aggregated ethernet interfaces.
         self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
+        self._create_test_host(constants.CONTROLLER, constants.WORKER)
         self._create_bond_test('oam', None, constants.NETWORK_TYPE_OAM)
         self._create_bond_test('mgmt', None, constants.NETWORK_TYPE_MGMT)
         self._create_bond_test('infra', None, constants.NETWORK_TYPE_INFRA)
@@ -2038,10 +2038,10 @@ class InterfaceCpeComputeBond(InterfaceHostTestCase):
 class InterfaceCpeComputeVlanOverBond(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # vlan interfaces over aggregated ethernet interfaces.
         self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.COMPUTE)
+        self._create_test_host(constants.CONTROLLER, constants.WORKER)
         bond = self._create_bond_test('pxeboot', None,
                                       constants.NETWORK_TYPE_PXEBOOT)
         self._create_vlan_test('oam', None, constants.NETWORK_TYPE_OAM, 1, bond)

@@ -477,12 +477,12 @@ def _check_host(pv, ihost, op):
     if utils.is_kubernetes_config():
         if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
             if (ihost['personality'] != constants.CONTROLLER and
-                    ihost['personality'] != constants.COMPUTE):
+                    ihost['personality'] != constants.WORKER):
                 raise wsme.exc.ClientSideError(
                     _("Physical volume operations for %s are only "
                       "supported on %s and %s hosts" %
                       (constants.LVG_CGTS_VG,
-                       constants.COMPUTE,
+                       constants.WORKER,
                        constants.CONTROLLER)))
     elif (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
         if ihost['personality'] != constants.CONTROLLER:
@@ -492,17 +492,17 @@ def _check_host(pv, ihost, op):
                                         constants.CONTROLLER))
 
     # semantic check: host must be locked for a nova-local change on
-    # a host with a compute subfunction (compute or AIO)
-    if (constants.COMPUTE in ihost['subfunctions'] and
+    # a host with a worker subfunction (worker or AIO)
+    if (constants.WORKER in ihost['subfunctions'] and
             ilvg.lvm_vg_name == constants.LVG_NOVA_LOCAL and
             (ihost['administrative'] != constants.ADMIN_LOCKED or
              ihost['ihost_action'] == constants.UNLOCK_ACTION)):
         raise wsme.exc.ClientSideError(_("Host must be locked"))
 
     # semantic check: host must be locked for a CGTS change on
-    # a compute host.
+    # a worker host.
     if utils.is_kubernetes_config():
-        if (ihost['personality'] == constants.COMPUTE and
+        if (ihost['personality'] == constants.WORKER and
                 ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
                 (ihost['administrative'] != constants.ADMIN_LOCKED or
                  ihost['ihost_action'] == constants.UNLOCK_ACTION)):
@@ -599,7 +599,7 @@ def _check_lvg(op, pv):
                     raise wsme.exc.ClientSideError(msg)
 
     elif op == "delete":
-        # Possible Kubernetes issue, do we want to allow this on compute nodes?
+        # Possible Kubernetes issue, do we want to allow this on worker nodes?
         if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
             raise wsme.exc.ClientSideError(
                 _("Physical volumes cannot be removed from the cgts-vg volume "

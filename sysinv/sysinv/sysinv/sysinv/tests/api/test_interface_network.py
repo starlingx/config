@@ -28,13 +28,13 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
         )
-        self.compute = dbutils.create_test_ihost(
+        self.worker = dbutils.create_test_ihost(
             id='2',
             uuid=None,
             forisystemid=self.system.id,
-            hostname='compute-0',
-            personality=constants.COMPUTE,
-            subfunctions=constants.COMPUTE,
+            hostname='worker-0',
+            personality=constants.WORKER,
+            subfunctions=constants.WORKER,
             mgmt_mac='01:02.03.04.05.C0',
             mgmt_ip='192.168.24.12',
             invprovision=constants.PROVISIONED,
@@ -114,73 +114,73 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.mgmt_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.mgmt_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=False)
+        self._post_and_check(worker_interface_network, expect_errors=False)
 
     def test_create_infra_interface_network(self):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.infra_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.infra_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=False)
+        self._post_and_check(worker_interface_network, expect_errors=False)
 
     def test_create_oam_interface_network(self):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.oam_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.oam_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=False)
+        self._post_and_check(worker_interface_network, expect_errors=False)
 
     def test_create_pxeboot_interface_network(self):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.pxeboot_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.pxeboot_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=False)
+        self._post_and_check(worker_interface_network, expect_errors=False)
 
     def test_create_mgmt_infra_interface_network(self):
         controller_interface = dbutils.create_test_interface(
@@ -190,11 +190,11 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_id=controller_interface.id,
             network_id=self.mgmt_network.id)
 
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
         dbutils.create_test_interface_network(
-            interface_id=compute_interface.id,
+            interface_id=worker_interface.id,
             network_id=self.mgmt_network.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
@@ -202,10 +202,10 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.infra_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.infra_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=False)
+        self._post_and_check(worker_interface_network, expect_errors=False)
 
     # Expected error:
     # You cannot assign a network of type 'oam' to an interface
@@ -218,11 +218,11 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_id=controller_interface.id,
             network_id=self.mgmt_network.id)
 
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
         dbutils.create_test_interface_network(
-            interface_id=compute_interface.id,
+            interface_id=worker_interface.id,
             network_id=self.mgmt_network.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
@@ -230,10 +230,10 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.oam_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=True)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.oam_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=True)
+        self._post_and_check(worker_interface_network, expect_errors=True)
 
     # Expected error:
     # You cannot assign a network of type 'pxeboot' to an interface
@@ -246,11 +246,11 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_id=controller_interface.id,
             network_id=self.mgmt_network.id)
 
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
         dbutils.create_test_interface_network(
-            interface_id=compute_interface.id,
+            interface_id=worker_interface.id,
             network_id=self.mgmt_network.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
@@ -258,10 +258,10 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.pxeboot_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=True)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.pxeboot_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=True)
+        self._post_and_check(worker_interface_network, expect_errors=True)
 
     # Expected error:
     # Interface network with interface ID '%s' and
@@ -274,11 +274,11 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_id=controller_interface.id,
             network_id=self.mgmt_network.id)
 
-        compute_interface = dbutils.create_test_interface(
+        worker_interface = dbutils.create_test_interface(
             ifname='enp0s8',
-            forihostid=self.compute.id)
+            forihostid=self.worker.id)
         dbutils.create_test_interface_network(
-            interface_id=compute_interface.id,
+            interface_id=worker_interface.id,
             network_id=self.mgmt_network.id)
 
         controller_interface_network = dbutils.post_get_test_interface_network(
@@ -286,7 +286,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.mgmt_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=True)
 
-        compute_interface_network = dbutils.post_get_test_interface_network(
-            interface_uuid=compute_interface.uuid,
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
             network_uuid=self.mgmt_network.uuid)
-        self._post_and_check(compute_interface_network, expect_errors=True)
+        self._post_and_check(worker_interface_network, expect_errors=True)

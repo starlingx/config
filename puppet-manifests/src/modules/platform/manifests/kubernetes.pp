@@ -285,7 +285,7 @@ class platform::kubernetes::worker
   }
 
   if $enabled {
-    file { "/var/run/.disable_compute_services":
+    file { "/var/run/.disable_worker_services":
       ensure => file,
       replace => no,
     }

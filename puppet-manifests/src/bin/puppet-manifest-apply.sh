@@ -53,11 +53,11 @@ mkdir -p ${PUPPET_TMP}/hieradata
 cp /etc/puppet/hieradata/global.yaml ${PUPPET_TMP}/hieradata/global.yaml
 cp /etc/puppet/hieradata/${PERSONALITY}.yaml ${PUPPET_TMP}/hieradata/personality.yaml
 
-# When the compute node is first booted and goes online, sysinv-agent reports 
+# When the worker node is first booted and goes online, sysinv-agent reports
 # host CPU inventory which triggers the first runtime manifest apply that updates
 # the grub. At this time, copying the host file failed due to a timing issue that
-# has not yet been fully understood. Subsequent retries worked. 
-if [ "${PERSONALITY}" = "compute" ]; then
+# has not yet been fully understood. Subsequent retries worked.
+if [ "${PERSONALITY}" = "worker" ]; then
     n=0
     until [ $n -ge 3 ]; do
         cp -f ${HIERADATA}/${HOST}.yaml ${PUPPET_TMP}/hieradata/host.yaml && break

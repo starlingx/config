@@ -45,7 +45,7 @@ heartbeat_failure_action = <%= @heartbeat_failure_action %>
 mnfa_threshold = <%= @mnfa_threshold %>
 
 [timeouts]
-compute_boot_timeout = <%= @compute_boot_timeout %> ; The max time (seconds) that Mtce waits for the mtcAlive
+worker_boot_timeout = <%= @worker_boot_timeout %> ; The max time (seconds) that Mtce waits for the mtcAlive
 controller_boot_timeout = <%= @controller_boot_timeout %> ; message after which it will time out and fail the host.
 
 ; Multi-Node Failure Avoidance (MNFA) Lifecycle Timer.

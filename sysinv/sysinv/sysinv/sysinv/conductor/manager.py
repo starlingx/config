@@ -347,13 +347,13 @@ class ConductorManager(service.PeriodicService):
 
         # At this point we are swacting to controller-0 which has just been
         # downgraded.
-        # Before downgrading controller-0 all storage/compute nodes were locked
+        # Before downgrading controller-0 all storage/worker nodes were locked
         # The database of the from_load is not aware of this, so we set the
         # state in the database to match the state of the system. This does not
         # actually lock the nodes.
         hosts = self.dbapi.ihost_get_list()
         for host in hosts:
-            if host.personality not in [constants.COMPUTE, constants.STORAGE]:
+            if host.personality not in [constants.WORKER, constants.STORAGE]:
                 continue
             self.dbapi.ihost_update(host.uuid, {
                 'administrative': constants.ADMIN_LOCKED})
@@ -455,8 +455,8 @@ class ConductorManager(service.PeriodicService):
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE,
-         'name': constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT,
-         'value': constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT_DEFAULT,
+         'name': constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT,
+         'value': constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_DEFAULT,
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE,
@@ -968,18 +968,18 @@ class ConductorManager(service.PeriodicService):
             sw_version = target_load.software_version
 
         if (host.personality == constants.CONTROLLER and
-                constants.COMPUTE in tsc.subfunctions):
+                constants.WORKER in tsc.subfunctions):
             if constants.LOWLATENCY in host.subfunctions:
                 pxe_config = "pxe-smallsystem_lowlatency-install-%s" % sw_version
             else:
                 pxe_config = "pxe-smallsystem-install-%s" % sw_version
         elif host.personality == constants.CONTROLLER:
             pxe_config = "pxe-controller-install-%s" % sw_version
-        elif host.personality == constants.COMPUTE:
+        elif host.personality == constants.WORKER:
             if constants.LOWLATENCY in host.subfunctions:
-                pxe_config = "pxe-compute_lowlatency-install-%s" % sw_version
+                pxe_config = "pxe-worker_lowlatency-install-%s" % sw_version
             else:
-                pxe_config = "pxe-compute-install-%s" % sw_version
+                pxe_config = "pxe-worker-install-%s" % sw_version
         elif host.personality == constants.STORAGE:
             pxe_config = "pxe-storage-install-%s" % sw_version
 
@@ -1419,13 +1419,13 @@ class ConductorManager(service.PeriodicService):
                      % (host.hostname, ceph_mon_gib))
             self.dbapi.ceph_mon_create(values)
 
-    def config_compute_for_ceph(self, context):
+    def config_worker_for_ceph(self, context):
         """
-        configure compute nodes for adding ceph
+        configure worker nodes for adding ceph
         :param context:
         :return: none
         """
-        personalities = [constants.COMPUTE]
+        personalities = [constants.WORKER]
         config_uuid = self._config_update_hosts(context, personalities)
         config_dict = {
             "personalities": personalities,
@@ -1437,7 +1437,7 @@ class ConductorManager(service.PeriodicService):
         """Update the remotelogging configuration"""
 
         personalities = [constants.CONTROLLER,
-                         constants.COMPUTE,
+                         constants.WORKER,
                          constants.STORAGE]
         config_uuid = self._config_update_hosts(context, personalities)
 
@@ -1449,7 +1449,7 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
         config_dict = {
-            "personalities": [constants.COMPUTE, constants.STORAGE],
+            "personalities": [constants.WORKER, constants.STORAGE],
             "classes": ['platform::remotelogging::runtime'],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
@@ -1457,8 +1457,8 @@ class ConductorManager(service.PeriodicService):
     def get_magnum_cluster_count(self, context):
         return self._openstack.get_magnum_cluster_count()
 
-    def _configure_compute_host(self, context, host):
-        """Configure a compute host with the supplied data.
+    def _configure_worker_host(self, context, host):
+        """Configure a worker host with the supplied data.
 
         Does the following tasks:
         - Create or update entries in address table
@@ -1472,7 +1472,7 @@ class ConductorManager(service.PeriodicService):
         # Only update the config if the host is running the same version as
         # the active controller.
         if self.host_load_matches_sw_version(host):
-            # Only generate the config files if the compute host is unlocked.
+            # Only generate the config files if the worker host is unlocked.
             if (host.administrative == constants.ADMIN_UNLOCKED or
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
@@ -1574,8 +1574,8 @@ class ConductorManager(service.PeriodicService):
         elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
             self.controller_1_posted = False
 
-    def _unconfigure_compute_host(self, host, is_cpe=False):
-        """Unconfigure a compute host.
+    def _unconfigure_worker_host(self, host, is_cpe=False):
+        """Unconfigure a worker host.
 
         Does the following tasks:
         - Remove the puppet hiera data configuration for host
@@ -1605,12 +1605,12 @@ class ConductorManager(service.PeriodicService):
         self._remove_pxe_config(host)
 
     def configure_ihost(self, context, host,
-                        do_compute_apply=False):
+                        do_worker_apply=False):
         """Configure a host.
 
         :param context: an admin context.
         :param host: a host object.
-        :param do_compute_apply: configure the compute subfunctions of the host.
+        :param do_worker_apply: configure the worker subfunctions of the host.
         """
 
         LOG.debug("configure_ihost %s" % host.hostname)
@@ -1623,8 +1623,8 @@ class ConductorManager(service.PeriodicService):
 
         if host.personality == constants.CONTROLLER:
             self._configure_controller_host(context, host)
-        elif host.personality == constants.COMPUTE:
-            self._configure_compute_host(context, host)
+        elif host.personality == constants.WORKER:
+            self._configure_worker_host(context, host)
         elif host.personality == constants.STORAGE:
             self._configure_storage_host(context, host)
         else:
@@ -1632,10 +1632,10 @@ class ConductorManager(service.PeriodicService):
                 "Invalid method call: unsupported personality: %s") %
                                             host.personality)
 
-        if do_compute_apply:
+        if do_worker_apply:
             # Apply the manifests immediately
             puppet_common.puppet_apply_manifest(host.mgmt_ip,
-                                                       constants.COMPUTE,
+                                                       constants.WORKER,
                                                        do_reboot=True)
 
         return host
@@ -1659,8 +1659,8 @@ class ConductorManager(service.PeriodicService):
         for personality in personalities:
             if personality == constants.CONTROLLER:
                 self._unconfigure_controller_host(ihost_obj)
-            elif personality == constants.COMPUTE:
-                self._unconfigure_compute_host(ihost_obj, is_cpe)
+            elif personality == constants.WORKER:
+                self._unconfigure_worker_host(ihost_obj, is_cpe)
             elif personality == constants.STORAGE:
                 self._unconfigure_storage_host(ihost_obj)
             else:
@@ -2493,7 +2493,7 @@ class ConductorManager(service.PeriodicService):
         """Return the initial number of reserved logical cores for platform
         use.  This can be overridden later by the end user."""
         cpus = 0
-        if cutils.host_has_function(ihost, constants.COMPUTE) and node == 0:
+        if cutils.host_has_function(ihost, constants.WORKER) and node == 0:
             cpus += 1 if not hyperthreading else 2
             if cutils.host_has_function(ihost, constants.CONTROLLER):
                 cpus += 1 if not hyperthreading else 2
@@ -2503,7 +2503,7 @@ class ConductorManager(service.PeriodicService):
                                        cpu_count, hyperthreading):
         """Return the initial number of reserved logical cores for vswitch
         use.  This can be overridden later by the end user."""
-        if cutils.host_has_function(ihost, constants.COMPUTE) and node == 0:
+        if cutils.host_has_function(ihost, constants.WORKER) and node == 0:
             physical_cores = (cpu_count / 2) if hyperthreading else cpu_count
             system_mode = self.dbapi.isystem_get_one().system_mode
             if system_mode == constants.SYSTEM_MODE_SIMPLEX:
@@ -2999,7 +2999,7 @@ class ConductorManager(service.PeriodicService):
         # a physical volume in the nova-local volume group
         cinder_device = None
         if (cutils.host_has_function(ihost, constants.CONTROLLER) and
-                cutils.host_has_function(ihost, constants.COMPUTE)):
+                cutils.host_has_function(ihost, constants.WORKER)):
 
             if lvm_config:
                 cinder_device = cutils._get_cinder_device(self.dbapi,
@@ -4228,11 +4228,11 @@ class ConductorManager(service.PeriodicService):
 
         kubernetes_config = utils.is_kubernetes_config(self.dbapi)
 
-        if (cutils.host_has_function(ihost, constants.COMPUTE) and not
+        if (cutils.host_has_function(ihost, constants.WORKER) and not
                 kubernetes_config):
             if availability == constants.VIM_SERVICES_ENABLED:
                 # report to nova the host aggregate groupings now that
-                # the compute node is available
+                # the worker node is available
                 LOG.info("AGG iplatform available for ihost= %s imsg= %s" %
                          (ihost_uuid, imsg_dict))
                 # AGG10 noted 13secs in vbox between nova manifests applied and
@@ -4361,7 +4361,7 @@ class ConductorManager(service.PeriodicService):
         # Create the host entry in neutron to allow for data interfaces to
         # be configured on a combined node
         if (constants.CONTROLLER in subfunctions and
-                constants.COMPUTE in subfunctions):
+                constants.WORKER in subfunctions):
             try:
                 ihost = self.dbapi.ihost_get(ihost_uuid)
             except exception.ServerNotFound:
@@ -4642,7 +4642,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         if upgrade.state == constants.UPGRADE_ACTIVATING:
-            personalities = [constants.CONTROLLER, constants.COMPUTE]
+            personalities = [constants.CONTROLLER, constants.WORKER]
 
             all_manifests_applied = True
             hosts = self.dbapi.ihost_get_list()
@@ -4671,7 +4671,7 @@ class ConductorManager(service.PeriodicService):
             # In CPE upgrades, after swacting to controller-1, we need to clear
             # the VIM upgrade flag on Controller-0 to allow VMs to be migrated
             # to controller-1.
-            if constants.COMPUTE in tsc.subfunctions:
+            if constants.WORKER in tsc.subfunctions:
                 try:
                     controller_0 = self.dbapi.ihost_get_by_hostname(
                         constants.CONTROLLER_0_HOSTNAME)
@@ -5285,7 +5285,7 @@ class ConductorManager(service.PeriodicService):
         """Update the NTP configuration"""
         if service_change:
             personalities = [constants.CONTROLLER,
-                             constants.COMPUTE,
+                             constants.WORKER,
                              constants.STORAGE]
         else:
             personalities = [constants.CONTROLLER]
@@ -5294,7 +5294,7 @@ class ConductorManager(service.PeriodicService):
     def update_ptp_config(self, context):
         """Update the PTP configuration"""
         personalities = [constants.CONTROLLER,
-                         constants.COMPUTE,
+                         constants.WORKER,
                          constants.STORAGE]
         self._config_update_hosts(context, personalities)
 
@@ -5310,7 +5310,7 @@ class ConductorManager(service.PeriodicService):
         """
 
         # update manifest files and notify agents to apply timezone files
-        personalities = [constants.COMPUTE,
+        personalities = [constants.WORKER,
                          constants.STORAGE]
         config_uuid = self._config_update_hosts(context, personalities)
 
@@ -5338,7 +5338,7 @@ class ConductorManager(service.PeriodicService):
 
         # update manifest files and notifiy agents to apply them
         personalities = [constants.CONTROLLER,
-                         constants.COMPUTE,
+                         constants.WORKER,
                          constants.STORAGE]
         config_uuid = self._config_update_hosts(context, personalities)
 
@@ -5381,7 +5381,7 @@ class ConductorManager(service.PeriodicService):
 
         self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
-        config_uuid = self._config_update_hosts(context, [constants.COMPUTE],
+        config_uuid = self._config_update_hosts(context, [constants.WORKER],
                                                 reboot=False)
 
         extoam = self.dbapi.iextoam_get_one()
@@ -5389,9 +5389,9 @@ class ConductorManager(service.PeriodicService):
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
 
-        # make changes to the computes
+        # make changes to the workers
         config_dict = {
-            "personalities": [constants.COMPUTE],
+            "personalities": [constants.WORKER],
             "classes": ['openstack::nova::compute::runtime']
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
@@ -5401,7 +5401,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("update_user_config")
 
         personalities = [constants.CONTROLLER,
-                         constants.COMPUTE,
+                         constants.WORKER,
                          constants.STORAGE]
         config_uuid = self._config_update_hosts(context, personalities)
 
@@ -5723,7 +5723,7 @@ class ConductorManager(service.PeriodicService):
     def config_update_nova_local_backed_hosts(self, context, instance_backing):
         hosts_uuid = self.hosts_with_nova_local(instance_backing)
         if hosts_uuid:
-            personalities = [constants.CONTROLLER, constants.COMPUTE]
+            personalities = [constants.CONTROLLER, constants.WORKER]
             self._config_update_hosts(context,
                                       personalities,
                                       host_uuids=hosts_uuid,
@@ -5734,8 +5734,8 @@ class ConductorManager(service.PeriodicService):
         hosts_uuid = []
         hosts = self.dbapi.ihost_get_list()
         for host in hosts:
-            if ((host.personality and host.personality == constants.COMPUTE) or
-                    (host.subfunctions and constants.COMPUTE in host.subfunctions)):
+            if ((host.personality and host.personality == constants.WORKER) or
+                    (host.subfunctions and constants.WORKER in host.subfunctions)):
                 ilvgs = self.dbapi.ilvg_get_by_ihost(host['uuid'])
                 for lvg in ilvgs:
                     if (lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL and
@@ -6256,8 +6256,8 @@ class ConductorManager(service.PeriodicService):
             self.dbapi, target=constants.SB_TYPE_CEPH_EXTERNAL)
 
         if ceph_conf:
-            # For NOVA, if nova.conf needs to be updated on compute nodes, the
-            # task should be set to what? constants.SB_TASK_RECONFIG_COMPUTE?
+            # For NOVA, if nova.conf needs to be updated on worker nodes, the
+            # task should be set to what? constants.SB_TASK_RECONFIG_WORKER?
 
             config_done = True
             active_controller = utils.HostHelper.get_active_controller(self.dbapi)
@@ -6846,7 +6846,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("update_infra_config")
 
         personalities = [constants.CONTROLLER,
-                         constants.COMPUTE,
+                         constants.WORKER,
                          constants.STORAGE]
 
         config_uuid = self._config_update_hosts(context, personalities,
@@ -6885,9 +6885,9 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        if constants.COMPUTE in host.subfunctions:
+        if constants.WORKER in host.subfunctions:
             config_dict = {
-                'personalities': [constants.COMPUTE],
+                'personalities': [constants.WORKER],
                 'host_uuids': host.uuid,
                 'classes': ['openstack::nova::compute::runtime']
             }
@@ -6911,8 +6911,8 @@ class ConductorManager(service.PeriodicService):
                 config_uuid = self._config_update_hosts(context, personalities,
                                                         reboot=True)
             else:
-                # compute hosts must be rebooted following service reconfig
-                self._config_update_hosts(context, [constants.COMPUTE],
+                # worker hosts must be rebooted following service reconfig
+                self._config_update_hosts(context, [constants.WORKER],
                                           reboot=True)
                 # controller hosts will actively apply the manifests
                 config_uuid = self._config_update_hosts(context,
@@ -6933,7 +6933,7 @@ class ConductorManager(service.PeriodicService):
         elif service == constants.SERVICE_TYPE_NOVA:
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER,
-                                                     constants.COMPUTE])
+                                                     constants.WORKER])
         else:
             # All other services
             personalities = [constants.CONTROLLER]
@@ -6990,7 +6990,7 @@ class ConductorManager(service.PeriodicService):
                 multipath_state_changed = self._multipath_update_state()
                 if multipath_state_changed:
                     self._config_update_hosts(context,
-                        [constants.CONTROLLER, constants.COMPUTE],
+                        [constants.CONTROLLER, constants.WORKER],
                         reboot=True)
 
             elif service == constants.SERVICE_TYPE_PLATFORM:
@@ -7009,7 +7009,7 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-                personalities = [constants.COMPUTE]
+                personalities = [constants.WORKER]
                 config_uuid = self._config_update_hosts(context, personalities)
                 config_dict = {
                     "personalities": personalities,
@@ -7192,7 +7192,7 @@ class ConductorManager(service.PeriodicService):
 
         # Apply Neutron manifest on Controller(this
         # will update the SNAT rules for the SDN controllers)
-        self._config_update_hosts(context, [constants.COMPUTE], reboot=True)
+        self._config_update_hosts(context, [constants.WORKER], reboot=True)
 
         config_uuid = self._config_update_hosts(context,
                                                [constants.CONTROLLER])
@@ -7218,7 +7218,7 @@ class ConductorManager(service.PeriodicService):
         config_uuid = self._config_update_hosts(context, personalities)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        personalities = [constants.COMPUTE]
+        personalities = [constants.WORKER]
         self._config_update_hosts(context, personalities, reboot=True)
 
     def update_vswitch_type(self, context):
@@ -7241,7 +7241,7 @@ class ConductorManager(service.PeriodicService):
         if tsc.system_type == constants.TIS_AIO_BUILD:
             personalities = [constants.CONTROLLER]
         else:
-            personalities = [constants.COMPUTE]
+            personalities = [constants.WORKER]
 
         self._config_update_hosts(context, personalities, reboot=True)
 
@@ -7276,13 +7276,13 @@ class ConductorManager(service.PeriodicService):
     def update_cpu_config(self, context, host_uuid):
         """Update the cpu assignment configuration on a host"""
 
-        # only apply the manifest on the host that has compute sub function
+        # only apply the manifest on the host that has worker sub function
         host = self.dbapi.ihost_get(host_uuid)
-        if constants.COMPUTE in host.subfunctions:
+        if constants.WORKER in host.subfunctions:
             force = (not utils.is_host_simplex_controller(host))
             LOG.info("update_cpu_config, host uuid: (%s), force: (%s)",
                      host_uuid, str(force))
-            personalities = [constants.CONTROLLER, constants.COMPUTE]
+            personalities = [constants.CONTROLLER, constants.WORKER]
             config_uuid = self._config_update_hosts(context,
                                                     personalities,
                                                     host_uuids=[host_uuid])
@@ -7992,7 +7992,7 @@ class ConductorManager(service.PeriodicService):
                 # We will allow controller nodes to re-generate manifests
                 # when in an "provisioning" state. This will allow for
                 # example the ntp configuration to be changed on an CPE
-                # node before the "compute_config_complete" has been
+                # node before the "worker_config_complete" has been
                 # executed.
                 if (force or
                     host.invprovision == constants.PROVISIONED or
@@ -8872,7 +8872,7 @@ class ConductorManager(service.PeriodicService):
         to_load = self.dbapi.load_get(upgrade.to_load)
         to_version = to_load.software_version
 
-        personalities = [constants.CONTROLLER, constants.COMPUTE]
+        personalities = [constants.CONTROLLER, constants.WORKER]
         config_uuid = self._config_update_hosts(context, personalities)
 
         self.dbapi.software_upgrade_update(
@@ -8902,7 +8902,7 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
         config_dict = {
-            "personalities": [constants.COMPUTE],
+            "personalities": [constants.WORKER],
             "classes": ['openstack::nova::compute::runtime']
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
@@ -9752,7 +9752,7 @@ class ConductorManager(service.PeriodicService):
         ceph_conf_file = os.path.join(constants.CEPH_CONF_PATH,
                                       ceph_conf_filename)
 
-        personalities = [constants.CONTROLLER, constants.COMPUTE]
+        personalities = [constants.CONTROLLER, constants.WORKER]
         config_uuid = self._config_update_hosts(context, personalities)
         config_dict = {
             'personalities': personalities,
@@ -9900,7 +9900,7 @@ class ConductorManager(service.PeriodicService):
         # Should only be applicable to the single controller that is up
         # when the dc role is configured, but add personalities anyway.
         personalities = [constants.CONTROLLER,
-                         constants.COMPUTE,
+                         constants.WORKER,
                          constants.STORAGE]
         config_uuid = self._config_update_hosts(context, personalities)
 

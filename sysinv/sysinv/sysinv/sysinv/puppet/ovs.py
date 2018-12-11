@@ -19,7 +19,7 @@ class OVSPuppet(base.BasePuppet):
 
     def get_host_config(self, host):
         config = {}
-        if (constants.COMPUTE in utils.get_personalities(host) and
+        if (constants.WORKER in utils.get_personalities(host) and
                 self._vswitch_type() == constants.VSWITCH_TYPE_OVS_DPDK):
             config.update(self._get_cpu_config(host))
             config.update(self._get_memory_config(host))
@@ -346,7 +346,7 @@ class OVSPuppet(base.BasePuppet):
 
     def _get_virtual_config(self, host):
         config = {}
-        if utils.is_virtual() or utils.is_virtual_compute(host):
+        if utils.is_virtual() or utils.is_virtual_worker(host):
             config.update({
                 'platform::vswitch::params::iommu_enabled': False,
                 'platform::vswitch::params::hugepage_dir': '/mnt/huge-2048kB',

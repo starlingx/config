@@ -1202,8 +1202,8 @@ def overwrite_iscsi_target_config():
 def restore_complete():
     """
     Restore proper ISCSI configuration file after cinder restore.
-    Enable compute functionality for AIO system.
-    :return: True if compute-config-complete is executed
+    Enable worker functionality for AIO system.
+    :return: True if worker-config-complete is executed
     """
     if utils.get_system_type() == sysinv_constants.TIS_AIO_BUILD:
         if not os.path.isfile(restore_system_ready):
@@ -1223,21 +1223,21 @@ def restore_complete():
         # we use use that.
         overwrite_iscsi_target_config()
 
-        print("\nApplying compute manifests for %s. " %
+        print("\nApplying worker manifests for %s. " %
               (utils.get_controller_hostname()))
         print("Node will reboot on completion.")
 
-        sysinv.do_compute_config_complete(utils.get_controller_hostname())
+        sysinv.do_worker_config_complete(utils.get_controller_hostname())
 
         # show in-progress log on console every 30 seconds
         # until self reboot or timeout
         os.remove(restore_system_ready)
         time.sleep(30)
         for i in range(1, 10):
-            print("compute manifest apply in progress ... ")
+            print("worker manifest apply in progress ... ")
             time.sleep(30)
 
-        raise RestoreFail("Timeout running compute manifests, "
+        raise RestoreFail("Timeout running worker manifests, "
                           "reboot did not occur")
 
     else:
@@ -1655,7 +1655,7 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
                         print(textwrap.fill(
                             "Failed to lock at least one node. " +
                             "Please lock the unlocked controller-1 or " +
-                            "compute nodes manually.", 80
+                            "worker nodes manually.", 80
                         ))
 
                 if not clone:

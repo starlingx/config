@@ -126,7 +126,7 @@ class ihost(Base):
                             name='invprovisionStateEnum')
 
     invPersonalityEnum = Enum('controller',
-                              'compute',
+                              'worker',
                               'network',
                               'storage',
                               'profile',

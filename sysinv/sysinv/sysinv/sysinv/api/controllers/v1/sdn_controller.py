@@ -205,7 +205,7 @@ class SDNControllerController(rest.RestController):
         # Clear any existing OVSDB manager alarm, corresponding
         # to this SDN controller. We need to clear this alarm
         # for all hosts on which it is set, i.e. all unlocked
-        # compute nodes.
+        # worker nodes.
         key = "sdn-controller=%s" % uuid
         obj = fm_api.FaultAPIs()
 
@@ -220,7 +220,7 @@ class SDNControllerController(rest.RestController):
 
         # Clear any existing Openflow Controller alarm, corresponding
         # to this SDN controller. We need need to clear this alarm
-        # for all hosts on which it is set, i.e. all unlocked computes.
+        # for all hosts on which it is set, i.e. all unlocked workers.
         sdn_controller = objects.sdn_controller.get_by_uuid(
             pecan.request.context, uuid)
         uri = "%s://%s" % (sdn_controller.transport,

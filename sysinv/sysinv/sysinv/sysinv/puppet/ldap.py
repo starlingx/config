@@ -64,7 +64,7 @@ class LdapPuppet(base.BasePuppet):
                 bind_anonymous = True
 
         if host.personality != constants.CONTROLLER:
-            # if storage/compute, use bind anonymously
+            # if storage/worker, use bind anonymously
             bind_anonymous = True
             return {
                 'platform::ldap::params::ldapserver_remote': ldapserver_remote,

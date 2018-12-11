@@ -262,7 +262,7 @@ class StorageBackendConfig(object):
             return False
 
         # if both controllers are reconfigured and 1st pair storage nodes
-        # are provisioned, the task will be either reconfig_compute or none
+        # are provisioned, the task will be either reconfig_worker or none
         return True
 
     @staticmethod

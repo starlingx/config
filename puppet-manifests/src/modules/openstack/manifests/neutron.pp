@@ -195,7 +195,7 @@ class openstack::neutron::agents
 
   include ::platform::kubernetes::params
 
-  if (str2bool($::disable_compute_services) or
+  if (str2bool($::disable_worker_services) or
       $::platform::kubernetes::params::enabled) {
     $pmon_ensure = absent
 

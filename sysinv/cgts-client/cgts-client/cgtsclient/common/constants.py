@@ -45,7 +45,7 @@ SB_STATE_CONFIGURING = 'configuring'
 SB_TASK_NONE = None
 SB_TASK_RECONFIG_CONTROLLER = 'reconfig-controller'
 SB_TASK_PROVISION_STORAGE = 'provision-storage'
-SB_TASK_RECONFIG_COMPUTE = 'reconfig-compute'
+SB_TASK_RECONFIG_WORKER = 'reconfig-worker'
 SB_TASK_RESIZE_CEPH_MON_LV = 'resize-ceph-mon-lv'
 SB_TASK_ADD_OBJECT_GATEWAY = 'add-object-gateway'
 

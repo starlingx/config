@@ -270,7 +270,7 @@ class InterfacePuppet(base.BasePuppet):
         # deal with this in a later commit.
         pnets = {}
         if (self.openstack and
-                constants.COMPUTE in utils.get_personalities(host)):
+                constants.WORKER in utils.get_personalities(host)):
             pnets = self.openstack.get_providernetworksdict(quiet=True)
         return pnets
 
@@ -286,19 +286,19 @@ def is_data_network_type(iface):
 def is_controller(context):
     """
     Determine we are creating a manifest for a controller node; regardless of
-    whether it has a compute subfunction or not.
+    whether it has a worker subfunction or not.
     """
     return bool(context['personality'] == constants.CONTROLLER)
 
 
-def is_compute_subfunction(context):
+def is_worker_subfunction(context):
     """
-    Determine if we are creating a manifest for a compute node or a compute
+    Determine if we are creating a manifest for a worker node or a worker
     subfunction.
     """
-    if context['personality'] == constants.COMPUTE:
+    if context['personality'] == constants.WORKER:
         return True
-    if constants.COMPUTE in context['subfunctions']:
+    if constants.WORKER in context['subfunctions']:
         return True
     return False
 
@@ -662,7 +662,7 @@ def needs_interface_config(context, iface):
     """
     if is_platform_interface(context, iface):
         return True
-    elif not is_compute_subfunction(context):
+    elif not is_worker_subfunction(context):
         return False
     elif is_data_interface(context, iface):
         if not is_dpdk_compatible(context, iface):
@@ -1141,7 +1141,7 @@ def generate_driver_config(context, config):
     """
     Generate custom configuration for driver specific parameters.
     """
-    if is_compute_subfunction(context):
+    if is_worker_subfunction(context):
         generate_mlx4_core_options(context, config)
 
 

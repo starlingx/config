@@ -92,7 +92,7 @@ def do_host_upgrade_list(cc, args):
            help='Hostname of the host')
 @utils.arg('-p', '--personality',
            metavar='<personality>',
-           choices=['controller', 'compute', 'storage', 'network', 'profile'],
+           choices=['controller', 'worker', 'storage', 'network', 'profile'],
            help='Personality or type of host [REQUIRED]')
 @utils.arg('-s', '--subfunctions',
            metavar='<subfunctions>',

@@ -1,19 +1,19 @@
 class platform::compute::params (
-  $compute_cpu_list = '',
+  $worker_cpu_list = '',
   $platform_cpu_list = '',
   $reserved_vswitch_cores = '',
   $reserved_platform_cores = '',
-  $compute_base_reserved = '',
+  $worker_base_reserved = '',
   $compute_vswitch_reserved = '',
 ) { }
 
 class platform::compute::config
   inherits ::platform::compute::params {
 
-  file { "/etc/nova/compute_reserved.conf":
+  file { "/etc/platform/worker_reserved.conf":
       ensure => 'present',
       replace => true,
-      content => template('platform/compute_reserved.conf.erb')
+      content => template('platform/worker_reserved.conf.erb')
   }
 }
 
@@ -88,7 +88,7 @@ class platform::compute::grub::audit
       }
     }
 
-    file { "/var/run/compute_huge_goenabled":
+    file { "/var/run/worker_goenabled":
       ensure  => $ensure,
       owner   => 'root',
       group   => 'root',
@@ -276,7 +276,7 @@ class platform::compute::pmqos (
   $hight_wakeup_cpus = '',
 ) {
 
-  if str2bool($::is_compute_subfunction) and str2bool($::is_lowlatency_subfunction) {
+  if str2bool($::is_worker_subfunction) and str2bool($::is_lowlatency_subfunction) {
 
     $script = "/usr/bin/set-cpu-wakeup-latency.sh"
 

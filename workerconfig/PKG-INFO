@@ -1,0 +1,13 @@
+Metadata-Version: 1.1
+Name: workerconfig
+Version: 1.0
+Summary: Initial worker node configuration
+Home-page:
+Author: Windriver
+Author-email: info@windriver.com
+License: Apache-2.0
+
+Description: Initial worker node configuration
+
+
+Platform: UNKNOWN

@@ -294,8 +294,8 @@ def _check_host(host):
     elif host.administrative != constants.ADMIN_LOCKED and not \
             utils.is_host_simplex_controller(host):
         raise wsme.exc.ClientSideError(_('Host must be locked.'))
-    if constants.COMPUTE not in host.subfunctions:
-        raise wsme.exc.ClientSideError(_('Can only modify compute node cores.'))
+    if constants.WORKER not in host.subfunctions:
+        raise wsme.exc.ClientSideError(_('Can only modify worker node cores.'))
 
 
 def _check_field(field):

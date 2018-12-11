@@ -188,7 +188,7 @@ class Connection(object):
                                  sort_key=None, sort_dir=None):
         """Return a list of servers by personality.
             :param personality: The personality of the server
-            e.g. controller or compute
+            e.g. controller or worker
             returns: A server
         """
 

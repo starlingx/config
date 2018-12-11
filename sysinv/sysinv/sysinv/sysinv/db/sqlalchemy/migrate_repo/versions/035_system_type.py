@@ -13,7 +13,7 @@ from sysinv.common import constants
 
 def _populate_system_type(system_table):
 
-    if constants.COMPUTE in tsconfig.subfunctions:
+    if constants.WORKER in tsconfig.subfunctions:
         s_type = constants.TIS_AIO_BUILD
     else:
         s_type = constants.TIS_STD_BUILD

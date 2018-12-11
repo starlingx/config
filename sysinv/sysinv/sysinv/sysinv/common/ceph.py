@@ -649,7 +649,7 @@ class CephApiOperator(object):
         inventory_monitor_names = []
         ihosts = db_api.ihost_get_list()
         for ihost in ihosts:
-            if ihost['personality'] == constants.COMPUTE:
+            if ihost['personality'] == constants.WORKER:
                 continue
             capabilities = ihost['capabilities']
             if 'stor_function' in capabilities:

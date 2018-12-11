@@ -65,7 +65,7 @@ class KubernetesPuppet(base.BasePuppet):
 
     def get_host_config(self, host):
         config = {}
-        if host.personality != constants.COMPUTE:
+        if host.personality != constants.WORKER:
             return config
 
         if self._kubernetes_enabled():

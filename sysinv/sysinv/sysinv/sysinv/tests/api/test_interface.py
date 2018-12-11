@@ -258,7 +258,7 @@ class InterfaceTestCase(base.FunctionalTest):
         if personality == constants.CONTROLLER:
             self.controller = host
         else:
-            self.compute = host
+            self.worker = host
         return
 
     def _create_ethernet(self, ifname=None, networktype=None, ifclass=None,
@@ -377,10 +377,10 @@ class InterfaceTestCase(base.FunctionalTest):
         self.profile['interfaces'].append(interface)
         return interface
 
-    def _create_compute_bond(self, ifname, networktype=None, ifclass=None,
+    def _create_worker_bond(self, ifname, networktype=None, ifclass=None,
                              providernetworks=None, expect_errors=False):
         return self._create_bond(ifname, networktype, ifclass, providernetworks,
-                                 self.compute, expect_errors)
+                                 self.worker, expect_errors)
 
     def _create_vlan(self, ifname, networktype, ifclass, vlan_id,
                      lower_iface=None, providernetworks=None, host=None,
@@ -424,12 +424,12 @@ class InterfaceTestCase(base.FunctionalTest):
         self.profile['interfaces'].append(interface)
         return interface
 
-    def _create_compute_vlan(self, ifname, networktype, ifclass, vlan_id,
+    def _create_worker_vlan(self, ifname, networktype, ifclass, vlan_id,
                              lower_iface=None, providernetworks=None,
                              host=None, expect_errors=False):
         return self._create_vlan(ifname, networktype, ifclass, vlan_id,
                                  lower_iface,
-                                 providernetworks, self.compute, expect_errors)
+                                 providernetworks, self.worker, expect_errors)
 
     def _post_and_check_success(self, ndict):
         response = self.post_json('%s' % self._get_path(), ndict)
@@ -491,7 +491,7 @@ class InterfaceTestCase(base.FunctionalTest):
                         'interface_networks': []}
         self.system = None
         self.controller = None
-        self.compute = None
+        self.worker = None
         self._setup_configuration()
 
     def test_interface(self):
@@ -583,56 +583,56 @@ class InterfaceComputeEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are ethernet interfaces.
+        # worker and all interfaces are ethernet interfaces.
         self._create_host(constants.CONTROLLER, admin=constants.ADMIN_UNLOCKED)
         self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA)
 
-        self._create_host(constants.COMPUTE, constants.COMPUTE,
+        self._create_host(constants.WORKER, constants.WORKER,
                           mgmt_mac='01:02.03.04.05.C0',
                           mgmt_ip='192.168.24.12',
                           admin=constants.ADMIN_LOCKED)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
-                              host=self.compute)
+                              host=self.worker)
         self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA,
-                              host=self.compute)
+                              host=self.worker)
         self._create_ethernet('data',
                               constants.NETWORK_TYPE_DATA,
                               constants.INTERFACE_CLASS_DATA,
-                              'group0-data0', host=self.compute)
+                              'group0-data0', host=self.worker)
         self._create_ethernet('sriov',
                               constants.NETWORK_TYPE_PCI_SRIOV,
                               constants.INTERFACE_CLASS_PCI_SRIOV,
-                              'group0-data1', host=self.compute)
+                              'group0-data1', host=self.worker)
         self._create_ethernet('pthru',
                               constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                               constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                              'group0-ext0', host=self.compute)
+                              'group0-ext0', host=self.worker)
         port, iface = (
             self._create_ethernet('slow',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
-                                  'group0-ext1', host=self.compute))
+                                  'group0-ext1', host=self.worker))
         port['dpdksupport'] = False
         port, iface = (
             self._create_ethernet('mlx4',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
-                                  'group0-ext2', host=self.compute))
+                                  'group0-ext2', host=self.worker))
         port['driver'] = 'mlx4_core'
         port, iface = (
             self._create_ethernet('mlx5',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
-                                  'group0-ext3', host=self.compute))
+                                  'group0-ext3', host=self.worker))
         port['driver'] = 'mlx5_core'
 
     def setUp(self):
         super(InterfaceComputeEthernet, self).setUp()
 
-    def test_compute_ethernet_profile(self):
-        self._create_and_apply_profile(self.compute)
+    def test_worker_ethernet_profile(self):
+        self._create_and_apply_profile(self.worker)
 
 
 class InterfaceComputeVlanOverEthernet(InterfaceTestCase):
@@ -652,32 +652,32 @@ class InterfaceComputeVlanOverEthernet(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 3, iface)
 
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are vlan interfaces over ethernet
+        # worker and all interfaces are vlan interfaces over ethernet
         # interfaces.
-        self._create_host(constants.COMPUTE, admin=constants.ADMIN_LOCKED)
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
         port, iface = self._create_ethernet(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.compute)
-        self._create_compute_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
+            'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.worker)
+        self._create_worker_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                                   constants.INTERFACE_CLASS_PLATFORM, 2, iface)
-        self._create_compute_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_worker_vlan('infra', constants.NETWORK_TYPE_INFRA,
                                   constants.INTERFACE_CLASS_PLATFORM, 3)
-        self._create_compute_vlan('data', constants.INTERFACE_CLASS_DATA,
+        self._create_worker_vlan('data', constants.INTERFACE_CLASS_DATA,
                                   constants.NETWORK_TYPE_DATA, 5,
                                   providernetworks='group0-ext0')
         self._create_ethernet('sriov',
                               constants.NETWORK_TYPE_PCI_SRIOV,
                               constants.INTERFACE_CLASS_PCI_SRIOV,
-                              'group0-data0', host=self.compute)
+                              'group0-data0', host=self.worker)
         self._create_ethernet('pthru',
                               constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                               constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                              'group0-data1', host=self.compute)
+                              'group0-data1', host=self.worker)
 
     def setUp(self):
         super(InterfaceComputeVlanOverEthernet, self).setUp()
 
-    def test_compute_vlan_over_ethernet_profile(self):
-        self._create_and_apply_profile(self.compute)
+    def test_worker_vlan_over_ethernet_profile(self):
+        self._create_and_apply_profile(self.worker)
 
 
 class InterfaceComputeBond(InterfaceTestCase):
@@ -691,28 +691,28 @@ class InterfaceComputeBond(InterfaceTestCase):
         self._create_bond('infra', constants.NETWORK_TYPE_INFRA)
 
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are aggregated ethernet interfaces.
-        self._create_host(constants.COMPUTE, admin=constants.ADMIN_LOCKED)
-        self._create_compute_bond('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_compute_bond('infra', constants.NETWORK_TYPE_INFRA)
-        self._create_compute_bond('data',
+        # worker and all interfaces are aggregated ethernet interfaces.
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
+        self._create_worker_bond('mgmt', constants.NETWORK_TYPE_MGMT)
+        self._create_worker_bond('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_worker_bond('data',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
                                   providernetworks='group0-data0')
         self._create_ethernet('sriov',
                               constants.NETWORK_TYPE_PCI_SRIOV,
                               constants.INTERFACE_CLASS_PCI_SRIOV,
-                              'group0-ext0', host=self.compute)
+                              'group0-ext0', host=self.worker)
         self._create_ethernet('pthru',
                               constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                               constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                              'group0-ext1', host=self.compute)
+                              'group0-ext1', host=self.worker)
 
     def setUp(self):
         super(InterfaceComputeBond, self).setUp()
 
-    def test_compute_bond_profile(self):
-        self._create_and_apply_profile(self.compute)
+    def test_worker_bond_profile(self):
+        self._create_and_apply_profile(self.worker)
 
 
 class InterfaceComputeVlanOverBond(InterfaceTestCase):
@@ -729,40 +729,40 @@ class InterfaceComputeVlanOverBond(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 3, bond)
 
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are vlan interfaces over aggregated
+        # worker and all interfaces are vlan interfaces over aggregated
         # ethernet interfaces.
-        self._create_host(constants.COMPUTE, admin=constants.ADMIN_LOCKED)
-        bond = self._create_compute_bond('pxeboot',
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
+        bond = self._create_worker_bond('pxeboot',
                                          constants.NETWORK_TYPE_PXEBOOT,
                                          constants.INTERFACE_CLASS_PLATFORM)
-        self._create_compute_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
+        self._create_worker_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                                   constants.INTERFACE_CLASS_PLATFORM, 2, bond)
-        self._create_compute_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_worker_vlan('infra', constants.NETWORK_TYPE_INFRA,
                                   constants.INTERFACE_CLASS_PLATFORM, 3,
                                   bond)
-        bond2 = self._create_compute_bond('bond2', constants.NETWORK_TYPE_NONE)
-        self._create_compute_vlan('data',
+        bond2 = self._create_worker_bond('bond2', constants.NETWORK_TYPE_NONE)
+        self._create_worker_vlan('data',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
                                   5, bond2,
                                   providernetworks='group0-ext0')
 
-        self._create_compute_bond('bond3', constants.NETWORK_TYPE_NONE)
+        self._create_worker_bond('bond3', constants.NETWORK_TYPE_NONE)
 
         self._create_ethernet('sriov',
                               constants.NETWORK_TYPE_PCI_SRIOV,
                               constants.INTERFACE_CLASS_PCI_SRIOV,
-                              'group0-data0', host=self.compute)
+                              'group0-data0', host=self.worker)
         self._create_ethernet('pthru',
                               constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                               constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                              'group0-data1', host=self.compute)
+                              'group0-data1', host=self.worker)
 
     def setUp(self):
         super(InterfaceComputeVlanOverBond, self).setUp()
 
-    def test_compute_vlan_over_bond_profile(self):
-        self._create_and_apply_profile(self.compute)
+    def test_worker_vlan_over_bond_profile(self):
+        self._create_and_apply_profile(self.worker)
 
 
 class InterfaceComputeVlanOverDataEthernet(InterfaceTestCase):
@@ -776,44 +776,44 @@ class InterfaceComputeVlanOverDataEthernet(InterfaceTestCase):
         self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA)
 
         # Setup a sample configuration where the personality is set to a
-        # compute and all interfaces are vlan interfaces over data ethernet
+        # worker and all interfaces are vlan interfaces over data ethernet
         # interfaces.
-        self._create_host(constants.COMPUTE, admin=constants.ADMIN_LOCKED)
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
         port, iface = (
             self._create_ethernet('data',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
-                                  'group0-data0', host=self.compute))
+                                  'group0-data0', host=self.worker))
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
-                              host=self.compute)
+                              host=self.worker)
         self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA,
-                              host=self.compute)
-        self._create_compute_vlan('data2', constants.NETWORK_TYPE_DATA,
+                              host=self.worker)
+        self._create_worker_vlan('data2', constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA, 5,
                                   iface, providernetworks='group0-ext0')
         self._create_ethernet('sriov',
                               constants.NETWORK_TYPE_PCI_SRIOV,
                               constants.INTERFACE_CLASS_PCI_SRIOV,
-                              'group0-ext1', host=self.compute)
+                              'group0-ext1', host=self.worker)
         self._create_ethernet('pthru',
                               constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                               constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                              'group0-ext2', host=self.compute)
+                              'group0-ext2', host=self.worker)
 
     def setUp(self):
         super(InterfaceComputeVlanOverDataEthernet, self).setUp()
 
-    def test_compute_vlan_over_data_ethernet_profile(self):
-        self._create_and_apply_profile(self.compute)
+    def test_worker_vlan_over_data_ethernet_profile(self):
+        self._create_and_apply_profile(self.worker)
 
 
 class InterfaceCpeEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # ethernet interfaces.
-        self._create_host(constants.CONTROLLER, constants.COMPUTE,
+        self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
@@ -853,9 +853,9 @@ class InterfaceCpeVlanOverEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # vlan interfaces over ethernet interfaces.
-        self._create_host(constants.CONTROLLER, constants.COMPUTE,
+        self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         port, iface = self._create_ethernet(
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT)
@@ -886,10 +886,10 @@ class InterfaceCpeBond(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # aggregated ethernet interfaces.
         self._create_host(constants.CONTROLLER,
-                          subfunction=constants.COMPUTE,
+                          subfunction=constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         self._create_bond('oam', constants.NETWORK_TYPE_OAM)
         self._create_bond('mgmt', constants.NETWORK_TYPE_MGMT)
@@ -915,9 +915,9 @@ class InterfaceCpeVlanOverBond(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # vlan interfaces over aggregated ethernet interfaces.
-        self._create_host(constants.CONTROLLER, constants.COMPUTE,
+        self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         bond = self._create_bond('pxeboot', constants.NETWORK_TYPE_PXEBOOT)
         self._create_vlan('oam', constants.NETWORK_TYPE_OAM,
@@ -950,9 +950,9 @@ class InterfaceCpeVlanOverDataEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # controller with a compute subfunction and all interfaces are
+        # controller with a worker subfunction and all interfaces are
         # vlan interfaces over data ethernet interfaces.
-        self._create_host(constants.CONTROLLER, constants.COMPUTE,
+        self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         port, iface = (
             self._create_ethernet('data',
@@ -1007,7 +1007,7 @@ class TestPatch(InterfaceTestCase):
     def setUp(self):
         super(TestPatch, self).setUp()
         self._create_host(constants.CONTROLLER)
-        self._create_host(constants.COMPUTE, admin=constants.ADMIN_LOCKED)
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
 
     def test_modify_ifname(self):
         interface = dbutils.create_test_interface(forihostid='1')
@@ -1031,10 +1031,10 @@ class TestPatch(InterfaceTestCase):
         data_bond = self._create_bond('data', constants.NETWORK_TYPE_DATA,
                                       constants.INTERFACE_CLASS_DATA,
                                       providernetworks='group0-data0',
-                                      host=self.compute)
+                                      host=self.worker)
 
         port, new_ethernet = self._create_ethernet(
-            'new', constants.NETWORK_TYPE_NONE, host=self.compute)
+            'new', constants.NETWORK_TYPE_NONE, host=self.worker)
         # Modify AE interface to add another port
         uses = ','.join(data_bond['uses'])
         patch_result = self.patch_dict_json(
@@ -1047,10 +1047,10 @@ class TestPatch(InterfaceTestCase):
     # MTU (%s) using this interface
     def test_mtu_smaller_than_users(self):
         port, lower_interface = self._create_ethernet(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.compute)
+            'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.worker)
         dbutils.create_test_interface(
             forihostid='2',
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='data0',
             networktype=constants.NETWORK_TYPE_DATA,
             ifclass=constants.INTERFACE_CLASS_DATA,
@@ -1071,10 +1071,10 @@ class TestPatch(InterfaceTestCase):
     # interface ___
     def test_vlan_mtu_smaller_than_users(self):
         port, lower_interface = self._create_ethernet(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.compute)
+            'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.worker)
         upper = dbutils.create_test_interface(
             forihostid='2',
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='data0',
             networktype=constants.NETWORK_TYPE_DATA,
             ifclass=constants.INTERFACE_CLASS_DATA,
@@ -1110,24 +1110,24 @@ class TestPost(InterfaceTestCase):
     def setUp(self):
         super(TestPost, self).setUp()
         self._create_host(constants.CONTROLLER)
-        self._create_host(constants.COMPUTE, admin=constants.ADMIN_LOCKED)
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
 
     # Expected error: The oam network type is only supported on controller nodes
-    def test_invalid_oam_on_compute(self):
+    def test_invalid_oam_on_worker(self):
         self._create_ethernet('oam', constants.NETWORK_TYPE_OAM,
                               constants.INTERFACE_CLASS_PLATFORM,
-                              host=self.compute, expect_errors=True)
+                              host=self.worker, expect_errors=True)
 
     # Expected error: The pci-passthrough, pci-sriov network types are only
     # valid on Ethernet interfaces
     def test_invalid_iftype_for_pci_network_type(self):
         self._create_bond('pthru', constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                           ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                          host=self.compute, expect_errors=True)
+                          host=self.worker, expect_errors=True)
 
     # Expected error: The ___ network type is only supported on nodes supporting
-    # compute functions
-    def test_invalid_network_type_on_noncompute(self):
+    # worker functions
+    def test_invalid_network_type_on_nonworker(self):
         self._create_ethernet('data0', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               providernetworks='group0-ext0',
@@ -1164,11 +1164,11 @@ class TestPost(InterfaceTestCase):
         self._create_ethernet('data0', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               providernetworks='group0-data0',
-                              host=self.compute)
+                              host=self.worker)
         self._create_ethernet('data0', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               providernetworks='group0-ext0',
-                              host=self.compute,
+                              host=self.worker,
                               expect_errors=True)
 
     def test_ipv4_mode_valid(self):
@@ -1187,7 +1187,7 @@ class TestPost(InterfaceTestCase):
     # mgmt, infra, data, data-vrs interfaces
     def test_ipv4_mode_networktype_invalid(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_PCI_PASSTHROUGH,
             ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
@@ -1244,7 +1244,7 @@ class TestPost(InterfaceTestCase):
     # Expected error: IPv4 address pool name not specified
     def test_ipv4_mode_no_pool_invalid(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_MGMT,
             networks=['1'],
@@ -1257,7 +1257,7 @@ class TestPost(InterfaceTestCase):
     # Expected error: IPv6 address pool name not specified
     def test_ipv6_mode_no_pool_invalid(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_MGMT,
             networks=['1'],
@@ -1271,7 +1271,7 @@ class TestPost(InterfaceTestCase):
     # Expected error: Address pool IP family does not match requested family
     def test_ipv4_pool_family_mismatch_invalid(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_MGMT,
             networks=['1'],
@@ -1286,7 +1286,7 @@ class TestPost(InterfaceTestCase):
     # Expected error: Address pool IP family does not match requested family
     def test_ipv6_pool_family_mismatch_invalid(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_MGMT,
             networks=['1'],
@@ -1302,7 +1302,7 @@ class TestPost(InterfaceTestCase):
     # 'vlan' or 'ethernet'.
     def test_aemode_invalid_iftype(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-data0',
             ifname='name',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1316,7 +1316,7 @@ class TestPost(InterfaceTestCase):
     #  in ___ mode should not specify a Tx Hash Policy.
     def test_aemode_no_txhash(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-data0',
             ifname='name',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1330,7 +1330,7 @@ class TestPost(InterfaceTestCase):
     # 'aggregated ethernet' must have a Tx Hash Policy of 'layer2'.
     def test_aemode_invalid_txhash(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_DATA,
             ifclass=constants.INTERFACE_CLASS_DATA,
@@ -1343,7 +1343,7 @@ class TestPost(InterfaceTestCase):
     #  in 'balanced' or '802.3ad' mode require a valid Tx Hash Policy
     def test_aemode_invalid_txhash_none(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-data0',
             ifname='name',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1354,7 +1354,7 @@ class TestPost(InterfaceTestCase):
         self._post_and_check_failure(ndict)
 
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-data0',
             ifname='name',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1368,7 +1368,7 @@ class TestPost(InterfaceTestCase):
     #  'aggregated ethernet' must be in mode '802.3ad'
     def test_aemode_invalid_mgmt(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-data0',
             ifname='name',
             networktype=constants.NETWORK_TYPE_MGMT,
@@ -1384,7 +1384,7 @@ class TestPost(InterfaceTestCase):
     # '802.3ad'.
     def test_aemode_invalid_data(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-data0',
             ifname='name',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1408,7 +1408,7 @@ class TestPost(InterfaceTestCase):
 
     def test_aemode_invalid_infra(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_INFRA,
             networks=['2'],
@@ -1422,7 +1422,7 @@ class TestPost(InterfaceTestCase):
     # on controller.
     def test_no_infra_on_controller(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             networktype=constants.NETWORK_TYPE_INFRA,
             networks=['2'],
@@ -1457,14 +1457,14 @@ class TestPost(InterfaceTestCase):
     # Expected message: Interface eth0 is already used by another AE interface
     # bond0
     def test_create_bond_invalid_overlap_ae(self):
-        bond_iface = self._create_compute_bond('bond0',
+        bond_iface = self._create_worker_bond('bond0',
                                                constants.NETWORK_TYPE_DATA,
                                                constants.INTERFACE_CLASS_DATA,
                                                providernetworks='group0-data0')
         port, iface1 = self._create_ethernet()
 
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-ext1',
             ifname='bond1',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1477,7 +1477,7 @@ class TestPost(InterfaceTestCase):
 
     # Expected message: VLAN id must be between 1 and 4094.
     def test_create_invalid_vlan_id(self):
-        self._create_compute_vlan('vlan0', constants.NETWORK_TYPE_DATA,
+        self._create_worker_vlan('vlan0', constants.NETWORK_TYPE_DATA,
                                   ifclass=constants.INTERFACE_CLASS_DATA,
                                   vlan_id=4095,
                                   providernetworks='group0-ext0',
@@ -1486,7 +1486,7 @@ class TestPost(InterfaceTestCase):
     # Expected message: Interface eth0 is already used by another VLAN
     # interface vlan0
     def test_create_bond_invalid_overlap_vlan(self):
-        vlan_iface = self._create_compute_vlan(
+        vlan_iface = self._create_worker_vlan(
             'vlan0',
             constants.NETWORK_TYPE_DATA,
             ifclass=constants.INTERFACE_CLASS_DATA,
@@ -1494,7 +1494,7 @@ class TestPost(InterfaceTestCase):
         port, iface1 = self._create_ethernet()
 
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-ext1',
             ifname='bond0',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1507,14 +1507,14 @@ class TestPost(InterfaceTestCase):
 
     # Expected message: Can only have one interface for vlan type.
     def test_create_vlan_invalid_uses(self):
-        bond_iface = self._create_compute_bond('bond0',
+        bond_iface = self._create_worker_bond('bond0',
                                                constants.NETWORK_TYPE_DATA,
                                                constants.INTERFACE_CLASS_DATA,
                                                providernetworks='group0-data0')
         port, iface1 = self._create_ethernet()
 
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.compute.uuid,
+            ihost_uuid=self.worker.uuid,
             providernetworks='group0-ext1',
             ifname='bond1',
             networktype=constants.NETWORK_TYPE_DATA,
@@ -1528,11 +1528,11 @@ class TestPost(InterfaceTestCase):
     # Expected message: VLAN interfaces cannot be created over existing VLAN
     # interfaces
     def test_create_invalid_vlan_over_vlan(self):
-        vlan_iface = self._create_compute_vlan(
+        vlan_iface = self._create_worker_vlan(
             'vlan1', constants.NETWORK_TYPE_DATA,
             constants.INTERFACE_CLASS_DATA, 1,
             providernetworks='group0-ext0')
-        self._create_compute_vlan('vlan2',
+        self._create_worker_vlan('vlan2',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
                                   vlan_id=2,
@@ -1543,10 +1543,10 @@ class TestPost(InterfaceTestCase):
     # Expected message: data VLAN cannot be created over a LAG interface with
     # network type pxeboot
     def test_create_data_vlan_over_pxeboot_lag(self):
-        bond_iface = self._create_compute_bond(
+        bond_iface = self._create_worker_bond(
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT,
             constants.INTERFACE_CLASS_PLATFORM)
-        self._create_compute_vlan(
+        self._create_worker_vlan(
             'vlan2',
             constants.NETWORK_TYPE_DATA, constants.INTERFACE_CLASS_DATA, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
@@ -1555,10 +1555,10 @@ class TestPost(InterfaceTestCase):
     # Expected message: data VLAN cannot be created over a LAG interface with
     # network type mgmt
     def test_create_data_vlan_over_mgmt_lag(self):
-        bond_iface = self._create_compute_bond(
+        bond_iface = self._create_worker_bond(
             'mgmt', constants.NETWORK_TYPE_MGMT,
             constants.INTERFACE_CLASS_PLATFORM)
-        self._create_compute_vlan(
+        self._create_worker_vlan(
             'vlan2', constants.NETWORK_TYPE_DATA,
             constants.INTERFACE_CLASS_DATA, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
@@ -1567,10 +1567,10 @@ class TestPost(InterfaceTestCase):
     # Expected message: mgmt VLAN cannot be created over a LAG interface with
     # network type data
     def test_create_mgmt_vlan_over_data_lag(self):
-        bond_iface = self._create_compute_bond(
+        bond_iface = self._create_worker_bond(
             'data', constants.NETWORK_TYPE_DATA,
             constants.INTERFACE_CLASS_DATA, providernetworks='group0-ext1')
-        self._create_compute_vlan(
+        self._create_worker_vlan(
             'mgmt', constants.NETWORK_TYPE_MGMT,
             constants.INTERFACE_CLASS_PLATFORM, 2,
             lower_iface=bond_iface, providernetworks='group0-ext1',
@@ -1579,7 +1579,7 @@ class TestPost(InterfaceTestCase):
     # Expected message:
     #   Provider network(s) not supported for non-data interfaces.
     def test_create_nondata_provider_network(self):
-        self._create_compute_bond(
+        self._create_worker_bond(
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT,
             constants.INTERFACE_CLASS_PLATFORM,
             providernetworks='group0-data0', expect_errors=True)
@@ -1608,7 +1608,7 @@ class TestPost(InterfaceTestCase):
                               networktype=[constants.NETWORK_TYPE_MGMT,
                                            constants.NETWORK_TYPE_DATA],
                               providernetworks='group0-data0',
-                              host=self.compute,
+                              host=self.worker,
                               expect_errors=True)
 
     # Expected message:
@@ -1619,14 +1619,14 @@ class TestPost(InterfaceTestCase):
                               networktype=[constants.NETWORK_TYPE_DATA,
                                            constants.NETWORK_TYPE_PXEBOOT],
                               providernetworks='group0-data0',
-                              host=self.compute,
+                              host=self.worker,
                               expect_errors=True)
 
 
 class TestCpePost(InterfaceTestCase):
     def setUp(self):
         super(TestCpePost, self).setUp()
-        self._create_host(constants.CONTROLLER, constants.COMPUTE,
+        self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
 
     # Expected message:
@@ -1790,7 +1790,7 @@ class TestCpePost(InterfaceTestCase):
 class TestCpePatch(InterfaceTestCase):
     def setUp(self):
         super(TestCpePatch, self).setUp()
-        self._create_host(constants.CONTROLLER, constants.COMPUTE,
+        self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
 
     def test_create_invalid_infra_data_ethernet(self):

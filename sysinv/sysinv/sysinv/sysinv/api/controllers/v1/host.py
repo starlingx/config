@@ -243,7 +243,7 @@ class HostStatesController(rest.RestController):
                 rank = 1
             elif function.lower() == constants.VSWITCH_FUNCTION.lower():
                 rank = 2
-            elif function.lower() == constants.VM_FUNCTION.lower():
+            elif function.lower() == constants.APPLICATION_FUNCTION.lower():
                 rank = 3
             else:
                 rank = 4
@@ -535,7 +535,7 @@ class Host(base.APIBase):
     "Represent install state extra information if there is any"
 
     iscsi_initiator_name = wtypes.text
-    "The iscsi initiator name (only used for compute hosts)"
+    "The iscsi initiator name (only used for worker hosts)"
 
     def __init__(self, **kwargs):
         self.fields = objects.host.fields.keys()
@@ -786,10 +786,10 @@ class Host(base.APIBase):
                                                 bookmark=True)
                             ]
         # Don't expose the vsc_controllers field if we are not configured with
-        # the nuage_vrs vswitch or we are not a compute node.
+        # the nuage_vrs vswitch or we are not a worker node.
         vswitch_type = utils.get_vswitch_type()
         if (vswitch_type != constants.VSWITCH_TYPE_NUAGE_VRS or
-                uhost.personality != constants.COMPUTE):
+                uhost.personality != constants.WORKER):
             uhost.vsc_controllers = wtypes.Unset
 
         uhost.peers = None
@@ -1273,7 +1273,7 @@ class HostController(rest.RestController):
                   ihost_dict.get('personality') not in
                   [constants.STORAGE, constants.CONTROLLER]):
                 raise wsme.exc.ClientSideError(_(
-                    "Host-add Rejected: Cannot add a compute host without "
+                    "Host-add Rejected: Cannot add a worker host without "
                     "specifying a mgmt_ip when static address allocation is "
                     "configured."))
 
@@ -1672,7 +1672,7 @@ class HostController(rest.RestController):
                 rank = 0
             elif host.personality == constants.STORAGE:
                 rank = 1
-            elif host.personality == constants.COMPUTE:
+            elif host.personality == constants.WORKER:
                 rank = 2
             else:
                 rank = 3
@@ -2334,7 +2334,7 @@ class HostController(rest.RestController):
             if (ihost.hostname and ihost.personality and
                ihost.invprovision and
                ihost.invprovision == constants.PROVISIONED and
-               (constants.COMPUTE in ihost.subfunctions)):
+               (constants.WORKER in ihost.subfunctions)):
                 # wait for VIM signal
                 return
 
@@ -2511,7 +2511,7 @@ class HostController(rest.RestController):
         # If this is a simplex system skip this check, there's no other nodes
         if simplex:
             pass
-        elif rpc_ihost.personality == constants.COMPUTE:
+        elif rpc_ihost.personality == constants.WORKER:
             self._check_personality_load(constants.CONTROLLER, new_target_load)
             self._check_personality_load(constants.STORAGE, new_target_load)
         elif rpc_ihost.personality == constants.STORAGE:
@@ -2601,7 +2601,7 @@ class HostController(rest.RestController):
         elif upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK:
             if rpc_ihost.hostname == constants.CONTROLLER_0_HOSTNAME:
                 # Before we downgrade controller-0 during a rollback/reinstall
-                # we check that all other compute/storage nodes are locked and
+                # we check that all other worker/storage nodes are locked and
                 # offline. We also disable the storage monitor on controller-1
                 # and set a flag on controller-1 to indicate we are in a
                 # rollback. When controller-0 comes up it will check for this
@@ -2620,7 +2620,7 @@ class HostController(rest.RestController):
         else:
             # Enforce downgrade order
             if rpc_ihost.personality == constants.CONTROLLER:
-                self._check_personality_load(constants.COMPUTE,
+                self._check_personality_load(constants.WORKER,
                                              new_target_load)
                 self._check_personality_load(constants.STORAGE,
                                              new_target_load)
@@ -2628,11 +2628,11 @@ class HostController(rest.RestController):
                     self._check_host_load(constants.CONTROLLER_0_HOSTNAME,
                                           new_target_load)
             elif rpc_ihost.personality == constants.STORAGE:
-                self._check_personality_load(constants.COMPUTE,
+                self._check_personality_load(constants.WORKER,
                                              new_target_load)
                 if rpc_ihost.hostname == constants.STORAGE_0_HOSTNAME:
                     self._check_storage_downgrade(new_target_load)
-            # else we should be a compute node, no need to check other nodes
+            # else we should be a worker node, no need to check other nodes
 
             # Check upgrade state
             if rpc_ihost.hostname in [constants.CONTROLLER_0_HOSTNAME,
@@ -2684,12 +2684,12 @@ class HostController(rest.RestController):
     def _semantic_check_rollback(self):
         hosts = pecan.request.dbapi.ihost_get_list()
         for host in hosts:
-            if host.personality not in [constants.COMPUTE, constants.STORAGE]:
+            if host.personality not in [constants.WORKER, constants.STORAGE]:
                 continue
             if host.administrative != constants.ADMIN_LOCKED or \
                     host.availability != constants.AVAILABILITY_OFFLINE:
                 raise wsme.exc.ClientSideError(
-                    _("All compute and storage hosts must be locked and "
+                    _("All worker and storage hosts must be locked and "
                       "offline before this operation can proceed"))
 
     def _check_personality_load(self, personality, load):
@@ -2910,7 +2910,7 @@ class HostController(rest.RestController):
 
     def _validate_hostname(self, hostname, personality):
 
-        if personality and personality == constants.COMPUTE:
+        if personality and personality == constants.WORKER:
             # Fix of invalid hostnames
             err_tl = 'Name restricted to at most 255 characters.'
             err_ic = 'Name may only contain letters, ' \
@@ -2920,9 +2920,9 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(err_ic))
             if len(hostname) > 255:
                 raise wsme.exc.ClientSideError(_(err_tl))
-            non_compute_hosts = ([constants.CONTROLLER_0_HOSTNAME,
+            non_worker_hosts = ([constants.CONTROLLER_0_HOSTNAME,
                                   constants.CONTROLLER_1_HOSTNAME])
-            if (hostname and (hostname in non_compute_hosts) or
+            if (hostname and (hostname in non_worker_hosts) or
                     hostname.startswith(constants.STORAGE_HOSTNAME)):
 
                 raise wsme.exc.ClientSideError(
@@ -2951,8 +2951,8 @@ class HostController(rest.RestController):
                       (hostname, personality)))
 
     @staticmethod
-    def _check_compute(patched_ihost, hostupdate=None):
-        # Check for valid compute node setup
+    def _check_worker(patched_ihost, hostupdate=None):
+        # Check for valid worker node setup
         hostname = patched_ihost.get('hostname') or ""
 
         if not hostname:
@@ -2960,12 +2960,12 @@ class HostController(rest.RestController):
                 _("Host %s of personality %s, must be provisioned with a hostname."
                   % (patched_ihost.get('uuid'), patched_ihost.get('personality'))))
 
-        non_compute_hosts = ([constants.CONTROLLER_0_HOSTNAME,
+        non_worker_hosts = ([constants.CONTROLLER_0_HOSTNAME,
                               constants.CONTROLLER_1_HOSTNAME])
-        if (hostname in non_compute_hosts or
+        if (hostname in non_worker_hosts or
            hostname.startswith(constants.STORAGE_HOSTNAME)):
             raise wsme.exc.ClientSideError(
-                _("Hostname %s is not allowed for personality 'compute'. "
+                _("Hostname %s is not allowed for personality 'worker'. "
                   "Please check hostname and personality." % hostname))
 
     def _controller_storage_node_setup(self, patched_ihost, hostupdate=None):
@@ -3248,7 +3248,7 @@ class HostController(rest.RestController):
                 data_interface_configured = True
 
         if not data_interface_configured:
-            msg = _("Can not unlock a compute host without data interfaces. "
+            msg = _("Can not unlock a worker host without data interfaces. "
                     "Add at least one data interface before re-attempting "
                     "this command.")
             raise wsme.exc.ClientSideError(msg)
@@ -3275,7 +3275,7 @@ class HostController(rest.RestController):
             address_count += len(addresses)
 
         if address_count > 1:
-            msg = _("Can not unlock a compute host with multiple data "
+            msg = _("Can not unlock a worker host with multiple data "
                     "addresses while in SDN mode.")
             raise wsme.exc.ClientSideError(msg)
 
@@ -3292,7 +3292,7 @@ class HostController(rest.RestController):
         # Check whether the vsc_controllers have been configured
         if not ihost['vsc_controllers']:
             raise wsme.exc.ClientSideError(
-                _("Can not unlock compute host %s without "
+                _("Can not unlock worker host %s without "
                   "vsc_controllers. Action: Configure "
                   "vsc_controllers for this host prior to unlock."
                   % ihost['hostname']))
@@ -3316,7 +3316,7 @@ class HostController(rest.RestController):
                 self.routes._check_reachable_gateway(
                     route['interface_id'], route)
             except exception.RouteGatewayNotReachable:
-                msg = _("Can not unlock a compute host with routes that are "
+                msg = _("Can not unlock a worker host with routes that are "
                         "not reachable via a local IP address.  Add an IP "
                         "address in the same subnet as each route gateway "
                         "address before re-attempting this command.")
@@ -3364,7 +3364,7 @@ class HostController(rest.RestController):
                                     section=section)
                 neutron_parameters = neutron_parameters + parm_list
             except NoResultFound:
-                msg = _("Cannot unock a compute host without %s->%s "
+                msg = _("Cannot unock a worker host without %s->%s "
                         ",SDN service parameters being configured. "
                         "Add appropriate service parameters before "
                         "re-attempting this command." %
@@ -3389,7 +3389,7 @@ class HostController(rest.RestController):
                     found = True
                     break
             if not found:
-                msg = _("Cannot unlock a compute host without "
+                msg = _("Cannot unlock a worker host without "
                         "\"%s\" SDN service parameter configured. "
                         "Add service parameter before re-attempting "
                         "this command." % sdn_param)
@@ -3598,7 +3598,7 @@ class HostController(rest.RestController):
                  (hostupdate.displayid, action))
 
         # Semantic Check: Auto-Provision: Reset, Reboot or Power-On case
-        if ((cutils.host_has_function(ihost, constants.COMPUTE)) and
+        if ((cutils.host_has_function(ihost, constants.WORKER)) and
                 (ihost['administrative'] == constants.ADMIN_LOCKED) and
                 ((patched_ihost['action'] == constants.RESET_ACTION) or
                  (patched_ihost['action'] == constants.REBOOT_ACTION) or
@@ -3756,10 +3756,10 @@ class HostController(rest.RestController):
         """
 
         # Don't expose the vsc_controllers field if we are not configured with
-        # the nuage_vrs vswitch or we are not a compute node.
+        # the nuage_vrs vswitch or we are not a worker node.
         vswitch_type = utils.get_vswitch_type()
         if (vswitch_type != constants.VSWITCH_TYPE_NUAGE_VRS or
-                ihost['personality'] != constants.COMPUTE):
+                ihost['personality'] != constants.WORKER):
             raise wsme.exc.ClientSideError(
                 _("The vsc_controllers property is not applicable to this "
                   "host."))
@@ -4037,8 +4037,8 @@ class HostController(rest.RestController):
     def _semantic_check_nova_local_storage(ihost_uuid, personality):
         """
         Perform semantic checking for nova local storage
-        :param ihost_uuid: uuid of host with compute functionality
-        :param personality: personality of host with compute functionality
+        :param ihost_uuid: uuid of host with worker functionality
+        :param personality: personality of host with worker functionality
         """
 
         # query volume groups
@@ -4055,7 +4055,7 @@ class HostController(rest.RestController):
         if nova_local_storage_lvg:
             if nova_local_storage_lvg.vg_state == constants.LVG_DEL:
                 raise wsme.exc.ClientSideError(
-                    _("A host with compute functionality requires a "
+                    _("A host with worker functionality requires a "
                       "nova-local volume group prior to being enabled. It is "
                       "currently set to be removed on unlock. Please update "
                       "the storage settings for the host."))
@@ -4073,7 +4073,7 @@ class HostController(rest.RestController):
 
                 if not lvg_has_pvs:
                     raise wsme.exc.ClientSideError(
-                        _("A host with compute functionality requires a "
+                        _("A host with worker functionality requires a "
                           "nova-local volume group prior to being enabled."
                           "The nova-local volume group does not contain any "
                           "physical volumes in the adding or provisioned "
@@ -4087,18 +4087,18 @@ class HostController(rest.RestController):
                         constants.LVG_NOVA_BACKING_IMAGE,
                         constants.LVG_NOVA_BACKING_REMOTE]:
                     raise wsme.exc.ClientSideError(
-                        _("A host with compute functionality and a "
+                        _("A host with worker functionality and a "
                           "nova-local volume group requires that a valid "
                           "instance backing is configured. "))
         else:
-            # This method is only called with hosts that have a compute
+            # This method is only called with hosts that have a worker
             # subfunction and is locked or if subfunction_config action is
             # being called. Without a nova-local volume group, prevent
             # unlocking.
             if personality == constants.CONTROLLER:
-                host_description = 'controller with compute functionality'
+                host_description = 'controller with worker functionality'
             else:
-                host_description = 'compute'
+                host_description = 'worker'
 
             msg = _('A %s requires a nova-local volume group prior to being '
                     'enabled. Please update the storage settings for the '
@@ -4109,7 +4109,7 @@ class HostController(rest.RestController):
     @staticmethod
     def _semantic_check_restore_complete(ihost):
         """
-        During a restore procedure, checks compute nodes can be unlocked
+        During a restore procedure, checks worker nodes can be unlocked
         only after running "config_controller --restore-complete"
         """
         if os.path.isfile(tsc.RESTORE_SYSTEM_FLAG):
@@ -4123,13 +4123,13 @@ class HostController(rest.RestController):
     @staticmethod
     def _semantic_check_cgts_storage(ihost_uuid, personality):
         """
-        Perform semantic checking for cgts storage on compute hosts.
-        CGTS VG on computes used for kubernetes docker lv only at this time.
-        :param ihost_uuid: uuid of host with compute functionality
-        :param personality: personality of host with compute functionality
+        Perform semantic checking for cgts storage on worker hosts.
+        CGTS VG on workers used for kubernetes docker lv only at this time.
+        :param ihost_uuid: uuid of host with worker functionality
+        :param personality: personality of host with worker functionality
         """
 
-        if personality != constants.COMPUTE:
+        if personality != constants.WORKER:
             return
 
         # query volume groups
@@ -4145,7 +4145,7 @@ class HostController(rest.RestController):
             if cgts_local_storage_lvg.vg_state == constants.LVG_DEL:
                 raise wsme.exc.ClientSideError(
                     _("With kubernetes configured, "
-                      "a compute host requires a "
+                      "a worker host requires a "
                       "cgts volume group prior to being enabled. It is "
                       "currently set to be removed on unlock. Please update "
                       "the storage settings for the host."))
@@ -4165,19 +4165,19 @@ class HostController(rest.RestController):
                 if not lvg_has_pvs:
                     raise wsme.exc.ClientSideError(
                         _("With kubernetes configured, "
-                          "a compute host requires a "
+                          "a worker host requires a "
                           "cgts volume group prior to being enabled."
                           "The cgts volume group does not contain any "
                           "physical volumes in the adding or provisioned "
                           "state."))
         else:
-            # This method is only called with hosts that have a compute
+            # This method is only called with hosts that have a worker
             # subfunction and is locked or if subfunction_config action is
             # being called. Without a cgts volume group, prevent
             # unlocking.
 
             msg = _('With kubernetes configured, '
-                    'a compute host requires a cgts volume group prior to being '
+                    'a worker host requires a cgts volume group prior to being '
                     'enabled. Please update the storage settings for the '
                     'host.')
 
@@ -4494,19 +4494,19 @@ class HostController(rest.RestController):
         if backend.task == constants.SB_TASK_PROVISION_STORAGE:
             if HostController._check_provisioned_storage_hosts():
                 api.storage_backend_update(backend.uuid, {
-                    'task': constants.SB_TASK_RECONFIG_COMPUTE
+                    'task': constants.SB_TASK_RECONFIG_WORKER
                 })
-                # update manifest for all online/enabled compute nodes
-                # live apply new ceph manifest for all compute nodes that
+                # update manifest for all online/enabled worker nodes
+                # live apply new ceph manifest for all worker nodes that
                 # are online/enabled. The rest will pickup when unlock
                 LOG.info(
-                    'Apply new Ceph manifest to provisioned compute nodes.'
+                    'Apply new Ceph manifest to provisioned worker nodes.'
                 )
-                pecan.request.rpcapi.config_compute_for_ceph(
+                pecan.request.rpcapi.config_worker_for_ceph(
                     pecan.request.context
                 )
                 # mark all tasks completed after updating the manifests for
-                # all compute nodes.
+                # all worker nodes.
                 api.storage_backend_update(backend.uuid, {'task': None})
 
         elif backend.task == constants.SB_TASK_RESIZE_CEPH_MON_LV:
@@ -4633,8 +4633,8 @@ class HostController(rest.RestController):
                 # check the subfunctions are updated properly
                 LOG.info("hostupdate.ihost_patch.subfunctions %s" %
                          hostupdate.ihost_patch['subfunctions'])
-            elif hostupdate.ihost_patch['personality'] == constants.COMPUTE:
-                self._check_compute(hostupdate.ihost_patch, hostupdate)
+            elif hostupdate.ihost_patch['personality'] == constants.WORKER:
+                self._check_worker(hostupdate.ihost_patch, hostupdate)
             else:
                 LOG.error("Unexpected personality: %s" %
                           hostupdate.ihost_patch['personality'])
@@ -4660,12 +4660,12 @@ class HostController(rest.RestController):
                       "Host %s must be deleted and re-added in order to change "
                       "the subfunctions." % hostupdate.ihost_orig['hostname']))
 
-            if hostupdate.ihost_patch['personality'] == constants.COMPUTE:
-                valid_subfunctions = (constants.COMPUTE,
+            if hostupdate.ihost_patch['personality'] == constants.WORKER:
+                valid_subfunctions = (constants.WORKER,
                                       constants.LOWLATENCY)
             elif hostupdate.ihost_patch['personality'] == constants.CONTROLLER:
                 valid_subfunctions = (constants.CONTROLLER,
-                                      constants.COMPUTE,
+                                      constants.WORKER,
                                       constants.LOWLATENCY)
             elif hostupdate.ihost_patch['personality'] == constants.STORAGE:
                 # Comparison is expecting a list
@@ -4679,11 +4679,11 @@ class HostController(rest.RestController):
                     ("%s subfunctions %s contains unsupported values.  Allowable: %s." %
                      (hostupdate.displayid, subfunctions_set, valid_subfunctions)))
 
-            if hostupdate.ihost_patch['personality'] == constants.COMPUTE:
-                if constants.COMPUTE not in subfunctions_set:
+            if hostupdate.ihost_patch['personality'] == constants.WORKER:
+                if constants.WORKER not in subfunctions_set:
                     # Automatically add it
                     subfunctions_list = list(subfunctions_set)
-                    subfunctions_list.insert(0, constants.COMPUTE)
+                    subfunctions_list.insert(0, constants.WORKER)
                     subfunctions = ','.join(subfunctions_list)
 
                     LOG.info("%s update subfunctions=%s" %
@@ -4732,10 +4732,10 @@ class HostController(rest.RestController):
         if not personality:
             return
 
-        if personality == constants.COMPUTE and utils.is_aio_duplex_system():
-            if utils.get_compute_count() >= constants.AIO_DUPLEX_MAX_COMPUTES:
+        if personality == constants.WORKER and utils.is_aio_duplex_system():
+            if utils.get_worker_count() >= constants.AIO_DUPLEX_MAX_WORKERS:
                 msg = _("All-in-one Duplex is restricted to "
-                        "%s computes.") % constants.AIO_DUPLEX_MAX_COMPUTES
+                        "%s workers.") % constants.AIO_DUPLEX_MAX_WORKERS
                 raise wsme.exc.ClientSideError(msg)
             else:
                 return
@@ -4883,8 +4883,8 @@ class HostController(rest.RestController):
         if personality == constants.CONTROLLER:
             self.check_unlock_controller(hostupdate, force_unlock)
 
-        if cutils.host_has_function(hostupdate.ihost_patch, constants.COMPUTE):
-            self.check_unlock_compute(hostupdate)
+        if cutils.host_has_function(hostupdate.ihost_patch, constants.WORKER):
+            self.check_unlock_worker(hostupdate)
         elif personality == constants.STORAGE:
             self.check_unlock_storage(hostupdate)
 
@@ -4956,8 +4956,8 @@ class HostController(rest.RestController):
 
         subfunctions_set = \
             set(hostupdate.ihost_patch[constants.SUBFUNCTIONS].split(','))
-        if constants.COMPUTE in subfunctions_set:
-            self.check_lock_compute(hostupdate)
+        if constants.WORKER in subfunctions_set:
+            self.check_lock_worker(hostupdate)
 
         hostupdate.notify_vim = True
         hostupdate.notify_mtce = True
@@ -5081,9 +5081,9 @@ class HostController(rest.RestController):
         if utils.get_https_enabled():
             self._semantic_check_tpm_config(hostupdate.ihost_orig)
 
-    def check_unlock_compute(self, hostupdate):
-        """Check semantics on  host-unlock of a compute."""
-        LOG.info("%s ihost check_unlock_compute" % hostupdate.displayid)
+    def check_unlock_worker(self, hostupdate):
+        """Check semantics on  host-unlock of a worker."""
+        LOG.info("%s ihost check_unlock_worker" % hostupdate.displayid)
         ihost = hostupdate.ihost_orig
         if ihost['invprovision'] is None:
             raise wsme.exc.ClientSideError(
@@ -5093,7 +5093,7 @@ class HostController(rest.RestController):
 
         # Check whether a restore was properly completed
         self._semantic_check_restore_complete(ihost)
-        # Disable compute unlock checks in a kubernetes config
+        # Disable worker unlock checks in a kubernetes config
         if not utils.is_kubernetes_config():
             # sdn configuration check
             self._semantic_check_sdn_attributes(ihost)
@@ -5142,7 +5142,7 @@ class HostController(rest.RestController):
         # calculate the VM 4K huge pages for nova
         self._update_vm_4k_pages(ihost)
 
-        if cutils.is_virtual() or cutils.is_virtual_compute(ihost):
+        if cutils.is_virtual() or cutils.is_virtual_worker(ihost):
             mib_platform_reserved_no_io = mib_reserved
             required_platform = \
                 constants.PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX
@@ -5236,7 +5236,7 @@ class HostController(rest.RestController):
                             personality=constants.STORAGE)
                     except Exception:
                         raise wsme.exc.ClientSideError(
-                            _("Can not unlock a compute node until at "
+                            _("Can not unlock a worker node until at "
                               "least one storage node is unlocked and enabled."))
                     is_storage_host_unlocked = False
                     if storage_nodes:
@@ -5250,7 +5250,7 @@ class HostController(rest.RestController):
 
                     if not is_storage_host_unlocked:
                         raise wsme.exc.ClientSideError(
-                            _("Can not unlock a compute node until at "
+                            _("Can not unlock a worker node until at "
                               "least one storage node is unlocked and enabled."))
 
         # Local Storage checks
@@ -5435,7 +5435,7 @@ class HostController(rest.RestController):
         elif to_host_load_id == upgrade.from_load:
             # On CPE loads we must abort before we swact back to the old load
             # Any VMs on the active controller will be lost during the swact
-            if constants.COMPUTE in to_host.subfunctions:
+            if constants.WORKER in to_host.subfunctions:
                 raise wsme.exc.ClientSideError(
                     _("Upgrading: %s must be using load %s before this "
                       "operation can proceed. Currently using load %s.") %
@@ -5493,7 +5493,7 @@ class HostController(rest.RestController):
                               "Standby controller must be in available status.") %
                             (ihost_ctr.hostname))
 
-                if constants.COMPUTE in ihost_ctr.subfunctions:
+                if constants.WORKER in ihost_ctr.subfunctions:
                     if (ihost_ctr.subfunction_oper !=
                             constants.OPERATIONAL_ENABLED):
                         raise wsme.exc.ClientSideError(
@@ -5659,10 +5659,10 @@ class HostController(rest.RestController):
                                 "and replication is lost. This may result in data loss. ")
                         raise wsme.exc.ClientSideError(msg)
 
-    def check_lock_compute(self, hostupdate, force=False):
-        """Pre lock semantic checks for compute"""
+    def check_lock_worker(self, hostupdate, force=False):
+        """Pre lock semantic checks for worker"""
 
-        LOG.info("%s host check_lock_compute" % hostupdate.displayid)
+        LOG.info("%s host check_lock_worker" % hostupdate.displayid)
         if force:
             return
 
@@ -5692,7 +5692,7 @@ class HostController(rest.RestController):
                     # Allow AIO-DX lock of controller-1
                     return
             raise wsme.exc.ClientSideError(
-                _("Rejected: Can not lock %s with compute function "
+                _("Rejected: Can not lock %s with worker function "
                   "at this upgrade stage '%s'.") %
                 (hostupdate.displayid, upgrade_state))
 
@@ -5703,17 +5703,17 @@ class HostController(rest.RestController):
                 if hostname == constants.CONTROLLER_0_HOSTNAME:
                     return
             raise wsme.exc.ClientSideError(
-                _("Rejected: Can not lock %s with compute function "
+                _("Rejected: Can not lock %s with worker function "
                   "at this upgrade stage '%s'.") %
                 (hostupdate.displayid, upgrade_state))
 
     def check_unlock_interfaces(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""
         ihost = hostupdate.ihost_patch
-        if ihost['personality'] in [constants.CONTROLLER, constants.COMPUTE,
+        if ihost['personality'] in [constants.CONTROLLER, constants.WORKER,
                                     constants.STORAGE]:
             # Check if there is an infra interface on
-            # controller/compute/storage
+            # controller/worker/storage
             ihost_iinterfaces = \
                 pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid'])
 
@@ -5754,7 +5754,7 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(msg)
 
             # Check if there is an management interface on
-            # controller/compute/storage
+            # controller/worker/storage
             ihost_iinterfaces = pecan.request.dbapi.iinterface_get_by_ihost(
                 ihost['uuid'])
             network = pecan.request.dbapi.network_get_by_type(
@@ -5796,7 +5796,7 @@ class HostController(rest.RestController):
         # management and infrastrucutre interfaces via DHCP. This
         # 'check' updates the 'imtu' value based on what will be served
         # via DHCP.
-        if ihost['personality'] in [constants.COMPUTE, constants.STORAGE]:
+        if ihost['personality'] in [constants.WORKER, constants.STORAGE]:
             host_list = pecan.request.dbapi.ihost_get_by_personality(
                 personality=constants.CONTROLLER)
             interface_list_active = []
@@ -5938,7 +5938,7 @@ class HostController(rest.RestController):
                  ihost_obj['hostname'])
         pecan.request.rpcapi.configure_ihost(pecan.request.context,
                                              ihost_obj,
-                                             do_compute_apply=True)
+                                             do_worker_apply=True)
 
     @staticmethod
     def _stage_reboot(hostupdate):
@@ -6186,7 +6186,7 @@ class HostController(rest.RestController):
 def _create_node(host, xml_node, personality, is_dynamic_ip):
     host_node = et.SubElement(xml_node, 'host')
     et.SubElement(host_node, 'personality').text = personality
-    if personality == constants.COMPUTE:
+    if personality == constants.WORKER:
         et.SubElement(host_node, 'hostname').text = host.hostname
         et.SubElement(host_node, 'subfunctions').text = host.subfunctions
 

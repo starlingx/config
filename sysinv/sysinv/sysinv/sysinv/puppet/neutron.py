@@ -157,7 +157,7 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
 
     def get_host_config(self, host):
         if (constants.CONTROLLER not in utils.get_personalities(host) and
-                constants.COMPUTE not in utils.get_personalities(host)):
+                constants.WORKER not in utils.get_personalities(host)):
             return {}
 
         device_mappings = []

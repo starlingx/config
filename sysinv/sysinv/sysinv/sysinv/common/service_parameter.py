@@ -244,7 +244,7 @@ def _validate_ip_address(name, value):
 def _validate_emc_vnx_iscsi_initiators(name, value):
     """Check if iscsi_initiators value is valid.  An example of valid
        iscsi_initiators string:
-       {"compute-0": ["10.0.0.1", "10.0.0.2"], "compute-1": ["10.0.0.3"]}
+       {"worker-0": ["10.0.0.1", "10.0.0.2"], "worker-1": ["10.0.0.3"]}
     """
     try:
         iscsi_initiators = json.loads(value)
@@ -527,10 +527,10 @@ def _emc_vnx_destroy_data_san_address(data_san_addr_param, data_san_db):
             raise wsme.exc.ClientSideError(msg)
 
 
-def _validate_compute_boot_timeout(name, value):
+def _validate_worker_boot_timeout(name, value):
     _validate_range(name, value,
-                    SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT_MIN,
-                    SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT_MAX)
+                    SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_MIN,
+                    SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_MAX)
 
 
 def _validate_controller_boot_timeout(name, value):
@@ -1353,7 +1353,7 @@ CINDER_HPELEFTHAND_PARAMETER_RESOURCE = {
 
 # Maintenance Service Parameters
 PLATFORM_MTCE_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT,
+    constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT,
     constants.SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION,
@@ -1365,8 +1365,8 @@ PLATFORM_MTCE_PARAMETER_MANDATORY = [
 
 PLATFORM_SYSINV_PARAMETER_PROTECTED = ['firewall_rules_id']
 
-SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT_MIN = 720
-SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT_MAX = 1800
+SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_MIN = 720
+SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_MAX = 1800
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT_MIN = 1200
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT_MAX = 1800
 SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_MIN = 100
@@ -1385,8 +1385,8 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX = 86400
 
 PLATFORM_MTCE_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT:
-        _validate_compute_boot_timeout,
+    constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT:
+        _validate_worker_boot_timeout,
     constants.SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT:
         _validate_controller_boot_timeout,
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD:
@@ -1404,7 +1404,7 @@ PLATFORM_MTCE_PARAMETER_VALIDATOR = {
 }
 
 PLATFORM_MTCE_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT: 'platform::mtce::params::compute_boot_timeout',
+    constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT: 'platform::mtce::params::worker_boot_timeout',
     constants.SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT: 'platform::mtce::params::controller_boot_timeout',
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD: 'platform::mtce::params::heartbeat_period',
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION: 'platform::mtce::params::heartbeat_failure_action',

@@ -184,27 +184,27 @@ def update_db(archive_dir, backup_name):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def config_compute():
+def config_worker():
     """
-    Enable compute functionality for AIO system.
-    :return: True if compute-config-complete is executed
+    Enable worker functionality for AIO system.
+    :return: True if worker-config-complete is executed
     """
     if utils.get_system_type() == si_const.TIS_AIO_BUILD:
-        console_log("Applying compute manifests for {}. "
+        console_log("Applying worker manifests for {}. "
                     "Node will reboot on completion."
                     .format(utils.get_controller_hostname()))
-        sysinv.do_compute_config_complete(utils.get_controller_hostname())
+        sysinv.do_worker_config_complete(utils.get_controller_hostname())
         time.sleep(30)
-        # compute-config-complete has no logs to console. So, wait
+        # worker-config-complete has no logs to console. So, wait
         # for some time before showing the login prompt.
         for i in range(1, 10):
-            console_log("compute-config in progress..")
+            console_log("worker-config in progress..")
             time.sleep(30)
-        console_log("Timed out on do_compute_config_complete")
-        raise CloneFail("Timed out on do_compute_config_complete")
+        console_log("Timed out on do_worker_config_complete")
+        raise CloneFail("Timed out on do_worker_config_complete")
         return True
     else:
-        # compute_config_complete is not needed.
+        # worker_config_complete is not needed.
         return False
 
 
@@ -302,8 +302,8 @@ if os.path.exists(INI_FILE):
                 console_log("Images archive installed from [%s]" % clone_name)
                 finalize_install()
                 set_result(clone.OK)
-                if not config_compute():
-                    # do cleanup if compute_config_complete is not required
+                if not config_worker():
+                    # do cleanup if worker_config_complete is not required
                     cleanup()
             elif last_result == clone.OK:
                 # Installation completed successfully before last reboot

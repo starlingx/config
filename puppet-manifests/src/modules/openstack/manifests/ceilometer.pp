@@ -227,7 +227,7 @@ class openstack::ceilometer::polling (
      $central_namespace = false
    }
 
-   if (str2bool($::disable_compute_services) or
+   if (str2bool($::disable_worker_services) or
        $::platform::kubernetes::params::enabled) {
      $agent_enable = false
      $compute_namespace = false
@@ -238,7 +238,7 @@ class openstack::ceilometer::polling (
    } else {
      $agent_enable = true
 
-     if str2bool($::is_compute_subfunction) {
+     if str2bool($::is_worker_subfunction) {
        $pmon_target = "/etc/ceilometer/ceilometer-polling-compute.conf.pmon"
        $compute_namespace = true
      } else {

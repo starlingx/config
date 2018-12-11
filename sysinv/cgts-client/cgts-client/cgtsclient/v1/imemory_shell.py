@@ -39,11 +39,11 @@ def _print_imemory_show(imemory):
               'vSwitch Huge Pages: Size (MiB)',
               '                    Total',
               '                    Available',
-              'VM  Pages (4K): Total',
-              'VM  Huge Pages (2M): Total',
+              'Application  Pages (4K): Total',
+              'Application  Huge Pages (2M): Total',
               '                Total Pending',
               '                Available',
-              'VM  Huge Pages (1G): Total',
+              'Application  Huge Pages (1G): Total',
               '                Total Pending',
               '                Available',
               'uuid', 'ihost_uuid', 'inode_uuid',
@@ -157,7 +157,7 @@ def do_host_memory_list(cc, args):
            metavar='<1G hugepages number>',
            help='The number of 1G vm huge pages for the numa node')
 def do_host_memory_modify(cc, args):
-    """Modify platform reserved and/or libvirt vm huge page memory attributes for compute nodes."""
+    """Modify platform reserved and/or application huge page memory attributes for worker nodes."""
 
     rwfields = ['platform_reserved_mib',
                 'vm_hugepages_nr_2M_pending',

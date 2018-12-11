@@ -526,14 +526,14 @@ class PlatformPuppet(base.BasePuppet):
 
     def _get_host_cpu_config(self, host):
         config = {}
-        if constants.COMPUTE in utils.get_personalities(host):
+        if constants.WORKER in utils.get_personalities(host):
             host_cpus = self._get_host_cpu_list(host, threads=True)
             if not host_cpus:
                 return config
 
             # Define the full range of CPUs for the compute host
             max_cpu = max(host_cpus, key=operator.attrgetter('cpu'))
-            compute_cpu_list = "\"0-%d\"" % max_cpu.cpu
+            worker_cpu_list = "\"0-%d\"" % max_cpu.cpu
 
             platform_cpus_no_threads = self._get_platform_cpu_list(host)
             vswitch_cpus_no_threads = self._get_vswitch_cpu_list(host)
@@ -620,8 +620,8 @@ class PlatformPuppet(base.BasePuppet):
                                     platform_cpu_list,
                                     platform_cpu_list)
             config.update({
-                'platform::compute::params::compute_cpu_list':
-                    compute_cpu_list,
+                'platform::compute::params::worker_cpu_list':
+                    worker_cpu_list,
                 'platform::compute::params::platform_cpu_list':
                     platform_cpu_list_with_quotes,
                 'platform::compute::params::reserved_vswitch_cores':
@@ -635,7 +635,7 @@ class PlatformPuppet(base.BasePuppet):
 
     def _get_host_memory_config(self, host):
         config = {}
-        if constants.COMPUTE in utils.get_personalities(host):
+        if constants.WORKER in utils.get_personalities(host):
             host_memory = self.dbapi.imemory_get_by_ihost(host.id)
             memory_numa_list = utils.get_numa_index_list(host_memory)
 
@@ -716,7 +716,7 @@ class PlatformPuppet(base.BasePuppet):
             vm_1G = "\"%s\"" % ','.join([str(i) for i in vm_1G_pages])
 
             config.update({
-                'platform::compute::params::compute_base_reserved':
+                'platform::compute::params::worker_base_reserved':
                     platform_reserved_memory,
                 'platform::compute::params::compute_vswitch_reserved':
                     vswitch_reserved_memory,

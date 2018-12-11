@@ -67,7 +67,7 @@ class platform::postgresql::server (
   # work_mem 512 MB since some ceilometer queries entail extensive
   # sorting as well as hash joins and hash based aggregation.
   # checkpoint_segments increased to reduce frequency of checkpoints
-  if str2bool($::is_compute_subfunction) or str2bool($::is_virtual) {
+  if str2bool($::is_worker_subfunction) or str2bool($::is_virtual) {
     # AIO or virtual box
     # 700 connections needs about 80MB shared buffer
     # Leave work_mem as the default for vbox and AIO

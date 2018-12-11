@@ -289,13 +289,13 @@ class platform::config::controller::post
   }
 }
 
-class platform::config::compute::post
+class platform::config::worker::post
 {
-  file { "/etc/platform/.initial_compute_config_complete":
+  file { "/etc/platform/.initial_worker_config_complete":
      ensure => present,
   }
 
-  file { "/var/run/.compute_config_complete":
+  file { "/var/run/.worker_config_complete":
      ensure => present,
   }
 }

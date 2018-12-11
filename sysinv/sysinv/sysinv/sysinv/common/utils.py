@@ -879,12 +879,12 @@ def is_virtual():
     return bool(result == 'true')
 
 
-def is_virtual_compute(ihost):
-    if not(os.path.isdir("/etc/sysinv/.virtual_compute_nodes")):
+def is_virtual_worker(ihost):
+    if not(os.path.isdir("/etc/sysinv/.virtual_worker_nodes")):
         return False
     try:
         ip = ihost['mgmt_ip']
-        return os.path.isfile("/etc/sysinv/.virtual_compute_nodes/%s" % ip)
+        return os.path.isfile("/etc/sysinv/.virtual_worker_nodes/%s" % ip)
     except AttributeError:
         return False
 
@@ -913,9 +913,9 @@ def get_minimum_platform_reserved_memory(ihost, numa_node):
     reserved = 0
     if numa_node is None:
         return reserved
-    if is_virtual() or is_virtual_compute(ihost):
+    if is_virtual() or is_virtual_worker(ihost):
         # minimal memory requirements for VirtualBox
-        if host_has_function(ihost, constants.COMPUTE):
+        if host_has_function(ihost, constants.WORKER):
             if numa_node == 0:
                 reserved += 1200
                 if host_has_function(ihost, constants.CONTROLLER):
@@ -923,7 +923,7 @@ def get_minimum_platform_reserved_memory(ihost, numa_node):
             else:
                 reserved += 500
     else:
-        if host_has_function(ihost, constants.COMPUTE):
+        if host_has_function(ihost, constants.WORKER):
             # Engineer 2G per numa node for disk IO RSS overhead
             reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
     return reserved
@@ -939,10 +939,10 @@ def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
     required_reserved = 0
     if numa_node is None:
         return required_reserved
-    if is_virtual() or is_virtual_compute(ihost):
+    if is_virtual() or is_virtual_worker(ihost):
         # minimal memory requirements for VirtualBox
         required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX
-        if host_has_function(ihost, constants.COMPUTE):
+        if host_has_function(ihost, constants.WORKER):
             if numa_node == 0:
                 required_reserved += \
                     constants.PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX
@@ -957,11 +957,11 @@ def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
                 required_reserved += \
                     constants.DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX
     else:
-        if host_has_function(ihost, constants.COMPUTE):
+        if host_has_function(ihost, constants.WORKER):
             # Engineer 2G per numa node for disk IO RSS overhead
             required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
             if numa_node == 0:
-                # Engineer 2G for compute to give some headroom;
+                # Engineer 2G for worker to give some headroom;
                 # typically requires 650 MB PSS
                 required_reserved += \
                     constants.PLATFORM_CORE_MEMORY_RESERVED_MIB
@@ -1005,7 +1005,7 @@ def get_primary_network_type(interface):
     have 1 primary network type.  The additional network type can only be
     'data' and is used as a placeholder to indicate that there is at least one
     VLAN based neutron provider network associated to the interface.  This
-    information is used to determine whether the vswitch on the compute needs
+    information is used to determine whether the vswitch on the worker needs
     to control the interface or not.   This function examines the list of
     network types, discards the secondary type (if any) and returns the primary
     network type.
@@ -1215,7 +1215,7 @@ def get_personalities(host_obj):
 
 def is_cpe(host_obj):
     return (host_has_function(host_obj, constants.CONTROLLER) and
-            host_has_function(host_obj, constants.COMPUTE))
+            host_has_function(host_obj, constants.WORKER))
 
 
 def output_to_dict(output):

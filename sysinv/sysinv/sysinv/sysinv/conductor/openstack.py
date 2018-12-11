@@ -464,7 +464,7 @@ class OpenStackOperator(object):
         #
         #    can query it from do_aggregate_list
         #        ('Name', 'Availability Zone'); anyways it doesnt
-        #    allow duplicates on Name. can be done prior to compute nodes?
+        #    allow duplicates on Name. can be done prior to worker nodes?
         #
         # # On unlock, check whether exists: metadata is a key/value pair
         # 2. nova aggregate-set-metadata provider_physnet0 \

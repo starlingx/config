@@ -75,7 +75,7 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :returns: none ... uses asynchronous cast().
         """
         # fanout / broadcast message to all inventory agents
-        # to change systemname on all nodes ... standby controller and compute nodes
+        # to change systemname on all nodes ... standby controller and worker nodes
         LOG.debug("AgentApi.configure_isystemname: fanout_cast: sending systemname to agent")
         retval = self.fanout_cast(context, self.make_msg('configure_isystemname',
                            systemname=systemname))

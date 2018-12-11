@@ -481,8 +481,8 @@ def _check_host(ihost):
     elif ihost.administrative != constants.ADMIN_LOCKED and not \
             utils.is_host_simplex_controller(ihost):
         raise wsme.exc.ClientSideError(_('Host must be locked.'))
-    if constants.COMPUTE not in ihost.subfunctions:
-        raise wsme.exc.ClientSideError(_('Can only modify compute node cores.'))
+    if constants.WORKER not in ihost.subfunctions:
+        raise wsme.exc.ClientSideError(_('Can only modify worker node cores.'))
 
 
 def _update_vswitch_cpu_counts(host, cpu, counts, capabilities=None):
@@ -511,7 +511,7 @@ def _update_vswitch_cpu_counts(host, cpu, counts, capabilities=None):
             count *= 2
         counts[s][constants.VSWITCH_FUNCTION] = count
         # let the remaining values grow/shrink dynamically
-        counts[s][constants.VM_FUNCTION] = 0
+        counts[s][constants.APPLICATION_FUNCTION] = 0
         counts[s][constants.NO_FUNCTION] = 0
     return counts
 
@@ -543,7 +543,7 @@ def _update_shared_cpu_counts(host, cpu, counts, capabilities=None):
             count *= 2
         counts[s][constants.SHARED_FUNCTION] = count
         # let the remaining values grow/shrink dynamically
-        counts[s][constants.VM_FUNCTION] = 0
+        counts[s][constants.APPLICATION_FUNCTION] = 0
         counts[s][constants.NO_FUNCTION] = 0
     return counts
 
@@ -573,7 +573,7 @@ def _update_platform_cpu_counts(host, cpu, counts, capabilities=None):
             count *= 2
         counts[s][constants.PLATFORM_FUNCTION] = count
         # let the remaining values grow/shrink dynamically
-        counts[s][constants.VM_FUNCTION] = 0
+        counts[s][constants.APPLICATION_FUNCTION] = 0
         counts[s][constants.NO_FUNCTION] = 0
     return counts
 
