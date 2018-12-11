@@ -1356,7 +1356,6 @@ HELM_CHART_MAGNUM = 'magnum'
 HELM_CHART_MARIADB = 'mariadb'
 HELM_CHART_MEMCACHED = 'memcached'
 HELM_CHART_NEUTRON = 'neutron'
-HELM_CHART_NFS_PROVISIONER = 'nfs-provisioner'
 HELM_CHART_NOVA = 'nova'
 HELM_CHART_NOVA_API_PROXY = 'nova-api-proxy'
 HELM_CHART_OPENVSWITCH = 'openvswitch'
@@ -1381,7 +1380,6 @@ SUPPORTED_HELM_CHARTS = [
     HELM_CHART_MARIADB,
     HELM_CHART_MEMCACHED,
     HELM_CHART_NEUTRON,
-    HELM_CHART_NFS_PROVISIONER,
     HELM_CHART_NOVA,
     HELM_CHART_NOVA_API_PROXY,
     HELM_CHART_OPENVSWITCH,
@@ -1391,18 +1389,10 @@ SUPPORTED_HELM_CHARTS = [
 ]
 
 # Helm: Supported application (aka chart bundles)
-# TODO (rchurch): remove OSHELM applications.These are temporary chart bundles
-#                 until we fully integrate our k8s openstack application. Not
-#                 sure at this point if we'll need an AIO flavor (without Ceph
-#                 but with NFS support)
 HELM_APP_OPENSTACK = 'stx-openstack'
-HELM_APP_OSHELM_DEVELOPER = 'openstack-helm-developer'
-HELM_APP_OSHELM_MULTINODE = 'openstack-helm-multinode'
 
 SUPPORTED_HELM_APP_NAMES = [
-    HELM_APP_OPENSTACK,
-    HELM_APP_OSHELM_DEVELOPER,
-    HELM_APP_OSHELM_MULTINODE
+    HELM_APP_OPENSTACK
 ]
 
 SUPPORTED_HELM_APP_CHARTS = {
@@ -1426,37 +1416,6 @@ SUPPORTED_HELM_APP_CHARTS = {
         HELM_CHART_CEILOMETER,
         HELM_CHART_PANKO,
         HELM_CHART_AODH
-    ],
-    HELM_APP_OSHELM_DEVELOPER: [
-        HELM_CHART_INGRESS,
-        HELM_CHART_NFS_PROVISIONER,
-        HELM_CHART_MARIADB,
-        HELM_CHART_RABBITMQ,
-        HELM_CHART_MEMCACHED,
-        HELM_CHART_KEYSTONE,
-        HELM_CHART_HEAT,
-        HELM_CHART_HORIZON,
-        HELM_CHART_GLANCE,
-        HELM_CHART_OPENVSWITCH,
-        HELM_CHART_LIBVIRT,
-        HELM_CHART_NOVA,
-        HELM_CHART_NEUTRON
-    ],
-    HELM_APP_OSHELM_MULTINODE: [
-        HELM_CHART_INGRESS,
-        HELM_CHART_MARIADB,
-        HELM_CHART_RABBITMQ,
-        HELM_CHART_MEMCACHED,
-        HELM_CHART_KEYSTONE,
-        HELM_CHART_GLANCE,
-        HELM_CHART_CINDER,
-        HELM_CHART_OPENVSWITCH,
-        HELM_CHART_LIBVIRT,
-        HELM_CHART_NOVA,
-        HELM_CHART_NEUTRON,
-        HELM_CHART_HEAT,
-        HELM_CHART_BARBICAN,
-        HELM_CHART_MAGNUM
     ]
 }
 
