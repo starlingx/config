@@ -25,7 +25,7 @@ class StubGlanceClient(object):
     def __init__(self, images=None):
         self._images = []
         _images = images or []
-        map(lambda image: self.create(**image), _images)
+        [self.create(**image) for image in _images]
 
         # NOTE(bcwaldon): HACK to get client.images.* to work
         self.images = lambda: None

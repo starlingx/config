@@ -100,7 +100,7 @@ class FanoutRingExchange(RingExchange):
                   "see ringfile") % (nkey, )
             )
             return []
-        return map(lambda x: (key + '.' + x, x), self.ring[nkey])
+        return [(key + '.' + x, x) for x in self.ring[nkey]]
 
 
 class MatchMakerRing(mm.MatchMakerBase):

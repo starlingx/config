@@ -109,8 +109,7 @@ def get_backup_databases(cinder_config=False):
     # mentioned in BACKUP_DATABASES. We explicitly list
     # skip tables in DB_TABLE_SKIP_MAPPING
     BACKUP_DB_SKIP_TABLES = dict(
-        map(lambda x: [x, DB_TABLE_SKIP_MAPPING.get(x, ())],
-            BACKUP_DATABASES))
+        [[x, DB_TABLE_SKIP_MAPPING.get(x, ())] for x in BACKUP_DATABASES])
 
     return BACKUP_DATABASES, BACKUP_DB_SKIP_TABLES
 

@@ -510,7 +510,7 @@ def deserialize_msg(msg):
         return msg
 
     base_envelope_keys = (_VERSION_KEY, _MESSAGE_KEY)
-    if not all(map(lambda key: key in msg, base_envelope_keys)):
+    if not all([key in msg for key in base_envelope_keys]):
         #  See #1.b above.
         return msg
 
