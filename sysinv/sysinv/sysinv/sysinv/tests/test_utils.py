@@ -15,7 +15,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import __builtin__
 import errno
 import hashlib
 import os
@@ -27,6 +26,7 @@ import netaddr
 from oslo_config import cfg
 
 from six import StringIO
+from six.moves import builtins
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.tests import base
@@ -195,7 +195,7 @@ class GenericUtilsTestCase(base.TestCase):
 
     def test_read_modified_cached_file(self):
         self.mox.StubOutWithMock(os.path, "getmtime")
-        self.mox.StubOutWithMock(__builtin__, 'open')
+        self.mox.StubOutWithMock(builtins, 'open')
         os.path.getmtime(mox.IgnoreArg()).AndReturn(2)
 
         fake_contents = "lorem ipsum"
@@ -207,7 +207,7 @@ class GenericUtilsTestCase(base.TestCase):
                                       mox.IgnoreArg(),
                                       mox.IgnoreArg())
 
-        __builtin__.open(mox.IgnoreArg()).AndReturn(fake_context_manager)
+        builtins.open(mox.IgnoreArg()).AndReturn(fake_context_manager)
 
         self.mox.ReplayAll()
         cache_data = {"data": 1123, "mtime": 1}
