@@ -20,13 +20,13 @@ import errno
 import hashlib
 import os
 import os.path
-import StringIO
 import tempfile
 
 import mox
 import netaddr
 from oslo_config import cfg
 
+from six import StringIO
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.tests import base
@@ -224,7 +224,7 @@ class GenericUtilsTestCase(base.TestCase):
 
     def test_hash_file(self):
         data = 'Mary had a little lamb, its fleece as white as snow'
-        flo = StringIO.StringIO(data)
+        flo = StringIO(data)
         h1 = utils.hash_file(flo)
         h2 = hashlib.sha1(data).hexdigest()
         self.assertEqual(h1, h2)

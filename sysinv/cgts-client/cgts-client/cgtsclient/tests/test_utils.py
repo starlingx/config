@@ -14,12 +14,12 @@
 #    under the License.
 
 
-import cStringIO
 import sys
 
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.tests import utils as test_utils
+from six.moves import cStringIO as StringIO
 
 
 class UtilsTest(test_utils.BaseTestCase):
@@ -32,7 +32,7 @@ class UtilsTest(test_utils.BaseTestCase):
         # test that the prettytable output is wellformatted (left-aligned)
         saved_stdout = sys.stdout
         try:
-            sys.stdout = output_dict = cStringIO.StringIO()
+            sys.stdout = output_dict = StringIO()
             utils.print_dict({'K': 'k', 'Key': 'Value'})
 
         finally:
