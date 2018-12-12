@@ -288,12 +288,12 @@ class EthInterface(Interface):
 
     def getNetworkMap(self):
         return {
-                    'dataNetwork': lambda (node): DataNetwork(node),
-                    'infraNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
-                    'oamNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
-                    'mgmtNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_MGMT),
-                    'pciPassthrough': lambda (node): PciPassthrough(node),
-                    'pciSriov': lambda (node): PciSriov(node)
+                    'dataNetwork': lambda node: DataNetwork(node),
+                    'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
+                    'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
+                    'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT),
+                    'pciPassthrough': lambda node: PciPassthrough(node),
+                    'pciSriov': lambda node: PciSriov(node)
                  }
 
 
@@ -330,10 +330,10 @@ class AeInterface(Interface):
 
     def getNetworkMap(self):
         return {
-                    'dataNetwork': lambda (node): DataNetwork(node),
-                    'infraNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
-                    'oamNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
-                    'mgmtNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)
+                    'dataNetwork': lambda node: DataNetwork(node),
+                    'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
+                    'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
+                    'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)
                  }
 
     def validateWithIfNames(self, allInterfaceNames):

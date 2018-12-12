@@ -28,8 +28,8 @@ import threading
 import time
 
 import cgi
-import Queue
 import re
+import six.moves.queue as Queue
 import socket
 import stat
 from wsgiref import simple_server

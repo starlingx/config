@@ -40,8 +40,7 @@ postgres=# create user openstack_citest with createdb login password
 postgres=# create database openstack_citest with owner openstack_citest;
 
 """
-
-import commands
+import six
 from six.moves import configparser
 import os
 from six.moves.urllib.parse import urlparse
@@ -199,7 +198,13 @@ class BaseMigrationTestCase(test_utils.BaseTestCase):
         super(BaseMigrationTestCase, self).tearDown()
 
     def execute_cmd(self, cmd=None):
-        status, output = commands.getstatusoutput(cmd)
+        if six.PY2:
+            import commands
+            status, output = commands.getstatusoutput(cmd)
+        else:
+            import subprocess
+            status, output = subprocess.getstatusoutput(cmd)
+
         LOG.debug(output)
         self.assertEqual(0, status,
                          "Failed to run: %s\n%s" % (cmd, output))
