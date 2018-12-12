@@ -12,20 +12,22 @@ import subprocess
 import sys
 import textwrap
 import time
-import utils
+from controllerconfig import utils
 import uuid
 
-from common import constants
-from common import log
-from common import rest_api_utils as rutils
-from common.exceptions import KeystoneFail
+from controllerconfig.common import constants
+from controllerconfig.common import log
+from controllerconfig.common import rest_api_utils as rutils
+from controllerconfig.common.exceptions import KeystoneFail
 from configutilities.common import utils as cutils
-from configutilities.common.configobjects import REGION_CONFIG, SUBCLOUD_CONFIG
+from configutilities.common.configobjects import REGION_CONFIG
+from configutilities.common.configobjects import SUBCLOUD_CONFIG
 from configutilities import ConfigFail
-from configassistant import ConfigAssistant
+from controllerconfig.configassistant import ConfigAssistant
 from netaddr import IPAddress
-from systemconfig import parse_system_config, configure_management_interface, \
-    create_cgcs_config_file
+from controllerconfig.systemconfig import parse_system_config
+from controllerconfig.systemconfig import configure_management_interface
+from controllerconfig.systemconfig import create_cgcs_config_file
 from configutilities import DEFAULT_DOMAIN_NAME
 
 # Temporary file for building cgcs_config

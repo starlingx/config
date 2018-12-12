@@ -11,8 +11,8 @@ OpenStack Keystone Interactions
 import datetime
 import iso8601
 
-from exceptions import KeystoneFail
-import log
+from controllerconfig.common.exceptions import KeystoneFail
+from controllerconfig.common import log
 
 
 LOG = log.get_logger(__name__)

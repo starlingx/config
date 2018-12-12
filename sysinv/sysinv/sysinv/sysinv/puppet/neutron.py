@@ -7,8 +7,8 @@
 from sysinv.common import constants
 from sysinv.common import utils
 
-from . import interface
-from . import openstack
+from sysinv.puppet import interface
+from sysinv.puppet import openstack
 
 
 class NeutronPuppet(openstack.OpenstackBasePuppet):

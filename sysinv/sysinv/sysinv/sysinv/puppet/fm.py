@@ -5,7 +5,7 @@
 #
 
 
-from . import openstack
+from sysinv.puppet import openstack
 
 
 class FmPuppet(openstack.OpenstackBasePuppet):

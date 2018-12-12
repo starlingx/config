@@ -7,8 +7,8 @@
 from sysinv.common import constants
 from sysinv.common import exception
 
-from . import common
-from . import openstack
+from sysinv.helm import common
+from sysinv.helm import openstack
 
 
 class MagnumHelm(openstack.OpenstackBaseHelm):

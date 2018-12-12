@@ -6,7 +6,7 @@
 
 from sysinv.common import constants
 
-from . import openstack
+from sysinv.puppet import openstack
 
 
 class PatchingPuppet(openstack.OpenstackBasePuppet):

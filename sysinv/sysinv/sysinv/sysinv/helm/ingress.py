@@ -7,8 +7,8 @@
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
-from . import common
-from . import base
+from sysinv.helm import common
+from sysinv.helm import base
 
 LOG = logging.getLogger(__name__)
 

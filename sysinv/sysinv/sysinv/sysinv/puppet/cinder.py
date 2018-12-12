@@ -10,7 +10,7 @@ from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 
-from . import openstack
+from sysinv.puppet import openstack
 
 LOG = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ from sysinv.common import constants
 from tsconfig import tsconfig
 from urlparse import urlparse
 
-from . import openstack
+from sysinv.puppet import openstack
 
 
 OPENSTACK_PASSWORD_RULES_FILE = '/etc/keystone/password-rules.conf'

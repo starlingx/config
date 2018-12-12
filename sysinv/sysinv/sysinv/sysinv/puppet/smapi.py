@@ -7,7 +7,7 @@
 from sysinv.common import constants
 from sysinv.common import utils
 
-from . import openstack
+from sysinv.puppet import openstack
 
 
 class SmPuppet(openstack.OpenstackBasePuppet):

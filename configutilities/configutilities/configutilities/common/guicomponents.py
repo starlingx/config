@@ -6,8 +6,8 @@
 
 import wx
 
-from exceptions import ValidateFail
-import wrs_ico
+from configutilities.common.exceptions import ValidateFail
+from configutilities.common import wrs_ico
 
 TEXT_BOX_SIZE = (150, -1)
 TEXT_WIDTH = 450

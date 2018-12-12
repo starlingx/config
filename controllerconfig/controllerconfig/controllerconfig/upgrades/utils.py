@@ -18,11 +18,13 @@ import yaml
 # WARNING: The controller-1 upgrade is done before any puppet manifests
 # have been applied, so only the static entries from tsconfig can be used.
 # (the platform.conf file will not have been updated with dynamic values).
-from tsconfig.tsconfig import SW_VERSION, PLATFORM_PATH
+from tsconfig.tsconfig import SW_VERSION
+from tsconfig.tsconfig import PLATFORM_PATH
 
 from configutilities import DEFAULT_DOMAIN_NAME
 from controllerconfig import utils as cutils
-from controllerconfig.common import log, constants
+from controllerconfig.common import log
+from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
 
 

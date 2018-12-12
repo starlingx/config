@@ -45,7 +45,8 @@ from wsme import types as wtypes
 from configutilities import HOST_XML_ATTRIBUTES
 from fm_api import constants as fm_constants
 from fm_api import fm_api
-from pecan import expose, rest
+from pecan import expose
+from pecan import rest
 from sysinv import objects
 
 from sysinv.api.controllers.v1 import ethernet_port

@@ -10,8 +10,8 @@ Cluster Services API
 
 import json
 
-import pacemaker as crm
-import cluster_services as cluster
+from sysinv.cluster import pacemaker as crm
+from sysinv.cluster import cluster_services as cluster
 import logging
 
 LOG = logging.getLogger(__name__)

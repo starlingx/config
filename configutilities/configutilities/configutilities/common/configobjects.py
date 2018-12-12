@@ -6,9 +6,12 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from netaddr import IPRange
-from exceptions import ConfigFail, ValidateFail
-from utils import is_mtu_valid, is_valid_vlan, \
-    validate_network_str, validate_address_str
+from configutilities.common.exceptions import ConfigFail
+from configutilities.common.exceptions import ValidateFail
+from configutilities.common.utils import is_mtu_valid
+from configutilities.common.utils import is_valid_vlan
+from configutilities.common.utils import validate_network_str
+from configutilities.common.utils import validate_address_str
 
 DEFAULT_CONFIG = 0
 REGION_CONFIG = 1

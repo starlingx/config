@@ -15,8 +15,8 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 from sysinv.openstack.common import log as logging
 
-from . import common
-from . import quoted_str
+from sysinv.helm import common
+from sysinv.helm import quoted_str
 
 LOG = logging.getLogger('object')
 

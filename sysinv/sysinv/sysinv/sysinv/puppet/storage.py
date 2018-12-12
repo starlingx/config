@@ -8,7 +8,7 @@ import json
 
 from sysinv.common import constants
 
-from . import base
+from sysinv.puppet import base
 
 
 class StoragePuppet(base.BasePuppet):

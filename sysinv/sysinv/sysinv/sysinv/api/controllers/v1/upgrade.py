@@ -8,7 +8,8 @@
 # coding=utf-8
 #
 import pecan
-from pecan import rest, expose
+from pecan import rest
+from pecan import expose
 import os
 import six
 import socket

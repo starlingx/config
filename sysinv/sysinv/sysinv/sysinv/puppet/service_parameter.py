@@ -6,7 +6,7 @@
 
 from sysinv.common import service_parameter
 
-from . import base
+from sysinv.puppet import base
 
 from sysinv.openstack.common import log as logging
 LOG = logging.getLogger(__name__)

@@ -12,7 +12,8 @@ import pytest
 import sys
 
 import configutilities.common.exceptions as exceptions
-from configutilities import validate, DEFAULT_CONFIG
+from configutilities import validate
+from configutilities import DEFAULT_CONFIG
 
 sys.modules['fm_core'] = mock.Mock()
 

@@ -12,17 +12,26 @@ import readline
 import sys
 import textwrap
 
-from common import constants
-from common import log
-from common.exceptions import (BackupFail, RestoreFail, UserQuit, CloneFail)
-from configutilities import lag_mode_to_str, Network, validate
+from controllerconfig.common import constants
+from controllerconfig.common import log
+from controllerconfig.common.exceptions import BackupFail
+from controllerconfig.common.exceptions import RestoreFail
+from controllerconfig.common.exceptions import UserQuit
+from controllerconfig.common.exceptions import CloneFail
+from configutilities import lag_mode_to_str
+from configutilities import Network
+from configutilities import validate
 from configutilities import ConfigFail
-from configutilities import DEFAULT_CONFIG, REGION_CONFIG, SUBCLOUD_CONFIG
-from configutilities import MGMT_TYPE, HP_NAMES, DEFAULT_NAMES
-from configassistant import ConfigAssistant
-import backup_restore
-import utils
-import clone
+from configutilities import DEFAULT_CONFIG
+from configutilities import REGION_CONFIG
+from configutilities import SUBCLOUD_CONFIG
+from configutilities import MGMT_TYPE
+from configutilities import HP_NAMES
+from configutilities import DEFAULT_NAMES
+from controllerconfig.configassistant import ConfigAssistant
+from controllerconfig import backup_restore
+from controllerconfig import utils
+from controllerconfig import clone
 
 # Temporary file for building cgcs_config
 TEMP_CGCS_CONFIG_FILE = "/tmp/cgcs_config"

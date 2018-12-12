@@ -8,7 +8,7 @@ from passlib.hash import ldap_salted_sha1 as hash
 
 from sysinv.common import constants
 
-from . import base
+from sysinv.puppet import base
 
 
 class LdapPuppet(base.BasePuppet):

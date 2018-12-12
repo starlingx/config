@@ -18,9 +18,10 @@ import shutil
 import sys
 
 import configutilities.common.exceptions as exceptions
-from configutilities import validate, REGION_CONFIG
+from configutilities import REGION_CONFIG
+from configutilities import validate
 import controllerconfig.common.keystone as keystone
-import test_answerfile
+from controllerconfig.tests import test_answerfile
 
 sys.modules['fm_core'] = mock.Mock()
 

@@ -6,8 +6,8 @@
 import json
 import pecan
 import socket
-from rest_api import get_token
-from rest_api import rest_api_request
+from sysinv.api.controllers.v1.rest_api import get_token
+from sysinv.api.controllers.v1.rest_api import rest_api_request
 from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)

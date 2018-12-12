@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 
 import wx
 
-from common.guicomponents import set_icons
-from common.validator import TiS_VERSION
-import configfiletool
-import hostfiletool
+from configutilities.common.guicomponents import set_icons
+from configutilities.common.validator import TiS_VERSION
+from configutilities import configfiletool
+from configutilities import hostfiletool
 
 TEXT_WIDTH = 560
 BTN_SIZE = (200, -1)

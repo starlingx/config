@@ -6,7 +6,7 @@
 
 from tsconfig.tsconfig import KEYRING_PATH
 from sysinv.common import constants
-from . import openstack
+from sysinv.puppet import openstack
 
 
 class MtcePuppet(openstack.OpenstackBasePuppet):

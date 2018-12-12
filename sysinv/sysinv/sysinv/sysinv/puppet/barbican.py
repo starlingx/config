@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from . import openstack
+from sysinv.puppet import openstack
 
 
 class BarbicanPuppet(openstack.OpenstackBasePuppet):

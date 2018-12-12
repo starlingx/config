@@ -42,7 +42,8 @@ from sysinv import objects
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
-from netaddr import IPAddress, AddrFormatError
+from netaddr import IPAddress
+from netaddr import AddrFormatError
 
 
 LOG = log.getLogger(__name__)

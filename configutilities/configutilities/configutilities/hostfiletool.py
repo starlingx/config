@@ -11,11 +11,16 @@ import xml.etree.ElementTree as ET
 
 import wx
 
-from common import utils, exceptions
-from common.guicomponents import Field, TYPES, prepare_fields, on_change, \
-    set_icons, handle_sub_show
-from common.configobjects import HOST_XML_ATTRIBUTES
-from common.validator import TiS_VERSION
+from configutilities.common import utils
+from configutilities.common import exceptions
+from configutilities.common.guicomponents import Field
+from configutilities.common.guicomponents import TYPES
+from configutilities.common.guicomponents import prepare_fields
+from configutilities.common.guicomponents import on_change
+from configutilities.common.guicomponents import set_icons
+from configutilities.common.guicomponents import handle_sub_show
+from configutilities.common.configobjects import HOST_XML_ATTRIBUTES
+from configutilities.common.validator import TiS_VERSION
 
 PAGE_SIZE = (200, 200)
 WINDOW_SIZE = (570, 700)

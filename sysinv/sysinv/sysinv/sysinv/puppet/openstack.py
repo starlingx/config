@@ -9,7 +9,7 @@ import keyring
 
 from sysinv.common import constants
 
-from . import base
+from sysinv.puppet import base
 
 
 class OpenstackBasePuppet(base.BasePuppet):

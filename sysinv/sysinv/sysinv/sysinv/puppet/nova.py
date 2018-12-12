@@ -14,8 +14,8 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 
-from . import openstack
-from . import interface
+from sysinv.puppet import openstack
+from sysinv.puppet import interface
 
 
 SCHEDULER_FILTERS_COMMON = [
