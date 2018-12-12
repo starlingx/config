@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014-2016 Wind River Systems, Inc.
+Copyright (c) 2014-2018 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -179,20 +179,20 @@ INITIAL_CONTROLLER_CONFIG_COMPLETE = os.path.join(
 VOLATILE_CONTROLLER_CONFIG_COMPLETE = os.path.join(
     VOLATILE_PATH, ".controller_config_complete")
 
-# Compute configuration flags
+# Worker configuration flags
 
 # Set after initial application of node manifest
 INITIAL_CONFIG_COMPLETE_FLAG = os.path.join(
     PLATFORM_CONF_PATH, ".initial_config_complete")
-# Set after the first application of compute manifests
-INITIAL_COMPUTE_CONFIG_COMPLETE = os.path.join(
-    PLATFORM_CONF_PATH, ".initial_compute_config_complete")
-# Set after each application of compute manifests
-VOLATILE_COMPUTE_CONFIG_COMPLETE = os.path.join(
-    VOLATILE_PATH, ".compute_config_complete")
-# Set to prevent starting compute services (used in combined node upgrade)
-VOLATILE_DISABLE_COMPUTE_SERVICES = os.path.join(
-    VOLATILE_PATH, ".disable_compute_services")
+# Set after the first application of worker manifests
+INITIAL_WORKER_CONFIG_COMPLETE = os.path.join(
+    PLATFORM_CONF_PATH, ".initial_worker_config_complete")
+# Set after each application of worker manifests
+VOLATILE_WORKER_CONFIG_COMPLETE = os.path.join(
+    VOLATILE_PATH, ".worker_config_complete")
+# Set to prevent starting worker services (used in combined node upgrade)
+VOLATILE_DISABLE_WORKER_SERVICES = os.path.join(
+    VOLATILE_PATH, ".disable_worker_services")
 
 # Storage configuration flags
 

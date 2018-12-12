@@ -16,14 +16,14 @@ CONFIG_PATH=${PLATFORM_PATH}/config/${SW_VERSION}
 PUPPET_PATH=${PLATFORM_PATH}/puppet/${SW_VERSION}
 CGCS_PATH=/opt/cgcs
 
-# Compute configuration flags
+# Worker configuration flags
 
-# Set after the first application of compute manifests
-INITIAL_COMPUTE_CONFIG_COMPLETE=${PLATFORM_CONF_PATH}/.initial_compute_config_complete
-# Set after each application of compute manifests
-VOLATILE_COMPUTE_CONFIG_COMPLETE=${VOLATILE_PATH}/.compute_config_complete
-# Set to prevent starting compute services (used in combined node upgrade)
-VOLATILE_DISABLE_COMPUTE_SERVICES=${VOLATILE_PATH}/.disable_compute_services
+# Set after the first application of worker manifests
+INITIAL_WORKER_CONFIG_COMPLETE=${PLATFORM_CONF_PATH}/.initial_worker_config_complete
+# Set after each application of worker manifests
+VOLATILE_WORKER_CONFIG_COMPLETE=${VOLATILE_PATH}/.worker_config_complete
+# Set to prevent starting worker services (used in combined node upgrade)
+VOLATILE_DISABLE_WORKER_SERVICES=${VOLATILE_PATH}/.disable_worker_services
 
 # Upgrade flags
 
