@@ -128,7 +128,7 @@ class UpdateCephCluster(base.DbTestCase):
             mock_fsid.assert_called()
 
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
-        self.assertNotEquals(self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH), [])
+        self.assertNotEqual(self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH), [])
 
         storage_0 = self._create_storage_ihost('storage-0')
 

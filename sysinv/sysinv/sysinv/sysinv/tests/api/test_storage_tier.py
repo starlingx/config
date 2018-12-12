@@ -513,7 +513,7 @@ class StorageTierIndependentTCs(base.FunctionalTest):
         self.assertEqual([constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH],
                           'platinum'],
                          tier_names)
-        self.assertEquals(2, len(tier_list['storage_tiers']))
+        self.assertEqual(2, len(tier_list['storage_tiers']))
 
 
 class StorageTierDependentTCs(base.FunctionalTest):
