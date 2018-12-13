@@ -10,10 +10,14 @@ System Inventory Interactions
 
 import json
 import openstack
-import urllib2
+
+from six.moves.urllib import request as urlrequest
+from six.moves.urllib.error import URLError
+from six.moves.urllib.error import HTTPError
 
 from controllerconfig.common import log
 from controllerconfig.common.exceptions import KeystoneFail
+
 
 LOG = log.get_logger(__name__)
 
@@ -153,11 +157,11 @@ class Host(object):
                                                     region_name)
             url += "/ihosts/" + self.name
 
-            request_info = urllib2.Request(url)
+            request_info = urlrequest.Request(url)
             request_info.add_header("X-Auth-Token", admin_token.get_id())
             request_info.add_header("Accept", "application/json")
 
-            request = urllib2.urlopen(request_info)
+            request = urlrequest.urlopen(request_info)
             response = json.loads(request.read())
             request.close()
             return response
@@ -166,13 +170,13 @@ class Host(object):
             LOG.error("Keystone authentication failed:{} ".format(e))
             return None
 
-        except urllib2.HTTPError as e:
+        except HTTPError as e:
             LOG.error("%s, %s" % (e.code, e.read()))
             if e.code == 401:
                 admin_token.set_expired()
             return None
 
-        except urllib2.URLError as e:
+        except URLError as e:
             LOG.error(e)
             return None
 
@@ -182,14 +186,14 @@ class Host(object):
                                                     region_name)
             url += "/ihosts/" + self.name
 
-            request_info = urllib2.Request(url)
+            request_info = urlrequest.Request(url)
             request_info.get_method = lambda: 'PATCH'
             request_info.add_header("X-Auth-Token", admin_token.get_id())
             request_info.add_header("Content-type", "application/json")
             request_info.add_header("Accept", "application/json")
             request_info.add_data(action)
 
-            request = urllib2.urlopen(request_info)
+            request = urlrequest.urlopen(request_info)
             request.close()
             return True
 
@@ -197,13 +201,13 @@ class Host(object):
             LOG.error("Keystone authentication failed:{} ".format(e))
             return False
 
-        except urllib2.HTTPError as e:
+        except HTTPError as e:
             LOG.error("%s, %s" % (e.code, e.read()))
             if e.code == 401:
                 admin_token.set_expired()
             return False
 
-        except urllib2.URLError as e:
+        except URLError as e:
             LOG.error(e)
             return False
 
@@ -314,11 +318,11 @@ def get_hosts(admin_token, region_name, personality=None,
                                                 region_name)
         url += "/ihosts/"
 
-        request_info = urllib2.Request(url)
+        request_info = urlrequest.Request(url)
         request_info.add_header("X-Auth-Token", admin_token.get_id())
         request_info.add_header("Accept", "application/json")
 
-        request = urllib2.urlopen(request_info)
+        request = urlrequest.urlopen(request_info)
         response = json.loads(request.read())
         request.close()
 
@@ -348,13 +352,13 @@ def get_hosts(admin_token, region_name, personality=None,
         LOG.error("Keystone authentication failed:{} ".format(e))
         return []
 
-    except urllib2.HTTPError as e:
+    except HTTPError as e:
         LOG.error("%s, %s" % (e.code, e.read()))
         if e.code == 401:
             admin_token.set_expired()
         return []
 
-    except urllib2.URLError as e:
+    except URLError as e:
         LOG.error(e)
         return []
 
