@@ -473,10 +473,6 @@ data:
             component: ks-service
         - type: job
           labels:
-            application: nova
-            component: ks-endpoints
-        - type: job
-          labels:
             application: placement
             component: ks-user
         - type: job
