@@ -13,10 +13,6 @@ global:
   #
   name: "rbd-provisioner"
   #
-  # Defines the namespace where provisioner runs.
-  #
-  namespace: kube-system
-  #
   # Execute initialization job to verify external Ceph cluster access
   # and setup additional dependencies assumed by dependent helm charts
   # (i.e. configmap and secrets).
@@ -135,10 +131,6 @@ classes:
   userId: kube
   # K8 secret name with key for accessing the Ceph pool
   userSecretName: ceph-secret-kube
-  # Namespaces for creating the k8s secrets for accessing the Ceph pools
-  pool_secrets_namespaces: kube-system
-  # Name of pool to configure
-  pool_name: kube-rbd
   # Pool replication
   replication: 1
   # Pool crush rule name

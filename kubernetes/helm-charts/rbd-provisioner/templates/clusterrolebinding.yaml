@@ -14,7 +14,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.rbac.serviceAccount }}
-    namespace: {{ .Values.global.namespace }}
+    namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
   name: {{ .Values.rbac.clusterRole }}

@@ -100,11 +100,11 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
-  name: kube-system-rbd-provisioner
+  name: openstack-rbd-provisioner
 data:
   chart_name: rbd-provisioner
-  release: kube-system-rbd-provisioner
-  namespace: kube-system
+  release: openstack-rbd-provisioner
+  namespace: openstack
   wait:
     timeout: 1800
     labels:
@@ -2403,7 +2403,7 @@ data:
   description: "Provisioner"
   sequenced: false
   chart_group:
-    - kube-system-rbd-provisioner
+    - openstack-rbd-provisioner
 ---
 schema: armada/ChartGroup/v1
 metadata:
