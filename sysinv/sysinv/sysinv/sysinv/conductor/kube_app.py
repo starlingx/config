@@ -842,7 +842,7 @@ class AppOperator(object):
                     LOG.info("Application overrides generated.")
                     # Ensure all chart overrides are readable by Armada
                     for file in overrides_files:
-                        os.chmod(file, 0644)
+                        os.chmod(file, 0o644)
                     overrides_str =\
                         self._generate_armada_overrides_str(overrides_files)
                     self._update_app_status(

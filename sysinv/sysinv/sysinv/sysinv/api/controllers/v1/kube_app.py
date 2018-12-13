@@ -32,7 +32,7 @@ LOG = log.getLogger(__name__)
 @contextmanager
 def TempDirectory():
     tmpdir = tempfile.mkdtemp()
-    saved_umask = os.umask(0077)
+    saved_umask = os.umask(0o077)
     try:
         yield tmpdir
     finally:

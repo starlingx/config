@@ -248,7 +248,7 @@ def cleanup():
     if os.path.exists(OLD_FILE):
         os.remove(OLD_FILE)
     if os.path.exists(INI_FILE):
-        os.chmod(INI_FILE, 0400)
+        os.chmod(INI_FILE, 0o400)
         shutil.move(INI_FILE, tsconfig.PLATFORM_CONF_PATH)
     shutil.rmtree(os.path.join("/", clone.CLONE_ARCHIVE_DIR),
                   ignore_errors=True)

@@ -640,7 +640,7 @@ def backup_ldap(archive, staging_dir):
     """ Backup ldap configuration """
     try:
         ldap_staging_dir = staging_dir + '/ldap'
-        os.mkdir(ldap_staging_dir, 0655)
+        os.mkdir(ldap_staging_dir, 0o655)
 
         subprocess.check_call([
             'slapcat', '-d', '0', '-F', '/etc/openldap/schema',
@@ -727,7 +727,7 @@ def backup_postgres(archive, staging_dir, cinder_config=False):
     """ Backup postgres configuration """
     try:
         postgres_staging_dir = staging_dir + '/postgres'
-        os.mkdir(postgres_staging_dir, 0655)
+        os.mkdir(postgres_staging_dir, 0o655)
 
         # Backup roles, table spaces and schemas for databases.
         subprocess.check_call([('sudo -u postgres pg_dumpall --clean ' +
@@ -903,7 +903,7 @@ def backup_ceph_crush_map(archive, staging_dir):
     """ Backup ceph crush map """
     try:
         ceph_staging_dir = os.path.join(staging_dir, 'ceph')
-        os.mkdir(ceph_staging_dir, 0655)
+        os.mkdir(ceph_staging_dir, 0o655)
         crushmap_file = os.path.join(ceph_staging_dir,
                                      sysinv_constants.CEPH_CRUSH_MAP_BACKUP)
         subprocess.check_call(['ceph', 'osd', 'getcrushmap',
