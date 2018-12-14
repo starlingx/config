@@ -177,7 +177,7 @@ def get_cpuprofile_data(cc, iprofile):
     iprofile.platform_cores = get_core_list_str(iprofile, icpu_utils.PLATFORM_CPU_TYPE)
     iprofile.vswitch_cores = get_core_list_str(iprofile, icpu_utils.VSWITCH_CPU_TYPE)
     iprofile.shared_cores = get_core_list_str(iprofile, icpu_utils.SHARED_CPU_TYPE)
-    iprofile.vms_cores = get_core_list_str(iprofile, icpu_utils.VMS_CPU_TYPE)
+    iprofile.vms_cores = get_core_list_str(iprofile, icpu_utils.APPLICATION_CPU_TYPE)
 
 
 def get_core_list_str(iprofile, function):
@@ -204,7 +204,7 @@ def do_cpuprofile_list(cc, args):
         profile.shared_cores = get_core_list_str(profile,
                                                  icpu_utils.SHARED_CPU_TYPE)
         profile.vms_cores = get_core_list_str(profile,
-                                              icpu_utils.VMS_CPU_TYPE)
+                                              icpu_utils.APPLICATION_CPU_TYPE)
 
     field_labels = ['uuid', 'name',
                     'processors', 'phy cores per proc', 'hyperthreading',

@@ -282,7 +282,7 @@ class SystemController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("Host {} must be locked.".format(h['hostname'])))
             elif (h['administrative'] != constants.ADMIN_LOCKED and
-                  constants.COMPUTE in h['subfunctions'] and
+                  constants.WORKER in h['subfunctions'] and
                   not api_utils.is_host_active_controller(h) and
                   not api_utils.is_host_simplex_controller(h)):
                 raise wsme.exc.ClientSideError(

@@ -94,4 +94,4 @@ class RPCAPITestCase(base.DbTestCase):
         self._test_rpcapi('configure_ihost',
                           'call',
                           host=self.fake_ihost,
-                          do_compute_apply=False)
+                          do_worker_apply=False)

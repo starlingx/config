@@ -15,12 +15,12 @@ Requires: systemd
 %description
 Startup configuration gate
 
-%package -n %{name}-compute
-Summary: config-gate-compute
+%package -n %{name}-worker
+Summary: config-gate-worker
 Group: base
 
-%description -n %{name}-compute
-Startup compute configuration gate
+%description -n %{name}-worker
+Startup worker configuration gate
 
 %define local_etc_systemd /etc/systemd/system/
 
@@ -35,8 +35,8 @@ make install SBINDIR=%{buildroot}%{_sbindir} SYSTEMDDIR=%{buildroot}%{local_etc_
 %post
 systemctl enable config.service
 
-%post -n %{name}-compute
-systemctl enable compute-config-gate.service
+%post -n %{name}-worker
+systemctl enable worker-config-gate.service
 
 %clean
 
@@ -46,7 +46,7 @@ systemctl enable compute-config-gate.service
 %{_sbindir}/wait_for_config_init.sh
 %{local_etc_systemd}/config.service
 
-%files -n %{name}-compute
+%files -n %{name}-worker
 %defattr(-,root,root,-)
-%{_sbindir}/wait_for_compute_config_init.sh
-%{local_etc_systemd}/compute-config-gate.service
+%{_sbindir}/wait_for_worker_config_init.sh
+%{local_etc_systemd}/worker-config-gate.service

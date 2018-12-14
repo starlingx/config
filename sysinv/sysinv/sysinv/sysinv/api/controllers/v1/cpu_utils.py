@@ -15,7 +15,7 @@ CORE_FUNCTIONS = [
     constants.PLATFORM_FUNCTION,
     constants.VSWITCH_FUNCTION,
     constants.SHARED_FUNCTION,
-    constants.VM_FUNCTION,
+    constants.APPLICATION_FUNCTION,
     constants.NO_FUNCTION
 ]
 
@@ -64,7 +64,7 @@ class CpuProfile(object):
                 cur_processor.vswitch += 1
             elif cpu.allocated_function == constants.SHARED_FUNCTION:
                 cur_processor.shared += 1
-            elif cpu.allocated_function == constants.VM_FUNCTION:
+            elif cpu.allocated_function == constants.APPLICATION_FUNCTION:
                 cur_processor.vms += 1
 
         self.number_of_cpu = len(self.processors)
@@ -108,12 +108,12 @@ class HostCpuProfile(CpuProfile):
         if platform_cores == 0:
             error_string = "There must be at least one core for %s." % \
                            constants.PLATFORM_FUNCTION
-        elif constants.COMPUTE in self.subfunctions and vswitch_cores == 0:
+        elif constants.WORKER in self.subfunctions and vswitch_cores == 0:
             error_string = "There must be at least one core for %s." % \
                            constants.VSWITCH_FUNCTION
-        elif constants.COMPUTE in self.subfunctions and vm_cores == 0:
+        elif constants.WORKER in self.subfunctions and vm_cores == 0:
             error_string = "There must be at least one core for %s." % \
-                           constants.VM_FUNCTION
+                           constants.APPLICATION_FUNCTION
         return error_string
 
 
@@ -140,12 +140,12 @@ def check_profile_core_functions(personality, profile):
     if platform_cores == 0:
         error_string = "There must be at least one core for %s." % \
                        constants.PLATFORM_FUNCTION
-    elif constants.COMPUTE in personality and vswitch_cores == 0:
+    elif constants.WORKER in personality and vswitch_cores == 0:
         error_string = "There must be at least one core for %s." % \
                        constants.VSWITCH_FUNCTION
-    elif constants.COMPUTE in personality and vm_cores == 0:
+    elif constants.WORKER in personality and vm_cores == 0:
         error_string = "There must be at least one core for %s." % \
-                       constants.VM_FUNCTION
+                       constants.APPLICATION_FUNCTION
     return error_string
 
 
@@ -162,26 +162,26 @@ def check_core_functions(personality, icpus):
             vswitch_cores += 1
         elif allocated_function == constants.SHARED_FUNCTION:
             shared_cores += 1
-        elif allocated_function == constants.VM_FUNCTION:
+        elif allocated_function == constants.APPLICATION_FUNCTION:
             vm_cores += 1
 
     error_string = ""
     if platform_cores == 0:
         error_string = "There must be at least one core for %s." % \
                        constants.PLATFORM_FUNCTION
-    elif constants.COMPUTE in personality and vswitch_cores == 0:
+    elif constants.WORKER in personality and vswitch_cores == 0:
         error_string = "There must be at least one core for %s." % \
                        constants.VSWITCH_FUNCTION
-    elif constants.COMPUTE in personality and vm_cores == 0:
+    elif constants.WORKER in personality and vm_cores == 0:
         error_string = "There must be at least one core for %s." % \
-                       constants.VM_FUNCTION
+                       constants.APPLICATION_FUNCTION
     return error_string
 
 
 def get_default_function(host):
     """Return the default function to be assigned to cpus on this host"""
-    if constants.COMPUTE in host.subfunctions:
-        return constants.VM_FUNCTION
+    if constants.WORKER in host.subfunctions:
+        return constants.APPLICATION_FUNCTION
     return constants.PLATFORM_FUNCTION
 
 
@@ -265,14 +265,14 @@ def check_core_allocations(host, cpu_counts, func):
         total_shared_cores += shared_cores
     if func.lower() == constants.PLATFORM_FUNCTION.lower():
         if ((constants.CONTROLLER in host.subfunctions) and
-                (constants.COMPUTE in host.subfunctions)):
+                (constants.WORKER in host.subfunctions)):
             if total_platform_cores < 2:
                 return "%s must have at least two cores." % \
                        constants.PLATFORM_FUNCTION
         elif total_platform_cores == 0:
             return "%s must have at least one core." % \
                    constants.PLATFORM_FUNCTION
-    if constants.COMPUTE in (host.subfunctions or host.personality):
+    if constants.WORKER in (host.subfunctions or host.personality):
         if func.lower() == constants.VSWITCH_FUNCTION.lower():
             if host.hyperthreading:
                 total_physical_cores = total_vswitch_cores / 2
@@ -287,7 +287,7 @@ def check_core_allocations(host, cpu_counts, func):
         reserved_for_vms = len(host.cpus) - total_platform_cores - total_vswitch_cores
         if reserved_for_vms <= 0:
             return "There must be at least one unused core for %s." % \
-                   constants. VM_FUNCTION
+                   constants.APPLICATION_FUNCTION
     else:
         if total_platform_cores != len(host.cpus):
             return "All logical cores must be reserved for platform use"

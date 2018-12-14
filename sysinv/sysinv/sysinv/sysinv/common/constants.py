@@ -102,9 +102,9 @@ CONFIG_ACTIONS = [SUBFUNCTION_CONFIG_ACTION,
 # Personalities
 CONTROLLER = 'controller'
 STORAGE = 'storage'
-COMPUTE = 'compute'
+WORKER = 'worker'
 
-PERSONALITIES = [CONTROLLER, STORAGE, COMPUTE]
+PERSONALITIES = [CONTROLLER, STORAGE, WORKER]
 
 # SUBFUNCTION FEATURES
 SUBFUNCTIONS = 'subfunctions'
@@ -114,7 +114,7 @@ LOWLATENCY = 'lowlatency'
 PLATFORM_FUNCTION = "Platform"
 VSWITCH_FUNCTION = "Vswitch"
 SHARED_FUNCTION = "Shared"
-VM_FUNCTION = "VMs"
+APPLICATION_FUNCTION = "Applications"
 NO_FUNCTION = "None"
 
 # Host Personality Sub-Types
@@ -223,8 +223,8 @@ COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND = 7000
 # Max number of physical cores in a xeon-d cpu
 NUMBER_CORES_XEOND = 8
 
-# Max number of computes that can be added to an AIO duplex system
-AIO_DUPLEX_MAX_COMPUTES = 4
+# Max number of workers that can be added to an AIO duplex system
+AIO_DUPLEX_MAX_WORKERS = 4
 
 # Network overhead for DHCP or vrouter, assume 100 networks * 40 MB each
 NETWORK_METADATA_OVERHEAD_MIB = 4000
@@ -244,7 +244,7 @@ NEUTRON_PROVIDERNET_FLAT = "flat"
 NEUTRON_PROVIDERNET_VXLAN = "vxlan"
 NEUTRON_PROVIDERNET_VLAN = "vlan"
 
-# Supported compute node vswitch types
+# Supported worker node vswitch types
 VSWITCH_TYPE_OVS_DPDK = "ovs-dpdk"
 VSWITCH_TYPE_NUAGE_VRS = "nuage_vrs"
 
@@ -420,7 +420,7 @@ SB_TASK_APPLY_CONFIG_FILE = 'applying-config-file'
 SB_TASK_RECONFIG_CONTROLLER = 'reconfig-controller'
 SB_TASK_PROVISION_STORAGE = 'provision-storage'
 SB_TASK_PROVISION_SERVICES = 'provision-services'
-SB_TASK_RECONFIG_COMPUTE = 'reconfig-compute'
+SB_TASK_RECONFIG_WORKER = 'reconfig-worker'
 SB_TASK_RESIZE_CEPH_MON_LV = 'resize-ceph-mon-lv'
 SB_TASK_ADD_OBJECT_GATEWAY = 'add-object-gateway'
 SB_TASK_RESTORE = 'restore'
@@ -1003,7 +1003,7 @@ SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE = 'maintenance'
 SERVICE_PARAM_SECTION_PLATFORM_SYSINV = 'sysinv'
 SERVICE_PARAM_NAME_SYSINV_FIREWALL_RULES_ID = 'firewall_rules_id'
 
-SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT = 'compute_boot_timeout'
+SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT = 'worker_boot_timeout'
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT = 'controller_boot_timeout'
 SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD = 'heartbeat_period'
 SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION = 'heartbeat_failure_action'
@@ -1012,7 +1012,7 @@ SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD = 'heartbeat_degrade_threshold'
 SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD = 'mnfa_threshold'
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT = 'mnfa_timeout'
 
-SERVICE_PARAM_PLAT_MTCE_COMPUTE_BOOT_TIMEOUT_DEFAULT = 720
+SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_DEFAULT = 720
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT_DEFAULT = 1200
 SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD_DEFAULT = 100
 SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_ACTION_DEFAULT = 'fail'
@@ -1286,11 +1286,11 @@ WARN_CINDER_ON_ROOT_WITH_CEPH = 2
 WARNING_ROOT_PV_CINDER_LVM_MSG = (
     "Warning: All deployed VMs must be booted from Cinder volumes and "
     "not use ephemeral or swap disks. See Titanium Cloud System Engineering "
-    "Guidelines for more details on supported compute configurations.")
+    "Guidelines for more details on supported worker configurations.")
 WARNING_ROOT_PV_CINDER_CEPH_MSG = (
-    "Warning: This compute must have instance_backing set to 'remote' "
+    "Warning: This worker must have instance_backing set to 'remote' "
     "or use a secondary disk for local storage. See Titanium Cloud System "
-    "Engineering Guidelines for more details on supported compute configurations.")
+    "Engineering Guidelines for more details on supported worker configurations.")
 PV_WARNINGS = {WARN_CINDER_ON_ROOT_WITH_LVM: WARNING_ROOT_PV_CINDER_LVM_MSG,
                WARN_CINDER_ON_ROOT_WITH_CEPH: WARNING_ROOT_PV_CINDER_CEPH_MSG}
 

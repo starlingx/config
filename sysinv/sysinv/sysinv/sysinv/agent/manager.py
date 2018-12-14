@@ -181,9 +181,9 @@ class AgentManager(service.PeriodicService):
     def _update_interface_irq_affinity(self, interface_list):
         cpus = {}
         platform_cpulist = '0'
-        with open('/etc/nova/compute_reserved.conf', 'r') as infile:
+        with open('/etc/platform/worker_reserved.conf', 'r') as infile:
             for line in infile:
-                if "COMPUTE_PLATFORM_CORES" in line:
+                if "WORKER_PLATFORM_CORES" in line:
                     val = line.split("=")
                     cores = val[1].strip('\n')[1:-1]
                     for n in cores.split():
@@ -863,7 +863,7 @@ class AgentManager(service.PeriodicService):
             LOG.exception("Sysinv Agent exception updating ilvg conductor.")
             pass
 
-        if constants.COMPUTE in self.subfunctions_list_get():
+        if constants.WORKER in self.subfunctions_list_get():
             platform_interfaces = []
             # retrieve the mgmt and infra interfaces and associated numa nodes
             try:
@@ -932,8 +932,8 @@ class AgentManager(service.PeriodicService):
             return: Bool whether subfunctions configuration is completed.
         """
         if (constants.CONTROLLER in subfunctions_list and
-                constants.COMPUTE in subfunctions_list):
-            if not os.path.exists(tsc.INITIAL_COMPUTE_CONFIG_COMPLETE):
+                constants.WORKER in subfunctions_list):
+            if not os.path.exists(tsc.INITIAL_WORKER_CONFIG_COMPLETE):
                 self._subfunctions_configured = False
                 return False
 
@@ -1011,8 +1011,8 @@ class AgentManager(service.PeriodicService):
         if constants.CONTROLLER in subfunctions:
             if not os.path.isfile(tsc.INITIAL_CONTROLLER_CONFIG_COMPLETE):
                 return False
-        if constants.COMPUTE in subfunctions:
-            if not os.path.isfile(tsc.INITIAL_COMPUTE_CONFIG_COMPLETE):
+        if constants.WORKER in subfunctions:
+            if not os.path.isfile(tsc.INITIAL_WORKER_CONFIG_COMPLETE):
                 return False
         if constants.STORAGE in subfunctions:
             if not os.path.isfile(tsc.INITIAL_STORAGE_CONFIG_COMPLETE):
@@ -1131,7 +1131,7 @@ class AgentManager(service.PeriodicService):
 
                 subfunctions_list = self.subfunctions_list_get()
                 if ((constants.CONTROLLER in subfunctions_list) and
-                        (constants.COMPUTE in subfunctions_list)):
+                        (constants.WORKER in subfunctions_list)):
                     if self.subfunctions_configured(subfunctions_list) and \
                             not self._wait_for_nova_lvg(icontext, rpcapi, self._ihost_uuid):
 
@@ -1499,7 +1499,7 @@ class AgentManager(service.PeriodicService):
 
             for subfunction in self.subfunctions_list_get():
                 # We need to find the subfunction that matches the personality
-                # being requested. e.g. in AIO systems if we request a compute
+                # being requested. e.g. in AIO systems if we request a worker
                 # personality we should apply the manifest with that
                 # personality
                 if subfunction in personalities:

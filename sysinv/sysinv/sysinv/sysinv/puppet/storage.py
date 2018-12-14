@@ -205,7 +205,7 @@ class StoragePuppet(base.BasePuppet):
         # LVM Global Filter is driven by:
         # - cgts-vg PVs       : controllers and all storage
         # - cinder-volumes PVs: controllers
-        # - nova-local PVs    : controllers and all computes
+        # - nova-local PVs    : controllers and all workers
 
         # Go through the PVs and
         pvs = self.dbapi.ipv_get_by_ihost(host.id)

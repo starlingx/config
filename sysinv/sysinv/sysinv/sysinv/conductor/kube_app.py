@@ -584,7 +584,7 @@ class AppOperator(object):
         # Get controller host(s)
         controller_hosts =\
             self._dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        if constants.COMPUTE in controller_hosts[0].subfunctions:
+        if constants.WORKER in controller_hosts[0].subfunctions:
             # AIO system
             labels = controller_labels_set.union(compute_labels_set)
             if op == constants.LABEL_ASSIGN_OP:
@@ -594,7 +594,7 @@ class AppOperator(object):
         else:
             # Standard system
             compute_hosts =\
-                self._dbapi.ihost_get_by_personality(constants.COMPUTE)
+                self._dbapi.ihost_get_by_personality(constants.WORKER)
             if op == constants.LABEL_ASSIGN_OP:
                 self._assign_host_labels(controller_hosts, controller_labels_set)
                 self._assign_host_labels(compute_hosts, compute_labels_set)

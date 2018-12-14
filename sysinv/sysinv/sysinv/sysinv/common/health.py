@@ -336,7 +336,7 @@ class Health(object):
             # If we are running on CPE we don't want any instances running
             # on controller-1 before we start the upgrade, otherwise the
             # databases will be out of sync after we lock controller-1
-            if constants.COMPUTE in controller_1.subfunctions:
+            if constants.WORKER in controller_1.subfunctions:
                 success, running_instances = self._check_running_instances(
                     controller_1)
                 output += \

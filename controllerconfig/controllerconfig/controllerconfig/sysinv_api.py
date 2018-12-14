@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014-2017 Wind River Systems, Inc.
+# Copyright (c) 2014-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,7 +23,7 @@ API_VERSION = 1
 HOST_PERSONALITY_NOT_SET = ""
 HOST_PERSONALITY_UNKNOWN = "unknown"
 HOST_PERSONALITY_CONTROLLER = "controller"
-HOST_PERSONALITY_COMPUTE = "compute"
+HOST_PERSONALITY_WORKER = "worker"
 HOST_PERSONALITY_STORAGE = "storage"
 
 # Host Administrative State Constants
@@ -87,8 +87,8 @@ class Host(object):
         # Set personality
         if host_data['personality'] == "controller":
             self.personality = HOST_PERSONALITY_CONTROLLER
-        elif host_data['personality'] == "compute":
-            self.personality = HOST_PERSONALITY_COMPUTE
+        elif host_data['personality'] == "worker":
+            self.personality = HOST_PERSONALITY_WORKER
         elif host_data['personality'] == "storage":
             self.personality = HOST_PERSONALITY_STORAGE
         else:
@@ -334,8 +334,8 @@ def get_hosts(admin_token, region_name, personality=None,
                             personality == HOST_PERSONALITY_CONTROLLER):
                         host_list.append(Host(host['hostname'], host))
 
-                    elif (host['personality'] == "compute" and
-                          personality == HOST_PERSONALITY_COMPUTE):
+                    elif (host['personality'] == "worker" and
+                          personality == HOST_PERSONALITY_WORKER):
                         host_list.append(Host(host['hostname'], host))
 
                     elif (host['personality'] == "storage" and
@@ -537,24 +537,24 @@ def get_host_data(hostname):
     return None
 
 
-def do_compute_config_complete(hostname):
-    """ enable compute functionality """
+def do_worker_config_complete(hostname):
+    """ enable worker functionality """
     try:
         with openstack.OpenStack() as client:
             hosts = get_hosts(client.admin_token,
                               client.conf['region_name'])
             for host in hosts:
                 if hostname == host.name:
-                    # Create/apply compute manifests
+                    # Create/apply worker manifests
                     values = {
                         'action': "subfunction_config"
                     }
                     patch = dict_to_patch(values)
-                    LOG.info("Applying compute manifests: {} [{}]"
+                    LOG.info("Applying worker manifests: {} [{}]"
                              .format(host, patch))
                     client.sysinv.ihost.update(host.uuid, patch)
     except Exception as e:
-        LOG.exception("compute_config_complete failed")
+        LOG.exception("worker_config_complete failed")
         raise e
 
 

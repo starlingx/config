@@ -41,13 +41,13 @@ class ProfileTestCase(base.FunctionalTest):
             subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
         )
-        self.compute = dbutils.create_test_ihost(
+        self.worker = dbutils.create_test_ihost(
             id='2',
             uuid=None,
             forisystemid=self.system.id,
-            hostname='compute-0',
-            personality=constants.COMPUTE,
-            subfunctions=constants.COMPUTE,
+            hostname='worker-0',
+            personality=constants.WORKER,
+            subfunctions=constants.WORKER,
             mgmt_mac='01:02.03.04.05.C0',
             mgmt_ip='192.168.24.12',
             invprovision=constants.PROVISIONED,
@@ -76,27 +76,27 @@ class ProfileTestCase(base.FunctionalTest):
                                      hugepages_configured=True,
                                      forinodeid=self.ctrlcpu.forinodeid))
 
-        self.compnode = self.dbapi.inode_create(self.compute.id,
+        self.compnode = self.dbapi.inode_create(self.worker.id,
                                                 dbutils.get_test_node(id=2))
         self.compcpu = self.dbapi.icpu_create(
-            self.compute.id,
+            self.worker.id,
             dbutils.get_test_icpu(id=5, cpu=3,
                                   forinodeid=self.compnode.id,
-                                  forihostid=self.compute.id))
+                                  forihostid=self.worker.id))
         self.compmemory = self.dbapi.imemory_create(
-            self.compute.id,
+            self.worker.id,
             dbutils.get_test_imemory(id=2, Hugepagesize=constants.MIB_1G,
                                      forinodeid=self.compcpu.forinodeid))
 
         self.disk = self.dbapi.idisk_create(
-            self.compute.id,
+            self.worker.id,
             dbutils.get_test_idisk(device_node='/dev/sdb',
                                    device_type=constants.DEVICE_TYPE_HDD))
         self.lvg = self.dbapi.ilvg_create(
-            self.compute.id,
+            self.worker.id,
             dbutils.get_test_lvg(lvm_vg_name=constants.LVG_NOVA_LOCAL))
         self.pv = self.dbapi.ipv_create(
-            self.compute.id,
+            self.worker.id,
             dbutils.get_test_pv(lvm_vg_name=constants.LVG_NOVA_LOCAL,
                                 disk_or_part_uuid=self.disk.uuid))
 
@@ -129,13 +129,13 @@ class ProfileCreateTestCase(ProfileTestCase):
 
     def test_create_memory_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_MEMORY
-        self.profile["ihost_uuid"] = self.compute.uuid
+        self.profile["ihost_uuid"] = self.worker.uuid
         response = self.post_json('%s' % self._get_path(), self.profile)
         self.assertEqual(http_client.OK, response.status_int)
 
     def test_create_storage_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_STORAGE
-        self.profile["ihost_uuid"] = self.compute.uuid
+        self.profile["ihost_uuid"] = self.worker.uuid
         response = self.post_json('%s' % self._get_path(), self.profile)
         self.assertEqual(http_client.OK, response.status_int)
 
@@ -176,7 +176,7 @@ class ProfileDeleteTestCase(ProfileTestCase):
 
     def test_delete_storage_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_STORAGE
-        self.profile["ihost_uuid"] = self.compute.uuid
+        self.profile["ihost_uuid"] = self.worker.uuid
         post_response = self.post_json('%s' % self._get_path(), self.profile)
         profile_data = self.get_json('%s' % self._get_path())
         storprofile_data = self.get_json(
@@ -227,7 +227,7 @@ class ProfileShowTestCase(ProfileTestCase):
 
     def test_show_storage_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_STORAGE
-        self.profile["ihost_uuid"] = self.compute.uuid
+        self.profile["ihost_uuid"] = self.worker.uuid
         self.post_json('%s' % self._get_path(), self.profile)
         list_data = self.get_json('%s' % self._get_path())
         profile_uuid = list_data['iprofiles'][0]['uuid']
@@ -272,7 +272,7 @@ class ProfileListTestCase(ProfileTestCase):
 
     def test_list_storage_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_STORAGE
-        self.profile["ihost_uuid"] = self.compute.uuid
+        self.profile["ihost_uuid"] = self.worker.uuid
         post_response = self.post_json('%s' % self._get_path(), self.profile)
         list_data = self.get_json('%s' % self._get_path())
         self.assertEqual(post_response.json['uuid'],
@@ -296,7 +296,7 @@ class ProfileApplyTestCase(ProfileTestCase):
         self.assertEqual(http_client.OK, result.status_int)
 
         hostcpu_r = self.get_json(
-            '/ihosts/%s/icpus' % self.compute.uuid)
+            '/ihosts/%s/icpus' % self.worker.uuid)
         profile_r = self.get_json(
             '%s/icpus' % self._get_path(profile_uuid))
         self.assertEqual(hostcpu_r['icpus'][0]['allocated_function'],
@@ -306,20 +306,20 @@ class ProfileApplyTestCase(ProfileTestCase):
     def test_apply_memory_success(self, mock_is_virtual):
         mock_is_virtual.return_value = True
         self.profile["profiletype"] = constants.PROFILE_TYPE_MEMORY
-        self.profile["ihost_uuid"] = self.compute.uuid
+        self.profile["ihost_uuid"] = self.worker.uuid
         response = self.post_json('%s' % self._get_path(), self.profile)
         self.assertEqual(http_client.OK, response.status_int)
 
         list_data = self.get_json('%s' % self._get_path())
         profile_uuid = list_data['iprofiles'][0]['uuid']
-        result = self.patch_dict_json('/ihosts/%s' % self.compute.id,
+        result = self.patch_dict_json('/ihosts/%s' % self.worker.id,
                                        headers=HEADER,
                                        action=constants.APPLY_PROFILE_ACTION,
                                        iprofile_uuid=profile_uuid)
         self.assertEqual(http_client.OK, result.status_int)
 
         hostmem_r = self.get_json(
-            '/ihosts/%s/imemorys' % self.compute.uuid)
+            '/ihosts/%s/imemorys' % self.worker.uuid)
         profile_r = self.get_json(
             '%s/imemorys' % self._get_path(profile_uuid))
         self.assertEqual(hostmem_r['imemorys'][0]['platform_reserved_mib'],
@@ -331,7 +331,7 @@ class ProfileApplyTestCase(ProfileTestCase):
 
     def test_apply_storage_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_LOCAL_STORAGE
-        self.profile["ihost_uuid"] = self.compute.uuid
+        self.profile["ihost_uuid"] = self.worker.uuid
         response = self.post_json('%s' % self._get_path(), self.profile)
         self.assertEqual(http_client.OK, response.status_int)
 
@@ -346,21 +346,21 @@ class ProfileApplyTestCase(ProfileTestCase):
         self.delete('/ilvgs/%s' % self.lvg.uuid)
 
         # Apply storage profile
-        result = self.patch_dict_json('/ihosts/%s' % self.compute.id,
+        result = self.patch_dict_json('/ihosts/%s' % self.worker.id,
                                       headers=HEADER,
                                       action=constants.APPLY_PROFILE_ACTION,
                                       iprofile_uuid=profile_uuid)
         self.assertEqual(http_client.OK, result.status_int)
 
         hostdisk_r = self.get_json(
-            '/ihosts/%s/idisks' % self.compute.uuid)
+            '/ihosts/%s/idisks' % self.worker.uuid)
         profile_r = self.get_json(
             '%s/idisks' % self._get_path(profile_uuid))
         self.assertEqual(hostdisk_r['idisks'][0]['device_path'],
                          profile_r['idisks'][0]['device_path'])
 
         hostpv_r = self.get_json(
-            '/ihosts/%s/ipvs' % self.compute.uuid)
+            '/ihosts/%s/ipvs' % self.worker.uuid)
         profile_r = self.get_json(
             '%s/ipvs' % self._get_path(profile_uuid))
         self.assertEqual(hostpv_r['ipvs'][1]['pv_type'],
@@ -370,7 +370,7 @@ class ProfileApplyTestCase(ProfileTestCase):
                              profile_r['ipvs'][0]['lvm_pv_name'])
 
         hostlvg_r = self.get_json(
-            '/ihosts/%s/ilvgs' % self.compute.uuid)
+            '/ihosts/%s/ilvgs' % self.worker.uuid)
         profile_r = self.get_json(
             '%s/ilvgs' % self._get_path(profile_uuid))
         self.assertEqual(hostlvg_r['ilvgs'][0]['lvm_vg_name'],

@@ -57,7 +57,7 @@ class DevicePuppet(base.BasePuppet):
         }
 
     def get_host_config(self, host):
-        if constants.COMPUTE not in host.subfunctions:
+        if constants.WORKER not in host.subfunctions:
             # configuration only required for compute hosts
             return {}
 

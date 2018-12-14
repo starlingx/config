@@ -1,0 +1,15 @@
+[Unit]
+Description=STX worker config gate
+After=sw-patch.service workerconfig.service
+Before=serial-getty@ttyS0.service getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/wait_for_worker_config_init.sh
+ExecStop=
+ExecReload=
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+

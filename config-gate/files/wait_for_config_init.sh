@@ -14,8 +14,8 @@ case $nodetype in
     controller)
         SERVICE=controllerconfig.service
         ;;
-    compute)
-        SERVICE=computeconfig.service
+    worker)
+        SERVICE=workerconfig.service
         ;;
     storage)
         SERVICE=storageconfig.service

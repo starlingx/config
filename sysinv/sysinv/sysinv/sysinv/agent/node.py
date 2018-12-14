@@ -43,10 +43,10 @@ SIZE_1G_MB = int(SIZE_1G_KB / SIZE_KB)
 # Defines the minimum size of memory for a controller node in megabyte units
 CONTROLLER_MIN_MB = 6000
 
-# Defines the minimum size of memory for a compute node in megabyte units
+# Defines the minimum size of memory for a worker node in megabyte units
 COMPUTE_MIN_MB = 1600
 
-# Defines the minimum size of memory for a secondary compute node in megabyte
+# Defines the minimum size of memory for a secondary worker node in megabyte
 # units
 COMPUTE_MIN_NON_0_MB = 500
 
@@ -300,19 +300,19 @@ class NodeOperator(object):
 
         imemory = []
 
-        initial_compute_config_completed = \
-            os.path.exists(tsc.INITIAL_COMPUTE_CONFIG_COMPLETE)
+        initial_worker_config_completed = \
+            os.path.exists(tsc.INITIAL_WORKER_CONFIG_COMPLETE)
 
         # check if it is initial report before the huge pages are allocated
-        initial_report = not initial_compute_config_completed
+        initial_report = not initial_worker_config_completed
 
-        # do not send report if the initial compute config is completed and
-        # compute config has not finished, i.e.during subsequent
+        # do not send report if the initial worker config is completed and
+        # worker config has not finished, i.e.during subsequent
         # reboot before the manifest allocates the huge pages
-        compute_config_completed = \
-            os.path.exists(tsc.VOLATILE_COMPUTE_CONFIG_COMPLETE)
-        if (initial_compute_config_completed and
-                not compute_config_completed):
+        worker_config_completed = \
+            os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
+        if (initial_worker_config_completed and
+                not worker_config_completed):
             return imemory
 
         for node in range(self.num_nodes):
@@ -461,14 +461,14 @@ class NodeOperator(object):
                     LOG.error("Failed to execute (%s) OS error (%d)", cmd,
                               e.errno)
 
-            # need to multiply total_mb by 1024 to match compute_huge
+            # need to multiply total_mb by 1024
             node_total_kb = total_hp_mb * SIZE_KB + free_kb + pss_mb * SIZE_KB
 
-            # Read base memory from compute_reserved.conf
+            # Read base memory from worker_reserved.conf
             base_mem_mb = 0
-            with open('/etc/nova/compute_reserved.conf', 'r') as infile:
+            with open('/etc/platform/worker_reserved.conf', 'r') as infile:
                 for line in infile:
-                    if "COMPUTE_BASE_RESERVED" in line:
+                    if "WORKER_BASE_RESERVED" in line:
                         val = line.split("=")
                         base_reserves = val[1].strip('\n')[1:-1]
                         for reserve in base_reserves.split():
@@ -585,19 +585,13 @@ class NodeOperator(object):
         return imemory
 
     def inodes_get_imemory(self):
-        '''Enumerate logical memory topology based on:
-              if CONF.compute_hugepages:
-                  self._inode_get_memory_hugepages()
-              else:
-                  self._inode_get_memory_nonhugepages()
-
+        '''Collect logical memory topology
         :param self
         :returns list of memory nodes and attributes
         '''
         imemory = []
 
-        # if CONF.compute_hugepages:
-        if os.path.isfile("/etc/nova/compute_reserved.conf"):
+        if os.path.isfile("/etc/platform/worker_reserved.conf"):
             imemory = self._inode_get_memory_hugepages()
         else:
             imemory = self._inode_get_memory_nonhugepages()

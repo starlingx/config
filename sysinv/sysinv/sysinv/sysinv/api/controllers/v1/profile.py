@@ -898,7 +898,7 @@ class ProfileController(rest.RestController):
             if 'profiletype' in profile_dict and profile_dict['profiletype']:
                 profiletype = profile_dict['profiletype']
                 if profiletype == constants.PROFILE_TYPE_STORAGE:
-                    if constants.COMPUTE in from_ihost.subfunctions:
+                    if constants.WORKER in from_ihost.subfunctions:
                         #  combo has no ceph
                         profiletype = constants.PROFILE_TYPE_LOCAL_STORAGE
                         LOG.info("No ceph backend for stor profile, assuming "
@@ -1136,7 +1136,7 @@ def _create_cpu_profile(profile_name, profile_node):
             self.processor_index = p_index
             self.core_index = c_index
             self.thread_index = t_index
-            self.core_function = constants.VM_FUNCTION
+            self.core_function = constants.APPLICATION_FUNCTION
 
     # The xml is validated against schema.
     # Validations that are covered by the schema are not checked below.
@@ -1750,7 +1750,7 @@ def _create_localstorage_profile(profile_name, profile_node):
     """
     values = dict(recordtype="profile",
                   hostname=profile_name,
-                  subfunctions=constants.COMPUTE)
+                  subfunctions=constants.WORKER)
 
     disks = profile_node.findall('disk')
     all_ilvg_nodes = profile_node.findall('lvg')  # should only be ONE ?
@@ -2179,7 +2179,7 @@ def _create_device_profile(device, pv_type, iprofile_id):
 def localstorageprofile_copy_data(host, profile):
     """Create nova-local storage profile from host data
 
-       All computes will have nova local storage and is independent of
+       All workers will have nova local storage and is independent of
        the Cinder backend.
 
        Controller nodes in the  small footprint scenario will always be
@@ -2189,7 +2189,7 @@ def localstorageprofile_copy_data(host, profile):
        A storage node should be the only host with a stor profile
        (idisks + istors).
 
-       A compute will only have a local stor profile
+       A worker will only have a local stor profile
        (idisks + ipvs + ilvgs).
 
        A combo controller should have a local stor profile
@@ -2467,7 +2467,7 @@ def cpuprofile_apply_to_host(host, profile):
         elif core_idx < vm_core_start:
             new_func = constants.SHARED_FUNCTION
         elif core_idx < vm_core_end:
-            new_func = constants.VM_FUNCTION
+            new_func = constants.APPLICATION_FUNCTION
 
         if new_func != hcpu.allocated_function:
             values = {'allocated_function': new_func}
@@ -2949,10 +2949,10 @@ def check_localstorageprofile_applicable(host, profile):
     """
 
     subfunctions = host.subfunctions
-    if constants.COMPUTE not in subfunctions:
+    if constants.WORKER not in subfunctions:
         raise wsme.exc.ClientSideError(_("%s with subfunctions: %s "
             "profile %s: Local storage profiles are applicable only to "
-            "hosts with 'compute' subfunction." %
+            "hosts with 'worker' subfunction." %
             (host.hostname, host.subfunctions, profile.hostname)))
 
     if not profile.disks:
@@ -3143,8 +3143,8 @@ def memoryprofile_applicable(host, profile):
         LOG.warn("Host nodes %s not same as profile nodes=%s" %
                  (len(host.nodes), len(profile.nodes)))
         return False
-    if constants.COMPUTE not in host.subfunctions:
-        LOG.warn("Profile cannot be applied to non-compute host")
+    if constants.WORKER not in host.subfunctions:
+        LOG.warn("Profile cannot be applied to non-worker host")
         return False
     return True
 

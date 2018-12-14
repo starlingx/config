@@ -513,32 +513,32 @@ def _check_host(lvg):
         raise wsme.exc.ClientSideError(_("Volume group operations not allowed "
                                          "on hosts with personality: %s") %
                                        constants.STORAGE)
-    elif (constants.COMPUTE not in ihost.subfunctions and
+    elif (constants.WORKER not in ihost.subfunctions and
               lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL):
         raise wsme.exc.ClientSideError(_("%s can only be added to a host which "
                                          "has a %s subfunction.") %
                                        (constants.LVG_NOVA_LOCAL,
-                                        constants.COMPUTE))
-    elif (ihost.personality == constants.COMPUTE and
+                                        constants.WORKER))
+    elif (ihost.personality == constants.WORKER and
           lvg['lvm_vg_name'] == constants.LVG_CGTS_VG and
           not utils.is_kubernetes_config()):
         raise wsme.exc.ClientSideError(_("%s can not be provisioned for %s "
                                          "hosts.") % (constants.LVG_CGTS_VG,
-                                                      constants.COMPUTE))
-    elif (ihost.personality in [constants.COMPUTE, constants.STORAGE] and
+                                                      constants.WORKER))
+    elif (ihost.personality in [constants.WORKER, constants.STORAGE] and
           lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES):
         raise wsme.exc.ClientSideError(_("%s can only be provisioned for %s "
                                          "hosts.") % (constants.LVG_CINDER_VOLUMES,
                                                       constants.CONTROLLER))
 
-    if (constants.COMPUTE in ihost['subfunctions'] and
+    if (constants.WORKER in ihost['subfunctions'] and
             lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL and
             (ihost['administrative'] != constants.ADMIN_LOCKED or
              ihost['ihost_action'] == constants.UNLOCK_ACTION)):
         raise wsme.exc.ClientSideError(_("Host must be locked"))
 
     if utils.is_kubernetes_config():
-        if (ihost.personality == constants.COMPUTE and
+        if (ihost.personality == constants.WORKER and
                 lvg['lvm_vg_name'] == constants.LVG_CGTS_VG and
                 (ihost['administrative'] != constants.ADMIN_LOCKED or
                  ihost['ihost_action'] == constants.UNLOCK_ACTION)):
@@ -662,7 +662,7 @@ def _check(op, lvg):
                 raise wsme.exc.ClientSideError(
                     _("Can't modify the volume group: %s. There are currently "
                       "%d instance volumes present in the volume group. "
-                      "Terminate or migrate all instances from the compute to "
+                      "Terminate or migrate all instances from the worker to "
                       "allow volume group madifications." %
                         (lvg['lvm_vg_name'], lvg['lvm_cur_lv'] - 1)))
 
@@ -683,7 +683,7 @@ def _check(op, lvg):
                 raise wsme.exc.ClientSideError(
                     _("Can't delete volume group: %s. There are currently %d "
                       "instance volumes present in the volume group. Terminate"
-                      " or migrate all instances from the compute to allow "
+                      " or migrate all instances from the worker to allow "
                       "volume group deletion." % (lvg['lvm_vg_name'],
                                                   lvg['lvm_cur_lv'] - 1)))
     else:

@@ -269,7 +269,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         host_cpus = self._get_host_cpu_list(host, threads=True)
         if host_cpus:
             vm_cpus = self._get_host_cpu_list(
-                host, function=constants.VM_FUNCTION, threads=True)
+                host, function=constants.APPLICATION_FUNCTION, threads=True)
             vm_cpu_list = [c.cpu for c in vm_cpus]
             vm_cpu_fmt = "\"%s\"" % utils.format_range_set(vm_cpu_list)
             default_config.update({'vcpu_pin_set': vm_cpu_fmt})
@@ -399,7 +399,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
 
         for host in hosts:
             if (host.invprovision == constants.PROVISIONED):
-                if constants.COMPUTE in utils.get_personalities(host):
+                if constants.WORKER in utils.get_personalities(host):
 
                     hostname = str(host.hostname)
                     default_config = {}

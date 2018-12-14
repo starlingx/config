@@ -317,7 +317,7 @@ class SystemHelper(object):
     @staticmethod
     def get_product_build():
         active_controller = HostHelper.get_active_controller()
-        if constants.COMPUTE in active_controller.subfunctions:
+        if constants.WORKER in active_controller.subfunctions:
             return constants.TIS_AIO_BUILD
         return constants.TIS_STD_BUILD
 
@@ -413,10 +413,10 @@ def is_aio_kubernetes(dbapi=None):
            is_kubernetes_config(dbapi)
 
 
-def get_compute_count(dbapi=None):
+def get_worker_count(dbapi=None):
     if not dbapi:
         dbapi = pecan.request.dbapi
-    return len(dbapi.ihost_get_by_personality(constants.COMPUTE))
+    return len(dbapi.ihost_get_by_personality(constants.WORKER))
 
 
 class SBApiHelper(object):

@@ -2,13 +2,13 @@
 # If these have dependencies, they will be pulled in automatically
 #
 
-# compute-huge
-compute-huge
+# worker-utils
+worker-utils
 
-# computeconfig
-computeconfig
-computeconfig-standalone
-computeconfig-subfunction
+# workerconfig
+workerconfig
+workerconfig-standalone
+workerconfig-subfunction
 
 # configutilities
 configutilities
@@ -30,7 +30,7 @@ sysinv
 
 # config-gate
 config-gate
-config-gate-compute
+config-gate-worker
 
 # puppet-manifests
 puppet-manifests

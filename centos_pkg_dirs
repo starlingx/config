@@ -1,5 +1,5 @@
-compute-huge
-computeconfig
+worker-utils
+workerconfig
 configutilities
 controllerconfig
 storageconfig

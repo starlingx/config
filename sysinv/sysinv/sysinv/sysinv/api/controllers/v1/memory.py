@@ -559,7 +559,7 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
                                    required_platform_reserved,
                                    max_platform_reserved))
 
-            if cutils.is_virtual() or cutils.is_virtual_compute(ihost):
+            if cutils.is_virtual() or cutils.is_virtual_worker(ihost):
                 LOG.warn(msg_platform_over)
             else:
                 raise wsme.exc.ClientSideError(msg_platform_over)

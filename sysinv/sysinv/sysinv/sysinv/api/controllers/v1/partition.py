@@ -336,16 +336,16 @@ class PartitionController(rest.RestController):
 
 def _check_host(partition, ihost, idisk):
     """Semantic checks for valid host"""
-    # Partitions should only be created on computes/controllers.
+    # Partitions should only be created on workers/controllers.
     if not ihost.personality:
         raise wsme.exc.ClientSideError(_("Host %s has uninitialized "
                                          "personality.") %
                                        ihost.hostname)
-    elif ihost.personality not in [constants.CONTROLLER, constants.COMPUTE]:
+    elif ihost.personality not in [constants.CONTROLLER, constants.WORKER]:
         raise wsme.exc.ClientSideError(_("Host personality must be a one of "
                                          "[%s, %s]") %
                                        (constants.CONTROLLER,
-                                        constants.COMPUTE))
+                                        constants.WORKER))
 
     # The disk must be present on the specified host.
     if ihost['id'] != idisk['forihostid']:
@@ -656,8 +656,8 @@ def _create(partition, iprofile=None, applyprofile=None):
         # Check if this host has been provisioned. If so, attempt an in-service
         # action. If not, we'll just stage the DB changes to and let the unlock
         # apply the manifest changes
-        #  - PROVISIONED: standard controller/compute (after config_controller)
-        #  - PROVISIONING: AIO (after config_controller) and before compute
+        #  - PROVISIONED: standard controller/worker (after config_controller)
+        #  - PROVISIONING: AIO (after config_controller) and before worker
         #                  configuration
         if (ihost.invprovision in [constants.PROVISIONED,
                                    constants.PROVISIONING] and

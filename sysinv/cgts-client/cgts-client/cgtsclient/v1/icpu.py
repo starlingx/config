@@ -20,24 +20,24 @@ CREATION_ATTRIBUTES = ['ihost_uuid', 'inode_uuid', 'cpu', 'core', 'thread',
 PLATFORM_CPU_TYPE = "Platform"
 VSWITCH_CPU_TYPE = "Vswitch"
 SHARED_CPU_TYPE = "Shared"
-VMS_CPU_TYPE = "VMs"
+APPLICATION_CPU_TYPE = "Applications"
 NONE_CPU_TYPE = "None"
 
 CPU_TYPE_LIST = [PLATFORM_CPU_TYPE, VSWITCH_CPU_TYPE,
-                 SHARED_CPU_TYPE, VMS_CPU_TYPE,
+                 SHARED_CPU_TYPE, APPLICATION_CPU_TYPE,
                  NONE_CPU_TYPE]
 
 
 PLATFORM_CPU_TYPE_FORMAT = _("Platform")
 VSWITCH_CPU_TYPE_FORMAT = _("vSwitch")
 SHARED_CPU_TYPE_FORMAT = _("Shared")
-VMS_CPU_TYPE_FORMAT = _("VMs")
+APPLICATION_CPU_TYPE_FORMAT = _("Applications")
 NONE_CPU_TYPE_FORMAT = _("None")
 
 CPU_TYPE_FORMATS = {PLATFORM_CPU_TYPE: PLATFORM_CPU_TYPE_FORMAT,
                     VSWITCH_CPU_TYPE: VSWITCH_CPU_TYPE_FORMAT,
                     SHARED_CPU_TYPE: SHARED_CPU_TYPE_FORMAT,
-                    VMS_CPU_TYPE: VMS_CPU_TYPE_FORMAT,
+                    APPLICATION_CPU_TYPE: APPLICATION_CPU_TYPE_FORMAT,
                     NONE_CPU_TYPE: NONE_CPU_TYPE_FORMAT}
 
 
@@ -106,19 +106,19 @@ def check_core_functions(personality, icpus):
             platform_cores += 1
         elif allocated_function == VSWITCH_CPU_TYPE:
             vswitch_cores += 1
-        elif allocated_function == VMS_CPU_TYPE:
+        elif allocated_function == APPLICATION_CPU_TYPE:
             vm_cores += 1
 
     error_string = ""
     if platform_cores == 0:
         error_string = ("There must be at least one core for %s." %
                         PLATFORM_CPU_TYPE_FORMAT)
-    elif personality == 'compute' and vswitch_cores == 0:
+    elif personality == 'worker' and vswitch_cores == 0:
         error_string = ("There must be at least one core for %s." %
                         VSWITCH_CPU_TYPE_FORMAT)
-    elif personality == 'compute' and vm_cores == 0:
+    elif personality == 'worker' and vm_cores == 0:
         error_string = ("There must be at least one core for %s." %
-                        VMS_CPU_TYPE_FORMAT)
+                        APPLICATION_CPU_TYPE_FORMAT)
     return error_string
 
 
@@ -191,7 +191,7 @@ def restructure_host_cpu_data(host):
                     cpufunction.socket_cores_number[s] = number_of_cores[f][s]
             else:
                 if (f == PLATFORM_CPU_TYPE or (hasattr(host, 'subfunctions')
-                                               and 'compute' in host.subfunctions)):
+                                               and 'worker' in host.subfunctions)):
                     if f != NONE_CPU_TYPE:
                         host.core_assignment.append(cpufunction)
                         for s in range(0, len(host.nodes)):

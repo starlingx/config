@@ -325,7 +325,7 @@ def lag_mode_to_str(lag_mode):
 
 
 def is_combined_load():
-    return 'compute' in tsconfig.subfunctions
+    return 'worker' in tsconfig.subfunctions
 
 
 def get_system_type():

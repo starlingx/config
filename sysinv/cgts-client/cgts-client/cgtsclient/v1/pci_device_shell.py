@@ -94,7 +94,7 @@ def do_host_device_list(cc, args):
            metavar='<enabled status>',
            help='The enabled status of the device')
 def do_host_device_modify(cc, args):
-    """Modify device availability for compute nodes."""
+    """Modify device availability for worker nodes."""
 
     rwfields = ['enabled',
                 'name']

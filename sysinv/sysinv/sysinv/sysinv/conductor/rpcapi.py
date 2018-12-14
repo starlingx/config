@@ -100,7 +100,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_obj=ihost_obj))
 
     def configure_ihost(self, context, host,
-                        do_compute_apply=False):
+                        do_worker_apply=False):
         """Synchronously, have a conductor configure an ihost.
 
         Does the following tasks:
@@ -110,12 +110,12 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         :param context: request context.
         :param host: an ihost object.
-        :param do_compute_apply: apply the newly created compute manifests.
+        :param do_worker_apply: apply the newly created worker manifests.
         """
         return self.call(context,
                          self.make_msg('configure_ihost',
                                        host=host,
-                                       do_compute_apply=do_compute_apply))
+                                       do_worker_apply=do_worker_apply))
 
     # TODO(CephPoolsDecouple): remove
     def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
@@ -788,13 +788,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_lvm_config'))
 
-    def config_compute_for_ceph(self, context):
-        """Synchronously, have the conductor update the compute configuration
+    def config_worker_for_ceph(self, context):
+        """Synchronously, have the conductor update the worker configuration
         for adding ceph.
 
         :param context: request context.
         """
-        return self.call(context, self.make_msg('config_compute_for_ceph'))
+        return self.call(context, self.make_msg('config_worker_for_ceph'))
 
     def update_drbd_config(self, context):
         """Synchronously, have the conductor update the drbd configuration.
@@ -876,7 +876,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        services=services))
 
     def config_update_nova_local_backed_hosts(self, context, instance_backing):
-        """Synchronously, have the conductor set the hosts with compute
+        """Synchronously, have the conductor set the hosts with worker
            functionality and with a certain nova-local instance backing to
            config out-of-date.
 

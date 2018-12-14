@@ -392,12 +392,12 @@
 
 200.012:
     Type: Alarm
-    Description: <hostname> controller function has in-service failure while compute services remain healthy.
+    Description: <hostname> controller function has in-service failure while worker services remain healthy.
     Entity_Instance_ID: host=<hostname>
     Severity: major
     Proposed_Repair_Action: |-
         Lock and then Unlock host to recover.
-        Avoid using 'Force Lock' action as that will impact compute services running on this host,
+        Avoid using 'Force Lock' action as that will impact worker services running on this host,
         If lock action fails then contact next level of support to investigate and recover.
     Maintenance_Action: "degrade - requires manual action"
     Inhibit_Alarms: false
@@ -408,10 +408,10 @@
 
 200.013:
     Type: Alarm
-    Description: <hostname> compute service of the only available controller is not poperational. Auto-recovery is disabled. Deggrading host instead.
+    Description: <hostname> worker service of the only available controller is not poperational. Auto-recovery is disabled. Deggrading host instead.
     Entity_Instance_ID: host=<hostname>
     Severity: major
-    Proposed_Repair_Action: Enable second controller and Switch Activity (Swact) over to it as soon as possible. Then Lock and Unlock host to recover its local compute service.
+    Proposed_Repair_Action: Enable second controller and Switch Activity (Swact) over to it as soon as possible. Then Lock and Unlock host to recover its local worker service.
     Maintenance_Action: "degrade - requires manual action"
     Inhibit_Alarms: false
     Alarm_Type: operational-violation
@@ -674,8 +674,8 @@
 # ---------------------------------------------------------------------------
 270.001:
     Type: Alarm
-    Description: "Host <host_name> compute services failure[, reason = <reason_text>]"
-    Entity_Instance_ID: host=<host_name>.services=compute
+    Description: "Host <host_name> worker services failure[, reason = <reason_text>]"
+    Entity_Instance_ID: host=<host_name>.services=worker
     Severity: critical
     Proposed_Repair_Action: Wait for host services recovery to complete; if problem persists contact next level of support
     Maintenance_Action:
@@ -687,7 +687,7 @@
 
 270.101:
     Type: Log
-    Description: "Host <host_name> compute services failure[, reason = <reason_text>]"
+    Description: "Host <host_name> worker services failure[, reason = <reason_text>]"
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Alarm_Type: equipment
@@ -696,7 +696,7 @@
 
 270.102:
     Type: Log
-    Description: Host <host_name> compute services enabled
+    Description: Host <host_name> worker services enabled
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Alarm_Type: equipment
@@ -705,7 +705,7 @@
 
 270.103:
     Type: Log
-    Description: Host <host_name> compute services disabled
+    Description: Host <host_name> worker services disabled
     Entity_Instance_ID: tenant=<tenant-uuid>.instance=<instance-uuid>
     Severity: critical
     Alarm_Type: equipment
@@ -774,10 +774,10 @@
 
 300.004:
     Type: Alarm
-    Description: No enabled compute host with connectivity to provider network.
+    Description: No enabled worker host with connectivity to provider network.
     Entity_Instance_ID: host=<hostname>.providernet=<pnet-uuid>
     Severity: major
-    Proposed_Repair_Action: Enable compute hosts with required provider network connectivity.
+    Proposed_Repair_Action: Enable worker hosts with required provider network connectivity.
     Maintenance_Action:
     Inhibit_Alarms:
     Alarm_Type: operational-violation

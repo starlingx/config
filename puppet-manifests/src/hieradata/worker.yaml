@@ -1,0 +1,68 @@
+# worker specific configuration data
+---
+
+# vswitch
+vswitch::dpdk::memory_channels: 4
+
+
+# neutron
+neutron::agents::dhcp::interface_driver: 'openvswitch'
+neutron::agents::dhcp::enable_isolated_metadata: true
+neutron::agents::dhcp::state_path: '/var/run/neutron'
+neutron::agents::dhcp::root_helper: 'sudo'
+
+neutron::agents::l3::interface_driver: 'openvswitch'
+neutron::agents::l3::metadata_port: 80
+neutron::agents::l3::agent_mode: 'dvr_snat'
+
+neutron::agents::ml2::ovs::manage_vswitch: false
+neutron::agents::ml2::ovs::datapath_type: 'netdev'
+neutron::agents::ml2::ovs::vhostuser_socket_dir: '/var/run/openvswitch'
+neutron::agents::ml2::ovs::firewall_driver: 'noop'
+
+neutron::agents::ml2::sriov::manage_service: true
+neutron::agents::ml2::sriov::polling_interval: 5
+
+
+# nova
+nova::compute::manage_service: false
+nova::compute::config_drive_format: 'iso9660'
+nova::compute::instance_usage_audit: true
+nova::compute::instance_usage_audit_period: 'hour'
+nova::compute::allow_resize_to_same_host: true
+nova::compute::force_raw_images: false
+nova::compute::reserved_host_memory: 0
+# We want to start up instances on bootup
+nova::compute::resume_guests_state_on_host_boot: true
+
+nova::compute::libvirt::compute_driver: 'libvirt.LibvirtDriver'
+nova::compute::libvirt::migration_support: true
+nova::compute::libvirt::libvirt_cpu_mode: 'none'
+nova::compute::libvirt::live_migration_downtime: 500
+nova::compute::libvirt::live_migration_downtime_steps: 10
+nova::compute::libvirt::live_migration_downtime_delay: 75
+nova::compute::libvirt::live_migration_completion_timeout: 180
+nova::compute::libvirt::live_migration_progress_timeout: 0
+nova::compute::libvirt::mem_stats_period_seconds: 0
+nova::compute::libvirt::remove_unused_base_images: true
+nova::compute::libvirt::remove_unused_resized_minimum_age_seconds: 86400
+nova::compute::libvirt::remove_unused_original_minimum_age_seconds: 3600
+nova::compute::libvirt::live_migration_flag: "VIR_MIGRATE_UNDEFINE_SOURCE, VIR_MIGRATE_PEER2PEER, VIR_MIGRATE_LIVE, VIR_MIGRATE_TUNNELLED"
+
+nova::network::neutron::neutron_username: 'neutron'
+nova::network::neutron::neutron_project_name: 'services'
+nova::network::neutron::neutron_user_domain_name: 'Default'
+nova::network::neutron::neutron_project_domain_name: 'Default'
+nova::network::neutron::neutron_region_name: RegionOne
+
+nova::compute::neutron::libvirt_vif_driver: 'nova.virt.libvirt.vif.LibvirtGenericVIFDriver'
+
+openstack::nova::compute::compute_monitors: "cpu.virt_driver"
+
+
+# ceilometer
+ceilometer::agent::auth::auth_endpoint_type: 'internalURL'
+ceilometer::agent::polling::central_namespace: false
+ceilometer::agent::polling::compute_namespace: true
+ceilometer::agent::polling::instance_discovery_method: 'workload_partitioning'
+ceilometer::agent::polling::ipmi_namespace: true

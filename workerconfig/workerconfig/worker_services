@@ -1,0 +1,220 @@
+#!/bin/bash
+#
+# Copyright (c) 2016-2018 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#
+# This script provides support for CPE upgrades. It will be called during swacts
+# by the /usr/local/sbin/sm-notification python script, if we are in a small
+# footprint system (CPE)
+#
+# During a swact to, the script will delete the $VOLATILE_DISABLE_WORKER_SERVICES
+# flag and re-apply the worker manifests.
+# During a swact away from (downgrades), the script re-create the
+# $VOLATILE_DISABLE_WORKER_SERVICES flag and re-apply the worker manifests.
+#
+# This script should only re-apply the worker manifests if;
+#     - It is running on a CPE (small footprint) system
+#     - It is controller-1
+#     - Controller-0 has not yet been upgraded
+#
+# This script logs to /var/log/platform.log
+#
+
+. /usr/bin/tsconfig
+. /etc/platform/platform.conf
+
+VOLATILE_CONFIG_PASS="/var/run/.config_pass"
+VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
+
+IN_PROGRESS="/var/run/.worker_services_in_progress"
+
+TEMP_MATE_ETC_DIR="$VOLATILE_PATH/etc_platform_worker"
+TEMP_PUPPET_DIR="$VOLATILE_PATH/puppet_worker"
+
+# Copy of /opt/platform populate by worker_config
+VOLATILE_PLATFORM_PATH=$VOLATILE_PATH/cpe_upgrade_opt_platform
+
+# Process id and full filename of this executable
+NAME="[$$] $0($1)"
+
+end_exec()
+{
+    rm $IN_PROGRESS
+    exit 0
+}
+
+init()
+{
+    local action_to_perform=$1
+
+    # This will log to /var/log/platform.log
+    logger -t $NAME -p local1.info  "Begin ..."
+
+    # Check if this program is currently executing, if so sleep for 5 seconds and check again.
+    # After 10 minutes of waiting assume something is wrong and exit.
+    count=0
+    while [ -f $IN_PROGRESS ] ; do
+       if [ $count -gt 120 ] ; then
+          logger -t $NAME -p local1.error "Execution completion of previous call is taking more than 10 minutes. Exiting."
+          end_exec
+       fi
+       logger -t $NAME -p local1.info "Sleep for 5 seconds"
+       let count++
+       sleep 5
+    done
+
+    touch $IN_PROGRESS
+
+    HOST=$(hostname)
+    if [ -z "$HOST" -o "$HOST" = "localhost" ] ; then
+        logger -t $NAME -p local1.error "Host undefiled"
+        end_exec
+    fi
+
+    # this script should only be performed on controller-1
+    if [ "$HOST" != "controller-1" ] ; then
+        logger -t $NAME -p local1.info "Exiting because this is not controller-1"
+        end_exec
+    fi
+
+    # This script should only be called if we are in a CPE system
+    sub_function=`echo "$subfunction" | cut -f 2 -d','`
+    if [ $sub_function != "worker" ] ; then
+        logger -t $NAME -p local1.error "Exiting because this is not CPE host"
+        end_exec
+    fi
+
+    # Exit if called while the config worker success flag file is not present
+    if [ ! -f $VOLATILE_CONFIG_PASS ] ; then
+        logger -t $NAME -p local1.info "Exiting due to non-presence of $VOLATILE_CONFIG_PASS file"
+        end_exec
+    fi
+
+    # Exit if called while the config worker failure flag file is present
+    if [ -f $VOLATILE_CONFIG_FAIL ] ; then
+        logger -t $NAME -p local1.info "Exiting due to presence of $VOLATILE_CONFIG_FAIL file"
+        end_exec
+    fi
+
+    # Ensure we only run if the controller config is complete
+    if [ ! -f /etc/platform/.initial_controller_config_complete ] ; then
+        logger -t $NAME -p local1.warn "exiting because CPE controller that has not completed initial config"
+        end_exec
+    fi
+
+    IPADDR=$(cat /etc/hosts | awk -v host=$HOST '$2 == host {print $1}')
+    if [ -z "$IPADDR" ] ; then
+        logger -t $NAME -p local1.error "Unable to get IP from host: $HOST"
+        end_exec
+    fi
+
+    # The platform filesystem was mounted in worker_config and copied in a temp
+    # location
+    if [ ! -f $VOLATILE_PLATFORM_PATH/config/${SW_VERSION}/hosts ] ; then
+        logger -t $NAME -p local1.error "Error accessing $VOLATILE_PLATFORM_PATH"
+        end_exec
+    fi
+
+    # Check the release version of controller-0
+    mkdir $TEMP_MATE_ETC_DIR
+
+    nfs-mount controller-0:/etc/platform $TEMP_MATE_ETC_DIR
+    if [ $? -eq 0 ] ; then
+        # Should only be executed when the releases do not match
+        MATE_SW_VERSION=$(source $TEMP_MATE_ETC_DIR/platform.conf && echo $sw_version)
+
+        logger -t $NAME -p local1.info  "SW_VERSION: $SW_VERSION  MATE_SW_VERSION: $MATE_SW_VERSION"
+
+        # Check whether software versions match on the two controllers
+        # Since controller-1 is always upgraded first (and downgraded
+        # last), we know that controller-1 is running a higher release
+        # than controller-0.
+        if [ $SW_VERSION == $MATE_SW_VERSION ] ; then
+           logger -t $NAME -p local1.info "Releases matches... do not continue"
+           umount $TEMP_MATE_ETC_DIR
+           rmdir $TEMP_MATE_ETC_DIR
+           end_exec
+        fi
+    else
+        logger -t $NAME -p local1.error "Unable to mount /etc/platform"
+        rmdir $TEMP_MATE_ETC_DIR
+        end_exec
+    fi
+
+    umount $TEMP_MATE_ETC_DIR
+    rmdir $TEMP_MATE_ETC_DIR
+
+    # Copy the puppet data into $TEMP_PUPPET_DIR
+
+    VOLATILE_PUPPET_PATH=${VOLATILE_PLATFORM_PATH}/puppet/${SW_VERSION}
+    logger -t $NAME -p local1.info "VOLATILE_PUPPET_PATH = $VOLATILE_PUPPET_PATH"
+
+    rm -rf $TEMP_PUPPET_DIR
+    cp -R $VOLATILE_PUPPET_PATH $TEMP_PUPPET_DIR
+    if [ $? -ne 0 ] ; then
+        logger -t $NAME -p local1.error "Failed to copy packstack directory $VOLATILE_PUPPET_PATH to $TEMP_PUPPET_DIR "
+        end_exec
+    fi
+
+    # Update the VOLATILE_DISABLE_WORKER_SERVICES flag and stop nova-compute if in "stop"
+    if [ $action_to_perform == "stop" ] ; then
+        logger -t $NAME -p local1.info  "Disabling compute services"
+
+        # Set the worker services disable flag used by the manifest
+        touch $VOLATILE_DISABLE_WORKER_SERVICES
+
+        # Stop nova-compute
+        logger -t $NAME -p local1.info  "Stopping nova-compute"
+        /etc/init.d/e_nova-init stop
+    else
+        logger -t $NAME -p local1.info  "Enabling compute services"
+
+        # Clear the worker services disable flag used by the manifest
+        rm $VOLATILE_DISABLE_WORKER_SERVICES
+    fi
+
+    # Apply the puppet manifest
+    HOST_HIERA=${TEMP_PUPPET_DIR}/hieradata/${IPADDR}.yaml
+    if [ -f ${HOST_HIERA} ]; then
+        echo "$0: Running puppet manifest apply"
+        puppet-manifest-apply.sh ${TEMP_PUPPET_DIR}/hieradata ${IPADDR} worker
+        RC=$?
+        if [ $RC -ne 0 ];
+        then
+            logger -t $NAME -p local1.info "Failed to run the puppet manifest (RC:$RC)"
+            end_exec
+        fi
+    else
+        logger -t $NAME -p local1.info "Host configuration not yet available for this node ($(hostname)=${IPADDR}); aborting configuration."
+        end_exec
+    fi
+
+    # Start nova-compute is we are starting compute services
+    if [ $action_to_perform == "start" ] ; then
+        logger -t $NAME -p local1.info  "Starting nova-compute"
+        /etc/init.d/e_nova-init start
+    fi
+
+    # Cleanup
+    rm -rf $TEMP_PUPPET_DIR
+
+    logger -t $NAME -p local1.info "... Done"
+    end_exec
+}
+
+case "$1" in
+    start)
+        init $1
+        ;;
+    stop)
+        init $1
+        ;;
+    *)
+        logger -t $NAME -p local1.info "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
+
+end_exec

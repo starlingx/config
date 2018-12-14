@@ -8,7 +8,7 @@ class platform::mtce::params (
   $auth_user_domain = undef,
   $auth_project_domain = undef,
   $auth_region = undef,
-  $compute_boot_timeout = undef,
+  $worker_boot_timeout = undef,
   $controller_boot_timeout = undef,
   $heartbeat_degrade_threshold = undef,
   $heartbeat_failure_threshold = undef,

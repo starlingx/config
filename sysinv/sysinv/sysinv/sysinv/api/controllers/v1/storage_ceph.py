@@ -733,7 +733,7 @@ def _apply_backend_changes(op, sb_obj):
 
 def _apply_nova_specific_changes(sb_obj, old_sb_obj=None):
     """If the backend's services have been modified and nova has been either
-       added or (re)moved, set the hosts with compute functionality and a
+       added or (re)moved, set the hosts with worker functionality and a
        certain nova-local instance backing to Config out-of-date.
     """
     services = api_helper.getListFromServices(sb_obj.as_dict())

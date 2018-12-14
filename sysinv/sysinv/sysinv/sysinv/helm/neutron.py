@@ -153,7 +153,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
 
         for host in hosts:
             if (host.invprovision == constants.PROVISIONED):
-                if constants.COMPUTE in utils.get_personalities(host):
+                if constants.WORKER in utils.get_personalities(host):
 
                     hostname = str(host.hostname)
                     host_neutron = {

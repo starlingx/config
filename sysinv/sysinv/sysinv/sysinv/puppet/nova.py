@@ -114,7 +114,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             raise exception.SysinvException('Failed to generate nova rsa key')
 
         # Generate an ecdsa key for the system, which will be used on all
-        # controller/compute nodes. When external ssh connections to the
+        # controller/worker nodes. When external ssh connections to the
         # controllers are made, this key will be stored in the known_hosts file
         # and allow connections after the controller swacts. The ecdsa key
         # has precedence over the rsa key, which is why we use ecdsa.
@@ -340,7 +340,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
 
     def get_host_config(self, host):
         config = {}
-        if constants.COMPUTE in host.subfunctions:
+        if constants.WORKER in host.subfunctions:
             # nova storage and compute configuration is required for hosts
             # with a compute function only
             config.update(self._get_compute_config(host))
@@ -569,7 +569,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
 
     def _get_vcpu_pin_set(self, host):
         vm_cpus = self._get_host_cpu_list(
-            host, function=constants.VM_FUNCTION, threads=True)
+            host, function=constants.APPLICATION_FUNCTION, threads=True)
         cpu_list = [c.cpu for c in vm_cpus]
         return "\"%s\"" % utils.format_range_set(cpu_list)
 

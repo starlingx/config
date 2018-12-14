@@ -47,7 +47,7 @@ def upgrade(migrate_engine):
                           name='recordtypeEnum')
 
     personalityEnum = Enum('controller',
-                           'compute',
+                           'worker',
                            'network',
                            'storage',
                            'profile',

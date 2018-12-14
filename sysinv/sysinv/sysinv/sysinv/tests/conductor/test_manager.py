@@ -101,7 +101,7 @@ class ManagerTestCase(base.DbTestCase):
                       'mgmt_ip': '1.2.3.4',
                       'hostname': 'newhost',
                       'invprovision': 'unprovisioned',
-                      'personality': 'compute',
+                      'personality': 'worker',
                       'administrative': 'locked',
                       'operational': 'disabled',
                       'availability': 'not-installed',
@@ -126,7 +126,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['mgmt_ip'] = '1.2.3.4'
         ihost['hostname'] = 'newhost'
         ihost['invprovision'] = 'unprovisioned'
-        ihost['personality'] = 'compute'
+        ihost['personality'] = 'worker'
         ihost['administrative'] = 'locked'
         ihost['operational'] = 'disabled'
         ihost['availability'] = 'not-installed'
@@ -142,7 +142,7 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(res['mgmt_ip'], '1.2.3.4')
         self.assertEqual(res['hostname'], 'newhost')
         self.assertEqual(res['invprovision'], 'unprovisioned')
-        self.assertEqual(res['personality'], 'compute')
+        self.assertEqual(res['personality'], 'worker')
         self.assertEqual(res['administrative'], 'locked')
         self.assertEqual(res['operational'], 'disabled')
         self.assertEqual(res['availability'], 'not-installed')
@@ -179,7 +179,7 @@ class ManagerTestCase(base.DbTestCase):
         # IOError: [Errno 13] Permission denied: '/tmp/dnsmasq.hosts'
         self.skipTest("Skipping to prevent failure notification on Jenkins")
         with open(self.dnsmasq_hosts_file, 'w') as f:
-            f.write("dhcp-host=08:00:27:0a:fa:fa,compute-1,192.168.204.25,2h\n")
+            f.write("dhcp-host=08:00:27:0a:fa:fa,worker-1,192.168.204.25,2h\n")
 
         ihost = self._create_test_ihost()
 
@@ -187,7 +187,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['mgmt_ip'] = '1.2.3.4'
         ihost['hostname'] = 'newhost'
         ihost['invprovision'] = 'unprovisioned'
-        ihost['personality'] = 'compute'
+        ihost['personality'] = 'worker'
         ihost['administrative'] = 'locked'
         ihost['operational'] = 'disabled'
         ihost['availability'] = 'not-installed'
@@ -202,7 +202,7 @@ class ManagerTestCase(base.DbTestCase):
         with open(self.dnsmasq_hosts_file, 'r') as f:
             self.assertEqual(
                 f.readline(),
-                "dhcp-host=08:00:27:0a:fa:fa,compute-1,192.168.204.25,2h\n")
+                "dhcp-host=08:00:27:0a:fa:fa,worker-1,192.168.204.25,2h\n")
             self.assertEqual(
                 f.readline(),
                 "dhcp-host=00:11:22:33:44:55,newhost,1.2.3.4,2h\n")
@@ -215,7 +215,7 @@ class ManagerTestCase(base.DbTestCase):
         self.skipTest("Skipping to prevent failure notification on Jenkins")
         with open(self.dnsmasq_hosts_file, 'w') as f:
             f.write("dhcp-host=00:11:22:33:44:55,oldhost,1.2.3.4,2h\n")
-            f.write("dhcp-host=08:00:27:0a:fa:fa,compute-1,192.168.204.25,2h\n")
+            f.write("dhcp-host=08:00:27:0a:fa:fa,worker-1,192.168.204.25,2h\n")
 
         ihost = self._create_test_ihost()
 
@@ -223,7 +223,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['mgmt_ip'] = '1.2.3.42'
         ihost['hostname'] = 'newhost'
         ihost['invprovision'] = 'unprovisioned'
-        ihost['personality'] = 'compute'
+        ihost['personality'] = 'worker'
         ihost['administrative'] = 'locked'
         ihost['operational'] = 'disabled'
         ihost['availability'] = 'not-installed'
@@ -241,7 +241,7 @@ class ManagerTestCase(base.DbTestCase):
                 "dhcp-host=00:11:22:33:44:55,newhost,1.2.3.42,2h\n")
             self.assertEqual(
                 f.readline(),
-                "dhcp-host=08:00:27:0a:fa:fa,compute-1,192.168.204.25,2h\n")
+                "dhcp-host=08:00:27:0a:fa:fa,worker-1,192.168.204.25,2h\n")
 
     def test_configure_ihost_no_hostname(self):
         # Test skipped to prevent error message in Jenkins. Error thrown is:

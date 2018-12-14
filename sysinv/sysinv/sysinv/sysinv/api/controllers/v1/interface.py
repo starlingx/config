@@ -979,9 +979,9 @@ def _check_network_type_validity(networktypelist):
 def _check_network_type_and_host_type(ihost, networktypelist):
     for nt in DATA_NETWORK_TYPES:
         if (nt in networktypelist and
-                constants.COMPUTE not in ihost['subfunctions']):
+                constants.WORKER not in ihost['subfunctions']):
             msg = _("The '%s' network type is only supported on nodes "
-                    "supporting compute functions" % nt)
+                    "supporting worker functions" % nt)
             raise wsme.exc.ClientSideError(msg)
 
     if (constants.NETWORK_TYPE_OAM in networktypelist and
