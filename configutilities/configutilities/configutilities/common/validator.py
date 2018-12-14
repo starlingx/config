@@ -10,7 +10,7 @@ from configobjects import DEFAULT_NAMES, NETWORK_PREFIX_NAMES, OAM_TYPE, \
 from netaddr import IPRange
 from utils import lag_mode_to_str, validate_network_str, \
     check_network_overlap, is_mtu_valid, is_speed_valid, get_service, \
-    get_optional
+    get_optional, validate_address_str
 
 from exceptions import ConfigFail, ValidateFail
 
@@ -359,6 +359,8 @@ class ConfigValidator(object):
 
     def validate_pxeboot(self):
         # PXEBoot network configuration
+        start_end_in_config = False
+
         if self.config_type in [REGION_CONFIG, SUBCLOUD_CONFIG]:
             self.pxeboot_section_name = 'REGION2_PXEBOOT_NETWORK'
         else:
@@ -373,6 +375,51 @@ class ConfigValidator(object):
                     raise ValidateFail("Invalid PXEBOOT_NETWORK IP version - "
                                        "only IPv4 supported")
                 self.configured_networks.append(pxeboot_subnet)
+                pxeboot_start_address = None
+                pxeboot_end_address = None
+                if self.conf.has_option(self.pxeboot_section_name,
+                                        "IP_START_ADDRESS"):
+                    start_addr_str = self.conf.get(self.pxeboot_section_name,
+                                                   "IP_START_ADDRESS")
+                    pxeboot_start_address = validate_address_str(
+                        start_addr_str, pxeboot_subnet
+                    )
+
+                if self.conf.has_option(self.pxeboot_section_name,
+                                        "IP_END_ADDRESS"):
+                    end_addr_str = self.conf.get(self.pxeboot_section_name,
+                                                 "IP_END_ADDRESS")
+                    pxeboot_end_address = validate_address_str(
+                        end_addr_str, pxeboot_subnet
+                    )
+
+                if pxeboot_start_address or pxeboot_end_address:
+                    if not pxeboot_end_address:
+                        raise ConfigFail("Missing attribute %s for %s" %
+                                         ('IP_END_ADDRESS',
+                                          self.pxeboot_section_name))
+
+                    if not pxeboot_start_address:
+                        raise ConfigFail("Missing attribute %s for %s" %
+                                         ('IP_START_ADDRESS',
+                                          self.pxeboot_section_name))
+
+                    if not pxeboot_start_address < pxeboot_end_address:
+                        raise ConfigFail("Start address %s not "
+                                         "less than end address %s for %s."
+                                         % (start_addr_str,
+                                            end_addr_str,
+                                            self.pxeboot_section_name))
+
+                    min_addresses = 8
+                    if not IPRange(start_addr_str, end_addr_str).size >= \
+                            min_addresses:
+                        raise ConfigFail("Address range for %s must contain "
+                                         "at least %d addresses." %
+                                         (self.pxeboot_section_name,
+                                          min_addresses))
+                    start_end_in_config = True
+
                 self.pxeboot_network_configured = True
             except ValidateFail as e:
                 raise ConfigFail("Invalid PXEBOOT_CIDR value of %s for %s."
@@ -385,13 +432,28 @@ class ConfigValidator(object):
             if self.pxeboot_network_configured:
                 self.cgcs_conf.set('cPXEBOOT', 'PXEBOOT_SUBNET',
                                    str(pxeboot_subnet))
+                if start_end_in_config:
+                    self.cgcs_conf.set("cPXEBOOT",
+                                       "PXEBOOT_START_ADDRESS",
+                                       start_addr_str)
+                    self.cgcs_conf.set("cPXEBOOT",
+                                       "PXEBOOT_END_ADDRESS",
+                                       end_addr_str)
+
+                    pxeboot_floating_addr = pxeboot_start_address
+                    pxeboot_controller_addr_0 = pxeboot_start_address + 1
+                    pxeboot_controller_addr_1 = pxeboot_controller_addr_0 + 1
+                else:
+                    pxeboot_floating_addr = pxeboot_subnet[2]
+                    pxeboot_controller_addr_0 = pxeboot_subnet[3]
+                    pxeboot_controller_addr_1 = pxeboot_subnet[4]
                 self.cgcs_conf.set('cPXEBOOT',
                                    'CONTROLLER_PXEBOOT_FLOATING_ADDRESS',
-                                   str(pxeboot_subnet[2]))
+                                   str(pxeboot_floating_addr))
                 self.cgcs_conf.set('cPXEBOOT', 'CONTROLLER_PXEBOOT_ADDRESS_0',
-                                   str(pxeboot_subnet[3]))
+                                   str(pxeboot_controller_addr_0))
                 self.cgcs_conf.set('cPXEBOOT', 'CONTROLLER_PXEBOOT_ADDRESS_1',
-                                   str(pxeboot_subnet[4]))
+                                   str(pxeboot_controller_addr_1))
             self.cgcs_conf.set('cPXEBOOT', 'PXECONTROLLER_FLOATING_HOSTNAME',
                                'pxecontroller')
 

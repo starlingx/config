@@ -528,3 +528,38 @@ def test_system_config_validation():
                                    validate_only=True)
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
+
+
+def test_pxeboot_range():
+    """ Test import of system_config file for PXEBoot network address """
+
+    # Create the path to the system_config file
+    systemfile = os.path.join(
+        os.getcwd(), "controllerconfig/tests/files/", "system_config.pxeboot")
+
+    # Test import and generation of answer file
+    _test_system_config(systemfile)
+
+    # Test detection of invalid PXEBoot network start address
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('PXEBOOT_NETWORK', 'IP_START_ADDRESS', '8.123.122.345')
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test detection of invalid PXEBoot network end address
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('PXEBOOT_NETWORK', 'IP_END_ADDRESS', '128.123.122.345')
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test detection of smaller PXEBoot network end address
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('PXEBOOT_NETWORK', 'IP_END_ADDRESS', '192.168.102.30')
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test detection of PXEBoot network range less than min required (8)
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('PXEBOOT_NETWORK', 'IP_END_ADDRESS', '128.123.122.34')
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
