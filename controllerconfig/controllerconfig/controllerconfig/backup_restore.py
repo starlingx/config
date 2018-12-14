@@ -347,7 +347,7 @@ def restore_configuration(archive, staging_dir):
             # platform_conf manifest will add these back in.
             pass
         else:
-            print(line, end=' ')
+            print(line, end='')
     fileinput.close()
     # Move updated platform.conf file into place.
     os.rename(temp_platform_conf_file, tsconfig.PLATFORM_CONF_FILE)
