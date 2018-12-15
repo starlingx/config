@@ -2279,7 +2279,7 @@ data:
 
             # TODO(tsmith) remove this, only for HP custom, this isnt being used
             # Load Region Config params, if present
-            # Config OPENSTACK_HOST is still required in region mode since Titanium Cloud
+            # Config OPENSTACK_HOST is still required in region mode since StarlingX
             # does not use the local_settings populated via packstack
             {{- if eq .Values.conf.horizon.local_settings.config.ss_enabled "True"}}
             SS_ENABLED = "True"
@@ -2323,9 +2323,9 @@ data:
             AVAILABLE_THEMES = [
                 ('default', 'Default', 'themes/default'),
                 ('material', 'Material', 'themes/material'),
-                ('titanium', 'Titanium', 'themes/titanium'),
+                ('starlingx', 'StarlingX', 'themes/starlingx'),
             ]
-            DEFAULT_THEME = 'titanium'
+            DEFAULT_THEME = 'starlingx'
 
             # Custom Theme Override
             for root, dirs, files in os.walk('/opt/branding/applied'):
@@ -2334,7 +2334,7 @@ data:
                     AVAILABLE_THEMES = [
                         ('default', 'Default', 'themes/default'),
                         ('material', 'Material', 'themes/material'),
-                        ('titanium', 'Titanium', 'themes/titanium'),
+                        ('starlingx', 'StarlingX', 'themes/starlingx'),
                         ('custom', 'Custom', '/opt/branding/applied'),
                     ]
                     DEFAULT_THEME = 'custom'
