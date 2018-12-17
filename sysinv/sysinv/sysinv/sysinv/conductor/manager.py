@@ -2825,6 +2825,7 @@ class ConductorManager(service.PeriodicService):
             if ihost.administrative == constants.ADMIN_UNLOCKED:
                 mem_dict['vm_hugepages_nr_2M_pending'] = None
                 mem_dict['vm_hugepages_nr_1G_pending'] = None
+                mem_dict['vswitch_hugepages_reqd'] = None
 
             try:
                 imems = self.dbapi.imemory_get_by_ihost_inode(ihost_uuid,

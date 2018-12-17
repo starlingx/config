@@ -331,18 +331,33 @@ class OVSPuppet(base.BasePuppet):
 
     def _get_memory_config(self, host):
         vswitch_memory = []
+        config = {}
+        vswitch_size = 0
 
         host_memory = self.dbapi.imemory_get_by_ihost(host.id)
         for memory in host_memory:
             vswitch_size = memory.vswitch_hugepages_size_mib
-            vswitch_pages = memory.vswitch_hugepages_nr
+            vswitch_pages = memory.vswitch_hugepages_reqd \
+                if memory.vswitch_hugepages_reqd is not None \
+                else memory.vswitch_hugepages_nr
+
+            if vswitch_pages == 0:
+                vswitch_pages = memory.vswitch_hugepages_nr
+
             vswitch_memory.append(str(vswitch_size * vswitch_pages))
 
         dpdk_socket_mem = self.quoted_str(','.join(vswitch_memory))
 
-        return {
+        config.update({
             'vswitch::dpdk::socket_mem': dpdk_socket_mem
-        }
+        })
+
+        if vswitch_size == constants.MIB_2M:
+            config.update({
+                'platform::vswitch::params::hugepage_dir': '/mnt/huge-2048kB'
+            })
+
+        return config
 
     def _get_virtual_config(self, host):
         config = {}
