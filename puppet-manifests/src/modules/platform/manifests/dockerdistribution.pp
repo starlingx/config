@@ -44,6 +44,35 @@ class platform::dockerdistribution::config
   }
 }
 
+# compute also needs the "insecure" flag in order to deploy images from
+# the registry. This will go away when proper authentication is implemented
+class platform::dockerdistribution::compute
+  inherits ::platform::dockerdistribution::params {
+  include ::platform::kubernetes::params
+  $enabled = $::platform::kubernetes::params::enabled
+  if $enabled {
+    include ::platform::network::mgmt::params
+
+    $docker_registry_ip = $::platform::network::mgmt::params::controller_address
+
+    # currently docker registry is running insecure mode
+    # when proper authentication is implemented, this would go away
+    file { "/etc/docker":
+      ensure  => 'directory',
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0700',
+    } ->
+    file { "/etc/docker/daemon.json":
+      ensure  => present,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => template('platform/insecuredockerregistry.conf.erb'),
+    }
+  }
+}
+
 class platform::dockerdistribution
   inherits ::platform::dockerdistribution::params {
 
