@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 from netaddr import IPRange
 from exceptions import ConfigFail, ValidateFail
-from utils import is_mtu_valid, is_speed_valid, is_valid_vlan, \
+from utils import is_mtu_valid, is_valid_vlan, \
     validate_network_str, validate_address_str
 
 DEFAULT_CONFIG = 0
@@ -21,10 +21,6 @@ NETWORK_PREFIX_NAMES = [
     ('MGMT', 'INFRA', 'OAM'),
     ('CLM', 'BLS', 'CAN')
 ]
-LINK_SPEED_1G = 1000
-LINK_SPEED_10G = 10000
-LINK_SPEED_25G = 25000
-VALID_LINK_SPEED = [LINK_SPEED_1G, LINK_SPEED_10G, LINK_SPEED_25G]
 
 # Additions to this list must be reflected in the hostfile
 # generator tool (config->configutilities->hostfiletool.py)
@@ -49,7 +45,6 @@ class LogicalInterface(object):
     def __init__(self):
         self.name = None
         self.mtu = None
-        self.link_capacity = None
         self.lag_interface = False
         self.lag_mode = None
         self.ports = None
@@ -66,19 +61,6 @@ class LogicalInterface(object):
         if not is_mtu_valid(self.mtu):
             raise ConfigFail("Invalid MTU value for %s. "
                              "Valid values: 576 - 9216" % logical_interface)
-
-        # Parse/validate the link_capacity
-        if system_config.has_option(logical_interface,
-                                    'INTERFACE_LINK_CAPACITY'):
-            self.link_capacity = \
-                system_config.getint(logical_interface,
-                                     'INTERFACE_LINK_CAPACITY')
-        # link_capacity is optional
-        if self.link_capacity:
-            if not is_speed_valid(self.link_capacity,
-                                  valid_speeds=VALID_LINK_SPEED):
-                raise ConfigFail(
-                    "Invalid link-capacity value for %s." % logical_interface)
 
         # Parse the ports
         self.ports = filter(None, [x.strip() for x in

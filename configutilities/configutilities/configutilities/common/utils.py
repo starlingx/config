@@ -74,17 +74,6 @@ def is_mtu_valid(mtu):
         return False
 
 
-def is_speed_valid(speed, valid_speeds=None):
-    """Determine whether speed is valid."""
-    try:
-        if valid_speeds is not None and int(speed) not in valid_speeds:
-            return False
-        else:
-            return True
-    except (ValueError, TypeError):
-        return False
-
-
 def is_valid_hostname(hostname):
     """Determine whether a hostname is valid as per RFC 1123."""
 

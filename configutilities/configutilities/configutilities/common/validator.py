@@ -5,11 +5,11 @@ SPDX-License-Identifier: Apache-2.0
 
 """
 from configobjects import DEFAULT_NAMES, NETWORK_PREFIX_NAMES, OAM_TYPE, \
-    MGMT_TYPE, Network, REGION_CONFIG, VALID_LINK_SPEED, INFRA_TYPE, \
+    MGMT_TYPE, Network, REGION_CONFIG, INFRA_TYPE, \
     DEFAULT_DOMAIN_NAME, HP_NAMES, SUBCLOUD_CONFIG
 from netaddr import IPRange
 from utils import lag_mode_to_str, validate_network_str, \
-    check_network_overlap, is_mtu_valid, is_speed_valid, get_service, \
+    check_network_overlap, is_mtu_valid, get_service, \
     get_optional, validate_address_str
 
 from exceptions import ConfigFail, ValidateFail
@@ -565,22 +565,10 @@ class ConfigValidator(object):
                 "Valid values: 576 - 9216"
                 % (mtu, self.mgmt_network.logical_interface.name))
 
-        # link_capacity is optional
-        speed = self.mgmt_network.logical_interface.link_capacity
-        if speed:
-            if not is_speed_valid(speed,
-                                  valid_speeds=VALID_LINK_SPEED):
-                raise ConfigFail(
-                    "Invalid link-capacity value %s for %s."
-                    % (speed, self.mgmt_network.logical_interface.name))
-
         if self.cgcs_conf is not None:
             self.cgcs_conf.add_section('cMGMT')
             self.cgcs_conf.set('cMGMT', 'MANAGEMENT_MTU',
                                self.mgmt_network.logical_interface.mtu)
-            self.cgcs_conf.set(
-                'cMGMT', 'MANAGEMENT_LINK_CAPACITY',
-                self.mgmt_network.logical_interface.link_capacity)
             self.cgcs_conf.set('cMGMT', 'MANAGEMENT_SUBNET',
                                self.mgmt_network.cidr)
             if self.mgmt_network.logical_interface.lag_interface:
@@ -729,22 +717,10 @@ class ConfigValidator(object):
                     "Valid values: 576 - 9216"
                     % (mtu, self.infra_network.logical_interface.name))
 
-            # link_capacity is optional
-            speed = self.infra_network.logical_interface.link_capacity
-            if speed:
-                if not is_speed_valid(speed,
-                                      valid_speeds=VALID_LINK_SPEED):
-                    raise ConfigFail(
-                        "Invalid link-capacity value %s for %s."
-                        % (speed, self.infra_network.logical_interface.name))
-
             if self.cgcs_conf is not None:
                 self.cgcs_conf.add_section('cINFRA')
                 self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_MTU',
                                    self.infra_network.logical_interface.mtu)
-                self.cgcs_conf.set(
-                    'cINFRA', 'INFRASTRUCTURE_LINK_CAPACITY',
-                    self.infra_network.logical_interface.link_capacity)
                 self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_SUBNET',
                                    self.infra_network.cidr)
 
