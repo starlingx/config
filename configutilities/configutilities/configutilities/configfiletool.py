@@ -863,12 +863,30 @@ class PXEBootPage(ConfigPage):
                 text="Configure a separate PXEBoot network",
                 type=TYPES.checkbox,
                 transient=True,
-                shows=["PXEBOOT_CIDR"]
+                shows=["PXEBOOT_CIDR", "use_entire_subnet"]
             )
         self.fields['PXEBOOT_CIDR'] = Field(
             text="PXEBoot subnet",
             type=TYPES.string,
             initial="192.168.202.0/24"
+        )
+
+        # Start/end ranges
+        self.fields['use_entire_subnet'] = Field(
+            text="Restrict PXEBoot subnet address range",
+            type=TYPES.checkbox,
+            shows=["IP_START_ADDRESS", "IP_END_ADDRESS"],
+            transient=True
+        )
+        self.fields['IP_START_ADDRESS'] = Field(
+            text="PXEBoot network start address",
+            type=TYPES.string,
+            initial="192.168.202.2",
+        )
+        self.fields['IP_END_ADDRESS'] = Field(
+            text="PXEBoot network end address",
+            type=TYPES.string,
+            initial="192.168.202.254",
         )
 
     def get_config(self):
