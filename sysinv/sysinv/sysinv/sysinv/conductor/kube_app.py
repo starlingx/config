@@ -881,6 +881,7 @@ class AppOperator(object):
         For system app, it also cleans up old test pods.
 
         :param rpc_app: application object in the RPC request
+        :return boolean: whether application remove was successful
         """
 
         app = AppOperator.Application(rpc_app)
@@ -932,8 +933,11 @@ class AppOperator(object):
 
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
             LOG.info("Application (%s) remove completed." % app.name)
+            return True
         else:
             self._abort_operation(app, constants.APP_REMOVE_OP)
+
+        return False
 
     def perform_app_delete(self, rpc_app):
         """Process application remove request

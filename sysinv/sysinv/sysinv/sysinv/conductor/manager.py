@@ -10456,7 +10456,12 @@ class ConductorManager(service.PeriodicService):
         :param rpc_app: data object provided in the rpc request
 
         """
-        return self._app.perform_app_remove(rpc_app)
+        app_removed = self._app.perform_app_remove(rpc_app)
+        if app_removed:
+            # Update the VIM configuration.
+            self._update_vim_config(context)
+
+        return app_removed
 
     def perform_app_delete(self, context, rpc_app):
         """Handling of application delete request (via AppOperator)
