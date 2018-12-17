@@ -21,10 +21,6 @@ from common.validator import ConfigValidator, TiS_VERSION
 PADDING = 5
 CONFIG_TYPE = DEFAULT_CONFIG
 
-LINK_SPEED_1G = '1000'
-LINK_SPEED_10G = '10000'
-LINK_SPEED_25G = '25000'
-
 # Config parser to hold current configuration
 filename = None
 filedir = None
@@ -900,9 +896,6 @@ class MGMTPage(ConfigPage):
                 ('Active-backup policy', '1'),
                 ('802.3ad (LACP) policy', '4'),
             ])
-        self.mgmt_speed_choices = [LINK_SPEED_1G,
-                                   LINK_SPEED_10G,
-                                   LINK_SPEED_25G]
         self.section = "MGMT_NETWORK"
         if get_opt('SYSTEM', 'SYSTEM_MODE') != 'simplex':
             self.validator_methods = ["validate_pxeboot", "validate_mgmt"]
@@ -958,13 +951,6 @@ class MGMTPage(ConfigPage):
                 text="Management interface MTU",
                 type=TYPES.int,
                 initial="1500",
-                transient=True
-            )
-            self.fields['INTERFACE_LINK_CAPACITY'] = Field(
-                text="Management interface link capacity Mbps",
-                type=TYPES.choice,
-                choices=self.mgmt_speed_choices,
-                initial=self.mgmt_speed_choices[0],
                 transient=True
             )
             if config.has_option('PXEBOOT_NETWORK', 'PXEBOOT_CIDR') or \
@@ -1049,8 +1035,6 @@ class MGMTPage(ConfigPage):
                 lag=self.fields['LAG_INTERFACE'].get_value(),
                 mode=self.lag_choices.get(self.fields['LAG_MODE'].get_value()),
                 mtu=self.fields['INTERFACE_MTU'].get_value(),
-                link_capacity=self.fields[
-                    'INTERFACE_LINK_CAPACITY'].get_value(),
                 ports=ports
             )
             config.set(self.section, 'LOGICAL_INTERFACE', li)
@@ -1067,9 +1051,6 @@ class INFRAPage(ConfigPage):
             ('Balanced XOR policy', '2'),
             ('802.3ad (LACP) policy', '4'),
         ])
-        self.infra_speed_choices = [LINK_SPEED_1G,
-                                    LINK_SPEED_10G,
-                                    LINK_SPEED_25G]
 
         self.section = "INFRA_NETWORK"
         self.validator_methods = ["validate_storage",
@@ -1130,13 +1111,6 @@ class INFRAPage(ConfigPage):
             text="Infrastructure interface MTU",
             type=TYPES.int,
             initial="1500",
-            transient=True
-        )
-        self.fields['INTERFACE_LINK_CAPACITY'] = Field(
-            text="Infrastructure interface link capacity Mbps",
-            type=TYPES.choice,
-            choices=self.infra_speed_choices,
-            initial=self.infra_speed_choices[-1],
             transient=True
         )
 
@@ -1201,7 +1175,6 @@ class INFRAPage(ConfigPage):
             lag=self.fields['LAG_INTERFACE'].get_value(),
             mode=self.lag_choices.get(self.fields['LAG_MODE'].get_value()),
             mtu=self.fields['INTERFACE_MTU'].get_value(),
-            link_capacity=self.fields['INTERFACE_LINK_CAPACITY'].get_value(),
             ports=ports
         )
         config.set(self.section, 'LOGICAL_INTERFACE', li)
@@ -1440,7 +1413,7 @@ def clean_lis():
             config.remove_section(sec)
 
 
-def create_li(lag='N', mode=None, mtu=1500, link_capacity=None, ports=None):
+def create_li(lag='N', mode=None, mtu=1500, ports=None):
     # todo more graceful matching to an existing LI
     for number in range(1, len(config.sections())):
         if config.has_section("LOGICAL_INTERFACE_" + str(number)):
@@ -1459,8 +1432,6 @@ def create_li(lag='N', mode=None, mtu=1500, link_capacity=None, ports=None):
                 if mode:
                     config.set(name, 'LAG_MODE', mode)
                 config.set(name, 'INTERFACE_MTU', mtu)
-                if link_capacity:
-                    config.set(name, 'INTERFACE_LINK_CAPACITY', link_capacity)
                 return name
 
     # Get unused LI number
@@ -1475,8 +1446,6 @@ def create_li(lag='N', mode=None, mtu=1500, link_capacity=None, ports=None):
     if mode:
         config.set(name, 'LAG_MODE', mode)
     config.set(name, 'INTERFACE_MTU', mtu)
-    if link_capacity:
-        config.set(name, 'INTERFACE_LINK_CAPACITY', link_capacity)
     config.set(name, 'INTERFACE_PORTS', ports)
     return name
 

@@ -60,13 +60,6 @@ DEFAULT_VIRTUAL_BACKUP_STOR_SIZE = \
 DEFAULT_EXTENSION_STOR_SIZE = \
     sysinv_constants.DEFAULT_EXTENSION_STOR_SIZE
 
-VALID_LINK_SPEED_MGMT = [sysinv_constants.LINK_SPEED_1G,
-                         sysinv_constants.LINK_SPEED_10G,
-                         sysinv_constants.LINK_SPEED_25G]
-VALID_LINK_SPEED_INFRA = [sysinv_constants.LINK_SPEED_1G,
-                          sysinv_constants.LINK_SPEED_10G,
-                          sysinv_constants.LINK_SPEED_25G]
-
 SYSTEM_CONFIG_TIMEOUT = 300
 SERVICE_ENABLE_TIMEOUT = 180
 MINIMUM_ROOT_DISK_SIZE = 500

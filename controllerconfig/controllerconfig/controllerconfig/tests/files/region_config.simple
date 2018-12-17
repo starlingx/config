@@ -10,21 +10,18 @@ SYSTEM_MODE = duplex
 ;                         4) 802.3ad (LACP) policy
 ;                  Interface for pxebooting can only be LACP
 ;  INTERFACE_MTU   <mtu size>
-;  INTERFACE_LINK_CAPACITY <Mbps>
 ;  INTERFACE_PORTS <comma separated list of ethernet interfaces>
                         
 [LOGICAL_INTERFACE_1]
 LAG_INTERFACE=N
 ;LAG_MODE=
 INTERFACE_MTU=1500
-INTERFACE_LINK_CAPACITY=1000
 INTERFACE_PORTS=eth1
 
 [LOGICAL_INTERFACE_2]
 LAG_INTERFACE=N
 ;LAG_MODE=
 INTERFACE_MTU=1500
-;INTERFACE_LINK_CAPACITY=
 INTERFACE_PORTS=eth0
 
 [CLM_NETWORK]
