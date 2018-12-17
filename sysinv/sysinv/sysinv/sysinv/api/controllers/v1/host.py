@@ -3231,6 +3231,19 @@ class HostController(rest.RestController):
                        {'ifname': interface.ifname, 'name': providernet_name})
                 raise wsme.exc.ClientSideError(msg)
 
+    @staticmethod
+    def _semantic_check_non_accelerated_interface_support(interface):
+        """
+        Perform semantics checks against interfaces to ensure they are
+        supported in vswitch as native DPDK interfaces.
+        """
+        ports = pecan.request.dbapi.ethernet_port_get_by_interface(interface.uuid)
+        for p in ports:
+            if not p.dpdksupport:
+                msg = _("%s is non-accelerated interface which "
+                        "is not supported by current vswitch" % p.name)
+                raise wsme.exc.ClientSideError(msg)
+
     def _semantic_check_data_interfaces(self, ihost):
         """
         Perform semantic checks against data interfaces to ensure validity of
@@ -3238,8 +3251,12 @@ class HostController(rest.RestController):
         """
         ihost_iinterfaces = (
             pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid']))
+        vswitch_type = utils.get_vswitch_type()
         data_interface_configured = False
         for iif in ihost_iinterfaces:
+            if ((vswitch_type == constants.VSWITCH_TYPE_OVS_DPDK) and
+                    (iif.ifclass == constants.INTERFACE_CLASS_DATA)):
+                self._semantic_check_non_accelerated_interface_support(iif)
             self._semantic_check_interface_providernets(ihost, iif)
             self._semantic_check_interface_addresses(ihost, iif)
             if not iif.networktype:
