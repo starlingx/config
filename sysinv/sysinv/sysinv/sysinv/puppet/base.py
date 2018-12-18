@@ -50,6 +50,10 @@ class BasePuppet(object):
     def context(self):
         return self._operator.context
 
+    @property
+    def config(self):
+        return self._operator.config
+
     def get_static_config(self):
         return {}
 
