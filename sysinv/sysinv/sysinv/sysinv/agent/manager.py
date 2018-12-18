@@ -1313,7 +1313,7 @@ class AgentManager(service.PeriodicService):
                 if line.startswith("INSTALL_UUID="):
                     print("INSTALL_UUID=%s" % install_uuid)
                 else:
-                    print(line, end=' ')
+                    print(line, end='')
             fileinput.close()
             os.rename(temp_platform_conf_file, tsc.PLATFORM_CONF_FILE)
 

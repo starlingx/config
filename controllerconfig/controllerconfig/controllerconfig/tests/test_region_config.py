@@ -446,7 +446,7 @@ def _replace_in_file(filename, old, new):
     """ Replaces old with new in file filename. """
     for line in fileinput.FileInput(filename, inplace=1):
         line = line.replace(old, new)
-        print(line, end=' ')
+        print(line, end='')
     fileinput.close()
 
 
