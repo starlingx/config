@@ -476,7 +476,7 @@ def find_and_replace_in_file(target, find, replace):
                 fpat = r'\b' + find + r'\b'
                 line = re.sub(fpat, replace, line)
                 found = True
-            print(line, end=' ')
+            print(line, end='')
 
     except Exception as e:
         LOG.error("Failed to replace [{}] with [{}] in [{}]: {}"
