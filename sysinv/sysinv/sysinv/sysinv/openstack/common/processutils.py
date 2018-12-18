@@ -134,7 +134,7 @@ def execute(*cmd, **kwargs):
                          'helper.'))
         cmd = shlex.split(root_helper) + list(cmd)
 
-    cmd = map(str, cmd)
+    cmd = [str(c) for c in cmd]
 
     while attempts > 0:
         attempts -= 1

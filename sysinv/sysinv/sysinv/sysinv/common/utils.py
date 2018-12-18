@@ -180,7 +180,7 @@ def execute(*cmd, **kwargs):
     if run_as_root and os.geteuid() != 0:
         cmd = ['sudo', 'sysinv-rootwrap', CONF.rootwrap_config] + list(cmd)
 
-    cmd = map(str, cmd)
+    cmd = [str(c) for c in cmd]
 
     while attempts > 0:
         attempts -= 1

@@ -152,7 +152,7 @@ def _list_opts(obj):
         if is_opt(attr_obj):
             opts.append(attr_obj)
         elif (isinstance(attr_obj, list) and
-              all(map(lambda x: is_opt(x), attr_obj))):
+              all([is_opt(x) for x in attr_obj])):
             opts.extend(attr_obj)
 
     ret = {}
