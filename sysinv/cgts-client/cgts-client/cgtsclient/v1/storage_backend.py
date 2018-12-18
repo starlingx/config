@@ -160,7 +160,7 @@ def backend_add(cc, backend, args):
                      if '=' in s)
 
     fields['capabilities'] = {}
-    for k, v in attr_dict.iteritems():
+    for k, v in attr_dict.items():
         fields['capabilities'][k] = v
 
     if not fields['capabilities']:
@@ -203,14 +203,14 @@ def backend_modify(cc, args):
         backend_attrs = getattr(eval('storage_' + backend.replace("-", "_")),
                                 'PATCH_ATTRIBUTES')
         allowed_fields += backend_attrs
-        for k, v in attr_dict.iteritems():
+        for k, v in attr_dict.items():
             if k in backend_attrs:
                 fields[k] = v
 
     # Move tha rest of the attributes to the capabilities, used for hiera data
     # overrides
     capabilities = {}
-    for k, v in attr_dict.iteritems():
+    for k, v in attr_dict.items():
         if k not in allowed_fields:
             capabilities[k] = v
 

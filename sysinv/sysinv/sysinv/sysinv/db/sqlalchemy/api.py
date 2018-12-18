@@ -2976,7 +2976,7 @@ class Connection(api.Connection):
         obj = obj[0]
 
         journal_vals = {}
-        for key, value in list(values.iteritems()):
+        for key, value in list(values.items()):
             if key == 'journal_location':
                 # Obtain the new journal location
                 new_onistor = self.istor_get(value)

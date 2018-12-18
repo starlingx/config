@@ -578,7 +578,7 @@ def update_mac_in_archive(tmpdir):
     """ Update MAC addresses in system archive file. """
     hostname = utils.get_controller_hostname()
     macs = sysinv_api.get_mac_addresses(hostname)
-    for intf, mac in macs.iteritems():
+    for intf, mac in macs.items():
         find_and_replace(
             [os.path.join(tmpdir, 'postgres/sysinv.sql.data')],
             mac, "CLONEISOMAC_{}{}".format(hostname, intf))
@@ -587,7 +587,7 @@ def update_mac_in_archive(tmpdir):
             tsconfig.system_mode == si_const.SYSTEM_MODE_DUPLEX_DIRECT):
         hostname = utils.get_mate_controller_hostname()
         macs = sysinv_api.get_mac_addresses(hostname)
-        for intf, mac in macs.iteritems():
+        for intf, mac in macs.items():
             find_and_replace(
                 [os.path.join(tmpdir, 'postgres/sysinv.sql.data')],
                 mac, "CLONEISOMAC_{}{}".format(hostname, intf))
@@ -597,7 +597,7 @@ def update_disk_serial_id_in_archive(tmpdir):
     """ Update disk serial id in system archive file. """
     hostname = utils.get_controller_hostname()
     disk_sids = sysinv_api.get_disk_serial_ids(hostname)
-    for d_dnode, d_sid in disk_sids.iteritems():
+    for d_dnode, d_sid in disk_sids.items():
         find_and_replace(
             [os.path.join(tmpdir, 'postgres/sysinv.sql.data')],
             d_sid, "CLONEISODISKSID_{}{}".format(hostname, d_dnode))
@@ -606,7 +606,7 @@ def update_disk_serial_id_in_archive(tmpdir):
             tsconfig.system_mode == si_const.SYSTEM_MODE_DUPLEX_DIRECT):
         hostname = utils.get_mate_controller_hostname()
         disk_sids = sysinv_api.get_disk_serial_ids(hostname)
-        for d_dnode, d_sid in disk_sids.iteritems():
+        for d_dnode, d_sid in disk_sids.items():
             find_and_replace(
                 [os.path.join(tmpdir, 'postgres/sysinv.sql.data')],
                 d_sid, "CLONEISODISKSID_{}{}".format(hostname, d_dnode))

@@ -364,7 +364,7 @@ class Connection(object):
             consumers = self.consumers
             self.consumers = {}
 
-            for consumer in consumers.itervalues():
+            for consumer in consumers.values():
                 consumer.reconnect(self.session)
                 self._register_consumer(consumer)
 

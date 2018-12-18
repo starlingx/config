@@ -364,7 +364,7 @@ def dict_to_patch(values, install_action=False):
     if install_action:
         values.update({'action': 'install'})
     patch = []
-    for key, value in values.iteritems():
+    for key, value in values.items():
         path = '/' + key
         patch.append({'op': 'replace', 'path': path, 'value': value})
     return patch

@@ -369,7 +369,7 @@ class ServiceParameterController(rest.RestController):
             msg = _("Cannot specify multiple parameters with custom resource.")
             raise wsme.exc.CommandError(msg)
 
-        for name, value in parameters.iteritems():
+        for name, value in parameters.items():
             new_record = {
                 'service': service,
                 'section': section,
@@ -467,7 +467,7 @@ class ServiceParameterController(rest.RestController):
                 msg = _("Ceph backend is required.")
                 raise wsme.exc.ClientSideError(msg)
 
-        for name, value in parameters.iteritems():
+        for name, value in parameters.items():
             new_record = {
                 'service': service,
                 'section': section,
@@ -942,7 +942,7 @@ class ServiceParameterController(rest.RestController):
         """Semantic checks for the service-parameter-apply command """
 
         # Check if all the mandatory parameters have been configured
-        for section, schema in service_parameter.SERVICE_PARAMETER_SCHEMA[service].iteritems():
+        for section, schema in service_parameter.SERVICE_PARAMETER_SCHEMA[service].items():
             mandatory = schema.get(service_parameter.SERVICE_PARAM_MANDATORY, [])
             for name in mandatory:
                 try:

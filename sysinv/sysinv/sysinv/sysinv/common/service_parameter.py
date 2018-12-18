@@ -1667,8 +1667,8 @@ def map_resource(resource_query):
         MANAGED_RESOURCES_MAP = {}
         # Populate the map once and cache it
         for service in SERVICE_PARAMETER_SCHEMA.keys():
-            for section, schema in SERVICE_PARAMETER_SCHEMA[service].iteritems():
-                for name, resource in schema.get(SERVICE_PARAM_RESOURCE, {}).iteritems():
+            for section, schema in SERVICE_PARAMETER_SCHEMA[service].items():
+                for name, resource in schema.get(SERVICE_PARAM_RESOURCE, {}).items():
                     if resource is not None:
                         MANAGED_RESOURCES_MAP[resource] = {
                             'service': service,

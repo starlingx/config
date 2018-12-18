@@ -122,7 +122,7 @@ class System(base.APIBase):
                 translated_string = kernel_args
 
                 for user_string, args_string in \
-                  constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS.iteritems():
+                  constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS.items():
                     if args_string == kernel_args:
                         translated_string = user_string
                         break

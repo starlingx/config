@@ -398,7 +398,7 @@ def _discover_and_validate_cinder_hiera_data(caps_dict):
         raise wsme.exc.ClientSideError(msg)
 
     # Log all the LVM parameters
-    for k, v in caps_dict.iteritems():
+    for k, v in caps_dict.items():
         LOG.info("Cinder LVM Data %s = %s" % (k, v))
 
 

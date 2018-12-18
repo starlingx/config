@@ -1961,7 +1961,7 @@ class HostController(rest.RestController):
             # apply the staged updates in preparation for update
             LOG.info("%s apply ihost_val %s" %
                      (hostupdate.displayid, hostupdate.ihost_val))
-            for k, v in hostupdate.ihost_val.iteritems():
+            for k, v in hostupdate.ihost_val.items():
                 ihost_obj[k] = v
             LOG.debug("AFTER Apply ihost_val %s to  iHost %s" %
                       (hostupdate.ihost_val, ihost_obj.as_dict()))

@@ -240,7 +240,7 @@ def msg_reply(conf, msg_id, reply_q, connection_pool, reply=None,
             msg = {'result': reply, 'failure': failure}
         except TypeError:
             msg = {'result': dict((k, repr(v))
-                   for k, v in reply.__dict__.iteritems()),
+                   for k, v in reply.__dict__.items()),
                    'failure': failure}
         if ending:
             msg['ending'] = True
@@ -307,7 +307,7 @@ def pack_context(msg, context):
 
     """
     context_d = dict([('_context_%s' % key, value)
-                      for (key, value) in context.to_dict().iteritems()])
+                      for (key, value) in context.to_dict().items()])
     msg.update(context_d)
 
 

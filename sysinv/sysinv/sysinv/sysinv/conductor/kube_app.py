@@ -543,7 +543,7 @@ class AppOperator(object):
                     raise exception.KubeAppUploadFailure(
                         name=app.name,
                         reason="labels file contains no labels.")
-            for key, value in labels.iteritems():
+            for key, value in labels.items():
                 if key == constants.CONTROLLER:
                     controller_l = value
                 elif key == constants.COMPUTE:
