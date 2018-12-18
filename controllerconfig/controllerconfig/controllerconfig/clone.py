@@ -521,7 +521,7 @@ def remove_from_archive(archive, unwanted):
         subprocess.check_call(["tar", "--delete",
                                "--file=" + archive,
                                unwanted])
-    except subprocess.CalledProcessError, e:
+    except subprocess.CalledProcessError as e:
         LOG.error("Delete of {} failed: {}".format(unwanted, e.output))
         raise CloneFail("Failed to modify backup archive")
 
