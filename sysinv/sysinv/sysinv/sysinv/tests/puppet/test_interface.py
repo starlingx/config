@@ -1268,66 +1268,6 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_worker_ethernet_config_data_slow(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.port['dpdksupport'] = False
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        config = interface.get_interface_network_config(
-            self.context, self.iface)
-        options = {'BRIDGE': 'br-' + self.port['name'],
-                   'LINKDELAY': '20'}
-        expected = self._get_network_config(
-            ifname=self.port['name'], mtu=1500, method='manual',
-            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_worker_ethernet_config_data_slow_as_bond_slave(self):
-        bond = self._create_bond_test("data1", constants.INTERFACE_CLASS_DATA,
-                                      constants.NETWORK_TYPE_DATA)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        lower_ifname = bond['uses'][0]
-        lower_iface = self.context['interfaces'][lower_ifname]
-        lower_port = interface.get_interface_port(self.context, lower_iface)
-        lower_port['dpdksupport'] = False
-        lower_port.save(self.admin_context)
-        self._update_context()
-        config = interface.get_interface_network_config(
-            self.context, lower_iface)
-        options = {'BRIDGE': 'br-' + lower_port['name'],
-                   'LINKDELAY': '20'}
-        expected = self._get_network_config(
-            ifname=lower_port['name'], mtu=1500, method='manual',
-            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_worker_ethernet_config_data_slow_bridge(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.port['dpdksupport'] = False
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        avp_config, bridge_config = interface.get_bridged_network_config(
-            self.context, self.iface)
-        # Check the AVP config
-        options = {'BRIDGE': 'br-' + self.port['name'],
-                   'LINKDELAY': '20'}
-        expected = self._get_network_config(
-            ifname=self.port['name'] + '-avp', mtu=1500, method='manual',
-            options=options)
-        print(expected)
-        self.assertEqual(avp_config, expected)
-        # Check the expected bridge config
-        options = {'TYPE': 'Bridge'}
-        expected = self._get_network_config(
-            ifname='br-' + self.port['name'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, bridge_config)
-
     def test_get_route_config(self):
         route = {'network': '1.2.3.0',
                  'prefix': 24,

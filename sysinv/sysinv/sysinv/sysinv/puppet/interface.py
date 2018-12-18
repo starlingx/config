@@ -914,31 +914,6 @@ def get_interface_network_config(context, iface, network_id=None):
     return config
 
 
-def get_bridged_network_config(context, iface):
-    """
-    Builds a pair of network_config resource dictionaries.  One resource
-    represents the actual bridge interface that must be created when bridging a
-    physical interface to an avp-provider interface.  The second interface is
-    the avp-provider network_config resource.  It is assumed that the physical
-    interface network_config resource has already been created by the caller.
-
-    This is the hierarchy:
-
-               "eth0" ->  "br-eth0"  <- "eth0-avp"
-
-    This function creates "eth0-avp" and "br-eth0".
-    """
-    # Create a config identical to the physical ethernet interface and change
-    # the name to the avp-provider interface name.
-    avp_config = get_interface_network_config(context, iface)
-    avp_config['ifname'] += '-avp'
-
-    # Create a bridge config that ties both interfaces together
-    bridge_config = get_bridge_network_config(context, iface)
-
-    return avp_config, bridge_config
-
-
 def generate_network_config(context, config, iface):
     """
     Produce the puppet network config resources necessary to configure the
@@ -959,14 +934,6 @@ def generate_network_config(context, config, iface):
             config[NETWORK_CONFIG_RESOURCE].update({
                 ifname: format_network_config(net_config)
             })
-
-    # Add additional configs for special interfaces
-    if is_bridged_interface(context, iface):
-        avp_config, bridge_config = get_bridged_network_config(context, iface)
-        config[NETWORK_CONFIG_RESOURCE].update({
-            avp_config['ifname']: format_network_config(avp_config),
-            bridge_config['ifname']: format_network_config(bridge_config),
-        })
 
     # Add complementary puppet resource definitions (if needed)
     for route in get_interface_routes(context, iface):
