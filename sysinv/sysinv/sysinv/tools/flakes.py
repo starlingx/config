@@ -23,7 +23,7 @@
 
 __all__ = ['main']
 
-import __builtin__ as builtins
+from six.moves import builtins
 import sys
 
 import pyflakes.api
