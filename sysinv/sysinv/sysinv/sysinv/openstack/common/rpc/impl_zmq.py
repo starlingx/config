@@ -32,6 +32,7 @@ from sysinv.openstack.common import importutils
 from sysinv.openstack.common import jsonutils
 from sysinv.openstack.common import processutils as utils
 from sysinv.openstack.common.rpc import common as rpc_common
+from functools import reduce
 
 zmq = importutils.try_import('eventlet.green.zmq')
 

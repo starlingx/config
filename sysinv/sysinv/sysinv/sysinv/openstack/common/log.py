@@ -41,7 +41,7 @@ import sys
 import traceback
 
 from oslo_config import cfg
-
+from six.moves import filter
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import importutils
 from sysinv.openstack.common import jsonutils
@@ -285,7 +285,7 @@ class JSONFormatter(logging.Formatter):
     def formatException(self, ei, strip_newlines=True):
         lines = traceback.format_exception(*ei)
         if strip_newlines:
-            lines = [itertools.ifilter(
+            lines = [filter(
                 lambda x: x,
                 line.rstrip().splitlines()) for line in lines]
             lines = list(itertools.chain(*lines))

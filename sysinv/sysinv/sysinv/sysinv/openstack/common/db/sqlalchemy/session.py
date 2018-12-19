@@ -493,7 +493,7 @@ def _wrap_db_error(f):
         except Exception as e:
             LOG.exception(_('DB exception wrapped.'))
             raise exception.DBError(e)
-    _wrap.func_name = f.func_name
+    _wrap.__name__ = f.__name__
     return _wrap
 
 
