@@ -2266,6 +2266,11 @@ data:
             STATIC_ROOT = '/var/www/html/horizon'
 
             # StarlingX additions
+            # Change session and CSRF cookie names to prevent conflict with
+            # platform horizon
+            CSRF_COOKIE_NAME = 'appcsrftoken'
+            SESSION_COOKIE_NAME = 'appsessionid'
+
             #OPENSTACK_KEYSTONE_URL = "http://%s:5000/v3" % OPENSTACK_HOST
             #present OPENSTACK_API_VERSIONS={"identity":3}
 
