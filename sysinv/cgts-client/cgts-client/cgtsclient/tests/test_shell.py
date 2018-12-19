@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import cStringIO
 import httplib2
 import re
 import sys
@@ -13,6 +12,7 @@ import fixtures
 from testtools import matchers
 
 from keystoneclient.v2_0 import client as ksclient
+from six.moves import cStringIO as StringIO
 
 from cgtsclient import exc
 from cgtsclient import shell as cgts_shell
@@ -42,7 +42,7 @@ class ShellTest(utils.BaseTestCase):
     def shell(self, argstr):
         orig = sys.stdout
         try:
-            sys.stdout = cStringIO.StringIO()
+            sys.stdout = StringIO()
             _shell = cgts_shell.CgtsShell()
             _shell.main(argstr.split())
         except SystemExit:

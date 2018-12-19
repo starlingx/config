@@ -44,11 +44,11 @@ import subprocess
 import sys
 import tempfile
 import time
-from six.moves import configparser
-import StringIO
 import socket
 import yaml
 
+from six.moves import configparser
+from six import StringIO
 from sysinv.agent import disk
 from sysinv.agent import partition
 from sysinv.agent import pv
@@ -345,7 +345,7 @@ class AgentManager(service.PeriodicService):
             return None
 
         ini_str = '[DEFAULT]\n' + open(CONFIG_APPLIED_FILE, 'r').read()
-        ini_fp = StringIO.StringIO(ini_str)
+        ini_fp = StringIO(ini_str)
 
         config_applied = configparser.RawConfigParser()
         config_applied.optionxform = str
