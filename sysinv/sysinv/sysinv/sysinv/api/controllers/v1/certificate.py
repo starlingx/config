@@ -268,6 +268,7 @@ class CertificateController(rest.RestController):
                tpm_mode: install certificate to tpm devices for ssl
                murano: install certificate for rabbit-murano
                murano_ca: install ca certificate for rabbit-murano
+               docker_registry: install certificate for docker registry
         """
 
         log_start = cutils.timestamped("certificate_do_post_start")
@@ -297,7 +298,8 @@ class CertificateController(rest.RestController):
         system = pecan.request.dbapi.isystem_get_one()
         capabilities = system.capabilities
 
-        if not mode.startswith(constants.CERT_MODE_MURANO):
+        if not mode.startswith(constants.CERT_MODE_MURANO) and \
+                mode != constants.CERT_MODE_DOCKER_REGISTRY:
             system_https_enabled = capabilities.get('https_enabled', False)
             if system_https_enabled is False or system_https_enabled == 'n':
                 msg = "No certificates have been added, https is not enabled."

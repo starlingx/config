@@ -94,6 +94,7 @@ from sysinv.openstack.common.gettextutils import _
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import helm
+from sysinv.helm import common as helm_common
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -10154,11 +10155,14 @@ class ConductorManager(service.PeriodicService):
                     alarm.entity_instance_id)
 
     @staticmethod
-    def _extract_keys_from_pem(mode, pem_contents, passphrase=None):
+    def _extract_keys_from_pem(mode, pem_contents, cert_format,
+                               passphrase=None):
         """Extract keys from the pem contents
 
-        :param mode: mode one of: ssl, tpm_mode, murano, murano_ca
+        :param mode: mode one of: ssl, tpm_mode, murano, murano_ca,
+                     docker_registry
         :param pem_contents: pem_contents
+        :param cert_format: serialization.PrivateFormat
         :param passphrase: passphrase for PEM file
 
         :returns: private_bytes, public_bytes, signature
@@ -10178,6 +10182,7 @@ class ConductorManager(service.PeriodicService):
         if mode in [constants.CERT_MODE_SSL,
                     constants.CERT_MODE_TPM,
                     constants.CERT_MODE_MURANO,
+                    constants.CERT_MODE_DOCKER_REGISTRY,
                     ]:
             private_mode = True
 
@@ -10205,7 +10210,7 @@ class ConductorManager(service.PeriodicService):
 
             private_bytes = private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
+                format=cert_format,
                 encryption_algorithm=serialization.NoEncryption())
 
         signature = mode + '_' + str(cert.serial_number)
@@ -10265,6 +10270,16 @@ class ConductorManager(service.PeriodicService):
             except OSError:
                 pass
 
+    def _get_registry_floating_address(self):
+        """gets the registry floating address. Currently this is mgmt
+        """
+        registry_network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_MGMT)
+        registry_network_addr_pool = self.dbapi.address_pool_get(
+            registry_network.pool_uuid)
+        addr = registry_network_addr_pool.floating_address
+        return addr
+
     def config_certificate(self, context, pem_contents, config_dict):
         """Configure certificate with the supplied data.
 
@@ -10285,7 +10300,9 @@ class ConductorManager(service.PeriodicService):
         LOG.info("config_certificate mode=%s file=%s" % (mode, certificate_file))
 
         private_bytes, public_bytes, signature = \
-            self._extract_keys_from_pem(mode, pem_contents, passphrase)
+            self._extract_keys_from_pem(mode, pem_contents,
+                                        serialization.PrivateFormat.PKCS8,
+                                        passphrase)
 
         personalities = [constants.CONTROLLER]
         tpm = None
@@ -10396,6 +10413,77 @@ class ConductorManager(service.PeriodicService):
                 'permissions': constants.CONFIG_FILE_PERMISSION_DEFAULT,
             }
             self._config_update_file(context, config_uuid, config_dict)
+        elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
+            LOG.info("Docker registry certificate install")
+            # docker registry requires a PKCS1 key for the token server
+            pkcs1_private_bytes, pkcs1_public_bytes, pkcs1_signature = \
+                self._extract_keys_from_pem(mode, pem_contents,
+                                            serialization.PrivateFormat
+                                            .TraditionalOpenSSL, passphrase)
+
+            # install certificate, key, and pkcs1 key to controllers
+            config_uuid = self._config_update_hosts(context, personalities)
+            key_path = constants.DOCKER_REGISTRY_KEY_FILE
+            cert_path = constants.DOCKER_REGISTRY_CERT_FILE
+            pkcs1_key_path = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
+
+            config_dict = {
+                'personalities': personalities,
+                'file_names': [key_path, cert_path, pkcs1_key_path],
+                'file_content': {key_path: private_bytes,
+                                 cert_path: public_bytes,
+                                 pkcs1_key_path: pkcs1_private_bytes},
+                'nobackup': True,
+                'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
+            }
+            self._config_update_file(context, config_uuid, config_dict)
+
+            # copy certificate to shared directory
+            with os.fdopen(os.open(constants.DOCKER_REGISTRY_CERT_FILE_SHARED,
+                                   os.O_CREAT | os.O_WRONLY,
+                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
+                                   'wb') as f:
+                f.write(public_bytes)
+            with os.fdopen(os.open(constants.DOCKER_REGISTRY_KEY_FILE_SHARED,
+                                   os.O_CREAT | os.O_WRONLY,
+                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
+                                   'wb') as f:
+                f.write(private_bytes)
+            with os.fdopen(os.open(constants.DOCKER_REGISTRY_PKCS1_KEY_FILE_SHARED,
+                                   os.O_CREAT | os.O_WRONLY,
+                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
+                                   'wb') as f:
+                f.write(pkcs1_private_bytes)
+
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::dockerdistribution::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
+
+            self._remove_certificate_file(mode, certificate_file)
+
+            # install docker certificate on controllers and workers
+            registry_full_address = self._get_registry_floating_address() + ":" + helm_common.REGISTRY_PORT
+            docker_cert_path = os.path.join("/etc/docker/certs.d",
+                                            registry_full_address,
+                                            "registry-cert.crt")
+
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER]
+            config_uuid = self._config_update_hosts(context,
+                                                    personalities)
+            config_dict = {
+                'personalities': personalities,
+                'file_names': [docker_cert_path],
+                'file_content': public_bytes,
+                'nobackup': True,
+                'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
+            }
+            self._config_update_file(context, config_uuid, config_dict)
         else:
             msg = "config_certificate unexpected mode=%s" % mode
             LOG.warn(msg)
@@ -10422,7 +10510,9 @@ class ConductorManager(service.PeriodicService):
         LOG.info("_config_selfsigned_certificate mode=%s file=%s" % (mode, certificate_file))
 
         private_bytes, public_bytes, signature = \
-            self._extract_keys_from_pem(mode, pem_contents, passphrase)
+            self._extract_keys_from_pem(mode, pem_contents,
+                                        serialization.PrivateFormat.PKCS8,
+                                        passphrase)
 
         personalities = [constants.CONTROLLER]
 
