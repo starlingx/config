@@ -546,7 +546,7 @@ class AppOperator(object):
             for key, value in labels.items():
                 if key == constants.CONTROLLER:
                     controller_l = value
-                elif key == constants.COMPUTE:
+                elif key == constants.WORKER:
                     compute_l = value
         else:
             if not app.system_app:
