@@ -29,7 +29,7 @@ class CinderHelm(openstack.OpenstackBaseHelm):
 
     @property
     def docker_repo_source(self):
-        return common.DOCKER_SRC_STX
+        return common.DOCKER_SRC_LOC
 
     @property
     def docker_repo_tag(self):
@@ -202,8 +202,8 @@ class CinderHelm(openstack.OpenstackBaseHelm):
 
         # TODO: Remove after ceph upgrade
         # Format the name of the stx specific ceph config helper
-        ceph_config_helper_image = "{}/{}{}:{}".format(
-            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_BASE_KEY],
+        ceph_config_helper_image = "{}:{}/{}/{}{}:{}".format(
+            self._get_management_address(), common.REGISTRY_PORT, common.REPO_LOC,
             common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
             'ceph-config-helper', self.docker_repo_tag)
 

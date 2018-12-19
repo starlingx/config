@@ -289,7 +289,10 @@ class AppOperator(object):
 
     def _get_image_tags_by_path(self, path):
         """ Mine the image tags from values.yaml files in the chart directory,
-            intended for custom apps. """
+            intended for custom apps.
+
+            TODO(awang): Support custom apps to pull images from local registry
+        """
 
         image_tags = []
         ids = []
@@ -304,35 +307,80 @@ class AppOperator(object):
         return list(set(image_tags))
 
     def _get_image_tags_by_charts(self, app_path, charts):
-        """ Mine the image tags from both the chart path and the overrides,
-            intended for system app. """
+        """ Mine the image tags from the chart paths. Add the converted
+            image tags to the overrides if the image tags from the chart
+            paths do not exist. Intended for system app.
+
+            The image tagging conversion(local docker registry address prepended):
+            ${LOCAL_DOCKER_REGISTRY_IP}:${REGISTRY_PORT}/<image-name>
+            (ie..192.168.204.2:9001/docker.io/mariadb:10.2.13)
+        """
+
+        local_docker_registry_ip = self._dbapi.address_get_by_name(
+            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                       constants.NETWORK_TYPE_MGMT)
+        ).address
 
         image_tags = []
         for chart in charts:
-            tags = []
+            images_charts = {}
+            images_overrides = {}
             overrides = chart.namespace + '-' + chart.name + '.yaml'
             overrides_file = os.path.join(common.HELM_OVERRIDES_PATH,
                                           overrides)
-            chart_path = os.path.join(app_path, chart.name)
+            chart_name = os.path.join(app_path, chart.name)
+            chart_path = os.path.join(chart_name, 'values.yaml')
+
+            # Get the image tags from the chart path
+            if os.path.exists(chart_path):
+                with open(chart_path, 'r') as file:
+                    try:
+                        doc = yaml.load(file)
+                        images_charts = doc["images"]["tags"]
+                    except (TypeError, KeyError):
+                        pass
+
+            # Get the image tags from the overrides file
             if os.path.exists(overrides_file):
                 with open(overrides_file, 'r') as file:
                     try:
                         y = yaml.load(file)
-                        tags = y["data"]["values"]["images"]["tags"].values()
+                        images_overrides = y["data"]["values"]["images"]["tags"]
                     except (TypeError, KeyError):
                         LOG.info("Overrides file %s has no img tags" %
                                   overrides_file)
-                if tags:
-                    image_tags.extend(tags)
-                    continue
+                        pass
 
-            # Either this chart does not have overrides file or image tags are
-            # not in its overrides file, walk the chart path to find image tags
-            chart_path = os.path.join(app_path, chart.name)
-            if os.path.exists(chart_path):
-                tags = self._get_image_tags_by_path(chart_path)
-                if tags:
-                    image_tags.extend(tags)
+            # Add the converted image tags to the overrides if the images from
+            # the chart path do not exist in the overrides
+            tags_updated = False
+            for key, image_tag in images_charts.items():
+                if (key not in images_overrides and
+                        not image_tag.startswith(local_docker_registry_ip)):
+                    images_overrides.update(
+                        {key: '{}:{}/{}'.format(local_docker_registry_ip, common.REGISTRY_PORT, image_tag)})
+                    tags_updated = True
+
+            if tags_updated:
+                with open(overrides_file, 'w') as file:
+                    try:
+                        if "images" not in y["data"]["values"]:
+                            file.seek(0)
+                            file.truncate()
+                            y["data"]["values"]["images"] = {"tags": images_overrides}
+                        else:
+                            y["data"]["values"]["images"]["tags"] = images_overrides
+
+                        yaml.safe_dump(y, file, explicit_start=True,
+                                       default_flow_style=False)
+                        LOG.info("Overrides file %s updated with new image tags" %
+                                  overrides_file)
+                    except (TypeError, KeyError):
+                        LOG.error("Overrides file %s fails to update" %
+                                   overrides_file)
+
+            if images_overrides:
+                image_tags.extend(images_overrides.values())
 
         return list(set(image_tags))
 
@@ -361,10 +409,9 @@ class AppOperator(object):
             self._helm.generate_helm_application_overrides(
                 app.name, cnamespace=None, armada_format=True, combined=True)
             app.charts = self._get_list_of_charts(app.armada_mfile_abs)
-            # Grab the image tags from the overrides. If they don't exist
-            # then mine them from the chart paths.
-            images_to_download = self._get_image_tags_by_charts(app.charts_dir,
-                                                                app.charts)
+            # Get the list of images from the updated images overrides
+            images_to_download = self._get_image_tags_by_charts(
+                app.charts_dir, app.charts)
         else:
             # For custom apps, mine image tags from application path
             images_to_download = self._get_image_tags_by_path(app.path)
@@ -1150,18 +1197,34 @@ class DockerHelper(object):
                       (request, manifest_file, e))
         return rc
 
-    def download_an_image(self, img_tag):
+    def download_an_image(self, loc_img_tag):
+
         rc = True
         start = time.time()
         try:
-            LOG.info("Image %s download started" % img_tag)
-            client = docker.from_env(timeout=INSTALLATION_TIMEOUT)
-            client.images.pull(img_tag)
+            # Pull image from local docker registry
+            LOG.info("Image %s download started from local registry" % loc_img_tag)
+            client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
+            client.pull(loc_img_tag)
+        except docker.errors.NotFound:
+            try:
+                # Image is not available in local docker registry, get the image
+                # from the public registry and push to the local registry
+                LOG.info("Image %s is not available in local registry, "
+                         "download started from public registry" % loc_img_tag)
+                pub_img_tag = loc_img_tag[1 + loc_img_tag.find('/'):]
+                client.pull(pub_img_tag)
+                client.tag(pub_img_tag, loc_img_tag)
+                client.push(loc_img_tag)
+            except Exception as e:
+                rc = False
+                LOG.error("Image %s download failed from public registry: %s" % (pub_img_tag, e))
         except Exception as e:
             rc = False
-            LOG.error("Image %s download failed: %s" % (img_tag, e))
+            LOG.error("Image %s download failed from local registry: %s" % (loc_img_tag, e))
         elapsed_time = time.time() - start
 
-        LOG.info("Image %s download succeeded in %d seconds" %
-                 (img_tag, elapsed_time))
-        return img_tag, rc
+        if rc:
+            LOG.info("Image %s download succeeded in %d seconds" %
+                     (loc_img_tag, elapsed_time))
+        return loc_img_tag, rc
