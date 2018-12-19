@@ -17,6 +17,7 @@ ChangeLog
 _build
 build
 cover
+coverage.xml
 develop-eggs
 dist
 eggs
