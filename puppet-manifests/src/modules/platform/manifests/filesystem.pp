@@ -10,6 +10,7 @@ define platform::filesystem (
   $fs_type,
   $fs_options,
   $fs_use_all = false,
+  $mode = '0750',
 ) {
   include ::platform::filesystem::params
   $vg_name = $::platform::filesystem::params::vg_name
@@ -45,7 +46,7 @@ define platform::filesystem (
     ensure  => 'directory',
     owner   => 'root',
     group   => 'root',
-    mode    => '0750',
+    mode    => $mode,
   } ->
 
   mount { $name:
@@ -186,7 +187,8 @@ class platform::filesystem::docker
       mountpoint => $mountpoint,
       fs_type => $fs_type,
       fs_options => $fs_options,
-      fs_use_all => $fs_use_all
+      fs_use_all => $fs_use_all,
+      mode => '0711',
     }
   }
 }
