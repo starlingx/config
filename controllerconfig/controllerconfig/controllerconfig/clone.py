@@ -320,7 +320,7 @@ def create_iso(iso_name, archive_dir):
     try:
         # prepare the iso files
         images_dir = os.path.join(iso_dir, 'images')
-        os.mkdir(images_dir, 0644)
+        os.mkdir(images_dir, 0o644)
         pxe_dir = os.path.join('/pxeboot',
                                'rel-' + tsconfig.SW_VERSION)
         os.symlink(pxe_dir + '/installer-bzImage',
@@ -347,7 +347,7 @@ def create_iso(iso_name, archive_dir):
         step += 1
 
         efiboot_dir = os.path.join(iso_dir, 'EFI', 'BOOT')
-        os.makedirs(efiboot_dir, 0644)
+        os.makedirs(efiboot_dir, 0o644)
         l_efi_dir = os.path.join('/boot', 'efi', 'EFI')
         shutil.copy2(l_efi_dir + '/BOOT/BOOTX64.EFI', efiboot_dir)
         shutil.copy2(l_efi_dir + '/centos/MokManager.efi', efiboot_dir)
@@ -420,7 +420,7 @@ def create_iso(iso_name, archive_dir):
 
         create_ini_file(clone_archive_dir, iso_name)
 
-        os.chmod(iso_dir + '/isolinux.bin', 0664)
+        os.chmod(iso_dir + '/isolinux.bin', 0o664)
         iso_file = os.path.join(archive_dir, iso_name + ".iso")
         output = subprocess.check_output(
             ["nice", "mkisofs",
@@ -702,7 +702,7 @@ def clone(backup_name, archive_dir):
     if os.path.exists(isolinux_dir):
         LOG.info("deleting old iso_dir %s" % isolinux_dir)
         shutil.rmtree(isolinux_dir, ignore_errors=True)
-    os.makedirs(clone_archive_dir, 0644)
+    os.makedirs(clone_archive_dir, 0o644)
 
     try:
         backup_restore.backup(backup_name, clone_archive_dir, clone=True)
