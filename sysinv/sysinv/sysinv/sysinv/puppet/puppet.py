@@ -56,6 +56,10 @@ class PuppetOperator(object):
         thread_context = eventlet.greenthread.getcurrent()
         return getattr(thread_context, '_puppet_context')
 
+    @property
+    def config(self):
+        return self.context.get('config', {})
+
     @puppet_context
     def create_static_config(self):
         """
@@ -69,7 +73,7 @@ class PuppetOperator(object):
         os.environ["XDG_DATA_HOME"] = "/tmp"
 
         try:
-            config = {}
+            self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_static_config())
 
@@ -91,7 +95,7 @@ class PuppetOperator(object):
         os.environ["XDG_DATA_HOME"] = "/tmp"
 
         try:
-            config = {}
+            self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_secure_static_config())
 
@@ -106,7 +110,7 @@ class PuppetOperator(object):
         """Update the configuration for the system"""
         try:
             # NOTE: order is important due to cached context data
-            config = {}
+            self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_system_config())
 
@@ -121,7 +125,7 @@ class PuppetOperator(object):
         """Update the secure configuration for the system"""
         try:
             # NOTE: order is important due to cached context data
-            config = {}
+            self.context['config'] = config = {}
             for puppet_plugin in self.puppet_plugins:
                 config.update(puppet_plugin.obj.get_secure_system_config())
 
@@ -136,7 +140,7 @@ class PuppetOperator(object):
         """Update the host hiera configuration files for the supplied host"""
 
         self.config_uuid = config_uuid
-        config = {}
+        self.context['config'] = config = {}
         for puppet_plugin in self.puppet_plugins:
             config.update(puppet_plugin.obj.get_host_config(host))
 
