@@ -18,3 +18,4 @@ puppet-modules-wrs/puppet-dcmanager
 puppet-modules-wrs/puppet-smapi
 puppet-modules-wrs/puppet-fm
 playbookconfig
+puppet-modules-wrs/puppet-dcdbsync
