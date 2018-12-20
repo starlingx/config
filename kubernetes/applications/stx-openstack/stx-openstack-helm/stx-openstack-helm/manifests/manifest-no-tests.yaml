@@ -243,6 +243,11 @@ data:
       prometheus_rabbitmq_exporter:
         node_selector_key: openstack-control-plane
         node_selector_value: enabled
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/rabbitmq-0.1.0.tgz
@@ -343,6 +348,10 @@ data:
       replicas:
         api: 2
         registry: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/glance-0.1.0.tgz
@@ -401,6 +410,10 @@ data:
         volume: 1
         scheduler: 1
         backup: 1
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
     conf:
       cinder:
         DEFAULT:
@@ -539,6 +552,10 @@ data:
         consoleauth: 1
         scheduler: 1
         novncproxy: 1
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
     conf:
       nova:
         libvirt:
@@ -627,6 +644,10 @@ data:
     pod:
       replicas:
         server: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
     labels:
       agent:
         dhcp:
@@ -735,6 +756,10 @@ data:
         cfn: 2
         cloudwatch: 2
         engine: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/heat-0.1.0.tgz
