@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from __future__ import absolute_import
 import os
 import subprocess
 
@@ -25,15 +26,18 @@ class KubernetesPuppet(base.BasePuppet):
         if self._kubernetes_enabled():
             config.update(
                 {'platform::kubernetes::params::enabled': True,
-                 # Hardcoding the pod network cidr to a private network that
-                 # does not overlap with our default management network. Will
-                 # eventually be configurable.
                  'platform::kubernetes::params::pod_network_cidr':
-                     '172.16.0.0/16',
+                     self._get_pod_network_cidr(),
+                 'platform::kubernetes::params::service_network_cidr':
+                     self._get_cluster_service_subnet(),
                  'platform::kubernetes::params::apiserver_advertise_address':
-                     self._get_management_address(),
+                     self._get_cluster_host_address(),
                  'platform::kubernetes::params::etcd_endpoint':
                      self._get_etcd_endpoint(),
+                 'platform::kubernetes::params::service_domain':
+                     self._get_dns_service_domain(),
+                 'platform::kubernetes::params::dns_service_ip':
+                     self._get_dns_service_ip(),
                  })
 
         return config
@@ -99,7 +103,31 @@ class KubernetesPuppet(base.BasePuppet):
         return config
 
     def _get_etcd_endpoint(self):
-        addr = self._format_url_address(self._get_management_address())
+        addr = self._format_url_address(self._get_cluster_host_address())
         protocol = "http"
         url = "%s://%s:%s" % (protocol, str(addr), str(self.ETCD_SERVICE_PORT))
         return url
+
+    def _get_pod_network_cidr(self):
+        return self._get_network_config(constants.NETWORK_TYPE_CLUSTER_POD)
+
+    def _get_cluster_service_subnet(self):
+        return self._get_network_config(constants.NETWORK_TYPE_CLUSTER_SERVICE)
+
+    def _get_network_config(self, networktype):
+        try:
+            network = self.dbapi.network_get_by_type(networktype)
+        except exception.NetworkTypeNotFound:
+            # network not configured
+            return {}
+        address_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        subnet = str(address_pool.network) + '/' + str(address_pool.prefix)
+        return subnet
+
+    def _get_dns_service_domain(self):
+        # Setting this to a constant for now. Will be configurable later
+        return constants.DEFAULT_DNS_SERVICE_DOMAIN
+
+    def _get_dns_service_ip(self):
+        # Setting this to a constant for now. Will be configurable later
+        return constants.DEFAULT_DNS_SERVICE_IP

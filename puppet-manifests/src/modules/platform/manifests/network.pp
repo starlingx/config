@@ -81,6 +81,24 @@ class platform::network::oam::params(
   $mtu = 1500,
 ) { }
 
+class platform::network::cluster_host::params(
+  # shared parametes with base class - required for auto hiera parameter lookup
+  $interface_name = undef,
+  $interface_address = undef,
+  $subnet_version = undef,
+  $subnet_network = undef,
+  $subnet_network_url = undef,
+  $subnet_prefixlen = undef,
+  $subnet_netmask = undef,
+  $subnet_start = undef,
+  $subnet_end = undef,
+  $gateway_address = undef,
+  $controller_address = undef,  # controller floating
+  $controller_address_url = undef,  # controller floating url address
+  $controller0_address = undef, # controller unit0
+  $controller1_address = undef, # controller unit1
+  $mtu = 1500,
+) { }
 
 define network_address (
   $address,
@@ -148,6 +166,7 @@ class platform::network (
   include ::platform::params
   include ::platform::network::mgmt::params
   include ::platform::network::infra::params
+  include ::platform::network::cluster_host::params
 
   include ::platform::network::apply
 

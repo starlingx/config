@@ -34,10 +34,17 @@ class platform::config::file {
   include ::platform::network::mgmt::params
   include ::platform::network::infra::params
   include ::platform::network::oam::params
+  include ::platform::network::cluster_host::params
+  include ::platform::kubernetes::params
+  $kubernetes_enabled = $::platform::kubernetes::params::enabled
 
   # dependent template variables
   $management_interface = $::platform::network::mgmt::params::interface_name
-  $infrastructure_interface = $::platform::network::infra::params::interface_name
+  if $kubernetes_enabled {
+    $infrastructure_interface = $::platform::network::cluster_host::params::interface_name
+  } else {
+    $infrastructure_interface = $::platform::network::infra::params::interface_name
+  }
   $oam_interface = $::platform::network::oam::params::interface_name
 
   $platform_conf = '/etc/platform/platform.conf'

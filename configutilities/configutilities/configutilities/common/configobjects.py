@@ -20,9 +20,10 @@ SUBCLOUD_CONFIG = 2
 MGMT_TYPE = 0
 INFRA_TYPE = 1
 OAM_TYPE = 2
+CLUSTER_TYPE = 3
 NETWORK_PREFIX_NAMES = [
-    ('MGMT', 'INFRA', 'OAM'),
-    ('CLM', 'BLS', 'CAN')
+    ('MGMT', 'INFRA', 'OAM', 'CLUSTER'),
+    ('CLM', 'BLS', 'CAN', 'CLUSTER')
 ]
 
 # Additions to this list must be reflected in the hostfile

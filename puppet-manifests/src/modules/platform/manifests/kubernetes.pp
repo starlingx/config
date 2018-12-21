@@ -1,8 +1,11 @@
 class platform::kubernetes::params (
   $enabled = false,
   $pod_network_cidr = undef,
+  $service_network_cidr = undef,
   $apiserver_advertise_address = undef,
   $etcd_endpoint = undef,
+  $service_domain = undef,
+  $dns_service_ip = undef,
   $ca_crt = undef,
   $ca_key = undef,
   $sa_key = undef,
@@ -43,18 +46,6 @@ class platform::kubernetes::kubeadm {
   }
   -> exec { 'update kernel parameters for iptables':
     command => 'sysctl --system',
-  }
-
-  # TODO: Update /etc/resolv.conf.k8s to be controlled by sysinv, as is done
-  # for /etc/resolv.conf.  Is should contain all the user-specified DNS
-  # servers, but not the coredns IP.
-  # Create custom resolv.conf file for kubelet
-  -> file { '/etc/resolv.conf.k8s':
-    ensure  => file,
-    content => 'nameserver 8.8.8.8',
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0644',
   }
 
   # Start kubelet.

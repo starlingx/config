@@ -48,7 +48,11 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_INFRA,
                          constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_MULTICAST,
-                         constants.NETWORK_TYPE_SYSTEM_CONTROLLER]
+                         constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+                         constants.NETWORK_TYPE_CLUSTER_HOST,
+                         constants.NETWORK_TYPE_CLUSTER_POD,
+                         constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                         ]
 
 
 class Network(base.APIBase):
@@ -174,12 +178,15 @@ class NetworkController(rest.RestController):
         elif network['type'] == constants.NETWORK_TYPE_INFRA:
             addresses = self._create_infra_network_address()
             self._remove_mgmt_cinder_address()
+        elif network['type'] == constants.NETWORK_TYPE_CLUSTER_HOST:
+            addresses = self._create_cluster_host_network_address()
         elif network['type'] == constants.NETWORK_TYPE_OAM:
             addresses = self._create_oam_network_address(pool)
         elif network['type'] == constants.NETWORK_TYPE_MULTICAST:
             addresses = self._create_multicast_network_address()
         elif network['type'] == constants.NETWORK_TYPE_SYSTEM_CONTROLLER:
             addresses = self._create_system_controller_network_address(pool)
+
         else:
             return
         self._populate_network_addresses(pool, network, addresses)
@@ -217,6 +224,13 @@ class NetworkController(rest.RestController):
         addresses[constants.CONTROLLER_1_HOSTNAME] = None
         addresses[constants.CONTROLLER_CGCS_NFS] = None
         addresses[constants.CONTROLLER_CINDER] = None
+        return addresses
+
+    def _create_cluster_host_network_address(self):
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
         return addresses
 
     def _remove_mgmt_cinder_address(self):

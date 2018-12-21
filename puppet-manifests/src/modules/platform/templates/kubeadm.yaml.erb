@@ -14,7 +14,9 @@ apiServerCertSANs:
 - "<%= @apiserver_advertise_address %>"
 - "127.0.0.1"
 networking:
+  dnsDomain: <%= @service_domain %>
   podSubnet: <%= @pod_network_cidr %>
+  serviceSubnet: <%= @service_network_cidr %>
 controllerManagerExtraArgs:
   node-monitor-period: "2s"
   node-monitor-grace-period: "20s"
@@ -26,4 +28,3 @@ nodeStatusUpdateFrequency: "4s"
 failSwapOn: false
 featureGates:
   HugePages: false
-resolvConf: "/etc/resolv.conf.k8s"

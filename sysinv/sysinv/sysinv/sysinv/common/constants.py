@@ -583,6 +583,9 @@ NETWORK_TYPE_BM = 'bm'
 NETWORK_TYPE_MULTICAST = 'multicast'
 NETWORK_TYPE_DATA = 'data'
 NETWORK_TYPE_SYSTEM_CONTROLLER = 'system-controller'
+NETWORK_TYPE_CLUSTER_HOST = 'cluster-host'
+NETWORK_TYPE_CLUSTER_POD = 'cluster-pod'
+NETWORK_TYPE_CLUSTER_SERVICE = 'cluster-service'
 
 NETWORK_TYPE_PCI_PASSTHROUGH = 'pci-passthrough'
 NETWORK_TYPE_PCI_SRIOV = 'pci-sriov'
@@ -591,7 +594,8 @@ NETWORK_TYPE_PXEBOOT = 'pxeboot'
 PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_MGMT,
                           NETWORK_TYPE_INFRA,
-                          NETWORK_TYPE_OAM]
+                          NETWORK_TYPE_OAM,
+                          NETWORK_TYPE_CLUSTER_HOST]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]
@@ -1478,3 +1482,7 @@ APP_TARFILE_NAME_PLACEHOLDER = 'tarfile-placeholder'
 CONTROL_PLANE_LABEL = 'openstack-control-plane=enabled'
 COMPUTE_NODE_LABEL = 'openstack-compute-node=enabled'
 OPENVSWITCH_LABEL = 'openvswitch=enabled'
+
+# Default DNS service domain
+DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
+DEFAULT_DNS_SERVICE_IP = '10.96.0.10'

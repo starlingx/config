@@ -466,7 +466,6 @@ class AddressPoolController(rest.RestController):
         addrpool_dict = addrpool.as_dict()
         self._set_defaults(addrpool_dict)
         self._sort_ranges(addrpool_dict)
-
         # Check for semantic conflicts
         self._check_name_conflict(addrpool_dict)
         self._check_valid_ranges(addrpool_dict)

@@ -25,6 +25,7 @@ LOG = log.getLogger(__name__)
 PLATFORM_NETWORK_TYPES = [constants.NETWORK_TYPE_PXEBOOT,
                           constants.NETWORK_TYPE_MGMT,
                           constants.NETWORK_TYPE_INFRA,
+                          constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.NETWORK_TYPE_OAM]
 
 DATA_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA]
@@ -118,6 +119,7 @@ class InterfacePuppet(base.BasePuppet):
             'personality': host.personality,
             'subfunctions': host.subfunctions,
             'system_uuid': host.isystem_uuid,
+            'system_mode': self._get_system().system_mode,
             'ports': self._get_port_interface_id_index(host),
             'interfaces': self._get_interface_name_index(host),
             'devices': self._get_port_pciaddr_index(host),
@@ -259,6 +261,19 @@ class InterfacePuppet(base.BasePuppet):
             floating_ips.update({
                 constants.NETWORK_TYPE_OAM: oam_floating_ip
             })
+
+        try:
+            cluster_address = self._get_address_by_name(
+                constants.CONTROLLER_HOSTNAME,
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+            if cluster_address:
+                cluster_floating_ip = (str(cluster_address.address) + '/' +
+                                       str(cluster_address.prefix))
+                floating_ips.update({
+                    constants.NETWORK_TYPE_CLUSTER_HOST: cluster_floating_ip
+                })
+        except exception.AddressNotFoundByName:
+            pass
 
         return floating_ips
 
@@ -595,6 +610,8 @@ def get_interface_address_method(context, iface):
             # All other interface types that exist on a controller are setup
             # statically since the controller themselves run the DHCP server.
             return 'static'
+        elif iface.networktype == constants.NETWORK_TYPE_CLUSTER_HOST:
+            return 'static'
         elif iface.networktype == constants.NETWORK_TYPE_PXEBOOT:
             # All pxeboot interfaces that exist on non-controller nodes are set
             # to manual as they are not needed/used once the install is done.
@@ -872,12 +889,11 @@ def get_common_network_config(context, iface, config, network_id=None):
     method = get_interface_address_method(context, iface)
     if method == 'static':
         address = get_interface_primary_address(context, iface, network_id)
-        if address is None:
-            LOG.error("Interface %s has no primary address" % iface['ifname'])
-        assert address is not None
-
-        config['ipaddress'] = address['address']
-        config['netmask'] = address['netmask']
+        if address:
+            config['ipaddress'] = address['address']
+            config['netmask'] = address['netmask']
+        else:
+            LOG.info("Interface %s has no primary address" % iface['ifname'])
 
         if network_id is None and len(iface.networks) > 0:
             networktype = find_networktype_by_network_id(
@@ -931,6 +947,9 @@ def generate_network_config(context, config, iface):
             net_config = get_interface_network_config(context, iface,
                                                       int(net_id))
             ifname = net_config['ifname'] + ':' + net_id
+            if context['system_mode'] == constants.SYSTEM_MODE_SIMPLEX:
+                options = {'SCOPE': 'scope host'}
+                net_config['options'].update(options)
             config[NETWORK_CONFIG_RESOURCE].update({
                 ifname: format_network_config(net_config)
             })
@@ -1049,9 +1068,18 @@ def generate_address_configs(context, config):
                 networktype: address_config
             })
         elif networktype == constants.NETWORK_TYPE_PXEBOOT:
-            # Fallback PXE boot address against mananagement interface
+            # Fallback PXE boot address against management interface
             iface = find_interface_by_type(context,
                                            constants.NETWORK_TYPE_MGMT)
+            if iface:
+                address_config = get_address_config(context, iface, address)
+                config[ADDRESS_CONFIG_RESOURCE].update({
+                    networktype: address_config
+                })
+        elif networktype == constants.NETWORK_TYPE_CLUSTER_HOST:
+            # Fallback cluster host address against management interface
+            iface = find_interface_by_type(context,
+                                           constants.NETWORK_TYPE_CLUSTER_HOST)
             if iface:
                 address_config = get_address_config(context, iface, address)
                 config[ADDRESS_CONFIG_RESOURCE].update({

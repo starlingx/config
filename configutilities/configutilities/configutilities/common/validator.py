@@ -14,6 +14,7 @@ from configutilities.common.configobjects import INFRA_TYPE
 from configutilities.common.configobjects import DEFAULT_DOMAIN_NAME
 from configutilities.common.configobjects import HP_NAMES
 from configutilities.common.configobjects import SUBCLOUD_CONFIG
+from configutilities.common.configobjects import CLUSTER_TYPE
 from netaddr import IPRange
 from configutilities.common.utils import lag_mode_to_str
 from configutilities.common.utils import validate_network_str
@@ -73,8 +74,10 @@ class ConfigValidator(object):
         self.pxeboot_section_name = None
         self.management_interface = None
         self.infrastructure_interface = None
+        self.cluster_interface = None
         self.mgmt_network = None
         self.infra_network = None
+        self.cluster_network = None
         self.oam_network = None
         self.vswitch_type = None
         self.glance_region = None
@@ -780,6 +783,105 @@ class ConfigValidator(object):
         else:
             self.infrastructure_interface = ""
 
+    def validate_cluster(self):
+        # Kubernetes cluster network configuration
+        cluster_prefix = NETWORK_PREFIX_NAMES[self.naming_type][CLUSTER_TYPE]
+        if not self.conf.has_section(cluster_prefix + '_NETWORK'):
+            return
+        self.cluster_network = Network()
+        try:
+            self.cluster_network.parse_config(self.conf, self.config_type,
+                                              CLUSTER_TYPE,
+                                              min_addresses=8,
+                                              naming_type=self.naming_type)
+        except ConfigFail:
+            raise
+        except Exception as e:
+            raise ConfigFail("Error parsing configuration file: %s" % e)
+
+        if self.cluster_network.floating_address:
+            raise ConfigFail("%s network cannot specify individual unit "
+                             "addresses" % cluster_prefix)
+
+        try:
+            check_network_overlap(self.cluster_network.cidr,
+                                  self.configured_networks)
+            self.configured_networks.append(self.cluster_network.cidr)
+        except ValidateFail:
+            raise ConfigFail("%s CIDR %s overlaps with another configured "
+                             "network" %
+                             (cluster_prefix, str(self.cluster_network.cidr)))
+
+        if self.cluster_network.logical_interface.lag_interface:
+            supported_lag_mode = [1, 4]
+            if (self.cluster_network.logical_interface.lag_mode not in
+                    supported_lag_mode):
+                raise ConfigFail(
+                    "Unsupported LAG mode (%d) for %s interface"
+                    " - use LAG mode %s instead" %
+                    (self.cluster_network.logical_interface.lag_mode,
+                     cluster_prefix, supported_lag_mode))
+
+            self.cluster_interface = 'bond' + str(self.next_lag_index)
+            cluster_interface_name = self.cluster_interface
+            self.next_lag_index += 1
+        else:
+            self.cluster_interface = (
+                self.cluster_network.logical_interface.ports[0])
+            cluster_interface_name = self.cluster_interface
+
+        if self.cluster_network.vlan:
+            if any(self.cluster_network.vlan == vlan for vlan in
+                   self.configured_vlans):
+                raise ConfigFail(
+                    "%s_NETWORK VLAN conflicts with another configured "
+                    "VLAN" % cluster_prefix)
+            self.configured_vlans.append(self.cluster_network.vlan)
+            cluster_interface_name += '.' + str(self.cluster_network.vlan)
+
+        mtu = self.cluster_network.logical_interface.mtu
+        if not is_mtu_valid(mtu):
+            raise ConfigFail(
+                "Invalid MTU value of %s for %s. "
+                "Valid values: 576 - 9216"
+                % (mtu, self.cluster_network.logical_interface.name))
+
+        if self.cgcs_conf is not None:
+            self.cgcs_conf.add_section('cCLUSTER')
+            self.cgcs_conf.set('cCLUSTER', 'CLUSTER_MTU',
+                               self.cluster_network.logical_interface.mtu)
+            self.cgcs_conf.set('cCLUSTER', 'CLUSTER_SUBNET',
+                               self.cluster_network.cidr)
+            if self.cluster_network.logical_interface.lag_interface:
+                self.cgcs_conf.set('cCLUSTER', 'LAG_CLUSTER_INTERFACE', 'yes')
+                self.cgcs_conf.set(
+                    'cCLUSTER', 'CLUSTER_BOND_MEMBER_0',
+                    self.cluster_network.logical_interface.ports[0])
+                self.cgcs_conf.set(
+                    'cCLUSTER', 'CLUSTER_BOND_MEMBER_1',
+                    self.cluster_network.logical_interface.ports[1])
+                self.cgcs_conf.set('cCLUSTER', 'CLUSTER_BOND_POLICY',
+                                   lag_mode_to_str(self.cluster_network.
+                                                   logical_interface.lag_mode))
+            else:
+                self.cgcs_conf.set('cCLUSTER', 'LAG_CLUSTER_INTERFACE', 'no')
+            self.cgcs_conf.set('cCLUSTER', 'CLUSTER_INTERFACE',
+                               self.cluster_interface)
+
+            if self.cluster_network.vlan:
+                self.cgcs_conf.set('cCLUSTER', 'CLUSTER_VLAN',
+                                   str(self.cluster_network.vlan))
+
+            self.cgcs_conf.set('cCLUSTER', 'CLUSTER_INTERFACE_NAME',
+                               cluster_interface_name)
+
+            if self.cluster_network.dynamic_allocation:
+                self.cgcs_conf.set('cCLUSTER', 'DYNAMIC_ADDRESS_ALLOCATION',
+                                   "yes")
+            else:
+                self.cgcs_conf.set('cCLUSTER', 'DYNAMIC_ADDRESS_ALLOCATION',
+                                   "no")
+
     def validate_oam(self):
         # OAM network configuration
         oam_prefix = NETWORK_PREFIX_NAMES[self.naming_type][OAM_TYPE]
@@ -1295,6 +1397,8 @@ def validate(system_config, config_type=REGION_CONFIG, cgcs_config=None,
         validator.validate_infra()
         # OAM network configuration
         validator.validate_oam()
+    # Kubernetes Cluster network configuration
+    validator.validate_cluster()
     # Neutron configuration - leave blank to use defaults
     # DNS configuration
     validator.validate_dns()
