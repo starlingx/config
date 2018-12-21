@@ -54,13 +54,14 @@ DOCKER_SRC_LOC = 'controller'
 # TODO (rchurch): These values and settings are currently provided for early
 # integration scenarios. As we formalize delivery mechanisms, these will need to
 # be adjusted accordingly.
+REGISTRY_PORT = '9001'
 REGISTRY_OSH = 'docker.io'
-REGISTRY_STX = '128.224.186.231:9001'
-REGISTRY_LOC = '192.168.204.2:9001'
+REGISTRY_STX = '128.224.186.231:%s' % REGISTRY_PORT
+REGISTRY_LOC = '192.168.204.2:%s' % REGISTRY_PORT
 
 REPO_OSH = 'openstackhelm'
 REPO_STX = 'abailey'
-REPO_LOC = 'stx'
+REPO_LOC = 'starlingx'
 
 IMG_PREFIX_KEY = 'prefix'
 IMG_BASE_KEY = 'base'
@@ -89,6 +90,6 @@ DOCKER_SRCS = {
     DOCKER_SRC_LOC: {
         IMG_BASE_KEY: '{}/{}'.format(REGISTRY_LOC, REPO_LOC),
         IMG_PREFIX_KEY: IMG_PREFIX_LOC,
-        IMG_TAG_KEY: TAGS_LATEST
+        IMG_TAG_KEY: TAGS_STX_LATEST
     }
 }

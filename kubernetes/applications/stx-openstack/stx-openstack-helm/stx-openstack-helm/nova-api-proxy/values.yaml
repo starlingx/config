@@ -20,7 +20,7 @@ labels:
 
 images:
   tags:
-    nova_api_proxy: 128.224.186.231:9001/abailey/stx-nova-api-proxy:latest
+    nova_api_proxy: docker.io/starlingx/stx-nova-api-proxy:dev-centos-pike-latest
     ks_endpoints: docker.io/openstackhelm/heat:pike
     dep_check: quay.io/stackanetes/kubernetes-entrypoint:v0.3.1
   pullPolicy: IfNotPresent
