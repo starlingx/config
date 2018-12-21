@@ -74,7 +74,7 @@ class HeatHelm(openstack.OpenstackBaseHelm):
         return {
             'replicas': {
                 'api': self._num_controllers(),
-                'cnf': self._num_controllers(),
+                'cfn': self._num_controllers(),
                 'cloudwatch': self._num_controllers(),
                 'engine': self._num_controllers()
             }

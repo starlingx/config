@@ -49,6 +49,9 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                         'neutron': {
                             'uid': 0
                         }
+                    },
+                    'replicas': {
+                        'server': self._num_controllers()
                     }
                 },
                 'network': {
