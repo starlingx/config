@@ -12,11 +12,20 @@ import wx.wizard as wiz
 import wx.lib.dialogs
 import wx.lib.scrolledpanel
 
-from common.configobjects import REGION_CONFIG, DEFAULT_CONFIG
-from common.exceptions import ValidateFail
-from common.guicomponents import Field, TYPES, prepare_fields, on_change, \
-    debug, set_icons, TEXT_WIDTH, VGAP, HGAP
-from common.validator import ConfigValidator, TiS_VERSION
+from configutilities.common.configobjects import REGION_CONFIG
+from configutilities.common.configobjects import DEFAULT_CONFIG
+from configutilities.common.exceptions import ValidateFail
+from configutilities.common.guicomponents import Field
+from configutilities.common.guicomponents import TYPES
+from configutilities.common.guicomponents import prepare_fields
+from configutilities.common.guicomponents import on_change
+from configutilities.common.guicomponents import debug
+from configutilities.common.guicomponents import set_icons
+from configutilities.common.guicomponents import TEXT_WIDTH
+from configutilities.common.guicomponents import VGAP
+from configutilities.common.guicomponents import HGAP
+from configutilities.common.validator import ConfigValidator
+from configutilities.common.validator import TiS_VERSION
 
 PADDING = 5
 CONFIG_TYPE = DEFAULT_CONFIG

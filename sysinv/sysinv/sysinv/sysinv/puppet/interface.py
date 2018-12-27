@@ -17,7 +17,7 @@ from sysinv.common import utils
 from sysinv.conductor import openstack
 from sysinv.openstack.common import log
 
-from . import base
+from sysinv.puppet import base
 
 
 LOG = log.getLogger(__name__)

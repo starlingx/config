@@ -7,8 +7,8 @@
 import keyring
 import subprocess
 
-from . import base
-from . import common
+from sysinv.helm import base
+from sysinv.helm import common
 
 from oslo_log import log
 from sysinv.common import constants

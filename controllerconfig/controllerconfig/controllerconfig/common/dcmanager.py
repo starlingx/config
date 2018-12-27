@@ -8,7 +8,7 @@
 DC Manager Interactions
 """
 
-import log
+from controllerconfig.common import log
 
 from Crypto.Hash import MD5
 from configutilities.common import crypt

@@ -24,8 +24,8 @@ from tsconfig import tsconfig
 from configutilities.common.utils import is_valid_mac
 from sysinv.common import constants as sysinv_constants
 
-from common import constants
-from common import log
+from controllerconfig.common import constants
+from controllerconfig.common import log
 
 LOOPBACK_IFNAME = 'lo'
 

@@ -8,8 +8,8 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
-from . import common
-from . import openstack
+from sysinv.helm import common
+from sysinv.helm import openstack
 
 from sqlalchemy.orm.exc import NoResultFound
 

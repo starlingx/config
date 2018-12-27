@@ -20,27 +20,33 @@ import textwrap
 import time
 
 import pyudev
-from configutilities import ConfigFail, ValidateFail
-from configutilities import is_valid_vlan, is_mtu_valid, \
-    validate_network_str, validate_address_str, validate_address, \
-    ip_version_to_string, validate_openstack_password
+from configutilities import ConfigFail
+from configutilities import ValidateFail
+from configutilities import is_valid_vlan
+from configutilities import is_mtu_valid
+from configutilities import validate_network_str
+from configutilities import validate_address_str
+from configutilities import validate_address
+from configutilities import ip_version_to_string
+from configutilities import validate_openstack_password
 from configutilities import DEFAULT_DOMAIN_NAME
-from netaddr import (IPNetwork,
-                     IPAddress,
-                     IPRange,
-                     AddrFormatError)
+from netaddr import IPNetwork
+from netaddr import IPAddress
+from netaddr import IPRange
+from netaddr import AddrFormatError
 from sysinv.common import constants as sysinv_constants
 from tsconfig.tsconfig import SW_VERSION
 
-import openstack
-import sysinv_api as sysinv
-import utils
-import progress
+from controllerconfig import openstack
+from controllerconfig import sysinv_api as sysinv
+from controllerconfig import utils
+from controllerconfig import progress
 
-from common import constants
-from common import log
-from common.exceptions import KeystoneFail, SysInvFail
-from common.exceptions import UserQuit
+from controllerconfig.common import constants
+from controllerconfig.common import log
+from controllerconfig.common.exceptions import KeystoneFail
+from controllerconfig.common.exceptions import SysInvFail
+from controllerconfig.common.exceptions import UserQuit
 from six.moves import input
 
 LOG = log.get_logger(__name__)

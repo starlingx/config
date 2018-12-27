@@ -7,8 +7,8 @@
 from sysinv.common import constants
 from sysinv.common import utils
 
-from . import base
-from . import interface
+from sysinv.puppet import base
+from sysinv.puppet import interface
 
 
 class OVSPuppet(base.BasePuppet):

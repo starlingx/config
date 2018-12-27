@@ -3,17 +3,30 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# flake8: noqa
 #
 
-from common.validator import validate
-from common.configobjects import (Network, DEFAULT_CONFIG, REGION_CONFIG,
-                                  DEFAULT_NAMES, HP_NAMES, SUBCLOUD_CONFIG,
-                                  MGMT_TYPE, INFRA_TYPE, OAM_TYPE,
-                                  NETWORK_PREFIX_NAMES, HOST_XML_ATTRIBUTES,
-                                  DEFAULT_DOMAIN_NAME)
-from common.exceptions import ConfigError, ConfigFail, ValidateFail
-from common.utils import is_valid_vlan, is_mtu_valid, \
-    validate_network_str, validate_address_str, validate_address, \
-    ip_version_to_string, lag_mode_to_str, \
-    validate_openstack_password, extract_openstack_password_rules_from_file
+from configutilities.common.validator import validate  # noqa: F401
+from configutilities.common.configobjects import Network  # noqa: F401
+from configutilities.common.configobjects import DEFAULT_CONFIG  # noqa: F401
+from configutilities.common.configobjects import REGION_CONFIG  # noqa: F401
+from configutilities.common.configobjects import DEFAULT_NAMES  # noqa: F401
+from configutilities.common.configobjects import HP_NAMES  # noqa: F401
+from configutilities.common.configobjects import SUBCLOUD_CONFIG  # noqa: F401
+from configutilities.common.configobjects import MGMT_TYPE  # noqa: F401
+from configutilities.common.configobjects import INFRA_TYPE  # noqa: F401
+from configutilities.common.configobjects import OAM_TYPE  # noqa: F401
+from configutilities.common.configobjects import NETWORK_PREFIX_NAMES  # noqa: F401
+from configutilities.common.configobjects import HOST_XML_ATTRIBUTES  # noqa: F401
+from configutilities.common.configobjects import DEFAULT_DOMAIN_NAME  # noqa: F401
+from configutilities.common.exceptions import ConfigError  # noqa: F401
+from configutilities.common.exceptions import ConfigFail  # noqa: F401
+from configutilities.common.exceptions import ValidateFail  # noqa: F401
+from configutilities.common.utils import is_valid_vlan  # noqa: F401
+from configutilities.common.utils import is_mtu_valid  # noqa: F401
+from configutilities.common.utils import validate_network_str  # noqa: F401
+from configutilities.common.utils import validate_address_str  # noqa: F401
+from configutilities.common.utils import validate_address  # noqa: F401
+from configutilities.common.utils import ip_version_to_string  # noqa: F401
+from configutilities.common.utils import lag_mode_to_str  # noqa: F401
+from configutilities.common.utils import validate_openstack_password  # noqa: F401
+from configutilities.common.utils import extract_openstack_password_rules_from_file  # noqa: F401

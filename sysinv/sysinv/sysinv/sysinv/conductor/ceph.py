@@ -16,7 +16,8 @@ import os
 import uuid
 import copy
 import tsconfig.tsconfig as tsc
-from requests.exceptions import RequestException, ReadTimeout
+from requests.exceptions import RequestException
+from requests.exceptions import ReadTimeout
 
 from cephclient import wrapper as ceph
 from fm_api import fm_api

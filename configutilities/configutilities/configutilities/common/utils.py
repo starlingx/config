@@ -8,11 +8,11 @@ SPDX-License-Identifier: Apache-2.0
 from six.moves import configparser
 import re
 import six
-from netaddr import (IPNetwork,
-                     IPAddress,
-                     AddrFormatError)
+from netaddr import IPNetwork
+from netaddr import IPAddress
+from netaddr import AddrFormatError
 
-from exceptions import ValidateFail
+from configutilities.common.exceptions import ValidateFail
 
 EXPECTED_SERVICE_NAME_AND_TYPE = (
     {"KEYSTONE_SERVICE_NAME": "keystone",

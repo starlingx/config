@@ -11,7 +11,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 
-from . import base
+from sysinv.puppet import base
 
 LOG = logging.getLogger(__name__)
 

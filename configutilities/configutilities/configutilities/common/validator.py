@@ -4,15 +4,26 @@ Copyright (c) 2015-2017 Wind River Systems, Inc.
 SPDX-License-Identifier: Apache-2.0
 
 """
-from configobjects import DEFAULT_NAMES, NETWORK_PREFIX_NAMES, OAM_TYPE, \
-    MGMT_TYPE, Network, REGION_CONFIG, INFRA_TYPE, \
-    DEFAULT_DOMAIN_NAME, HP_NAMES, SUBCLOUD_CONFIG
+from configutilities.common.configobjects import DEFAULT_NAMES
+from configutilities.common.configobjects import NETWORK_PREFIX_NAMES
+from configutilities.common.configobjects import OAM_TYPE
+from configutilities.common.configobjects import MGMT_TYPE
+from configutilities.common.configobjects import Network
+from configutilities.common.configobjects import REGION_CONFIG
+from configutilities.common.configobjects import INFRA_TYPE
+from configutilities.common.configobjects import DEFAULT_DOMAIN_NAME
+from configutilities.common.configobjects import HP_NAMES
+from configutilities.common.configobjects import SUBCLOUD_CONFIG
 from netaddr import IPRange
-from utils import lag_mode_to_str, validate_network_str, \
-    check_network_overlap, is_mtu_valid, get_service, \
-    get_optional, validate_address_str
-
-from exceptions import ConfigFail, ValidateFail
+from configutilities.common.utils import lag_mode_to_str
+from configutilities.common.utils import validate_network_str
+from configutilities.common.utils import check_network_overlap
+from configutilities.common.utils import is_mtu_valid
+from configutilities.common.utils import get_service
+from configutilities.common.utils import get_optional
+from configutilities.common.utils import validate_address_str
+from configutilities.common.exceptions import ConfigFail
+from configutilities.common.exceptions import ValidateFail
 
 
 # Constants

@@ -12,8 +12,8 @@ import json
 import openstack
 import urllib2
 
-from common import log
-from common.exceptions import KeystoneFail
+from controllerconfig.common import log
+from controllerconfig.common.exceptions import KeystoneFail
 
 LOG = log.get_logger(__name__)
 

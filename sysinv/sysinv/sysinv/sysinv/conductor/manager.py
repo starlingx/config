@@ -55,7 +55,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fm_api import constants as fm_constants
 from fm_api import fm_api
-from netaddr import IPAddress, IPNetwork
+from netaddr import IPAddress
+from netaddr import IPNetwork
 from oslo_config import cfg
 from platform_util.license import license
 from sqlalchemy.orm import exc

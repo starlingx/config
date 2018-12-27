@@ -3,7 +3,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-from rest_api import rest_api_request, get_token
+from sysinv.api.controllers.v1.rest_api import rest_api_request
+from sysinv.api.controllers.v1.rest_api import get_token
 
 from sysinv.openstack.common import log
 LOG = log.getLogger(__name__)

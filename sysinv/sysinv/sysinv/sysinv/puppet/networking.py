@@ -9,8 +9,8 @@ import netaddr
 from sysinv.common import constants
 from sysinv.common import exception
 
-from . import base
-from . import interface
+from sysinv.puppet import base
+from sysinv.puppet import interface
 
 
 class NetworkingPuppet(base.BasePuppet):

@@ -1,6 +1,6 @@
 import sys
 
-from common import log
+from controllerconfig.common import log
 
 LOG = log.get_logger(__name__)
 

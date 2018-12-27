@@ -30,21 +30,25 @@ from sysinv.common import constants as sysinv_constants
 # WARNING: The controller-1 upgrade is done before any puppet manifests
 # have been applied, so only the static entries from tsconfig can be used
 # (the platform.conf file will not have been updated with dynamic values).
-from tsconfig.tsconfig import (SW_VERSION, PLATFORM_PATH, KEYRING_PATH,
-                               PLATFORM_CONF_FILE, PLATFORM_CONF_PATH,
-                               CGCS_PATH, CONFIG_PATH, CONTROLLER_UPGRADE_FLAG,
-                               CONTROLLER_UPGRADE_COMPLETE_FLAG,
-                               CONTROLLER_UPGRADE_FAIL_FLAG,
-                               CONTROLLER_UPGRADE_STARTED_FLAG,
-                               RESTORE_IN_PROGRESS_FLAG)
-
+from tsconfig.tsconfig import SW_VERSION
+from tsconfig.tsconfig import PLATFORM_PATH
+from tsconfig.tsconfig import KEYRING_PATH
+from tsconfig.tsconfig import PLATFORM_CONF_FILE
+from tsconfig.tsconfig import PLATFORM_CONF_PATH
+from tsconfig.tsconfig import CGCS_PATH
+from tsconfig.tsconfig import CONFIG_PATH
+from tsconfig.tsconfig import CONTROLLER_UPGRADE_FLAG
+from tsconfig.tsconfig import CONTROLLER_UPGRADE_COMPLETE_FLAG
+from tsconfig.tsconfig import CONTROLLER_UPGRADE_FAIL_FLAG
+from tsconfig.tsconfig import CONTROLLER_UPGRADE_STARTED_FLAG
+from tsconfig.tsconfig import RESTORE_IN_PROGRESS_FLAG
 
 from controllerconfig.common import constants
 from controllerconfig.common import log
 from controllerconfig import utils as cutils
 from controllerconfig import backup_restore
 
-import utils
+from controllerconfig.upgrades import utils
 
 LOG = log.get_logger(__name__)
 

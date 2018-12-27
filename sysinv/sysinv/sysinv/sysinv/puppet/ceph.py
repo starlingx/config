@@ -11,7 +11,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
-from . import openstack
+from sysinv.puppet import openstack
 
 
 # NOTE: based on openstack service for providing swift object storage services

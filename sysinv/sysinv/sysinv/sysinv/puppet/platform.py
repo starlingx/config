@@ -15,7 +15,7 @@ from sysinv.common import utils
 
 from tsconfig import tsconfig
 
-from . import base
+from sysinv.puppet import base
 
 HOSTNAME_INFRA_SUFFIX = '-infra'
 

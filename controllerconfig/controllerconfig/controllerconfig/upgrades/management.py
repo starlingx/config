@@ -19,7 +19,7 @@ from controllerconfig import backup_restore
 from controllerconfig.common import log
 from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
-import utils
+from controllerconfig.upgrades import utils
 
 LOG = log.get_logger(__name__)
 

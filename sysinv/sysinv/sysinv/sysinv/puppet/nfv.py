@@ -8,7 +8,7 @@ from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.helm import helm
 
-from . import openstack
+from sysinv.puppet import openstack
 
 
 class NfvPuppet(openstack.OpenstackBasePuppet):

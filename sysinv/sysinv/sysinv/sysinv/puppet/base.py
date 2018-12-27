@@ -14,7 +14,7 @@ from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.common import exception
 
-from . import quoted_str
+from sysinv.puppet import quoted_str
 
 
 @six.add_metaclass(abc.ABCMeta)

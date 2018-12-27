@@ -9,7 +9,7 @@ Cluster Services
 """
 
 import sys
-import cluster_xml as xml
+from sysinv.cluster import cluster_xml as xml
 import logging
 
 from lxml import etree

@@ -28,7 +28,10 @@ import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
-from netaddr import IPNetwork, IPAddress, IPRange, AddrFormatError
+from netaddr import IPNetwork
+from netaddr import IPAddress
+from netaddr import IPRange
+from netaddr import AddrFormatError
 
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection

@@ -7,7 +7,7 @@
 import collections
 from sysinv.common import constants
 
-from . import base
+from sysinv.puppet import base
 
 
 class DevicePuppet(base.BasePuppet):
