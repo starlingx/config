@@ -30,16 +30,16 @@ class sysinv::base (
   warning('The sysinv::base class is deprecated. Use sysinv instead.')
 
   class { '::sysinv':
-    rabbit_password         => $rabbit_password,
-    sql_connection          => $sql_connection,
-    rabbit_host             => $rabbit_host,
-    rabbit_port             => $rabbit_port,
-    rabbit_hosts            => $rabbit_hosts,
-    rabbit_virtual_host     => $rabbit_virtual_host,
-    rabbit_userid           => $rabbit_userid,
-    package_ensure          => $package_ensure,
-    api_paste_config        => $api_paste_config,
-    verbose                 => $verbose,
+    rabbit_password     => $rabbit_password,
+    sql_connection      => $sql_connection,
+    rabbit_host         => $rabbit_host,
+    rabbit_port         => $rabbit_port,
+    rabbit_hosts        => $rabbit_hosts,
+    rabbit_virtual_host => $rabbit_virtual_host,
+    rabbit_userid       => $rabbit_userid,
+    package_ensure      => $package_ensure,
+    api_paste_config    => $api_paste_config,
+    verbose             => $verbose,
   }
 
 }

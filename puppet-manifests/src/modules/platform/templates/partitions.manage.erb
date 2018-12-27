@@ -5,7 +5,7 @@ if [ -f /var/run/goenabled ]; then
     sm-unmanage service  <%= @shutdown_drbd_resource %>
 fi
 
-<% if @shutdown_drbd_resource == 'drbd-cinder' and @system_mode == 'simplex' -%> 
+<% if @shutdown_drbd_resource == 'drbd-cinder' and @system_mode == 'simplex' -%>
 if [ -f /var/run/goenabled ]; then
     sm-unmanage service cinder-lvm
 fi
@@ -20,7 +20,7 @@ DRBD_UNCONFIGURED_DELAY=0
 while [[ $DRBD_UNCONFIGURED_DELAY -lt $DRBD_UNCONFIGURED_TIMEOUT ]]; do
     drbdadm down <%= @shutdown_drbd_resource %>
     drbd_info=$(drbd-overview | grep <%= @shutdown_drbd_resource %> | awk '{print $2}')
-    
+
     if [[ ${drbd_info} == "Unconfigured" ]]; then
         break
     else
@@ -39,7 +39,7 @@ manage-partitions <%= @action %> '<%= @config %>'
 <% if @shutdown_drbd_resource and (@is_controller_active.to_s == 'false' or @system_mode == 'simplex') -%>
 drbdadm up <%= @shutdown_drbd_resource %> || exit 30
 
-<% if @shutdown_drbd_resource == 'drbd-cinder' and @system_mode == 'simplex' -%> 
+<% if @shutdown_drbd_resource == 'drbd-cinder' and @system_mode == 'simplex' -%>
 drbdadm primary drbd-cinder || exit 50
 vgchange -ay cinder-volumes || exit 60
 lvchange -ay cinder-volumes || exit 70

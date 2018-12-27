@@ -12,21 +12,21 @@ class platform::dockerdistribution::config
 
     # currently docker registry is running insecure mode
     # when proper authentication is implemented, this would go away
-    file { "/etc/docker":
-      ensure  => 'directory',
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0700',
-    } ->
-    file { "/etc/docker/daemon.json":
+    file { '/etc/docker':
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0700',
+    }
+    -> file { '/etc/docker/daemon.json':
       ensure  => present,
       owner   => 'root',
       group   => 'root',
       mode    => '0644',
       content => template('platform/insecuredockerregistry.conf.erb'),
-    } ->
+    }
 
-    file { "/etc/docker-distribution/registry/config.yml":
+    -> file { '/etc/docker-distribution/registry/config.yml':
       ensure  => present,
       owner   => 'root',
       group   => 'root',
@@ -36,10 +36,10 @@ class platform::dockerdistribution::config
 
     # copy the startup script to where it is supposed to be
     file {'docker_distribution_initd_script':
-      path    => '/etc/init.d/docker-distribution',
-      ensure  => 'present',
-      mode    => '0755',
-      source  => "puppet:///modules/${module_name}/docker-distribution"
+      ensure => 'present',
+      path   => '/etc/init.d/docker-distribution',
+      mode   => '0755',
+      source => "puppet:///modules/${module_name}/docker-distribution"
     }
   }
 }
@@ -57,13 +57,13 @@ class platform::dockerdistribution::compute
 
     # currently docker registry is running insecure mode
     # when proper authentication is implemented, this would go away
-    file { "/etc/docker":
-      ensure  => 'directory',
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0700',
-    } ->
-    file { "/etc/docker/daemon.json":
+    file { '/etc/docker':
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0700',
+    }
+    -> file { '/etc/docker/daemon.json':
       ensure  => present,
       owner   => 'root',
       group   => 'root',

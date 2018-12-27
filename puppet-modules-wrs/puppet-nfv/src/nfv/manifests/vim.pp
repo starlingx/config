@@ -42,27 +42,27 @@ class nfv::vim (
   include nfv::params
 
   nfv_vim_config {
-    /* Debug Information */
+    # Debug Information
     'debug/config_file': value => $debug_config_file;
     'debug/handlers': value => $debug_handlers;
     'debug/syslog_address': value => $debug_syslog_address;
     'debug/syslog_facility': value => $debug_syslog_facility;
 
-    /* Database */
+    # Database
     'database/database_dir': value => $database_dir;
 
-    /* Alarm */
+    # Alarm
     'alarm/namespace': value => $alarm_namespace;
     'alarm/handlers': value => $alarm_handlers;
     'alarm/audit_interval': value => $alarm_audit_interval;
     'alarm/config_file': value => $alarm_config_file;
 
-    /* Event Log */
+    # Event Log
     'event-log/namespace': value => $event_log_namespace;
     'event-log/handlers': value => $event_log_handlers;
     'event-log/config_file': value => $event_log_config_file;
 
-    /* NFVI */
+    # NFVI
     'nfvi/namespace': value => $nfvi_namespace;
     'nfvi/config_file': value => $nfvi_config_file;
     'nfvi/image_plugin_disabled': value => $image_plugin_disabled;
@@ -71,26 +71,26 @@ class nfv::vim (
     'nfvi/network_plugin_disabled': value => $network_plugin_disabled;
     'nfvi/guest_plugin_disabled': value => $guest_plugin_disabled;
 
-    /* INSTANCE CONFIGURATION */
+    # INSTANCE CONFIGURATION
     'instance-configuration/max_live_migrate_wait_in_secs': value => $instance_max_live_migrate_wait_in_secs;
     'instance-configuration/single_hypervisor': value => $instance_single_hypervisor;
 
-    /* VIM */
+    # VIM
     'vim/rpc_host': value => $vim_rpc_ip;
     'vim/rpc_port': value => $vim_rpc_port;
 
-    /* VIM-API */
+    # VIM-API
     'vim-api/host': value => $vim_api_ip;
     'vim-api/port': value => $vim_api_port;
     'vim-api/rpc_host': value => $vim_api_rpc_ip;
     'vim-api/rpc_port': value => $vim_api_rpc_port;
 
-    /* VIM-Webserver */
+    # VIM-Webserver
     'vim-webserver/host': value => $vim_webserver_ip;
     'vim-webserver/port': value => $vim_webserver_port;
     'vim-webserver/source_dir': value => $vim_webserver_source_dir;
 
-    /* SW-MGMT CONFIGURATION */
+    # SW-MGMT CONFIGURATION
     'sw-mgmt-configuration/single_controller': value => $sw_mgmt_single_controller;
   }
 

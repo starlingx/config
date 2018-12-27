@@ -16,35 +16,35 @@ class platform::remotelogging
     $hostname = $::hostname
 
     if($transport == 'tls') {
-      $server = "{tcp(\"$ip_address\" port($port) tls(peer-verify(\"required-untrusted\")));};"
+      $server = "{tcp(\"${ip_address}\" port(${port}) tls(peer-verify(\"required-untrusted\")));};"
     } else {
-      $server = "{$transport(\"$ip_address\" port($port));};"
+      $server = "{${transport}(\"${ip_address}\" port(${port}));};"
     }
 
-    $destination = "destination remote_log_server "
-    $destination_line = "$destination $server"
+    $destination = 'destination remote_log_server '
+    $destination_line = "${destination} ${server}"
 
     file_line { 'conf-add-log-server':
       path  => '/etc/syslog-ng/syslog-ng.conf',
       line  => $destination_line,
       match => $destination,
-    } ->
-    file_line { 'conf-add-remote':
+    }
+    -> file_line { 'conf-add-remote':
       path  => '/etc/syslog-ng/syslog-ng.conf',
       line  => '@include "remotelogging.conf"',
       match => '#@include \"remotelogging.conf\"',
-    } ->
-    file { "/etc/syslog-ng/remotelogging.conf":
+    }
+    -> file { '/etc/syslog-ng/remotelogging.conf':
       ensure  => present,
       owner   => 'root',
       group   => 'root',
       mode    => '0644',
       content => template('platform/remotelogging.conf.erb'),
-    } ->
-    exec { "remotelogging-update-tc":
+    }
+    -> exec { 'remotelogging-update-tc':
       command => "/usr/local/bin/remotelogging_tc_setup.sh ${port}"
-    } ->
-    Exec['syslog-ng-reload']
+    }
+    -> Exec['syslog-ng-reload']
 
   } else {
     # remove remote logging configuration from syslog-ng
@@ -52,11 +52,11 @@ class platform::remotelogging
       path  => '/etc/syslog-ng/syslog-ng.conf',
       line  => '#@include "remotelogging.conf"',
       match => '@include \"remotelogging.conf\"',
-    } ->
-    Exec["syslog-ng-reload"]
+    }
+    -> Exec['syslog-ng-reload']
   }
 
-  exec { "syslog-ng-reload":
+  exec { 'syslog-ng-reload':
     command => '/usr/bin/systemctl reload syslog-ng'
   }
 }
@@ -82,21 +82,21 @@ class platform::remotelogging::proxy(
 
     platform::firewall::rule { 'remotelogging-nat':
       service_name => $service_name,
-      table    => $table,
-      chain    => $chain,
-      proto    => $firewall_proto_transport,
-      outiface => $oam_interface,
-      jump     => $jump,
+      table        => $table,
+      chain        => $chain,
+      proto        => $firewall_proto_transport,
+      outiface     => $oam_interface,
+      jump         => $jump,
     }
 
   } else {
     platform::firewall::rule { 'remotelogging-nat':
       service_name => $service_name,
-      table    => $table,
-      chain    => $chain,
-      outiface => $oam_interface,
-      jump     => $jump,
-      ensure   => absent
+      table        => $table,
+      chain        => $chain,
+      outiface     => $oam_interface,
+      jump         => $jump,
+      ensure       => absent
     }
   }
 }

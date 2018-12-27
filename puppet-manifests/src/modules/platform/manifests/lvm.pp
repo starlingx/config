@@ -10,20 +10,20 @@ class platform::lvm
   # Mask socket unit as well to make sure
   # systemd socket activation does not happen
   service { 'lvm2-lvmetad.socket':
-    enable => mask,
     ensure => 'stopped',
-  } ->
+    enable => mask,
+  }
   # Masking service unit ensures that it is not started again
-  service { 'lvm2-lvmetad':
-    enable => mask,
+  -> service { 'lvm2-lvmetad':
     ensure => 'stopped',
-  } ->
+    enable => mask,
+  }
   # Since masking is changing unit symlinks to point to /dev/null,
   # we need to reload systemd configuration
-  exec { 'lvmetad-systemd-daemon-reload':
-    command => "systemctl daemon-reload",
-  } ->
-  file_line { 'use_lvmetad':
+  -> exec { 'lvmetad-systemd-daemon-reload':
+    command => 'systemctl daemon-reload',
+  }
+  -> file_line { 'use_lvmetad':
     path  => '/etc/lvm/lvm.conf',
     match => '^[^#]*use_lvmetad = 1',
     line  => '        use_lvmetad = 0',
@@ -32,17 +32,17 @@ class platform::lvm
 
 
 define platform::lvm::global_filter($filter) {
-  file_line { "$name: update lvm global_filter":
+  file_line { "${name}: update lvm global_filter":
     path  => '/etc/lvm/lvm.conf',
-    line  => "    global_filter = $filter",
+    line  => "    global_filter = ${filter}",
     match => '^[ ]*global_filter =',
   }
 }
 
 
 define platform::lvm::umount {
-  exec { "umount disk $name":
-    command => "umount $name; true",
+  exec { "umount disk ${name}":
+    command => "umount ${name}; true",
   }
 }
 
@@ -53,12 +53,12 @@ class platform::lvm::vg::cgts_vg(
 ) inherits platform::lvm::params {
 
   ::platform::lvm::umount { $physical_volumes:
-  } ->
-  physical_volume { $physical_volumes:
+  }
+  -> physical_volume { $physical_volumes:
     ensure => present,
-  } ->
-  volume_group { $vg_name:
-    ensure => present,
+  }
+  -> volume_group { $vg_name:
+    ensure           => present,
     physical_volumes => $physical_volumes,
   }
 }
@@ -90,13 +90,13 @@ class platform::lvm::controller::vgs {
 class platform::lvm::controller
   inherits ::platform::lvm::params {
 
-  ::platform::lvm::global_filter { "transition filter":
+  ::platform::lvm::global_filter { 'transition filter':
     filter => $transition_filter,
     before => Class['::platform::lvm::controller::vgs']
   }
 
-  ::platform::lvm::global_filter { "final filter":
-    filter => $final_filter,
+  ::platform::lvm::global_filter { 'final filter':
+    filter  => $final_filter,
     require => Class['::platform::lvm::controller::vgs']
   }
 
@@ -125,13 +125,13 @@ class platform::lvm::compute::vgs {
 class platform::lvm::compute
   inherits ::platform::lvm::params {
 
-  ::platform::lvm::global_filter { "transition filter":
+  ::platform::lvm::global_filter { 'transition filter':
     filter => $transition_filter,
     before => Class['::platform::lvm::compute::vgs']
   }
 
-  ::platform::lvm::global_filter { "final filter":
-    filter => $final_filter,
+  ::platform::lvm::global_filter { 'final filter':
+    filter  => $final_filter,
     require => Class['::platform::lvm::compute::vgs']
   }
 
@@ -155,7 +155,7 @@ class platform::lvm::storage::vgs {
 class platform::lvm::storage
   inherits ::platform::lvm::params {
 
-  ::platform::lvm::global_filter { "final filter":
+  ::platform::lvm::global_filter { 'final filter':
     filter => $final_filter,
     before => Class['::platform::lvm::storage::vgs']
   }

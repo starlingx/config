@@ -48,7 +48,7 @@ class nfv::nfvi (
   $nova_service_name             = 'nova',
   $nova_service_type             = 'compute',
   $nova_endpoint_type            = 'admin',
-  $nova_endpoint_override        = "http://localhost:18774",
+  $nova_endpoint_override        = 'http://localhost:18774',
   $nova_endpoint_disabled        = false,
   $sysinv_region_name            = 'RegionOne',
   $sysinv_service_name           = 'sysinv',
@@ -88,7 +88,7 @@ class nfv::nfvi (
 
   nfv_plugin_nfvi_config {
 
-    /* Platform Authentication Information */
+    # Platform Authentication Information
     'platform/username': value => $platform_username;
     'platform/tenant': value => $platform_tenant;
     'platform/user_domain_name': value => $platform_user_domain;
@@ -98,7 +98,7 @@ class nfv::nfvi (
     'platform/authorization_port': value => $platform_auth_port;
     'platform/keyring_service': value => $platform_keyring_service;
 
-    /* OpenStack Authentication Information */
+    # OpenStack Authentication Information
     'openstack/username': value => $openstack_username;
     'openstack/tenant': value => $openstack_tenant;
     'openstack/user_domain_name': value => $openstack_user_domain;
@@ -163,31 +163,31 @@ class nfv::nfvi (
     'fm/service_type': value => $fm_service_type;
     'fm/endpoint_type': value => $fm_endpoint_type;
 
-    /* AMQP */
+    # AMQP
     'amqp/host': value => $rabbit_host;
     'amqp/port': value => $rabbit_port;
     'amqp/user_id': value => $rabbit_userid;
     'amqp/password': value => $rabbit_password, secret => true;
     'amqp/virt_host': value => $rabbit_virtual_host;
 
-    /* Infrastructure Rest-API */
+    # Infrastructure Rest-API
     'infrastructure-rest-api/host': value => $infrastructure_rest_api_host;
     'infrastructure-rest-api/port': value => $infrastructure_rest_api_port;
     'infrastructure-rest-api/data_port_fault_handling_enabled': value => $infrastructure_rest_api_data_port_fault_handling_enabled;
 
-    /* Guest-Services Rest-API */
+    # Guest-Services Rest-API
     'guest-rest-api/host': value => $guest_rest_api_host;
     'guest-rest-api/port': value => $guest_rest_api_port;
 
-    /* Compute Rest-API */
+    # Compute Rest-API
     'compute-rest-api/host': value => $compute_rest_api_host;
     'compute-rest-api/port': value => $compute_rest_api_port;
     'compute-rest-api/max_concurrent_requests': value => $compute_rest_api_max_concurrent_requests;
     'compute-rest-api/max_request_wait_in_secs': value => $compute_rest_api_max_request_wait_in_secs;
 
-    /* Host Listener */
+    # Host Listener
     'host-listener/host': value => $host_listener_host;
-    'host-listener/port': value => $host_listener_port;    
+    'host-listener/port': value => $host_listener_port;
   }
 
   if $identity_uri {

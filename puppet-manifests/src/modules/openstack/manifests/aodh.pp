@@ -31,18 +31,18 @@ class openstack::aodh
     }
 
     class { '::aodh':
-      rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
+      rabbit_use_ssl        => $::platform::amqp::params::ssl_enabled,
       default_transport_url => $::platform::amqp::params::transport_url,
     }
 
     # WRS register aodh-expirer-active in cron to run daily at the 35 minute mark
     cron { 'aodh-expirer':
-      ensure  => 'present',
-      command => '/usr/bin/aodh-expirer-active',
+      ensure      => 'present',
+      command     => '/usr/bin/aodh-expirer-active',
       environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-      minute  => '35',
-      hour    => '*/24',
-      user    => 'root',
+      minute      => '35',
+      hour        => '*/24',
+      user        => 'root',
     }
   }
 }
@@ -62,8 +62,8 @@ class openstack::aodh::haproxy
   inherits ::openstack::aodh::params {
 
   platform::haproxy::proxy { 'aodh-restapi':
-    server_name => 's-aodh-restapi',
-    public_port => $api_port,
+    server_name  => 's-aodh-restapi',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }
@@ -96,11 +96,11 @@ class openstack::aodh::api
       owner   => 'root',
       group   => 'root',
       mode    => '0640',
-    } ->
-    class { '::aodh::api':
-      host => $api_host,
-      sync_db => $::platform::params::init_database,
-      enable_proxy_headers_parsing  => true,
+    }
+    -> class { '::aodh::api':
+      host                         => $api_host,
+      sync_db                      => $::platform::params::init_database,
+      enable_proxy_headers_parsing => true,
     }
 
     include ::openstack::aodh::firewall
@@ -113,7 +113,7 @@ class openstack::aodh::runtime {
   include ::platform::amqp::params
 
   class { '::aodh':
-    rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
+    rabbit_use_ssl        => $::platform::amqp::params::ssl_enabled,
     default_transport_url => $::platform::amqp::params::transport_url,
   }
 }

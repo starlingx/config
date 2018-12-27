@@ -24,25 +24,25 @@ class openstack::glance
     include ::platform::params
     include ::platform::amqp::params
 
-    file { "${glance_directory}":
+    file { $glance_directory:
       ensure => 'directory',
       owner  => 'root',
       group  => 'root',
       mode   => '0755',
-    } ->
-    file { "${glance_directory}/image-cache":
+    }
+    -> file { "${glance_directory}/image-cache":
       ensure => 'directory',
       owner  => 'root',
       group  => 'root',
       mode   => '0755',
-    } ->
-    file { "${glance_directory}/images":
+    }
+    -> file { "${glance_directory}/images":
       ensure => 'directory',
       owner  => 'root',
       group  => 'root',
       mode   => '0755',
-    } ->
-    file { "${glance_image_conversion_dir}":
+    }
+    -> file { $glance_image_conversion_dir:
       ensure => 'directory',
       owner  => 'root',
       group  => 'root',
@@ -55,7 +55,7 @@ class openstack::glance
     }
 
     if $::platform::params::init_database {
-      class { "::glance::db::postgresql":
+      class { '::glance::db::postgresql':
         encoding => 'UTF8',
       }
     }
@@ -79,13 +79,13 @@ class openstack::glance
     }
 
     cron { 'glance-cleaner':
-       ensure      => 'present',
-       command     => "/usr/bin/glance-cleaner --config-file /etc/glance/glance-api.conf --delete-interval $glance_delete_interval",
-       environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-       minute      => '35',
-       hour        => "*/$glance_delete_interval",
-       user        => 'root',
-     }
+      ensure      => 'present',
+      command     => "/usr/bin/glance-cleaner --config-file /etc/glance/glance-api.conf --delete-interval ${glance_delete_interval}",
+      environment => 'PATH=/bin:/usr/bin:/usr/sbin',
+      minute      => '35',
+      hour        => "*/${glance_delete_interval}",
+      user        => 'root',
+    }
 
     # In glance cached mode run the pruner once every 6 hours to clean
     # stale or orphaned images
@@ -101,7 +101,7 @@ class openstack::glance
     }
 
     class { '::glance::notify::rabbitmq':
-      rabbit_use_ssl  => $::platform::amqp::params::ssl_enabled,
+      rabbit_use_ssl        => $::platform::amqp::params::ssl_enabled,
       default_transport_url => $::platform::amqp::params::transport_url,
     }
 
@@ -117,7 +117,7 @@ class openstack::glance::firewall
 
   platform::firewall::rule { 'glance-api':
     service_name => 'glance',
-    ports => $api_port,
+    ports        => $api_port,
   }
 }
 
@@ -126,9 +126,9 @@ class openstack::glance::haproxy
   inherits ::openstack::glance::params {
 
   platform::haproxy::proxy { 'glance-restapi':
-    server_name => 's-glance',
-    public_port => $api_port,
-    private_port => $api_port,
+    server_name        => 's-glance',
+    public_port        => $api_port,
+    private_port       => $api_port,
     private_ip_address => $api_host,
   }
 }
@@ -139,7 +139,7 @@ class openstack::glance::api
   include ::platform::params
 
   if $service_enabled {
-    if ($::openstack::glance::params::service_create and 
+    if ($::openstack::glance::params::service_create and
         $::platform::params::init_keystone) {
       include ::glance::keystone::auth
     }
@@ -170,19 +170,19 @@ class openstack::glance::api
     }
 
     class { '::glance::api':
-      bind_host             => $api_host,
-      use_user_token        => $api_use_user_token,
-      registry_host         => $registry_host,
+      bind_host                   => $api_host,
+      use_user_token              => $api_use_user_token,
+      registry_host               => $registry_host,
       remote_registry_region_name => $remote_registry_region_name,
-      workers               => $api_workers,
-      sync_db   => $::platform::params::init_database,
-      show_image_direct_url => $show_image_direct_url,
+      workers                     => $api_workers,
+      sync_db                     => $::platform::params::init_database,
+      show_image_direct_url       => $show_image_direct_url,
     }
 
     if 'rbd' in $enabled_backends {
         class { '::glance::backend::rbd':
-          rbd_store_pool       => $rbd_store_pool,
-          rbd_store_ceph_conf  => $rbd_store_ceph_conf,
+          rbd_store_pool      => $rbd_store_pool,
+          rbd_store_ceph_conf => $rbd_store_ceph_conf,
         }
     }
 

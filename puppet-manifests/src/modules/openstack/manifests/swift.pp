@@ -13,7 +13,7 @@ class openstack::swift::firewall
 
   platform::firewall::rule { 'swift-api':
     service_name => 'swift',
-    ports => $api_port,
+    ports        => $api_port,
   }
 }
 
@@ -22,8 +22,8 @@ class openstack::swift::haproxy
   inherits ::openstack::swift::params {
 
   platform::haproxy::proxy { 'swift-restapi':
-    server_name => 's-swift',
-    public_port => $api_port,
+    server_name  => 's-swift',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }
@@ -43,7 +43,7 @@ class openstack::swift
 
   if $service_enabled {
     if str2bool($::is_controller_active) or
-       str2bool($::is_standalone_controller) {
+        str2bool($::is_standalone_controller) {
       class { '::swift::keystone::auth':
         configure_s3_endpoint => false,
       }

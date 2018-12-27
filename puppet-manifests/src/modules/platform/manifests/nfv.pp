@@ -77,8 +77,8 @@ class platform::nfv::haproxy
   inherits ::platform::nfv::params {
 
   platform::haproxy::proxy { 'vim-restapi':
-    server_name => 's-vim-restapi',
-    public_port => $api_port,
+    server_name  => 's-vim-restapi',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }

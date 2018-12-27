@@ -23,5 +23,5 @@ Puppet::Type.type(:fm_api_paste_ini).provide(
   def file_path
      self.class.file_path
   end
- 
+
 end

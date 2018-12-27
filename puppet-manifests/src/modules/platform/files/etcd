@@ -27,7 +27,7 @@ status()
         RETVAL=0
         echo "$DESC is running"
         return
-    else    
+    else
         echo "$DESC is Not running"
         RETVAL=1
     fi
@@ -45,7 +45,7 @@ start()
             rm -f $PIDFILE
         fi
     fi
-    
+
     echo "Starting $SERVICE..."
 
     systemctl start $SERVICE
@@ -57,7 +57,7 @@ start()
         echo "$SERVICE failed!"
         RETVAL=1
     fi
-    
+
 }
 
 stop()

@@ -27,7 +27,7 @@ class platform::params (
   $ipv4 = 4
   $ipv6 = 6
 
-  $nfs_mount_options = "timeo=30,proto=$nfs_proto,vers=3,rsize=$nfs_rw_size,wsize=$nfs_rw_size"
+  $nfs_mount_options = "timeo=30,proto=${nfs_proto},vers=3,rsize=${nfs_rw_size},wsize=${nfs_rw_size}"
 
   $protected_group_name = 'wrs_protected'
   $protected_group_id = '345'
@@ -41,7 +41,7 @@ class platform::params (
   # max number of workers
   $eng_max_workers = 20
   # min number of workers
-  $eng_min_workers = 1 
+  $eng_min_workers = 1
   # min platform core count
   $platform_default_min_cpu_count = 2
   # total system memory per worker
@@ -49,7 +49,7 @@ class platform::params (
   # memory headroom per worker (e.g., buffers, cached)
   $eng_overhead_mb = 1000
 
-  notice("DEBUG: Platform cpu count obtained from sysinv DB is $platform_cpu_count.")
+  notice("DEBUG: Platform cpu count obtained from sysinv DB is ${platform_cpu_count}.")
 
   # number of workers per service
   if $system_type == 'All-in-one' {

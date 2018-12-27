@@ -22,12 +22,12 @@ define platform::haproxy::proxy (
   $public_api = true,
 ) {
   include ::platform::haproxy::params
-  
+
   if $enable_https != undef {
-    $https_enabled = $enable_https    
+    $https_enabled = $enable_https
   } else {
     $https_enabled = $::platform::haproxy::params::enable_https
-  }  
+  }
 
   if $x_forwarded_proto {
     if $https_enabled and $public_api {
@@ -67,15 +67,15 @@ define platform::haproxy::proxy (
 
   haproxy::frontend { $name:
     collect_exported => false,
-    name => "${name}",
-    bind => {
+    name             => $name,
+    bind             => {
       "${public_ip}:${public_port}" => $ssl_option,
     },
-    options => {
+    options          => {
       'default_backend' => "${name}-internal",
-      'reqadd' => $proto,
-      'timeout' => $real_client_timeout,
-      'rspadd' => $hsts_option,
+      'reqadd'          => $proto,
+      'timeout'         => $real_client_timeout,
+      'rspadd'          => $hsts_option,
     },
   }
 
@@ -87,9 +87,9 @@ define platform::haproxy::proxy (
 
   haproxy::backend { $name:
     collect_exported => false,
-    name => "${name}-internal",
-    options => {
-      'server' => "${server_name} ${private_ip}:${private_port}",
+    name             => "${name}-internal",
+    options          => {
+      'server'  => "${server_name} ${private_ip}:${private_port}",
       'timeout' => $timeout_option,
     }
   }
@@ -106,9 +106,9 @@ class platform::haproxy::server {
   $tpm_object = $::platform::haproxy::params::tpm_object
   $tpm_engine = $::platform::haproxy::params::tpm_engine
   if $tpm_object != undef {
-    $tpm_options = {'tpm-object' => $tpm_object, 'tpm-engine' => $tpm_engine} 
+    $tpm_options = {'tpm-object' => $tpm_object, 'tpm-engine' => $tpm_engine}
     $global_options = merge($::platform::haproxy::params::global_options, $tpm_options)
-  } else {   
+  } else {
     $global_options = $::platform::haproxy::params::global_options
   }
 

@@ -27,8 +27,8 @@ class openstack::magnum
   include ::magnum::certificates
 
   class {'::magnum':
-    rabbit_use_ssl          => $::platform::amqp::params::ssl_enabled,
-    default_transport_url   => $::platform::amqp::params::transport_url,
+    rabbit_use_ssl        => $::platform::amqp::params::ssl_enabled,
+    default_transport_url => $::platform::amqp::params::transport_url,
   }
 
   if $::platform::params::init_database {
@@ -53,8 +53,8 @@ class openstack::magnum::haproxy
 
   if $service_enabled {
     platform::haproxy::proxy { 'magnum-restapi':
-      server_name => 's-magnum',
-      public_port => $api_port,
+      server_name  => 's-magnum',
+      public_port  => $api_port,
       private_port => $api_port,
     }
   }
@@ -74,7 +74,7 @@ class openstack::magnum::api
 
   class { '::magnum::api':
     enabled => false,
-    host => $api_host,
+    host    => $api_host,
     sync_db => false,
   }
 

@@ -15,8 +15,8 @@ class platform::client
   include ::platform::client::credentials::params
   $keyring_file = $::platform::client::credentials::params::keyring_file
 
-  file {"/etc/platform/openrc":
-    ensure  => "present",
+  file {'/etc/platform/openrc':
+    ensure  => 'present',
     mode    => '0640',
     owner   => 'root',
     group   => 'root',
@@ -33,25 +33,25 @@ class platform::client::credentials::params (
 class platform::client::credentials
   inherits ::platform::client::credentials::params {
 
-  Class['::platform::drbd::platform'] ->
-  file { "${keyring_base}":
-    ensure  => 'directory',
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0755',
-  } ->
-  file { "${keyring_directory}":
-    ensure  => 'directory',
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0755',
-  } ->
-  file { "${keyring_file}":
+  Class['::platform::drbd::platform']
+  -> file { $keyring_base:
+    ensure => 'directory',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
+  }
+  -> file { $keyring_directory:
+    ensure => 'directory',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
+  }
+  -> file { $keyring_file:
     ensure  => 'file',
     owner   => 'root',
     group   => 'root',
     mode    => '0755',
-    content => "keyring get CGCS admin"
+    content => 'keyring get CGCS admin'
   }
 }
 

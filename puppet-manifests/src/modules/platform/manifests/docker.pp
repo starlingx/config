@@ -2,7 +2,7 @@ class platform::docker::params (
   $package_name    = 'docker-ce',
 ) { }
 
-class platform::docker::config 
+class platform::docker::config
   inherits ::platform::docker::params {
 
   include ::platform::kubernetes::params
@@ -12,23 +12,23 @@ class platform::docker::config
     Class['::platform::filesystem::docker'] ~> Class[$name]
 
     service { 'docker':
-      ensure    => 'running',
-      name      => 'docker',
-      enable    => true,
-      require   => Package['docker']
-    } ->
-    exec { 'enable-docker':
+      ensure  => 'running',
+      name    => 'docker',
+      enable  => true,
+      require => Package['docker']
+    }
+    -> exec { 'enable-docker':
       command => '/usr/bin/systemctl enable docker.service',
     }
   }
 }
 
-class platform::docker::install 
+class platform::docker::install
   inherits ::platform::docker::params {
 
   package { 'docker':
-    ensure  => 'installed',
-    name    => $package_name,
+    ensure => 'installed',
+    name   => $package_name,
   }
 }
 

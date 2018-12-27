@@ -43,21 +43,21 @@ class nova_api_proxy::config (
 
   # SSL Options
   if $use_ssl {
-     if !$cert_file {
-       fail('The cert_file parameter is required when use_ssl is set to true')
-     }
-     if !$key_file {
-       fail('The key_file parameter is required when use_ssl is set to true')
-     }
+    if !$cert_file {
+      fail('The cert_file parameter is required when use_ssl is set to true')
+    }
+    if !$key_file {
+      fail('The key_file parameter is required when use_ssl is set to true')
+    }
   }
 
   proxy_config {
-  	'DEFAULT/auth_strategy': value => $auth_strategy;
-  	'DEFAULT/osapi_proxy_listen': value => $osapi_proxy_listen;
-  	'DEFAULT/osapi_compute_listen': value => $osapi_compute_listen;
-  	'DEFAULT/nfvi_compute_listen': value => $nfvi_compute_listen;
-  	'DEFAULT/nfvi_compute_listen_port': value => $nfvi_compute_listen_port;
-  	'DEFAULT/pool_size': value => $eventlet_pool_size;
+    'DEFAULT/auth_strategy': value => $auth_strategy;
+    'DEFAULT/osapi_proxy_listen': value => $osapi_proxy_listen;
+    'DEFAULT/osapi_compute_listen': value => $osapi_compute_listen;
+    'DEFAULT/nfvi_compute_listen': value => $nfvi_compute_listen;
+    'DEFAULT/nfvi_compute_listen_port': value => $nfvi_compute_listen_port;
+    'DEFAULT/pool_size': value => $eventlet_pool_size;
   }
 
   if $use_ssl {

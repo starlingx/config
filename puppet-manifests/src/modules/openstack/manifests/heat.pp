@@ -8,7 +8,7 @@ class openstack::heat::params (
   $domain_pwd = undef,
   $service_name = 'openstack-heat',
   $service_tenant = undef,
-  $default_endpoint_type = "internalURL",
+  $default_endpoint_type = 'internalURL',
   $service_create = false,
   $service_enabled = true,
 ) {
@@ -34,10 +34,10 @@ class openstack::heat
     include ::heat::keystone::authtoken
 
     class { '::heat':
-      rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
-      default_transport_url => $::platform::amqp::params::transport_url,
+      rabbit_use_ssl             => $::platform::amqp::params::ssl_enabled,
+      default_transport_url      => $::platform::amqp::params::transport_url,
       heat_clients_endpoint_type =>  $default_endpoint_type,
-      sync_db => $::platform::params::init_database,
+      sync_db                    => $::platform::params::init_database,
     }
 
     class { '::heat::engine':
@@ -69,7 +69,7 @@ class openstack::heat
       keystone_tenant { $service_tenant:
         ensure      => present,
         enabled     => true,
-        description => "Tenant for $::platform::params::region_2_name",
+        description => "Tenant for ${::platform::params::region_2_name}",
       }
       class { '::heat::keystone::domain':
         domain_name   => $domain_name,
@@ -91,8 +91,8 @@ class openstack::heat
         }
       } else {
         keystone_user_role { 'admin@admin':
-          ensure  => present,
-          roles   => ['admin', '_member_', 'heat_stack_owner'],
+          ensure => present,
+          roles  => ['admin', '_member_', 'heat_stack_owner'],
         }
       }
 
@@ -103,15 +103,15 @@ class openstack::heat
 
       class { '::heat::keystone::domain':
         manage_domain => true,
-        manage_user => true,
-        manage_role => true,
+        manage_user   => true,
+        manage_role   => true,
       }
     } else {
       # Second controller does not invoke keystone, but does need configuration
       class { '::heat::keystone::domain':
         manage_domain => false,
-        manage_user => false,
-        manage_role => false,
+        manage_user   => false,
+        manage_role   => false,
       }
     }
   }
@@ -124,18 +124,18 @@ class openstack::heat
       'clients_glance/endpoint_type':    value => $default_endpoint_type;
       'clients_cinder/endpoint_type':    value => $default_endpoint_type;
       'clients_ceilometer/endpoint_type':value => $default_endpoint_type;
-      'clients_heat/endpoint_type':      value => "publicURL";
+      'clients_heat/endpoint_type':      value => 'publicURL';
       'clients_keystone/endpoint_type':  value => $default_endpoint_type;
     }
 
     # Run heat-manage purge_deleted daily at the 20 minute mark
     cron { 'heat-purge-deleted':
-      ensure  => 'present',
-      command => '/usr/bin/heat-purge-deleted-active',
+      ensure      => 'present',
+      command     => '/usr/bin/heat-purge-deleted-active',
       environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-      minute  => '20',
-      hour    => '*/24',
-      user    => 'root',
+      minute      => '20',
+      hour        => '*/24',
+      user        => 'root',
     }
   }
 }
@@ -166,20 +166,20 @@ class openstack::heat::haproxy
   inherits ::openstack::heat::params {
 
   platform::haproxy::proxy { 'heat-restapi':
-    server_name => 's-heat',
-    public_port => $api_port,
+    server_name  => 's-heat',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 
   platform::haproxy::proxy { 'heat-cfn-restapi':
-    server_name => 's-heat-cfn',
-    public_port => $cfn_port,
+    server_name  => 's-heat-cfn',
+    public_port  => $cfn_port,
     private_port => $cfn_port,
   }
 
   platform::haproxy::proxy { 'heat-cloudwatch':
-    server_name => 's-heat-cloudwatch',
-    public_port => $cloudwatch_port,
+    server_name  => 's-heat-cloudwatch',
+    public_port  => $cloudwatch_port,
     private_port => $cloudwatch_port,
   }
 }
@@ -203,17 +203,17 @@ class openstack::heat::api
   if $service_enabled {
     class { '::heat::api':
       bind_host => $api_host,
-      workers => $api_workers,
+      workers   => $api_workers,
     }
 
     class { '::heat::api_cfn':
       bind_host => $api_host,
-      workers => $api_workers,
+      workers   => $api_workers,
     }
 
     class { '::heat::api_cloudwatch':
       bind_host => $api_host,
-      workers => $api_workers,
+      workers   => $api_workers,
     }
 
     include ::openstack::heat::firewall

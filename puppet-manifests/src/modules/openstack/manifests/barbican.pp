@@ -28,12 +28,12 @@ class openstack::barbican
     }
 
     cron { 'barbican-cleaner':
-      ensure  => 'present',
-      command => '/usr/bin/barbican-manage db clean -p -e -L /var/log/barbican/barbican-clean.log',
+      ensure      => 'present',
+      command     => '/usr/bin/barbican-manage db clean -p -e -L /var/log/barbican/barbican-clean.log',
       environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-      minute  => '50',
-      hour    => '*/24',
-      user    => 'root',
+      minute      => '50',
+      hour        => '*/24',
+      user        => 'root',
     }
   }
 }
@@ -53,8 +53,8 @@ class openstack::barbican::haproxy
   inherits ::openstack::barbican::params {
 
   platform::haproxy::proxy { 'barbican-restapi':
-    server_name => 's-barbican-restapi',
-    public_port => $api_port,
+    server_name  => 's-barbican-restapi',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }
@@ -104,13 +104,13 @@ class openstack::barbican::api
     include ::platform::amqp::params
 
     class { '::barbican::api':
-      bind_host => $api_host,
-      bind_port => $api_port,
-      host_href => $url_host,
-      sync_db => $::platform::params::init_database,
-      enable_proxy_headers_parsing  => true,
-      rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
-      default_transport_url => $::platform::amqp::params::transport_url,
+      bind_host                    => $api_host,
+      bind_port                    => $api_port,
+      host_href                    => $url_host,
+      sync_db                      => $::platform::params::init_database,
+      enable_proxy_headers_parsing => true,
+      rabbit_use_ssl               => $::platform::amqp::params::ssl_enabled,
+      default_transport_url        => $::platform::amqp::params::transport_url,
     }
 
     class { '::barbican::keystone::notification':

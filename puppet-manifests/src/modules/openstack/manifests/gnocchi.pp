@@ -40,8 +40,8 @@ class openstack::gnocchi::haproxy
   inherits ::openstack::gnocchi::params {
 
   platform::haproxy::proxy { 'gnocchi-restapi':
-    server_name => 's-gnocchi-restapi',
-    public_port => $api_port,
+    server_name  => 's-gnocchi-restapi',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }
@@ -79,7 +79,7 @@ class openstack::gnocchi::api
   # gnocchi::keystone::auth::configure_endpoint which is
   # set via sysinv puppet
   if $::openstack::gnocchi::params::service_create and
-     $::platform::params::init_keystone {
+      $::platform::params::init_keystone {
     include ::gnocchi::keystone::auth
   }
 
@@ -104,9 +104,9 @@ class openstack::gnocchi::api
       $sacks_number = $::openstack::gnocchi::metricd::metricd_workers + 2
 
       if $::platform::params::init_database {
-         $options = "--sacks-number $sacks_number"
+        $options = "--sacks-number ${sacks_number}"
       } else {
-         $options = "--sacks-number $sacks_number --skip-index --skip-archive-policies-creation"
+        $options = "--sacks-number ${sacks_number} --skip-index --skip-archive-policies-creation"
       }
 
       class { '::gnocchi::db::sync':

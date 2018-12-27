@@ -63,8 +63,8 @@ class platform::dns::dnsmasq {
     }
   }
 
-  file { "/etc/dnsmasq.conf":
-      ensure => 'present',
+  file { '/etc/dnsmasq.conf':
+      ensure  => 'present',
       replace => true,
       content => template('platform/dnsmasq.conf.erb'),
   }
@@ -74,8 +74,8 @@ class platform::dns::dnsmasq {
 class platform::dns::resolv (
   $servers,
 ) {
-  file { "/etc/resolv.conf":
-      ensure => 'present',
+  file { '/etc/resolv.conf':
+      ensure  => 'present',
       replace => true,
       content => template('platform/resolv.conf.erb')
   }

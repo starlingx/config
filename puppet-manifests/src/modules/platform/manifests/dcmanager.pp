@@ -5,7 +5,7 @@ class platform::dcmanager::params (
   $domain_admin = undef,
   $domain_pwd = undef,
   $service_name = 'dcmanager',
-  $default_endpoint_type = "internalURL",
+  $default_endpoint_type = 'internalURL',
   $service_create = false,
 ) {
   include ::platform::params
@@ -18,7 +18,7 @@ class platform::dcmanager::params (
 class platform::dcmanager
   inherits ::platform::dcmanager::params {
   if $::platform::params::distributed_cloud_role =='systemcontroller' {
-    include ::platform::params 
+    include ::platform::params
     include ::platform::amqp::params
 
     if $::platform::params::init_database {
@@ -26,9 +26,9 @@ class platform::dcmanager
     }
 
     class { '::dcmanager':
-      rabbit_host => $::platform::amqp::params::host_url,
-      rabbit_port => $::platform::amqp::params::port,
-      rabbit_userid => $::platform::amqp::params::auth_user,
+      rabbit_host     => $::platform::amqp::params::host_url,
+      rabbit_port     => $::platform::amqp::params::port,
+      rabbit_userid   => $::platform::amqp::params::auth_user,
       rabbit_password => $::platform::amqp::params::auth_password,
     }
   }
@@ -37,7 +37,7 @@ class platform::dcmanager
 
 class platform::dcmanager::firewall
   inherits ::platform::dcmanager::params {
-  if $::platform::params::distributed_cloud_role =='systemcontroller' {  
+  if $::platform::params::distributed_cloud_role =='systemcontroller' {
     platform::firewall::rule { 'dcmanager-api':
       service_name => 'dcmanager',
       ports        => $api_port,
@@ -50,8 +50,8 @@ class platform::dcmanager::haproxy
   inherits ::platform::dcmanager::params {
   if $::platform::params::distributed_cloud_role =='systemcontroller' {
     platform::haproxy::proxy { 'dcmanager-restapi':
-      server_name => 's-dcmanager',
-      public_port => $api_port,
+      server_name  => 's-dcmanager',
+      public_port  => $api_port,
       private_port => $api_port,
     }
   }
@@ -74,7 +74,7 @@ class platform::dcmanager::api
     class { '::dcmanager::api':
       bind_host => $api_host,
     }
-  
+
 
     include ::platform::dcmanager::firewall
     include ::platform::dcmanager::haproxy

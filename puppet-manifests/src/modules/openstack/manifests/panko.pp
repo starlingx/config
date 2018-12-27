@@ -30,13 +30,13 @@ class openstack::panko
 
     # WRS register panko-expirer-active in cron to run once each hour
     cron { 'panko-expirer':
-      ensure  => 'present',
-      command => '/usr/bin/panko-expirer-active',
+      ensure      => 'present',
+      command     => '/usr/bin/panko-expirer-active',
       environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-      minute   => 10,
-      hour     => '*',
-      monthday => '*',
-      user     => 'root',
+      minute      => 10,
+      hour        => '*',
+      monthday    => '*',
+      user        => 'root',
     }
   }
 }
@@ -55,8 +55,8 @@ class openstack::panko::haproxy
   inherits ::openstack::panko::params {
 
   platform::haproxy::proxy { 'panko-restapi':
-    server_name => 's-panko-restapi',
-    public_port => $api_port,
+    server_name  => 's-panko-restapi',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }
@@ -74,7 +74,7 @@ class openstack::panko::api
   # panko::keystone::auth::configure_endpoint which is
   # set via sysinv puppet
   if $::openstack::panko::params::service_create and
-     $::platform::params::init_keystone {
+      $::platform::params::init_keystone {
     include ::panko::keystone::auth
   }
 
@@ -96,9 +96,9 @@ class openstack::panko::api
       owner   => 'root',
       group   => 'root',
       mode    => '0640',
-    } ->
-    class { '::panko::api':
-      host => $api_host,
+    }
+    -> class { '::panko::api':
+      host    => $api_host,
       workers => $api_workers,
       sync_db => $::platform::params::init_database,
     }

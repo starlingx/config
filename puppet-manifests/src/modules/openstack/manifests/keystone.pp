@@ -29,7 +29,7 @@ class openstack::keystone (
   # In the case of a Distributed Cloud deployment, apply the Keystone
   # controller configuration for each SubCloud, since Keystone is also
   # a localized service.
-  if (!$::platform::params::region_config or 
+  if (!$::platform::params::region_config or
       $::platform::params::distributed_cloud_role == 'subcloud')  {
     include ::platform::amqp::params
     include ::platform::network::mgmt::params
@@ -55,12 +55,12 @@ class openstack::keystone (
     Class[$name] -> Class['::platform::client'] -> Class['::openstack::client']
 
     include ::keystone::client
-    
+
 
     # Configure keystone graceful shutdown timeout
     # TODO(mpeters): move to puppet-keystone for module configuration
     keystone_config {
-      "DEFAULT/graceful_shutdown_timeout": value => 15;
+      'DEFAULT/graceful_shutdown_timeout': value => 15;
     }
 
     # (Pike Rebase) Disable token post expiration window since this
@@ -68,28 +68,28 @@ class openstack::keystone (
     # TODO(knasim): move this to puppet-keystone along with graceful
     # shutdown timeout param
     keystone_config {
-        "token/allow_expired_window": value => 0;
+        'token/allow_expired_window': value => 0;
     }
 
 
-    file { "/etc/keystone/keystone-extra.conf":
+    file { '/etc/keystone/keystone-extra.conf':
       ensure  => present,
       owner   => 'root',
       group   => 'keystone',
       mode    => '0640',
       content => template('openstack/keystone-extra.conf.erb'),
-    } ->
-    class { '::keystone':
-      enabled          => $enabled,
-      enable_fernet_setup => false,
-      fernet_key_repository => "$keystone_key_repo_path/fernet-keys",
-      default_transport_url   => $::platform::amqp::params::transport_url,
-      service_name     => $service_name,
-      token_expiration => $token_expiration,
+    }
+    -> class { '::keystone':
+      enabled               => $enabled,
+      enable_fernet_setup   => false,
+      fernet_key_repository => "${keystone_key_repo_path}/fernet-keys",
+      default_transport_url => $::platform::amqp::params::transport_url,
+      service_name          => $service_name,
+      token_expiration      => $token_expiration,
     }
 
     # create keystone policy configuration
-    file { "/etc/keystone/policy.json":
+    file { '/etc/keystone/policy.json':
       ensure  => present,
       owner   => 'keystone',
       group   => 'keystone',
@@ -97,7 +97,7 @@ class openstack::keystone (
       content => template('openstack/keystone-policy.json.erb'),
     }
 
-    # Keystone users can only be added to the SQL backend (write support for 
+    # Keystone users can only be added to the SQL backend (write support for
     # the LDAP backend has been removed). We can therefore set password rules
     # irrespective of the backend
     if ! str2bool($::is_restore_in_progress) {
@@ -175,15 +175,15 @@ class openstack::keystone::api
     # the subcloud region.
     if ($::platform::params::distributed_cloud_role == 'subcloud' and
         $::platform::params::region_2_name != 'RegionOne') {
-      Keystone_endpoint["${platform::params::region_2_name}/keystone::identity"] -> Keystone_endpoint["RegionOne/keystone::identity"]
-      keystone_endpoint { "RegionOne/keystone::identity":
-        ensure       => "absent",
-        name         => "keystone",
-        type         => "identity",
-        region       => "RegionOne",
-        public_url   => "http://127.0.0.1:5000/v3",
-        admin_url    => "http://127.0.0.1:5000/v3",
-        internal_url => "http://127.0.0.1:5000/v3"
+      Keystone_endpoint["${platform::params::region_2_name}/keystone::identity"] -> Keystone_endpoint['RegionOne/keystone::identity']
+      keystone_endpoint { 'RegionOne/keystone::identity':
+        ensure       => 'absent',
+        name         => 'keystone',
+        type         => 'identity',
+        region       => 'RegionOne',
+        public_url   => 'http://127.0.0.1:5000/v3',
+        admin_url    => 'http://127.0.0.1:5000/v3',
+        internal_url => 'http://127.0.0.1:5000/v3'
       }
     }
   }
@@ -203,7 +203,7 @@ class openstack::keystone::bootstrap(
   $keystone_key_repo_path = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
   $eng_workers = $::platform::params::eng_workers
   $bind_host = '0.0.0.0'
-  
+
   # In the case of a classical Multi-Region deployment, apply the Keystone
   # controller configuration for Primary Region ONLY
   # (i.e. on which region_config is False), since Keystone is a Shared service
@@ -212,35 +212,35 @@ class openstack::keystone::bootstrap(
   # controller configuration for each SubCloud, since Keystone is also
   # a localized service.
   if ($::platform::params::init_keystone and
-      (!$::platform::params::region_config or 
-       $::platform::params::distributed_cloud_role == 'subcloud'))  {
+      (!$::platform::params::region_config or
+        $::platform::params::distributed_cloud_role == 'subcloud')) {
 
     include ::keystone::db::postgresql
 
     Class[$name] -> Class['::platform::client'] -> Class['::openstack::client']
 
     # Create the parent directory for fernet keys repository
-    file { "${keystone_key_repo_path}":
-      ensure => 'directory',
-      owner  => 'root',
-      group  => 'root',
-      mode   => '0755',
+    file { $keystone_key_repo_path:
+      ensure  => 'directory',
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0755',
       require => Class['::platform::drbd::cgcs'],
-    } ->
-    file { "/etc/keystone/keystone-extra.conf":
+    }
+    -> file { '/etc/keystone/keystone-extra.conf':
       ensure  => present,
       owner   => 'root',
       group   => 'keystone',
       mode    => '0640',
       content => template('openstack/keystone-extra.conf.erb'),
-    } ->
-    class { '::keystone':
-      enabled          => true,
-      enable_bootstrap => true,
-      fernet_key_repository => "$keystone_key_repo_path/fernet-keys",
-      sync_db          => true,
-      default_domain   => $default_domain,
-      default_transport_url   => $::platform::amqp::params::transport_url,
+    }
+    -> class { '::keystone':
+      enabled               => true,
+      enable_bootstrap      => true,
+      fernet_key_repository => "${keystone_key_repo_path}/fernet-keys",
+      sync_db               => true,
+      default_domain        => $default_domain,
+      default_transport_url => $::platform::amqp::params::transport_url,
     }
 
     include ::keystone::client
@@ -290,29 +290,29 @@ class openstack::keystone::endpointgroup
       group   => 'keystone',
       mode    => '0640',
       content => template('openstack/keystone-defaultregion-filter.erb'),
-    } ->
-    file { "/etc/keystone/keystone-${system_controller_region}-filter.conf":
+    }
+    -> file { "/etc/keystone/keystone-${system_controller_region}-filter.conf":
       ensure  => present,
       owner   => 'root',
       group   => 'keystone',
       mode    => '0640',
       content => template('openstack/keystone-systemcontroller-filter.erb'),
-    } ->
-    exec { 'endpointgroup-${reference_region}-command':
-      cwd => '/etc/keystone',
+    }
+    -> exec { 'endpointgroup-${reference_region}-command':
+      cwd       => '/etc/keystone',
       logoutput => true,
-      provider => shell,
-      require => [ Class['openstack::keystone::api'], Class['::keystone::endpoint'] ],
-      command => template('openstack/keystone-defaultregion.erb'),
-      path =>  ['/usr/bin/', '/bin/', '/sbin/', '/usr/sbin/'],
-    }  ->
-    exec { 'endpointgroup-${system_controller_region}-command':
-      cwd => '/etc/keystone',
+      provider  => shell,
+      require   => [ Class['openstack::keystone::api'], Class['::keystone::endpoint'] ],
+      command   => template('openstack/keystone-defaultregion.erb'),
+      path      =>  ['/usr/bin/', '/bin/', '/sbin/', '/usr/sbin/'],
+    }
+    -> exec { 'endpointgroup-${system_controller_region}-command':
+      cwd       => '/etc/keystone',
       logoutput => true,
-      provider => shell,
-      require => [ Class['openstack::keystone::api'], Class['::keystone::endpoint'] ],
-      command => template('openstack/keystone-systemcontroller.erb'),
-      path =>  ['/usr/bin/', '/bin/', '/sbin/', '/usr/sbin/'],
+      provider  => shell,
+      require   => [ Class['openstack::keystone::api'], Class['::keystone::endpoint'] ],
+      command   => template('openstack/keystone-systemcontroller.erb'),
+      path      =>  ['/usr/bin/', '/bin/', '/sbin/', '/usr/sbin/'],
     }
   }
 }
@@ -438,28 +438,28 @@ class openstack::keystone::upgrade (
 
     # Need to create the parent directory for fernet keys repository
     # This is a workaround to a puppet bug.
-    file { "${keystone_key_repo}":
+    file { $keystone_key_repo:
       ensure => 'directory',
       owner  => 'root',
       group  => 'root',
       mode   => '0755'
-    } ->
-    file { "/etc/keystone/keystone-extra.conf":
+    }
+    -> file { '/etc/keystone/keystone-extra.conf':
       ensure  => present,
       owner   => 'root',
       group   => 'keystone',
       mode    => '0640',
       content => template('openstack/keystone-extra.conf.erb'),
-    } ->
-    class { '::keystone':
-      upgrade_token_cmd   => $upgrade_token_cmd,
-      upgrade_token_file  => $upgrade_token_file,
-      enable_fernet_setup => true,
-      enable_bootstrap    => false,
-      fernet_key_repository => "$keystone_key_repo/fernet-keys",
-      sync_db             => false,
-      default_domain      => undef,
-      default_transport_url   => $::platform::amqp::params::transport_url,
+    }
+    -> class { '::keystone':
+      upgrade_token_cmd     => $upgrade_token_cmd,
+      upgrade_token_file    => $upgrade_token_file,
+      enable_fernet_setup   => true,
+      enable_bootstrap      => false,
+      fernet_key_repository => "${keystone_key_repo}/fernet-keys",
+      sync_db               => false,
+      default_domain        => undef,
+      default_transport_url => $::platform::amqp::params::transport_url,
     }
 
     # Add service account and endpoints for any new R6 services...

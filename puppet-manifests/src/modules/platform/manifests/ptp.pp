@@ -37,60 +37,60 @@ class platform::ptp (
     path    => '/etc/ptp4l.conf',
     mode    => '0644',
     content => template('platform/ptp4l.conf.erb'),
-  } ->
-  file { 'ptp4l_service':
+  }
+  -> file { 'ptp4l_service':
     ensure  => file,
     path    => '/usr/lib/systemd/system/ptp4l.service',
     mode    => '0644',
     content => template('platform/ptp4l.service.erb'),
-  } ->
-  file { 'ptp4l_sysconfig':
+  }
+  -> file { 'ptp4l_sysconfig':
     ensure  => file,
     path    => '/etc/sysconfig/ptp4l',
     mode    => '0644',
     content => template('platform/ptp4l.erb'),
-  } ->
-  file { 'phc2sys_service':
+  }
+  -> file { 'phc2sys_service':
     ensure  => file,
     path    => '/usr/lib/systemd/system/phc2sys.service',
     mode    => '0644',
     content => template('platform/phc2sys.service.erb'),
-  } ->
-  file { 'phc2sys_sysconfig':
+  }
+  -> file { 'phc2sys_sysconfig':
     ensure  => file,
     path    => '/etc/sysconfig/phc2sys',
     mode    => '0644',
     content => template('platform/phc2sys.erb'),
-  } ->
-  file { 'ptp4l_pmon':
+  }
+  -> file { 'ptp4l_pmon':
     ensure  => file,
     path    => '/etc/ptp4l.pmon.conf',
     mode    => '0644',
     content => template('platform/ptp4l.pmon.conf.erb'),
-  } ->
-  file { 'phc2sys_pmon':
+  }
+  -> file { 'phc2sys_pmon':
     ensure  => file,
     path    => '/etc/phc2sys.pmon.conf',
     mode    => '0644',
     content => template('platform/phc2sys.pmon.conf.erb'),
-  } ->
-  file { 'ptp4l_pmon_link':
+  }
+  -> file { 'ptp4l_pmon_link':
     ensure => $pmon_ensure,
     path   => '/etc/pmon.d/ptp4l.conf',
     target => '/etc/ptp4l.pmon.conf',
     owner  => 'root',
     group  => 'root',
     mode   => '0600',
-  } ->
-  file { 'phc2sys_pmon_link':
+  }
+  -> file { 'phc2sys_pmon_link':
     ensure => $pmon_ensure,
     path   => '/etc/pmon.d/phc2sys.conf',
     target => '/etc/phc2sys.pmon.conf',
     owner  => 'root',
     group  => 'root',
     mode   => '0600',
-  } ->
-  exec { 'systemctl-daemon-reload':
+  }
+  -> exec { 'systemctl-daemon-reload':
     command     => '/usr/bin/systemctl daemon-reload',
   }
 
@@ -98,18 +98,18 @@ class platform::ptp (
     exec { 'enable-ptp4l':
       command => '/usr/bin/systemctl enable ptp4l.service',
       require => Exec['systemctl-daemon-reload'],
-    } ->
-    exec { 'enable-phc2sys':
+    }
+    -> exec { 'enable-phc2sys':
       command => '/usr/bin/systemctl enable phc2sys.service',
-    } ->
-    service { 'ptp4l':
+    }
+    -> service { 'ptp4l':
       ensure     => 'running',
       enable     => true,
       name       => 'ptp4l',
       hasstatus  => true,
       hasrestart => true,
-    } ->
-    service { 'phc2sys':
+    }
+    -> service { 'phc2sys':
       ensure     => 'running',
       enable     => true,
       name       => 'phc2sys',
@@ -120,14 +120,14 @@ class platform::ptp (
     exec { 'disable-ptp4l':
       command => '/usr/bin/systemctl disable ptp4l.service',
       require => Exec['systemctl-daemon-reload'],
-    } ->
-    exec { 'disable-phc2sys':
+    }
+    -> exec { 'disable-phc2sys':
       command => '/usr/bin/systemctl disable phc2sys.service',
     }
     exec { 'stop-ptp4l':
       command => '/usr/bin/systemctl stop ptp4l.service',
-    } ->
-    exec { 'stop-phc2sys':
+    }
+    -> exec { 'stop-phc2sys':
       command => '/usr/bin/systemctl stop phc2sys.service',
     }
   }

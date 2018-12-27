@@ -99,10 +99,10 @@ class dcorch (
     'DEFAULT/debug':               value => $debug;
     'DEFAULT/api_paste_config':    value => $api_paste_config;
   }
-  
+
   # Automatically add psycopg2 driver to postgresql (only does this if it is missing)
   $real_connection = regsubst($database_connection,'^postgresql:','postgresql+psycopg2:')
-  
+
   dcorch_config {
     'database/connection':    value => $real_connection, secret => true;
     'database/idle_timeout':  value => $database_idle_timeout;

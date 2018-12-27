@@ -18,7 +18,7 @@ class openstack::neutron
   include ::neutron::logging
 
   class { '::neutron':
-    rabbit_use_ssl => $::platform::amqp::params::ssl_enabled,
+    rabbit_use_ssl        => $::platform::amqp::params::ssl_enabled,
     default_transport_url => $::platform::amqp::params::transport_url,
   }
 }
@@ -50,14 +50,14 @@ define openstack::neutron::sdn::controller (
 
     platform::firewall::rule { $name:
       service_name => $name,
-      table    => 'nat',
-      chain    => 'POSTROUTING',
-      proto    => $firewall_proto_transport,
-      outiface => $oam_interface,
-      tosource => $oam_address,
-      destination => $ip_address,
-      host     => $mgmt_subnet,
-      jump     => 'SNAT',
+      table        => 'nat',
+      chain        => 'POSTROUTING',
+      proto        => $firewall_proto_transport,
+      outiface     => $oam_interface,
+      tosource     => $oam_address,
+      destination  => $ip_address,
+      host         => $mgmt_subnet,
+      jump         => 'SNAT',
     }
   }
 }
@@ -80,9 +80,9 @@ class openstack::neutron::odl
     create_resources('openstack::neutron::sdn::controller', $controller_config, {})
   }
   class {'::neutron::plugins::ml2::opendaylight':
-      odl_username => $username,
-      odl_password => $password,
-      odl_url      => $url,
+      odl_username            => $username,
+      odl_password            => $password,
+      odl_url                 => $url,
       port_binding_controller => $port_binding_controller,
   }
 }
@@ -91,7 +91,7 @@ class openstack::neutron::odl
 class openstack::neutron::bgp
   inherits ::openstack::neutron::params {
 
-   if $bgp_router_id {
+  if $bgp_router_id {
     class {'::neutron::bgp':
         bgp_router_id => $bgp_router_id,
     }
@@ -100,38 +100,38 @@ class openstack::neutron::bgp
     }
 
     exec { 'systemctl enable neutron-bgp-dragent.service':
-      command => "systemctl enable neutron-bgp-dragent.service",
+      command => 'systemctl enable neutron-bgp-dragent.service',
     }
 
     exec { 'systemctl restart neutron-bgp-dragent.service':
-      command => "systemctl restart neutron-bgp-dragent.service",
+      command => 'systemctl restart neutron-bgp-dragent.service',
     }
 
     file { '/etc/pmon.d/':
-      ensure  => directory,
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0755',
+      ensure => directory,
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0755',
     }
 
-    file { "/etc/pmon.d/neutron-bgp-dragent.conf":
+    file { '/etc/pmon.d/neutron-bgp-dragent.conf':
       ensure => link,
-      target => "/etc/neutron/pmon/neutron-bgp-dragent.conf",
-      owner   => 'root',
-      group   => 'root',
+      target => '/etc/neutron/pmon/neutron-bgp-dragent.conf',
+      owner  => 'root',
+      group  => 'root',
     }
   } else {
     exec { 'pmon-stop neutron-bgp-dragent':
-      command => "pmon-stop neutron-bgp-dragent",
-    } ->
-    exec { 'rm -f /etc/pmon.d/neutron-bgp-dragent.conf':
-      command => "rm -f /etc/pmon.d/neutron-bgp-dragent.conf",
-    } ->
-    exec { 'systemctl disable neutron-bgp-dragent.service':
-      command => "systemctl disable neutron-bgp-dragent.service",
-    } ->
-    exec { 'systemctl stop neutron-bgp-dragent.service':
-      command => "systemctl stop neutron-bgp-dragent.service",
+      command => 'pmon-stop neutron-bgp-dragent',
+    }
+    -> exec { 'rm -f /etc/pmon.d/neutron-bgp-dragent.conf':
+      command => 'rm -f /etc/pmon.d/neutron-bgp-dragent.conf',
+    }
+    -> exec { 'systemctl disable neutron-bgp-dragent.service':
+      command => 'systemctl disable neutron-bgp-dragent.service',
+    }
+    -> exec { 'systemctl stop neutron-bgp-dragent.service':
+      command => 'systemctl stop neutron-bgp-dragent.service',
     }
   }
 }
@@ -148,12 +148,12 @@ class openstack::neutron::sfc (
 
   if $sfc_drivers {
     class {'::neutron::sfc':
-        sfc_drivers => $sfc_drivers,
+        sfc_drivers            => $sfc_drivers,
         flowclassifier_drivers => $flowclassifier_drivers,
-        quota_flow_classifier => $sfc_quota_flow_classifier,
-        quota_port_chain => $sfc_quota_port_chain,
-        quota_port_pair_group => $sfc_quota_port_pair_group,
-        quota_port_pair => $sfc_quota_port_pair,
+        quota_flow_classifier  => $sfc_quota_flow_classifier,
+        quota_port_chain       => $sfc_quota_port_chain,
+        quota_port_pair_group  => $sfc_quota_port_pair_group,
+        quota_port_pair        => $sfc_quota_port_pair,
     }
   }
 }
@@ -174,12 +174,12 @@ class openstack::neutron::server {
   class { '::neutron::server':
     api_workers => $::platform::params::eng_workers_by_2,
     rpc_workers => $::platform::params::eng_workers_by_2,
-    sync_db => $::platform::params::init_database,
+    sync_db     => $::platform::params::init_database,
   }
 
   file { '/etc/neutron/api-paste.ini':
-    ensure  => file,
-    mode    => '0640',
+    ensure => file,
+    mode   => '0640',
   }
 
   Class['::neutron::server'] -> File['/etc/neutron/api-paste.ini']
@@ -238,28 +238,28 @@ class openstack::neutron::agents
     }
   }
 
-  file { "/etc/pmon.d/neutron-dhcp-agent.conf":
+  file { '/etc/pmon.d/neutron-dhcp-agent.conf':
     ensure => $pmon_ensure,
-    target => "/etc/neutron/pmon/neutron-dhcp-agent.conf",
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0755',
+    target => '/etc/neutron/pmon/neutron-dhcp-agent.conf',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
   }
 
-  file { "/etc/pmon.d/neutron-metadata-agent.conf":
+  file { '/etc/pmon.d/neutron-metadata-agent.conf':
     ensure => $pmon_ensure,
-    target => "/etc/neutron/pmon/neutron-metadata-agent.conf",
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0755',
+    target => '/etc/neutron/pmon/neutron-metadata-agent.conf',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
   }
 
-  file { "/etc/pmon.d/neutron-sriov-nic-agent.conf":
+  file { '/etc/pmon.d/neutron-sriov-nic-agent.conf':
     ensure => $pmon_ensure,
-    target => "/etc/neutron/pmon/neutron-sriov-nic-agent.conf",
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0755',
+    target => '/etc/neutron/pmon/neutron-sriov-nic-agent.conf',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
   }
 }
 
@@ -272,19 +272,18 @@ class openstack::neutron::firewall
     ports        => $api_port,
   }
 
-   if $bgp_router_id {
-      platform::firewall::rule { 'ryu-bgp-port':
-        service_name => 'neutron',
-        ports        => $bgp_port,
-      }
-   } else {
-      platform::firewall::rule { 'ryu-bgp-port':
-        service_name => 'neutron',
-        ports        => $bgp_port,
-        ensure       => absent
-      }
-   }
-
+  if $bgp_router_id {
+    platform::firewall::rule { 'ryu-bgp-port':
+      service_name => 'neutron',
+      ports        => $bgp_port,
+    }
+  } else {
+    platform::firewall::rule { 'ryu-bgp-port':
+      service_name => 'neutron',
+      ports        => $bgp_port,
+      ensure       => absent
+    }
+  }
 }
 
 
@@ -292,8 +291,8 @@ class openstack::neutron::haproxy
   inherits ::openstack::neutron::params {
 
   platform::haproxy::proxy { 'neutron-restapi':
-    server_name => 's-neutron',
-    public_port => $api_port,
+    server_name  => 's-neutron',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }

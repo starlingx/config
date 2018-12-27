@@ -34,7 +34,7 @@ class sysinv::agent (
   }
 
   sysinv_config {
-    'lldp/drivers': value => join($lldp_drivers,",");
+    'lldp/drivers': value => join($lldp_drivers,',');
   }
 
   if $::sysinv::params::agent_package {

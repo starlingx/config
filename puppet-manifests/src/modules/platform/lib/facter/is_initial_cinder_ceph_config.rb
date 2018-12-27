@@ -1,4 +1,4 @@
-# Returns true if cinder ceph needs to be configured 
+# Returns true if cinder ceph needs to be configured
 
 Facter.add("is_initial_cinder_ceph_config") do
   setcode do

@@ -72,7 +72,7 @@ class dcmanager (
     'DEFAULT/verbose':             value => $verbose;
     'DEFAULT/debug':               value => $debug;
   }
-  
+
   # Automatically add psycopg2 driver to postgresql (only does this if it is missing)
   $real_connection = regsubst($database_connection,'^postgresql:','postgresql+psycopg2:')
 
@@ -101,7 +101,7 @@ class dcmanager (
     'keystone_authtoken/region_name':  value => $region_name;
   }
 
-  file {"/etc/bash_completion.d/dcmanager.bash_completion":
+  file {'/etc/bash_completion.d/dcmanager.bash_completion':
     ensure  => present,
     mode    => '0644',
     content => generate('/bin/dcmanager', 'complete'),

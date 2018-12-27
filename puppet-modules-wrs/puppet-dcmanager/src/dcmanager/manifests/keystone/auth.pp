@@ -49,9 +49,9 @@ class dcmanager::keystone::auth (
     public_url          => $public_url,
     admin_url           => $admin_url,
     internal_url        => $internal_url,
-  } ->
+  }
 
-  keystone_user_role { "${auth_name}@${admin_project_name}":
+  -> keystone_user_role { "${auth_name}@${admin_project_name}":
     ensure         => present,
     user_domain    => $auth_domain,
     project_domain => $admin_project_domain,

@@ -162,7 +162,7 @@ class sysinv (
 
   # Automatically add psycopg2 driver to postgresql (only does this if it is missing)
   $real_connection = regsubst($database_connection,'^postgresql:','postgresql+psycopg2:')
-      
+
   sysinv_config {
     'database/connection':    value => $real_connection, secret => true;
     'database/idle_timeout':  value => $database_idle_timeout;
@@ -174,7 +174,7 @@ class sysinv (
     'journal/journal_max_size':     value => $journal_max_size;
     'journal/journal_min_size':     value => $journal_min_size;
     'journal/journal_default_size': value => $journal_default_size;
- }
+  }
 
   if $use_syslog {
     sysinv_config {
@@ -215,7 +215,7 @@ class sysinv (
   }
 
   if $::platform::kubernetes::params::enabled == true {
-    $armada_img_tag = "quay.io/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9"
+    $armada_img_tag = 'quay.io/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9'
     sysinv_config {
       'DEFAULT/armada_image_tag':    value =>  $armada_img_tag;
     }

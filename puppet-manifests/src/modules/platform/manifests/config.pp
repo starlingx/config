@@ -4,18 +4,18 @@ class platform::config::params (
   $timezone = 'UTC',
 ) { }
 
-class platform::config 
+class platform::config
   inherits ::platform::config::params {
 
   include ::platform::params
   include ::platform::anchors
 
   stage { 'pre':
-    before => Stage["main"],
+    before => Stage['main'],
   }
 
   stage { 'post':
-    require => Stage["main"],
+    require => Stage['main'],
   }
 
   class { '::platform::config::pre':
@@ -43,32 +43,32 @@ class platform::config::file {
   $platform_conf = '/etc/platform/platform.conf'
 
   file_line { "${platform_conf} sw_version":
-    path   => $platform_conf,
-    line   => "sw_version=${::platform::params::software_version}",
-    match  => '^sw_version=',
+    path  => $platform_conf,
+    line  => "sw_version=${::platform::params::software_version}",
+    match => '^sw_version=',
   }
 
   if $management_interface {
     file_line { "${platform_conf} management_interface":
-      path   => $platform_conf,
-      line   => "management_interface=${management_interface}",
-      match  => '^management_interface=',
+      path  => $platform_conf,
+      line  => "management_interface=${management_interface}",
+      match => '^management_interface=',
     }
   }
 
   if $infrastructure_interface {
     file_line { "${platform_conf} infrastructure_interface":
-      path   => '/etc/platform/platform.conf',
-      line   => "infrastructure_interface=${infrastructure_interface}",
-      match  => '^infrastructure_interface=',
+      path  => '/etc/platform/platform.conf',
+      line  => "infrastructure_interface=${infrastructure_interface}",
+      match => '^infrastructure_interface=',
     }
   }
 
   if $oam_interface {
     file_line { "${platform_conf} oam_interface":
-      path   => $platform_conf,
-      line   => "oam_interface=${oam_interface}",
-      match  => '^oam_interface=',
+      path  => $platform_conf,
+      line  => "oam_interface=${oam_interface}",
+      match => '^oam_interface=',
     }
   }
 
@@ -82,80 +82,80 @@ class platform::config::file {
 
   if $::platform::params::system_type {
     file_line { "${platform_conf} system_type":
-      path   => $platform_conf,
-      line   => "system_type=${::platform::params::system_type}",
-      match  => '^system_type=*',
+      path  => $platform_conf,
+      line  => "system_type=${::platform::params::system_type}",
+      match => '^system_type=*',
     }
   }
 
   if $::platform::params::system_mode {
     file_line { "${platform_conf} system_mode":
-      path   => $platform_conf,
-      line   => "system_mode=${::platform::params::system_mode}",
-      match  => '^system_mode=*',
+      path  => $platform_conf,
+      line  => "system_mode=${::platform::params::system_mode}",
+      match => '^system_mode=*',
     }
   }
 
   if $::platform::params::security_profile {
     file_line { "${platform_conf} security_profile":
-      path   => $platform_conf,
-      line   => "security_profile=${::platform::params::security_profile}",
-      match  => '^security_profile=*',
+      path  => $platform_conf,
+      line  => "security_profile=${::platform::params::security_profile}",
+      match => '^security_profile=*',
     }
   }
 
   if $::platform::params::sdn_enabled {
     file_line { "${platform_conf}f sdn_enabled":
-      path   => $platform_conf,
-      line   => "sdn_enabled=yes",
-      match  => '^sdn_enabled=',
+      path  => $platform_conf,
+      line  => 'sdn_enabled=yes',
+      match => '^sdn_enabled=',
     }
   }
   else {
     file_line { "${platform_conf} sdn_enabled":
-      path   => $platform_conf,
-      line   => 'sdn_enabled=no',
-      match  => '^sdn_enabled=',
+      path  => $platform_conf,
+      line  => 'sdn_enabled=no',
+      match => '^sdn_enabled=',
     }
   }
 
   if $::platform::params::region_config {
     file_line { "${platform_conf} region_config":
-      path   => $platform_conf,
-      line   => 'region_config=yes',
-      match  => '^region_config=',
+      path  => $platform_conf,
+      line  => 'region_config=yes',
+      match => '^region_config=',
     }
     file_line { "${platform_conf} region_1_name":
-      path   => $platform_conf,
-      line   => "region_1_name=${::platform::params::region_1_name}",
-      match  => '^region_1_name=',
+      path  => $platform_conf,
+      line  => "region_1_name=${::platform::params::region_1_name}",
+      match => '^region_1_name=',
     }
     file_line { "${platform_conf} region_2_name":
-      path   => $platform_conf,
-      line   => "region_2_name=${::platform::params::region_2_name}",
-      match  => '^region_2_name=',
+      path  => $platform_conf,
+      line  => "region_2_name=${::platform::params::region_2_name}",
+      match => '^region_2_name=',
     }
   } else {
     file_line { "${platform_conf} region_config":
-      path   => $platform_conf,
-      line   => 'region_config=no',
-      match  => '^region_config=',
+      path  => $platform_conf,
+      line  => 'region_config=no',
+      match => '^region_config=',
     }
   }
 
   if $::platform::params::distributed_cloud_role {
     file_line { "${platform_conf} distributed_cloud_role":
-      path   => $platform_conf,
-      line   => "distributed_cloud_role=${::platform::params::distributed_cloud_role}",
-      match  => '^distributed_cloud_role=',
+      path  => $platform_conf,
+      line  => "distributed_cloud_role=${::platform::params::distributed_cloud_role}",
+      match => '^distributed_cloud_role=',
     }
   }
 
   if $::platform::params::security_feature {
     file_line { "${platform_conf} security_feature":
-      path   => $platform_conf,
-      line   => "security_feature=\"${::platform::params::security_feature}\"",
-      match  => '^security_feature=*',
+      path  => $platform_conf,
+      line  => "security_feature=\"${::platform::params::security_feature}\"",
+      match => '^security_feature=*',
     }
   }
 
@@ -165,18 +165,18 @@ class platform::config::file {
 class platform::config::hostname {
   include ::platform::params
 
-  file { "/etc/hostname":
+  file { '/etc/hostname':
     ensure  => present,
     owner   => root,
     group   => root,
     mode    => '0644',
     content => "${::platform::params::hostname}\n",
-    notify  => Exec["set-hostname"],
+    notify  => Exec['set-hostname'],
   }
 
-  exec { "set-hostname":
+  exec { 'set-hostname':
     command => 'hostname -F /etc/hostname',
-    unless  => "test `hostname` = `cat /etc/hostname`",
+    unless  => 'test `hostname` = `cat /etc/hostname`',
   }
 }
 
@@ -214,11 +214,11 @@ class platform::config::tpm {
     # iterate through each tpm_cert creating it if it doesn't exist
     $tpm_certs.each |String $key, String $value| {
       file { "create-TPM-cert-${key}":
-        path => $key,
-        ensure => present,
-        owner => root,
-        group => root,
-        mode => '0644',
+        ensure  => present,
+        path    => $key,
+        owner   => root,
+        group   => root,
+        mode    => '0644',
         content => $value,
       }
     }
@@ -280,44 +280,44 @@ class platform::config::controller::post
     }
   }
 
-  file { "/etc/platform/.initial_controller_config_complete":
-     ensure => present,
+  file { '/etc/platform/.initial_controller_config_complete':
+    ensure => present,
   }
 
-  file { "/var/run/.controller_config_complete":
-     ensure => present,
+  file { '/var/run/.controller_config_complete':
+    ensure => present,
   }
 }
 
 class platform::config::worker::post
 {
-  file { "/etc/platform/.initial_worker_config_complete":
-     ensure => present,
+  file { '/etc/platform/.initial_worker_config_complete':
+    ensure => present,
   }
 
-  file { "/var/run/.worker_config_complete":
-     ensure => present,
+  file { '/var/run/.worker_config_complete':
+    ensure => present,
   }
 }
 
 class platform::config::storage::post
 {
-  file { "/etc/platform/.initial_storage_config_complete":
-     ensure => present,
+  file { '/etc/platform/.initial_storage_config_complete':
+    ensure => present,
   }
 
-  file { "/var/run/.storage_config_complete":
-     ensure => present,
+  file { '/var/run/.storage_config_complete':
+    ensure => present,
   }
 }
 
 class platform::config::bootstrap {
   stage { 'pre':
-    before => Stage["main"],
+    before => Stage['main'],
   }
 
   stage { 'post':
-    require => Stage["main"],
+    require => Stage['main'],
   }
 
   include ::platform::params

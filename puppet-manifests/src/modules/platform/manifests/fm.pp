@@ -15,9 +15,9 @@ class platform::fm::config
 
   $trap_dest_str = join($trap_destinations,',')
   class { '::fm':
-    region_name => $region_name,
-    system_name => $system_name,
-    trap_destinations => $trap_dest_str,
+    region_name         => $region_name,
+    system_name         => $system_name,
+    trap_destinations   => $trap_dest_str,
     sysinv_catalog_info => $sysinv_catalog_info,
   }
 }
@@ -50,17 +50,17 @@ class platform::fm::haproxy
   include ::platform::haproxy::params
 
   platform::haproxy::proxy { 'fm-api-internal':
-    server_name => 's-fm-api-internal',
-    public_ip_address => $::platform::haproxy::params::private_ip_address,
-    public_port => $api_port,
+    server_name        => 's-fm-api-internal',
+    public_ip_address  => $::platform::haproxy::params::private_ip_address,
+    public_port        => $api_port,
     private_ip_address => $api_host,
-    private_port => $api_port,
-    public_api => false,
+    private_port       => $api_port,
+    public_api         => false,
   }
 
   platform::haproxy::proxy { 'fm-api-public':
-    server_name => 's-fm-api-public',
-    public_port => $api_port,
+    server_name  => 's-fm-api-public',
+    public_port  => $api_port,
     private_port => $api_port,
   }
 }
@@ -79,9 +79,9 @@ class platform::fm::api
     include ::platform::params
 
     class { '::fm::api':
-      host      => $api_host,
-      workers   => $::platform::params::eng_workers,
-      sync_db   => $::platform::params::init_database,
+      host    => $api_host,
+      workers => $::platform::params::eng_workers,
+      sync_db => $::platform::params::init_database,
     }
 
     include ::platform::fm::firewall
@@ -94,8 +94,8 @@ class platform::fm::runtime {
   require ::platform::fm::config
 
   exec { 'notify-fm-mgr':
-    command => "/usr/bin/pkill -HUP fmManager",
-    onlyif => "pgrep fmManager"
+    command => '/usr/bin/pkill -HUP fmManager',
+    onlyif  => 'pgrep fmManager'
   }
 }
 

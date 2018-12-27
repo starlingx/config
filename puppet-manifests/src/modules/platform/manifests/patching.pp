@@ -14,8 +14,8 @@ class platform::patching
 
   group { 'patching':
     ensure => 'present',
-  } ->
-  user { 'patching':
+  }
+  -> user { 'patching':
     ensure           => 'present',
     comment          => 'patching Daemons',
     groups           => ['nobody', 'patching', $::platform::params::protected_group_name],
@@ -24,14 +24,14 @@ class platform::patching
     password_max_age => '-1',
     password_min_age => '-1',
     shell            => '/sbin/nologin',
-  } ->
-  file { "/etc/patching":
-    ensure  => "directory",
-    owner   => 'patching',
-    group   => 'patching',
-    mode    => '0755',
-  } ->
-  class { '::patching': }
+  }
+  -> file { '/etc/patching':
+    ensure => 'directory',
+    owner  => 'patching',
+    group  => 'patching',
+    mode   => '0755',
+  }
+  -> class { '::patching': }
 }
 
 
@@ -40,7 +40,7 @@ class platform::patching::firewall
 
   platform::firewall::rule { 'patching-api':
     service_name => 'patching',
-    ports => $public_port,
+    ports        => $public_port,
   }
 }
 
@@ -49,9 +49,9 @@ class platform::patching::haproxy
   inherits ::platform::patching::params {
 
   platform::haproxy::proxy { 'patching-restapi':
-    server_name => 's-patching',
-    public_port => $public_port,
-    private_port => $private_port,
+    server_name    => 's-patching',
+    public_port    => $public_port,
+    private_port   => $private_port,
     server_timeout => $server_timeout,
   }
 }

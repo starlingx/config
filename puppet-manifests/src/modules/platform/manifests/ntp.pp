@@ -9,37 +9,37 @@ class platform::ntp (
     $pmon_ensure = 'absent'
   }
 
-  File['ntp_config'] ->
-  File['ntp_config_initial'] ->
-  file {'ntpdate_override_dir':
+  File['ntp_config']
+  -> File['ntp_config_initial']
+  -> file {'ntpdate_override_dir':
     ensure => directory,
     path   => '/etc/systemd/system/ntpdate.service.d',
     mode   => '0755',
-  } ->
-  file { 'ntpdate_tis_override':
+  }
+  -> file { 'ntpdate_tis_override':
     ensure  => file,
     path    => '/etc/systemd/system/ntpdate.service.d/tis_override.conf',
     mode    => '0644',
     content => template('platform/ntp.override.erb'),
-  } ->
-  file { 'ntp_pmon_config':
+  }
+  -> file { 'ntp_pmon_config':
     ensure  => file,
     path    => '/etc/ntp.pmon.conf',
     mode    => '0644',
     content => template('platform/ntp.pmon.conf.erb'),
-  } ->
-  exec { 'systemd-daemon-reload':
+  }
+  -> exec { 'systemd-daemon-reload':
     command => '/usr/bin/systemctl daemon-reload',
-  } ->
-  exec { 'stop-ntpdate':
+  }
+  -> exec { 'stop-ntpdate':
     command => '/usr/bin/systemctl stop ntpdate.service',
     returns => [ 0, 1 ],
-  } ->
-  exec { 'stop-ntpd':
+  }
+  -> exec { 'stop-ntpd':
     command => '/usr/bin/systemctl stop ntpd.service',
     returns => [ 0, 1 ],
-  } ->
-  file { 'ntp_pmon_link':
+  }
+  -> file { 'ntp_pmon_link':
     ensure => $pmon_ensure,
     path   => '/etc/pmon.d/ntpd.conf',
     target => '/etc/ntp.pmon.conf',
@@ -52,16 +52,16 @@ class platform::ntp (
     exec { 'enable-ntpdate':
       command => '/usr/bin/systemctl enable ntpdate.service',
       require => File['ntp_pmon_link'],
-    } ->
-    exec { 'enable-ntpd':
+    }
+    -> exec { 'enable-ntpd':
       command => '/usr/bin/systemctl enable ntpd.service',
-    } ->
-    exec { 'start-ntpdate':
+    }
+    -> exec { 'start-ntpdate':
       command => '/usr/bin/systemctl start ntpdate.service',
       returns => [ 0, 1 ],
       onlyif  => "test ! -f /etc/platform/simplex || grep -q '^server' /etc/ntp.conf",
-    } ->
-    service { 'ntpd':
+    }
+    -> service { 'ntpd':
       ensure     => 'running',
       enable     => true,
       name       => 'ntpd',
@@ -72,8 +72,8 @@ class platform::ntp (
     exec { 'disable-ntpdate':
       command => '/usr/bin/systemctl disable ntpdate.service',
       require => File['ntp_pmon_link'],
-    } ->
-    exec { 'disable-ntpd':
+    }
+    -> exec { 'disable-ntpd':
       command => '/usr/bin/systemctl disable ntpd.service',
     }
   }

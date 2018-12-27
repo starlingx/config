@@ -10,8 +10,8 @@ class platform::compute::params (
 class platform::compute::config
   inherits ::platform::compute::params {
 
-  file { "/etc/platform/worker_reserved.conf":
-      ensure => 'present',
+  file { '/etc/platform/worker_reserved.conf':
+      ensure  => 'present',
       replace => true,
       content => template('platform/worker_reserved.conf.erb')
   }
@@ -32,7 +32,7 @@ class platform::compute::grub::params (
   }
 
   if $::is_gb_page_supported {
-    $gb_hugepages = "hugepagesz=1G hugepages=$::number_of_numa_nodes"
+    $gb_hugepages = "hugepagesz=1G hugepages=${::number_of_numa_nodes}"
   } else {
     $gb_hugepages = ''
   }
@@ -43,25 +43,25 @@ class platform::compute::grub::params (
 class platform::compute::grub::update
   inherits ::platform::compute::grub::params {
 
-  notice("Updating grub configuration")
+  notice('Updating grub configuration')
 
-  $to_be_removed = join($keys, " ")
-  exec { "Remove the cpu arguments":
-    command => "grubby --update-kernel=ALL --remove-args='$to_be_removed'",
-  } ->
-  exec { "Add the cpu arguments":
-    command => "grubby --update-kernel=ALL --args='$grub_updates'",
+  $to_be_removed = join($keys, ' ')
+  exec { 'Remove the cpu arguments':
+    command => "grubby --update-kernel=ALL --remove-args='${to_be_removed}'",
+  }
+  -> exec { 'Add the cpu arguments':
+    command => "grubby --update-kernel=ALL --args='${grub_updates}'",
   }
 }
 
 class platform::compute::grub::recovery {
 
-  notice("Update Grub and Reboot")
+  notice('Update Grub and Reboot')
 
   class {'platform::compute::grub::update': } -> Exec['reboot-recovery']
 
-  exec { "reboot-recovery":
-    command => "reboot",
+  exec { 'reboot-recovery':
+    command => 'reboot',
   }
 }
 
@@ -70,29 +70,31 @@ class platform::compute::grub::audit
 
   if ! str2bool($::is_initial_config_primary) {
 
-    notice("Audit CPU and Grub Configuration")
+    notice('Audit CPU and Grub Configuration')
 
-    $expected_n_cpus = $::number_of_logical_cpus
-    $n_cpus_ok = ("$n_cpus" == "$expected_n_cpus")
+    $expected_n_cpus = Integer($::number_of_logical_cpus)
+    $n_cpus_ok = ($n_cpus == $expected_n_cpus)
 
     $cmd_ok = check_grub_config($grub_updates)
 
     if $cmd_ok and $n_cpus_ok {
       $ensure = present
-      notice("CPU and Boot Argument audit passed.")
+      notice('CPU and Boot Argument audit passed.')
     } else {
       $ensure = absent
       if !$cmd_ok {
-        notice("Kernel Boot Argument Mismatch")
+        notice('Kernel Boot Argument Mismatch')
         include ::platform::compute::grub::recovery
+      } else {
+        notice("Mismatched CPUs: Found=${n_cpus}, Expected=${expected_n_cpus}")
       }
     }
 
-    file { "/var/run/worker_goenabled":
-      ensure  => $ensure,
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0644',
+    file { '/var/run/worker_goenabled':
+      ensure => $ensure,
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0644',
     }
   }
 }
@@ -106,47 +108,47 @@ class platform::compute::hugetlbf {
 
   if str2bool($::is_hugetlbfs_enabled) {
 
-    $fs_list = generate("/bin/bash", "-c", "ls -1d /sys/kernel/mm/hugepages/hugepages-*")
+    $fs_list = generate('/bin/bash', '-c', 'ls -1d /sys/kernel/mm/hugepages/hugepages-*')
     $array = split($fs_list, '\n')
     $array.each | String $val | {
-      $page_name = generate("/bin/bash", "-c", "basename $val")
+      $page_name = generate('/bin/bash', '-c', "basename ${val}")
       $page_size = strip(regsubst($page_name, 'hugepages-', ''))
-      $hugemnt ="/mnt/huge-$page_size"
+      $hugemnt ="/mnt/huge-${page_size}"
       $options = "pagesize=${page_size}"
 
       # TODO: Once all the code is switched over to use the /dev
       # mount point  we can get rid of this mount point.
-      notice("Mounting hugetlbfs at: $hugemnt")
-      exec { "create $hugemnt":
+      notice("Mounting hugetlbfs at: ${hugemnt}")
+      exec { "create ${hugemnt}":
         command => "mkdir -p ${hugemnt}",
         onlyif  => "test ! -d ${hugemnt}",
-      } ->
-      mount { "${hugemnt}":
-        name     => "${hugemnt}",
+      }
+      -> mount { $hugemnt:
+        ensure   => 'mounted',
         device   => 'none',
         fstype   => 'hugetlbfs',
-        ensure   => 'mounted',
-        options  => "${options}",
+        name     => $hugemnt,
+        options  => $options,
         atboot   => 'yes',
         remounts => true,
       }
 
       # The libvirt helm chart expects hugepages to be mounted
       # under /dev so let's do that.
-      $hugemnt2 ="/dev/huge-$page_size"
-      notice("Mounting hugetlbfs at: $hugemnt2")
-      file { "${hugemnt2}":
+      $hugemnt2 ="/dev/huge-${page_size}"
+      notice("Mounting hugetlbfs at: ${hugemnt2}")
+      file { $hugemnt2:
         ensure => 'directory',
         owner  => 'root',
         group  => 'root',
         mode   => '0755',
-      }->
-      mount { "${hugemnt2}":
-        name     => "${hugemnt2}",
+      }
+      -> mount { $hugemnt2:
+        ensure   => 'mounted',
         device   => 'none',
         fstype   => 'hugetlbfs',
-        ensure   => 'mounted',
-        options  => "${options}",
+        name     => $hugemnt2,
+        options  => $options,
         atboot   => 'yes',
         remounts => true,
       }
@@ -157,20 +159,20 @@ class platform::compute::hugetlbf {
     # Once we upstream a fix to the helm chart to automatically determine
     # the mountpoint then we can remove this.
     $page_size = '2M'
-    $hugemnt ="/dev/hugepages"
+    $hugemnt ='/dev/hugepages'
     $options = "pagesize=${page_size}"
 
-    notice("Mounting hugetlbfs at: $hugemnt")
-    exec { "create $hugemnt":
+    notice("Mounting hugetlbfs at: ${hugemnt}")
+    exec { "create ${hugemnt}":
       command => "mkdir -p ${hugemnt}",
       onlyif  => "test ! -d ${hugemnt}",
-    } ->
-    mount { "${hugemnt}":
-      name     => "${hugemnt}",
+    }
+    -> mount { $hugemnt:
+      ensure   => 'mounted',
       device   => 'none',
       fstype   => 'hugetlbfs',
-      ensure   => 'mounted',
-      options  => "${options}",
+      name     => $hugemnt,
+      options  => $options,
       atboot   => 'yes',
       remounts => true,
     }
@@ -193,8 +195,8 @@ define allocate_pages (
   $page_count,
 ) {
   exec { "Allocate ${page_count} ${path}":
-    command => "echo $page_count > $path",
-    onlyif => "test -f $path",
+    command => "echo ${page_count} > ${path}",
+    onlyif  => "test -f ${path}",
   }
 }
 
@@ -218,7 +220,7 @@ class platform::compute::allocate
         $node = $per_node_2M[0]
         $page_size = $per_node_2M[1]
         allocate_pages { "Start ${node} ${page_size}":
-          path => "${nodefs}/${node}/hugepages/hugepages-${page_size}/nr_hugepages",
+          path       => "${nodefs}/${node}/hugepages/hugepages-${page_size}/nr_hugepages",
           page_count => $per_node_2M[2],
         }
       }
@@ -233,7 +235,7 @@ class platform::compute::allocate
         $node = $per_node_1G[0]
         $page_size = $per_node_1G[1]
         allocate_pages { "Start ${node} ${page_size}":
-          path => "${nodefs}/${node}/hugepages/hugepages-${page_size}/nr_hugepages",
+          path       => "${nodefs}/${node}/hugepages/hugepages-${page_size}/nr_hugepages",
           page_count => $per_node_1G[2],
         }
       }
@@ -246,8 +248,8 @@ class platform::compute::extend
 
   # nova-compute reads on init, extended nova compute options
   # used with nova accounting
-  file { "/etc/nova/compute_extend.conf":
-      ensure => 'present',
+  file { '/etc/nova/compute_extend.conf':
+      ensure  => 'present',
       replace => true,
       content => template('platform/compute_extend.conf.erb')
   }
@@ -257,11 +259,11 @@ class platform::compute::extend
 class platform::compute::resctrl {
 
   if str2bool($::is_resctrl_supported) {
-    mount { "/sys/fs/resctrl":
-      name     => '/sys/fs/resctrl',
+    mount { '/sys/fs/resctrl':
+      ensure   => 'mounted',
       device   => 'resctrl',
       fstype   => 'resctrl',
-      ensure   => 'mounted',
+      name     => '/sys/fs/resctrl',
       atboot   => 'yes',
       remounts => true,
     }
@@ -278,22 +280,22 @@ class platform::compute::pmqos (
 
   if str2bool($::is_worker_subfunction) and str2bool($::is_lowlatency_subfunction) {
 
-    $script = "/usr/bin/set-cpu-wakeup-latency.sh"
+    $script = '/usr/bin/set-cpu-wakeup-latency.sh'
 
     if $low_wakeup_cpus != '""' {
       # Set low wakeup latency (shallow C-state) for vswitch CPUs using PM QoS interface
-      exec { "low-wakeup-latency":
-        command => "${script} low ${low_wakeup_cpus}",
-        onlyif => "test -f ${script}",
+      exec { 'low-wakeup-latency':
+        command   => "${script} low ${low_wakeup_cpus}",
+        onlyif    => "test -f ${script}",
         logoutput => true,
       }
     }
 
     if $hight_wakeup_cpus != '""' {
       #Set high wakeup latency (deep C-state) for non-vswitch CPUs using PM QoS interface
-      exec { "high-wakeup-latency":
-        command => "${script} high ${hight_wakeup_cpus}",
-        onlyif => "test -f ${script}",
+      exec { 'high-wakeup-latency':
+        command   => "${script} high ${hight_wakeup_cpus}",
+        onlyif    => "test -f ${script}",
         logoutput => true,
       }
     }

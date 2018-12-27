@@ -1,4 +1,4 @@
 class platform::anchors {
-  anchor { 'platform::networking': } ->
-  anchor { 'platform::services': }
+  anchor { 'platform::networking': }
+  -> anchor { 'platform::services': }
 }

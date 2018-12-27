@@ -104,14 +104,14 @@ class platform::postgresql::server (
     $service_ensure = 'stopped'
   }
 
-  class {"::postgresql::globals":
+  class {'::postgresql::globals':
     datadir => $data_dir,
     confdir => $config_dir,
-  } ->
+  }
 
-  class {"::postgresql::server":
+  -> class {'::postgresql::server':
     ip_mask_allow_all_users => $ipv4acl,
-    service_ensure => $service_ensure,
+    service_ensure          => $service_ensure,
   }
 }
 
@@ -122,7 +122,7 @@ class platform::postgresql::post {
   # To allow for the transition it must be explicitely stopped. Once puppet
   # can directly handle SM managed services, then this can be removed.
   exec { 'stop postgresql service':
-    command => "systemctl stop postgresql; systemctl disable postgresql",
+    command => 'systemctl stop postgresql; systemctl disable postgresql',
   }
 }
 
@@ -134,36 +134,36 @@ class platform::postgresql::bootstrap
 
   exec { 'Empty pg dir':
     command => "rm -fR ${root_dir}/*",
-  } ->
+  }
 
-  exec { 'Create pg datadir':
+  -> exec { 'Create pg datadir':
     command => "mkdir -p ${data_dir}",
-  } ->
+  }
 
-  exec { 'Change pg dir permissions':
+  -> exec { 'Change pg dir permissions':
     command => "chown -R postgres:postgres ${root_dir}",
-  } ->
+  }
 
-  file_line { 'allow sudo with no tty':
+  -> file_line { 'allow sudo with no tty':
     path  => '/etc/sudoers',
     match => '^Defaults *requiretty',
     line  => '#Defaults    requiretty',
-  } ->
+  }
 
-  exec { 'Create pg database':
+  -> exec { 'Create pg database':
     command => "sudo -u postgres initdb -D ${data_dir}",
-  } ->
+  }
 
-  exec { 'Move Config files':
+  -> exec { 'Move Config files':
     command => "mkdir -p ${config_dir} && mv ${data_dir}/*.conf ${config_dir}/ && ln -s ${config_dir}/*.conf ${data_dir}/",
-  } ->
+  }
 
-  class {"::postgresql::globals":
+  -> class {'::postgresql::globals':
     datadir => $data_dir,
     confdir => $config_dir,
-  } ->
+  }
 
-  class {"::postgresql::server":
+  -> class {'::postgresql::server':
   }
 
   # Allow local postgres user as trusted for simplex upgrade scripts
@@ -186,15 +186,15 @@ class platform::postgresql::upgrade
 
   exec { 'Move Config files':
     command => "mkdir -p ${config_dir} && mv ${data_dir}/*.conf ${config_dir}/ && ln -s ${config_dir}/*.conf ${data_dir}/",
-  } ->
+  }
 
-  class {"::postgresql::globals":
-    datadir => $data_dir,
-    confdir => $config_dir,
+  -> class {'::postgresql::globals':
+    datadir      => $data_dir,
+    confdir      => $config_dir,
     needs_initdb => false,
-  } ->
+  }
 
-  class {"::postgresql::server":
+  -> class {'::postgresql::server':
   }
 
   include ::aodh::db::postgresql

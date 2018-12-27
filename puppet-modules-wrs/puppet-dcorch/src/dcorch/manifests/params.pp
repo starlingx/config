@@ -39,7 +39,7 @@ class dcorch::params {
     $snmp_service          = 'dcorch-snmp'
     $api_proxy_package      = false
     $api_proxy_service      = 'dcorch-api-proxy'
-    
+
     $db_sync_command       = 'dcorch-manage db_sync'
 
   } elsif($::osfamily == 'WRLinux') {

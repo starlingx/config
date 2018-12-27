@@ -12,7 +12,7 @@ class nfv::event_log (
   include nfv::params
 
   nfv_plugin_event_log_config {
-    /* File-Storage Information */
+    # File-Storage Information
     'File-Storage/file': value => $storage_file;
   }
 

@@ -111,13 +111,13 @@ class dcmanager::api (
     Package['dcmanager'] -> Dcmanager_config<||>
     Package['dcmanager'] -> Service['dcmanager-api']
     package { 'dcmanager':
-      ensure  => $package_ensure,
-      name    => $::dcmanager::params::api_package,
+      ensure => $package_ensure,
+      name   => $::dcmanager::params::api_package,
     }
   }
 
   dcmanager_config {
-    "DEFAULT/bind_host": value => $bind_host;
+    'DEFAULT/bind_host': value => $bind_host;
   }
 
 
@@ -154,7 +154,7 @@ class dcmanager::api (
       'keystone_authtoken/user_domain_name':  value => $keystone_user_domain;
       'keystone_authtoken/project_domain_name':  value => $keystone_project_domain;
     }
-     dcmanager_config {
+    dcmanager_config {
       'cache/admin_tenant':       value => $keystone_admin_tenant;
       'cache/admin_username':     value => $keystone_admin_user;
       'cache/admin_password':     value => $keystone_admin_password, secret=> true;
@@ -202,7 +202,7 @@ class dcmanager::api (
     require     => Package['dcmanager'],
     # Only do the db sync if both controllers are running the same software
     # version. Avoids impacting mate controller during an upgrade.
-    onlyif      => "test $::controller_sw_versions_match = true",
+    onlyif      => "test ${::controller_sw_versions_match} = true",
   }
 
 }

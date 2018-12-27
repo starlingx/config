@@ -28,11 +28,11 @@ class sysinv::db::mysql (
   Database[$dbname] ~> Exec<| title == 'sysinv-dbsync' |>
 
   mysql::db { $dbname:
-    user         => $user,
-    password     => $password,
-    host         => $host,
-    charset      => $charset,
-    require      => Class['mysql::config'],
+    user     => $user,
+    password => $password,
+    host     => $host,
+    charset  => $charset,
+    require  => Class['mysql::config'],
   }
 
   # Check allowed_hosts to avoid duplicate resource declarations
@@ -45,9 +45,9 @@ class sysinv::db::mysql (
   if $real_allowed_hosts {
     # TODO this class should be in the mysql namespace
     sysinv::db::mysql::host_access { $real_allowed_hosts:
-      user      => $user,
-      password  => $password,
-      database  => $dbname,
+      user     => $user,
+      password => $password,
+      database => $dbname,
     }
   }
 

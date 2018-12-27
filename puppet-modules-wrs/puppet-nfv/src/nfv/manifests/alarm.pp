@@ -12,7 +12,7 @@ class nfv::alarm (
   include nfv::params
 
   nfv_plugin_alarm_config {
-    /* File-Storage Information */
+    # File-Storage Information
     'File-Storage/file': value => $storage_file;
   }
 

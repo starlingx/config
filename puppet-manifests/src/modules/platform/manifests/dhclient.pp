@@ -10,11 +10,11 @@ class platform::dhclient
   $infra_interface = $::platform::network::infra::params::interface_name
   $infra_subnet_version = $::platform::network::infra::params::subnet_version
 
-  file { "/etc/dhcp/dhclient.conf":
-    ensure => 'present',
+  file { '/etc/dhcp/dhclient.conf':
+    ensure  => 'present',
     replace => true,
     content => template('platform/dhclient.conf.erb'),
-    before => Class['::platform::network::apply'],
+    before  => Class['::platform::network::apply'],
   }
 }
 

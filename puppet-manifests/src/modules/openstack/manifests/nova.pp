@@ -42,7 +42,7 @@ class openstack::nova {
   $metadata_host = $::platform::network::mgmt::params::controller_address
 
   class { '::nova':
-    rabbit_use_ssl  => $::platform::amqp::params::ssl_enabled,
+    rabbit_use_ssl        => $::platform::amqp::params::ssl_enabled,
     default_transport_url => $::platform::amqp::params::transport_url,
   }
 
@@ -68,9 +68,9 @@ class openstack::nova::sshd
     enable => true,
   }
 
-  file { "/etc/ssh/sshd_config":
-    notify  => Service['sshd'],
+  file { '/etc/ssh/sshd_config':
     ensure  => 'present' ,
+    notify  => Service['sshd'],
     mode    => '0600',
     owner   => 'root',
     group   => 'root',
@@ -79,7 +79,7 @@ class openstack::nova::sshd
 
 }
 
-class openstack::nova::controller 
+class openstack::nova::controller
   inherits ::openstack::nova::params {
 
   include ::platform::params
@@ -108,12 +108,12 @@ class openstack::nova::controller
 
   # Run nova-manage to purge deleted rows daily at 15 minute mark
   cron { 'nova-purge-deleted':
-    ensure  => 'present',
-    command => '/usr/bin/nova-purge-deleted-active',
+    ensure      => 'present',
+    command     => '/usr/bin/nova-purge-deleted-active',
     environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-    minute  => '15',
-    hour    => '*/24',
-    user    => 'root',
+    minute      => '15',
+    hour        => '*/24',
+    user        => 'root',
   }
 }
 
@@ -142,9 +142,9 @@ class openstack::nova::compute (
   include ::openstack::nova::sshd
 
   $host_private_key_file = $host_key_type ? {
-    'ssh-rsa'   => "/etc/ssh/ssh_host_rsa_key",
-    'ssh-dsa'   => "/etc/ssh/ssh_host_dsa_key",
-    'ssh-ecdsa' => "/etc/ssh/ssh_host_ecdsa_key",
+    'ssh-rsa'   => '/etc/ssh/ssh_host_rsa_key',
+    'ssh-dsa'   => '/etc/ssh/ssh_host_dsa_key',
+    'ssh-ecdsa' => '/etc/ssh/ssh_host_ecdsa_key',
     default     => undef
   }
 
@@ -153,9 +153,9 @@ class openstack::nova::compute (
   }
 
   $host_public_key_file = $host_key_type ? {
-    'ssh-rsa'   => "/etc/ssh/ssh_host_rsa_key.pub",
-    'ssh-dsa'   => "/etc/ssh/ssh_host_dsa_key.pub",
-    'ssh-ecdsa' => "/etc/ssh/ssh_host_ecdsa_key.pub",
+    'ssh-rsa'   => '/etc/ssh/ssh_host_rsa_key.pub',
+    'ssh-dsa'   => '/etc/ssh/ssh_host_dsa_key.pub',
+    'ssh-ecdsa' => '/etc/ssh/ssh_host_ecdsa_key.pub',
     default     => undef
   }
 
@@ -164,20 +164,20 @@ class openstack::nova::compute (
   }
 
   file { '/etc/ssh':
-    ensure  => directory,
-    mode    => '0700',
-    owner   => 'root',
-    group   => 'root',
-  } ->
+    ensure => directory,
+    mode   => '0700',
+    owner  => 'root',
+    group  => 'root',
+  }
 
-  file { $host_private_key_file:
+  -> file { $host_private_key_file:
     content => $host_private_key,
     mode    => '0600',
     owner   => 'root',
     group   => 'root',
-  } ->
+  }
 
-  file { $host_public_key_file:
+  -> file { $host_public_key_file:
     content => "${host_public_header} ${host_public_key}",
     mode    => '0644',
     owner   => 'root',
@@ -200,20 +200,20 @@ class openstack::nova::compute (
     "command=\"/usr/bin/nova_authorized_cmds\"" ]
 
   file { '/root/.ssh':
-    ensure  => directory,
-    mode    => '0700',
-    owner   => 'root',
-    group   => 'root',
-  } ->
+    ensure => directory,
+    mode   => '0700',
+    owner  => 'root',
+    group  => 'root',
+  }
 
-  file { $migration_private_key_file:
+  -> file { $migration_private_key_file:
     content => $migration_private_key,
     mode    => '0600',
     owner   => 'root',
     group   => 'root',
-  } ->
+  }
 
-  ssh_authorized_key { 'nova-migration-key-authorization':
+  -> ssh_authorized_key { 'nova-migration-key-authorization':
     ensure  => present,
     key     => $migration_public_key,
     type    => $migration_key_type,
@@ -253,17 +253,17 @@ class openstack::nova::compute (
   }
 
   include ::openstack::glance::params
-  if "rbd" in $::openstack::glance::params::enabled_backends {
-      $libvirt_inject_partition = "-2"
-      $libvirt_images_type = "rbd"
+  if 'rbd' in $::openstack::glance::params::enabled_backends {
+      $libvirt_inject_partition = '-2'
+      $libvirt_images_type = 'rbd'
   } else {
-      $libvirt_inject_partition = "-1"
-      $libvirt_images_type = "default"
+      $libvirt_inject_partition = '-1'
+      $libvirt_images_type = 'default'
   }
 
   class { '::nova::compute::libvirt':
-    libvirt_virt_type => $libvirt_virt_type,
-    vncserver_listen => $libvirt_vnc_bind_host,
+    libvirt_virt_type        => $libvirt_virt_type,
+    vncserver_listen         => $libvirt_vnc_bind_host,
     libvirt_inject_partition => $libvirt_inject_partition,
   }
 
@@ -277,32 +277,32 @@ class openstack::nova::compute (
     'libvirt/volume_use_multipath': value => $::platform::multipath::params::enabled;
 
     # enable auto-converge by default
-    'libvirt/live_migration_permit_auto_converge': value => "True";
+    'libvirt/live_migration_permit_auto_converge': value => 'True';
 
     # Change the nfs mount options to provide faster detection of unclean
     # shutdown (e.g. if controller is powered down).
-    "DEFAULT/nfs_mount_options": value => $::platform::params::nfs_mount_options;
+    'DEFAULT/nfs_mount_options': value => $::platform::params::nfs_mount_options;
 
     # WRS extension: compute_resource_debug
-    "DEFAULT/compute_resource_debug": value => "False";
+    'DEFAULT/compute_resource_debug': value => 'False';
 
     # WRS extension: reap running deleted VMs
-    "DEFAULT/running_deleted_instance_action": value => "reap";
-    "DEFAULT/running_deleted_instance_poll_interval": value => "60";
+    'DEFAULT/running_deleted_instance_action': value => 'reap';
+    'DEFAULT/running_deleted_instance_poll_interval': value => '60';
 
     # Delete rbd_user, for now
-    "DEFAULT/rbd_user": ensure => 'absent';
+    'DEFAULT/rbd_user': ensure => 'absent';
 
     # write metadata to a special configuration drive
-    "DEFAULT/mkisofs_cmd": value => "/usr/bin/genisoimage";
+    'DEFAULT/mkisofs_cmd': value => '/usr/bin/genisoimage';
 
     # configure metrics
-    "DEFAULT/compute_available_monitors":
-      value => "nova.compute.monitors.all_monitors";
-    "DEFAULT/compute_monitors": value => $compute_monitors;
+    'DEFAULT/compute_available_monitors':
+      value => 'nova.compute.monitors.all_monitors';
+    'DEFAULT/compute_monitors': value => $compute_monitors;
 
     # need retries under heavy I/O loads
-    "DEFAULT/network_allocate_retries": value => 2;
+    'DEFAULT/network_allocate_retries': value => 2;
 
     # TODO(mpeters): confirm if this is still required - deprecated
     'DEFAULT/volume_api_class':  value => 'nova.volume.cinder.API';
@@ -310,7 +310,7 @@ class openstack::nova::compute (
     'DEFAULT/default_ephemeral_format':  value => 'ext4';
 
     # turn on service tokens
-    'service_user/send_service_user_token': value => 'true';
+    'service_user/send_service_user_token': value => true;
     'service_user/project_name': value => $::nova::keystone::authtoken::project_name;
     'service_user/password': value => $::nova::keystone::authtoken::password;
     'service_user/username': value => $::nova::keystone::authtoken::username;
@@ -323,57 +323,57 @@ class openstack::nova::compute (
 
   file_line {'cgroup_controllers':
       ensure => present,
-      path => '/etc/libvirt/qemu.conf',
-      line => 'cgroup_controllers = [ "cpu", "cpuacct" ]',
-      match => '^cgroup_controllers = .*',
+      path   => '/etc/libvirt/qemu.conf',
+      line   => 'cgroup_controllers = [ "cpu", "cpuacct" ]',
+      match  => '^cgroup_controllers = .*',
   }
 
   if $iscsi_initiator_name {
       $initiator_content = "InitiatorName=${iscsi_initiator_name}\n"
-      file { "/etc/iscsi/initiatorname.iscsi":
-          ensure => 'present',
-          owner  => 'root',
-          group  => 'root',
-          mode   => '0644',
+      file { '/etc/iscsi/initiatorname.iscsi':
+          ensure  => 'present',
+          owner   => 'root',
+          group   => 'root',
+          mode    => '0644',
           content => $initiator_content,
-      } ->
-      exec { "Restart iscsid.service":
+      }
+      -> exec { 'Restart iscsid.service':
           command => "bash -c 'systemctl restart iscsid.service'",
-          onlyif => "systemctl status iscsid.service",
+          onlyif  => 'systemctl status iscsid.service',
       }
   }
 }
 
 define openstack::nova::storage::wipe_new_pv {
-  $cmd = join(["/sbin/pvs --nosuffix --noheadings ",$name," 2>/dev/null | grep nova-local || true"])
-  $result = generate("/bin/sh", "-c", $cmd)
+  $cmd = join(['/sbin/pvs --nosuffix --noheadings ',$name,' 2>/dev/null | grep nova-local || true'])
+  $result = generate('/bin/sh', '-c', $cmd)
   if $result !~ /nova-local/ {
-    exec { "Wipe New PV not in VG - $name":
+    exec { "Wipe New PV not in VG - ${name}":
       provider => shell,
-      command => "wipefs -a $name",
-      before => Lvm::Volume[instances_lv],
-      require => Exec['remove device mapper mapping']
+      command  => "wipefs -a ${name}",
+      before   => Lvm::Volume[instances_lv],
+      require  => Exec['remove device mapper mapping']
     }
   }
 }
 
 define openstack::nova::storage::wipe_pv_and_format {
   if $name !~ /part/ {
-    exec { "Wipe removing PV $name":
+    exec { "Wipe removing PV ${name}":
       provider => shell,
-      command => "wipefs -a $name",
-      require => File_line[disable_old_lvg_disks]
-    } ->
-    exec { "GPT format disk PV - $name":
+      command  => "wipefs -a ${name}",
+      require  => File_line[disable_old_lvg_disks]
+    }
+    -> exec { "GPT format disk PV - ${name}":
       provider => shell,
-      command => "parted -a optimal --script $name -- mktable gpt",
+      command  => "parted -a optimal --script ${name} -- mktable gpt",
     }
   }
   else {
-    exec { "Wipe removing PV $name":
+    exec { "Wipe removing PV ${name}":
       provider => shell,
-      command => "wipefs -a $name",
-      require => File_line[disable_old_lvg_disks]
+      command  => "wipefs -a ${name}",
+      require  => File_line[disable_old_lvg_disks]
     }
   }
 }
@@ -389,8 +389,8 @@ class openstack::nova::storage (
   $images_rbd_pool = 'ephemeral',
   $images_rbd_ceph_conf = '/etc/ceph/ceph.conf'
 ) {
-  $adding_pvs_str = join($adding_pvs," ")
-  $removing_pvs_str = join($removing_pvs," ")
+  $adding_pvs_str = join($adding_pvs,' ')
+  $removing_pvs_str = join($removing_pvs,' ')
 
   # Ensure partitions update prior to local storage configuration
   Class['::platform::partitions'] -> Class[$name]
@@ -418,7 +418,7 @@ class openstack::nova::storage (
   }
 
   nova_config {
-    "DEFAULT/concurrent_disk_operations": value => $concurrent_disk_operations;
+    'DEFAULT/concurrent_disk_operations': value => $concurrent_disk_operations;
   }
 
   ::openstack::nova::storage::wipe_new_pv { $adding_pvs: }
@@ -428,56 +428,56 @@ class openstack::nova::storage (
       path  => '/etc/lvm/lvm.conf',
       line  => "    global_filter = ${lvm_update_filter}",
       match => '^[ ]*global_filter =',
-  } ->
-  nova_config {
-      "libvirt/images_type": value => $images_type;
-      "libvirt/images_volume_group": value => $images_volume_group;
-      "libvirt/images_rbd_pool": value => $images_rbd_pool_real;
-      "libvirt/images_rbd_ceph_conf": value => $images_rbd_ceph_conf_real;
-  } ->
-  exec { 'umount /var/lib/nova/instances':
+  }
+  -> nova_config {
+      'libvirt/images_type': value => $images_type;
+      'libvirt/images_volume_group': value => $images_volume_group;
+      'libvirt/images_rbd_pool': value => $images_rbd_pool_real;
+      'libvirt/images_rbd_ceph_conf': value => $images_rbd_ceph_conf_real;
+  }
+  -> exec { 'umount /var/lib/nova/instances':
     command => 'umount /var/lib/nova/instances; true',
-  } ->
-  exec { 'umount /dev/nova-local/instances_lv':
+  }
+  -> exec { 'umount /dev/nova-local/instances_lv':
     command => 'umount /dev/nova-local/instances_lv; true',
-  } ->
-  exec { 'remove udev leftovers':
+  }
+  -> exec { 'remove udev leftovers':
     unless  => 'vgs nova-local',
     command => 'rm -rf /dev/nova-local || true',
-  } ->
-  exec { 'remove device mapper mapping':
-    command => "dmsetup remove /dev/mapper/nova--local-instances_lv || true",
-  } ->
-  file_line { 'disable_old_lvg_disks':
+  }
+  -> exec { 'remove device mapper mapping':
+    command => 'dmsetup remove /dev/mapper/nova--local-instances_lv || true',
+  }
+  -> file_line { 'disable_old_lvg_disks':
       path  => '/etc/lvm/lvm.conf',
       line  => "    global_filter = ${lvm_global_filter}",
       match => '^[ ]*global_filter =',
-  } ->
-  exec { 'add device mapper mapping':
+  }
+  -> exec { 'add device mapper mapping':
     command => 'lvchange -ay /dev/nova-local/instances_lv || true',
-  } ->
-  lvm::volume { 'instances_lv':
-    ensure => 'present',
-    vg => 'nova-local',
-    pv => $final_pvs,
-    size => 'max',
-    round_to_extent => $round_to_extent,
-    allow_reduce => true,
+  }
+  -> lvm::volume { 'instances_lv':
+    ensure                    => 'present',
+    vg                        => 'nova-local',
+    pv                        => $final_pvs,
+    size                      => 'max',
+    round_to_extent           => $round_to_extent,
+    allow_reduce              => true,
     nuke_fs_on_resize_failure => true,
-  } ->
-  filesystem { '/dev/nova-local/instances_lv':
+  }
+  -> filesystem { '/dev/nova-local/instances_lv':
     ensure  => present,
     fs_type => 'ext4',
     options => '-F -F',
     require => Logical_volume['instances_lv']
-  } ->
-  file { '/var/lib/nova/instances':
+  }
+  -> file { '/var/lib/nova/instances':
     ensure => 'directory',
     owner  => 'root',
     group  => 'root',
     mode   => '0755',
-  } ->
-  exec { 'mount /dev/nova-local/instances_lv':
+  }
+  -> exec { 'mount /dev/nova-local/instances_lv':
     unless  => 'mount | grep -q /var/lib/nova/instances',
     command => 'mount -t ext4 /dev/nova-local/instances_lv /var/lib/nova/instances',
   }
@@ -523,30 +523,30 @@ class openstack::nova::haproxy
   inherits ::openstack::nova::params {
 
   platform::haproxy::proxy { 'nova-restapi':
-    server_name => 's-nova',
-    public_port => $nova_api_port,
+    server_name  => 's-nova',
+    public_port  => $nova_api_port,
     private_port => $nova_api_port,
   }
 
   platform::haproxy::proxy { 'placement-restapi':
-    server_name => 's-placement',
-    public_port => $placement_port,
+    server_name  => 's-placement',
+    public_port  => $placement_port,
     private_port => $placement_port,
   }
 
   platform::haproxy::proxy { 'nova-novnc':
-    server_name => 's-nova-novnc',
-    public_port => $nova_novnc_port,
-    private_port => $nova_novnc_port,
+    server_name       => 's-nova-novnc',
+    public_port       => $nova_novnc_port,
+    private_port      => $nova_novnc_port,
     x_forwarded_proto => false,
   }
 
   platform::haproxy::proxy { 'nova-serial':
-    server_name => 's-nova-serial',
-    public_port => $nova_serial_port,
-    private_port => $nova_serial_port,
-    server_timeout => $timeout,
-    client_timeout => $timeout,
+    server_name       => 's-nova-serial',
+    public_port       => $nova_serial_port,
+    private_port      => $nova_serial_port,
+    server_timeout    => $timeout,
+    client_timeout    => $timeout,
     x_forwarded_proto => false,
   }
 }
@@ -564,10 +564,10 @@ class openstack::nova::api::services
   include ::nova_api_proxy::config
 
   class {'::nova::api':
-    sync_db => $::platform::params::init_database,
-    sync_db_api => $::platform::params::init_database,
+    sync_db               => $::platform::params::init_database,
+    sync_db_api           => $::platform::params::init_database,
     osapi_compute_workers => $::platform::params::eng_workers,
-    metadata_workers => $::platform::params::eng_workers_by_2,
+    metadata_workers      => $::platform::params::eng_workers_by_2,
   }
 }
 
@@ -597,7 +597,7 @@ class openstack::nova::api
 
 class openstack::nova::conductor::reload {
   exec { 'signal-nova-conductor':
-    command => "pkill -HUP nova-conductor",
+    command => 'pkill -HUP nova-conductor',
   }
 }
 
@@ -646,7 +646,7 @@ class openstack::nova::compute::pci
   # empty string if the list is empty, causing the nova-compute process to fail.
   if $pci_sriov_whitelist {
       class { '::nova::compute::pci':
-          passthrough => generate("/usr/bin/nova-sriov",
+          passthrough => generate('/usr/bin/nova-sriov',
             $pci_pt_whitelist, $pci_sriov_whitelist),
       }
   } else {
@@ -662,7 +662,7 @@ class openstack::nova::compute::reload {
 
   if $::platform::kubernetes::params::enabled != true {
     exec { 'pmon-restart-nova-compute':
-      command => "pmon-restart nova-compute",
+      command => 'pmon-restart nova-compute',
     }
   }
 }

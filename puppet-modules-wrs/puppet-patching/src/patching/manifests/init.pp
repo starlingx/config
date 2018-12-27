@@ -14,10 +14,10 @@ class patching (
   include patching::params
 
   file { $::patching::params::patching_conf:
-    ensure  => present,
-    owner   => 'patching',
-    group   => 'patching',
-    mode    => '0600',
+    ensure => present,
+    owner  => 'patching',
+    group  => 'patching',
+    mode   => '0600',
   }
 
   patching_config {
@@ -27,17 +27,17 @@ class patching (
     'runtime/controller_port':       value => $controller_port;
     'runtime/agent_port':            value => $agent_port;
   }
-  ~>
-  service { 'sw-patch-agent.service':
-    ensure => 'running',
-    enable => true,
+
+  ~> service { 'sw-patch-agent.service':
+    ensure    => 'running',
+    enable    => true,
     subscribe => File[$::patching::params::patching_conf],
   }
 
-  if $::personality == "controller" {
+  if $::personality == 'controller' {
     service { 'sw-patch-controller-daemon.service':
-      ensure => 'running',
-      enable => true,
+      ensure    => 'running',
+      enable    => true,
       subscribe => Service['sw-patch-agent.service'],
     }
   }

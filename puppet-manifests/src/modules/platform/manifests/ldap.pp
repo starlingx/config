@@ -11,7 +11,7 @@ class platform::ldap::params (
 class platform::ldap::server
   inherits ::platform::ldap::params {
   if ! $ldapserver_remote {
-    include ::platform::ldap::server::local 
+    include ::platform::ldap::server::local
   }
 }
 
@@ -38,7 +38,7 @@ class platform::ldap::server::local
   service { 'openldap':
     ensure     => 'running',
     enable     => true,
-    name       => "slapd",
+    name       => 'slapd',
     hasstatus  => true,
     hasrestart => true,
   }
@@ -55,47 +55,47 @@ class platform::ldap::server::local
                           -e 's:^rootpw .*:rootpw ${admin_hashed_pw}:' \\
                           -e 's:modulepath .*:modulepath /usr/lib64/openldap:' \\
                           /etc/openldap/slapd.conf",
-    onlyif => '/usr/bin/test -e /etc/openldap/slapd.conf'
+    onlyif  => '/usr/bin/test -e /etc/openldap/slapd.conf'
   }
 
   # don't populate the adminpw if binding anonymously
   if ! $bind_anonymous {
-    file { "/usr/local/etc/ldapscripts/ldapscripts.passwd":
+    file { '/usr/local/etc/ldapscripts/ldapscripts.passwd':
       content => $admin_pw,
     }
   }
 
-  file { "/usr/share/cracklib/cracklib-small":
+  file { '/usr/share/cracklib/cracklib-small':
     ensure => link,
-    target => "/usr/share/cracklib/cracklib-small.pwd",
+    target => '/usr/share/cracklib/cracklib-small.pwd',
   }
 
   # start openldap with updated config and updated nsswitch
   # then convert slapd config to db format. Note, slapd must have run and created the db prior to this.
-  Exec['stop-openldap'] ->
-  Exec['update-slapd-conf'] ->
-  Service['nscd'] ->
-  Service['nslcd'] ->
-  Service['openldap'] ->
-  Exec['slapd-convert-config'] ->
-  Exec['slapd-conf-move-backup']
+  Exec['stop-openldap']
+  -> Exec['update-slapd-conf']
+  -> Service['nscd']
+  -> Service['nslcd']
+  -> Service['openldap']
+  -> Exec['slapd-convert-config']
+  -> Exec['slapd-conf-move-backup']
 }
 
 
 class platform::ldap::client
   inherits ::platform::ldap::params {
-  file { "/etc/openldap/ldap.conf":
-      ensure => 'present',
+  file { '/etc/openldap/ldap.conf':
+      ensure  => 'present',
       replace => true,
       content => template('platform/ldap.conf.erb'),
   }
 
-  file { "/etc/nslcd.conf":
-      ensure => 'present',
+  file { '/etc/nslcd.conf':
+      ensure  => 'present',
       replace => true,
       content => template('platform/nslcd.conf.erb'),
-  } ->
-  service { 'nslcd':
+  }
+  -> service { 'nslcd':
     ensure     => 'running',
     enable     => true,
     name       => 'nslcd',
@@ -104,7 +104,7 @@ class platform::ldap::client
   }
 
   if $::personality == 'controller' {
-    file { "/usr/local/etc/ldapscripts/ldapscripts.conf":
+    file { '/usr/local/etc/ldapscripts/ldapscripts.conf':
       ensure  => 'present',
       replace => true,
       content => template('platform/ldapscripts.conf.erb'),
@@ -127,30 +127,30 @@ class platform::ldap::bootstrap
 
   exec { 'populate initial ldap configuration':
     command => "ldapadd -D ${dn} -w ${admin_pw} -f /etc/openldap/initial_config.ldif"
-  } ->
-  exec { "create ldap admin user":
-    command => "ldapadduser admin root"
-  } ->
-  exec { "create ldap operator user":
-    command => "ldapadduser operator users"
-  } ->
-  exec { 'create ldap protected group':
+  }
+  -> exec { 'create ldap admin user':
+    command => 'ldapadduser admin root'
+  }
+  -> exec { 'create ldap operator user':
+    command => 'ldapadduser operator users'
+  }
+  -> exec { 'create ldap protected group':
     command => "ldapaddgroup ${::platform::params::protected_group_name} ${::platform::params::protected_group_id}"
-  } ->
-  exec { "add admin to wrs protected group" :
+  }
+  -> exec { 'add admin to wrs protected group' :
     command => "ldapaddusertogroup admin ${::platform::params::protected_group_name}",
-  } ->
-  exec { "add operator to wrs protected group" :
+  }
+  -> exec { 'add operator to wrs protected group' :
     command => "ldapaddusertogroup operator ${::platform::params::protected_group_name}",
-  } ->
+  }
 
   # Change operator shell from default to /usr/local/bin/cgcs_cli
-  file { "/tmp/ldap.cgcs-shell.ldif":
+  -> file { '/tmp/ldap.cgcs-shell.ldif':
     ensure  => present,
     replace => true,
-    source => "puppet:///modules/${module_name}/ldap.cgcs-shell.ldif"
-  } ->
-  exec { 'ldap cgcs-cli shell update':
+    source  => "puppet:///modules/${module_name}/ldap.cgcs-shell.ldif"
+  }
+  -> exec { 'ldap cgcs-cli shell update':
     command =>
       "ldapmodify -D ${dn} -w ${admin_pw} -f /tmp/ldap.cgcs-shell.ldif"
   }

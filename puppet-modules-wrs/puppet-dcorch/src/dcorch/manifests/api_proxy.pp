@@ -113,13 +113,13 @@ class dcorch::api_proxy (
     Package['dcorch'] -> Dcorch_api_paste_ini<||>
     Package['dcorch'] -> Service['dcorch-api-proxy']
     package { 'dcorch':
-      ensure  => $package_ensure,
-      name    => $::dcorch::params::api_proxy_package,
+      ensure => $package_ensure,
+      name   => $::dcorch::params::api_proxy_package,
     }
   }
 
   dcorch_config {
-    "DEFAULT/bind_host": value => $bind_host;
+    'DEFAULT/bind_host': value => $bind_host;
   }
 
 
@@ -156,7 +156,7 @@ class dcorch::api_proxy (
       'keystone_authtoken/user_domain_name':  value => $keystone_user_domain;
       'keystone_authtoken/project_domain_name':  value => $keystone_project_domain;
     }
-     dcorch_config {
+    dcorch_config {
       'cache/admin_tenant': value => $keystone_admin_tenant;
       'cache/admin_username':     value => $keystone_admin_user;
       'cache/admin_password':     value => $keystone_admin_password, secret=> true;
@@ -204,7 +204,7 @@ class dcorch::api_proxy (
     require     => Package['dcorch'],
     # Only do the db sync if both controllers are running the same software
     # version. Avoids impacting mate controller during an upgrade.
-    onlyif      => "test $::controller_sw_versions_match = true",
+    onlyif      => "test ${::controller_sw_versions_match} = true",
   }
 
 }

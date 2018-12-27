@@ -47,33 +47,33 @@ class openstack::horizon
     groups => ['wrs_protected'],
   }
 
-  file { "/www/tmp":
-      path   => "/www/tmp",
+  file { '/www/tmp':
       ensure => directory,
+      path   => '/www/tmp',
       mode   => '1700',
   }
 
-  file {"/www/var":
-      path   => "/www/var",
-      ensure => directory,
-      owner  => "www",
+  file {'/www/var':
+      ensure  => directory,
+      path    => '/www/var',
+      owner   => 'www',
       require => User['www']
   }
 
-  file {"/www/var/log":
-      path   => "/www/var/log",
-      ensure => directory,
-      owner  => "www",
+  file {'/www/var/log':
+      ensure  => directory,
+      path    => '/www/var/log',
+      owner   => 'www',
       require => User['www']
   }
 
-  file {"/etc/lighttpd/lighttpd.conf":
-      ensure => present,
+  file {'/etc/lighttpd/lighttpd.conf':
+      ensure  => present,
       content => template('openstack/lighttpd.conf.erb')
   }
 
-  file {"/etc/lighttpd/lighttpd-inc.conf":
-      ensure => present,
+  file {'/etc/lighttpd/lighttpd-inc.conf':
+      ensure  => present,
       content => template('openstack/lighttpd-inc.conf.erb')
   }
 
@@ -95,7 +95,7 @@ class openstack::horizon
 
   if str2bool($::is_initial_config) {
     exec { 'Stop lighttpd':
-      command => "systemctl stop lighttpd; systemctl disable lighttpd",
+      command => 'systemctl stop lighttpd; systemctl disable lighttpd',
       require => User['www']
     }
   }
@@ -112,8 +112,8 @@ class openstack::horizon
 
     include ::horizon::params
     file { '/etc/openstack-dashboard/horizon-config.ini':
-      content => template('openstack/horizon-params.erb'),
       ensure  => present,
+      content => template('openstack/horizon-params.erb'),
       mode    => '0644',
       owner   => 'root',
       group   => $::horizon::params::apache_group,
@@ -132,8 +132,8 @@ class openstack::horizon
       $region_2_name = $::platform::params::region_2_name
       $region_openstack_host = $openstack_host
       file { '/etc/openstack-dashboard/region-config.ini':
-        content => template('openstack/horizon-region-config.erb'),
         ensure  => present,
+        content => template('openstack/horizon-region-config.erb'),
         mode    => '0644',
       }
     } else {
@@ -162,8 +162,8 @@ class openstack::horizon
         'enable_firewall' => $neutron_enable_firewall,
         'enable_vpn'      => $neutron_enable_vpn
       },
-      configure_apache     => false,
-      compress_offline     => false,
+      configure_apache      => false,
+      compress_offline      => false,
     }
 
     # hack for memcached, for now we bind to localhost on ipv6
@@ -177,12 +177,12 @@ class openstack::horizon
 
     # Run clearsessions daily at the 40 minute mark
     cron { 'clearsessions':
-      ensure  => 'present',
-      command => '/usr/bin/horizon-clearsessions',
+      ensure      => 'present',
+      command     => '/usr/bin/horizon-clearsessions',
       environment => 'PATH=/bin:/usr/bin:/usr/sbin',
-      minute  => '40',
-      hour    => '*/24',
-      user    => 'root',
+      minute      => '40',
+      hour        => '*/24',
+      user        => 'root',
     }
 
     include ::openstack::horizon::firewall
@@ -216,11 +216,11 @@ class openstack::horizon::reload {
   # Remove all active Horizon user sessions
   # so that we don't use any stale cached data
   # such as endpoints
-  exec { "remove-Horizon-user-sessions":
+  exec { 'remove-Horizon-user-sessions':
     path    => ['/usr/bin'],
-    command => "/usr/bin/rm -f /var/tmp/sessionid*",
+    command => '/usr/bin/rm -f /var/tmp/sessionid*',
   }
- 
+
   platform::sm::restart {'horizon': }
   platform::sm::restart {'lighttpd': }
 }

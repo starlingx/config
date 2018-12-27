@@ -100,7 +100,7 @@ define network_address (
   # will configure them on the active controller.
   exec { "Configuring ${name} IP address":
     command => "ip addr replace ${address} dev ${ifname} ${options}",
-    onlyif => "test -f /etc/platform/simplex",
+    onlyif  => 'test -f /etc/platform/simplex',
   }
 }
 
@@ -123,18 +123,18 @@ class platform::network::apply {
   include ::platform::interfaces
   include ::platform::addresses
 
-  Network_config <| |> ->
-  Exec['apply-network-config'] ->
-  Network_address <| |> ->
-  Anchor['platform::networking']
+  Network_config <| |>
+  -> Exec['apply-network-config']
+  -> Network_address <| |>
+  -> Anchor['platform::networking']
 
   # Adding Network_route dependency separately, in case it's empty,
   # as puppet bug will remove dependency altogether if
   # Network_route is empty. See below.
   # https://projects.puppetlabs.com/issues/18399
-  Network_config <| |> ->
-  Network_route <| |> ->
-  Exec['apply-network-config']
+  Network_config <| |>
+  -> Network_route <| |>
+  -> Exec['apply-network-config']
 
   exec {'apply-network-config':
     command => 'apply_network_config.sh',
@@ -161,7 +161,7 @@ class platform::network (
       exec { 'connectivity-test-management':
         command => "${testcmd} -t 70 -i ${management_interface} controller-platform-nfs; /bin/true",
         require => Anchor['platform::networking'],
-        onlyif => "test ! -f /etc/platform/simplex",
+        onlyif  => 'test ! -f /etc/platform/simplex',
       }
     }
 
@@ -169,7 +169,7 @@ class platform::network (
       exec { 'connectivity-test-infrastructure':
         command => "${testcmd} -t 120 -i ${infrastructure_interface} controller-nfs; /bin/true",
         require => Anchor['platform::networking'],
-        onlyif => "test ! -f /etc/platform/simplex",
+        onlyif  => 'test ! -f /etc/platform/simplex',
       }
     }
   }

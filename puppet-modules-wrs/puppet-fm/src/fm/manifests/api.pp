@@ -93,7 +93,7 @@ class fm::api (
       tag        => 'fm-service',
     }
   } else {
-    fail("Invalid service_name. fm-api for running as a standalone service")
+    fail('Invalid service_name. fm-api for running as a standalone service')
   }
 
   fm_config {

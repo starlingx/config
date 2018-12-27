@@ -1,4 +1,4 @@
-# Returns true if cinder lvm needs to be configured 
+# Returns true if cinder lvm needs to be configured
 
 Facter.add("is_initial_cinder_lvm_config") do
   setcode do

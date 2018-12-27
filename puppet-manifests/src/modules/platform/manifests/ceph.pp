@@ -63,35 +63,35 @@ class platform::ceph
     }
 
     class { '::ceph':
-      fsid => $cluster_uuid,
+      fsid                => $cluster_uuid,
       authentication_type => $authentication_type,
       mon_initial_members => $mon_initial_members
-    } ->
-    ceph_config {
-       "mon/mon clock drift allowed": value => ".1";
-       "client.restapi/public_addr":  value => $restapi_public_addr;
+    }
+    -> ceph_config {
+      'mon/mon clock drift allowed': value => '.1';
+      'client.restapi/public_addr':  value => $restapi_public_addr;
     }
     if $system_type == 'All-in-one' {
       # 1 and 2 node configurations have a single monitor
       if 'duplex' in $system_mode {
         # Floating monitor, running on active controller.
-        Class['::ceph'] ->
-        ceph_config {
+        Class['::ceph']
+        -> ceph_config {
           "mon.${floating_mon_host}/host":      value => $floating_mon_host;
           "mon.${floating_mon_host}/mon_addr":  value => $floating_mon_addr;
         }
       } else {
         # Simplex case, a single monitor binded to the controller.
-        Class['::ceph'] ->
-        ceph_config {
+        Class['::ceph']
+        -> ceph_config {
           "mon.${mon_0_host}/host":      value => $mon_0_host;
           "mon.${mon_0_host}/mon_addr": value => $mon_0_addr;
         }
       }
     } else {
       # Multinode has 3 monitors.
-      Class['::ceph'] ->
-      ceph_config {
+      Class['::ceph']
+      -> ceph_config {
         "mon.${mon_0_host}/host":      value => $mon_0_host;
         "mon.${mon_0_host}/mon_addr":  value => $mon_0_addr;
         "mon.${mon_1_host}/host":      value => $mon_1_host;
@@ -111,11 +111,11 @@ class platform::ceph::post
   inherits ::platform::ceph::params {
   # Enable ceph process recovery after all configuration is done
   file { $ceph_config_ready_path:
-    ensure => present,
+    ensure  => present,
     content => '',
-    owner => 'root',
-    group => 'root',
-    mode => '0644',
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
   }
 
   if $service_enabled {
@@ -134,19 +134,19 @@ class platform::ceph::monitor
   $system_type = $::platform::params::system_type
 
   if $service_enabled {
-     if $system_type == 'All-in-one' and 'duplex' in $system_mode {
-       if str2bool($::is_controller_active) {
-         # Ceph mon is configured on a DRBD partition, on the active controller,
-         # when 'ceph' storage backend is added in sysinv.
-         # Then SM takes care of starting ceph after manifests are applied.
-         $configure_ceph_mon = true
-       } else {
-         $configure_ceph_mon = false
-       }
-     } else {
-       # Simplex, multinode. Ceph is pmon managed.
-       $configure_ceph_mon = true
-     }
+    if $system_type == 'All-in-one' and 'duplex' in $system_mode {
+      if str2bool($::is_controller_active) {
+        # Ceph mon is configured on a DRBD partition, on the active controller,
+        # when 'ceph' storage backend is added in sysinv.
+        # Then SM takes care of starting ceph after manifests are applied.
+        $configure_ceph_mon = true
+      } else {
+        $configure_ceph_mon = false
+      }
+    } else {
+      # Simplex, multinode. Ceph is pmon managed.
+      $configure_ceph_mon = true
+    }
   }
   else {
     $configure_ceph_mon = false
@@ -154,18 +154,18 @@ class platform::ceph::monitor
 
   if $configure_ceph_mon {
     file { '/var/lib/ceph':
-      ensure  => 'directory',
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0755',
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0755',
     }
 
     if $system_type == 'All-in-one' and 'duplex' in $system_mode {
       # ensure DRBD config is complete before enabling the ceph monitor
       Drbd::Resource <| |> -> Class['::ceph']
     } else {
-      File['/var/lib/ceph'] ->
-      platform::filesystem { $mon_lv_name:
+      File['/var/lib/ceph']
+      -> platform::filesystem { $mon_lv_name:
         lv_name    => $mon_lv_name,
         lv_size    => $mon_lv_size,
         mountpoint => $mon_mountpoint,
@@ -173,12 +173,12 @@ class platform::ceph::monitor
         fs_options => $mon_fs_options,
       } -> Class['::ceph']
 
-      file { "/etc/pmon.d/ceph.conf":
-        ensure  => link,
-        target  => "/etc/ceph/ceph.conf.pmon",
-        owner   => 'root',
-        group   => 'root',
-        mode    => '0640',
+      file { '/etc/pmon.d/ceph.conf':
+        ensure => link,
+        target => '/etc/ceph/ceph.conf.pmon',
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0640',
       }
     }
 
@@ -188,9 +188,9 @@ class platform::ceph::monitor
     # Start service on AIO SX and on active controller
     # to allow in-service configuration.
     if str2bool($::is_controller_active) or $system_type == 'All-in-one' {
-      $service_ensure = "running"
+      $service_ensure = 'running'
     } else {
-      $service_ensure = "stopped"
+      $service_ensure = 'stopped'
     }
 
     # default configuration for all ceph monitor resources
@@ -215,23 +215,23 @@ class platform::ceph::monitor
         # and set the drbd role to secondary, so that the handoff to
         # SM is done properly once we swact to the standby controller.
         # TODO: Remove this once SM supports in-service config reload.
-        Ceph::Mon <| |> ->
-        exec { "Stop Ceph monitor":
-          command =>"/etc/init.d/ceph stop mon",
-          onlyif => "/etc/init.d/ceph status mon",
-          logoutput => true,
-        } ->
-        exec { "umount ceph-mon partition":
-          command => "umount $mon_mountpoint",
-          onlyif => "mount | grep -q $mon_mountpoint",
-          logoutput => true,
-        } ->
-        exec { 'Set cephmon secondary':
-          command => "drbdadm secondary drbd-cephmon",
-          unless  => "drbdadm role drbd-cephmon | egrep '^Secondary'",
+        Ceph::Mon <| |>
+        -> exec { 'Stop Ceph monitor':
+          command   =>'/etc/init.d/ceph stop mon',
+          onlyif    => '/etc/init.d/ceph status mon',
           logoutput => true,
         }
-     }
+        -> exec { 'umount ceph-mon partition':
+          command   => "umount ${mon_mountpoint}",
+          onlyif    => "mount | grep -q ${mon_mountpoint}",
+          logoutput => true,
+        }
+        -> exec { 'Set cephmon secondary':
+          command   => 'drbdadm secondary drbd-cephmon',
+          unless    => "drbdadm role drbd-cephmon | egrep '^Secondary'",
+          logoutput => true,
+        }
+      }
     } else {
       if $::hostname == $mon_0_host {
         ceph::mon { $mon_0_host:
@@ -270,16 +270,16 @@ define platform_ceph_osd(
   }
   file { "/var/lib/ceph/osd/ceph-${osd_id}":
     ensure => 'directory',
-    owner => 'root',
-    group => 'root',
-    mode => '0755',
-  } ->
-  ceph::osd { $disk_path:
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
+  }
+  -> ceph::osd { $disk_path:
     uuid => $osd_uuid,
-  } ->
-  exec { "configure journal location ${name}":
+  }
+  -> exec { "configure journal location ${name}":
     logoutput => true,
-    command => template('platform/ceph.journal.location.erb')
+    command   => template('platform/ceph.journal.location.erb')
   }
 }
 
@@ -290,7 +290,7 @@ define platform_ceph_journal(
 ) {
   exec { "configure journal partitions ${name}":
     logoutput => true,
-    command => template('platform/ceph.journal.partitions.erb')
+    command   => template('platform/ceph.journal.partitions.erb')
   }
 }
 
@@ -304,8 +304,8 @@ class platform::ceph::storage(
   Class['::platform::partitions'] -> Class[$name]
 
   file { '/var/lib/ceph/osd':
-    path   => '/var/lib/ceph/osd',
     ensure => 'directory',
+    path   => '/var/lib/ceph/osd',
     owner  => 'root',
     group  => 'root',
     mode   => '0755',
@@ -390,12 +390,12 @@ class platform::ceph::rgw
 
     ceph_config {
       # increase limit for single operation uploading to 50G (50*1024*1024*1024)
-      "client.$rgw_client_name/rgw_max_put_size": value => $rgw_max_put_size;
+      "client.${rgw_client_name}/rgw_max_put_size": value => $rgw_max_put_size;
       # increase frequency and scope of garbage collection
-      "client.$rgw_client_name/rgw_gc_max_objs": value => $rgw_gc_max_objs;
-      "client.$rgw_client_name/rgw_gc_obj_min_wait": value => $rgw_gc_obj_min_wait;
-      "client.$rgw_client_name/rgw_gc_processor_max_time": value => $rgw_gc_processor_max_time;
-      "client.$rgw_client_name/rgw_gc_processor_period": value => $rgw_gc_processor_period;
+      "client.${rgw_client_name}/rgw_gc_max_objs": value => $rgw_gc_max_objs;
+      "client.${rgw_client_name}/rgw_gc_obj_min_wait": value => $rgw_gc_obj_min_wait;
+      "client.${rgw_client_name}/rgw_gc_processor_max_time": value => $rgw_gc_processor_max_time;
+      "client.${rgw_client_name}/rgw_gc_processor_period": value => $rgw_gc_processor_period;
     }
   }
 
@@ -446,9 +446,9 @@ class platform::ceph::controller::runtime {
   # Make sure ceph-rest-api is running as it is needed by sysinv config
   # TODO(oponcea): Remove when sm supports in-service config reload
   if str2bool($::is_controller_active) {
-    Ceph::Mon <| |> ->
-    exec { "/etc/init.d/ceph-rest-api start":
-      command => "/etc/init.d/ceph-rest-api start"
+    Ceph::Mon <| |>
+    -> exec { '/etc/init.d/ceph-rest-api start':
+      command => '/etc/init.d/ceph-rest-api start'
     }
   }
 }
