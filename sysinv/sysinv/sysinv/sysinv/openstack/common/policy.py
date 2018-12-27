@@ -58,11 +58,11 @@ as it allows particular rules to be explicitly disabled.
 
 import abc
 import re
-import urllib
 
 import six
-import urllib2
 
+from six.moves.urllib.parse import urlencode
+from six.moves.urllib.request import urlopen
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import jsonutils
 from sysinv.openstack.common import log as logging
@@ -754,8 +754,8 @@ class HttpCheck(Check):
         url = ('http:' + self.match) % target
         data = {'target': jsonutils.dumps(target),
                 'credentials': jsonutils.dumps(creds)}
-        post_data = urllib.urlencode(data)
-        f = urllib2.urlopen(url, post_data)
+        post_data = urlencode(data)
+        f = urlopen(url, post_data)
         return f.read() == "True"
 
 

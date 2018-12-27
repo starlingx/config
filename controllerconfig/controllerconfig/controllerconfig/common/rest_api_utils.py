@@ -4,14 +4,17 @@ Copyright (c) 2015-2017 Wind River Systems, Inc.
 SPDX-License-Identifier: Apache-2.0
 
 """
-import httplib
 import json
-import urllib2
 
 from controllerconfig.common.exceptions import KeystoneFail
 from controllerconfig.common import dcmanager
 from controllerconfig.common import keystone
 from controllerconfig.common import log
+from six.moves import http_client as httplib
+from six.moves.urllib import request as urlrequest
+from six.moves.urllib.error import HTTPError
+from six.moves.urllib.error import URLError
+
 
 LOG = log.get_logger(__name__)
 
@@ -22,7 +25,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
     Make a rest-api request
     """
     try:
-        request_info = urllib2.Request(api_cmd)
+        request_info = urlrequest.Request(api_cmd)
         request_info.get_method = lambda: method
         request_info.add_header("X-Auth-Token", token.get_id())
         request_info.add_header("Accept", "application/json")
@@ -35,7 +38,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
             request_info.add_header("Content-type", "application/json")
             request_info.add_data(api_cmd_payload)
 
-        request = urllib2.urlopen(request_info)
+        request = urlrequest.urlopen(request_info)
         response = request.read()
 
         if response == "":
@@ -46,7 +49,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
 
         return response
 
-    except urllib2.HTTPError as e:
+    except HTTPError as e:
         if httplib.UNAUTHORIZED == e.code:
             token.set_expired()
         LOG.exception(e)
@@ -54,7 +57,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
             "REST API HTTP Error for url: %s. Error: %s" %
             (api_cmd, e))
 
-    except (urllib2.URLError, httplib.BadStatusLine) as e:
+    except (URLError, httplib.BadStatusLine) as e:
         LOG.exception(e)
         raise KeystoneFail(
             "REST API URL Error for url: %s. Error: %s" %
@@ -68,7 +71,7 @@ def get_token(auth_url, auth_project, auth_user, auth_password,
     """
     try:
         url = auth_url + "/auth/tokens"
-        request_info = urllib2.Request(url)
+        request_info = urlrequest.Request(url)
         request_info.add_header("Content-Type", "application/json")
         request_info.add_header("Accept", "application/json")
 
@@ -94,7 +97,7 @@ def get_token(auth_url, auth_project, auth_user, auth_password,
 
         request_info.add_data(payload)
 
-        request = urllib2.urlopen(request_info)
+        request = urlrequest.urlopen(request_info)
         # Identity API v3 returns token id in X-Subject-Token
         # response header.
         token_id = request.info().getheader('X-Subject-Token')
@@ -103,11 +106,11 @@ def get_token(auth_url, auth_project, auth_user, auth_password,
 
         return keystone.Token(response, token_id)
 
-    except urllib2.HTTPError as e:
+    except HTTPError as e:
         LOG.error("%s, %s" % (e.code, e.read()))
         return None
 
-    except (urllib2.URLError, httplib.BadStatusLine) as e:
+    except (URLError, httplib.BadStatusLine) as e:
         LOG.error(e)
         return None
 

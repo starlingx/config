@@ -12,13 +12,13 @@
 """ System Inventory Kubernetes Utilities and helper functions."""
 
 from __future__ import absolute_import
-import httplib
 import json
 
 from kubernetes import config
 from kubernetes import client
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
+from six.moves import http_client as httplib
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 

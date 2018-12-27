@@ -5,8 +5,11 @@
 #
 import json
 import signal
-import urllib2
 
+from six.moves.urllib.request import urlopen
+from six.moves.urllib.request import Request
+from six.moves.urllib.error import HTTPError
+from six.moves.urllib.error import URLError
 from sysinv.common import configp
 from sysinv.common import exception as si_exception
 from sysinv.openstack.common.keystone_objects import Token
@@ -26,7 +29,7 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
     """
     try:
         url = auth_url + "/v3/auth/tokens"
-        request_info = urllib2.Request(url)
+        request_info = Request(url)
         request_info.add_header("Content-type", "application/json")
         request_info.add_header("Accept", "application/json")
         payload = json.dumps(
@@ -51,7 +54,7 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
 
         request_info.add_data(payload)
 
-        request = urllib2.urlopen(request_info)
+        request = urlopen(request_info)
         # Identity API v3 returns token id in X-Subject-Token
         # response header.
         token_id = request.info().getheader('X-Subject-Token')
@@ -60,11 +63,11 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
         # save the region name for service url lookup
         return Token(response, token_id, region_name)
 
-    except urllib2.HTTPError as e:
+    except HTTPError as e:
         LOG.error("%s, %s" % (e.code, e.read()))
         return None
 
-    except urllib2.URLError as e:
+    except URLError as e:
         LOG.error(e)
         return None
 
@@ -112,7 +115,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
 
     response = None
     try:
-        request_info = urllib2.Request(api_cmd)
+        request_info = Request(api_cmd)
         request_info.get_method = lambda: method
         if token:
             request_info.add_header("X-Auth-Token", token.get_id())
@@ -125,7 +128,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
         if api_cmd_payload is not None:
             request_info.add_data(api_cmd_payload)
 
-        request = urllib2.urlopen(request_info, timeout=timeout)
+        request = urlopen(request_info, timeout=timeout)
         response = request.read()
 
         if response == "":
@@ -136,7 +139,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
 
         LOG.info("Response=%s" % response)
 
-    except urllib2.HTTPError as e:
+    except HTTPError as e:
         if 401 == e.code:
             if token:
                 token.set_expired()
@@ -149,7 +152,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
         LOG.info("HTTPError response=%s" % (response))
         raise OpenStackRestAPIException(e.message, e.code, "%s" % e)
 
-    except urllib2.URLError as e:
+    except URLError as e:
         LOG.warn("URLError Error e=%s" % (e))
         raise OpenStackException(e.message, "%s" % e)
 

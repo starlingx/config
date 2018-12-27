@@ -33,7 +33,6 @@ import errno
 import filecmp
 import glob
 import hashlib
-import httplib
 import os
 import re
 import shutil
@@ -60,6 +59,7 @@ from netaddr import IPNetwork
 from oslo_config import cfg
 from platform_util.license import license
 from sqlalchemy.orm import exc
+from six.moves import http_client as httplib
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import cpu_utils
