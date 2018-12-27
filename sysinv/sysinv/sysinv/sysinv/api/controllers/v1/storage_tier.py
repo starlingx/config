@@ -504,7 +504,7 @@ def _create(self, tier, iprofile=None):
             try:
                 self._ceph.set_crushmap()
             except exception.CephCrushMapNotApplied as e:
-                LOG.warning("Crushmap not applied, seems like ceph cluster is not ""configured. "
+                LOG.warning("Crushmap not applied, seems like ceph cluster is not configured. "
                             "Operation will be retried with first occasion. "
                             "Reason: %s" % str(e))
         else:

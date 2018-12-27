@@ -61,11 +61,10 @@ install -p -D -m 755 etc/sysinv/sysinv_goenabled_check.sh %{buildroot}%{local_et
 install -d -m 755 %{buildroot}%{local_etc_sysinv}
 install -p -D -m 755 etc/sysinv/policy.json %{buildroot}%{local_etc_sysinv}/policy.json
 install -p -D -m 640 etc/sysinv/profileSchema.xsd %{buildroot}%{local_etc_sysinv}/profileSchema.xsd
-#In order to decompile crushmap.bin please use this command:
-#crushtool -d crushmap.bin -o {decompiled-crushmap-filename}
-install -p -D -m 655 etc/sysinv/crushmap.bin %{buildroot}%{local_etc_sysinv}/crushmap.bin
-install -p -D -m 655 etc/sysinv/crushmap-aio-sx.bin %{buildroot}%{local_etc_sysinv}/crushmap-aio-sx.bin
-install -p -D -m 655 etc/sysinv/crushmap-aio-dx.bin %{buildroot}%{local_etc_sysinv}/crushmap-aio-dx.bin
+
+install -p -D -m 644 etc/sysinv/crushmap-storage-model.txt %{buildroot}%{local_etc_sysinv}/crushmap-storage-model.txt
+install -p -D -m 644 etc/sysinv/crushmap-controller-model.txt %{buildroot}%{local_etc_sysinv}/crushmap-controller-model.txt
+install -p -D -m 644 etc/sysinv/crushmap-aio-sx.txt %{buildroot}%{local_etc_sysinv}/crushmap-aio-sx.txt
 
 install -d -m 755 %{buildroot}%{local_etc_motdd}
 install -p -D -m 755 etc/sysinv/motd-system %{buildroot}%{local_etc_motdd}/10-system

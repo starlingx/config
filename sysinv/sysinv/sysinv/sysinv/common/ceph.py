@@ -557,7 +557,7 @@ class CephApiOperator(object):
                 hostupdate.ihost_orig['invprovision'] !=
                 constants.PROVISIONED):
 
-            # update crushmap.bin accordingly with the host and it's peer group
+            # update crushmap accordingly with the host and it's peer group
             node_bucket = hostupdate.ihost_orig['hostname']
             ipeer = pecan.request.dbapi.peer_get(
                 hostupdate.ihost_orig['peer_id'])
@@ -709,14 +709,21 @@ def fix_crushmap(dbapi=None):
                                       constants.CEPH_CRUSH_MAP_APPLIED)
     if not os.path.isfile(crushmap_flag_file):
         if utils.is_aio_simplex_system(dbapi):
-            crushmap_file = "/etc/sysinv/crushmap-aio-sx.bin"
+            crushmap_txt = "/etc/sysinv/crushmap-aio-sx.txt"
         elif utils.is_aio_duplex_system(dbapi):
-            crushmap_file = "/etc/sysinv/crushmap-aio-dx.bin"
+            crushmap_txt = "/etc/sysinv/crushmap-controller-model.txt"
         else:
-            crushmap_file = "/etc/sysinv/crushmap.bin"
-        LOG.info("Updating crushmap with: %s" % crushmap_file)
+            crushmap_txt = "/etc/sysinv/crushmap-storage-model.txt"
+        LOG.info("Updating crushmap with: %s" % crushmap_txt)
+
         try:
-            subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_file,
+            # Compile crushmap
+            crushmap_bin = "/etc/sysinv/crushmap.bin"
+            subprocess.check_output("crushtool -c %s "
+                                    "-o %s" % (crushmap_txt, crushmap_bin),
+                                    stderr=subprocess.STDOUT, shell=True)
+            # Set crushmap
+            subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_bin,
                                     stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
             # May not be critical, depends on where this is called.
