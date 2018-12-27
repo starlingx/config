@@ -1,0 +1,110 @@
+# Job cloned from:
+# https://github.com/openstack-infra/openstack-zuul-jobs/blob/master/playbooks/legacy/puppet-lint/run.yaml
+# to install gem and puppet-lint in Zuul operating enviroment,
+# before running puppet-lint within the tox.ini file. The only
+# modification to this job is to not run puppet-lint here.
+# Rather, it's left to the tox.ini to control what files are
+# checked and what options are used (ie. to skip certain checks)
+#
+- hosts: all
+  name: Setup gem and puppet-lint for availability within tox
+  roles:
+    - bindep
+
+  tasks:
+
+    - name: Ensure legacy workspace directory
+      file:
+        path: '{{ ansible_user_dir }}/workspace'
+        state: directory
+
+    - shell:
+        cmd: |
+          set -e
+          set -x
+          CLONEMAP=`mktemp`
+          function cleanup {
+              # In cases where zuul-cloner is aborted during a git
+              # clone operation, git will remove the git work tree in
+              # its cleanup. The work tree in these jobs is the
+              # workspace directory, which means that subsequent
+              # jenkins post-build actions can not run because the
+              # workspace has been removed.
+              # To reduce the likelihood of this having an impact,
+              # recreate the workspace directory if needed
+              mkdir -p $WORKSPACE
+              rm -f $CLONEMAP
+          }
+          trap cleanup EXIT
+          cat > $CLONEMAP << EOF
+          clonemap:
+            - name: $ZUUL_PROJECT
+              dest: .
+          EOF
+          /usr/zuul-env/bin/zuul-cloner -m $CLONEMAP --cache-dir /opt/git \
+              git://git.openstack.org $ZUUL_PROJECT
+        executable: /bin/bash
+        chdir: '{{ ansible_user_dir }}/workspace'
+      environment: '{{ zuul | zuul_legacy_vars }}'
+
+    - shell:
+        cmd: |
+          set -e
+          set -x
+          if [ -f /usr/bin/yum ]; then
+              sudo yum -y remove rdo-release "centos-release-openstack-*" "centos-release-ceph-*"
+              sudo yum -y install libxml2-devel libxslt-devel ruby-devel zlib-devel
+              sudo yum -y groupinstall "Development Tools"
+              # Uninstall python-requests from pip, since we install it in
+              # system-config/install_puppet.sh
+              sudo pip uninstall requests -y || true
+          elif [ -f /usr/bin/apt-get ]; then
+              sudo apt-get update
+              sudo apt-get install -y libxml2-dev libxslt-dev ruby-dev zlib1g-dev
+          fi
+        executable: /bin/bash
+        chdir: '{{ ansible_user_dir }}/workspace'
+      environment: '{{ zuul | zuul_legacy_vars }}'
+
+    - shell:
+        cmd: |
+          set -x
+          sudo rm -f /etc/sudoers.d/zuul
+          # Prove that general sudo access is actually revoked
+          ! sudo -n true
+        executable: /bin/bash
+        chdir: '{{ ansible_user_dir }}/workspace'
+      environment: '{{ zuul | zuul_legacy_vars }}'
+
+    - shell:
+        cmd: |
+          if [ -f Modulefile -o -f metadata.json ]; then
+            if [ -f Modulefile ]; then
+              MODULE=$(awk '/^name/ {print $NF}' Modulefile |tr -d \"\')
+            elif [ -f metadata.json ]; then
+              MODULE=$(python -c 'import json;print json.load(open("metadata.json"))["name"]')
+            fi
+            if [ -z "$MODULE" ]; then
+              echo "Module name not defined in Modulefile or metadata.json"
+            else
+              mkdir -p "$MODULE"
+              rsync -a --exclude="$MODULE" --exclude ".*" . "$MODULE"
+              cd "$MODULE"
+            fi
+          fi
+          mkdir .bundled_gems
+          export GEM_HOME=`pwd`/.bundled_gems
+          if [ -f Gemfile ]; then
+            gem install bundler --no-rdoc --no-ri --verbose
+            $GEM_HOME/bin/bundle install --without system_tests
+            # We'll run puppet-lint from tox
+            #$GEM_HOME/bin/bundle exec rake lint 2>&1
+          else
+            gem install rake -n ./.bundled_gems/
+            gem install puppet-lint
+            gem install puppetlabs_spec_helper
+            # We'll run puppet-lint from tox
+            #./.bundled_gems/rake lint 2>&1
+          fi
+        chdir: '{{ ansible_user_dir }}/workspace'
+      environment: '{{ zuul | zuul_legacy_vars }}'
