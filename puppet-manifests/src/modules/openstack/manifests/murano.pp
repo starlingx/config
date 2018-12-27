@@ -1,4 +1,7 @@
 class openstack::murano::params (
+  $tcp_listen_options,
+  $rabbit_tcp_listen_options,
+  $rabbit_cipher_list,
   $api_port = 8082,
   $auth_password = 'guest',
   $auth_user = 'guest',
@@ -11,9 +14,6 @@ class openstack::murano::params (
   $rabbit_normal_port = '5672',
   $rabbit_ssl_port = '5671',
   $rabbit_certs_dir = '/etc/ssl/private/murano-rabbit',
-  $tcp_listen_options,
-  $rabbit_tcp_listen_options,
-  $rabbit_cipher_list,
   $tlsv2 = 'tlsv1.2',
   $tlsv1 = 'tlsv1.1',
   $ssl_fail_if_no_peer_cert = true,

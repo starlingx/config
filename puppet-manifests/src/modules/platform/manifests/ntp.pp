@@ -1,6 +1,6 @@
 class platform::ntp (
-  $servers = [],
   $ntpdate_timeout,
+  $servers = [],
   $enabled = true,
 ) {
   if $enabled or ($::personality == 'controller'){

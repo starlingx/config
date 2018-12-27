@@ -1,7 +1,7 @@
 class openstack::glance::params (
+  $api_host,
   $service_enabled = true,
   $api_port = 9292,
-  $api_host,
   $region_name = undef,
   $service_type = 'image',
   $glance_directory = '/opt/cgcs/glance',

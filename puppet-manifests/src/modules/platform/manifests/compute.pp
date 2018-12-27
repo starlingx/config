@@ -22,7 +22,17 @@ class platform::compute::grub::params (
   $cpu_options = '',
   $m_hugepages = 'hugepagesz=2M hugepages=0',
   $default_pgsz = 'default_hugepagesz=2M',
-  $keys = ['kvm-intel.eptad', 'default_hugepagesz', 'hugepagesz', 'hugepages', 'isolcpus', 'nohz_full', 'rcu_nocbs', 'kthread_cpus', 'irqaffinity'],
+  $keys = [
+    'kvm-intel.eptad',
+    'default_hugepagesz',
+    'hugepagesz',
+    'hugepages',
+    'isolcpus',
+    'nohz_full',
+    'rcu_nocbs',
+    'kthread_cpus',
+    'irqaffinity',
+  ],
 ) {
 
   if $::is_broadwell_processor {
@@ -179,6 +189,7 @@ class platform::compute::hugetlbf {
   }
 }
 
+# lint:ignore:variable_is_lowercase
 class platform::compute::hugepage::params (
   $nr_hugepages_2M = undef,
   $nr_hugepages_1G = undef,
@@ -242,6 +253,7 @@ class platform::compute::allocate
     }
   }
 }
+# lint:endignore:variable_is_lowercase
 
 class platform::compute::extend
   inherits ::platform::compute::hugepage::params {

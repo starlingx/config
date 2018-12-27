@@ -1,7 +1,7 @@
 class platform::haproxy::params (
-  $enable_https = false,
   $private_ip_address,
   $public_ip_address,
+  $enable_https = false,
 
   $global_options = undef,
   $tpm_object = undef,

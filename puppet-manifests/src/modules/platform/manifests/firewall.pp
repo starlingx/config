@@ -1,4 +1,5 @@
 define platform::firewall::rule (
+  $service_name,
   $chain = 'INPUT',
   $destination = undef,
   $ensure = present,
@@ -7,7 +8,6 @@ define platform::firewall::rule (
   $outiface = undef,
   $ports = undef,
   $proto = 'tcp',
-  $service_name,
   $table = undef,
   $tosource = undef,
 ) {

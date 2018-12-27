@@ -311,7 +311,7 @@ class openstack::cinder::lvm::filesystem::drbd (
       owner  => 'root',
       group  => 'root',
     }
-    -> file_line { 'blacklist ${cinder_disk} automount':
+    -> file_line { "blacklist ${cinder_disk} automount":
       ensure => present,
       line   => $cinder_disk,
       path   => '/etc/udev/mount.blacklist',
@@ -455,10 +455,10 @@ class openstack::cinder::lvm(
 }
 
 define openstack::cinder::backend::ceph(
-  $backend_enabled = false,
   $backend_name,
-  $rbd_user = 'cinder',
   $rbd_pool,
+  $backend_enabled = false,
+  $rbd_user = 'cinder',
   $rbd_ceph_conf = '/etc/ceph/ceph.conf'
 ) {
 
@@ -581,9 +581,9 @@ class openstack::cinder::haproxy
 
 
 define openstack::cinder::api::backend(
-  $type_enabled = false,
+  $backend_name,
   $type_name,
-  $backend_name
+  $type_enabled = false,
 ) {
   # Run it on the active controller, otherwise the prefetch step tries to query
   # cinder and can fail
@@ -681,7 +681,7 @@ class openstack::cinder::pre {
 
 
 class openstack::cinder::post
-  inherits openstack::cinder::params {
+  inherits ::openstack::cinder::params {
 
   # Ensure that phases are marked as complete
   if $is_initial_cinder {

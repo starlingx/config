@@ -279,9 +279,9 @@ class openstack::neutron::firewall
     }
   } else {
     platform::firewall::rule { 'ryu-bgp-port':
+      ensure       => absent,
       service_name => 'neutron',
       ports        => $bgp_port,
-      ensure       => absent
     }
   }
 }

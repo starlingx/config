@@ -54,7 +54,9 @@ class openstack::heat
     # skip the check if cinder region name has not been configured
     if ($::openstack::cinder::params::region_name != undef and
         $::openstack::cinder::params::region_name != $::platform::params::region_2_name) {
-      $shared_service_cinder = [$::openstack::cinder::params::service_type, $::openstack::cinder::params::service_type_v2, $::openstack::cinder::params::service_type_v3]
+      $shared_service_cinder = [$::openstack::cinder::params::service_type,
+                                $::openstack::cinder::params::service_type_v2,
+                                $::openstack::cinder::params::service_type_v3]
     } else {
       $shared_service_cinder = []
     }

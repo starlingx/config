@@ -1,9 +1,11 @@
 class openstack::horizon::params (
+  $secret_key,
+  $openstack_host,
+
   $enable_https = false,
   $lockout_period = 300,
   $lockout_retries = 3,
 
-  $secret_key,
   $horizon_ssl = false,
   $horizon_cert = undef,
   $horizon_key = undef,
@@ -12,8 +14,6 @@ class openstack::horizon::params (
   $neutron_enable_lb = false,
   $neutron_enable_firewall = false,
   $neutron_enable_vpn = false,
-
-  $openstack_host,
 
   $tpm_object = undef,
   $tpm_engine = '/usr/lib64/openssl/engines/libtpm2.so',

@@ -1,10 +1,10 @@
 class openstack::keystone::params(
   $api_version,
-  $api_port = 5000,
-  $admin_port = 5000,
   $identity_uri,
   $auth_uri,
   $host_url,
+  $api_port = 5000,
+  $admin_port = 5000,
   $region_name = undef,
   $system_controller_region = undef,
   $service_name = 'openstack-keystone',
@@ -298,7 +298,7 @@ class openstack::keystone::endpointgroup
       mode    => '0640',
       content => template('openstack/keystone-systemcontroller-filter.erb'),
     }
-    -> exec { 'endpointgroup-${reference_region}-command':
+    -> exec { "endpointgroup-${reference_region}-command":
       cwd       => '/etc/keystone',
       logoutput => true,
       provider  => shell,
@@ -306,7 +306,7 @@ class openstack::keystone::endpointgroup
       command   => template('openstack/keystone-defaultregion.erb'),
       path      =>  ['/usr/bin/', '/bin/', '/sbin/', '/usr/sbin/'],
     }
-    -> exec { 'endpointgroup-${system_controller_region}-command':
+    -> exec { "endpointgroup-${system_controller_region}-command":
       cwd       => '/etc/keystone',
       logoutput => true,
       provider  => shell,

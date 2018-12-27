@@ -47,10 +47,10 @@ define platform::vswitch::ovs::bridge(
 
 
 define platform::vswitch::ovs::port(
-  $type = 'port',
   $bridge,
-  $attributes = [],
   $interfaces,
+  $type = 'port',
+  $attributes = [],
 ) {
   exec { "ovs-add-port: ${title}":
     command   => template('platform/ovs.add-port.erb'),
@@ -72,8 +72,8 @@ define platform::vswitch::ovs::address(
 
 define platform::vswitch::ovs::flow(
   $bridge,
-  $attributes = [],
   $actions,
+  $attributes = [],
 ) {
   exec { "ovs-add-flow: ${title}":
     command   => template('platform/ovs.add-flow.erb'),

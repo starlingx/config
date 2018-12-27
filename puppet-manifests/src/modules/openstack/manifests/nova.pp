@@ -149,7 +149,7 @@ class openstack::nova::compute (
   }
 
   if ! $host_private_key_file {
-    fail("Unable to determine name of private key file. Type specified was '${host_key_type}' but should be one of: ssh-rsa, ssh-dsa, ssh-ecdsa.")
+    fail("Unable to determine name of private key file. Type specified was '${host_key_type}' but should be one of: ssh-rsa, ssh-dsa, ssh-ecdsa.") # lint:ignore:140chars
   }
 
   $host_public_key_file = $host_key_type ? {
@@ -160,7 +160,7 @@ class openstack::nova::compute (
   }
 
   if ! $host_public_key_file {
-    fail("Unable to determine name of public key file. Type specified was '${host_key_type}' but should be one of: ssh-rsa, ssh-dsa, ssh-ecdsa.")
+    fail("Unable to determine name of public key file. Type specified was '${host_key_type}' but should be one of: ssh-rsa, ssh-dsa, ssh-ecdsa.") # lint:ignore:140chars
   }
 
   file { '/etc/ssh':
@@ -192,7 +192,7 @@ class openstack::nova::compute (
   }
 
   if ! $migration_private_key_file {
-    fail("Unable to determine name of private key file. Type specified was '${migration_key_type}' but should be one of: ssh-rsa, ssh-dsa, ssh-ecdsa.")
+    fail("Unable to determine name of private key file. Type specified was '${migration_key_type}' but should be one of: ssh-rsa, ssh-dsa, ssh-ecdsa.") # lint:ignore:140chars
   }
 
   $migration_auth_options = [

@@ -5,8 +5,8 @@
 #
 
 class nfv::keystone::auth (
-  $auth_name           = 'vim',
   $password,
+  $auth_name           = 'vim',
   $tenant              = 'services',
   $email               = 'vim@localhost',
   $region              = 'RegionOne',

@@ -20,7 +20,6 @@ class nova_api_proxy (
   anchor { 'proxy-start': }
 
   package { 'nova_api_proxy':
-    ensure  => $package_ensure,
     name    => 'nova-api-proxy',
     require => Anchor['proxy-start'],
   }

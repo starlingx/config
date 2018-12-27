@@ -150,8 +150,10 @@ class platform::sm
   $platform_nfs_subnet_url = "${platform_nfs_ip_network_url}/${platform_nfs_ip_param_mask}"
   $cgcs_nfs_subnet_url = "${cgcs_nfs_ip_network_url}/${cgcs_nfs_ip_param_mask}"
 
+  # lint:ignore:140chars
   $nfs_server_mgmt_exports = "${cgcs_nfs_subnet_url}:${cgcs_fs_directory},${platform_nfs_subnet_url}:${platform_fs_directory},${platform_nfs_subnet_url}:${extension_fs_directory}"
   $nfs_server_mgmt_mounts  = "${cgcs_fs_device}:${cgcs_fs_directory},${platform_fs_device}:${platform_fs_directory},${extension_fs_device}:${extension_fs_directory}"
+  # lint:endignore:140chars
 
   ################## Openstack Parameters ######################
 
@@ -305,6 +307,8 @@ class platform::sm
       $panko_enabled          = $::openstack::panko::params::service_enabled
       $barbican_enabled       = $::openstack::barbican::params::service_enabled
   }
+
+  # lint:ignore:140chars
 
   if $system_mode == 'simplex' {
     exec { 'Deprovision oam-ip service group member':
@@ -1619,6 +1623,8 @@ class platform::sm
       }
     }
   }
+
+  # lint:endignore:140chars
 }
 
 

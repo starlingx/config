@@ -91,12 +91,12 @@ class platform::remotelogging::proxy(
 
   } else {
     platform::firewall::rule { 'remotelogging-nat':
+      ensure       => absent,
       service_name => $service_name,
       table        => $table,
       chain        => $chain,
       outiface     => $oam_interface,
       jump         => $jump,
-      ensure       => absent
     }
   }
 }

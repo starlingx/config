@@ -24,6 +24,9 @@ class platform::memcached::params(
       $controller_1_hostname: {
         $listen_ip = $::platform::network::mgmt::params::controller1_address
       }
+      default: {
+        fail("Hostname must be either ${controller_0_hostname} or ${controller_1_hostname}")
+      }
     }
   }
 

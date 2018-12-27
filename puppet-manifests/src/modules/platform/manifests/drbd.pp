@@ -1,12 +1,12 @@
 class platform::drbd::params (
-  $automount     = false,
-  $ha_primary    = false,
-  $initial_setup = false,
-  $fs_type       = 'ext4',
   $link_speed,
   $link_util,
   $num_parallel,
   $rtt_ms,
+  $automount     = false,
+  $ha_primary    = false,
+  $initial_setup = false,
+  $fs_type       = 'ext4',
   $cpumask = false,
 ) {
   include ::platform::params

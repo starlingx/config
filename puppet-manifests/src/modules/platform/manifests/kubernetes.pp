@@ -142,13 +142,13 @@ class platform::kubernetes::master::init
     # kubernetes 1.12 uses coredns rather than kube-dns.
     # Restrict the dns pod to master nodes
     -> exec { 'restrict coredns to master nodes':
-      command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
+      command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'', # lint:ignore:140chars
       logoutput => true,
     }
 
     # Remove the taint from the master node
     -> exec { 'remove taint from master node':
-      command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-",
+      command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
       logoutput => true,
     }
   } else {
@@ -224,13 +224,13 @@ class platform::kubernetes::master::init
       # Restrict the dns pod to master nodes. It seems that each time
       # kubeadm init is run, it undoes any changes to the deployment.
       -> exec { 'restrict coredns to master nodes':
-        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'',
+        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'', # lint:ignore:140chars
         logoutput => true,
       }
 
       # Remove the taint from the master node
       -> exec { 'remove taint from master node':
-        command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-",
+        command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
         logoutput => true,
       }
     }

@@ -5,8 +5,8 @@
 #
 
 class patching::keystone::auth (
-  $auth_name            = 'patching',
   $password,
+  $auth_name            = 'patching',
   $tenant               = 'services',
   $email                = 'patching@localhost',
   $region               = 'RegionOne',
@@ -16,9 +16,9 @@ class patching::keystone::auth (
   $configure_endpoint   = true,
   $configure_user       = true,
   $configure_user_role  = true,
-  $public_url             = 'http://127.0.0.1:15491/v1',
-  $admin_url              = 'http://127.0.0.1:5491/v1',
-  $internal_url           = 'http://127.0.0.1:5491/v1',
+  $public_url           = 'http://127.0.0.1:15491/v1',
+  $admin_url            = 'http://127.0.0.1:5491/v1',
+  $internal_url         = 'http://127.0.0.1:5491/v1',
 ) {
   $real_service_name = pick($service_name, $auth_name)
 
