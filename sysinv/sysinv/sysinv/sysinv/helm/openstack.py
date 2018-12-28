@@ -117,7 +117,7 @@ class OpenstackBaseHelm(base.BaseHelm):
                     'namespace': namespace,
                 }
                 override = self.dbapi.helm_override_create(values=values)
-            except exception as e:
+            except Exception as e:
                 LOG.exception(e)
                 return None
 
@@ -135,7 +135,7 @@ class OpenstackBaseHelm(base.BaseHelm):
         try:
             self.dbapi.helm_override_update(
                 name=chart, namespace=namespace, values=values)
-        except exception as e:
+        except Exception as e:
             LOG.exception(e)
 
         return password.encode('utf8', 'strict')

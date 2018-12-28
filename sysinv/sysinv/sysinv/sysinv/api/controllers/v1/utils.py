@@ -450,6 +450,7 @@ class SBApiHelper(object):
             else:
                 raise wsme.exc.ClientSideError("This operation requires storage "
                                                "backend name to be specified.")
+        return backend
 
     @staticmethod
     def common_checks(operation, storage_backend_dict):

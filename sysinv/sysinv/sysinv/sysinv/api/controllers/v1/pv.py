@@ -786,7 +786,7 @@ def _check_device(new_pv, ihost):
 
 def _check(op, pv):
     # Semantic checks
-    LOG.debug("Semantic check for %s operation".format(op))
+    LOG.debug("Semantic check for %s operation" % op)
 
     # Check parameters
     _check_parameters(pv)

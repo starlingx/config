@@ -27,7 +27,8 @@ from sysinv.api.controllers.v1 import utils as api_utils
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
-from sysinv.openstack.common.db import exception as Exception
+from sysinv.openstack.common.db.exception import DBDuplicateEntry
+from sysinv.openstack.common.db.exception import DBError
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
@@ -177,11 +178,11 @@ class CommunityController(rest.RestController):
         try:
             new_icommunity = \
                 pecan.request.dbapi.icommunity_create(icommunity.as_dict())
-        except Exception.DBDuplicateEntry as e:
+        except DBDuplicateEntry as e:
             LOG.error(e)
             raise wsme.exc.ClientSideError(_(
                 "Rejected: Cannot add %s, it is an existing community.") % icommunity.as_dict().get('community'))
-        except Exception.DBError as e:
+        except DBError as e:
             LOG.error(e)
             raise wsme.exc.ClientSideError(_(
                 "Database check error on community %s create.") % icommunity.as_dict().get('community'))

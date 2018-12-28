@@ -1197,7 +1197,7 @@ def _create_cpu_profile(profile_name, profile_node):
     except dbException.DBDuplicateEntry as e:
         LOG.exception(e)
         return "Warning", _('warning: CPU profile %s already exists and is not imported.') % profile_name, None
-    except exception as e:
+    except Exception as e:
         LOG.exception(e)
         return "Error", _('error: importing CPU profile %s failed.') % profile_name, e.message
 
@@ -1331,7 +1331,7 @@ def _create_if_profile(profile_name, profile_node):
     except dbException.DBDuplicateEntry as e:
         LOG.exception(e)
         return "Warning", _('warning: interface profile %s already exists and is not imported.') % profile_name, None
-    except exception as e:
+    except Exception as e:
         LOG.exception(e)
         return "Error", _('error: importing interface profile %s failed.') % profile_name, e.message
 
@@ -1540,7 +1540,7 @@ def _create_mem_profile(profile_name, profile_node):
     except dbException.DBDuplicateEntry as e:
         LOG.exception(e)
         return "Warning", _('warning: Memory profile %s already exists and is not imported.') % profile_name, None
-    except exception as e:
+    except Exception as e:
         LOG.exception(e)
         return "Error", _('error: Creating memory profile %s failed.') % profile_name, e.message
 
@@ -1660,7 +1660,7 @@ def _create_storage_profile(profile_name, profile_node):
     except dbException.DBDuplicateEntry as e:
         LOG.exception(e)
         return "Warning", _('warning: Storage profile %s already exists and is not imported.') % profile_name, None
-    except exception as e:
+    except Exception as e:
         LOG.exception(e)
         return "Error", _('error: importing storage profile %s failed.') % profile_name, e.message
 
@@ -1803,7 +1803,7 @@ def _create_localstorage_profile(profile_name, profile_node):
         LOG.exception(e)
         return ("Warning", _('warning: Local Storage profile %s already '
                 'exists and is not imported.') % profile_name, None)
-    except exception as e:
+    except Exception as e:
         LOG.exception(e)
         return ("Error", _('error: importing Local Storage profile %s '
                            'failed.') % profile_name, e.message)
@@ -1859,7 +1859,7 @@ def _create_localstorage_profile(profile_name, profile_node):
         LOG.exception(cse)
         return "Fail", _('Local Storage profile %s not imported.') % profile_name, str(cse)
 
-    except exception as exc:
+    except Exception as exc:
         pecan.request.dbapi.ihost_destroy(profile_id)
         LOG.exception(exc)
         return "Fail", _('Local Storage profile %s not imported.') % profile_name, str(exc)
