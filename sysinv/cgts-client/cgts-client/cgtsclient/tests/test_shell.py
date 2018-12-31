@@ -4,23 +4,23 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import httplib2
-import re
-import sys
-
 import fixtures
-from testtools import matchers
-
-from keystoneclient.v2_0 import client as ksclient
+import httplib2
+import mock
+import re
 from six.moves import cStringIO as StringIO
+import sys
+from testtools import matchers
 
 from cgtsclient import exc
 from cgtsclient import shell as cgts_shell
 from cgtsclient.tests import utils
-from cgtsclient.v1 import client as v1client
+from cgtsclient.v1.ihost import ihost
 
 FAKE_ENV = {'OS_USERNAME': 'username',
             'OS_PASSWORD': 'password',
+            'OS_PROJECT_NAME': 'project',
+            'OS_REGION_NAME': 'region',
             'OS_TENANT_NAME': 'tenant_name',
             'OS_AUTH_URL': 'http://no.where'}
 
@@ -35,9 +35,9 @@ class ShellTest(utils.BaseTestCase):
 
     def setUp(self):
         super(ShellTest, self).setUp()
-        self.m.StubOutWithMock(ksclient, 'Client')
-        self.m.StubOutWithMock(v1client.Client, 'json_request')
-        self.m.StubOutWithMock(v1client.Client, 'raw_request')
+
+    def tearDown(self):
+        super(ShellTest, self).tearDown()
 
     def shell(self, argstr):
         orig = sys.stdout
@@ -97,3 +97,21 @@ class ShellTest(utils.BaseTestCase):
     def test_auth_param(self):
         self.make_env(exclude='OS_USERNAME')
         self.test_help()
+
+    @mock.patch('cgtsclient.v1.ihost.ihostManager.list')
+    @mock.patch('cgtsclient.client._get_ksclient')
+    @mock.patch('cgtsclient.client._get_endpoint')
+    def test_host_list(self, mock_get_endpoint, mock_get_client, mock_list):
+        # This unit test mocks returning a single controller-0 host through host-list
+        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+        fake_controller = {'id': '0',
+                           'hostname': 'controller-0',
+                           'personality': 'controller',
+                           'administrative': 'unlocked',
+                           'operational': 'enabled',
+                           'availability': 'available'}
+        mock_list.return_value = [ihost(None, fake_controller, True)]
+        self.make_env()
+        host_results = self.shell("host-list")
+        self.assertIn('controller-0', host_results)
+        self.assertNotIn('controller-1', host_results)
