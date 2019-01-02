@@ -408,7 +408,7 @@ class OpenStackOperator(object):
 
         if not agg_add_to:
             LOG.error("The nova-local LVG for host: %s has an invalid "
-                      "instance backing: " % (ihost_uuid, agg_add_to))
+                      "instance backing: " % ihost_uuid)
 
         ihost = self.dbapi.ihost_get(ihost_uuid)
         for aggregate in aggregates.values():

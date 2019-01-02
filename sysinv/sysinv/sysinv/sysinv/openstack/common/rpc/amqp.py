@@ -514,7 +514,7 @@ class MulticallProxyWaiter(object):
                 raise StopIteration
             if isinstance(result, Exception):
                 self.done()
-                raise result
+                raise result  # pylint: disable=raising-bad-type
             yield result
 
 
@@ -567,7 +567,7 @@ class MulticallWaiter(object):
             result = self._result
             if isinstance(result, Exception):
                 self.done()
-                raise result
+                raise result  # pylint: disable=raising-bad-type
             yield result
 
 

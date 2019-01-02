@@ -303,7 +303,7 @@ class LocalhostExchange(Exchange):
     """Exchange where all direct topics are local."""
     def __init__(self, host='localhost'):
         self.host = host
-        super(Exchange, self).__init__()
+        super(LocalhostExchange, self).__init__()
 
     def run(self, key):
         return [('.'.join((key.split('.')[0], self.host)), self.host)]
@@ -315,7 +315,7 @@ class DirectExchange(Exchange):
     i.e. "compute.host" sends a message to "compute.host" running on "host"
     """
     def __init__(self):
-        super(Exchange, self).__init__()
+        super(DirectExchange, self).__init__()
 
     def run(self, key):
         e = key.split('.', 1)[1]
@@ -341,7 +341,7 @@ class MatchMakerStub(MatchMakerBase):
     Will not work where knowledge of hosts is known (i.e. zeromq)
     """
     def __init__(self):
-        super(MatchMakerLocalhost, self).__init__()
+        super(MatchMakerStub, self).__init__()
 
         self.add_binding(FanoutBinding(), StubExchange())
         self.add_binding(DirectBinding(), StubExchange())

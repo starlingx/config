@@ -555,4 +555,4 @@ class DeprecatedConfig(Exception):
     message = _("Fatal call to deprecated config: %(msg)s")
 
     def __init__(self, msg):
-        super(Exception, self).__init__(self.message % dict(msg=msg))
+        super(DeprecatedConfig, self).__init__(self.message % dict(msg=msg))

@@ -398,7 +398,7 @@ def _pre_patch_checks(tier_obj, patch_obj):
 
 def _check(op, tier):
     # Semantic checks
-    LOG.debug("storage_tier: Semantic check for %s operation".format(op))
+    LOG.debug("storage_tier: Semantic check for %s operation" % op)
 
     # Check storage tier parameters
     _check_parameters(tier)
