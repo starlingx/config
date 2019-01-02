@@ -63,6 +63,15 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': {
+                    'replicas': {
+                        'api_metadata': self._num_controllers(),
+                        'placement': self._num_controllers(),
+                        'osapi': self._num_controllers(),
+                        'conductor': self._num_controllers(),
+                        'consoleauth': self._num_controllers(),
+                        'scheduler': self._num_controllers(),
+                        # set replicas for novncproxy once it's validated.
+                    },
                     'user': {
                         'nova': {
                             'uid': 0
