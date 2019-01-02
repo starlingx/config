@@ -44,6 +44,11 @@ class platform::influxdb
     content => template('platform/influxdb.conf.erb'),
   } # now make sure that influxdb is started
 
+  -> exec { 'influxdb-enable':
+      command => 'systemctl enable influxdb',
+      unless  => 'systemctl is-enabled influxdb'
+  }
+
   # ensure that influxdb is running
   -> service { 'influxdb':
     ensure   => running,
@@ -61,11 +66,9 @@ class platform::influxdb
   }
 }
 
-
 class platform::influxdb::runtime {
   include ::platform::influxdb
 }
-
 
 class platform::influxdb::logrotate::params (
   $log_file_name = undef,
