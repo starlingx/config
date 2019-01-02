@@ -519,12 +519,6 @@ def _check_host(lvg):
                                          "has a %s subfunction.") %
                                        (constants.LVG_NOVA_LOCAL,
                                         constants.WORKER))
-    elif (ihost.personality == constants.WORKER and
-          lvg['lvm_vg_name'] == constants.LVG_CGTS_VG and
-          not utils.is_kubernetes_config()):
-        raise wsme.exc.ClientSideError(_("%s can not be provisioned for %s "
-                                         "hosts.") % (constants.LVG_CGTS_VG,
-                                                      constants.WORKER))
     elif (ihost.personality in [constants.WORKER, constants.STORAGE] and
           lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES):
         raise wsme.exc.ClientSideError(_("%s can only be provisioned for %s "
@@ -536,13 +530,6 @@ def _check_host(lvg):
             (ihost['administrative'] != constants.ADMIN_LOCKED or
              ihost['ihost_action'] == constants.UNLOCK_ACTION)):
         raise wsme.exc.ClientSideError(_("Host must be locked"))
-
-    if utils.is_kubernetes_config():
-        if (ihost.personality == constants.WORKER and
-                lvg['lvm_vg_name'] == constants.LVG_CGTS_VG and
-                (ihost['administrative'] != constants.ADMIN_LOCKED or
-                 ihost['ihost_action'] == constants.UNLOCK_ACTION)):
-            raise wsme.exc.ClientSideError(_("Host must be locked"))
 
 
 def _get_mate_ctrl_lvg(lvg):
@@ -595,8 +582,7 @@ def _check(op, lvg):
                           " both controllers." % {'lvm_type': constants.LVG_CINDER_PARAM_LVM_TYPE,
                                                   'vg_name': lvg['lvm_vg_name'],
                                                   'type': mate_type}))
-        if (lvg['lvm_vg_name'] == constants.LVG_CGTS_VG and
-                not utils.is_kubernetes_config()):
+        if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
             raise wsme.exc.ClientSideError(_("%s volume group already exists") %
                                            constants.LVG_CGTS_VG)
         elif lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:

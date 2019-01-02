@@ -203,7 +203,7 @@ class StoragePuppet(base.BasePuppet):
         ceph_mon_devices = []
 
         # LVM Global Filter is driven by:
-        # - cgts-vg PVs       : controllers and all storage
+        # - cgts-vg PVs       : all nodes
         # - cinder-volumes PVs: controllers
         # - nova-local PVs    : controllers and all workers
 
