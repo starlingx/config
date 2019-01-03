@@ -29,11 +29,16 @@ class platform::collectd
     content => template('platform/collectd.conf.erb'),
   } # now start collectd
 
+  -> exec { 'collectd-enable':
+      command => 'systemctl enable collectd',
+      unless  => 'systemctl is-enabled collectd'
+  }
+
   # ensure that collectd is running
   -> service { 'collectd':
     ensure   => running,
-    enable   => true,
-    provider => 'systemd'
+    provider => 'systemd',
+    require  => Anchor['platform::networking'],
   } # now get pmond to monitor the process
 
   # ensure pmon soft link for process monitoring
@@ -54,7 +59,6 @@ class platform::collectd::runtime {
 class platform::collectd::restart {
   include ::platform::collectd
   exec { 'collectd-restart':
-      command => '/usr/local/sbin/pmon-restart collect'
+      command => '/usr/local/sbin/pmon-restart collectd'
   }
 }
-
