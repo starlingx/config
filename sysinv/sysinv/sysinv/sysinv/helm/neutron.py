@@ -30,14 +30,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
     AUTH_USERS = ['neutron']
     SERVICE_USERS = ['nova']
 
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
-
-    @property
-    def docker_repo_tag(self):
-        return common.DOCKER_SRCS[self.docker_repo_source][common.IMG_TAG_KEY]
-
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 

@@ -24,10 +24,6 @@ class AodhHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = 'aodh'
     AUTH_USERS = ['aodh']
 
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
-
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 

@@ -46,14 +46,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
     AUTH_USERS = ['nova', 'placement']
     SERVICE_USERS = ['neutron', 'ironic']
 
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
-
-    @property
-    def docker_repo_tag(self):
-        return common.DOCKER_SRCS[self.docker_repo_source][common.IMG_TAG_KEY]
-
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 
@@ -191,6 +183,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 'nova_cell_setup': self.docker_image,
                 'nova_cell_setup_init': heat_image,
                 'nova_compute': self.docker_image,
+                'nova_compute_ironic': self.docker_image,
                 'nova_compute_ssh': self.docker_image,
                 'nova_conductor': self.docker_image,
                 'nova_consoleauth': self.docker_image,
@@ -199,6 +192,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 'nova_placement': self.docker_image,
                 'nova_scheduler': self.docker_image,
                 'nova_spiceproxy': self.docker_image,
+                'nova_spiceproxy_assets': self.docker_image
             }
         }
 

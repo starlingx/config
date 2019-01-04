@@ -25,10 +25,6 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = 'ceilometer'
     AUTH_USERS = ['ceilometer']
 
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
-
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 
@@ -60,13 +56,15 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
                 'ks_user': heat_image,
                 'ks_endpoints': heat_image,
                 'db_init': self.docker_image,
+                'db_init_mongodb': self.docker_image,
                 'ceilometer_db_sync': self.docker_image,
                 'ceilometer_central': self.docker_image,
                 'ceilometer_compute': self.docker_image,
                 'ceilometer_ipmi': self.docker_image,
                 'ceilometer_notification': self.docker_image,
                 'ceilometer_collector': self.docker_image,
-                'ceilometer_api': self.docker_image
+                'ceilometer_api': self.docker_image,
+                'test': self.docker_image
             }
         }
 

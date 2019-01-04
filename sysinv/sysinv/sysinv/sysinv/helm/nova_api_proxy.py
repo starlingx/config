@@ -21,12 +21,8 @@ class NovaApiProxyHelm(openstack.OpenstackBaseHelm):
         common.HELM_NS_OPENSTACK
     ]
 
-    SERVICE_NAME = 'nova'
+    SERVICE_NAME = 'nova-api-proxy'
     AUTH_USERS = ['nova']
-
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
 
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
@@ -63,25 +59,23 @@ class NovaApiProxyHelm(openstack.OpenstackBaseHelm):
             return overrides
 
     def _get_images_overrides(self):
-        nova_api_proxy_image = "{}:{}/{}/{}{}:{}".format(
-            self._get_management_address(), common.REGISTRY_PORT, common.REPO_LOC,
-            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
-            'nova-api-proxy', self.docker_repo_tag)
-
         heat_image = self._operator.chart_operators[
             constants.HELM_CHART_HEAT].docker_image
 
         return {
             'tags': {
-                'nova_api_proxy': nova_api_proxy_image,
+                'nova_api_proxy': self.docker_image,
                 'ks_endpoints': heat_image
             }
         }
 
     def _get_endpoints_overrides(self):
+        nova_service_name = self._operator.chart_operators[
+            constants.HELM_CHART_NOVA].SERVICE_NAME
+
         return {
             'identity': {
                 'auth': self._get_endpoints_identity_overrides(
-                    self.SERVICE_NAME, self.AUTH_USERS),
+                    nova_service_name, self.AUTH_USERS),
             }
         }

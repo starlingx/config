@@ -41,7 +41,7 @@ class BaseHelm(object):
 
     @property
     def docker_repo_source(self):
-        return self._operator.docker_repo_source
+        return common.DOCKER_SRC_LOC
 
     @property
     def docker_repo_tag(self):
