@@ -182,8 +182,8 @@ class HelmOperator(object):
         comprise an application. Overrides for all charts and all supported
         namespaces will be returned unless a specific namespace is requested.
 
-        If a specific namespace is requested, then only charts that that
-        support that specified namespace will be returned.
+        If a specific namespace is requested, then only charts that support
+        that specified namespace will be returned.
 
         :param app_name: name of a supported application (set of charts)
         :param cnamespace: (optional) namespace

@@ -7447,7 +7447,7 @@ class ConductorManager(service.PeriodicService):
         """Resize the filesystems upon completion of storage config.
            Retry in case of errors or racing issues when resizing fails."""
 
-        LOG.warn("resizing filesytems")
+        LOG.warn("resizing filesystems")
 
         progress = ""
         retry_attempts = 3
@@ -10324,8 +10324,8 @@ class ConductorManager(service.PeriodicService):
         comprise an application. Overrides for all charts and all supported
         namespaces will be returned unless a specific namespace is requested.
 
-        If a specific namespace is requested, then only charts that that
-        support that specified namespace will be returned.
+        If a specific namespace is requested, then only charts that support
+        that specified namespace will be returned.
 
         :param context: request context.
         :param app_name: name of a supported application (set of charts)
