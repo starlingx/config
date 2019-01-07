@@ -24,14 +24,6 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = 'gnocchi'
     AUTH_USERS = ['gnocchi']
 
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
-
-    @property
-    def docker_repo_tag(self):
-        return common.DOCKER_SRCS[self.docker_repo_source][common.IMG_TAG_KEY]
-
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 
@@ -63,6 +55,7 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
         return {
             'tags': {
                 'db_init': self.docker_image,
+                'db_init_indexer': self.docker_image,
                 'db_sync': self.docker_image,
                 'gnocchi_api': self.docker_image,
                 'gnocchi_metricd': self.docker_image,

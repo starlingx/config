@@ -24,14 +24,6 @@ class HeatHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = constants.HELM_CHART_HEAT
     AUTH_USERS = ['heat', 'heat_trustee', 'heat_stack_user']
 
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
-
-    @property
-    def docker_repo_tag(self):
-        return common.DOCKER_SRCS[self.docker_repo_source][common.IMG_TAG_KEY]
-
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 
@@ -64,6 +56,7 @@ class HeatHelm(openstack.OpenstackBaseHelm):
                 'heat_db_sync': self.docker_image,
                 'heat_engine': self.docker_image,
                 'heat_engine_cleaner': self.docker_image,
+                'heat_purge_deleted': self.docker_image,
                 'ks_endpoints': self.docker_image,
                 'ks_service': self.docker_image,
                 'ks_user': self.docker_image,
