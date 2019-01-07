@@ -1,3 +1,4 @@
+kubernetes/applications/stx-openstack/stx-openstack-helm
 worker-utils
 workerconfig
 configutilities
