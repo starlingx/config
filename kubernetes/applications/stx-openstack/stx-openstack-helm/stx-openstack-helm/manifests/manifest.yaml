@@ -612,6 +612,8 @@ data:
   chart_name: neutron
   release: openstack-neutron
   namespace: openstack
+  test:
+    enabled: false
   install:
     no_hooks: false
   upgrade:
