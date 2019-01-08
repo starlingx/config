@@ -530,6 +530,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
         self.system = dbutils.create_test_isystem()
         self.load = dbutils.create_test_load()
         self.host_index = -1
+        self.mon_index = -1
 
     def tearDown(self):
         super(StorageTierDependentTCs, self).tearDown()
@@ -554,6 +555,17 @@ class StorageTierDependentTCs(base.FunctionalTest):
             invprovision='unprovisioned')
         return self.dbapi.ihost_create(ihost_dict)
 
+    def _create_storage_mon(self, hostname, ihost_id):
+        self.mon_index += 1
+        ceph_mon_dict = dbutils.get_test_mon(
+            id=self.mon_index,
+            uuid=uuidutils.generate_uuid(),
+            state=constants.SB_STATE_CONFIGURED,
+            task=constants.SB_TASK_NONE,
+            forihostid=ihost_id,
+            hostname=hostname)
+        return self.dbapi.ceph_mon_create(ceph_mon_dict)
+
     #
     # StorageTier with stors
     #
@@ -566,6 +578,8 @@ class StorageTierDependentTCs(base.FunctionalTest):
         disk_1 = dbutils.create_test_idisk(device_node='/dev/sdb',
                                            device_path='/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0',
                                            forihostid=storage_0.id)
+
+        self._create_storage_mon('storage-0', storage_0['id'])
 
         # Mock the fsid call so that we don't have to wait for the timeout
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:

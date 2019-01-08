@@ -35,6 +35,7 @@ from sysinv.api.controllers.v1 import controller_fs as controller_fs_utils
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
+from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -406,12 +407,56 @@ def _set_defaults(ceph_mon):
 
 
 def _create(ceph_mon):
+    # validate host
+    try:
+        chost = pecan.request.dbapi.ihost_get(ceph_mon['ihost_uuid'])
+    except exception.ServerNotFound:
+        raise wsme.exc.ClientSideError(
+            _("Host not found uuid: %s ." % ceph_mon['ihost_uuid']))
+
+    ceph_mon['forihostid'] = chost['id']
+
+    # check if ceph monitor is already configured
+    if pecan.request.dbapi.ceph_mon_get_by_ihost(ceph_mon['forihostid']):
+        raise wsme.exc.ClientSideError(
+            _("Ceph monitor already configured for host '%s'." % chost['hostname']))
+
+    # only one instance of the 3rd ceph monitor is allowed
+    ceph_mons = pecan.request.dbapi.ceph_mon_get_list()
+    for mon in ceph_mons:
+        h = pecan.request.dbapi.ihost_get(mon['forihostid'])
+        if h.personality in [constants.STORAGE, constants.WORKER]:
+            raise wsme.exc.ClientSideError(
+                _("Ceph monitor already configured for host '%s'." % h['hostname']))
+
+    # Adding a ceph monitor to a worker selects Ceph's deployment model
+    if chost['personality'] == constants.WORKER:
+        # Only if replication model is CONTROLLER or not yet defined
+        stor_model = ceph.get_ceph_storage_model()
+        worker_stor_models = [constants.CEPH_CONTROLLER_MODEL, constants.CEPH_UNDEFINED_MODEL]
+        if stor_model not in worker_stor_models:
+            raise wsme.exc.ClientSideError(
+                _("Can not add a storage monitor to a worker if "
+                  "ceph's deployments model is already set to %s." % stor_model))
+
+        replication, min_replication = \
+            StorageBackendConfig.get_ceph_max_replication(pecan.request.dbapi)
+        supported_replication = constants.CEPH_CONTROLLER_MODEL_REPLICATION_SUPPORTED
+        if replication not in supported_replication:
+            raise wsme.exc.ClientSideError(
+                _("Ceph monitor can be added to a worker only if "
+                  "replication is set to: %s'. Please update replication "
+                  "before configuring a monitor on a worker node." % supported_replication))
+
+    # host must be locked and online
+    if (chost['availability'] != constants.AVAILABILITY_ONLINE or
+            chost['administrative'] != constants.ADMIN_LOCKED):
+        raise wsme.exc.ClientSideError(
+            _("Host %s must be locked and online." % chost['hostname']))
+
     ceph_mon = _set_defaults(ceph_mon)
 
     _check_ceph_mon(ceph_mon)
-
-    chost = pecan.request.dbapi.ihost_get(ceph_mon['ihost_uuid'])
-    ceph_mon['forihostid'] = chost['id']
 
     controller_fs_utils._check_controller_fs(
         ceph_mon_gib_new=ceph_mon['ceph_mon_gib'])
@@ -452,12 +497,17 @@ def _create(ceph_mon):
     # At this moment the only possibility to add a dynamic monitor
     # is on a worker node, so we check for that.
     if chost.personality == constants.WORKER:
-        # Storage nodes are not supported on a controller based
-        # storage model.
-        personalities = [constants.CONTROLLER, constants.WORKER]
-        pecan.request.rpcapi.update_ceph_base_config(
-            pecan.request.context,
-            personalities)
+        try:
+            # Storage nodes are not supported on a controller based
+            # storage model.
+            personalities = [constants.CONTROLLER, constants.WORKER]
+            pecan.request.rpcapi.update_ceph_base_config(
+                pecan.request.context,
+                personalities)
+        except Exception:
+            values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
+            pecan.request.dbapi.ceph_mon_update(new_ceph_mon['uuid'], values)
+            raise
 
     # The return value needs to be iterable, so make it a list.
     return [new_ceph_mon]
