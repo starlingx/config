@@ -18,6 +18,17 @@ class platform::sysctl
     value => '8',
   }
 
+  # Enable br_netfilter (required to allow setting bridge-nf-call-arptables)
+  exec { 'modprobe br_netfilter':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'modprobe br_netfilter',
+  }
+
+  # Set bridge-nf-call-arptables for containerized neutron
+  -> sysctl::value { 'net.bridge.bridge-nf-call-arptables':
+    value => '1',
+  }
+
   # Tuning options for low latency compute
   if $low_latency {
     # Increase VM stat interval
