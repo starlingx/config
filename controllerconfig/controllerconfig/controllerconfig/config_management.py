@@ -67,7 +67,11 @@ def configure_management():
     print("Retrieving neighbor details... ", end=' ')
     lldpcli_show_output = subprocess.check_output(
         ['sudo', 'lldpcli', 'show', 'neighbors', 'summary', '-f', 'json'])
-    lldp_interfaces = json.loads(lldpcli_show_output)['lldp'][0]['interface']
+    try:
+        lldp_interfaces = json.loads(
+            lldpcli_show_output)['lldp'][0]['interface']
+    except Exception as e:
+        lldp_interfaces = {}
     print("DONE")
 
     print("\nAvailable interfaces:")
