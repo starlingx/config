@@ -26,7 +26,6 @@ include ::platform::patching
 include ::platform::remotelogging
 include ::platform::mtce
 include ::platform::sysinv
-include ::platform::ceph
 include ::platform::devices
 include ::platform::grub
 include ::platform::collectd
@@ -36,6 +35,9 @@ include ::platform::dockerdistribution::compute
 include ::platform::kubernetes::worker
 include ::platform::multipath
 include ::platform::client
+
+include ::platform::ceph
+include ::platform::ceph::monitor
 
 include ::openstack::client
 include ::openstack::neutron

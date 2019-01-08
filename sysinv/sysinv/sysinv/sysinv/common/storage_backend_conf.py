@@ -219,17 +219,28 @@ class StorageBackendConfig(object):
                        network_type): 'ceph-mon-0-ip',
             '%s-%s' % (constants.CONTROLLER_1_HOSTNAME,
                        network_type): 'ceph-mon-1-ip',
-            '%s-%s' % (constants.STORAGE_0_HOSTNAME,
-                       network_type): 'ceph-mon-2-ip'
         }
+
+        ceph_mons = dbapi.ceph_mon_get_list()
+        for ceph_mon in ceph_mons:
+            if ceph_mon['hostname'] == constants.CONTROLLER_0_HOSTNAME:
+                targets.update({'%s-%s' % (constants.CONTROLLER_0_HOSTNAME,
+                                network_type): 'ceph-mon-0-ip'})
+            elif ceph_mon['hostname'] == constants.CONTROLLER_1_HOSTNAME:
+                targets.update({'%s-%s' % (constants.CONTROLLER_1_HOSTNAME,
+                                network_type): 'ceph-mon-1-ip'})
+            else:
+                targets.update({'%s-%s' % (ceph_mon['hostname'],
+                                           network_type): 'ceph-mon-2-ip'})
+
+        ceph_mon['ceph_mon_gib'] = ceph_mons[0]['ceph_mon_gib']
+
         results = {}
         addrs = dbapi.addresses_get_all()
         for addr in addrs:
             if addr.name in targets:
                 results[targets[addr.name]] = addr.address
-        if len(results) != len(targets):
-            raise exception.IncompleteCephMonNetworkConfig(
-                targets=targets, results=results)
+
         return results
 
     @staticmethod
