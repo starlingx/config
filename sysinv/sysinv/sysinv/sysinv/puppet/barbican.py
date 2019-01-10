@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from sysinv.common import constants
 from sysinv.puppet import openstack
 
 
@@ -24,7 +25,12 @@ class BarbicanPuppet(openstack.OpenstackBasePuppet):
         dbpass = self._get_database_password(self.SERVICE_NAME)
         kspass = self._get_service_password(self.SERVICE_NAME)
 
+        # initial bootstrap is bound to localhost
+        dburl = self._format_database_connection(self.SERVICE_NAME,
+                                                 constants.LOCALHOST_HOSTNAME)
+
         return {
+            'barbican::db::database_connection': dburl,
             'barbican::db::postgresql::password': dbpass,
 
             'barbican::keystone::auth::password': kspass,
@@ -82,3 +88,6 @@ class BarbicanPuppet(openstack.OpenstackBasePuppet):
 
     def get_admin_url(self):
         return self._format_private_endpoint(self.SERVICE_PORT)
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)

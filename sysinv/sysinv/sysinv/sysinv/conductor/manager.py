@@ -7042,6 +7042,14 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+            elif service == constants.SERVICE_TYPE_BARBICAN:
+                personalities = [constants.CONTROLLER]
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['openstack::barbican::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def update_security_feature_config(self, context):
         """Update the kernel options configuration"""
         personalities = constants.PERSONALITIES
