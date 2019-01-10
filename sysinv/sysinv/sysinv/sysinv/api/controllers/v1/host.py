@@ -4139,69 +4139,6 @@ class HostController(rest.RestController):
                 (ihost['hostname']))
 
     @staticmethod
-    def _semantic_check_cgts_storage(ihost_uuid, personality):
-        """
-        Perform semantic checking for cgts storage on worker hosts.
-        CGTS VG on workers used for kubernetes docker lv only at this time.
-        :param ihost_uuid: uuid of host with worker functionality
-        :param personality: personality of host with worker functionality
-        """
-
-        if personality != constants.WORKER:
-            return
-
-        # query volume groups
-        cgts_local_storage_lvg = None
-        ihost_ilvgs = pecan.request.dbapi.ilvg_get_by_ihost(ihost_uuid)
-        for lvg in ihost_ilvgs:
-            if lvg.lvm_vg_name == constants.LVG_CGTS_VG:
-                cgts_local_storage_lvg = lvg
-                break
-
-        # Prevent unlock if no CGTS vg or pv volume allocated
-        if cgts_local_storage_lvg:
-            if cgts_local_storage_lvg.vg_state == constants.LVG_DEL:
-                raise wsme.exc.ClientSideError(
-                    _("With kubernetes configured, "
-                      "a worker host requires a "
-                      "cgts volume group prior to being enabled. It is "
-                      "currently set to be removed on unlock. Please update "
-                      "the storage settings for the host."))
-
-            else:
-                # Make sure that we have physical volumes allocated to the
-                # volume group
-                ihost_ipvs = pecan.request.dbapi.ipv_get_by_ihost(ihost_uuid)
-                lvg_has_pvs = False
-                for pv in ihost_ipvs:
-                    if ((pv.lvm_vg_name == cgts_local_storage_lvg.lvm_vg_name) and
-                            (pv.pv_state != constants.PV_DEL)):
-
-                        lvg_has_pvs = True
-                        break
-
-                if not lvg_has_pvs:
-                    raise wsme.exc.ClientSideError(
-                        _("With kubernetes configured, "
-                          "a worker host requires a "
-                          "cgts volume group prior to being enabled."
-                          "The cgts volume group does not contain any "
-                          "physical volumes in the adding or provisioned "
-                          "state."))
-        else:
-            # This method is only called with hosts that have a worker
-            # subfunction and is locked or if subfunction_config action is
-            # being called. Without a cgts volume group, prevent
-            # unlocking.
-
-            msg = _('With kubernetes configured, '
-                    'a worker host requires a cgts volume group prior to being '
-                    'enabled. Please update the storage settings for the '
-                    'host.')
-
-            raise wsme.exc.ClientSideError('%s' % msg)
-
-    @staticmethod
     def _handle_ttys_dcd_change(ihost, ttys_dcd):
         """
         Handle serial line carrier detection enable or disable request.
@@ -4321,11 +4258,6 @@ class HostController(rest.RestController):
             self._semantic_check_nova_local_storage(
                 hostupdate.ihost_patch['uuid'],
                 hostupdate.ihost_patch['personality'])
-            if utils.is_kubernetes_config():
-                # CGTS Storage checks
-                self._semantic_check_cgts_storage(
-                    hostupdate.ihost_patch['uuid'],
-                    hostupdate.ihost_patch['personality'])
         else:
             raise wsme.exc.ClientSideError(_(
                 "action_check unrecognized action: %s" % action))
@@ -5274,11 +5206,6 @@ class HostController(rest.RestController):
         # Local Storage checks
         self._semantic_check_nova_local_storage(ihost['uuid'],
                                                 ihost['personality'])
-
-        # CGTS Storage checks
-        if utils.is_kubernetes_config():
-            self._semantic_check_cgts_storage(ihost['uuid'],
-                                              ihost['personality'])
 
     @staticmethod
     def check_unlock_storage(hostupdate):

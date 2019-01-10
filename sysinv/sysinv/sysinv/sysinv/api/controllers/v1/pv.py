@@ -474,22 +474,15 @@ def _check_host(pv, ihost, op):
 
     ilvg = pecan.request.dbapi.ilvg_get(ilvgid)
 
-    if utils.is_kubernetes_config():
-        if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
-            if (ihost['personality'] != constants.CONTROLLER and
-                    ihost['personality'] != constants.WORKER):
-                raise wsme.exc.ClientSideError(
-                    _("Physical volume operations for %s are only "
-                      "supported on %s and %s hosts" %
-                      (constants.LVG_CGTS_VG,
-                       constants.WORKER,
-                       constants.CONTROLLER)))
-    elif (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
-        if ihost['personality'] != constants.CONTROLLER:
+    if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
+        if (ihost['personality'] != constants.CONTROLLER and
+                ihost['personality'] != constants.WORKER):
             raise wsme.exc.ClientSideError(
-                    _("Physical volume operations for %s are only supported "
-                      "on %s hosts") % (constants.LVG_CGTS_VG,
-                                        constants.CONTROLLER))
+                _("Physical volume operations for %s are only "
+                  "supported on %s and %s hosts" %
+                  (constants.LVG_CGTS_VG,
+                   constants.WORKER,
+                   constants.CONTROLLER)))
 
     # semantic check: host must be locked for a nova-local change on
     # a host with a worker subfunction (worker or AIO)
@@ -501,12 +494,11 @@ def _check_host(pv, ihost, op):
 
     # semantic check: host must be locked for a CGTS change on
     # a worker host.
-    if utils.is_kubernetes_config():
-        if (ihost['personality'] == constants.WORKER and
-                ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
-                (ihost['administrative'] != constants.ADMIN_LOCKED or
-                 ihost['ihost_action'] == constants.UNLOCK_ACTION)):
-            raise wsme.exc.ClientSideError(_("Host must be locked"))
+    if (ihost['personality'] == constants.WORKER and
+            ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
+            (ihost['administrative'] != constants.ADMIN_LOCKED or
+             ihost['ihost_action'] == constants.UNLOCK_ACTION)):
+        raise wsme.exc.ClientSideError(_("Host must be locked"))
 
 
 def _get_vg_size_from_pvs(lvg, filter_pv=None):
@@ -599,7 +591,6 @@ def _check_lvg(op, pv):
                     raise wsme.exc.ClientSideError(msg)
 
     elif op == "delete":
-        # Possible Kubernetes issue, do we want to allow this on worker nodes?
         if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG):
             raise wsme.exc.ClientSideError(
                 _("Physical volumes cannot be removed from the cgts-vg volume "

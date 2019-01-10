@@ -282,19 +282,20 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # ANCHOR_LV                                             1
 # DEFAULT_EXTENSION_STOR_SIZE                           1
 # DEFAULT_GNOCCHI_STOR_SIZE                             5
-# KUBERNETES_DOCKER_STOR_SIZE (--kubernetes)           16
+# KUBERNETES_DOCKER_STOR_SIZE (--kubernetes)           30
 # DOCKER_DISTRIBUTION_STOR_SIZE (--kubernetes)         16
 # ETCD_STOR_SIZE (--kubernetes)                         5
+# CEPH_MON_SIZE (--kubernetes)                         20
 # buffer inside VG for LV creation                      1
 # root partition (created in kickstarts)               20
 # boot partition (created in kickstarts)                1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     167
-MINIMUM_DISK_SIZE = 167
+#                                                     201
+MINIMUM_DISK_SIZE = 201
 
 # Docker lv size when Kubernetes is configured
-KUBERNETES_DOCKER_STOR_SIZE = 16
+KUBERNETES_DOCKER_STOR_SIZE = 30
 DOCKER_DISTRIBUTION_STOR_SIZE = 16
 ETCD_STOR_SIZE = 5
 
