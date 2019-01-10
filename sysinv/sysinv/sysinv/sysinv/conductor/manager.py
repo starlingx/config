@@ -4937,11 +4937,44 @@ class ConductorManager(service.PeriodicService):
         # Audit install states
         self._audit_install_states(hosts)
 
+        # Audit kubernetes node labels
+        self._audit_kubernetes_labels(hosts)
+
         for host in hosts:
             # only audit configured hosts
             if not host.personality:
                 continue
             self._audit_ihost_action(host)
+
+    def _audit_kubernetes_labels(self, hosts):
+        if not utils.is_kubernetes_config(self.dbapi):
+            LOG.debug("_audit_kubernetes_labels skip")
+            return
+
+        LOG.debug("Starting kubernetes label audit")
+        sysinv_labels = self.dbapi.label_get_all()
+        nodes = self._kube.kube_get_nodes()
+
+        for host in hosts:
+            try:
+                for node in nodes:
+                    if host.hostname == node.metadata.name:
+                        node_labels = node.metadata.labels
+                        host_labels = [l for l in sysinv_labels if l.host_id == host.id]
+                        for host_label in host_labels:
+                            if host_label.label_key not in node_labels.keys():
+                                LOG.info("Label audit: creating %s=%s on node %s"
+                                         % (host_label.label_key,
+                                            host_label.label_value, host.hostname))
+                                body = {
+                                    'metadata': {
+                                        'labels': {host_label.label_key: host_label.label_value}
+                                    }
+                                }
+                                self._kube.kube_patch_node(host.hostname, body)
+            except Exception as e:
+                LOG.warning("Failed to sync kubernetes label to host %s: %s" %
+                            (host.hostname, e))
 
     # TODO(CephPoolsDecouple): remove
     @periodic_task.periodic_task(spacing=60)
@@ -10530,7 +10563,11 @@ class ConductorManager(service.PeriodicService):
             }
         }
         body['metadata']['labels'].update(label_dict)
-        self._kube.kube_patch_node(host.hostname, body)
+        try:
+            self._kube.kube_patch_node(host.hostname, body)
+        except exception.K8sNodeNotFound:
+            LOG.info("Host %s does not exist in kubernetes yet, label will "
+                     "be added after node's unlock by audit" % host.hostname)
 
     def update_host_memory(self, context, host_uuid):
         try:

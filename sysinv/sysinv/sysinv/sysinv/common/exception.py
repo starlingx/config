@@ -1170,6 +1170,10 @@ class HostLabelInvalid(Invalid):
     message = _("Host label is invalid. Reason: %(reason)s")
 
 
+class K8sNodeNotFound(NotFound):
+    message = _("Kubernetes Node %(name)s could not be found.")
+
+
 class PickleableException(Exception):
     """
     Pickleable Exception

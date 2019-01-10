@@ -288,11 +288,5 @@ class LabelController(rest.RestController):
 # UTILS
 ###########
 def _check_host_locked(host):
-
-    # TODO(ksmith):
-    # turn this on later
-    return
-
-    if (utils.is_aio_simplex_host_unlocked(host) or
-            host.administrative != constants.ADMIN_LOCKED):
+    if host.administrative != constants.ADMIN_LOCKED:
         raise wsme.exc.ClientSideError(_("Host must be locked."))

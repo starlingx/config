@@ -39,7 +39,6 @@ class platform::kubernetes::kubeadm {
   }
   # Start kubelet.
   -> service { 'kubelet':
-    ensure => 'running',
     enable => true,
   }
   # A seperate enable is required since we have modified the service resource
@@ -124,6 +123,21 @@ class platform::kubernetes::master::init
       command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
       logoutput => true,
     }
+
+    # Add a dependency to kubelet on config so it doesn't enter a bad state on subsequent boots
+    -> file { '/etc/systemd/system/kubelet.service.d/kube-stx-override.conf':
+      ensure  => file,
+      content => template('platform/kube-stx-override.conf.erb'),
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+    }
+
+    # Reload systemd
+    -> exec { 'perform systemctl daemon reload for kubelet override':
+      command   => 'systemctl daemon-reload',
+      logoutput => true,
+    }
   } else {
     if str2bool($::is_initial_config) {
       # For subsequent controller installs, install kubernetes using the
@@ -206,6 +220,21 @@ class platform::kubernetes::master::init
         command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
         logoutput => true,
       }
+
+      # Add a dependency to kubelet on config so it doesn't enter a bad state on subsequent boots
+      -> file { '/etc/systemd/system/kubelet.service.d/kube-stx-override.conf':
+        ensure  => file,
+        content => template('platform/kube-stx-override.conf.erb'),
+        owner   => 'root',
+        group   => 'root',
+        mode    => '0644',
+      }
+
+      # Reload systemd
+      -> exec { 'perform systemctl daemon reload for kubelet override':
+        command   => 'systemctl daemon-reload',
+        logoutput => true,
+      }
     }
   }
 }
@@ -241,6 +270,21 @@ class platform::kubernetes::worker::init
     command   => $join_cmd,
     logoutput => true,
     unless    => 'test -f /etc/kubernetes/kubelet.conf',
+  }
+
+  # Add a dependency to kubelet on config so it doesn't enter a bad state
+  -> file { '/etc/systemd/system/kubelet.service.d/kube-stx-override.conf':
+    ensure  => file,
+    content => template('platform/kube-stx-override.conf.erb'),
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+  }
+
+  # Reload systemd
+  -> exec { 'perform systemctl daemon reload for kubelet override':
+    command   => 'systemctl daemon-reload',
+    logoutput => true,
   }
 }
 
