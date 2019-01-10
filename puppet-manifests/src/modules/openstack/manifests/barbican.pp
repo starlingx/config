@@ -91,13 +91,16 @@ class openstack::barbican::api
 
     file_line { 'Modify workers in gunicorn-config.py':
       path  => '/etc/barbican/gunicorn-config.py',
-      line  => "workers = '${api_workers}'",
+      line  => "workers = ${api_workers}",
       match => '.*workers = .*',
       tag   => 'modify-workers',
     }
 
     include ::platform::network::mgmt::params
-    $api_host = $::platform::network::mgmt::params::controller_address
+    $api_host = $::platform::network::mgmt::params::subnet_version ? {
+      6       => "[${::platform::network::mgmt::params::controller_address}]",
+      default => $::platform::network::mgmt::params::controller_address,
+    }
     $api_fqdn = $::platform::params::controller_hostname
     $url_host = "http://${api_fqdn}:${api_port}"
 
