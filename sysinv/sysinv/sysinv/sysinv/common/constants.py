@@ -1483,6 +1483,7 @@ APP_TARFILE_NAME_PLACEHOLDER = 'tarfile-placeholder'
 CONTROL_PLANE_LABEL = 'openstack-control-plane=enabled'
 COMPUTE_NODE_LABEL = 'openstack-compute-node=enabled'
 OPENVSWITCH_LABEL = 'openvswitch=enabled'
+SRIOV_LABEL = 'sriov=enabled'
 
 # Default DNS service domain
 DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
