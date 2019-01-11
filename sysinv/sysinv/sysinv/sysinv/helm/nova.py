@@ -90,7 +90,9 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                             'disk_allocation_ratio': 1.0,
                             'cpu_allocation_ratio': 16.0,
                             'ram_allocation_ratio': 1.0,
-                            'remove_unused_original_minimum_age_seconds': 3600
+                            'remove_unused_original_minimum_age_seconds': 3600,
+                            'enable_new_services': False,
+                            'map_new_hosts': False
                         },
                         'libvirt': {
                             'virt_type': self._get_virt_type(),
@@ -137,7 +139,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                             'soft_anti_affinity_weight_multiplier': 0.0
                         },
                         'scheduler': {
-                            'periodic_task_interval': -1
+                            'periodic_task_interval': -1,
+                            'discover_hosts_in_cells_interval': 30
                         },
                         'metrics': {
                             'required': False,
