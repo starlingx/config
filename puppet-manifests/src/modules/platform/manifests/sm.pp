@@ -88,6 +88,10 @@ class platform::sm
   $dockerdistribution_fs_device              = $::platform::drbd::dockerdistribution::params::device
   $dockerdistribution_fs_directory           = $::platform::drbd::dockerdistribution::params::mountpoint
 
+  include ::platform::helm::repository::params
+  $helmrepo_fs_source_dir = $::platform::helm::repository::params::source_helm_repo_dir
+  $helmrepo_fs_target_dir = $::platform::helm::repository::params::target_helm_repo_dir
+
   include ::platform::drbd::cephmon::params
   $cephmon_drbd_resource          = $::platform::drbd::cephmon::params::resource_name
   $cephmon_fs_device              = $::platform::drbd::cephmon::params::device
@@ -495,6 +499,26 @@ class platform::sm
 
     exec { 'Configure Patch-vault FileSystem':
       command => "sm-configure service_instance patch-vault-fs patch-vault-fs \"rmon_rsc_name=patch-vault-storage,device=${patch_fs_device},directory=${patch_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    }
+  }
+
+  # Configure helm chart repository
+  if $kubernetes_enabled {
+    exec { 'Provision Helm Chart Repository FS in SM (service-group-member helmrepository-fs)':
+      command => 'sm-provision service-group-member controller-services helmrepository-fs',
+    }
+    -> exec { 'Provision Helm Chart Repository FS in SM (service helmrepository-fs)':
+      command => 'sm-provision service helmrepository-fs',
+    }
+    -> exec { 'Configure Helm Chart Repository FileSystem':
+      command => "sm-configure service_instance helmrepository-fs helmrepository-fs \"rmon_rsc_name=helm-charts-storage,device=${helmrepo_fs_source_dir},directory=${helmrepo_fs_target_dir},options=bind,noatime,nodiratime,fstype=ext4,check_level=20\"",
+    }
+  } else {
+    exec { 'Deprovision Helm Chart Repository FS in SM (service-group-member helmrepository-fs)':
+      command => 'sm-deprovision service-group-member controller-services helmrepository-fs',
+    }
+    -> exec { 'Deprovision Helm Chart Repository FS in SM (service helmrepository-fs)':
+      command => 'sm-deprovision service helmrepository-fs',
     }
   }
 
