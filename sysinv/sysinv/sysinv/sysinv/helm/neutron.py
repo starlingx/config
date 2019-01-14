@@ -89,7 +89,13 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                         'neutron_sriov-agent': {
                             'hosts': self._get_per_host_overrides()
                         },
-                    }
+                    },
+                    'paste': {
+                        'app:neutronversions': {
+                            'paste.app_factory':
+                                'neutron.pecan_wsgi.app:versions_factory'
+                        },
+                    },
                 },
                 'labels': self._get_labels_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
@@ -260,14 +266,8 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 'router_status_managed': True,
                 'vlan_transparent': True,
                 'wsgi_default_pool_size': 100,
-                'router_scheduler_driver':
-                    'neutron.scheduler.l3_host_agent_scheduler.HostBasedScheduler',
-                'network_scheduler_driver':
-                    'neutron.scheduler.dhcp_host_agent_scheduler.HostBasedScheduler',
                 'notify_nova_on_port_data_changes': True,
                 'notify_nova_on_port_status_changes': True,
-                'host_driver':
-                    'neutron.plugins.wrs.drivers.host.DefaultHostDriver',
                 'control_exchange': 'neutron',
                 'core_plugin': 'neutron.plugins.ml2.plugin.Ml2Plugin',
                 'state_path': '/var/run/neutron',
@@ -295,7 +295,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
     def _get_neutron_ml2_config(self):
         ml2_config = {
             'ml2': {
-                'type_drivers': 'managed_flat,managed_vlan,managed_vxlan',
+                'type_drivers': 'flat,vlan,vxlan',
                 'tenant_network_types': 'vlan,vxlan',
                 'mechanism_drivers': 'openvswitch,sriovnicswitch,l2population',
                 'path_mtu': 0,
