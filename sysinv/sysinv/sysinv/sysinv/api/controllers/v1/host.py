@@ -5715,6 +5715,22 @@ class HostController(rest.RestController):
                         % hostupdate.displayid)
                 raise wsme.exc.ClientSideError(msg)
 
+            if utils.is_kubernetes_config():
+                # Check if there is a cluster-host interface on
+                # controller/worker/storage
+                host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(
+                    ihost['uuid'])
+                network = pecan.request.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_CLUSTER_HOST)
+                for iif in host_interfaces:
+                    if iif.networks and str(network.id) in iif.networks:
+                        break
+                else:
+                    msg = _("Cannot unlock host %s "
+                            "without configuring a cluster-host interface."
+                            % hostupdate.displayid)
+                    raise wsme.exc.ClientSideError(msg)
+
             hostupdate.configure_required = True
 
     def check_unlock_partitions(self, hostupdate):
