@@ -20,12 +20,10 @@ LOG = logging.getLogger(__name__)
 SCHEDULER_FILTERS_COMMON = [
     'RetryFilter',
     'ComputeFilter',
-    'BaremetalFilter',
     'AvailabilityZoneFilter',
     'AggregateInstanceExtraSpecsFilter',
     'ComputeCapabilitiesFilter',
     'ImagePropertiesFilter',
-    'VCpuModelFilter',
     'NUMATopologyFilter',
     'ServerGroupAffinityFilter',
     'ServerGroupAntiAffinityFilter',
