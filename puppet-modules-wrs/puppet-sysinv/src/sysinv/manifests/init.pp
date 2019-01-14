@@ -70,6 +70,7 @@ class sysinv (
   $cinder_region_name          = 'RegionOne',
   $nova_region_name            = 'RegionOne',
   $magnum_region_name          = 'RegionOne',
+  $barbican_region_name        = 'RegionOne',
   $fm_catalog_info             = undef,
   $fernet_key_repository       = undef,
 ) {
@@ -202,6 +203,7 @@ class sysinv (
     'openstack_keystone_authtoken/cinder_region_name':  value => $cinder_region_name;
     'openstack_keystone_authtoken/nova_region_name':  value => $nova_region_name;
     'openstack_keystone_authtoken/magnum_region_name':  value => $magnum_region_name;
+    'openstack_keystone_authtoken/barbican_region_name':  value => $barbican_region_name;
   }
 
   sysinv_config {

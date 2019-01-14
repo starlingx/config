@@ -1025,7 +1025,8 @@ class ConfigValidator(object):
                 self.conf.get('REGION_2_SERVICES', 'CREATE') == 'Y'):
             password_fields = [
                 'NOVA', 'CEILOMETER', 'PATCHING', 'SYSINV', 'HEAT',
-                'HEAT_ADMIN', 'PLACEMENT', 'AODH', 'PANKO', 'GNOCCHI'
+                'HEAT_ADMIN', 'PLACEMENT', 'AODH', 'PANKO', 'GNOCCHI',
+                'BARBICAN'
             ]
             for pw in password_fields:
                 if not self.conf.has_option('REGION_2_SERVICES',
