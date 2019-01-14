@@ -39,7 +39,12 @@ class platform::mtce
 
   $boot_device = $::boot_disk_device_path
 
-  file { '/etc/rmonfiles.d/static.conf':
+  file {'/etc/rmonfiles.d':
+      ensure => directory,
+      mode   => '0755',
+  }
+
+  -> file { '/etc/rmonfiles.d/static.conf':
       ensure  => present,
       mode    => '0644',
       content => template('mtce/static_conf.erb'),
