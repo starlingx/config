@@ -121,7 +121,7 @@ class CPU(base.APIBase):
     "A list containing a self link and associated cpu links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.cpu.fields.keys()
+        self.fields = list(objects.cpu.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

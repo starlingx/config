@@ -136,7 +136,7 @@ class Storage(base.APIBase):
     "The name of the tier that uses this stor."
 
     def __init__(self, **kwargs):
-        self.fields = objects.storage.fields.keys()
+        self.fields = list(objects.storage.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

@@ -166,7 +166,7 @@ class Memory(base.APIBase):
     "A list containing a self link and associated memory links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.memory.fields.keys()
+        self.fields = list(objects.memory.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

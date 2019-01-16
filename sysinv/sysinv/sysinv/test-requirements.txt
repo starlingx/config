@@ -7,7 +7,6 @@ discover
 fixtures>=0.3.14
 mock<1.1.0,>=1.0
 mox
-MySQL-python
 passlib>=1.7.0
 psycopg2
 python-barbicanclient<3.1.0,>=3.0.1

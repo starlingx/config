@@ -115,7 +115,7 @@ class StorageBackend(base.APIBase):
                     'services': None,
                     'confirmed': False}
 
-        self.fields = objects.storage_backend.fields.keys()
+        self.fields = list(objects.storage_backend.fields.keys())
 
         # 'confirmed' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)

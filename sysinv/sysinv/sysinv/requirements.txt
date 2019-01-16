@@ -30,7 +30,6 @@ pecan>=1.0.0
 six>=1.4.1
 jsonpatch>=1.1
 WSME>=0.5b2
-Cheetah>=2.4.4
 pyghmi
 PyYAML>=3.10
 python-magnumclient>=2.0.0  # Apache-2.0

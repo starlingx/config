@@ -10,7 +10,7 @@ import os
 from sysinv.common import constants
 
 from tsconfig import tsconfig
-from urlparse import urlparse
+from six.moves.urllib.parse import urlparse
 
 from sysinv.puppet import openstack
 

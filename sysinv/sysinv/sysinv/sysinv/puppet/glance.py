@@ -7,7 +7,7 @@
 import os
 
 from oslo_utils import strutils
-from urlparse import urlparse
+from six.moves.urllib.parse import urlparse
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging

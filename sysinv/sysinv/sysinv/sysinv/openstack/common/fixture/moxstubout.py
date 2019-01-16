@@ -18,8 +18,8 @@
 # under the License.
 
 import fixtures
-import mox
 import stubout
+from mox3 import mox
 
 
 class MoxStubout(fixtures.Fixture):

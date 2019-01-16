@@ -296,12 +296,14 @@ class _TestObject(object):
         obj = Foo()
         # NOTE(danms): Can't use assertRaisesRegexp() because of py26
         raised = False
+        ex_out = ""
         try:
             obj.foobar
         except NotImplementedError as ex:
+            ex_out = str(ex)
             raised = True
         self.assertTrue(raised)
-        self.assertTrue('foobar' in str(ex))
+        self.assertTrue('foobar' in ex_out)
 
     def test_loaded_in_primitive(self):
         obj = MyObj()
@@ -420,7 +422,18 @@ class _TestObject(object):
                          'updated_at': timeutils.isotime(dt),
                          }
                     }
-        self.assertEqual(obj.obj_to_primitive(), expected)
+        expected2 = {'sysinv_object.name': 'MyObj',
+                     'sysinv_object.namespace': 'sysinv',
+                     'sysinv_object.version': '1.5',
+                     'sysinv_object.changes':
+                         ['updated_at', 'created_at'],
+                     'sysinv_object.data':
+                         {'created_at': timeutils.isotime(dt),
+                          'updated_at': timeutils.isotime(dt),
+                          }
+                     }
+        prim = obj.obj_to_primitive()
+        self.assertTrue(expected == prim or expected2 == prim)
 
     def test_contains(self):
         obj = MyObj()

@@ -107,7 +107,7 @@ class ControllerFs(base.APIBase):
     updated_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
-        self.fields = objects.controller_fs.fields.keys()
+        self.fields = list(objects.controller_fs.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

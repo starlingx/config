@@ -16,12 +16,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import os
 
 from sysinv.common import exception
 from sysinv.common import images
-from sysinv.common import utils
-from sysinv.openstack.common import fileutils
 from sysinv.tests import base
 
 
@@ -60,12 +57,12 @@ class SysinvImagesTestCase(base.TestCase):
 
             return FakeImgInfo()
 
-        self.stubs.Set(utils, 'execute', fake_execute)
-        self.stubs.Set(os, 'rename', fake_rename)
-        self.stubs.Set(os, 'unlink', fake_unlink)
-        self.stubs.Set(images, 'fetch', lambda *_: None)
-        self.stubs.Set(images, 'qemu_img_info', fake_qemu_img_info)
-        self.stubs.Set(fileutils, 'delete_if_exists', fake_rm_on_errror)
+        self.stub_out('sysinv.common.utils.execute', fake_execute)
+        self.stub_out('os.rename', fake_rename)
+        self.stub_out('os.unlink', fake_unlink)
+        self.stub_out('sysinv.common.images.fetch', lambda *_: None)
+        self.stub_out('sysinv.common.images.qemu_img_info', fake_qemu_img_info)
+        self.stub_out('sysinv.openstack.common.fileutils.delete_if_exists', fake_rm_on_errror)
 
         context = 'opaque context'
         image_id = '4'

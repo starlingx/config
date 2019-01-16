@@ -159,11 +159,7 @@ class AppOperator(object):
         from six.moves.urllib.error import HTTPError
         from six.moves.urllib.error import URLError
         from socket import timeout as socket_timeout
-
-        try:
-            import urlparse
-        except ImportError:
-            from urllib2 import urlparse
+        from six.moves.urllib.parse import urlparse
 
         def _handle_download_failure(reason):
             raise exception.KubeAppUploadFailure(

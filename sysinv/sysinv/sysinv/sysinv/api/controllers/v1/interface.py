@@ -205,7 +205,7 @@ class Interface(base.APIBase):
     "Represent the networks of the interface"
 
     def __init__(self, **kwargs):
-        self.fields = objects.interface.fields.keys()
+        self.fields = list(objects.interface.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

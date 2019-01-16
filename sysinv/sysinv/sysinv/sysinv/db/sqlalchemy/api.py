@@ -2311,7 +2311,7 @@ class Connection(api.Connection):
 
                 obj = self._interface_get(models.Interfaces, interface_id)
 
-                for k, v in values.items():
+                for k, v in list(values.items()):
                     if k == 'networktype' and v == constants.NETWORK_TYPE_NONE:
                         v = None
                     if k == 'datanetworks' and v == 'none':

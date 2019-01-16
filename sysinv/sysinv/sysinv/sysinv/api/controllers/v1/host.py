@@ -540,7 +540,7 @@ class Host(base.APIBase):
     "The iscsi initiator name (only used for worker hosts)"
 
     def __init__(self, **kwargs):
-        self.fields = objects.host.fields.keys()
+        self.fields = list(objects.host.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

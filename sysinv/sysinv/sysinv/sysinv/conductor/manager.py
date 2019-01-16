@@ -136,7 +136,7 @@ CONFIG_CONTROLLER_FINI_FLAG = os.path.join(tsc.VOLATILE_PATH,
 CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
 
 # configuration UUID reboot required flag (bit)
-CONFIG_REBOOT_REQUIRED = (1 << 127L)
+CONFIG_REBOOT_REQUIRED = (1 << 127)
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 

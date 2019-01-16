@@ -365,10 +365,10 @@ class VlanInterface(Interface):
 
     def getNetworkMap(self):
         return {
-                'dataclassNetwork': lambda (node): DataclassNetwork(node),
-                'infraNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
-                'oamNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
-                'mgmtNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)
+                'dataclassNetwork': lambda node: DataclassNetwork(node),
+                'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
+                'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
+                'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)
         }
 
     @staticmethod

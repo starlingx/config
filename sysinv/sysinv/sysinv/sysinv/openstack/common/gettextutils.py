@@ -25,13 +25,16 @@ Usual usage in an openstack.common module:
 
 import gettext
 import os
-
+import six
 _localedir = os.environ.get('sysinv'.upper() + '_LOCALEDIR')
 _t = gettext.translation('sysinv', localedir=_localedir, fallback=True)
 
 
 def _(msg):
-    return _t.ugettext(msg)
+    if six.PY2:
+        return _t.ugettext(msg)
+    if six.PY3:
+        return _t.gettext(msg)
 
 
 def install(domain):
@@ -45,6 +48,10 @@ def install(domain):
     a translation-domain-specific environment variable (e.g.
     NOVA_LOCALEDIR).
     """
-    gettext.install(domain,
-                    localedir=os.environ.get(domain.upper() + '_LOCALEDIR'),
-                    unicode=True)
+    if six.PY2:
+        gettext.install(domain,
+                        localedir=os.environ.get(domain.upper() + '_LOCALEDIR'),
+                        unicode=True)
+    if six.PY3:
+        gettext.install(domain,
+                        localedir=os.environ.get(domain.upper() + '_LOCALEDIR'))

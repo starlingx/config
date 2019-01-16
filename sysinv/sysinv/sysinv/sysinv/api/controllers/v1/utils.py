@@ -55,7 +55,10 @@ def validate_limit(limit):
     if limit and limit < 0:
         raise wsme.exc.ClientSideError(_("Limit must be positive"))
 
-    return min(CONF.api_limit_max, limit) or CONF.api_limit_max
+    if limit:
+        return min(CONF.api_limit_max, limit) or CONF.api_limit_max
+    else:
+        return CONF.api_limit_max
 
 
 def validate_sort_dir(sort_dir):

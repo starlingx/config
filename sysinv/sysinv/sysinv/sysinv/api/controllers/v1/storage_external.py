@@ -111,7 +111,7 @@ class StorageExternal(base.APIBase):
                     'services': None,
                     'confirmed': False}
 
-        self.fields = objects.storage_external.fields.keys()
+        self.fields = list(objects.storage_external.fields.keys())
 
         # 'confirmed' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)

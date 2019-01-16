@@ -549,7 +549,8 @@ def sanitize_hostname(hostname):
     """Return a hostname which conforms to RFC-952 and RFC-1123 specs."""
     if isinstance(hostname, six.string_types):
         hostname = hostname.encode('latin-1', 'ignore')
-
+    if six.PY3:
+        hostname = hostname.decode()
     hostname = re.sub('[ _]', '-', hostname)
     hostname = re.sub('[^\w.-]+', '', hostname)
     hostname = hostname.lower()
@@ -595,7 +596,9 @@ def hash_file(file_like_object):
     """Generate a hash for the contents of a file."""
     checksum = hashlib.sha1()
     for chunk in iter(lambda: file_like_object.read(32768), b''):
-        checksum.update(chunk)
+        encoded_chunk = (chunk.encode(encoding='utf-8')
+                        if isinstance(chunk, six.string_types) else chunk)
+        checksum.update(encoded_chunk)
     return checksum.hexdigest()
 
 

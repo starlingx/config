@@ -119,7 +119,7 @@ class StorageCephExternal(base.APIBase):
                     'confirmed': False,
                     'ceph_conf': None}
 
-        self.fields = objects.storage_ceph_external.fields.keys()
+        self.fields = list(objects.storage_ceph_external.fields.keys())
 
         # 'confirmed' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)

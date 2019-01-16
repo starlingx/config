@@ -235,7 +235,7 @@ class Profile(base.APIBase):
     tboot = wtypes.text
 
     def __init__(self, **kwargs):
-        self.fields = objects.host.fields.keys()
+        self.fields = list(objects.host.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 
@@ -3003,7 +3003,9 @@ def localstorageprofile_apply_to_host(host, profile):
         for hdisk in host.disks:
             if ((hdisk.device_path == pdisk.device_path or
                     hdisk.device_node == pdisk.device_node) and
-                    hdisk.size_mib >= pdisk.size_mib):
+                    ((hdisk.size_mib is None and pdisk.size_mib is None) or
+                     (hdisk.size_mib and pdisk.size_mib and
+                      hdisk.size_mib >= pdisk.size_mib))):
                 match = True
                 diskPairs.append((hdisk, pdisk))
                 disksUsed.append(hdisk.id)
