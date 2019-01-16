@@ -13,6 +13,7 @@ Packager: Wind River <info@windriver.com>
 URL: unknown
 
 Source0: %{name}-%{version}.tar.gz
+
 BuildArch: noarch
 
 BuildRequires: helm
@@ -26,10 +27,29 @@ StarlingX Openstack Application Helm charts
 %setup
 
 %build
-# initialize helm and stage the toolkit
-helm init --client-only
-# Host a server for the charts
+# initialize helm and build the toolkit
+# helm init --client-only does not work if there is no networking
+# The following commands do essentially the same as: helm init
+%define helm_home  %{getenv:HOME}/.helm
+mkdir  %{helm_home}
+mkdir  %{helm_home}/repository
+mkdir  %{helm_home}/repository/cache
+mkdir  %{helm_home}/repository/local
+mkdir  %{helm_home}/plugins
+mkdir  %{helm_home}/starters
+mkdir  %{helm_home}/cache
+mkdir  %{helm_home}/cache/archive
+
+# Stage a repository file that only has a local repo
+cp files/repositories.yaml %{helm_home}/repository/repositories.yaml
+
+# Stage a local repo index that can be updated by the build
+cp files/index.yaml %{helm_home}/repository/local/index.yaml
+
+# Stage helm-toolkit in the local repo
 cp  %{helm_folder}/helm-toolkit-%{toolkit_version}.tgz .
+
+# Host a server for the charts
 helm serve --repo-path . &
 helm repo rm local
 helm repo add local http://localhost:8879/charts
@@ -37,6 +57,9 @@ helm repo add local http://localhost:8879/charts
 # Make the charts. These produce a tgz file
 make nova-api-proxy
 make rbd-provisioner
+
+# terminate helm server (the last backgrounded task)
+kill %1
 
 # remove helm-toolkit. This will be packaged with openstack-helm-infra
 rm  ./helm-toolkit-%{toolkit_version}.tgz
