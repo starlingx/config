@@ -239,9 +239,6 @@ class platform::sm
   # Gnocchi
   include ::openstack::gnocchi::params
 
-  # AODH
-  include ::openstack::aodh::params
-
   # Panko
   include ::openstack::panko::params
 
@@ -315,7 +312,6 @@ class platform::sm
     $ironic_configured = false
     $magnum_configured = false
     $gnocchi_enabled   = false
-    $aodh_enabled      = false
     $panko_enabled     = false
     $barbican_enabled  = false
   } else {
@@ -324,7 +320,6 @@ class platform::sm
       $ironic_configured      = $::openstack::ironic::params::service_enabled
       $magnum_configured      = $::openstack::magnum::params::service_enabled
       $gnocchi_enabled        = $::openstack::gnocchi::params::service_enabled
-      $aodh_enabled           = $::openstack::aodh::params::service_enabled
       $panko_enabled          = $::openstack::panko::params::service_enabled
       $barbican_enabled       = $::openstack::barbican::params::service_enabled
   }
@@ -962,60 +957,41 @@ class platform::sm
       }
   }
 
-  # AODH
-  if $aodh_enabled {
+  # AODH (not enabled)
+  exec { 'Deprovision OpenStack - AODH API (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services aodh-api',
+  }
+  -> exec { 'Deprovision OpenStack - AODH API (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service aodh-api',
+  }
 
-    exec { 'Configure OpenStack - AODH API':
-      command => "sm-configure service_instance aodh-api aodh-api \"config=/etc/aodh/aodh.conf\"",
-    }
+  exec { 'Deprovision OpenStack - AODH Evaluator (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services aodh-evaluator',
+  }
+  -> exec { 'Deprovision OpenStack - AODH Evaluator (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service aodh-evaluator',
+  }
 
-    exec { 'Configure OpenStack - AODH Evaluator':
-      command => "sm-configure service_instance aodh-evaluator aodh-evaluator \"config=/etc/aodh/aodh.conf\"",
-    }
+  exec { 'Deprovision OpenStack - AODH Listener (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services aodh-listener',
+  }
+  -> exec { 'Deprovision OpenStack - AODH Listener (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service aodh-listener',
+  }
 
-    exec { 'Configure OpenStack - AODH Listener':
-      command => "sm-configure service_instance aodh-listener aodh-listener \"config=/etc/aodh/aodh.conf\"",
-    }
-
-    exec { 'Configure OpenStack - AODH Notifier':
-      command => "sm-configure service_instance aodh-notifier aodh-notifier \"config=/etc/aodh/aodh.conf\"",
-    }
-  } else {
-      exec { 'Deprovision OpenStack - AODH API (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services aodh-api',
-      }
-      -> exec { 'Deprovision OpenStack - AODH API (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service aodh-api',
-      }
-
-      exec { 'Deprovision OpenStack - AODH Evaluator (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services aodh-evaluator',
-      }
-      -> exec { 'Deprovision OpenStack - AODH Evaluator (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service aodh-evaluator',
-      }
-
-      exec { 'Deprovision OpenStack - AODH Listener (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services aodh-listener',
-      }
-      -> exec { 'Deprovision OpenStack - AODH Listener (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service aodh-listener',
-      }
-
-      exec { 'Deprovision OpenStack - AODH Notifier (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services aodh-notifier',
-      }
-      -> exec { 'Deprovision OpenStack - AODH Notifier (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service aodh-notifier',
-      }
+  exec { 'Deprovision OpenStack - AODH Notifier (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services aodh-notifier',
+  }
+  -> exec { 'Deprovision OpenStack - AODH Notifier (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service aodh-notifier',
   }
 
   # Panko
