@@ -11,6 +11,7 @@
 
 import docker
 import grp
+import keyring
 import os
 import pwd
 import re
@@ -57,6 +58,8 @@ INSTALLATION_TIMEOUT = 3600
 MAX_DOWNLOAD_THREAD = 20
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
+DOCKER_REGISTRY_USER = 'admin'
+DOCKER_REGISTRY_SERVICE = 'CGCS'
 
 
 # Helper functions
@@ -96,6 +99,16 @@ def get_app_install_root_path_ownership():
     gid = os.stat(constants.APP_INSTALL_ROOT_PATH).st_gid
     return (uid, gid)
 
+
+def get_docker_registry_authentication():
+    docker_registry_user_password = keyring.get_password(
+        DOCKER_REGISTRY_SERVICE, DOCKER_REGISTRY_USER)
+    if not docker_registry_user_password:
+        raise exception.DockerRegistryCredentialNotFound(
+            name=DOCKER_REGISTRY_USER)
+
+    return dict(username=DOCKER_REGISTRY_USER,
+        password=docker_registry_user_password)
 
 Chart = namedtuple('Chart', 'name namespace')
 
@@ -1205,8 +1218,9 @@ class DockerHelper(object):
         try:
             # Pull image from local docker registry
             LOG.info("Image %s download started from local registry" % loc_img_tag)
+            docker_registry_auth = get_docker_registry_authentication()
             client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
-            client.pull(loc_img_tag)
+            client.pull(loc_img_tag, auth_config=docker_registry_auth)
         except docker.errors.NotFound:
             try:
                 # Image is not available in local docker registry, get the image
@@ -1216,7 +1230,7 @@ class DockerHelper(object):
                 pub_img_tag = loc_img_tag[1 + loc_img_tag.find('/'):]
                 client.pull(pub_img_tag)
                 client.tag(pub_img_tag, loc_img_tag)
-                client.push(loc_img_tag)
+                client.push(loc_img_tag, auth_config=docker_registry_auth)
             except Exception as e:
                 rc = False
                 LOG.error("Image %s download failed from public registry: %s" % (pub_img_tag, e))
