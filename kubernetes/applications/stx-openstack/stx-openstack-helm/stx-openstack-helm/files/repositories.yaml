@@ -1,0 +1,12 @@
+apiVersion: v1
+generated: 2019-01-02T15:19:36.215111369-06:00
+repositories:
+- caFile: ""
+  cache: /builddir/.helm/repository/cache/local-index.yaml
+  certFile: ""
+  keyFile: ""
+  name: local
+  password: ""
+  url: http://127.0.0.1:8879/charts
+  username: ""
+
