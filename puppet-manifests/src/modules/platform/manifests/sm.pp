@@ -15,6 +15,9 @@ class platform::sm
   $system_mode                   = $::platform::params::system_mode
   $system_type                   = $::platform::params::system_type
 
+  include ::platform::kubernetes::params
+  $kubernetes_enabled            = $::platform::kubernetes::params::enabled
+
   include ::platform::network::pxeboot::params
   if $::platform::network::pxeboot::params::interface_name {
     $pxeboot_ip_interface = $::platform::network::pxeboot::params::interface_name
@@ -30,8 +33,13 @@ class platform::sm
   $mgmt_ip_param_ip              = $::platform::network::mgmt::params::controller_address
   $mgmt_ip_param_mask            = $::platform::network::mgmt::params::subnet_prefixlen
 
-  include ::platform::network::infra::params
-  $infra_ip_interface            = $::platform::network::infra::params::interface_name
+  if $kubernetes_enabled {
+    # Repurposing the infra interface for cluster-host interface
+    include ::platform::network::cluster_host::params
+    $infra_ip_interface          = $::platform::network::cluster_host::params::interface_name
+  } else {
+    $infra_ip_interface          = $::platform::network::infra::params::interface_name
+  }
 
   include ::platform::network::oam::params
   $oam_ip_interface              = $::platform::network::oam::params::interface_name
@@ -113,9 +121,6 @@ class platform::sm
   $rabbitmq_server = '/usr/lib/rabbitmq/bin/rabbitmq-server'
   $rabbitmqctl     = '/usr/lib/rabbitmq/bin/rabbitmqctl'
 
-  include ::platform::kubernetes::params
-  $kubernetes_enabled             = $::platform::kubernetes::params::enabled
-
   include ::platform::mtce::params
   $sm_client_port                 = $::platform::mtce::params::sm_client_port
   $sm_server_port                 = $::platform::mtce::params::sm_server_port
@@ -129,14 +134,14 @@ class platform::sm
   $platform_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
 
   # CGCS NFS network is over the infrastructure network if configured
-  if $infra_ip_interface {
-    $cgcs_nfs_ip_interface   = $::platform::network::infra::params::interface_name
-    $cgcs_nfs_ip_param_ip    = $::platform::network::infra::params::cgcs_nfs_address
-    $cgcs_nfs_ip_network_url = $::platform::network::infra::params::subnet_network_url
-    $cgcs_nfs_ip_param_mask  = $::platform::network::infra::params::subnet_prefixlen
+  if $infra_ip_interface and $kubernetes_enabled != true {
+      $cgcs_nfs_ip_interface   = $::platform::network::infra::params::interface_name
+      $cgcs_nfs_ip_param_ip    = $::platform::network::infra::params::cgcs_nfs_address
+      $cgcs_nfs_ip_network_url = $::platform::network::infra::params::subnet_network_url
+      $cgcs_nfs_ip_param_mask  = $::platform::network::infra::params::subnet_prefixlen
 
-    $cinder_ip_interface     = $::platform::network::infra::params::interface_name
-    $cinder_ip_param_mask    = $::platform::network::infra::params::subnet_prefixlen
+      $cinder_ip_interface     = $::platform::network::infra::params::interface_name
+      $cinder_ip_param_mask    = $::platform::network::infra::params::subnet_prefixlen
   } else {
     $cgcs_nfs_ip_interface   = $::platform::network::mgmt::params::interface_name
     $cgcs_nfs_ip_param_ip    = $::platform::network::mgmt::params::cgcs_nfs_address
@@ -247,6 +252,10 @@ class platform::sm
     $hostunit = '0'
     $management_my_unit_ip   = $::platform::network::mgmt::params::controller0_address
     $oam_my_unit_ip          = $::platform::network::oam::params::controller_address
+    if $kubernetes_enabled {
+      # Repurposing the infra interface for cluster-host interface
+      $infra_my_unit_ip = $::platform::network::cluster_host::params::controller_address
+    }
   } else {
     case $::hostname {
       $controller_0_hostname: {
@@ -255,8 +264,14 @@ class platform::sm
         $management_peer_unit_ip = $::platform::network::mgmt::params::controller1_address
         $oam_my_unit_ip          = $::platform::network::oam::params::controller0_address
         $oam_peer_unit_ip        = $::platform::network::oam::params::controller1_address
-        $infra_my_unit_ip        = $::platform::network::infra::params::controller0_address
-        $infra_peer_unit_ip      = $::platform::network::infra::params::controller1_address
+        if $kubernetes_enabled {
+          # Repurposing the infra interface for cluster-host interface
+          $infra_my_unit_ip = $::platform::network::cluster_host::params::controller0_address
+          $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller1_address
+        } else {
+          $infra_my_unit_ip = $::platform::network::infra::params::controller0_address
+          $infra_peer_unit_ip = $::platform::network::infra::params::controller1_address
+        }
       }
       $controller_1_hostname: {
         $hostunit = '1'
@@ -264,8 +279,14 @@ class platform::sm
         $management_peer_unit_ip = $::platform::network::mgmt::params::controller0_address
         $oam_my_unit_ip          = $::platform::network::oam::params::controller1_address
         $oam_peer_unit_ip        = $::platform::network::oam::params::controller0_address
-        $infra_my_unit_ip        = $::platform::network::infra::params::controller1_address
-        $infra_peer_unit_ip      = $::platform::network::infra::params::controller0_address
+        if $kubernetes_enabled {
+          # Repurposing the infra interface for cluster-host interface
+          $infra_my_unit_ip = $::platform::network::cluster_host::params::controller1_address
+          $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller0_address
+        } else {
+          $infra_my_unit_ip = $::platform::network::infra::params::controller1_address
+          $infra_peer_unit_ip = $::platform::network::infra::params::controller0_address
+        }
       }
       default: {
         $hostunit = '2'
@@ -325,12 +346,24 @@ class platform::sm
     exec { 'Configure Management Interface':
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
-  } else {
-      exec { 'Configure OAM Interface':
-        command => "sm-configure interface controller oam-interface \"\" ${oam_my_unit_ip} 2222 2223 ${oam_peer_unit_ip} 2222 2223",
+
+    if $kubernetes_enabled {
+      exec { 'Configure Cluster Host Interface':
+        command => "sm-configure interface controller infrastructure-interface \"\" ${infra_my_unit_ip} 2222 2223 \"\" 2222 2223",
       }
+    }
+
+  } else {
+    exec { 'Configure OAM Interface':
+      command => "sm-configure interface controller oam-interface \"\" ${oam_my_unit_ip} 2222 2223 ${oam_peer_unit_ip} 2222 2223",
+    }
     exec { 'Configure Management Interface':
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 ${management_peer_unit_ip} 2222 2223",
+    }
+    if $kubernetes_enabled or $infra_ip_interface {
+      exec { 'Configure Infrastructure Interface':
+        command => "sm-configure interface controller infrastructure-interface ${infra_ip_multicast} ${infra_my_unit_ip} 2222 2223 ${infra_peer_unit_ip} 2222 2223",
+      }
     }
   }
 
@@ -1145,12 +1178,6 @@ class platform::sm
 
   exec { 'Configure Open LDAP':
     command => "sm-configure service_instance open-ldap open-ldap \"\"",
-  }
-
-  if $infra_ip_interface {
-    exec { 'Configure Infrastructure Interface':
-      command => "sm-configure interface controller infrastructure-interface ${infra_ip_multicast} ${infra_my_unit_ip} 2222 2223 ${infra_peer_unit_ip} 2222 2223",
-    }
   }
 
   if $system_mode == 'duplex-direct' or $system_mode == 'duplex' {

@@ -223,7 +223,7 @@ class platform::filesystem::storage {
 
   if $::platform::kubernetes::params::enabled {
     class {'platform::filesystem::docker::params' :
-      lv_size => 10
+      lv_size => 30
     }
     -> class {'platform::filesystem::docker' :
     }
@@ -239,7 +239,7 @@ class platform::filesystem::compute {
 
   if $::platform::kubernetes::params::enabled {
     class {'platform::filesystem::docker::params' :
-      fs_use_all => true
+      lv_size => 30
     }
     -> class {'platform::filesystem::docker' :
     }

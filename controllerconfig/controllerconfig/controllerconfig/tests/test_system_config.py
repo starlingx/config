@@ -387,6 +387,46 @@ def test_system_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
 
+    # Test overlap of CLUSTER_NETWORK CIDR
+    system_config = cr.parse_system_config(lag_vlan_systemfile)
+    system_config.set('CLUSTER_NETWORK', 'CIDR', '192.168.203.0/26')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    system_config.set('CLUSTER_NETWORK', 'CIDR', '192.168.204.0/26')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test invalid CLUSTER_NETWORK LAG_MODE
+    system_config = cr.parse_system_config(lag_vlan_systemfile)
+    system_config.add_section('LOGICAL_INTERFACE_2')
+    system_config.set('LOGICAL_INTERFACE_2', 'LAG_INTERFACE', 'Y')
+    system_config.set('LOGICAL_INTERFACE_2', 'LAG_MODE', '3')
+    system_config.set('LOGICAL_INTERFACE_2', 'INTERFACE_MTU', '1500')
+    system_config.set('LOGICAL_INTERFACE_2', 'INTERFACE_PORTS', 'eth3,eth4')
+    system_config.set('CLUSTER_NETWORK', 'LOGICAL_INTERFACE',
+                      'LOGICAL_INTERFACE_2')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test CLUSTER_NETWORK VLAN overlap
+    system_config = cr.parse_system_config(lag_vlan_systemfile)
+    system_config.set('CLUSTER_NETWORK', 'VLAN', '123')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
     # Test overlap of OAM_NETWORK CIDR
     system_config = cr.parse_system_config(lag_vlan_systemfile)
     system_config.set('OAM_NETWORK', 'CIDR', '192.168.203.0/26')
@@ -562,5 +602,48 @@ def test_pxeboot_range():
     # Test detection of PXEBoot network range less than min required (8)
     system_config = cr.parse_system_config(systemfile)
     system_config.set('PXEBOOT_NETWORK', 'IP_END_ADDRESS', '128.123.122.34')
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+
+def test_cluster_network():
+    """ Test import of system_config file for cluster network address """
+
+    # Create the path to the system_config file
+    systemfile = os.path.join(
+        os.getcwd(), "controllerconfig/tests/files/", "system_config.cluster")
+
+    # Test import and generation of answer file
+    _test_system_config(systemfile)
+
+    # Test CLUSTER_NETWORK start address specified without end address
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('CLUSTER_NETWORK', 'IP_START_ADDRESS', '192.168.204.2')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test CLUSTER_NETWORK end address specified without start address
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('CLUSTER_NETWORK', 'IP_END_ADDRESS', '192.168.204.200')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
+    with pytest.raises(exceptions.ConfigFail):
+        validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test detection of overspecification of CLUSTER network addresses
+    system_config = cr.parse_system_config(systemfile)
+    system_config.set('CLUSTER_NETWORK', 'IP_FLOATING_ADDRESS',
+                      '192.168.206.103')
+    system_config.set('CLUSTER_NETWORK', 'IP_IP_UNIT_0_ADDRESS',
+                      '192.168.206.106')
+    system_config.set('CLUSTER_NETWORK', 'IP_IP_UNIT_1_ADDRESS',
+                      '192.168.206.109')
+    with pytest.raises(exceptions.ConfigFail):
+        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                                   validate_only=True)
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)

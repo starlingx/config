@@ -700,16 +700,16 @@ class openstack::cinder::post
     file { $initial_cinder_ceph_config_flag:
       ensure => present
     }
+  }
 
-    # To workaround an upstream bug in rbd code, we need to create
-    # an empty file /etc/ceph/ceph.client.None.keyring in order to
-    # do cinder backup and restore.
-    file { '/etc/ceph/ceph.client.None.keyring':
-      ensure => file,
-      owner  => 'root',
-      group  => 'root',
-      mode   => '0644',
-    }
+  # To workaround an upstream bug in rbd code, we need to create
+  # an empty file /etc/ceph/ceph.client.None.keyring in order to
+  # do cinder backup and restore.
+  file { '/etc/ceph/ceph.client.None.keyring':
+    ensure => file,
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0644',
   }
 
   if $is_node_cinder_lvm {

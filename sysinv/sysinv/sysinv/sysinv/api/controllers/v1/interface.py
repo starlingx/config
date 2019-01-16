@@ -64,6 +64,7 @@ VALID_NETWORK_TYPES = [constants.NETWORK_TYPE_NONE,
                        constants.NETWORK_TYPE_OAM,
                        constants.NETWORK_TYPE_MGMT,
                        constants.NETWORK_TYPE_INFRA,
+                       constants.NETWORK_TYPE_CLUSTER_HOST,
                        constants.NETWORK_TYPE_DATA,
                        constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                        constants.NETWORK_TYPE_PCI_SRIOV]
@@ -698,6 +699,8 @@ class InterfaceController(rest.RestController):
                 _update_host_mgmt_address(ihost, interface)
             if constants.NETWORK_TYPE_INFRA in networktypelist:
                 _update_host_infra_address(ihost, interface)
+            if constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist:
+                _update_host_cluster_address(ihost, interface)
             if ihost['personality'] == constants.CONTROLLER:
                 if constants.NETWORK_TYPE_OAM in networktypelist:
                     _update_host_oam_address(ihost, interface)
@@ -1385,10 +1388,8 @@ def _check_interface_data(op, interface, ihost, existing_interface):
     # Make sure interface type is valid
     supported_type = [constants.INTERFACE_TYPE_AE,
                       constants.INTERFACE_TYPE_VLAN,
-                      constants.INTERFACE_TYPE_ETHERNET]
-    # only allows add operation for the virtual interface
-    if op == 'add':
-        supported_type.append(constants.INTERFACE_TYPE_VIRTUAL)
+                      constants.INTERFACE_TYPE_ETHERNET,
+                      constants.INTERFACE_TYPE_VIRTUAL]
     if not iftype or iftype not in supported_type:
         msg = (_("Device interface type must be one of "
                  "{}").format(', '.join(supported_type)))
@@ -1706,7 +1707,8 @@ def _delete_addressing(interface, family, existing_interface):
                 interface['id']
             )
         elif ((orig_networktype != constants.NETWORK_TYPE_MGMT) and
-                  (orig_networktype != constants.NETWORK_TYPE_INFRA)):
+              (orig_networktype != constants.NETWORK_TYPE_CLUSTER_HOST) and
+              (orig_networktype != constants.NETWORK_TYPE_INFRA)):
             pecan.request.dbapi.addresses_destroy_by_interface(
                 interface_id, family)
     pecan.request.dbapi.address_modes_destroy_by_interface(
@@ -1866,6 +1868,14 @@ def _update_host_oam_address(host, interface):
 def _update_host_pxeboot_address(host, interface):
     address_name = cutils.format_address_name(host.hostname,
                                               constants.NETWORK_TYPE_PXEBOOT)
+    address = pecan.request.dbapi.address_get_by_name(address_name)
+    updates = {'interface_id': interface['id']}
+    pecan.request.dbapi.address_update(address.uuid, updates)
+
+
+def _update_host_cluster_address(host, interface):
+    address_name = cutils.format_address_name(
+        host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
     address = pecan.request.dbapi.address_get_by_name(address_name)
     updates = {'interface_id': interface['id']}
     pecan.request.dbapi.address_update(address.uuid, updates)
@@ -2329,11 +2339,15 @@ def _create(interface, from_profile=False):
                         _update_host_mgmt_address(ihost, new_interface.as_dict())
                     elif network.type == constants.NETWORK_TYPE_INFRA:
                         _update_host_infra_address(ihost, new_interface.as_dict())
+                    elif network.type == constants.NETWORK_TYPE_CLUSTER_HOST:
+                        _update_host_cluster_address(ihost,
+                                                     new_interface.as_dict())
                     if ihost['personality'] == constants.CONTROLLER:
                         if network.type == constants.NETWORK_TYPE_OAM:
                             _update_host_oam_address(ihost, new_interface.as_dict())
                         elif network.type == constants.NETWORK_TYPE_PXEBOOT:
                             _update_host_pxeboot_address(ihost, new_interface.as_dict())
+
         except Exception as e:
             LOG.exception(
                 "Failed to add static infrastructure interface address: "

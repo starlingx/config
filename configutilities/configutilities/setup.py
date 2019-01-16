@@ -11,7 +11,7 @@ from setuptools import find_packages
 setup(
     name='configutilities',
     description='Configuration File Validator',
-    version='3.0.2',
+    version='3.1.0',
     license='Apache-2.0',
     platforms=['any'],
     provides=['configutilities'],

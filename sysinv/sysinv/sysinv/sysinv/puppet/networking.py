@@ -22,6 +22,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_mgmt_network_config())
         config.update(self._get_infra_network_config())
         config.update(self._get_oam_network_config())
+        config.update(self._get_cluster_network_config())
         return config
 
     def get_host_config(self, host):
@@ -29,6 +30,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_pxeboot_interface_config())
         config.update(self._get_mgmt_interface_config())
         config.update(self._get_infra_interface_config())
+        config.update(self._get_cluster_interface_config())
         if host.personality == constants.CONTROLLER:
             config.update(self._get_oam_interface_config())
         return config
@@ -86,6 +88,11 @@ class NetworkingPuppet(base.BasePuppet):
                 cgcs_nfs_address,
         })
 
+        return config
+
+    def _get_cluster_network_config(self):
+        networktype = constants.NETWORK_TYPE_CLUSTER_HOST
+        config = self._get_network_config(networktype)
         return config
 
     def _get_oam_network_config(self):
@@ -147,6 +154,10 @@ class NetworkingPuppet(base.BasePuppet):
         controller_address_url = self._format_url_address(controller_address)
         subnet_network_url = self._format_url_address(subnet_network)
 
+        # Convert the dash to underscore because puppet parameters cannot have
+        # dashes
+        networktype = networktype.replace('-', '_')
+
         return {
             'platform::network::%s::params::subnet_version' % networktype:
                 subnet_version,
@@ -184,6 +195,9 @@ class NetworkingPuppet(base.BasePuppet):
     def _get_oam_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_OAM)
 
+    def _get_cluster_interface_config(self):
+        return self._get_interface_config(constants.NETWORK_TYPE_CLUSTER_HOST)
+
     def _get_interface_config(self, networktype):
         config = {}
 
@@ -195,6 +209,9 @@ class NetworkingPuppet(base.BasePuppet):
                 self.context, network_interface)
             network_id = interface.find_network_id_by_networktype(
                 self.context, networktype)
+            # Convert the dash to underscore because puppet parameters cannot
+            # have dashes
+            networktype = networktype.replace('-', '_')
             config.update({
                 'platform::network::%s::params::interface_name' % networktype:
                     interface_name

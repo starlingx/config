@@ -131,3 +131,8 @@ dhcp-leasefile=<%= @config_path %>/dnsmasq.leases
 addn-hosts=<%= @config_path %>/dnsmasq.addn_hosts
 # File for distributed cloud subcloud ip translation
 addn-hosts=<%= @config_path %>/dnsmasq.addn_hosts_dc
+
+# Set server to Kubernetes coredns cluster IP
+<%- if @dns_service_ip != nil -%>
+server=/<%= @service_domain %>/<%= @dns_service_ip %>
+<%- end -%>

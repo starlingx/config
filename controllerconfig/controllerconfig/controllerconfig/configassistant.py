@@ -441,6 +441,26 @@ class ConfigAssistant():
         self.external_oam_address_1 = IPAddress("10.10.10.4")
         self.oamcontroller_floating_hostname = "oamcontroller"
 
+        # Kubernetes cluster network config
+        self.cluster_host_interface_configured = False
+        self.cluster_host_interface_name = self.management_interface_name
+        self.cluster_host_interface = self.management_interface
+        self.cluster_host_vlan = ""
+        self.cluster_host_mtu = constants.LINK_MTU_DEFAULT
+        self.lag_cluster_host_interface = False
+        self.lag_cluster_host_interface_member0 = ""
+        self.lag_cluster_host_interface_member1 = ""
+        self.lag_cluster_host_interface_policy = \
+            constants.LAG_MODE_ACTIVE_BACKUP
+        self.lag_cluster_host_interface_txhash = ""
+        self.lag_cluster_host_interface_miimon = \
+            constants.LAG_MIIMON_FREQUENCY
+        self.cluster_host_subnet = IPNetwork("192.168.206.0/24")
+
+        # Will be configurable in the future
+        self.cluster_pod_subnet = IPNetwork("172.16.0.0/16")
+        self.cluster_service_subnet = IPNetwork("10.96.0.0/12")
+
         # SDN config
         self.enable_sdn = False
         # HTTPS
@@ -740,7 +760,12 @@ class ConfigAssistant():
             (self.external_oam_interface_configured and
              self.lag_external_oam_interface and
              (interface_name == self.lag_external_oam_interface_member0 or
-              interface_name == self.lag_external_oam_interface_member1))):
+              interface_name == self.lag_external_oam_interface_member1))
+            or
+            (self.cluster_host_interface_configured and
+             self.lag_cluster_host_interface and
+             (interface_name == self.lag_cluster_host_interface_member0 or
+              interface_name == self.lag_cluster_host_interface_member1))):
             return True
         else:
             return False
@@ -757,7 +782,9 @@ class ConfigAssistant():
             (self.infrastructure_interface_configured and
              interface_name == self.infrastructure_interface) or
             (self.external_oam_interface_configured and
-             interface_name == self.external_oam_interface)):
+             interface_name == self.external_oam_interface) or
+            (self.cluster_host_interface_configured and
+             interface_name == self.cluster_host_interface)):
             return True
         else:
             return False
@@ -1294,11 +1321,18 @@ class ConfigAssistant():
                 break
         while True:
             print('')
-            print(textwrap.fill(
-                "IP addresses can be assigned to hosts dynamically or "
-                "a static IP address can be specified for each host. "
-                "This choice applies to both the management network "
-                "and infrastructure network (if configured). ", 80))
+            if self.kubernetes:
+                print(textwrap.fill(
+                    "IP addresses can be assigned to hosts dynamically or "
+                    "a static IP address can be specified for each host. "
+                    "This choice applies to both the management network "
+                    "and cluster-host network. ", 80))
+            else:
+                print(textwrap.fill(
+                    "IP addresses can be assigned to hosts dynamically or "
+                    "a static IP address can be specified for each host. "
+                    "This choice applies to both the management network "
+                    "and infrastructure network (if configured). ", 80))
             print(textwrap.fill(
                 "Warning: Selecting 'N', or static IP address allocation, "
                 "disables automatic provisioning of new hosts in System "
@@ -2331,6 +2365,307 @@ class ConfigAssistant():
         """ External OAM interface configuration complete"""
         self.external_oam_interface_configured = True
 
+    def is_valid_cluster_host_address(self, ip_address):
+        """Determine whether cluster host address is valid."""
+        if ip_address == self.cluster_host_subnet.network:
+            print("Cannot use network address")
+            return False
+        elif ip_address == self.cluster_host_subnet.broadcast:
+            print("Cannot use broadcast address")
+            return False
+        elif ip_address.is_multicast():
+            print("Invalid network address - multicast address not allowed")
+            return False
+        elif ip_address.is_loopback():
+            print("Invalid network address - loopback address not allowed")
+            return False
+        elif ip_address not in self.cluster_host_subnet:
+            print("Address must be in the cluster host subnet")
+            return False
+        else:
+            return True
+
+    def input_cluster_host_config(self):
+        """Allow user to input cluster-host config and perform validation."""
+
+        print("\nCluster Host Network:")
+        print("-----------------------\n")
+
+        print((textwrap.fill(
+            "The cluster host network is used for internal communication "
+            "between Kubernetes clusters. "
+            "IP addresses on this network are reachable only within the data "
+            "center.", 80)))
+        print('')
+        print(textwrap.fill(
+            "If a separate cluster host interface is not configured the "
+            "management network will be used.", 80))
+        print('')
+
+        while True:
+            print('')
+            print(textwrap.fill(
+                "An cluster host bond interface provides redundant "
+                "connections for the cluster host network.", 80))
+            print('')
+            user_input = input(
+                "Cluster host interface link aggregation [y/N]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input.lower() == 'y':
+                self.lag_cluster_host_interface = True
+                break
+            elif user_input.lower() in ('n', ''):
+                self.lag_cluster_host_interface = False
+                break
+            else:
+                print("Invalid choice")
+                continue
+
+        while True:
+            if self.lag_cluster_host_interface:
+                self.cluster_host_interface = self.get_next_lag_name()
+
+            user_input = input("Cluster host interface [" +
+                               str(self.management_interface) + "]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input == '':
+                user_input = self.management_interface
+                if user_input == '':
+                    print("Invalid interface")
+                    continue
+            elif self.lag_cluster_host_interface:
+                print(textwrap.fill(
+                    "Warning: The default name for the cluster host bond "
+                    "interface (%s) cannot be changed." %
+                    self.cluster_host_interface, 80))
+                print('')
+                user_input = self.cluster_host_interface
+
+            if self.is_interface_in_bond(user_input):
+                print(textwrap.fill(
+                    "Interface is already configured as part of an "
+                    "aggregated interface.", 80))
+                continue
+            elif self.lag_cluster_host_interface:
+                self.cluster_host_interface = user_input
+                self.cluster_host_interface_name = user_input
+                break
+            elif interface_exists(user_input):
+                self.cluster_host_interface = user_input
+                self.cluster_host_interface_name = user_input
+                break
+            else:
+                print("Interface does not exist")
+                continue
+
+        while True:
+            user_input = input(
+                "Configure an cluster host VLAN [y/N]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input.lower() == 'y':
+                while True:
+                    user_input = input(
+                        "Cluster host VLAN Identifier [" +
+                        str(self.cluster_host_vlan) + "]: ")
+                    if user_input.lower() == 'q':
+                        raise UserQuit
+                    elif is_valid_vlan(user_input):
+                        self.cluster_host_vlan = user_input
+                        self.cluster_host_interface_name = \
+                            self.cluster_host_interface + '.' + \
+                            self.cluster_host_vlan
+                        break
+                    else:
+                        print("VLAN is invalid/unsupported")
+                        continue
+                break
+            elif user_input.lower() in ('n', ''):
+                self.cluster_host_vlan = ""
+                break
+            else:
+                print("Invalid choice")
+                continue
+
+        while True:
+            if self.cluster_host_interface == self.management_interface:
+                break
+            user_input = input("Cluster host interface MTU [" +
+                               str(self.cluster_host_mtu) + "]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input == "":
+                user_input = self.cluster_host_mtu
+
+            if (self.management_interface_configured and
+                    self.cluster_host_interface ==
+                    self.management_interface and
+                    self.cluster_host_vlan and
+                    user_input > self.management_mtu):
+                print("Cluster host VLAN MTU must not be larger than "
+                      "underlying management interface MTU")
+                continue
+            elif is_mtu_valid(user_input):
+                self.cluster_host_mtu = user_input
+                break
+            else:
+                print("MTU is invalid/unsupported")
+                continue
+
+        while True:
+            if self.cluster_host_interface == self.management_interface:
+                break
+            if not self.lag_cluster_host_interface:
+                break
+            print('')
+            print("Specify one of the bonding policies. Possible values are:")
+            print("  1) Active-backup policy")
+            print("  2) Balanced XOR policy")
+            print("  3) 802.3ad (LACP) policy")
+
+            user_input = input(
+                "\nCluster host interface bonding policy [" +
+                str(self.lag_cluster_host_interface_policy) + "]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input == '1':
+                self.lag_cluster_host_interface_policy = \
+                    constants.LAG_MODE_ACTIVE_BACKUP
+                self.lag_cluster_host_interface_txhash = None
+                break
+            elif user_input == '2':
+                self.lag_cluster_host_interface_policy = \
+                    constants.LAG_MODE_BALANCE_XOR
+                self.lag_cluster_host_interface_txhash = \
+                    constants.LAG_TXHASH_LAYER2
+                break
+            elif user_input == '3':
+                self.lag_cluster_host_interface_policy = \
+                    constants.LAG_MODE_8023AD
+                self.lag_cluster_host_interface_txhash = \
+                    constants.LAG_TXHASH_LAYER2
+                break
+            elif user_input == "":
+                break
+            else:
+                print("Invalid choice")
+                continue
+
+        while True:
+            if not self.lag_cluster_host_interface:
+                break
+            if self.cluster_host_interface == self.management_interface:
+                    break
+
+            print(textwrap.fill(
+                "A maximum of 2 physical interfaces can be attached to the "
+                "cluster host interface.", 80))
+            print('')
+
+            user_input = input(
+                "First cluster host interface member [" +
+                str(self.lag_cluster_host_interface_member0) + "]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input == "":
+                user_input = self.lag_cluster_host_interface_member0
+
+            if self.is_interface_in_bond(user_input):
+                print(textwrap.fill(
+                    "Interface is already configured as part of an "
+                    "aggregated interface.", 80))
+                continue
+            elif self.is_interface_in_use(user_input):
+                print("Interface is already in use")
+                continue
+            elif interface_exists(user_input):
+                self.lag_cluster_host_interface_member0 = user_input
+            else:
+                print("Interface does not exist")
+                self.lag_cluster_host_interface_member0 = ""
+                continue
+
+            user_input = input(
+                "Second cluster host interface member [" +
+                str(self.lag_cluster_host_interface_member1) + "]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input == "":
+                user_input = self.lag_cluster_host_interface_member1
+
+            if self.is_interface_in_bond(user_input):
+                print(textwrap.fill(
+                    "Interface is already configured as part of an "
+                    "aggregated interface.", 80))
+                continue
+            elif self.is_interface_in_use(user_input):
+                print("Interface is already in use")
+                continue
+            elif interface_exists(user_input):
+                if user_input == self.lag_cluster_host_interface_member0:
+                    print("Cannot use member 0 as member 1")
+                    continue
+                else:
+                    self.lag_cluster_host_interface_member1 = user_input
+                    break
+            else:
+                print("Interface does not exist")
+                self.lag_cluster_host_interface_member1 = ""
+                user_input = input(
+                    "Do you want a single physical member in the bond "
+                    "interface [y/n]: ")
+                if user_input.lower() == 'q':
+                    raise UserQuit
+                elif user_input.lower() == 'y':
+                    break
+                elif user_input.lower() in ('n', ''):
+                    continue
+                else:
+                    print("Invalid choice")
+                    continue
+
+        min_addresses = 8
+        while True:
+            user_input = input("Cluster subnet [" +
+                               str(self.cluster_host_subnet) + "]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input == "":
+                user_input = self.cluster_host_subnet
+
+            try:
+                ip_input = IPNetwork(user_input)
+                if ip_input.ip != ip_input.network:
+                    print("Invalid network address")
+                    continue
+                elif ip_input.size < min_addresses:
+                    print("Cluster subnet too small - "
+                          "must have at least 16 addresses")
+                    continue
+                elif ip_input.version == 6 and ip_input.prefixlen < 64:
+                    print("IPv6 minimum prefix length is 64")
+                    continue
+                elif ((self.separate_pxeboot_network and
+                       ip_input.ip in self.pxeboot_subnet) or
+                      ip_input.ip in self.management_subnet):
+                    print("Cluster host subnet overlaps with an already "
+                          "configured subnet")
+                    continue
+
+                if ip_input.size < 255:
+                    print("WARNING: Subnet allows only %d addresses."
+                          % ip_input.size)
+
+                self.cluster_host_subnet = ip_input
+                break
+            except AddrFormatError:
+                print("Invalid subnet - please enter a valid IPv4 subnet")
+
+        """ Cluster host interface configuration complete"""
+        self.cluster_host_interface_configured = True
+
     def input_authentication_config(self):
         """Allow user to input authentication config and perform validation.
         """
@@ -2375,7 +2710,6 @@ class ConfigAssistant():
         self.admin_password = "Li69nux*"
         self.management_interface_configured = True
         self.external_oam_interface_configured = True
-
         self.default_pxeboot_config()
 
         if utils.is_cpe():
@@ -2403,11 +2737,15 @@ class ConfigAssistant():
             self.input_pxeboot_config()
             self.input_management_config()
             if self.system_dc_role != \
-                    sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                    sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER \
+                    and not self.kubernetes:
                 # Disallow infrastructure network on systemcontroller,
                 # as services located on infrastructure network will not
                 # be reachable by subclouds.
+                # Disallow infrastructure network on Kubernetes configs also.
                 self.input_infrastructure_config()
+        if self.kubernetes:
+            self.input_cluster_host_config()
         self.input_external_oam_config()
         self.input_authentication_config()
 
@@ -2666,6 +3004,32 @@ class ConfigAssistant():
                 if not self.infrastructure_start_address and \
                         not self.infrastructure_end_address:
                     self.use_entire_infra_subnet = True
+
+            # Cluster network configuration
+            if self.kubernetes:
+                self.cluster_host_interface_name = config.get(
+                    'cCLUSTER', 'CLUSTER_INTERFACE_NAME')
+                self.cluster_host_interface = config.get(
+                    'cCLUSTER', 'CLUSTER_INTERFACE')
+                self.cluster_host_mtu = config.get(
+                    'cCLUSTER', 'CLUSTER_MTU')
+                self.cluster_host_vlan = ''
+                if config.has_option('cCLUSTER', 'CLUSTER_VLAN'):
+                    cvalue = config.get('cCLUSTER', 'CLUSTER_VLAN')
+                    if cvalue != 'NC':
+                        self.cluster_host_vlan = cvalue
+                self.lag_cluster_host_interface = config.getboolean(
+                    'cCLUSTER', 'LAG_CLUSTER_INTERFACE')
+                if self.lag_cluster_host_interface:
+                    self.lag_cluster_host_interface_member0 = config.get(
+                        'cCLUSTER', 'CLUSTER_BOND_MEMBER_0')
+                    self.lag_cluster_host_interface_member1 = config.get(
+                        'cCLUSTER', 'CLUSTER_BOND_MEMBER_1')
+                    self.lag_cluster_host_interface_policy = config.get(
+                        'cCLUSTER', 'CLUSTER_BOND_POLICY')
+                self.cluster_host_subnet = IPNetwork(config.get(
+                    'cCLUSTER', 'CLUSTER_SUBNET'))
+                self.cluster_host_interface_configured = True
 
             # External OAM network configuration
             self.external_oam_interface_name = config.get(
@@ -3090,6 +3454,29 @@ class ConfigAssistant():
                 print("Infrastructure end address: " +
                       str(self.infrastructure_end_address))
 
+        if self.kubernetes:
+            print("\nKubernetes Cluster Network Configuration")
+            print("----------------------------------------")
+            print("Cluster pod network subnet: " +
+                  str(self.cluster_pod_subnet.cidr))
+            print("Cluster service network subnet: " +
+                  str(self.cluster_service_subnet.cidr))
+            print("Cluster host interface name: " +
+                  self.cluster_host_interface_name)
+            print("Cluster host interface: " + self.cluster_host_interface)
+            if self.infrastructure_vlan:
+                print("Cluster host vlan: " + self.cluster_host_vlan)
+            print("Cluster host interface MTU: " + self.cluster_host_mtu)
+            if self.lag_cluster_host_interface:
+                print("Cluster host ae member 0: " +
+                      self.lag_cluster_host_interface_member0)
+                print("Cluster host ae member 1: " +
+                      self.lag_cluster_host_interface_member1)
+                print("Cluster host ae policy : " +
+                      self.lag_cluster_host_interface_policy)
+            print("Cluster host subnet: " +
+                  str(self.cluster_host_subnet.cidr))
+
         print("\nExternal OAM Network Configuration")
         print("----------------------------------")
         print("External OAM interface name: " +
@@ -3333,6 +3720,37 @@ class ConfigAssistant():
                     f.write("CONTROLLER_INFRASTRUCTURE_HOSTNAME_SUFFIX=NC\n")
                     f.write("INFRASTRUCTURE_START_ADDRESS=NC\n")
                     f.write("INFRASTRUCTURE_END_ADDRESS=NC\n")
+
+                # Cluster host network configuration
+                if self.kubernetes:
+                    f.write("\n[cCLUSTER]")
+                    f.write("\n# Cluster Host Network Configuration\n")
+                    f.write("CLUSTER_INTERFACE_NAME="
+                            + self.cluster_host_interface_name + "\n")
+                    f.write("CLUSTER_INTERFACE="
+                            + self.cluster_host_interface + "\n")
+                    if self.cluster_host_vlan:
+                        f.write("CLUSTER_VLAN="
+                                + self.cluster_host_vlan + "\n")
+                    else:
+                        f.write("CLUSTER_VLAN=NC\n")
+                    f.write("CLUSTER_MTU="
+                            + self.cluster_host_mtu + "\n")
+                    f.write("CLUSTER_SUBNET=" +
+                            str(self.cluster_host_subnet.cidr) + "\n")
+                    if self.lag_cluster_host_interface:
+                        f.write("LAG_CLUSTER_INTERFACE=yes\n")
+                        f.write("CLUSTER_BOND_MEMBER_0=" +
+                                str(self.lag_cluster_host_interface_member0)
+                                + "\n")
+                        f.write("CLUSTER_BOND_MEMBER_1=" +
+                                str(self.lag_cluster_host_interface_member1)
+                                + "\n")
+                        f.write("CLUSTER_BOND_POLICY=" +
+                                str(self.lag_cluster_host_interface_policy)
+                                + "\n")
+                    else:
+                        f.write("LAG_CLUSTER_INTERFACE=no\n")
 
                 # External OAM network configuration
                 f.write("\n[cEXT_OAM]")
@@ -4105,6 +4523,10 @@ class ConfigAssistant():
         self._populate_infra_network(client)
         self._populate_oam_network(client)
         self._populate_multicast_network(client)
+        if self.kubernetes:
+            self._populate_cluster_host_network(client)
+            self._populate_cluster_pod_network(client)
+            self._populate_cluster_service_network(client)
         if self.subcloud_config():
             self._populate_system_controller_network(client)
 
@@ -4252,6 +4674,71 @@ class ConfigAssistant():
         }
         client.sysinv.network.create(**values)
 
+    def _populate_cluster_host_network(self, client):
+
+        # set default range if not specified as part of configuration
+        self.cluster_host_subnet_start_address = self.cluster_host_subnet[2]
+        self.cluster_host_subnet_end_address = self.cluster_host_subnet[-2]
+
+        # create the address pool
+        values = {
+            'name': 'cluster-host-subnet',
+            'network': str(self.cluster_host_subnet.network),
+            'prefix': self.cluster_host_subnet.prefixlen,
+            'ranges': [(str(self.cluster_host_subnet_start_address),
+                        str(self.cluster_host_subnet_end_address))],
+        }
+        pool = client.sysinv.address_pool.create(**values)
+
+        # create the network for the pool
+        values = {
+            'type': sysinv_constants.NETWORK_TYPE_CLUSTER_HOST,
+            'name': sysinv_constants.NETWORK_TYPE_CLUSTER_HOST,
+            'dynamic': self.dynamic_address_allocation,
+            'pool_uuid': pool.uuid,
+        }
+        client.sysinv.network.create(**values)
+
+    def _populate_cluster_pod_network(self, client):
+        # create the address pool
+        values = {
+            'name': 'cluster-pod-subnet',
+            'network': str(self.cluster_pod_subnet.network),
+            'prefix': self.cluster_pod_subnet.prefixlen,
+            'ranges': [(str(self.cluster_pod_subnet[1]),
+                        str(self.cluster_pod_subnet[-2]))],
+        }
+        pool = client.sysinv.address_pool.create(**values)
+
+        # create the network for the pool
+        values = {
+            'type': sysinv_constants.NETWORK_TYPE_CLUSTER_POD,
+            'name': sysinv_constants.NETWORK_TYPE_CLUSTER_POD,
+            'dynamic': False,
+            'pool_uuid': pool.uuid,
+        }
+        client.sysinv.network.create(**values)
+
+    def _populate_cluster_service_network(self, client):
+        # create the address pool
+        values = {
+            'name': 'cluster-service-subnet',
+            'network': str(self.cluster_service_subnet.network),
+            'prefix': self.cluster_service_subnet.prefixlen,
+            'ranges': [(str(self.cluster_service_subnet[1]),
+                        str(self.cluster_service_subnet[-2]))],
+        }
+        pool = client.sysinv.address_pool.create(**values)
+
+        # create the network for the pool
+        values = {
+            'type': sysinv_constants.NETWORK_TYPE_CLUSTER_SERVICE,
+            'name': sysinv_constants.NETWORK_TYPE_CLUSTER_SERVICE,
+            'dynamic': False,
+            'pool_uuid': pool.uuid,
+        }
+        client.sysinv.network.create(**values)
+
     def _populate_network_addresses(self, client, pool, network, addresses):
         for name, address in addresses.items():
             values = {
@@ -4326,6 +4813,8 @@ class ConfigAssistant():
         self._populate_management_interface(client, controller)
         self._populate_infrastructure_interface(client, controller)
         self._populate_oam_interface(client, controller)
+        if self.kubernetes:
+            self._populate_cluster_host_interface(client, controller)
 
     def _update_interface_config(self, client, values):
         host_uuid = values.get('ihost_uuid')
@@ -4401,6 +4890,9 @@ class ConfigAssistant():
         if self.infrastructure_interface_configured:
             if ifname == self.infrastructure_interface:
                 value = max(value, self.infrastructure_mtu)
+        if self.cluster_host_interface_configured:
+            if ifname == self.cluster_host_interface:
+                value = max(value, self.cluster_host_mtu)
         if self.external_oam_interface_configured:
             if ifname == self.external_oam_interface:
                 value = max(value, self.external_oam_mtu)
@@ -4556,6 +5048,75 @@ class ConfigAssistant():
                 'vlan_id': self.infrastructure_vlan,
             }
             client.sysinv.iinterface.create(**values)
+
+    def _populate_cluster_host_interface(self, client, controller):
+        """Configure the cluster host interface(s)"""
+        network = self._get_network(client,
+                                    sysinv_constants.NETWORK_TYPE_CLUSTER_HOST)
+
+        if (self.lag_cluster_host_interface and
+            self.cluster_host_interface_name !=
+                self.management_interface_name):
+            members = [self.lag_cluster_host_interface_member0]
+            if self.lag_cluster_host_interface_member1:
+                members.append(self.lag_cluster_host_interface_member1)
+
+            aemode = self._get_interface_aemode(
+                self.lag_cluster_host_interface_policy)
+
+            txhashpolicy = self._get_interface_txhashpolicy(
+                self.lag_cluster_host_interface_policy)
+
+            values = {
+                'ihost_uuid': controller.uuid,
+                'ifname': self.cluster_host_interface,
+                'imtu': self._get_interface_mtu(self.cluster_host_interface),
+                'iftype': sysinv_constants.INTERFACE_TYPE_AE,
+                'aemode': aemode,
+                'txhashpolicy': txhashpolicy,
+                'ifclass': sysinv_constants.INTERFACE_CLASS_PLATFORM,
+                'networks': [str(network.id)],
+                'uses': members,
+            }
+            client.sysinv.iinterface.create(**values)
+        else:
+            # update MTU or network type of interface
+            values = {
+                'ihost_uuid': controller.uuid,
+                'ifname': self.cluster_host_interface,
+            }
+            values.update({
+                'imtu': self._get_interface_mtu(self.cluster_host_interface)
+            })
+            if not self.cluster_host_vlan:
+                values.update({
+                    'ifclass': sysinv_constants.INTERFACE_CLASS_PLATFORM,
+                    'networks_to_add': str(network.id),
+                })
+            self._update_interface_config(client, values)
+
+        if self.cluster_host_vlan:
+            if (self.cluster_host_interface_name !=
+                    self.management_interface_name):
+                values = {
+                    'ihost_uuid': controller.uuid,
+                    'ifname': self.cluster_host_interface_name,
+                    'imtu': self.cluster_host_mtu,
+                    'iftype': sysinv_constants.INTERFACE_TYPE_VLAN,
+                    'ifclass': sysinv_constants.INTERFACE_CLASS_PLATFORM,
+                    'networks': [str(network.id)],
+                    'uses': [self.cluster_host_interface],
+                    'vlan_id': self.cluster_host_vlan,
+                }
+                client.sysinv.iinterface.create(**values)
+            else:
+                values = {
+                    'ihost_uuid': controller.uuid,
+                    'ifname': self.cluster_host_interface_name,
+                    'ifclass': sysinv_constants.INTERFACE_CLASS_PLATFORM,
+                    'networks_to_add': str(network.id),
+                }
+                self._update_interface_config(client, values)
 
     def _populate_oam_interface(self, client, controller):
         """Configure the OAM interface(s)"""

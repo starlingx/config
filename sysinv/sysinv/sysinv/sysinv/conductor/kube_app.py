@@ -627,6 +627,7 @@ class AppOperator(object):
             controller_labels_set.add(constants.CONTROL_PLANE_LABEL)
             compute_labels_set.add(constants.COMPUTE_NODE_LABEL)
             compute_labels_set.add(constants.OPENVSWITCH_LABEL)
+            compute_labels_set.add(constants.SRIOV_LABEL)
 
         # Get controller host(s)
         controller_hosts =\

@@ -1,8 +1,11 @@
 class platform::kubernetes::params (
   $enabled = false,
   $pod_network_cidr = undef,
+  $service_network_cidr = undef,
   $apiserver_advertise_address = undef,
   $etcd_endpoint = undef,
+  $service_domain = undef,
+  $dns_service_ip = undef,
   $ca_crt = undef,
   $ca_key = undef,
   $sa_key = undef,
@@ -10,31 +13,13 @@ class platform::kubernetes::params (
 ) { }
 
 class platform::kubernetes::kubeadm {
-  $repo_file = "[kubernetes]
-    name=Kubernetes
-    baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
-    enabled=1
-    gpgcheck=1
-    repo_gpgcheck=1
-    gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
   $iptables_file = "net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1"
-
-  # Configure the kubernetes repo to allow us to download docker images for
-  # the kubernetes components. This will disappear once we have our own
-  # repo.
-  file { '/etc/yum.repos.d/kubernetes.repo':
-    ensure  => file,
-    content => $repo_file,
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0644',
-  }
 
   # Update iptables config. This is required based on:
   # https://kubernetes.io/docs/tasks/tools/install-kubeadm
   # This probably belongs somewhere else - initscripts package?
-  -> file { '/etc/sysctl.d/k8s.conf':
+  file { '/etc/sysctl.d/k8s.conf':
     ensure  => file,
     content => $iptables_file,
     owner   => 'root',
@@ -45,18 +30,13 @@ class platform::kubernetes::kubeadm {
     command => 'sysctl --system',
   }
 
-  # TODO: Update /etc/resolv.conf.k8s to be controlled by sysinv, as is done
-  # for /etc/resolv.conf.  Is should contain all the user-specified DNS
-  # servers, but not the coredns IP.
-  # Create custom resolv.conf file for kubelet
-  -> file { '/etc/resolv.conf.k8s':
-    ensure  => file,
-    content => 'nameserver 8.8.8.8',
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0644',
+  # Create manifests directory required by kubelet
+  -> file { '/etc/kubernetes/manifests':
+    ensure => directory,
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0700',
   }
-
   # Start kubelet.
   -> service { 'kubelet':
     ensure => 'running',

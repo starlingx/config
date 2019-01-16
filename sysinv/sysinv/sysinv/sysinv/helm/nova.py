@@ -90,7 +90,9 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                             'disk_allocation_ratio': 1.0,
                             'cpu_allocation_ratio': 16.0,
                             'ram_allocation_ratio': 1.0,
-                            'remove_unused_original_minimum_age_seconds': 3600
+                            'remove_unused_original_minimum_age_seconds': 3600,
+                            'enable_new_services': False,
+                            'map_new_hosts': False
                         },
                         'libvirt': {
                             'virt_type': self._get_virt_type(),
@@ -137,7 +139,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                             'soft_anti_affinity_weight_multiplier': 0.0
                         },
                         'scheduler': {
-                            'periodic_task_interval': -1
+                            'periodic_task_interval': -1,
+                            'discover_hosts_in_cells_interval': 30
                         },
                         'metrics': {
                             'required': False,
@@ -324,33 +327,35 @@ class NovaHelm(openstack.OpenstackBaseHelm):
     def _update_host_addresses(self, host, default_config, vnc_config, libvirt_config):
         interfaces = self.dbapi.iinterface_get_by_ihost(host.id)
         addresses = self.dbapi.addresses_get_by_host(host.id)
-
-        primary_infra = None
-        primary_mgmt = None
+        cluster_host_network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
+        cluster_host_iface = None
         for iface in interfaces:
-            if constants.NETWORK_TYPE_INFRA == utils.get_primary_network_type(iface):
-                primary_infra = iface
-            if constants.NETWORK_TYPE_MGMT == utils.get_primary_network_type(iface):
-                primary_mgmt = iface
+            interface_network = {'interface_id': iface.id,
+                                 'network_id': cluster_host_network.id}
+            try:
+                self.dbapi.interface_network_query(interface_network)
+                cluster_host_iface = iface
+            except exception.InterfaceNetworkNotFoundByHostInterfaceNetwork:
+                pass
 
-        migration_iface = primary_infra or primary_mgmt
-        if migration_iface is None:
+        if cluster_host_iface is None:
             return
+        cluster_host_ip = None
+        ip_family = None
         for addr in addresses:
-            if addr.interface_uuid == migration_iface.uuid:
-                migration_ip = addr.address
+            if addr.interface_uuid == cluster_host_iface.uuid:
+                cluster_host_ip = addr.address
                 ip_family = addr.family
-            if addr.interface_uuid == primary_mgmt.uuid:
-                mgmt_ip = addr.address
 
-        default_config.update({'my_ip': migration_ip})
+        default_config.update({'my_ip': cluster_host_ip})
         if ip_family == 4:
             vnc_config.update({'vncserver_listen': '0.0.0.0'})
         elif ip_family == 6:
             vnc_config.update({'vncserver_listen': '::0'})
 
-        libvirt_config.update({'live_migration_inbound_addr': migration_ip})
-        vnc_config.update({'vncserver_proxyclient_address': mgmt_ip})
+        libvirt_config.update({'live_migration_inbound_addr': cluster_host_ip})
+        vnc_config.update({'vncserver_proxyclient_address': cluster_host_ip})
 
     def _update_host_memory(self, host, default_config):
         vswitch_2M_pages = []
