@@ -39,7 +39,6 @@ class PlatformPuppet(base.BasePuppet):
     def get_system_config(self):
         config = {}
         config.update(self._get_system_config())
-        config.update(self._get_hosts_config())
         config.update(self._get_amqp_config())
         config.update(self._get_resolv_config())
         config.update(self._get_haproxy_config())
@@ -61,6 +60,7 @@ class PlatformPuppet(base.BasePuppet):
 
     def get_host_config(self, host):
         config = {}
+        config.update(self._get_hosts_config(host))
         config.update(self._get_host_platform_config(host, self.config_uuid))
         config.update(self._get_host_ntp_config(host))
         config.update(self._get_host_ptp_config(host))
@@ -96,7 +96,7 @@ class PlatformPuppet(base.BasePuppet):
             'platform::params::vswitch_type': self._vswitch_type(),
         }
 
-    def _get_hosts_config(self):
+    def _get_hosts_config(self, host):
         # list of host tuples (host name, address name, newtork type) that need
         # to be populated in the /etc/hosts file
         hostnames = [
@@ -185,6 +185,10 @@ class PlatformPuppet(base.BasePuppet):
 
             (constants.STORAGE_1_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
              constants.STORAGE_1_HOSTNAME,
+             constants.NETWORK_TYPE_CLUSTER_HOST),
+
+            (host.hostname + HOSTNAME_INFRA_SUFFIX,
+             host.hostname,
              constants.NETWORK_TYPE_CLUSTER_HOST),
         ]
 
