@@ -57,6 +57,13 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
         overrides = {
             'replicas': {
                 'api': self._num_controllers()
+            },
+            'lifecycle': {
+                'termination_grace_period': {
+                    'api': {
+                        'timeout': 60
+                    }
+                }
             }
         }
         if self.docker_repo_source != common.DOCKER_SRC_OSH:
