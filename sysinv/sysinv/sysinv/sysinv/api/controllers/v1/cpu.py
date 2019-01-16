@@ -491,6 +491,10 @@ def _update_vswitch_cpu_counts(host, cpu, counts, capabilities=None):
     first and that all other allocations will be dynamically adjusted based on
     how many cores are remaining.
     """
+    labels = pecan.request.dbapi.label_get_by_host(host.uuid)
+    if not cutils.has_openstack_compute(labels):
+        raise wsme.exc.ClientSideError(_('vSwitch cpus can only be used with '
+                                         'openstack-compute nodes.'))
     for s in range(0, len(host.nodes)):
         if capabilities:
             count = capabilities.get('num_cores_on_processor%d' % s, None)

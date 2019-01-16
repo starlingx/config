@@ -58,6 +58,7 @@ from oslo_config import cfg
 
 from sysinv.common import exception
 from sysinv.common import constants
+from sysinv.helm import common as helm_common
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common.gettextutils import _
 from oslo_concurrency import lockutils
@@ -1938,3 +1939,16 @@ def get_http_port(dbapi):
             constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
             constants.SERVICE_PARAM_HTTP_PORT_HTTP))
     return http_port
+
+
+def has_openstack_compute(labels):
+    """Returns true if the host has the openstack compute label set """
+    if not labels:
+        return False
+
+    for label in labels:
+        if label.label_key == helm_common.LABEL_COMPUTE_LABEL:
+            return helm_common.LABEL_VALUE_ENABLED == label.label_value.lower()
+
+    # We haven't found the openstack compute node key. Return False
+    return False
