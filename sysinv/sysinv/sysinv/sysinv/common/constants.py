@@ -610,12 +610,6 @@ CONTROLLER_AUDIT_REQUESTS = [DISK_AUDIT_REQUEST,
                              PV_AUDIT_REQUEST,
                              PARTITION_AUDIT_REQUEST]
 
-# Storage: Host Aggregates Groups
-HOST_AGG_NAME_REMOTE = 'remote_storage_hosts'
-HOST_AGG_META_REMOTE = 'remote'
-HOST_AGG_NAME_LOCAL_IMAGE = 'local_storage_image_hosts'
-HOST_AGG_META_LOCAL_IMAGE = 'local_image'
-
 # Interface definitions
 NETWORK_TYPE_NONE = 'none'
 NETWORK_TYPE_INFRA = 'infra'
