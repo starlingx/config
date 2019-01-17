@@ -7461,6 +7461,7 @@ class ConductorManager(service.PeriodicService):
 
         progress = ""
         retry_attempts = 3
+        rc = False
         with open(os.devnull, "w"):
             try:
                 if standby_host:
@@ -7490,35 +7491,38 @@ class ConductorManager(service.PeriodicService):
                 drbd_fs_updated = self._drbd_fs_updated(context)
                 if drbd_fs_updated:
                     while(loop_timeout <= 5):
-                        if (not pgsql_resized and
-                            (not standby_host or (standby_host and
-                             constants.DRBD_PGSQL in self._drbd_fs_sync()))):
-                            # database_gib /var/lib/postgresql
-                            progress = "resize2fs drbd0"
-                            cmd = ["resize2fs", "/dev/drbd0"]
-                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                            LOG.info("Performed %s" % progress)
-                            pgsql_resized = True
+                        if constants.DRBD_PGSQL in drbd_fs_updated:
+                            if (not pgsql_resized and
+                                (not standby_host or (standby_host and
+                                 constants.DRBD_PGSQL in self._drbd_fs_sync()))):
+                                # database_gib /var/lib/postgresql
+                                progress = "resize2fs drbd0"
+                                cmd = ["resize2fs", "/dev/drbd0"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+                                LOG.info("Performed %s" % progress)
+                                pgsql_resized = True
 
-                        if (not cgcs_resized and
-                            (not standby_host or (standby_host and
-                             constants.DRBD_CGCS in self._drbd_fs_sync()))):
-                            # cgcs_gib /opt/cgcs
-                            progress = "resize2fs drbd3"
-                            cmd = ["resize2fs", "/dev/drbd3"]
-                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                            LOG.info("Performed %s" % progress)
-                            cgcs_resized = True
+                        if constants.DRBD_CGCS in drbd_fs_updated:
+                            if (not cgcs_resized and
+                                (not standby_host or (standby_host and
+                                 constants.DRBD_CGCS in self._drbd_fs_sync()))):
+                                # cgcs_gib /opt/cgcs
+                                progress = "resize2fs drbd3"
+                                cmd = ["resize2fs", "/dev/drbd3"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+                                LOG.info("Performed %s" % progress)
+                                cgcs_resized = True
 
-                        if (not extension_resized and
-                            (not standby_host or (standby_host and
-                             constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
-                            # extension_gib /opt/extension
-                            progress = "resize2fs drbd5"
-                            cmd = ["resize2fs", "/dev/drbd5"]
-                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                            LOG.info("Performed %s" % progress)
-                            extension_resized = True
+                        if constants.DRBD_EXTENSION in drbd_fs_updated:
+                            if (not extension_resized and
+                                (not standby_host or (standby_host and
+                                 constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
+                                # extension_gib /opt/extension
+                                progress = "resize2fs drbd5"
+                                cmd = ["resize2fs", "/dev/drbd5"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+                                LOG.info("Performed %s" % progress)
+                                extension_resized = True
 
                         if constants.DRBD_PATCH_VAULT in drbd_fs_updated:
                             if (not patch_resized and
@@ -7572,12 +7576,14 @@ class ConductorManager(service.PeriodicService):
                                 all_resized = False
 
                         if all_resized:
+                            LOG.info("resizing filesystems completed")
+                            rc = True
                             break
 
                         loop_timeout += 1
                         time.sleep(1)
-
-                LOG.info("resizing filesystems completed")
+                    else:
+                        LOG.warn("resizing filesystems not completed")
 
             except exception.ProcessExecutionError as ex:
                 LOG.warn("Failed to perform storage resizing (cmd: '%(cmd)s', "
@@ -7586,7 +7592,7 @@ class ConductorManager(service.PeriodicService):
                          {"cmd": " ".join(cmd), "stdout": ex.stdout,
                           "stderr": ex.stderr, "rc": ex.exit_code})
 
-        return True
+        return rc
 
     # Retry in case of errors or racing issues with rmon autoextend. Rmon is pooling at
     # 10s intervals and autoextend is fast. Therefore retrying a few times and waiting
