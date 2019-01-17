@@ -260,14 +260,8 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 'router_status_managed': True,
                 'vlan_transparent': True,
                 'wsgi_default_pool_size': 100,
-                'router_scheduler_driver':
-                    'neutron.scheduler.l3_host_agent_scheduler.HostBasedScheduler',
-                'network_scheduler_driver':
-                    'neutron.scheduler.dhcp_host_agent_scheduler.HostBasedScheduler',
                 'notify_nova_on_port_data_changes': True,
                 'notify_nova_on_port_status_changes': True,
-                'host_driver':
-                    'neutron.plugins.wrs.drivers.host.DefaultHostDriver',
                 'control_exchange': 'neutron',
                 'core_plugin': 'neutron.plugins.ml2.plugin.Ml2Plugin',
                 'state_path': '/var/run/neutron',
@@ -281,6 +275,9 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 'policy_file': '/etc/neutron/policy.json',
                 'service_plugins': 'router',
                 'dns_domain': 'openstacklocal',
+                'enable_new_agents': False,
+                'allow_automatic_dhcp_failover': True,
+                'allow_automatic_l3agent_failover': True,
             },
             'vhost': {
                 'vhost_user_enabled': True,
