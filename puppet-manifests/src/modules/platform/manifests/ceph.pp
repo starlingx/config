@@ -439,7 +439,7 @@ class platform::ceph::rgw::keystone::auth(
 }
 
 
-class platform::ceph::controller::runtime {
+class platform::ceph::runtime {
   include ::platform::ceph::monitor
   include ::platform::ceph
 
@@ -451,8 +451,4 @@ class platform::ceph::controller::runtime {
       command => '/etc/init.d/ceph-rest-api start'
     }
   }
-}
-
-class platform::ceph::compute::runtime {
-  include ::platform::ceph
 }

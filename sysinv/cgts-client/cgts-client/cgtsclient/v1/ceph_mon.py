@@ -10,8 +10,7 @@
 from cgtsclient.common import base
 from cgtsclient import exc
 
-CREATION_ATTRIBUTES = ['ceph_mon_gib', 'ceph_mon_dev',
-                       'ceph_mon_dev_ctrl0', 'ceph_mon_dev_ctrl1']
+CREATION_ATTRIBUTES = ['ihost_uuid']
 
 
 class CephMon(base.Resource):
@@ -36,8 +35,8 @@ class CephMonManager(base.Manager):
             path = '/v1/ceph_mon'
         return self._list(path, "ceph_mon")
 
-    def get(self, ceph_mon_id):
-        path = '/v1/ceph_mon/%s' % ceph_mon_id
+    def get(self, ceph_mon_uuid):
+        path = '/v1/ceph_mon/%s' % ceph_mon_uuid
         try:
             return self._list(path)[0]
         except IndexError:
@@ -53,6 +52,10 @@ class CephMonManager(base.Manager):
                 raise exc.InvalidAttribute('%s' % key)
         return self._create(path, new)
 
+    def delete(self, host_uuid):
+        path = '/v1/ceph_mon/%s' % host_uuid
+        return self._delete(path)
+
     def update(self, ceph_mon_id, patch):
         path = '/v1/ceph_mon/%s' % ceph_mon_id
         return self._update(path, patch)
@@ -62,7 +65,7 @@ class CephMonManager(base.Manager):
         return self._json_get(path, {})
 
 
-def ceph_mon_add(cc, args):
+def ceph_mon_add(cc, args, ihost_uuid):
     data = dict()
 
     if not vars(args).get('confirmed', None):
@@ -73,8 +76,13 @@ def ceph_mon_add(cc, args):
     if ceph_mon_gib:
         data['ceph_mon_gib'] = ceph_mon_gib
 
+    data['ihost_uuid'] = ihost_uuid
     ceph_mon = cc.ceph_mon.create(**data)
-    suuid = getattr(ceph_mon, 'uuid', '')
+    if ceph_mon and len(ceph_mon.ceph_mon):
+        suuid = ceph_mon.ceph_mon[0].get('uuid', '')
+    else:
+        raise exc.CommandError(
+            "Created ceph_mon has invalid data.")
     try:
         ceph_mon = cc.ceph_mon.get(suuid)
     except exc.HTTPNotFound:
