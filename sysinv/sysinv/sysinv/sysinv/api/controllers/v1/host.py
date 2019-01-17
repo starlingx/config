@@ -5339,8 +5339,10 @@ class HostController(rest.RestController):
                               "least one storage node is unlocked and enabled."))
 
         # Local Storage checks
-        self._semantic_check_nova_local_storage(ihost['uuid'],
-                                                ihost['personality'])
+        labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
+        if cutils.has_openstack_compute(labels):
+            self._semantic_check_nova_local_storage(ihost['uuid'],
+                                                    ihost['personality'])
 
     @staticmethod
     def check_unlock_storage(hostupdate):
