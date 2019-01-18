@@ -29,6 +29,8 @@ from sysinv.api.controllers.v1 import community
 from sysinv.api.controllers.v1 import controller_fs
 from sysinv.api.controllers.v1 import cpu
 from sysinv.api.controllers.v1 import disk
+from sysinv.api.controllers.v1 import datanetwork
+from sysinv.api.controllers.v1 import interface_datanetwork
 from sysinv.api.controllers.v1 import dns
 from sysinv.api.controllers.v1 import drbdconfig
 from sysinv.api.controllers.v1 import ethernet_port
@@ -192,6 +194,12 @@ class V1(base.APIBase):
 
     networks = [link.Link]
     "Links to the network resource"
+
+    datanetworks = [link.Link]
+    "Links to the datanetwork resource"
+
+    interface_datanetworks = [link.Link]
+    "Links to the interface datanetwork resource"
 
     interface_networks = [link.Link]
     "Links to the network interface resource"
@@ -751,6 +759,21 @@ class V1(base.APIBase):
                                        'apps', '',
                                        bookmark=True)]
 
+        v1.datanetworks = [link.Link.make_link('self', pecan.request.host_url,
+                                               'datanetworks', ''),
+                           link.Link.make_link('bookmark',
+                                               pecan.request.host_url,
+                                               'datanetworks', '',
+                                               bookmark=True)]
+
+        v1.interface_datanetworks = [
+            link.Link.make_link('self', pecan.request.host_url,
+                                'interface_datanetworks', ''),
+            link.Link.make_link('bookmark',
+                                pecan.request.host_url,
+                                'interface_datanetworks', '',
+                                bookmark=True)]
+
         return v1
 
 
@@ -817,6 +840,8 @@ class Controller(rest.RestController):
     labels = label.LabelController()
     fernet_repo = fernet_repo.FernetKeyController()
     apps = kube_app.KubeAppController()
+    datanetworks = datanetwork.DataNetworkController()
+    interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

@@ -1293,3 +1293,57 @@ class LocalManagementIpNotFound(NotFound):
 
 class InvalidHelmDockerImageSource(Invalid):
     message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
+
+
+# DataNetwork
+class UnsupportedInterfaceDataNetworkType(Conflict):
+    message = _("Interface with datanetwork type '%(datanetworktype)s' "
+                "is not supported.")
+
+
+class DataNetworkNotFound(NotFound):
+    message = _("DataNetwork %(datanetwork_uuid)s could not be found.")
+
+
+class DataNetworkTypeNotFound(NotFound):
+    message = _("DataNetwork of type %(network_type)s could not be found.")
+
+
+class DataNetworkIDNotFound(NotFound):
+    message = _("DataNetwork with id %(id)s could not be found.")
+
+
+class DataNetworkNameNotFound(NotFound):
+    message = _("DataNetwork with name %(name)s could not be found.")
+
+
+class DataNetworkAlreadyExists(Conflict):
+    message = _("DataNetwork of name %(name)s already exists.")
+
+
+class DataNetworkTypeUnsupported(Conflict):
+    message = _("DataNetwork of type %(network_type)s is not supported.")
+
+
+class InterfaceDataNetworkNotFound(NotFound):
+    message = _("Interface datanetwork %(uuid)s could not be found.")
+
+
+class InterfaceDataNetworkAlreadyExists(Conflict):
+    message = _("Interface datanetwork with interface ID %(interface_id)s "
+                "and datanetwork ID %(datanetwork_id)s already exists.")
+
+
+class InterfaceDataNetworkNotFoundByKeys(NotFound):
+    message = _("Interface datanetwork with interface ID %(interface_id)s "
+                "and datanetwork ID %(datanetwork_id)s not found")
+
+
+class UnsupportedAssignedInterfaceDataNetworkType(Conflict):
+    message = _("Cannot assign datanetwork with type '%(network_type)s' "
+                "to an interface.")
+
+
+class UnsupportedRemovedInterfaceDataNetworkType(Conflict):
+    message = _("Cannot remove datanetwork with type '%(network_type)s' "
+                "from an interface.")

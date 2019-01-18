@@ -451,6 +451,14 @@ class OpenStackOperator(object):
                           (ihost.hostname, agg_add_to))
                 raise
 
+    def _get_interface_datanetworks(self, interface):
+        ifdatanets = self.dbapi.interface_datanetwork_get_by_interface(
+            interface.uuid)
+        names = [x.datanetwork_name for x in ifdatanets]
+        names_csv = ",".join(str(x) for x in names)
+
+        return names_csv
+
     def nova_host_available(self, ihost_uuid):
         """
         Perform sysinv driven nova operations for an available ihost
@@ -500,22 +508,22 @@ class OpenStackOperator(object):
 
         availability_zone = None
         aggregate_name_prefix = 'provider_'
-        ihost_providernets = []
+        ihost_datanets = []
 
-        ihost_aggset_provider = set()
+        host_aggset_datanet = set()
         nova_aggset_provider = set()
 
-        # determine which providernets are on this ihost
+        # determine which datanets are on this host
         try:
             iinterfaces = self.try_interface_get_by_host(ihost_uuid)
             for interface in iinterfaces:
                 if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
-                    providernets = interface.providernetworks
-                    for providernet in providernets.split(',') if providernets else []:
-                        ihost_aggset_provider.add(aggregate_name_prefix +
-                                                  providernet)
+                    datanets = self._get_interface_datanetworks(interface)
+                    for datanet in datanets.split(',') if datanets else []:
+                        host_aggset_datanet.add(aggregate_name_prefix +
+                                                datanet)
 
-            ihost_providernets = list(ihost_aggset_provider)
+            ihost_datanets = list(host_aggset_datanet)
         except Exception:
             LOG.exception("AGG iinterfaces_get failed for %s." % ihost_uuid)
 
@@ -529,8 +537,8 @@ class OpenStackOperator(object):
         for aggregate in aggregates:
             nova_aggset_provider.add(aggregate.name)
 
-        if ihost_providernets:
-            agglist_missing = list(ihost_aggset_provider - nova_aggset_provider)
+        if ihost_datanets:
+            agglist_missing = list(host_aggset_datanet - nova_aggset_provider)
             LOG.debug("AGG agglist_missing = %s." % agglist_missing)
 
             for i in agglist_missing:
@@ -538,8 +546,8 @@ class OpenStackOperator(object):
                 # use None for the availability zone
                 #    cs.aggregates.create(args.name, args.availability_zone)
                 try:
-                    aggregate = self._get_novaclient().aggregates.create(i,
-                                                       availability_zone)
+                    aggregate = self._get_novaclient().aggregates.create(
+                        i, availability_zone)
                     aggregates.append(aggregate)
                     LOG.debug("AGG6 aggregate= %s. aggregates= %s" % (aggregate,
                                                                       aggregates))
@@ -577,7 +585,7 @@ class OpenStackOperator(object):
             ihost = self.dbapi.ihost_get(ihost_uuid)
 
             for i in aggregates:
-                if i.name in ihost_providernets:
+                if i.name in ihost_datanets:
                     metadata = self._get_novaclient().aggregates.get(int(i.id))
 
                     nhosts = []
@@ -596,7 +604,7 @@ class OpenStackOperator(object):
                                      % (i.id, ihost.hostname))
                             return False
         else:
-            LOG.warn("AGG ihost_providernets empty %s." % ihost_uuid)
+            LOG.warn("AGG ihost_datanets empty %s." % ihost_uuid)
 
     def nova_host_offline(self, ihost_uuid):
         """
@@ -618,22 +626,21 @@ class OpenStackOperator(object):
         #
 
         aggregate_name_prefix = 'provider_'
-        ihost_providernets = []
+        ihost_datanets = []
 
-        ihost_aggset_provider = set()
+        host_aggset_datanet = set()
         nova_aggset_provider = set()
 
-        # determine which providernets are on this ihost
+        # determine which datanets are on this ihost
         try:
             iinterfaces = self.try_interface_get_by_host(ihost_uuid)
             for interface in iinterfaces:
                 if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
-                    providernets = interface.providernetworks
-                    for providernet in (
-                            providernets.split(',') if providernets else []):
-                        ihost_aggset_provider.add(aggregate_name_prefix +
-                                                  providernet)
-            ihost_providernets = list(ihost_aggset_provider)
+                    datanets = self._get_interface_datanetworks(interface)
+                    for datanet in (datanets.split(',') if datanets else []):
+                        host_aggset_datanet.add(aggregate_name_prefix +
+                                                datanet)
+            ihost_datanets = list(host_aggset_datanet)
         except Exception:
             LOG.exception("AGG iinterfaces_get failed for %s." % ihost_uuid)
 
@@ -643,11 +650,11 @@ class OpenStackOperator(object):
             self.nova_client = None  # password may have updated
             aggregates = self._get_novaclient().aggregates.list()
 
-        if ihost_providernets:
+        if ihost_datanets:
             for aggregate in aggregates:
                 nova_aggset_provider.add(aggregate.name)
         else:
-            LOG.debug("AGG ihost_providernets empty %s." % ihost_uuid)
+            LOG.debug("AGG ihost_datanets empty %s." % ihost_uuid)
 
         # setup the valid set of storage aggregates for host removal
         aggset_storage = set([
@@ -661,7 +668,7 @@ class OpenStackOperator(object):
         ihost = self.dbapi.ihost_get(ihost_uuid)
 
         for aggregate in aggregates:
-            if aggregate.name in ihost_providernets or \
+            if aggregate.name in ihost_datanets or \
                aggregate.name in aggset_storage:  # or just do it for all aggs
                 try:
                     LOG.debug("AGG10 remove aggregate id = %s ihost= %s." %

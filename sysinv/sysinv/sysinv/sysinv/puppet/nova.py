@@ -17,6 +17,9 @@ from sysinv.common import utils
 from sysinv.puppet import openstack
 from sysinv.puppet import interface
 
+from oslo_log import log
+LOG = log.getLogger(__name__)
+
 
 SCHEDULER_FILTERS_COMMON = [
     'RetryFilter',
@@ -580,6 +583,13 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         return "\"%s\"" % ','.join(
             "%r:%r" % (node, cpu) for node, cpu in cpu_map.items())
 
+    def _get_datanetwork_names(self, iface):
+        dnets = interface.get_interface_datanets(
+            self.context, iface)
+        dnames_list = [dnet['name'] for dnet in dnets]
+        dnames = ",".join(dnames_list)
+        return dnames
+
     def _get_pci_pt_whitelist(self, host):
         # Process all configured PCI passthrough interfaces and add them to
         # the list of devices to whitelist
@@ -587,10 +597,13 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         for iface in self.context['interfaces'].values():
             if iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_PASSTHROUGH]:
                 port = interface.get_interface_port(self.context, iface)
+
+                dnames = self._get_datanetwork_names(iface)
                 device = {
                     'address': port['pciaddr'],
-                    'physical_network': iface['providernetworks']
+                    'physical_network': dnames
                 }
+                LOG.debug("_get_pci_pt_whitelist device=%s" % device)
                 devices.append(device)
 
         # Process all enabled PCI devices configured for PT and SRIOV and
@@ -616,11 +629,13 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         for iface in self.context['interfaces'].values():
             if iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_SRIOV]:
                 port = interface.get_interface_port(self.context, iface)
+                dnames = self._get_datanetwork_names(iface)
                 device = {
                     'address': port['pciaddr'],
-                    'physical_network': iface['providernetworks'],
+                    'physical_network': dnames,
                     'sriov_numvfs': iface['sriov_numvfs']
                 }
+                LOG.info("_get_pci_sriov_whitelist device=%s" % device)
                 devices.append(device)
 
         return json.dumps(devices) if devices else None

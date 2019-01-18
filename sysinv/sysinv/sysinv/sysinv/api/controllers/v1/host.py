@@ -80,6 +80,7 @@ from sysinv.api.controllers.v1 import state
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import interface_network
+from sysinv.api.controllers.v1 import interface_datanetwork
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.api.controllers.v1 import patch_api
 
@@ -1080,6 +1081,10 @@ class HostController(rest.RestController):
     interface_networks = interface_network.InterfaceNetworkController(
         parent="ihosts")
     "Expose interface_networks as a sub-element of ihosts"
+
+    interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController(
+        parent="ihosts")
+    "Expose interface_datanetworks as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],
@@ -3179,62 +3184,61 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
-    def _semantic_check_interface_providernets(ihost, interface):
+    def _semantic_check_interface_datanets(interface):
         """
-        Perform provider network semantics on a specific interface to ensure
-        that any provider networks that have special requirements on the
-        interface has been statisfied.
+        Perform data network semantics on a specific interface to ensure
+        that any data networks that have special requirements on the
+        interface have been satisfied.
         """
-        networktype = []
-        if interface.networktype:
-            networktype = [network.strip() for network in interface.networktype.split(",")]
-        if constants.NETWORK_TYPE_DATA not in networktype:
+
+        if interface.ifclass != constants.NETWORK_TYPE_DATA:
             return
-        # Fetch the list of provider networks from neutron
-        providernets = pecan.request.rpcapi.iinterface_get_providernets(
-            pecan.request.context)
-        # Cleanup the list of provider networks stored on the interface
-        values = interface.providernetworks.strip()
-        values = re.sub(',,+', ',', values)
-        providernet_names = values.split(',')
-        # Check for VXLAN provider networks that require IP addresses
-        for providernet_name in providernet_names:
-            providernet = providernets.get(providernet_name)
-            if not providernet:
-                msg = (_("Interface %(ifname)s is associated to provider "
-                         "network %(name)s which does not exist") %
-                       {'ifname': interface.ifname, 'name': providernet_name})
-                raise wsme.exc.ClientSideError(msg)
-            if providernet['type'] != "vxlan":
+
+        ifdatanets = \
+            pecan.request.dbapi.interface_datanetwork_get_by_interface(
+                interface.uuid)
+
+        # Check for VXLAN data networks that require IP addresses
+        for ifdn in ifdatanets:
+            if ifdn.datanetwork_network_type != \
+                    constants.DATANETWORK_TYPE_VXLAN:
                 continue
-            for r in providernet['ranges']:
-                if r['vxlan']['group'] is None:
-                    continue  # static range; fallback to generic check
-                # Check for address family specific ranges
-                address = netaddr.IPAddress(r['vxlan']['group'])
-                if ((address.version == constants.IPV4_FAMILY) and
-                        (interface.ipv4_mode == constants.IPV4_DISABLED)):
-                    msg = (_("Interface %(ifname)s is associated to VXLAN "
-                             "provider network %(name)s which requires an "
-                             "IPv4 address") %
-                           {'ifname': interface.ifname,
-                            'name': providernet_name})
-                    raise wsme.exc.ClientSideError(msg)
-                if ((address.version == constants.IPV6_FAMILY) and
-                        (interface.ipv6_mode == constants.IPV6_DISABLED)):
-                    msg = (_("Interface %(ifname)s is associated to VXLAN "
-                             "provider network %(name)s which requires an "
-                             "IPv6 address") %
-                           {'ifname': interface.ifname,
-                            'name': providernet_name})
-                    raise wsme.exc.ClientSideError(msg)
+
+            dn = pecan.request.dbapi.datanetwork_get(ifdn.datanetwork_uuid)
+            if not dn.multicast_group:
+                # static range; fallback to generic check
+                continue
+
+            # Check for address family specific ranges
+            address = netaddr.IPAddress(dn.multicast_group)
+            if ((address.version == constants.IPV4_FAMILY) and
+                    (interface.ipv4_mode == constants.IPV4_DISABLED or not
+                     interface.ipv4_mode)):
+                msg = (_("Interface %(ifname)s is associated to VXLAN "
+                         "data network %(name)s which requires an "
+                         "IPv4 address") %
+                       {'ifname': interface.ifname,
+                        'name': ifdn.datanetwork_name})
+                raise wsme.exc.ClientSideError(msg)
+            if ((address.version == constants.IPV6_FAMILY) and
+                    (interface.ipv6_mode == constants.IPV6_DISABLED or not
+                     interface.ipv6_mode)):
+                msg = (_("Interface %(ifname)s is associated to VXLAN "
+                         "data network %(name)s which requires an "
+                         "IPv6 address") %
+                       {'ifname': interface.ifname,
+                        'name': ifdn.datanetwork_name})
+                raise wsme.exc.ClientSideError(msg)
+
             # Check for at least 1 address if no ranges exist yet
             if ((interface.ipv4_mode == constants.IPV4_DISABLED) and
-                    (interface.ipv6_mode == constants.IPV6_DISABLED)):
+                    (interface.ipv6_mode == constants.IPV6_DISABLED) or
+                     (not interface.ipv4_mode and not interface.ipv6_mode)):
                 msg = (_("Interface %(ifname)s is associated to VXLAN "
-                         "provider network %(name)s which requires an IP "
+                         "data network %(name)s which requires an IP "
                          "address") %
-                       {'ifname': interface.ifname, 'name': providernet_name})
+                       {'ifname': interface.ifname,
+                        'name': ifdn.datanetwork_name})
                 raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
@@ -3263,11 +3267,11 @@ class HostController(rest.RestController):
             if ((vswitch_type == constants.VSWITCH_TYPE_OVS_DPDK) and
                     (iif.ifclass == constants.INTERFACE_CLASS_DATA)):
                 self._semantic_check_non_accelerated_interface_support(iif)
-            self._semantic_check_interface_providernets(ihost, iif)
+            self._semantic_check_interface_datanets(iif)
             self._semantic_check_interface_addresses(ihost, iif)
-            if not iif.networktype:
+            if not iif.ifclass:
                 continue
-            if any(n in [constants.NETWORK_TYPE_DATA] for n in iif.networktype.split(",")):
+            if iif.ifclass == constants.NETWORK_TYPE_DATA:
                 data_interface_configured = True
 
         if not data_interface_configured:

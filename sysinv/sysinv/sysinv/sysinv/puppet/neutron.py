@@ -10,6 +10,9 @@ from sysinv.common import utils
 from sysinv.puppet import interface
 from sysinv.puppet import openstack
 
+from oslo_log import log
+LOG = log.getLogger(__name__)
+
 
 class NeutronPuppet(openstack.OpenstackBasePuppet):
     """Class to encapsulate puppet operations for neutron configuration"""
@@ -164,9 +167,14 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
         for iface in self.context['interfaces'].values():
             if (iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_SRIOV]):
                 port = interface.get_interface_port(self.context, iface)
-                providernets = interface.get_interface_providernets(iface)
-                for net in providernets:
-                    device_mappings.append("%s:%s" % (net, port['name']))
+
+                datanets = interface.get_interface_datanets(
+                    self.context, iface)
+                for dnet in datanets:
+                    device_mappings.append(
+                        "%s:%s" % (dnet['name'], port['name']))
+                    LOG.debug("get_host_config device_mappings=%s" %
+                              device_mappings)
 
         config = {
             'neutron::agents::ml2::sriov::physical_device_mappings':

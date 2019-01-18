@@ -78,7 +78,6 @@ utils_opts = [
                default=None,
                help='Explicitly specify the temporary working directory'),
 ]
-
 CONF = cfg.CONF
 CONF.register_opts(utils_opts)
 
@@ -422,6 +421,18 @@ def is_valid_ipv6_cidr(address):
         str(netaddr.IPNetwork(address, version=6).cidr)
         return True
     except Exception:
+        return False
+
+
+def validate_ip_multicast_address(address, valid_values=None):
+    """
+    Validates that an IP address is a multicast address.
+    """
+    try:
+        return netaddr.IPAddress(address).is_multicast()
+    except Exception:
+        msg = _("'%s' is not a valid multicast IP address") % address
+        LOG.debug(msg)
         return False
 
 

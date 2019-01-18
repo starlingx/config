@@ -122,13 +122,14 @@ class InterfacePuppet(base.BasePuppet):
             'system_mode': self._get_system().system_mode,
             'ports': self._get_port_interface_id_index(host),
             'interfaces': self._get_interface_name_index(host),
+            'interfaces_datanets': self._get_interface_name_datanets(host),
             'devices': self._get_port_pciaddr_index(host),
             'addresses': self._get_address_interface_name_index(host),
             'routes': self._get_routes_interface_name_index(host),
             'networks': self._get_network_type_index(),
             'gateways': self._get_gateway_index(),
             'floatingips': self._get_floating_ip_index(),
-            'providernets': self._get_provider_networks(host),
+            'datanets': self._get_datanetworks(host),
         }
         return context
 
@@ -160,6 +161,41 @@ class InterfacePuppet(base.BasePuppet):
         interfaces = {}
         for iface in self.dbapi.iinterface_get_by_ihost(host.id):
             interfaces[iface.ifname] = iface
+
+        return interfaces
+
+    def _get_interface_name_datanets(self, host):
+        """
+        Builds a dictionary of datanets indexed by interface name.
+        """
+        interfaces = {}
+        for iface in self.dbapi.iinterface_get_by_ihost(host.id):
+            ifdatanets = self.dbapi.interface_datanetwork_get_by_interface(
+                iface.uuid)
+
+            datanetworks = []
+            for ifdatanet in ifdatanets:
+                datanetworks.append(ifdatanet.datanetwork_uuid)
+
+            datanetworks_list = []
+            for datanetwork in datanetworks:
+                dn = self.dbapi.datanetwork_get(datanetwork)
+                datanetwork_dict = \
+                    {'name': dn.name,
+                     'uuid': dn.uuid,
+                     'network_type': dn.network_type,
+                     'mtu': dn.mtu}
+                if dn.network_type == constants.DATANETWORK_TYPE_VXLAN:
+                    datanetwork_dict.update(
+                        {'multicast_group': dn.multicast_group,
+                         'port_num': dn.port_num,
+                         'ttl': dn.ttl,
+                         'mode': dn.mode})
+                datanetworks_list.append(datanetwork_dict)
+            interfaces[iface.ifname] = datanetworks_list
+
+        LOG.debug("_get_interface_name_datanets ifdatanet=%s" % interfaces)
+
         return interfaces
 
     def _get_port_pciaddr_index(self, host):
@@ -277,17 +313,11 @@ class InterfacePuppet(base.BasePuppet):
 
         return floating_ips
 
-    def _get_provider_networks(self, host):
-        # TODO(alegacy): this will not work as intended for upgrades of AIO-SX
-        # and -DX.  The call to get_providernetworksdict will return an empty
-        # dictionary because the neutron endpoint is not available yet.  Since
-        # we do not currently support SDN/OVS over upgrades we will need to
-        # deal with this in a later commit.
-        pnets = {}
-        if (self.openstack and
-                constants.WORKER in utils.get_personalities(host)):
-            pnets = self.openstack.get_providernetworksdict(quiet=True)
-        return pnets
+    def _get_datanetworks(self, host):
+        dnets = {}
+        if constants.WORKER in utils.get_personalities(host):
+            dnets = self.dbapi.datanetworks_get_all()
+        return dnets
 
 
 def is_platform_network_type(iface):
@@ -461,14 +491,11 @@ def get_interface_mtu(context, iface):
     return iface['imtu']
 
 
-def get_interface_providernets(iface):
+def get_interface_datanets(context, iface):
     """
-    Return the provider networks of the supplied interface as a list.
+    Return the list of data networks of the supplied interface
     """
-    providernetworks = iface['providernetworks']
-    if not providernetworks:
-        return []
-    return [x.strip() for x in providernetworks.split(',')]
+    return context['interfaces_datanets'][iface.ifname]
 
 
 def get_interface_port(context, iface):
