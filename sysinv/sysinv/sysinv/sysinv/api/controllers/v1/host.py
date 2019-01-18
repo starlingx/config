@@ -2282,11 +2282,8 @@ class HostController(rest.RestController):
                              "monitor available. At least %s unlocked and "
                              "enabled hosts with monitors are required. Please"
                              " ensure hosts with monitors are unlocked and "
-                             "enabled - candidates: %s, %s, %s") %
-                             (num_monitors, constants.MIN_STOR_MONITORS,
-                              constants.CONTROLLER_0_HOSTNAME,
-                              constants.CONTROLLER_1_HOSTNAME,
-                              constants.STORAGE_0_HOSTNAME))
+                             "enabled.") %
+                             (num_monitors, constants.MIN_STOR_MONITORS))
 
             # If it is the last storage node to delete, we need to delete
             # ceph osd pools and update additional tier status to "defined"
@@ -3025,15 +3022,23 @@ class HostController(rest.RestController):
                 patched_ihost['subfunctions'] = subfunctions
 
         elif patched_ihost['personality'] == constants.STORAGE:
-            # Storage nodes are only allowed if we are configured to use
-            # ceph for the cinder backend.
+            # Storage nodes are only allowed if we are configured to use ceph.
             if not StorageBackendConfig.has_backend_configured(
                 pecan.request.dbapi,
-                constants.CINDER_BACKEND_CEPH
+                constants.SB_TYPE_CEPH
             ):
                 raise wsme.exc.ClientSideError(
                     _("Storage nodes can only be configured if storage "
-                      "cluster is configured for the cinder backend."))
+                      "cluster is configured for the Ceph backend."))
+
+            # Storage nodes are allowed when using the CEPH_STORAGE_MODEL model
+            stor_model = ceph.get_ceph_storage_model()
+            if stor_model not in [constants.CEPH_STORAGE_MODEL, constants.CEPH_UNDEFINED_MODEL]:
+                # Adding storage-0 when storage model is CEPH_UNDEFINED_MODEL will
+                # set it to CEPH_STORAGE_MODEL.
+                raise wsme.exc.ClientSideError(
+                    _("Storage nodes can not be configured for "
+                      "the '%s' storage model." % stor_model))
 
             current_storage_ihosts = \
                 pecan.request.dbapi.ihost_get_by_personality(constants.STORAGE)
@@ -4408,7 +4413,7 @@ class HostController(rest.RestController):
         api = pecan.request.dbapi
 
         backend = StorageBackendConfig.get_configuring_backend(api)
-        if backend and backend.backend == constants.CINDER_BACKEND_CEPH:
+        if backend and backend.backend == constants.SB_TYPE_CEPH:
             ihosts = api.ihost_get_by_personality(
                 constants.CONTROLLER
             )
@@ -4419,9 +4424,14 @@ class HostController(rest.RestController):
 
             # check if customer needs to install storage nodes
             if backend.task == constants.SB_TASK_RECONFIG_CONTROLLER:
-                if HostController._check_provisioned_storage_hosts():
-                    # Storage nodes are provisioned. This means that
-                    # this is not the first time Ceph is configured
+                stor_model = ceph.get_ceph_storage_model()
+                if (HostController._check_provisioned_storage_hosts() or
+                        stor_model == constants.CEPH_CONTROLLER_MODEL):
+                    # This means that either:
+                    # 1. Storage nodes are already provisioned (this is not
+                    #    the first time Ceph is configured) or
+                    # 2. We are on a standard config and we don't need to
+                    #    configure storage nodes at all.
                     api.storage_backend_update(backend.uuid, {
                         'state': constants.SB_STATE_CONFIGURED,
                         'task': None
@@ -4906,7 +4916,8 @@ class HostController(rest.RestController):
 
         subfunctions_set = \
             set(hostupdate.ihost_patch[constants.SUBFUNCTIONS].split(','))
-        if constants.WORKER in subfunctions_set:
+        if (personality == constants.WORKER or
+                constants.WORKER in subfunctions_set):
             self.check_lock_worker(hostupdate)
 
         hostupdate.notify_vim = True
@@ -4938,20 +4949,38 @@ class HostController(rest.RestController):
 
         if StorageBackendConfig.has_backend_configured(
                     pecan.request.dbapi,
-                    constants.CINDER_BACKEND_CEPH):
+                    constants.SB_TYPE_CEPH):
+            query_hosts = None
+            stor_model = ceph.get_ceph_storage_model()
+            if stor_model == constants.CEPH_STORAGE_MODEL:
+                query_hosts = constants.STORAGE
+            elif stor_model == constants.CEPH_CONTROLLER_MODEL:
+                query_hosts = constants.CONTROLLER
+            else:
+                # If backend type is still undefined it means no storage nodes
+                # have been configured and no worker monitor has been added,
+                # so it is safe to not check the quorum.
+                # Or we are dealing with an AIO-SX.
+                return
             try:
-                st_nodes = pecan.request.dbapi.ihost_get_by_personality(constants.STORAGE)
+                st_nodes = pecan.request.dbapi.ihost_get_by_personality(query_hosts)
             except exception.NodeNotFound:
                 # If we don't have any storage nodes we don't need to
                 # check for quorum. We'll allow the node to be locked.
+                # We will always have at least one controller, so for
+                # controllers that also act as storage nodes this should
+                # never happen.
                 return
+
             # TODO(oponcea) remove once SM supports in-service config reload
             # Allow locking controllers when all storage nodes are locked.
-            for node in st_nodes:
-                if (node['administrative'] == constants.ADMIN_UNLOCKED):
-                    break
-            else:
-                return
+            if stor_model == constants.CEPH_STORAGE_MODEL:
+                for node in st_nodes:
+                    if (node['administrative'] == constants.ADMIN_UNLOCKED):
+                        break
+                else:
+                    return
+
             if (hostupdate.ihost_orig['administrative'] ==
                     constants.ADMIN_UNLOCKED and
                     hostupdate.ihost_orig['operational'] ==
@@ -4986,11 +5015,8 @@ class HostController(rest.RestController):
                              "monitor available. At least %s unlocked and "
                              "enabled hosts with monitors are required. Please"
                              " ensure hosts with monitors are unlocked and "
-                             "enabled - candidates: %s, %s, %s") %
-                             (num_monitors, constants.MIN_STOR_MONITORS,
-                              constants.CONTROLLER_0_HOSTNAME,
-                              constants.CONTROLLER_1_HOSTNAME,
-                              constants.STORAGE_0_HOSTNAME))
+                             "enabled.") %
+                             (num_monitors, constants.MIN_STOR_MONITORS))
 
         if not force:
             # sm-lock-pre-check
@@ -5185,9 +5211,9 @@ class HostController(rest.RestController):
                         storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
                             personality=constants.STORAGE)
                     except Exception:
-                        raise wsme.exc.ClientSideError(
-                            _("Can not unlock a worker node until at "
-                              "least one storage node is unlocked and enabled."))
+                        # We are unlocking worker node when no storage nodes are
+                        # defined. This is ok in CEPH_CONTROLLER_MODEL.
+                        pass
                     is_storage_host_unlocked = False
                     if storage_nodes:
                         for node in storage_nodes:
@@ -5197,8 +5223,9 @@ class HostController(rest.RestController):
 
                                 is_storage_host_unlocked = True
                                 break
-
-                    if not is_storage_host_unlocked:
+                    stor_model = ceph.get_ceph_storage_model()
+                    if (not is_storage_host_unlocked and
+                            not stor_model == constants.CEPH_CONTROLLER_MODEL):
                         raise wsme.exc.ClientSideError(
                             _("Can not unlock a worker node until at "
                               "least one storage node is unlocked and enabled."))
@@ -5229,11 +5256,8 @@ class HostController(rest.RestController):
                   "monitor available. At least %s unlocked and "
                   "enabled hosts with monitors are required. Please"
                   " ensure hosts with monitors are unlocked and "
-                  "enabled - candidates: %s, %s, %s") %
-                (num_monitors, constants.MIN_STOR_MONITORS,
-                 constants.CONTROLLER_0_HOSTNAME,
-                 constants.CONTROLLER_1_HOSTNAME,
-                 constants.STORAGE_0_HOSTNAME))
+                  "enabled.") %
+                (num_monitors, constants.MIN_STOR_MONITORS))
 
         # Check Ceph configuration, if it is wiped out (in the Backup & Restore
         # process) then restore the configuration.
@@ -5528,11 +5552,8 @@ class HostController(rest.RestController):
                              "monitor available. At least %s unlocked and "
                              "enabled hosts with monitors are required. Please"
                              " ensure hosts with monitors are unlocked and "
-                             "enabled - candidates: %s, %s, %s") %
-                             (num_monitors, constants.MIN_STOR_MONITORS,
-                              constants.CONTROLLER_0_HOSTNAME,
-                              constants.CONTROLLER_1_HOSTNAME,
-                              constants.STORAGE_0_HOSTNAME))
+                             "enabled.") %
+                             (num_monitors, constants.MIN_STOR_MONITORS))
 
             storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
                 constants.STORAGE)
@@ -5607,50 +5628,79 @@ class HostController(rest.RestController):
     def check_lock_worker(self, hostupdate, force=False):
         """Pre lock semantic checks for worker"""
 
+        hostname = hostupdate.ihost_patch.get('hostname')
         LOG.info("%s host check_lock_worker" % hostupdate.displayid)
         if force:
+            LOG.info("Forced lock of host: %s" % hostname)
             return
 
-        upgrade = None
-        try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            return
-
-        upgrade_state = upgrade.state
         system = pecan.request.dbapi.isystem_get_one()
         system_mode = system.system_mode
         system_type = system.system_type
-        hostname = hostupdate.ihost_patch.get('hostname')
 
         if system_mode == constants.SYSTEM_MODE_SIMPLEX:
             return
 
-        if upgrade_state in [
-                constants.UPGRADE_STARTING,
-                constants.UPGRADE_STARTED,
-                constants.UPGRADE_DATA_MIGRATION,
-                constants.UPGRADE_DATA_MIGRATION_COMPLETE,
-                constants.UPGRADE_DATA_MIGRATION_FAILED]:
-            if system_type == constants.TIS_AIO_BUILD:
-                if hostname == constants.CONTROLLER_1_HOSTNAME:
-                    # Allow AIO-DX lock of controller-1
-                    return
-            raise wsme.exc.ClientSideError(
-                _("Rejected: Can not lock %s with worker function "
-                  "at this upgrade stage '%s'.") %
-                (hostupdate.displayid, upgrade_state))
+        # Check upgrade state for controllers with worker subfunction
+        subfunctions_set = \
+            set(hostupdate.ihost_patch[constants.SUBFUNCTIONS].split(','))
+        if (hostupdate.ihost_orig['personality'] == constants.CONTROLLER and
+                constants.WORKER in subfunctions_set):
+            upgrade = None
+            try:
+                upgrade = pecan.request.dbapi.software_upgrade_get_one()
+                upgrade_state = upgrade.state
+            except exception.NotFound:
+                upgrade_state = None
 
-        if upgrade_state in [constants.UPGRADE_UPGRADING_CONTROLLERS]:
-            if system_type == constants.TIS_AIO_BUILD:
-                # Allow lock for AIO-DX controller-0 after upgrading
-                # controller-1. Allow lock for AIO-DX controllers.
-                if hostname == constants.CONTROLLER_0_HOSTNAME:
-                    return
-            raise wsme.exc.ClientSideError(
-                _("Rejected: Can not lock %s with worker function "
-                  "at this upgrade stage '%s'.") %
-                (hostupdate.displayid, upgrade_state))
+            if upgrade_state in [
+                    constants.UPGRADE_STARTING,
+                    constants.UPGRADE_STARTED,
+                    constants.UPGRADE_DATA_MIGRATION,
+                    constants.UPGRADE_DATA_MIGRATION_COMPLETE,
+                    constants.UPGRADE_DATA_MIGRATION_FAILED]:
+                if system_type == constants.TIS_AIO_BUILD:
+                    if hostname == constants.CONTROLLER_1_HOSTNAME:
+                        # Allow AIO-DX lock of controller-1
+                        return
+                raise wsme.exc.ClientSideError(
+                    _("Rejected: Can not lock %s with worker function "
+                      "at this upgrade stage '%s'.") %
+                    (hostupdate.displayid, upgrade_state))
+
+            if upgrade_state in [constants.UPGRADE_UPGRADING_CONTROLLERS]:
+                if system_type == constants.TIS_AIO_BUILD:
+                    # Allow lock for AIO-DX controller-0 after upgrading
+                    # controller-1. Allow lock for AIO-DX controllers.
+                    if hostname == constants.CONTROLLER_0_HOSTNAME:
+                        return
+                raise wsme.exc.ClientSideError(
+                    _("Rejected: Can not lock %s with worker function "
+                      "at this upgrade stage '%s'.") %
+                    (hostupdate.displayid, upgrade_state))
+
+        # Worker node with a Ceph Monitor service? Make sure at least
+        # two monitors will remain up after lock.
+        host_id = hostupdate.ihost_orig.get('id')
+        ceph_mon = pecan.request.dbapi.ceph_mon_get_by_ihost(host_id)
+        if ceph_mon:
+            if (hostupdate.ihost_orig['personality'] ==
+                    constants.WORKER and
+                    hostupdate.ihost_orig['administrative'] ==
+                    constants.ADMIN_UNLOCKED and
+                    hostupdate.ihost_orig['operational'] ==
+                    constants.OPERATIONAL_ENABLED):
+                num_monitors, required_monitors, quorum_names = \
+                    self._ceph.get_monitors_status(pecan.request.dbapi)
+                if (hostname in quorum_names and
+                     num_monitors - 1 < required_monitors):
+                    raise wsme.exc.ClientSideError(_(
+                         "Only %d Ceph "
+                         "monitors available. At least %s unlocked and "
+                         "enabled hosts with monitors are required. "
+                         "Please ensure hosts with monitors are "
+                         "unlocked and enabled.") %
+                         (num_monitors, constants.MIN_STOR_MONITORS))
 
     def check_unlock_interfaces(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""
@@ -6112,6 +6162,8 @@ class HostController(rest.RestController):
         LOG.info("%s _handle_unlock_action" % hostupdate.displayid)
         if hostupdate.ihost_patch.get('personality') == constants.STORAGE:
             self._handle_unlock_storage_host(hostupdate)
+        elif hostupdate.ihost_patch.get('personality') == constants.WORKER:
+            self._handle_unlock_worker_host(hostupdate)
         hostupdate.notify_vim_action = False
         hostupdate.notify_mtce = True
         val = {'ihost_action': constants.UNLOCK_ACTION}
@@ -6120,6 +6172,14 @@ class HostController(rest.RestController):
 
     def _handle_unlock_storage_host(self, hostupdate):
         self._ceph.update_crushmap(hostupdate)
+
+    def _handle_unlock_worker_host(self, hostupdate):
+        # Update crushmap if we unlocked the worker with a ceph monitor.
+        monitor_list = pecan.request.dbapi.ceph_mon_get_list()
+        for mon in monitor_list:
+            ihost = pecan.request.dbapi.ihost_get(mon['forihostid'])
+            if ihost.id == hostupdate.ihost_orig['id']:
+                self._ceph.update_crushmap(hostupdate)
 
     @staticmethod
     def _handle_lock_action(hostupdate):

@@ -41,6 +41,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1.utils import SBApiHelper as api_helper
+from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -974,6 +975,14 @@ def _check_replication_number(new_cap, orig_cap):
             raise wsme.exc.ClientSideError(
                 _("Can not modify ceph replication factor on "
                   "two node configuration."))
+
+        if ceph.get_ceph_storage_model() == constants.CEPH_CONTROLLER_MODEL:
+            # Replication change is not allowed when storage OSDs
+            # are enabled on controllers.
+            raise wsme.exc.ClientSideError(
+                _("Can not modify replication factor on "
+                  "'%s' ceph deployment model." % constants.CEPH_CONTROLLER_MODEL))
+
         # On a standard install we allow modifications of ceph storage
         # backend parameters after the manifests have been applied and
         # before first storage node has been configured.

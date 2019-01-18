@@ -5664,7 +5664,6 @@ class ConductorManager(service.PeriodicService):
         # Update service table
         self.update_service_table_for_cinder()
 
-        # TODO(oponcea): Uncomment when SM supports in-service config reload
         ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
         valid_ctrls = [ctrl for ctrl in ctrls if
                        ctrl.administrative == constants.ADMIN_UNLOCKED and
@@ -5741,7 +5740,6 @@ class ConductorManager(service.PeriodicService):
                 (node.administrative == constants.ADMIN_UNLOCKED and
                  node.operational == constants.OPERATIONAL_ENABLED)]
 
-        # TODO: check what other puppet class need to be called
         config_dict = {
             "personalities": personalities,
             "host_uuids": [node.uuid for node in valid_nodes],
