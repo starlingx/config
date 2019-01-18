@@ -37,6 +37,8 @@ class platform::sm
     # Repurposing the infra interface for cluster-host interface
     include ::platform::network::cluster_host::params
     $infra_ip_interface          = $::platform::network::cluster_host::params::interface_name
+    $cluster_host_ip_param_ip    = $::platform::network::cluster_host::params::controller_address
+    $cluster_host_ip_param_mask  = $::platform::network::cluster_host::params::subnet_prefixlen
   } else {
     $infra_ip_interface          = $::platform::network::infra::params::interface_name
   }
@@ -138,22 +140,35 @@ class platform::sm
   $platform_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
 
   # CGCS NFS network is over the infrastructure network if configured
-  if $infra_ip_interface and $kubernetes_enabled != true {
-      $cgcs_nfs_ip_interface   = $::platform::network::infra::params::interface_name
-      $cgcs_nfs_ip_param_ip    = $::platform::network::infra::params::cgcs_nfs_address
-      $cgcs_nfs_ip_network_url = $::platform::network::infra::params::subnet_network_url
-      $cgcs_nfs_ip_param_mask  = $::platform::network::infra::params::subnet_prefixlen
-
-      $cinder_ip_interface     = $::platform::network::infra::params::interface_name
-      $cinder_ip_param_mask    = $::platform::network::infra::params::subnet_prefixlen
-  } else {
-    $cgcs_nfs_ip_interface   = $::platform::network::mgmt::params::interface_name
-    $cgcs_nfs_ip_param_ip    = $::platform::network::mgmt::params::cgcs_nfs_address
+  if $kubernetes_enabled {
+    $cgcs_nfs_ip_interface = $::platform::network::mgmt::params::interface_name
+    $cgcs_nfs_ip_param_ip = $::platform::network::mgmt::params::cgcs_nfs_address
     $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
-    $cgcs_nfs_ip_param_mask  = $::platform::network::mgmt::params::subnet_prefixlen
+    $cgcs_nfs_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
 
-    $cinder_ip_interface     = $::platform::network::mgmt::params::interface_name
-    $cinder_ip_param_mask    = $::platform::network::mgmt::params::subnet_prefixlen
+    # Re-using cinder-ip for cluster-host-ip for now
+    # This will be changed when the cluster-host-ip resource is added to SM
+    $cinder_ip_interface = $::platform::network::cluster_host::params::interface_name
+    $cinder_ip_param_ip = $::platform::network::cluster_host::params::controller_address
+    $cinder_ip_param_mask = $::platform::network::cluster_host::params::subnet_prefixlen
+  } else {
+    if $infra_ip_interface {
+      $cgcs_nfs_ip_interface = $::platform::network::infra::params::interface_name
+      $cgcs_nfs_ip_param_ip = $::platform::network::infra::params::cgcs_nfs_address
+      $cgcs_nfs_ip_network_url = $::platform::network::infra::params::subnet_network_url
+      $cgcs_nfs_ip_param_mask = $::platform::network::infra::params::subnet_prefixlen
+
+      $cinder_ip_interface = $::platform::network::infra::params::interface_name
+      $cinder_ip_param_mask = $::platform::network::infra::params::subnet_prefixlen
+    } else {
+      $cgcs_nfs_ip_interface = $::platform::network::mgmt::params::interface_name
+      $cgcs_nfs_ip_param_ip = $::platform::network::mgmt::params::cgcs_nfs_address
+      $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
+      $cgcs_nfs_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
+
+      $cinder_ip_interface = $::platform::network::mgmt::params::interface_name
+      $cinder_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
+    }
   }
 
   $platform_nfs_subnet_url = "${platform_nfs_ip_network_url}/${platform_nfs_ip_param_mask}"
@@ -210,7 +225,9 @@ class platform::sm
   include ::openstack::cinder::params
   $cinder_service_enabled = $::openstack::cinder::params::service_enabled
   $cinder_region_name     = $::openstack::cinder::params::region_name
-  $cinder_ip_param_ip     = $::openstack::cinder::params::cinder_address
+  if $kubernetes_enabled != true {
+    $cinder_ip_param_ip   = $::openstack::cinder::params::cinder_address
+  }
   $cinder_backends        = $::openstack::cinder::params::enabled_backends
   $cinder_drbd_resource   = $::openstack::cinder::params::drbd_resource
   $cinder_vg_name         = $::openstack::cinder::params::cinder_vg_name
@@ -374,7 +391,6 @@ class platform::sm
   exec { 'Configure OAM IP':
     command => "sm-configure service_instance oam-ip oam-ip \"ip=${oam_ip_param_ip},cidr_netmask=${oam_ip_param_mask},nic=${oam_ip_interface},arp_count=7\"",
   }
-
 
   if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
       exec { 'Configure Management IP':
@@ -776,6 +792,28 @@ class platform::sm
         path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
         command => 'sm-deprovision service cinder-backup',
       }
+  }
+
+  if $kubernetes_enabled {
+    # Re-using cinder-ip for cluster-host-ip for now
+    # This will be changed when the cluster-host-ip resource is added to SM
+    exec { 'Configure Cinder IP in SM (service-group-member cinder-ip)':
+      command =>
+        'sm-provision service-group-member controller-services cinder-ip',
+    }
+    -> exec { 'Configure Cinder IP  in SM (service cinder-ip)':
+      command => 'sm-provision service cinder-ip',
+    }
+
+    if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
+      exec { 'Configure Cinder IP service instance':
+        command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7,dc=yes\"",
+      }
+    } else {
+      exec { 'Configure Cinder IP service instance':
+        command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7\"",
+      }
+    }
   }
 
   if $region_config {
