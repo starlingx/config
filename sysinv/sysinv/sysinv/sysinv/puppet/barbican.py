@@ -59,7 +59,7 @@ class BarbicanPuppet(openstack.OpenstackBasePuppet):
             'barbican::keystone::authtoken::project_domain_name':
                 self._get_service_project_domain_name(),
             'barbican::keystone::authtoken::project_name':
-                self._get_service_tenant_name(),
+                self._get_service_project_name(),
             'barbican::keystone::authtoken::region_name':
                 self._keystone_region_name(),
             'barbican::keystone::authtoken::username': ksuser,

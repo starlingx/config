@@ -26,7 +26,7 @@ from keystoneclient.auth.identity import v3
 from keystoneclient import session
 from sqlalchemy.orm import exc
 from magnumclient.v1 import client as magnum_client_v1
-
+from barbicanclient.v1 import client as barbican_client_v1
 
 LOG = logging.getLogger(__name__)
 
@@ -105,6 +105,9 @@ openstack_keystone_opts = [
     cfg.StrOpt('magnum_region_name',
                default='RegionOne',
                help=_("Magnum Region Name")),
+    cfg.StrOpt('barbican_region_name',
+               default='RegionOne',
+               help=_("Barbican Region Name")),
     cfg.StrOpt('project_name',
                default='admin',
                help=_("keystone user project name")),
@@ -129,9 +132,12 @@ class OpenStackOperator(object):
 
     def __init__(self, dbapi):
         self.dbapi = dbapi
+        self.barbican_client = None
         self.cinder_client = None
         self.keystone_client = None
         self.keystone_session = None
+        self.openstack_keystone_client = None
+        self.openstack_keystone_session = None
         self.magnum_client = None
         self.nova_client = None
         self.neutron_client = None
@@ -530,29 +536,7 @@ class OpenStackOperator(object):
     #################
     # Keystone
     #################
-    def _get_keystone_session(self, service_config):
-        if not self.keystone_session:
-            if service_config == OPENSTACK_CONFIG:
-                password = keyring.get_password(cfg.CONF[OPENSTACK_CONFIG].
-                                                keyring_service,
-                                                cfg.CONF[OPENSTACK_CONFIG].
-                                                username)
-            else:
-                password = cfg.CONF[service_config].password
-
-            auth = v3.Password(auth_url=self._get_auth_url(service_config),
-                               username=cfg.CONF[service_config].username,
-                               password=password,
-                               user_domain_name=cfg.CONF[service_config].
-                               user_domain_name,
-                               project_name=cfg.CONF[service_config].
-                               project_name,
-                               project_domain_name=cfg.CONF[service_config].
-                               project_domain_name)
-            self.keystone_session = session.Session(auth=auth)
-        return self.keystone_session
-
-    def _get_keystoneclient(self, service_config):
+    def _get_keystone_password(self, service_config):
         if service_config == OPENSTACK_CONFIG:
             password = keyring.get_password(cfg.CONF[OPENSTACK_CONFIG].
                                             keyring_service,
@@ -560,18 +544,70 @@ class OpenStackOperator(object):
                                             username)
         else:
             password = cfg.CONF[service_config].password
+        return password
 
-        if not self.keystone_client:  # should not cache this forever
-            self.keystone_client = keystone_client.Client(
-                username=cfg.CONF[service_config].username,
-                user_domain_name=cfg.CONF[service_config].user_domain_name,
-                project_name=cfg.CONF[service_config].project_name,
-                project_domain_name=cfg.CONF[service_config]
-                .project_domain_name,
-                password=password,
-                auth_url=self._get_auth_url(service_config),
-                region_name=cfg.CONF[service_config].region_name)
-        return self.keystone_client
+    def _get_new_keystone_session(self, service_config):
+        auth = v3.Password(auth_url=self._get_auth_url(service_config),
+                           username=cfg.CONF[service_config].username,
+                           password=self._get_keystone_password(service_config),
+                           user_domain_name=cfg.CONF[service_config].
+                           user_domain_name,
+                           project_name=cfg.CONF[service_config].
+                           project_name,
+                           project_domain_name=cfg.CONF[service_config].
+                           project_domain_name)
+        sess = session.Session(auth=auth)
+        return sess
+
+    def _get_cached_keystone_session(self, service_config):
+        if service_config == OPENSTACK_CONFIG:
+            return self.openstack_keystone_session
+        else:
+            return self.keystone_session
+
+    def _set_cached_keystone_session(self, service_config, sess):
+        if service_config == OPENSTACK_CONFIG:
+            self.openstack_keystone_session = sess
+        else:
+            self.keystone_session = sess
+
+    def _get_keystone_session(self, service_config):
+        sess = self._get_cached_keystone_session(service_config)
+        if not sess:
+            sess = self._get_new_keystone_session(service_config)
+            self._set_cached_keystone_session(service_config, sess)
+        return sess
+
+    def _get_new_keystone_client(self, service_config):
+        client = keystone_client.Client(
+            username=cfg.CONF[service_config].username,
+            user_domain_name=cfg.CONF[service_config].user_domain_name,
+            project_name=cfg.CONF[service_config].project_name,
+            project_domain_name=cfg.CONF[service_config]
+            .project_domain_name,
+            password=self._get_keystone_password(service_config),
+            auth_url=self._get_auth_url(service_config),
+            region_name=cfg.CONF[service_config].region_name)
+        return client
+
+    def _get_cached_keystone_client(self, service_config):
+        if service_config == OPENSTACK_CONFIG:
+            return self.openstack_keystone_client
+        else:
+            return self.keystone_client
+
+    def _set_cached_keystone_client(self, service_config, client):
+        if service_config == OPENSTACK_CONFIG:
+            self.openstack_keystone_client = client
+        else:
+            self.keystone_client = client
+
+    def _get_keystone_client(self, service_config):
+        client = self._get_cached_keystone_client(service_config)
+        if not client:
+            client = self._get_new_keystone_client(service_config)
+            self._set_cached_keystone_client(service_config, client)
+        return client
 
     #################
     # Cinder
@@ -784,6 +820,56 @@ class OpenStackOperator(object):
         except Exception:
             LOG.error("Unable to get backend list of magnum clusters")
             return 0
+
+    #################
+    # Barbican
+    #################
+    def _get_barbicanclient(self):
+        if not self.barbican_client:
+            self.barbican_client = barbican_client_v1.Client(
+                session=self._get_keystone_session(PLATFORM_CONFIG),
+                interface='internalURL',
+                region_name=cfg.CONF[OPENSTACK_CONFIG].barbican_region_name)
+        return self.barbican_client
+
+    def get_barbican_secret_by_name(self, context, name):
+        try:
+            client = self._get_barbicanclient()
+            secret_list = client.secrets.list(name=name)
+            secret = next(iter(secret_list), None)
+            return secret
+        except Exception:
+            LOG.error("Unable to find Barbican secret %s", name)
+            return None
+
+    def create_barbican_secret(self, context, name, payload):
+        if not payload:
+            LOG.error("Empty password is passed to Barbican %s" % name)
+            return None
+        try:
+            client = self._get_barbicanclient()
+            secret = self.get_barbican_secret_by_name(context, name)
+            if secret:
+                client.secrets.delete(secret.secret_ref)
+            secret = client.secrets.create(name, payload)
+            secret.store()
+            return secret.secret_ref
+        except Exception:
+            LOG.error("Unable to create Barbican secret %s" % name)
+            return None
+
+    def delete_barbican_secret(self, context, name):
+        try:
+            client = self._get_barbicanclient()
+            secret = self.get_barbican_secret_by_name(context=context, name=name)
+            if not secret:
+                LOG.error("Unable to delete unknown Barbican secret %s" % name)
+                return False
+            client.secrets.delete(secret_ref=secret.secret_ref)
+            return True
+        except Exception:
+            LOG.error("Unable to delete Barbican secret %s" % name)
+            return False
 
 
 def get_region_name(region):
