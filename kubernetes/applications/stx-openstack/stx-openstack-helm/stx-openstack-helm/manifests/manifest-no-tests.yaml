@@ -612,10 +612,10 @@ data:
   chart_name: neutron
   release: openstack-neutron
   namespace: openstack
-  install:
-    no_hooks: false
   test:
     enabled: false
+  install:
+    no_hooks: false
   upgrade:
     no_hooks: false
     pre:
@@ -2468,3 +2468,4 @@ data:
     - openstack-heat
     - openstack-horizon
     - openstack-cinder
+    - openstack-telemetry

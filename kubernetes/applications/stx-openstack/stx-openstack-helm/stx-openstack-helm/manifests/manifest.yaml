@@ -2468,3 +2468,4 @@ data:
     - openstack-heat
     - openstack-horizon
     - openstack-cinder
+    - openstack-telemetry
