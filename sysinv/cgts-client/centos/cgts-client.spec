@@ -10,6 +10,7 @@ Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: git
 BuildRequires: python-setuptools
+BuildRequires: python-pbr
 BuildRequires: python2-pip
 BuildRequires: python2-wheel
 Requires: python-httplib2
