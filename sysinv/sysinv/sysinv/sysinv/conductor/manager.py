@@ -33,6 +33,7 @@ import errno
 import filecmp
 import glob
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -7522,7 +7523,7 @@ class ConductorManager(service.PeriodicService):
                     LOG.error("Skipping unexpected drbd-overview output: %s" % row)
                     continue
                 unit = size[-1]
-                size = round(float(size[:-1]))
+                size = float(size[:-1])
 
                 # drbd-overview can display the units in M or G
                 if unit == 'M':
@@ -7545,33 +7546,33 @@ class ConductorManager(service.PeriodicService):
 
         lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
         if lvdisplay_dict.get('pgsql-lv', None):
-            pgsql_lv_size = round(float(lvdisplay_dict['pgsql-lv']))
+            pgsql_lv_size = float(lvdisplay_dict['pgsql-lv'])
         if lvdisplay_dict.get('cgcs-lv', None):
-            cgcs_lv_size = round(float(lvdisplay_dict['cgcs-lv']))
+            cgcs_lv_size = float(lvdisplay_dict['cgcs-lv'])
         if lvdisplay_dict.get('extension-lv', None):
-            extension_lv_size = round(float(lvdisplay_dict['extension-lv']))
+            extension_lv_size = float(lvdisplay_dict['extension-lv'])
         if lvdisplay_dict.get('patch-vault-lv', None):
-            patch_lv_size = round(float(lvdisplay_dict['patch-vault-lv']))
+            patch_lv_size = float(lvdisplay_dict['patch-vault-lv'])
         if lvdisplay_dict.get('etcd-lv', None):
-            etcd_lv_size = round(float(lvdisplay_dict['etcd-lv']))
+            etcd_lv_size = float(lvdisplay_dict['etcd-lv'])
         if lvdisplay_dict.get('dockerdistribution-lv', None):
-            dockerdistribution_lv_size = round(float(lvdisplay_dict['dockerdistribution-lv']))
+            dockerdistribution_lv_size = float(lvdisplay_dict['dockerdistribution-lv'])
 
         LOG.info("drbd-overview: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", drbd_pgsql_size, drbd_cgcs_size, drbd_extension_size, drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
         LOG.info("lvdisplay: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", pgsql_lv_size, cgcs_lv_size, extension_lv_size, patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
 
         drbd_fs_updated = []
-        if drbd_pgsql_size < pgsql_lv_size:
+        if math.ceil(drbd_pgsql_size) < math.ceil(pgsql_lv_size):
             drbd_fs_updated.append(constants.DRBD_PGSQL)
-        if drbd_cgcs_size < cgcs_lv_size:
+        if math.ceil(drbd_cgcs_size) < math.ceil(cgcs_lv_size):
             drbd_fs_updated.append(constants.DRBD_CGCS)
-        if drbd_extension_size < extension_lv_size:
+        if math.ceil(drbd_extension_size) < math.ceil(extension_lv_size):
             drbd_fs_updated.append(constants.DRBD_EXTENSION)
-        if drbd_patch_size < patch_lv_size:
+        if math.ceil(drbd_patch_size) < math.ceil(patch_lv_size):
             drbd_fs_updated.append(constants.DRBD_PATCH_VAULT)
-        if drbd_etcd_size < etcd_lv_size:
+        if math.ceil(drbd_etcd_size) < math.ceil(etcd_lv_size):
             drbd_fs_updated.append(constants.DRBD_ETCD)
-        if dockerdistribution_size < dockerdistribution_lv_size:
+        if math.ceil(dockerdistribution_size) < math.ceil(dockerdistribution_lv_size):
             drbd_fs_updated.append(constants.DRBD_DOCKER_DISTRIBUTION)
 
         return drbd_fs_updated
@@ -7590,7 +7591,7 @@ class ConductorManager(service.PeriodicService):
                 if standby_host:
                     if not self._drbd_connected():
                         LOG.info("resizing filesystems WAIT for drbd connected")
-                        return
+                        return rc
                     else:
                         LOG.info("resizing filesystems drbd connected")
 
@@ -7612,7 +7613,9 @@ class ConductorManager(service.PeriodicService):
                 dockerdistribution_resized = False
                 loop_timeout = 0
                 drbd_fs_updated = self._drbd_fs_updated(context)
-                if drbd_fs_updated:
+                if not drbd_fs_updated:
+                    rc = True
+                else:
                     while(loop_timeout <= 5):
                         if constants.DRBD_PGSQL in drbd_fs_updated:
                             if (not pgsql_resized and
@@ -7681,6 +7684,7 @@ class ConductorManager(service.PeriodicService):
                                 dockerdistribution_resized = True
 
                         if not standby_host:
+                            rc = True
                             break
 
                         all_resized = True
