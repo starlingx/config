@@ -880,11 +880,11 @@ data:
           /v1: gnocchiv1+noauth
           /healthcheck: healthcheck
         pipeline:gnocchiv1+noauth:
-          pipeline: http_proxy_to_wsgi gnocchiv1
+          pipeline: gnocchiv1
         pipeline:gnocchiv1+keystone:
-          pipeline: http_proxy_to_wsgi keystone_authtoken gnocchiv1
+          pipeline: keystone_authtoken gnocchiv1
         pipeline:gnocchiversions_pipeline:
-          pipeline: http_proxy_to_wsgi gnocchiversions
+          pipeline: gnocchiversions
         app:gnocchiversions:
           paste.app_factory: gnocchi.rest.app:app_factory
           root: gnocchi.rest.api.VersionsController
@@ -893,9 +893,6 @@ data:
           root: gnocchi.rest.api.V1Controller
         filter:keystone_authtoken:
           use: egg:keystonemiddleware#auth_token
-          oslo_config_project: gnocchi
-        filter:http_proxy_to_wsgi:
-          use: egg:oslo.middleware#http_proxy_to_wsgi
           oslo_config_project: gnocchi
         app:healthcheck:
           use: egg:oslo.middleware#healthcheck
@@ -1043,14 +1040,6 @@ data:
             public: 80
     conf:
       ceilometer:
-        DEFAULT:
-          csv_location: /var/lib/ceilometer/
-          csv_location_strict: true
-          shuffle_time_before_polling_task: 30
-          batch_polled_samples: true
-        dispatcher_gnocchi:
-          archive_policy: ''
-          filter_project: ''
         cache:
           expiration_time: 86400
         compute:
@@ -1068,7 +1057,6 @@ data:
               - meter_sink
         sinks:
           - name: meter_sink
-            transformers:
             publishers:
               - gnocchi://
       event_pipeline:
@@ -1080,26 +1068,11 @@ data:
               - event_sink
         sinks:
           - name: event_sink
-            transformers:
             publishers:
               - panko://
               - gnocchi://
       polling:
         sources:
-          - name: instance_pollster
-            interval: 600
-            meters:
-              - disk.read.bytes
-              - disk.read.bytes.rate
-              - disk.read.requests
-              - disk.read.requests.rate
-              - disk.write.bytes
-              - disk.write.bytes.rate
-              - disk.write.requests
-              - disk.write.requests.rate
-              - disk.capacity
-              - disk.allocation
-              - disk.usage
           - name: instance_cpu_pollster
             interval: 30
             meters:
@@ -1107,14 +1080,13 @@ data:
           - name: instance_disk_pollster
             interval: 600
             meters:
+              - disk.capacity
+              - disk.allocation
+              - disk.usage
               - disk.device.read.requests
-              - disk.device.read.requests.rate
               - disk.device.write.requests
-              - disk.device.write.requests.rate
               - disk.device.read.bytes
-              - disk.device.read.bytes.rate
               - disk.device.write.bytes
-              - disk.device.write.bytes.rate
               - disk.device.capacity
               - disk.device.allocation
               - disk.device.usage
@@ -1211,26 +1183,11 @@ data:
               memory.bandwidth.local:
               vcpus:
                 archive_policy_name: ceilometer-low-rate
-              vcpu_util:
               cpu:
                 archive_policy_name: ceilometer-low-rate
-              cpu.delta:
-              cpu_util:
               cpu_l3_cache:
               disk.root.size:
               disk.ephemeral.size:
-              disk.read.requests:
-                archive_policy_name: ceilometer-low-rate
-              disk.read.requests.rate:
-              disk.write.requests:
-                archive_policy_name: ceilometer-low-rate
-              disk.write.requests.rate:
-              disk.read.bytes:
-                archive_policy_name: ceilometer-low-rate
-              disk.read.bytes.rate:
-              disk.write.bytes:
-                archive_policy_name: ceilometer-low-rate
-              disk.write.bytes.rate:
               disk.latency:
               disk.iops:
               disk.capacity:
@@ -1244,6 +1201,9 @@ data:
             attributes:
               host: resource_metadata.(instance_host|host)
               image_ref: resource_metadata.image_ref
+              launched_at: resource_metadata.launched_at
+              created_at: resource_metadata.created_at
+              deleted_at: resource_metadata.deleted_at
               display_name: resource_metadata.display_name
               flavor_id: resource_metadata.(instance_flavor_id|(flavor.id)|flavor_id)
               flavor_name: resource_metadata.(instance_type|(flavor.name)|flavor_name)
@@ -1256,8 +1216,6 @@ data:
               instance_disk: '{"=": {"instance_id": "%s"}}'
           - resource_type: instance_network_interface
             metrics:
-              network.outgoing.packets.rate:
-              network.incoming.packets.rate:
               network.outgoing.packets:
                 archive_policy_name: ceilometer-low-rate
               network.incoming.packets:
@@ -1270,8 +1228,6 @@ data:
                 archive_policy_name: ceilometer-low-rate
               network.incoming.packets.error:
                 archive_policy_name: ceilometer-low-rate
-              network.outgoing.bytes.rate:
-              network.incoming.bytes.rate:
               network.outgoing.bytes:
                 archive_policy_name: ceilometer-low-rate
               network.incoming.bytes:
@@ -1283,16 +1239,12 @@ data:
             metrics:
               disk.device.read.requests:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.read.requests.rate:
               disk.device.write.requests:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.write.requests.rate:
               disk.device.read.bytes:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.read.bytes.rate:
               disk.device.write.bytes:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.write.bytes.rate:
               disk.device.latency:
               disk.device.read.latency:
               disk.device.write.latency:
@@ -1329,10 +1281,14 @@ data:
               hardware.ipmi.node.cpu_util:
               hardware.ipmi.node.mem_util:
               hardware.ipmi.node.io_util:
-              hardware.ipmi.temperature:
-              hardware.ipmi.voltage:
-              hardware.ipmi.current:
+          - resource_type: ipmi_sensor
+            metrics:
               hardware.ipmi.fan:
+              hardware.ipmi.temperature:
+              hardware.ipmi.current:
+              hardware.ipmi.voltage:
+            attributes:
+              node: resource_metadata.node
           - resource_type: network
             metrics:
               bandwidth:
@@ -1351,7 +1307,6 @@ data:
             metrics:
               storage.objects.incoming.bytes:
               storage.objects.outgoing.bytes:
-              storage.api.request:
               storage.objects.size:
               storage.objects:
               storage.objects.containers:
@@ -1367,6 +1322,8 @@ data:
             attributes:
               display_name: resource_metadata.(display_name|name)
               volume_type: resource_metadata.volume_type
+              image_id: resource_metadata.image_id
+              instance_id: resource_metadata.instance_id
             event_delete: volume.delete.start
             event_attributes:
               id: resource_id
