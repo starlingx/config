@@ -1,0 +1,19 @@
+{{/*
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if .Values.manifests.configmap_bin }}
+{{- $envAll := . }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ceph-pools-bin
+data:
+  ceph-pools-audit.sh: |
+{{ tuple "bin/_ceph-pools-audit.sh.tpl" . | include "helm-toolkit.utils.template" | indent 4 }}
+{{- end }}

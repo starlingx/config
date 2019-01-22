@@ -1,0 +1,49 @@
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+replicaCount: 1
+
+labels:
+  job:
+    node_selector_key: openstack-control-plane
+    node_selector_value: enabled
+
+name: ceph-pools-audit
+ceph_client:
+  configmap: ceph-etc
+
+conf:
+  ceph:
+    storage_tiers:
+    - name: ceph-store
+      replication: 2
+      min_replication: 1
+      crush_ruleset: storage_tier_ruleset
+    monitors: []
+
+images:
+  tags:
+    ceph_config_helper: docker.io/port/ceph-config-helper:v1.10.3
+  pullPolicy: "IfNotPresent"
+
+jobs:
+  job_ceph_pools_audit:
+    cron: "*/5 * * * *"
+    history:
+      success: 3
+      failed: 1
+
+resources: {}
+
+nodeSelector: { node-role.kubernetes.io/master: "" }
+
+tolerations: []
+
+affinity: {}
+
+manifests:
+  job_ceph_pools_audit: true
+  configmap_bin: true

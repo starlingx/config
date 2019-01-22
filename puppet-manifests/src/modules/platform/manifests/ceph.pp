@@ -21,7 +21,6 @@ class platform::ceph::params(
   $mon_2_host = undef,
   $mon_2_ip = undef,
   $mon_2_addr = undef,
-  $rgw_enabled = false,
   $rgw_client_name = 'radosgw.gateway',
   $rgw_user_name = 'root',
   $rgw_frontend_type = 'civetweb',
@@ -374,7 +373,7 @@ class platform::ceph::storage(
 class platform::ceph::firewall
   inherits ::platform::ceph::params {
 
-  if $rgw_enabled {
+  if $service_enabled {
     platform::firewall::rule { 'ceph-radosgw':
       service_name => 'ceph-radosgw',
       ports        => $rgw_port,
@@ -386,7 +385,7 @@ class platform::ceph::firewall
 class platform::ceph::haproxy
   inherits ::platform::ceph::params {
 
-  if $rgw_enabled {
+  if $service_enabled {
     platform::haproxy::proxy { 'ceph-radosgw-restapi':
       server_name  => 's-ceph-radosgw',
       public_port  => $rgw_port,
@@ -398,7 +397,7 @@ class platform::ceph::haproxy
 class platform::ceph::rgw
   inherits ::platform::ceph::params {
 
-  if $rgw_enabled {
+  if $service_enabled {
     include ::platform::params
 
     include ::openstack::keystone::params

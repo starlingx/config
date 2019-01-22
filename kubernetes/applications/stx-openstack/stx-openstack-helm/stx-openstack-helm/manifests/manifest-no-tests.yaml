@@ -129,6 +129,35 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-ceph-pools-audit
+data:
+  chart_name: ceph-pools-audit
+  release: openstack-ceph-pools-audit
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      app: ceph-pools-audit
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            app: ceph-pools-audit
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/ceph-pools-audit-0.1.0.tgz
+    subpath: ceph-pools-audit
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-mariadb
 data:
   chart_name: mariadb
@@ -2342,6 +2371,16 @@ data:
 schema: armada/ChartGroup/v1
 metadata:
   schema: metadata/Document/v1
+  name: ceph-pools-audit
+data:
+  description: "Ceph pools audit"
+  sequenced: false
+  chart_group:
+    - openstack-ceph-pools-audit
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-mariadb
 data:
   description: "Mariadb"
@@ -2456,6 +2495,7 @@ data:
     - kube-system-ingress
     - openstack-ingress
     - provisioner
+    - ceph-pools-audit
     - openstack-mariadb
     - openstack-memcached
     - openstack-rabbitmq

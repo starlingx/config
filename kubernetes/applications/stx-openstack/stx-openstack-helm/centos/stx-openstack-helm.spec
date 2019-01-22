@@ -58,6 +58,7 @@ helm repo add local http://localhost:8879/charts
 make nova-api-proxy
 make rbd-provisioner
 make garbd
+make ceph-pools-audit
 
 # terminate helm server (the last backgrounded task)
 kill %1

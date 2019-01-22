@@ -1,0 +1,82 @@
+{{/*
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if .Values.manifests.job_ceph_pools_audit }}
+{{- $envAll := . }}
+---
+#
+# The CronJob makes sure all the Ceph pools have the right replication,
+# as present in the attributes of the Ceph backends.
+# This is needed for:
+#   - charts that don't manage pool configuration
+#   - pools created dynamically by services that may not have the current
+#     pool configuration uploaded (ex: swift)
+#   - when replication is changed and we don't want to reinstall all the
+#     charts that created Ceph pools
+#
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: ceph-pools-audit
+spec:
+  schedule: {{ .Values.jobs.job_ceph_pools_audit.cron | quote }}
+  successfulJobsHistoryLimit: {{ .Values.jobs.job_ceph_pools_audit.history.success }}
+  failedJobsHistoryLimit: {{ .Values.jobs.job_ceph_pools_audit.history.failed }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    metadata:
+      name: "{{$envAll.Release.Name}}"
+      namespace: {{ $envAll.Release.namespace }}
+      labels:
+        app: ceph-pools-audit
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ceph-pools-audit
+        spec:
+          restartPolicy: OnFailure
+          nodeSelector:
+            {{ .Values.labels.job.node_selector_key }}: {{ .Values.labels.job.node_selector_value }}
+          volumes:
+            - name: ceph-pools-bin
+              configMap:
+                name: ceph-pools-bin
+                defaultMode: 0555
+            - name: etcceph
+              emptyDir: {}
+            - name: ceph-etc
+              configMap:
+                name: {{ $envAll.Values.ceph_client.configmap }}
+                defaultMode: 0444
+          containers:
+            {{- range $tierConfig := $envAll.Values.conf.ceph.storage_tiers }}
+            - name: ceph-pools-audit-{{- $tierConfig.name }}
+              image: {{ $envAll.Values.images.tags.ceph_config_helper | quote }}
+              env:
+                - name: RBD_POOL_REPLICATION
+                  value: {{ $tierConfig.replication | quote }}
+                - name: RBD_POOL_MIN_REPLICATION
+                  value: {{ $tierConfig.min_replication | quote }}
+                - name: RBD_POOL_CRUSH_RULESET
+                  value: {{ $tierConfig.crush_ruleset | quote }}
+              command:
+                - /tmp/ceph-pools-audit.sh
+              volumeMounts:
+                - name: ceph-pools-bin
+                  mountPath: /tmp/ceph-pools-audit.sh
+                  subPath: ceph-pools-audit.sh
+                  readOnly: true
+                - name: etcceph
+                  mountPath: /etc/ceph
+                - name: ceph-etc
+                  mountPath: /etc/ceph/ceph.conf
+                  subPath: ceph.conf
+                  readOnly: true
+            {{- end }}
+{{- end }}

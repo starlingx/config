@@ -386,7 +386,7 @@ class openstack::keystone::endpoint::runtime {
     }
 
     include ::platform::ceph::params
-    if $::platform::ceph::params::rgw_enabled {
+    if $::platform::ceph::params::service_enabled {
       include ::platform::ceph::rgw::keystone::auth
     }
 

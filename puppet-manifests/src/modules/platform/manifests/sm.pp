@@ -255,7 +255,6 @@ class platform::sm
   # Ceph-Rados-Gateway
   include ::platform::ceph::params
   $ceph_configured = $::platform::ceph::params::service_enabled
-  $rgw_configured = $::platform::ceph::params::rgw_enabled
 
   # Gnocchi
   include ::openstack::gnocchi::params
@@ -1568,7 +1567,7 @@ class platform::sm
   }
 
   # Ceph-Rados-Gateway
-  if $rgw_configured {
+  if $ceph_configured {
     exec {'Provision Ceph-Rados-Gateway (service-group-member ceph-radosgw)':
       command => 'sm-provision service-group-member storage-monitoring-services ceph-radosgw'
     }
