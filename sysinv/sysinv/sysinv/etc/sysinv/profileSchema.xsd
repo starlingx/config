@@ -54,6 +54,8 @@
       <xs:element name="platformReservedMiB" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
       <xs:element name="vmHugePages2M" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
       <xs:element name="vmHugePages1G" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
+      <xs:element name="vsHugePagesNr" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
+      <xs:element name="vsHugePagesSz" type="memoryAllocation" minOccurs="0" maxOccurs="1"/>
 	</xs:sequence>
     <xs:attribute type="xs:string" name="name" use="required" />
   </xs:complexType>

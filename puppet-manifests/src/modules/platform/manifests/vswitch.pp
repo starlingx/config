@@ -95,6 +95,20 @@ class platform::vswitch::ovs(
   } elsif $::platform::params::vswitch_type == 'ovs-dpdk' {
     include ::vswitch::dpdk
 
+    # Since OVS socket memory is configurable, it is required to start the
+    # ovsdb server and disable DPDK initialization before the openvswitch
+    # service runs to prevent any previously stored OVSDB configuration from
+    # being used before the new Vs_config gets applied.
+    service { 'ovsdb-server':
+      ensure => 'running',
+      before => Service['openvswitch'],
+    }
+    exec { 'disable dpdk initialization':
+      command  => template('platform/ovs.disable-dpdk-init.erb'),
+      provider => shell,
+      require  => Service['ovsdb-server']
+    }
+
     Exec['vfio-iommu-mode']
     -> Platform::Vswitch::Ovs::Device<||>
     -> Platform::Vswitch::Ovs::Bridge<||>

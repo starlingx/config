@@ -552,12 +552,32 @@ def get_memoryconfig_1G(iprofile):
     return str
 
 
+def get_memoryconfig_vswitch_nr(iprofile):
+    str = ''
+    for memory in iprofile.memory:
+        if str != '':
+            str = str + "; "
+        str = str + "%s" % (memory.vswitch_hugepages_reqd)
+    return str
+
+
+def get_memoryconfig_vswitch_size(iprofile):
+    str = ''
+    for memory in iprofile.memory:
+        if str != '':
+            str = str + "; "
+        str = str + "%s" % (memory.vswitch_hugepages_size_mib)
+    return str
+
+
 def get_memprofile_data(cc, iprofile):
     iprofile.memory = cc.iprofile.list_imemorys(iprofile.uuid)
     iprofile.nodes = cc.iprofile.list_inodes(iprofile.uuid)
     iprofile.platform_reserved_mib = get_memoryconfig_platform(iprofile)
     iprofile.vm_hugepages_2M = get_memoryconfig_2M(iprofile)
     iprofile.vm_hugepages_1G = get_memoryconfig_1G(iprofile)
+    iprofile.vswitch_hugepages_nr = get_memoryconfig_vswitch_nr(iprofile)
+    iprofile.vswitch_hugepages_size_mib = get_memoryconfig_vswitch_size(iprofile)
 
 
 def do_memprofile_list(cc, args):
@@ -567,19 +587,25 @@ def do_memprofile_list(cc, args):
         profile.platform_reserved_mib = get_memoryconfig_platform(profile)
         profile.vm_hugepages_2M = get_memoryconfig_2M(profile)
         profile.vm_hugepages_1G = get_memoryconfig_1G(profile)
+        profile.vswitch_hugepages_nr = get_memoryconfig_vswitch_nr(profile)
+        profile.vswitch_hugepages_size_mib = get_memoryconfig_vswitch_size(profile)
 
     field_labels = ['uuid', 'name', 'platform_reserved_mib',
-                    'vm_hugepages_2M', 'vm_hugepages_1G']
+                    'vm_hugepages_2M', 'vm_hugepages_1G',
+                    'vswitch_hugepages_nr', 'vswitch_hugepages_size_mib']
     fields = ['uuid', 'profilename', 'platform_reserved_mib',
-              'vm_hugepages_2M', 'vm_hugepages_1G']
+              'vm_hugepages_2M', 'vm_hugepages_1G',
+              'vswitch_hugepages_nr', 'vswitch_hugepages_size_mib']
     utils.print_list(profiles, fields, field_labels, sortby=0)
 
 
 def _print_memprofile_show(memoryprofile):
     fields = ['profilename', 'platform_reserved_mib', 'vm_hugepages_2M',
-              'vm_hugepages_1G', 'uuid', 'created_at', 'updated_at']
+              'vm_hugepages_1G', 'vswitch_hugepages_nr',
+              'vswitch_hugepages_size_mib', 'uuid', 'created_at', 'updated_at']
     labels = ['name', 'platform_reserved_mib', 'vm_hugepages_2M',
-              'vm_hugepages_1G', 'uuid', 'created_at', 'updated_at']
+              'vm_hugepages_1G', 'vswitch_hugepages_nr',
+              'vswitch_hugepages_size_mib', 'uuid', 'created_at', 'updated_at']
 
     data = [(f, getattr(memoryprofile, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)

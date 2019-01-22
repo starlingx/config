@@ -292,6 +292,36 @@ class NodeOperator(object):
         return [name for name in listdir(dir)
                 if os.path.isdir(join(dir, name))]
 
+    def _get_vswitch_reserved_memory(self, node):
+        # Read vswitch memory from worker_reserved.conf
+
+        vswitch_hugepages_nr = 0
+        vswitch_hugepages_size = 0
+        try:
+            with open('/etc/platform/worker_reserved.conf', 'r') as infile:
+                for line in infile:
+                    if line.startswith("COMPUTE_VSWITCH_MEMORY="):
+                        val = line.split("=")
+                        vswitch_reserves = val[1].strip('\n')[1:-1]
+                        for idx, reserve in enumerate(vswitch_reserves.split()):
+                            if idx != node:
+                                continue
+                            reserve = reserve.split(":")
+                            if reserve[0].strip('"') == "node%d" % node:
+                                pages_nr = re.sub('[^0-9]', '', reserve[2])
+                                pages_size = reserve[1]
+
+                                vswitch_hugepages_nr = int(pages_nr)
+                                if pages_size == "1048576kB":
+                                    vswitch_hugepages_size = SIZE_1G_MB
+                                else:
+                                    vswitch_hugepages_size = SIZE_2M_MB
+                        break
+        except Exception as e:
+            LOG.debug("Could not read vswitch reserved memory: %s", e)
+
+        return vswitch_hugepages_nr, vswitch_hugepages_size
+
     def _inode_get_memory_hugepages(self):
         """Collect hugepage info, including vswitch, and vm.
            Collect platform reserved if config.
@@ -354,36 +384,50 @@ class NodeOperator(object):
                     total_hp_mb = total_hp_mb + int(nr_hugepages * size)
                     free_hp_mb = free_hp_mb + int(free_hugepages * size)
 
+                    vs_hp_nr, vs_hp_size = self._get_vswitch_reserved_memory(
+                        node)
+                    if vs_hp_nr == 0 or vs_hp_size == 0:
+                        vs_hp_nr = VSWITCH_MEMORY_MB // size
+                        vs_hp_size = size
+
                     # Libvirt hugepages can be 1G and 2M
                     if size == SIZE_1G_MB:
-                        vswitch_hugepages_nr = VSWITCH_MEMORY_MB / size
-                        hp_attr = {
-                            'vswitch_hugepages_size_mib': size,
-                            'vswitch_hugepages_nr': vswitch_hugepages_nr,
-                            'vswitch_hugepages_avail': 0,
-                            'vm_hugepages_nr_1G':
-                                (nr_hugepages - vswitch_hugepages_nr),
+                        hp_attr = {}
+                        if vs_hp_size == size:
+                            nr_hugepages -= vs_hp_nr
+                            hp_attr.update({
+                                'vswitch_hugepages_size_mib': vs_hp_size,
+                                'vswitch_hugepages_nr': vs_hp_nr,
+                                'vswitch_hugepages_avail': 0
+                            })
+                        hp_attr.update({
+                            'vm_hugepages_nr_1G': nr_hugepages,
                             'vm_hugepages_avail_1G': free_hugepages,
                             'vm_hugepages_use_1G': 'True'
-                        }
+                        })
                     else:
                         if len(subdirs) == 1:
                             # No 1G hugepage support.
-                            vswitch_hugepages_nr = VSWITCH_MEMORY_MB / size
                             hp_attr = {
-                                'vswitch_hugepages_size_mib': size,
-                                'vswitch_hugepages_nr': vswitch_hugepages_nr,
-                                'vswitch_hugepages_avail': 0,
+                                'vm_hugepages_use_1G': 'False',
+                                'vswitch_hugepages_size_mib': vs_hp_size,
+                                'vswitch_hugepages_nr': vs_hp_nr,
+                                'vswitch_hugepages_avail': 0
                             }
-                            hp_attr.update({'vm_hugepages_use_1G': 'False'})
                         else:
-                            # vswitch will use 1G hugpages
-                            vswitch_hugepages_nr = 0
+                            hp_attr = {}
+                            if vs_hp_size == size and initial_report is False:
+                                # User manually set 2M pages
+                                nr_hugepages -= vs_hp_nr
+                                hp_attr.update({
+                                    'vswitch_hugepages_size_mib': vs_hp_size,
+                                    'vswitch_hugepages_nr': vs_hp_nr,
+                                    'vswitch_hugepages_avail': 0
+                                })
 
                         hp_attr.update({
                             'vm_hugepages_avail_2M': free_hugepages,
-                            'vm_hugepages_nr_2M':
-                                (nr_hugepages - vswitch_hugepages_nr)
+                            'vm_hugepages_nr_2M': nr_hugepages
                         })
 
                     attr.update(hp_attr)

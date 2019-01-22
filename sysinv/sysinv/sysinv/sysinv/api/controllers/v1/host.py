@@ -3511,7 +3511,10 @@ class HostController(rest.RestController):
             memtotal = m.node_memtotal_mib
             allocated = m.platform_reserved_mib
             if m.hugepages_configured:
-                allocated += m.vswitch_hugepages_nr * m.vswitch_hugepages_size_mib
+                if m.vswitch_hugepages_reqd is not None:
+                    allocated += m.vswitch_hugepages_reqd * m.vswitch_hugepages_size_mib
+                else:
+                    allocated += m.vswitch_hugepages_nr * m.vswitch_hugepages_size_mib
             if m.vm_hugepages_nr_2M_pending is not None:
                 allocated += constants.MIB_2M * m.vm_hugepages_nr_2M_pending
                 pending_2M_memory = True
@@ -5088,6 +5091,8 @@ class HostController(rest.RestController):
         mib_reserved_disk_io = 0
         align_2M_memory = False
         align_1G_memory = False
+        vswitch_hp_size = None
+
         for node in ihost_inodes:
             # If the reserved memory has changed (eg, due to patch that
             # changes common/constants.py), then push updated reserved memory
@@ -5096,6 +5101,15 @@ class HostController(rest.RestController):
             # incremented value to be brought back down as there is no record
             # of the original setting.
             self._auto_adjust_memory_for_node(ihost, node)
+
+            mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
+            for m in mems:
+                if not vswitch_hp_size:
+                    vswitch_hp_size = m.vswitch_hugepages_size_mib
+                else:
+                    if m.vswitch_hugepages_size_mib != vswitch_hp_size:
+                        raise wsme.exc.ClientSideError(_(
+                            "Mismatched vswitch socket memory hugepage size."))
 
             # check whether the pending hugepages changes and the current
             # platform reserved memory fit within the total memory available

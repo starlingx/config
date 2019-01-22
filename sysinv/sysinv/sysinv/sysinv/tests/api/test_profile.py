@@ -328,6 +328,8 @@ class ProfileApplyTestCase(ProfileTestCase):
                          profile_r['imemorys'][0]['vm_hugepages_nr_2M_pending'])
         self.assertEqual(hostmem_r['imemorys'][0]['vm_hugepages_nr_1G_pending'],
                          profile_r['imemorys'][0]['vm_hugepages_nr_1G_pending'])
+        self.assertEqual(hostmem_r['imemorys'][0]['vswitch_hugepages_reqd'],
+                         profile_r['imemorys'][0]['vswitch_hugepages_reqd'])
 
     def test_apply_storage_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_LOCAL_STORAGE
