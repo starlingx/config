@@ -923,11 +923,6 @@ class KubeAppNotFound(NotFound):
     message = _("No application with name %(name)s.")
 
 
-class DockerRegistryCredentialNotFound(NotFound):
-    message = _("Credentials to access local docker registry "
-                "for user %(name)s could not be found.")
-
-
 class SDNNotEnabled(SysinvException):
     message = _("SDN configuration is not enabled.")
 
