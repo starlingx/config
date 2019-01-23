@@ -593,7 +593,8 @@ def get_interface_address_method(context, iface):
     Determine what type of interface to configure for each network type.
     """
 
-    if not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE:
+    if not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE \
+            or not iface.networktype:
         # Interfaces that are configured purely as a dependency from other
         # interfaces (i.e., vlan lower interface, bridge member, bond slave)
         # should be left as manual config
@@ -622,20 +623,21 @@ def get_interface_address_method(context, iface):
             return 'dhcp'
 
 
-def get_interface_traffic_classifier(context, iface):
+def get_interface_traffic_classifier(context, iface, network_id=None):
     """
     Get the interface traffic classifier command line (if any)
     """
-
-    for net_id in iface.networks:
-        networktype = find_networktype_by_network_id(context, int(net_id))
-        if networktype in [constants.NETWORK_TYPE_MGMT,
-                           constants.NETWORK_TYPE_INFRA]:
-            networkspeed = constants.LINK_SPEED_10G
-            return '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' \
-                   % (get_interface_os_ifname(context, iface),
-                      networktype,
-                      networkspeed)
+    if (iface.networktype and
+            iface.networktype in [constants.NETWORK_TYPE_MGMT,
+                                  constants.NETWORK_TYPE_INFRA]):
+        networkspeed = constants.LINK_SPEED_10G
+        ifname = get_interface_os_ifname(context, iface)
+        if network_id:
+            ifname = ifname + ':' + str(network_id)
+        return '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' \
+               % (ifname,
+                  iface.networktype,
+                  networkspeed)
     return None
 
 
@@ -881,10 +883,10 @@ def get_common_network_config(context, iface, config, network_id=None):
     """
     LOG.debug("get_common_network_config %s %s network_id=%s" %
               (iface.ifname, iface.networks, network_id))
-    if network_id is None:
-        traffic_classifier = get_interface_traffic_classifier(context, iface)
-        if traffic_classifier:
-            config['options']['post_up'] = traffic_classifier
+    traffic_classifier = get_interface_traffic_classifier(context, iface,
+                                                          network_id)
+    if traffic_classifier:
+        config['options']['post_up'] = traffic_classifier
 
     method = get_interface_address_method(context, iface)
     if method == 'static':
@@ -937,13 +939,25 @@ def generate_network_config(context, config, iface):
     resource, while in other cases it will emit multiple resources to create a
     bridge, or to add additional route resources.
     """
+    if len(iface.networks) == 1:
+        # get the network type of the single network
+        iface.networktype = find_networktype_by_network_id(
+            context, int(iface.networks[0]))
+    else:
+        # Either no network assigned to the interface or multiple networks
+        iface.networktype = None
+
+    # Set up the interface network config or the parent of alias interfaces
     network_config = get_interface_network_config(context, iface)
     config[NETWORK_CONFIG_RESOURCE].update({
         network_config['ifname']: format_network_config(network_config)
     })
-
     if len(iface.networks) > 1:
+        # Loop over the networks to create network config for each
+        # alias interface
         for net_id in iface.networks:
+            iface.networktype = find_networktype_by_network_id(
+                context, int(net_id))
             net_config = get_interface_network_config(context, iface,
                                                       int(net_id))
             ifname = net_config['ifname'] + ':' + net_id
