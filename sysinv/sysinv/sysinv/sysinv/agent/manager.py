@@ -1380,8 +1380,9 @@ class AgentManager(service.PeriodicService):
             self._update_config_applied(iconfig_uuid)
             self._report_config_applied(context)
 
-    def _retry_on_missing_mgmt_ip(self, exception):
-        return isinstance(exception, exception.LocalManagementIpNotFound)
+    def _retry_on_missing_mgmt_ip(ex):
+        LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
+        return isinstance(ex, exception.LocalManagementIpNotFound)
 
     @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
                     retry_on_exception=_retry_on_missing_mgmt_ip)
