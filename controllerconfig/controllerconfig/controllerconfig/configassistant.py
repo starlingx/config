@@ -3007,28 +3007,33 @@ class ConfigAssistant():
 
             # Cluster network configuration
             if self.kubernetes:
-                self.cluster_host_interface_name = config.get(
-                    'cCLUSTER', 'CLUSTER_INTERFACE_NAME')
-                self.cluster_host_interface = config.get(
-                    'cCLUSTER', 'CLUSTER_INTERFACE')
-                self.cluster_host_mtu = config.get(
-                    'cCLUSTER', 'CLUSTER_MTU')
-                self.cluster_host_vlan = ''
-                if config.has_option('cCLUSTER', 'CLUSTER_VLAN'):
-                    cvalue = config.get('cCLUSTER', 'CLUSTER_VLAN')
-                    if cvalue != 'NC':
-                        self.cluster_host_vlan = cvalue
-                self.lag_cluster_host_interface = config.getboolean(
-                    'cCLUSTER', 'LAG_CLUSTER_INTERFACE')
-                if self.lag_cluster_host_interface:
-                    self.lag_cluster_host_interface_member0 = config.get(
-                        'cCLUSTER', 'CLUSTER_BOND_MEMBER_0')
-                    self.lag_cluster_host_interface_member1 = config.get(
-                        'cCLUSTER', 'CLUSTER_BOND_MEMBER_1')
-                    self.lag_cluster_host_interface_policy = config.get(
-                        'cCLUSTER', 'CLUSTER_BOND_POLICY')
-                self.cluster_host_subnet = IPNetwork(config.get(
-                    'cCLUSTER', 'CLUSTER_SUBNET'))
+                if config.has_section('cCLUSTER'):
+                    self.cluster_host_interface_name = config.get(
+                        'cCLUSTER', 'CLUSTER_INTERFACE_NAME')
+                    self.cluster_host_interface = config.get(
+                        'cCLUSTER', 'CLUSTER_INTERFACE')
+                    self.cluster_host_mtu = config.get(
+                        'cCLUSTER', 'CLUSTER_MTU')
+                    self.cluster_host_vlan = ''
+                    if config.has_option('cCLUSTER', 'CLUSTER_VLAN'):
+                        cvalue = config.get('cCLUSTER', 'CLUSTER_VLAN')
+                        if cvalue != 'NC':
+                            self.cluster_host_vlan = cvalue
+                    self.lag_cluster_host_interface = config.getboolean(
+                        'cCLUSTER', 'LAG_CLUSTER_INTERFACE')
+                    if self.lag_cluster_host_interface:
+                        self.lag_cluster_host_interface_member0 = config.get(
+                            'cCLUSTER', 'CLUSTER_BOND_MEMBER_0')
+                        self.lag_cluster_host_interface_member1 = config.get(
+                            'cCLUSTER', 'CLUSTER_BOND_MEMBER_1')
+                        self.lag_cluster_host_interface_policy = config.get(
+                            'cCLUSTER', 'CLUSTER_BOND_POLICY')
+                    self.cluster_host_subnet = IPNetwork(config.get(
+                        'cCLUSTER', 'CLUSTER_SUBNET'))
+                else:
+                    self.cluster_host_interface_name = \
+                        self.management_interface_name
+                    self.cluster_host_interface = self.management_interface
                 self.cluster_host_interface_configured = True
 
             # External OAM network configuration

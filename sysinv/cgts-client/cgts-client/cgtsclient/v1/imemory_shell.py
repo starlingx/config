@@ -23,6 +23,7 @@ def _print_imemory_show(imemory):
               'vswitch_hugepages_size_mib',
               'vswitch_hugepages_nr',
               'vswitch_hugepages_avail',
+              'vswitch_hugepages_reqd',
               'vm_hugepages_nr_4K',
               'vm_hugepages_nr_2M',
               'vm_hugepages_nr_2M_pending',
@@ -39,6 +40,7 @@ def _print_imemory_show(imemory):
               'vSwitch Huge Pages: Size (MiB)',
               '                    Total',
               '                    Available',
+              '                    Required',
               'Application  Pages (4K): Total',
               'Application  Huge Pages (2M): Total',
               '                Total Pending',
@@ -112,6 +114,7 @@ def do_host_memory_list(cc, args):
               'vswitch_hugepages_size_mib',
               'vswitch_hugepages_nr',
               'vswitch_hugepages_avail',
+              'vswitch_hugepages_reqd',
               'vm_hugepages_nr_4K',
               'vm_hugepages_nr_2M',
               'vm_hugepages_avail_2M',
@@ -129,6 +132,7 @@ def do_host_memory_list(cc, args):
                     'vs_hp_size(MiB)',
                     'vs_hp_total',
                     'vs_hp_avail',
+                    'vs_hp_reqd',
                     'vm_total_4K',
                     'vm_hp_total_2M',
                     'vm_hp_avail_2M',
@@ -150,18 +154,24 @@ def do_host_memory_list(cc, args):
 @utils.arg('-m', '--platform_reserved_mib',
            metavar='<Platform Reserved MiB>',
            help='The amount of platform memory (MiB) for the numa node')
-@utils.arg('-2M', '--vm_hugepages_nr_2M_pending',
+@utils.arg('-2M', '--hugepages_nr_2M_pending',
            metavar='<2M hugepages number>',
            help='The number of 2M vm huge pages for the numa node')
-@utils.arg('-1G', '--vm_hugepages_nr_1G_pending',
+@utils.arg('-1G', '--hugepages_nr_1G_pending',
            metavar='<1G hugepages number>',
            help='The number of 1G vm huge pages for the numa node')
+@utils.arg('-f', '--function',
+           metavar='<function>',
+           choices=['vswitch', 'vm'],
+           default='vm',
+           help='The Memory Function.')
 def do_host_memory_modify(cc, args):
     """Modify platform reserved and/or application huge page memory attributes for worker nodes."""
 
     rwfields = ['platform_reserved_mib',
-                'vm_hugepages_nr_2M_pending',
-                'vm_hugepages_nr_1G_pending']
+                'hugepages_nr_2M_pending',
+                'hugepages_nr_1G_pending',
+                'function']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
@@ -185,10 +195,31 @@ def do_host_memory_modify(cc, args):
         raise exc.CommandError('Processor not found: host %s processor %s' %
                                (ihost.hostname, args.numa_node))
 
+    function = user_specified_fields.get('function')
+    vswitch_hp_size_mib = None
+
     patch = []
     for (k, v) in user_specified_fields.items():
+        if k == 'function':
+            continue
+        if function == 'vswitch':
+            if k == 'hugepages_nr_2M_pending':
+                vswitch_hp_size_mib = 2
+                k = 'vswitch_hugepages_reqd'
+            elif k == 'hugepages_nr_1G_pending':
+                vswitch_hp_size_mib = 1024
+                k = 'vswitch_hugepages_reqd'
+        else:
+            if k == 'hugepages_nr_2M_pending':
+                k = 'vm_hugepages_nr_2M_pending'
+            elif k == 'hugepages_nr_1G_pending':
+                k = 'vm_hugepages_nr_1G_pending'
+
         patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     if patch:
+        if vswitch_hp_size_mib:
+            patch.append({'op': 'replace', 'path': '/' + 'vswitch_hugepages_size_mib', 'value': vswitch_hp_size_mib})
+
         imemory = cc.imemory.update(mem.uuid, patch)
         _print_imemory_show(imemory)

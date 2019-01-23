@@ -788,13 +788,19 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_lvm_config'))
 
-    def config_worker_for_ceph(self, context):
-        """Synchronously, have the conductor update the worker configuration
-        for adding ceph.
+    def update_ceph_base_config(self, context, personalities):
+        """Synchronously, have the conductor update the configuration
+        for monitors and ceph.conf.
 
         :param context: request context.
+        :param personalities: list of host personalities.
         """
-        return self.call(context, self.make_msg('config_worker_for_ceph'))
+        return self.call(
+            context, self.make_msg(
+                'update_ceph_base_config',
+                personalities=personalities
+            )
+        )
 
     def update_drbd_config(self, context):
         """Synchronously, have the conductor update the drbd configuration.

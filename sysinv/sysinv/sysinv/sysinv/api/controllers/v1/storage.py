@@ -497,13 +497,11 @@ def _check_host(stor):
     if ihost['administrative'] != constants.ADMIN_LOCKED:
         raise wsme.exc.ClientSideError(_("Host must be locked"))
 
-    # semantic check: whether personality == storage or we have k8s AIO SX
-    is_k8s_aio = (utils.is_aio_system(pecan.request.dbapi) and
-                  utils.is_kubernetes_config(pecan.request.dbapi))
-    if not is_k8s_aio and ihost['personality'] != constants.STORAGE:
-            msg = ("Host personality must be 'storage' or kubernetes enabled "
-                   "1 or 2 node system")
-            raise wsme.exc.ClientSideError(_(msg))
+    # semantic check: only storage nodes are allowed without k8s
+    if (not utils.is_kubernetes_config(pecan.request.dbapi) and
+            ihost['personality'] != constants.STORAGE):
+        msg = ("Host personality must be 'storage' or kubernetes enabled.")
+        raise wsme.exc.ClientSideError(_(msg))
 
     # semantic check: whether system has a ceph backend
     if not StorageBackendConfig.has_backend_configured(
@@ -526,8 +524,24 @@ def _check_host(stor):
                 "Only %d storage monitor available. "
                 "At least %s unlocked and enabled hosts with monitors are "
                 "required. Please ensure hosts with monitors are unlocked "
-                "and enabled - candidates: controller-0, controller-1, "
-                "storage-0") % (num_monitors, required_monitors))
+                "and enabled.") % (num_monitors, required_monitors))
+
+    # semantic check: whether OSD can be added to this host.
+    stor_model = ceph.get_ceph_storage_model()
+    if stor_model == constants.CEPH_STORAGE_MODEL:
+        if ihost.personality != constants.STORAGE:
+            msg = ("Storage model is '%s'. Storage devices can only be added "
+                   "to storage nodes." % stor_model)
+            raise wsme.exc.ClientSideError(_(msg))
+    elif stor_model == constants.CEPH_CONTROLLER_MODEL:
+        if ihost.personality != constants.CONTROLLER:
+            msg = ("Storage model is '%s'. Storage devices can only be added "
+                   "to controller nodes." % stor_model)
+            raise wsme.exc.ClientSideError(_(msg))
+    elif stor_model == constants.CEPH_UNDEFINED_MODEL:
+        msg = ("Please install storage-0 or configure a Ceph monitor "
+               "on a worker node.")
+        raise wsme.exc.ClientSideError(_(msg))
 
 
 def _check_disk(stor):

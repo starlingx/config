@@ -1,0 +1,65 @@
+# begin crush map
+tunable choose_local_tries 0
+tunable choose_local_fallback_tries 0
+tunable choose_total_tries 50
+tunable chooseleaf_descend_once 1
+tunable chooseleaf_vary_r 1
+tunable straw_calc_version 1
+
+# devices
+
+# types
+type 0 osd
+type 1 host
+type 2 chassis
+type 3 rack
+type 4 row
+type 5 pdu
+type 6 pod
+type 7 room
+type 8 datacenter
+type 9 region
+type 10 root
+
+# buckets
+host controller-0 {
+	id -4		# do not change unnecessarily
+	# weight 0.000
+	alg straw
+	hash 0	# rjenkins1
+}
+host controller-1 {
+	id -3		# do not change unnecessarily
+	# weight 0.000
+	alg straw
+	hash 0	# rjenkins1
+}
+chassis group-0 {
+	id -2		# do not change unnecessarily
+	# weight 0.000
+	alg straw
+	hash 0	# rjenkins1
+	item controller-0 weight 0.000
+	item controller-1 weight 0.000
+}
+root storage-tier {
+	id -1		# do not change unnecessarily
+	# weight 0.000
+	alg straw
+	hash 0	# rjenkins1
+	item group-0 weight 0.000
+}
+
+# rules
+rule storage_tier_ruleset {
+	ruleset 0
+	type replicated
+	min_size 1
+	max_size 10
+	step take storage-tier
+	step choose firstn 1 type chassis
+	step chooseleaf firstn 0 type host
+	step emit
+}
+
+# end crush map

@@ -439,6 +439,23 @@ def get_test_stor(**kw):
     return stor
 
 
+def get_test_mon(**kw):
+    mon = {
+        'id': kw.get('id', 2),
+        'uuid': kw.get('uuid'),
+
+        'device_path': kw.get('device_path', ''),
+        'ceph_mon_gib': kw.get('ceph_mon_gib', 20),
+        'state': kw.get('state', 'configured'),
+        'task': kw.get('task', None),
+
+        'forihostid': kw.get('forihostid', 0),
+        'ihost_uuid': kw.get('ihost_uuid', '1be26c0b-03f2-4d2e-ae87-c02d7f33c781'),
+        'hostname': kw.get('hostname', 'controller-0'),
+    }
+    return mon
+
+
 def get_test_lvg(**kw):
     lvg = {
         'id': kw.get('id', 2),

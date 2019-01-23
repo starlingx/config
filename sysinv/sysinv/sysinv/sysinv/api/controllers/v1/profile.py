@@ -1532,6 +1532,8 @@ def _create_mem_profile(profile_name, profile_node):
         platform_reserved = get_mem_assignment(profile_node, "platformReservedMiB")
         vm_hp_2m = get_mem_assignment(profile_node, "vmHugePages2M")
         vm_hp_1g = get_mem_assignment(profile_node, "vmHugePages1G")
+        vs_hp_nr = get_mem_assignment(profile_node, "vsHugePagesNr")
+        vs_hp_sz = get_mem_assignment(profile_node, "vsHugePagesSz")
     except profile_utils.InvalidProfileData as e:
         return "Error", _('error: CPU profile %s is invalid') % profile_name, e.message
 
@@ -1559,6 +1561,8 @@ def _create_mem_profile(profile_name, profile_node):
             mdict['platform_reserved_mib'] = get_mem_size(platform_reserved, node_idx)
             mdict['vm_hugepages_nr_2M_pending'] = get_mem_size(vm_hp_2m, node_idx)
             mdict['vm_hugepages_nr_1G_pending'] = get_mem_size(vm_hp_1g, node_idx)
+            mdict['vswitch_hugepages_reqd'] = get_mem_size(vs_hp_nr, node_idx)
+            mdict['vswitch_hugepages_size_mib'] = get_mem_size(vs_hp_sz, node_idx)
             pecan.request.dbapi.imemory_create(iprofile_id, mdict)
 
             node_idx += 1
@@ -2326,6 +2330,8 @@ def memoryprofile_copy_data(host, profile):
                 mdict['platform_reserved_mib'] = m.platform_reserved_mib
                 mdict['vm_hugepages_nr_2M_pending'] = m.vm_hugepages_nr_2M
                 mdict['vm_hugepages_nr_1G_pending'] = m.vm_hugepages_nr_1G
+                mdict['vswitch_hugepages_reqd'] = m.vswitch_hugepages_nr
+                mdict['vswitch_hugepages_size_mib'] = m.vswitch_hugepages_size_mib
                 newmemory = pecan.request.dbapi.imemory_create(iprofile_id, mdict)
 
                 # if memory wasn't actualy created,
@@ -3177,7 +3183,9 @@ def memoryprofile_apply_to_host(host, profile):
             if int(host_inode.numa_node) == int(profile_inode.numa_node):
                 data = {'vm_hugepages_nr_2M_pending': pmem.vm_hugepages_nr_2M_pending,
                         'vm_hugepages_nr_1G_pending': pmem.vm_hugepages_nr_1G_pending,
-                        'platform_reserved_mib': pmem.platform_reserved_mib}
+                        'platform_reserved_mib': pmem.platform_reserved_mib,
+                        'vswitch_hugepages_reqd': pmem.vswitch_hugepages_reqd,
+                        'vswitch_hugepages_size_mib': pmem.vswitch_hugepages_size_mib}
                 try:
                     memory_api._update(hmem.uuid, data)
                 except wsme.exc.ClientSideError as cse:

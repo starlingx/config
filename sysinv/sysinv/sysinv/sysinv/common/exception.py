@@ -1287,8 +1287,8 @@ class InvalidHelmNamespace(Invalid):
 
 class LocalManagementIpNotFound(NotFound):
     message = _("Local management IP not found: "
-                "config_uuid=%(config_uuid), config_dict=%(config_dict), "
-                "host_personality=%(host_personality)")
+                "config_uuid=%(config_uuid)s, config_dict=%(config_dict)s, "
+                "host_personality=%(host_personality)s")
 
 
 class InvalidHelmDockerImageSource(Invalid):

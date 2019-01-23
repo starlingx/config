@@ -33,6 +33,7 @@ import errno
 import filecmp
 import glob
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -1415,24 +1416,29 @@ class ConductorManager(service.PeriodicService):
                 ceph_mon_gib = ceph_mons[0].ceph_mon_gib
             values = {'forisystemid': system.id,
                       'forihostid': host.id,
-                      'ceph_mon_gib': ceph_mon_gib}
+                      'ceph_mon_gib': ceph_mon_gib,
+                      'state': constants.SB_STATE_CONFIGURED,
+                      'task': constants.SB_TASK_NONE}
             LOG.info("creating ceph_mon for host %s with ceph_mon_gib=%s."
                      % (host.hostname, ceph_mon_gib))
             self.dbapi.ceph_mon_create(values)
 
-    def config_worker_for_ceph(self, context):
-        """
-        configure worker nodes for adding ceph
-        :param context:
-        :return: none
-        """
-        personalities = [constants.WORKER]
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::ceph::compute::runtime']
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+    def _remove_ceph_mon(self, host):
+        if not StorageBackendConfig.has_backend(
+            self.dbapi,
+            constants.CINDER_BACKEND_CEPH
+        ):
+            return
+
+        mon = self.dbapi.ceph_mon_get_by_ihost(host.uuid)
+        if mon:
+            LOG.info("Deleting ceph monitor for host %s"
+                     % str(host.hostname))
+            self.dbapi.ceph_mon_destroy(mon[0].uuid)
+        else:
+            LOG.info("No ceph monitor present for host %s. "
+                     "Skipping deleting ceph monitor."
+                     % str(host.hostname))
 
     def update_remotelogging_config(self, context):
         """Update the remotelogging configuration"""
@@ -1529,6 +1535,8 @@ class ConductorManager(service.PeriodicService):
         self._allocate_addresses_for_host(context, host)
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
+        if host['hostname'] == constants.STORAGE_0_HOSTNAME:
+            self._ceph_mon_create(host)
 
     # TODO(CephPoolsDecouple): remove
     def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
@@ -1590,6 +1598,7 @@ class ConductorManager(service.PeriodicService):
             self._remove_addresses_for_host(host)
         self._puppet.remove_host_config(host)
         self._remove_pxe_config(host)
+        self._remove_ceph_mon(host)
 
     def _unconfigure_storage_host(self, host):
         """Unconfigure a storage host.
@@ -2825,6 +2834,7 @@ class ConductorManager(service.PeriodicService):
             if ihost.administrative == constants.ADMIN_UNLOCKED:
                 mem_dict['vm_hugepages_nr_2M_pending'] = None
                 mem_dict['vm_hugepages_nr_1G_pending'] = None
+                mem_dict['vswitch_hugepages_reqd'] = None
 
             try:
                 imems = self.dbapi.imemory_get_by_ihost_inode(ihost_uuid,
@@ -5649,14 +5659,13 @@ class ConductorManager(service.PeriodicService):
         rpcapi.iconfig_update_install_uuid(context, host_uuid, install_uuid)
 
     def update_ceph_config(self, context, sb_uuid, services):
-        """Update the manifests for Cinder Ceph backend"""
+        """Update the manifests for Ceph backend and services"""
 
         personalities = [constants.CONTROLLER]
 
         # Update service table
         self.update_service_table_for_cinder()
 
-        # TODO(oponcea): Uncomment when SM supports in-service config reload
         ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
         valid_ctrls = [ctrl for ctrl in ctrls if
                        ctrl.administrative == constants.ADMIN_UNLOCKED and
@@ -5666,7 +5675,7 @@ class ConductorManager(service.PeriodicService):
                    'platform::haproxy::runtime',
                    'openstack::keystone::endpoint::runtime',
                    'platform::filesystem::img_conversions::runtime',
-                   'platform::ceph::controller::runtime',
+                   'platform::ceph::runtime',
                    ]
 
         if utils.is_aio_duplex_system(self.dbapi):
@@ -5720,6 +5729,26 @@ class ConductorManager(service.PeriodicService):
         values = {'state': constants.SB_STATE_CONFIGURING,
                   'task': str(tasks)}
         self.dbapi.storage_ceph_update(sb_uuid, values)
+
+    def update_ceph_base_config(self, context, personalities):
+        """ Update Ceph configuration, monitors and ceph.conf only"""
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        valid_nodes = []
+        for personality in personalities:
+            nodes = self.dbapi.ihost_get_by_personality(personality)
+            valid_nodes += [
+                node for node in nodes if
+                (node.administrative == constants.ADMIN_UNLOCKED and
+                 node.operational == constants.OPERATIONAL_ENABLED)]
+
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": [node.uuid for node in valid_nodes],
+            "classes": ['platform::ceph::runtime'],
+            puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_MONITOR_CONFIG
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def config_update_nova_local_backed_hosts(self, context, instance_backing):
         hosts_uuid = self.hosts_with_nova_local(instance_backing)
@@ -5996,6 +6025,19 @@ class ConductorManager(service.PeriodicService):
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
                 self.report_ceph_services_config_failure(host_uuid, error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
+        elif reported_cfg == puppet_common.REPORT_CEPH_MONITOR_CONFIG:
+            host_uuid = iconfig['host_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                self.report_ceph_base_config_success(host_uuid)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Configuration has failed
+                self.report_ceph_base_config_failure(host_uuid, error)
             else:
                 args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
                 LOG.error("No match for sysinv-agent manifest application reported! "
@@ -6494,6 +6536,89 @@ class ConductorManager(service.PeriodicService):
         # Set external backend to error state
         values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
         self.dbapi.storage_backend_update(backend.uuid, values)
+
+    def report_ceph_base_config_success(self, host_uuid):
+        """
+           Callback for Sysinv Agent
+        """
+
+        LOG.info("Ceph monitor update succeeded on host: %s" % host_uuid)
+
+        # Get the monitor that is configuring
+        monitor_list = self.dbapi.ceph_mon_get_list()
+        monitor = None
+        for mon in monitor_list:
+            if mon.state == constants.SB_STATE_CONFIGURING:
+                monitor = mon
+                break
+
+        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        # Note that even if nodes are degraded we still accept the answer.
+        valid_ctrls = [ctrl for ctrl in ctrls if
+                       (ctrl.administrative == constants.ADMIN_LOCKED and
+                        ctrl.availability == constants.AVAILABILITY_ONLINE) or
+                       (ctrl.administrative == constants.ADMIN_UNLOCKED and
+                        ctrl.operational == constants.OPERATIONAL_ENABLED)]
+
+        # Set state for current node
+        for host in valid_ctrls:
+            if host.uuid == host_uuid:
+                break
+        else:
+            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            host = self.dbapi.ihost_get(host_uuid)
+            if not host:
+                LOG.error("Host %s is invalid!" % host_uuid)
+                return
+            elif host.personality == constants.WORKER:
+                LOG.info("Ignoring report from worker hosts")
+                return
+        tasks = eval(monitor.get('task', '{}'))
+        if tasks:
+            tasks[host.hostname] = constants.SB_STATE_CONFIGURED
+        else:
+            tasks = {host.hostname: constants.SB_STATE_CONFIGURED}
+
+        # Check if all hosts configurations have applied correctly
+        # and mark config success
+        config_success = True
+        for host in valid_ctrls:
+            if tasks.get(host.hostname, '') != constants.SB_STATE_CONFIGURED:
+                config_success = False
+
+        values = None
+        if monitor.state != constants.SB_STATE_CONFIG_ERR:
+            if config_success:
+                # All hosts have completed configuration
+                values = {'state': constants.SB_STATE_CONFIGURED, 'task': None}
+            else:
+                # This host_uuid has completed configuration
+                values = {'task': str(tasks)}
+        if values:
+            self.dbapi.ceph_mon_update(monitor.uuid, values)
+
+    def report_ceph_base_config_failure(self, host_uuid, error):
+        """
+           Callback for Sysinv Agent
+        """
+        LOG.error("Ceph monitor update failed on host: %(host)s. Error: "
+                  "%(error)s" % {'host': host_uuid, 'error': error})
+
+        host = self.dbapi.ihost_get(host_uuid)
+        if host and host.personality == constants.WORKER:
+            # Ignoring report from worker
+            return
+
+        monitor_list = self.dbapi.ceph_mon_get_list()
+        monitor = None
+        for mon in monitor_list:
+            if mon.state == constants.SB_STATE_CONFIGURING:
+                monitor = mon
+                break
+
+        # Set monitor to error state
+        values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
+        self.dbapi.ceph_mon_update(monitor.uuid, values)
 
     def create_controller_filesystems(self, context, rootfs_device):
         """ Create the storage config based on disk size for
@@ -7399,7 +7524,7 @@ class ConductorManager(service.PeriodicService):
                     LOG.error("Skipping unexpected drbd-overview output: %s" % row)
                     continue
                 unit = size[-1]
-                size = round(float(size[:-1]))
+                size = float(size[:-1])
 
                 # drbd-overview can display the units in M or G
                 if unit == 'M':
@@ -7422,33 +7547,33 @@ class ConductorManager(service.PeriodicService):
 
         lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
         if lvdisplay_dict.get('pgsql-lv', None):
-            pgsql_lv_size = round(float(lvdisplay_dict['pgsql-lv']))
+            pgsql_lv_size = float(lvdisplay_dict['pgsql-lv'])
         if lvdisplay_dict.get('cgcs-lv', None):
-            cgcs_lv_size = round(float(lvdisplay_dict['cgcs-lv']))
+            cgcs_lv_size = float(lvdisplay_dict['cgcs-lv'])
         if lvdisplay_dict.get('extension-lv', None):
-            extension_lv_size = round(float(lvdisplay_dict['extension-lv']))
+            extension_lv_size = float(lvdisplay_dict['extension-lv'])
         if lvdisplay_dict.get('patch-vault-lv', None):
-            patch_lv_size = round(float(lvdisplay_dict['patch-vault-lv']))
+            patch_lv_size = float(lvdisplay_dict['patch-vault-lv'])
         if lvdisplay_dict.get('etcd-lv', None):
-            etcd_lv_size = round(float(lvdisplay_dict['etcd-lv']))
+            etcd_lv_size = float(lvdisplay_dict['etcd-lv'])
         if lvdisplay_dict.get('dockerdistribution-lv', None):
-            dockerdistribution_lv_size = round(float(lvdisplay_dict['dockerdistribution-lv']))
+            dockerdistribution_lv_size = float(lvdisplay_dict['dockerdistribution-lv'])
 
         LOG.info("drbd-overview: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", drbd_pgsql_size, drbd_cgcs_size, drbd_extension_size, drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
         LOG.info("lvdisplay: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", pgsql_lv_size, cgcs_lv_size, extension_lv_size, patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
 
         drbd_fs_updated = []
-        if drbd_pgsql_size < pgsql_lv_size:
+        if math.ceil(drbd_pgsql_size) < math.ceil(pgsql_lv_size):
             drbd_fs_updated.append(constants.DRBD_PGSQL)
-        if drbd_cgcs_size < cgcs_lv_size:
+        if math.ceil(drbd_cgcs_size) < math.ceil(cgcs_lv_size):
             drbd_fs_updated.append(constants.DRBD_CGCS)
-        if drbd_extension_size < extension_lv_size:
+        if math.ceil(drbd_extension_size) < math.ceil(extension_lv_size):
             drbd_fs_updated.append(constants.DRBD_EXTENSION)
-        if drbd_patch_size < patch_lv_size:
+        if math.ceil(drbd_patch_size) < math.ceil(patch_lv_size):
             drbd_fs_updated.append(constants.DRBD_PATCH_VAULT)
-        if drbd_etcd_size < etcd_lv_size:
+        if math.ceil(drbd_etcd_size) < math.ceil(etcd_lv_size):
             drbd_fs_updated.append(constants.DRBD_ETCD)
-        if dockerdistribution_size < dockerdistribution_lv_size:
+        if math.ceil(dockerdistribution_size) < math.ceil(dockerdistribution_lv_size):
             drbd_fs_updated.append(constants.DRBD_DOCKER_DISTRIBUTION)
 
         return drbd_fs_updated
@@ -7461,12 +7586,13 @@ class ConductorManager(service.PeriodicService):
 
         progress = ""
         retry_attempts = 3
+        rc = False
         with open(os.devnull, "w"):
             try:
                 if standby_host:
                     if not self._drbd_connected():
                         LOG.info("resizing filesystems WAIT for drbd connected")
-                        return
+                        return rc
                     else:
                         LOG.info("resizing filesystems drbd connected")
 
@@ -7488,37 +7614,42 @@ class ConductorManager(service.PeriodicService):
                 dockerdistribution_resized = False
                 loop_timeout = 0
                 drbd_fs_updated = self._drbd_fs_updated(context)
-                if drbd_fs_updated:
+                if not drbd_fs_updated:
+                    rc = True
+                else:
                     while(loop_timeout <= 5):
-                        if (not pgsql_resized and
-                            (not standby_host or (standby_host and
-                             constants.DRBD_PGSQL in self._drbd_fs_sync()))):
-                            # database_gib /var/lib/postgresql
-                            progress = "resize2fs drbd0"
-                            cmd = ["resize2fs", "/dev/drbd0"]
-                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                            LOG.info("Performed %s" % progress)
-                            pgsql_resized = True
+                        if constants.DRBD_PGSQL in drbd_fs_updated:
+                            if (not pgsql_resized and
+                                (not standby_host or (standby_host and
+                                 constants.DRBD_PGSQL in self._drbd_fs_sync()))):
+                                # database_gib /var/lib/postgresql
+                                progress = "resize2fs drbd0"
+                                cmd = ["resize2fs", "/dev/drbd0"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+                                LOG.info("Performed %s" % progress)
+                                pgsql_resized = True
 
-                        if (not cgcs_resized and
-                            (not standby_host or (standby_host and
-                             constants.DRBD_CGCS in self._drbd_fs_sync()))):
-                            # cgcs_gib /opt/cgcs
-                            progress = "resize2fs drbd3"
-                            cmd = ["resize2fs", "/dev/drbd3"]
-                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                            LOG.info("Performed %s" % progress)
-                            cgcs_resized = True
+                        if constants.DRBD_CGCS in drbd_fs_updated:
+                            if (not cgcs_resized and
+                                (not standby_host or (standby_host and
+                                 constants.DRBD_CGCS in self._drbd_fs_sync()))):
+                                # cgcs_gib /opt/cgcs
+                                progress = "resize2fs drbd3"
+                                cmd = ["resize2fs", "/dev/drbd3"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+                                LOG.info("Performed %s" % progress)
+                                cgcs_resized = True
 
-                        if (not extension_resized and
-                            (not standby_host or (standby_host and
-                             constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
-                            # extension_gib /opt/extension
-                            progress = "resize2fs drbd5"
-                            cmd = ["resize2fs", "/dev/drbd5"]
-                            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                            LOG.info("Performed %s" % progress)
-                            extension_resized = True
+                        if constants.DRBD_EXTENSION in drbd_fs_updated:
+                            if (not extension_resized and
+                                (not standby_host or (standby_host and
+                                 constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
+                                # extension_gib /opt/extension
+                                progress = "resize2fs drbd5"
+                                cmd = ["resize2fs", "/dev/drbd5"]
+                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+                                LOG.info("Performed %s" % progress)
+                                extension_resized = True
 
                         if constants.DRBD_PATCH_VAULT in drbd_fs_updated:
                             if (not patch_resized and
@@ -7554,6 +7685,7 @@ class ConductorManager(service.PeriodicService):
                                 dockerdistribution_resized = True
 
                         if not standby_host:
+                            rc = True
                             break
 
                         all_resized = True
@@ -7572,12 +7704,14 @@ class ConductorManager(service.PeriodicService):
                                 all_resized = False
 
                         if all_resized:
+                            LOG.info("resizing filesystems completed")
+                            rc = True
                             break
 
                         loop_timeout += 1
                         time.sleep(1)
-
-                LOG.info("resizing filesystems completed")
+                    else:
+                        LOG.warn("resizing filesystems not completed")
 
             except exception.ProcessExecutionError as ex:
                 LOG.warn("Failed to perform storage resizing (cmd: '%(cmd)s', "
@@ -7586,7 +7720,7 @@ class ConductorManager(service.PeriodicService):
                          {"cmd": " ".join(cmd), "stdout": ex.stdout,
                           "stderr": ex.stderr, "rc": ex.exit_code})
 
-        return True
+        return rc
 
     # Retry in case of errors or racing issues with rmon autoextend. Rmon is pooling at
     # 10s intervals and autoextend is fast. Therefore retrying a few times and waiting

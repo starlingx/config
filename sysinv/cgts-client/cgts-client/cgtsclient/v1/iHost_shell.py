@@ -609,10 +609,14 @@ def do_host_apply_memprofile(cc, args):
     # Echo list of new host memory
     imemory = cc.imemory.list(host.uuid)
     field_labels = ['uuid', 'vm_hugepages_1G', 'vm_hugepages_2M',
-                    'vm_hugepages_2M_pending', 'vm_hugepages_1G_pending']
+                    'vm_hugepages_2M_pending', 'vm_hugepages_1G_pending',
+                    'vswitch_hugepages_nr', 'vswitch_hugepages_size_reqd',
+                    'vswitch_hugepages_size_mib']
 
     fields = ['uuid', 'vm_hugepages_nr_1G', 'vm_hugepages_nr_2M',
-              'vm_hugepages_nr_2M_pending', 'vm_hugepages_nr_1G_pending']
+              'vm_hugepages_nr_2M_pending', 'vm_hugepages_nr_1G_pending',
+              'vswitch_hugepages_nr', 'vswitch_hugepages_reqd',
+              'vswitch_hugepages_size_mib']
     utils.print_list(imemory, fields, field_labels, sortby=0)
 
 

@@ -434,6 +434,15 @@ SB_CEPH_MON_GIB_MAX = 40
 
 SB_CONFIGURATION_TIMEOUT = 1200
 
+# Ceph storage deployment model
+# Controller model: OSDs are on controllers, no storage nodes can
+# be defined.
+# Storage model: OSDs are on dedicated storage nodes.
+CEPH_STORAGE_MODEL = 'storage'
+CEPH_CONTROLLER_MODEL = 'controller'
+CEPH_AIO_SX_MODEL = 'aio-sx'
+CEPH_UNDEFINED_MODEL = 'undefined'
+
 # Storage: Minimum number of monitors
 MIN_STOR_MONITORS = 2
 
@@ -779,6 +788,7 @@ CEPH_TARGET_PGS_PER_OSD = 200
 # Dual node and Storage
 CEPH_REPLICATION_FACTOR_DEFAULT = 2
 CEPH_REPLICATION_FACTOR_SUPPORTED = [2, 3]
+CEPH_CONTROLLER_MODEL_REPLICATION_SUPPORTED = [2]
 
 # Single node
 AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT = 1

@@ -9,6 +9,7 @@ import uuid
 
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 from sysinv.puppet import openstack
@@ -49,6 +50,17 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
             self.dbapi)
 
+        controller_hosts = [constants.CONTROLLER_0_HOSTNAME, constants.CONTROLLER_1_HOSTNAME]
+        mon_2_host = [mon['hostname'] for mon in self.dbapi.ceph_mon_get_list() if
+                      mon['hostname'] not in controller_hosts]
+        if len(mon_2_host) > 1:
+            raise exception.SysinvException(
+                        'Too many ceph monitor hosts, expected 1, got: %s.' % mon_2_host)
+        if mon_2_host:
+            mon_2_host = mon_2_host[0]
+        else:
+            mon_2_host = None
+
         # TODO: k8s on AIO-SX: Temporarily need to move the ceph monitor address
         # from a loopback address to the OAM address so the ceph monitor is
         # reachable from the cluster pods.
@@ -59,12 +71,15 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         else:
             mon_0_ip = ceph_mon_ips['ceph-mon-0-ip']
         mon_1_ip = ceph_mon_ips['ceph-mon-1-ip']
-        mon_2_ip = ceph_mon_ips['ceph-mon-2-ip']
+        mon_2_ip = ceph_mon_ips.get('ceph-mon-2-ip', None)
         floating_mon_ip = ceph_mon_ips['ceph-floating-mon-ip']
 
         mon_0_addr = self._format_ceph_mon_address(mon_0_ip)
         mon_1_addr = self._format_ceph_mon_address(mon_1_ip)
-        mon_2_addr = self._format_ceph_mon_address(mon_2_ip)
+        if mon_2_ip:
+            mon_2_addr = self._format_ceph_mon_address(mon_2_ip)
+        else:
+            mon_2_addr = None
         floating_mon_addr = self._format_ceph_mon_address(floating_mon_ip)
 
         # ceph can not bind to multiple address families, so only enable IPv6
@@ -85,8 +100,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 constants.CONTROLLER_0_HOSTNAME,
             'platform::ceph::params::mon_1_host':
                 constants.CONTROLLER_1_HOSTNAME,
-            'platform::ceph::params::mon_2_host':
-                constants.STORAGE_0_HOSTNAME,
+            'platform::ceph::params::mon_2_host': mon_2_host,
 
             'platform::ceph::params::floating_mon_ip': floating_mon_ip,
             'platform::ceph::params::mon_0_ip': mon_0_ip,
@@ -167,8 +181,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
     def get_host_config(self, host):
         config = {}
         if host.personality in [constants.CONTROLLER, constants.STORAGE]:
-            config.update(self._get_ceph_mon_config(host))
             config.update(self._get_ceph_osd_config(host))
+        config.update(self._get_ceph_mon_config(host))
 
         # if it is a worker node and on an secondary region,
         # check if ceph mon configuration is required

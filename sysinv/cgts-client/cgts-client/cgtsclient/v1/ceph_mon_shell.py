@@ -11,21 +11,24 @@
 
 from cgtsclient.common import constants
 from cgtsclient.common import utils
+from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
 
 
 def _print_ceph_mon_show(ceph_mon):
 
     fields = ['uuid', 'ceph_mon_gib',
-              'created_at', 'updated_at']
+              'created_at', 'updated_at',
+              'state', 'task']
     data = [(f, getattr(ceph_mon, f)) for f in fields]
     utils.print_tuple_list(data)
 
 
 def _print_ceph_mon_list(cc):
     field_labels = ['uuid', 'ceph_mon_gib',
-                    'hostname']
-    fields = ['uuid', 'ceph_mon_gib', 'hostname']
+                    'hostname', 'state', 'task']
+    fields = ['uuid', 'ceph_mon_gib', 'hostname',
+              'state', 'task']
     ceph_mons = cc.ceph_mon.list()
     utils.print_list(ceph_mons, fields, field_labels, sortby=0)
 
@@ -88,3 +91,44 @@ def do_ceph_mon_show(cc, args):
         hostname = getattr(ceph_mon, 'hostname', '')
         if hostname == ihost.hostname:
             _print_ceph_mon_show(ceph_mon)
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help='name or ID of host [REQUIRED]')
+def do_ceph_mon_add(cc, args):
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+
+    fields = {}
+
+    fields['ihost_uuid'] = ihost.uuid
+    try:
+        ceph_mon = cc.ceph_mon.create(**fields)
+    except exc.HTTPNotFound:
+        raise exc.CommandError(
+            "Ceph mon creation failed: "
+            "host %s: " % args.hostnameorid)
+
+    if ceph_mon and len(ceph_mon.ceph_mon):
+        suuid = ceph_mon.ceph_mon[0].get('uuid', '')
+    else:
+        raise exc.CommandError(
+            "Created ceph_mon has invalid data.")
+    try:
+        ceph_mon = cc.ceph_mon.get(suuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError("Created ceph monitor UUID not found: "
+                               "%s" % suuid)
+
+    _print_ceph_mon_show(ceph_mon)
+
+
+@utils.arg('hostnameorid',
+           help='hostname for compute')
+def do_ceph_mon_delete(cc, args):
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+
+    try:
+        cc.ceph_mon.delete(ihost.uuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError("failed to delete ceph_mon")

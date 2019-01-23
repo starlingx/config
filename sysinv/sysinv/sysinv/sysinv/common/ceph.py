@@ -557,7 +557,7 @@ class CephApiOperator(object):
                 hostupdate.ihost_orig['invprovision'] !=
                 constants.PROVISIONED):
 
-            # update crushmap.bin accordingly with the host and it's peer group
+            # update crushmap accordingly with the host and it's peer group
             node_bucket = hostupdate.ihost_orig['hostname']
             ipeer = pecan.request.dbapi.peer_get(
                 hostupdate.ihost_orig['peer_id'])
@@ -645,21 +645,18 @@ class CephApiOperator(object):
         required_monitors = constants.MIN_STOR_MONITORS
         quorum_names = []
         inventory_monitor_names = []
-        ihosts = db_api.ihost_get_list()
-        for ihost in ihosts:
-            if ihost['personality'] == constants.WORKER:
-                continue
-            capabilities = ihost['capabilities']
-            if 'stor_function' in capabilities:
-                host_action = ihost['ihost_action'] or ""
-                locking = (host_action.startswith(constants.LOCK_ACTION) or
-                           host_action.startswith(constants.FORCE_LOCK_ACTION))
-                if (capabilities['stor_function'] == constants.STOR_FUNCTION_MONITOR and
-                   ihost['administrative'] == constants.ADMIN_UNLOCKED and
-                   ihost['operational'] == constants.OPERATIONAL_ENABLED and
-                   not locking):
-                    num_inv_monitors += 1
-                    inventory_monitor_names.append(ihost['hostname'])
+
+        monitor_list = db_api.ceph_mon_get_list()
+        for mon in monitor_list:
+            ihost = db_api.ihost_get(mon['forihostid'])
+            host_action = ihost['ihost_action'] or ""
+            locking = (host_action.startswith(constants.LOCK_ACTION) or
+                       host_action.startswith(constants.FORCE_LOCK_ACTION))
+            if (ihost['administrative'] == constants.ADMIN_UNLOCKED and
+               ihost['operational'] == constants.OPERATIONAL_ENABLED and
+               not locking):
+                num_inv_monitors += 1
+                inventory_monitor_names.append(ihost['hostname'])
 
         LOG.info("Active ceph monitors in inventory = %s" % str(inventory_monitor_names))
 
@@ -702,21 +699,29 @@ class CephApiOperator(object):
 
 
 def fix_crushmap(dbapi=None):
-    # Crush Map: Replication of PGs across storage node pairs
+    """ Set Ceph's CRUSH Map based on storage model """
     if not dbapi:
         dbapi = pecan.request.dbapi
     crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
                                       constants.CEPH_CRUSH_MAP_APPLIED)
     if not os.path.isfile(crushmap_flag_file):
-        if utils.is_aio_simplex_system(dbapi):
-            crushmap_file = "/etc/sysinv/crushmap-aio-sx.bin"
-        elif utils.is_aio_duplex_system(dbapi):
-            crushmap_file = "/etc/sysinv/crushmap-aio-dx.bin"
+        stor_model = get_ceph_storage_model(dbapi)
+        if stor_model == constants.CEPH_AIO_SX_MODEL:
+            crushmap_txt = "/etc/sysinv/crushmap-aio-sx.txt"
+        elif stor_model == constants.CEPH_CONTROLLER_MODEL:
+            crushmap_txt = "/etc/sysinv/crushmap-controller-model.txt"
         else:
-            crushmap_file = "/etc/sysinv/crushmap.bin"
-        LOG.info("Updating crushmap with: %s" % crushmap_file)
+            crushmap_txt = "/etc/sysinv/crushmap-storage-model.txt"
+        LOG.info("Updating crushmap with: %s" % crushmap_txt)
+
         try:
-            subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_file,
+            # Compile crushmap
+            crushmap_bin = "/etc/sysinv/crushmap.bin"
+            subprocess.check_output("crushtool -c %s "
+                                    "-o %s" % (crushmap_txt, crushmap_bin),
+                                    stderr=subprocess.STDOUT, shell=True)
+            # Set crushmap
+            subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_bin,
                                     stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
             # May not be critical, depends on where this is called.
@@ -729,3 +734,59 @@ def fix_crushmap(dbapi=None):
                        'Reason: {}').format(crushmap_flag_file, e))
 
         return True
+
+
+def get_ceph_storage_model(dbapi=None):
+
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+
+    if utils.is_aio_simplex_system(dbapi):
+        return constants.CEPH_AIO_SX_MODEL
+
+    if utils.is_aio_duplex_system(dbapi):
+        return constants.CEPH_CONTROLLER_MODEL
+
+    is_storage_model = False
+    is_controller_model = False
+
+    monitor_list = dbapi.ceph_mon_get_list()
+    for mon in monitor_list:
+        ihost = dbapi.ihost_get(mon['forihostid'])
+        if ihost.personality == constants.WORKER:
+            # 3rd monitor is on a compute node, so OSDs are on controller
+            is_controller_model = True
+        elif ihost.personality == constants.STORAGE:
+            # 3rd monitor is on storage-0, so OSDs are also on storage nodes
+            is_storage_model = True
+
+    # There are cases where we delete the monitor on worker node and have not
+    # yet assigned it to another worker. In this case check if any OSDs have
+    # been configured on controller nodes.
+
+    if not is_storage_model:
+        controller_hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        for chost in controller_hosts:
+            istors = dbapi.istor_get_by_ihost(chost['uuid'])
+            if len(istors):
+                LOG.info("Controller host %s has OSDs configured. System has ceph "
+                         "controller storage." % chost['hostname'])
+                is_controller_model = True
+                break
+
+    if is_storage_model and is_controller_model:
+        # Both types should not be true at the same time, but we should log a
+        # message for debug purposes
+        # TODO(sdinescu): Improve error message
+        LOG.error("Wrong ceph storage type. Bad configuration.")
+        return constants.CEPH_STORAGE_MODEL
+    elif is_storage_model:
+        return constants.CEPH_STORAGE_MODEL
+    elif is_controller_model:
+        return constants.CEPH_CONTROLLER_MODEL
+    else:
+        # This case is for the install stage where the decision
+        # to configure OSDs on controller or storage nodes is not
+        # clear (before adding a monitor on a compute or before
+        # configuring the first storage node)
+        return constants.CEPH_UNDEFINED_MODEL

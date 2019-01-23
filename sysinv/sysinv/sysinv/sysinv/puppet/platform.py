@@ -39,7 +39,6 @@ class PlatformPuppet(base.BasePuppet):
     def get_system_config(self):
         config = {}
         config.update(self._get_system_config())
-        config.update(self._get_hosts_config())
         config.update(self._get_amqp_config())
         config.update(self._get_resolv_config())
         config.update(self._get_haproxy_config())
@@ -61,6 +60,7 @@ class PlatformPuppet(base.BasePuppet):
 
     def get_host_config(self, host):
         config = {}
+        config.update(self._get_hosts_config(host))
         config.update(self._get_host_platform_config(host, self.config_uuid))
         config.update(self._get_host_ntp_config(host))
         config.update(self._get_host_ptp_config(host))
@@ -96,7 +96,7 @@ class PlatformPuppet(base.BasePuppet):
             'platform::params::vswitch_type': self._vswitch_type(),
         }
 
-    def _get_hosts_config(self):
+    def _get_hosts_config(self, host):
         # list of host tuples (host name, address name, newtork type) that need
         # to be populated in the /etc/hosts file
         hostnames = [
@@ -185,6 +185,10 @@ class PlatformPuppet(base.BasePuppet):
 
             (constants.STORAGE_1_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
              constants.STORAGE_1_HOSTNAME,
+             constants.NETWORK_TYPE_CLUSTER_HOST),
+
+            (host.hostname + HOSTNAME_INFRA_SUFFIX,
+             host.hostname,
              constants.NETWORK_TYPE_CLUSTER_HOST),
         ]
 
@@ -670,6 +674,8 @@ class PlatformPuppet(base.BasePuppet):
             vm_2M_pages = []
             vm_1G_pages = []
 
+            vs_pages_updated = False
+
             for node, memory_list in memory_numa_list.items():
 
                 memory = memory_list[0]
@@ -682,7 +688,13 @@ class PlatformPuppet(base.BasePuppet):
                 platform_nodes.append(platform_node)
 
                 vswitch_size = memory.vswitch_hugepages_size_mib
-                vswitch_pages = memory.vswitch_hugepages_nr
+                vswitch_pages = memory.vswitch_hugepages_reqd \
+                    if memory.vswitch_hugepages_reqd is not None \
+                    else memory.vswitch_hugepages_nr
+
+                if vswitch_pages == 0:
+                    vswitch_pages = memory.vswitch_hugepages_nr
+
                 vswitch_node = "\"node%d:%dkB:%d\"" % (
                         node, vswitch_size * 1024, vswitch_pages)
                 vswitch_nodes.append(vswitch_node)
@@ -700,11 +712,11 @@ class PlatformPuppet(base.BasePuppet):
                 total_hugepages_1G = vm_hugepages_nr_1G
 
                 if memory.vswitch_hugepages_size_mib == constants.MIB_2M:
-                    total_hugepages_2M += memory.vswitch_hugepages_nr
-                    vswitch_2M_page += memory.vswitch_hugepages_nr
+                    total_hugepages_2M += vswitch_pages
+                    vswitch_2M_page += vswitch_pages
                 elif memory.vswitch_hugepages_size_mib == constants.MIB_1G:
-                    total_hugepages_1G += memory.vswitch_hugepages_nr
-                    vswitch_1G_page += memory.vswitch_hugepages_nr
+                    total_hugepages_1G += vswitch_pages
+                    vswitch_1G_page += vswitch_pages
 
                 vswitch_2M_pages.append(vswitch_2M_page)
                 vswitch_1G_pages.append(vswitch_1G_page)
@@ -719,6 +731,10 @@ class PlatformPuppet(base.BasePuppet):
                 vm_4K_pages.append(vm_hugepages_nr_4K)
                 vm_2M_pages.append(vm_hugepages_nr_2M)
                 vm_1G_pages.append(vm_hugepages_nr_1G)
+
+                if (memory.vswitch_hugepages_reqd and
+                        vswitch_pages != memory.vswitch_hugepages_nr):
+                    vs_pages_updated = True
 
             platform_reserved_memory = "(%s)" % ' '.join(platform_nodes)
             vswitch_reserved_memory = "(%s)" % ' '.join(vswitch_nodes)
@@ -752,6 +768,17 @@ class PlatformPuppet(base.BasePuppet):
                 'platform::compute::hugepage::params::vm_1G_pages':
                     vm_1G,
             })
+            if vs_pages_updated:
+                grub_hugepages_1G = "hugepagesz=1G hugepages=%d" % (
+                    sum(vswitch_1G_pages) + sum(vm_1G_pages))
+                config.update({
+                    'platform::compute::grub::params::g_hugepages':
+                    grub_hugepages_1G,
+                })
+                if sum(vswitch_2M_pages) > 0:
+                    config.update({
+                        'platform::vswitch::params::hugepage_dir': '/mnt/huge-2048kB'
+                    })
 
         return config
 

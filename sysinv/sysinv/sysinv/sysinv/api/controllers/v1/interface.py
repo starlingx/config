@@ -802,6 +802,7 @@ def _set_defaults(interface):
 
     family_defaults = [constants.NETWORK_TYPE_MGMT,
                        constants.NETWORK_TYPE_OAM,
+                       constants.NETWORK_TYPE_CLUSTER_HOST,
                        constants.NETWORK_TYPE_INFRA]
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
@@ -1874,11 +1875,23 @@ def _update_host_pxeboot_address(host, interface):
 
 
 def _update_host_cluster_address(host, interface):
+    """
+    Check if the host has a cluster-host IP address assigned
+    and the address is populated against the interface.
+    Otherwise, allocate an address from the pool.
+    """
     address_name = cutils.format_address_name(
         host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
-    address = pecan.request.dbapi.address_get_by_name(address_name)
-    updates = {'interface_id': interface['id']}
-    pecan.request.dbapi.address_update(address.uuid, updates)
+    try:
+        address = pecan.request.dbapi.address_get_by_name(address_name)
+        updates = {'interface_id': interface['id']}
+        pecan.request.dbapi.address_update(address.uuid, updates)
+    except exception.AddressNotFoundByName:
+        cluster_host_pool_uuid = pecan.request.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST
+        ).pool_uuid
+        _allocate_pool_address(interface['id'], cluster_host_pool_uuid,
+                               address_name)
 
 
 def _clean_providernetworks(providernetworks):
@@ -2515,6 +2528,7 @@ def _delete(interface, from_profile=False):
             for network_id in interface['networks']:
                 network = pecan.request.dbapi.network_get_by_id(network_id)
                 if ((network.type == constants.NETWORK_TYPE_MGMT) or
+                        (network.type == constants.NETWORK_TYPE_CLUSTER_HOST) or
                         (network.type == constants.NETWORK_TYPE_INFRA) or
                         (network.type == constants.NETWORK_TYPE_PXEBOOT) or
                         (network.type == constants.NETWORK_TYPE_OAM)):
