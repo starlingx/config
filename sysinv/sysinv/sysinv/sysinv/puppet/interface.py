@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,6 +13,7 @@ from netaddr import IPNetwork
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import interface
 from sysinv.common import utils
 from sysinv.conductor import openstack
 from sysinv.openstack.common import log
@@ -152,54 +153,19 @@ class InterfacePuppet(base.BasePuppet):
         """
         Builds a dictionary of ports indexed by interface id.
         """
-        ports = {}
-        for port in self.dbapi.ethernet_port_get_by_host(host.id):
-            ports[port.interface_id] = port
-        return ports
+        return interface._get_port_interface_id_index(self.dbapi, host)
 
     def _get_interface_name_index(self, host):
         """
         Builds a dictionary of interfaces indexed by interface name.
         """
-        interfaces = {}
-        for iface in self.dbapi.iinterface_get_by_ihost(host.id):
-            interfaces[iface.ifname] = iface
-
-        return interfaces
+        return interface._get_interface_name_index(self.dbapi, host)
 
     def _get_interface_name_datanets(self, host):
         """
         Builds a dictionary of datanets indexed by interface name.
         """
-        interfaces = {}
-        for iface in self.dbapi.iinterface_get_by_ihost(host.id):
-            ifdatanets = self.dbapi.interface_datanetwork_get_by_interface(
-                iface.uuid)
-
-            datanetworks = []
-            for ifdatanet in ifdatanets:
-                datanetworks.append(ifdatanet.datanetwork_uuid)
-
-            datanetworks_list = []
-            for datanetwork in datanetworks:
-                dn = self.dbapi.datanetwork_get(datanetwork)
-                datanetwork_dict = \
-                    {'name': dn.name,
-                     'uuid': dn.uuid,
-                     'network_type': dn.network_type,
-                     'mtu': dn.mtu}
-                if dn.network_type == constants.DATANETWORK_TYPE_VXLAN:
-                    datanetwork_dict.update(
-                        {'multicast_group': dn.multicast_group,
-                         'port_num': dn.port_num,
-                         'ttl': dn.ttl,
-                         'mode': dn.mode})
-                datanetworks_list.append(datanetwork_dict)
-            interfaces[iface.ifname] = datanetworks_list
-
-        LOG.debug("_get_interface_name_datanets ifdatanet=%s" % interfaces)
-
-        return interfaces
+        return interface._get_interface_name_datanets(self.dbapi, host)
 
     def _get_port_pciaddr_index(self, host):
         """
@@ -214,10 +180,7 @@ class InterfacePuppet(base.BasePuppet):
         """
         Builds a dictionary of address lists indexed by interface name.
         """
-        addresses = collections.defaultdict(list)
-        for address in self.dbapi.addresses_get_by_host(host.id):
-            addresses[address.ifname].append(address)
-        return addresses
+        return interface._get_address_interface_name_index(self.dbapi, host)
 
     def _get_routes_interface_name_index(self, host):
         """
@@ -498,15 +461,21 @@ def get_interface_datanets(context, iface):
     """
     Return the list of data networks of the supplied interface
     """
-    return context['interfaces_datanets'][iface.ifname]
+    return interface.get_interface_datanets(context, iface)
+
+
+def _get_datanetwork_names(context, iface):
+    """
+    Return the CSV list of data networks of the supplied interface
+    """
+    return interface._get_datanetwork_names(context, iface)
 
 
 def get_interface_port(context, iface):
     """
     Determine the port of the underlying device.
     """
-    assert iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
-    return context['ports'][iface['id']]
+    return interface.get_interface_port(context, iface)
 
 
 def get_interface_port_name(context, iface):
