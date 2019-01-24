@@ -47,7 +47,7 @@ def do_network_list(cc, args):
            help="Type of network [REQUIRED]")
 @utils.arg('dynamic',
            metavar='<dynamic>',
-           choices=['true', 'false'],
+           choices=['true', 'false', 'True', 'False'],
            help="dynamic [REQUIRED]")
 @utils.arg('pool_uuid',
            metavar='<pool_uuid>',
@@ -56,6 +56,10 @@ def do_network_add(cc, args):
     """Add a network."""
 
     field_list = ['name', 'type', 'dynamic', 'pool_uuid']
+
+    # make sure dynamic is lower
+    if args.dynamic is not None:
+        args.dynamic = args.dynamic.lower()
 
     # Prune input fields down to required/expected values
     data = dict((k, v) for (k, v) in vars(args).items()
