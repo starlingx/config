@@ -29,4 +29,5 @@ from configutilities.common.utils import validate_address  # noqa: F401
 from configutilities.common.utils import ip_version_to_string  # noqa: F401
 from configutilities.common.utils import lag_mode_to_str  # noqa: F401
 from configutilities.common.utils import validate_openstack_password  # noqa: F401
+from configutilities.common.utils import validate_nameserver_address_str  # noqa: F401
 from configutilities.common.utils import extract_openstack_password_rules_from_file  # noqa: F401

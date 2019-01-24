@@ -28,6 +28,7 @@ from configutilities import validate_network_str
 from configutilities import validate_address_str
 from configutilities import validate_address
 from configutilities import ip_version_to_string
+from configutilities import validate_nameserver_address_str
 from configutilities import validate_openstack_password
 from configutilities import DEFAULT_DOMAIN_NAME
 from netaddr import IPNetwork
@@ -463,6 +464,10 @@ class ConfigAssistant():
 
         # SDN config
         self.enable_sdn = False
+
+        # DNS config
+        self.nameserver_addresses = ["8.8.8.8", "8.8.4.4", ""]
+
         # HTTPS
         self.enable_https = False
         # Network config
@@ -2666,6 +2671,64 @@ class ConfigAssistant():
         """ Cluster host interface configuration complete"""
         self.cluster_host_interface_configured = True
 
+    def get_dns_servers(self):
+        """Produce a comma separated list of DNS servers."""
+        servers = [str(s) for s in self.nameserver_addresses if s]
+        return ",".join(servers)
+
+    def input_dns_config(self):
+        """Allow user to input DNS config and perform validation."""
+
+        print("\nDomain Name System (DNS):")
+        print("-------------------------\n")
+        print(textwrap.fill(
+            "Configuring DNS servers accessible through the external "
+            "OAM network allows domain names to be mapped to IP "
+            "addresses.", 80))
+        print(textwrap.fill(
+            "The configuration of at least one DNS server is mandatory. To "
+            "skip the configuration of one or more nameservers (1 to 3 are "
+            "allowed), enter C to continue to the next configuration item.",
+            80))
+        print('')
+
+        if self.external_oam_subnet.version == 6:
+            self.nameserver_addresses = ["2001:4860:4860::8888",
+                                         "2001:4860:4860::8844", ""]
+
+        for server in range(0, len(self.nameserver_addresses)):
+            while True:
+                user_input = raw_input(
+                    "Nameserver " + str(server + 1) + " [" +
+                    str(self.nameserver_addresses[server]) + "]: ")
+                if user_input.lower() == 'q':
+                    raise UserQuit
+                elif user_input.lower() == 'c':
+                    if server == 0:
+                        print("At least one DNS server is required.")
+                        continue
+                    for x in range(server, len(self.nameserver_addresses)):
+                        self.nameserver_addresses[x] = ""
+                    return
+                elif user_input == "":
+                    user_input = self.nameserver_addresses[server]
+                    # Pressing enter with a blank default will continue
+                    if user_input == "":
+                        return
+
+                try:
+                    try:
+                        ip_input = validate_nameserver_address_str(
+                            user_input, self.external_oam_subnet.version)
+                    except ValidateFail as e:
+                        print('{}'.format(e))
+                        continue
+                    self.nameserver_addresses[server] = ip_input
+                    break
+                except (AddrFormatError, ValueError):
+                    print("Invalid address - please enter a valid IPv4 "
+                          "address")
+
     def input_authentication_config(self):
         """Allow user to input authentication config and perform validation.
         """
@@ -2711,6 +2774,8 @@ class ConfigAssistant():
         self.management_interface_configured = True
         self.external_oam_interface_configured = True
         self.default_pxeboot_config()
+        if not self.kubernetes:
+            self.nameserver_addresses = ["", "", ""]
 
         if utils.is_cpe():
             self.system_mode = sysinv_constants.SYSTEM_MODE_DUPLEX
@@ -2747,6 +2812,8 @@ class ConfigAssistant():
         if self.kubernetes:
             self.input_cluster_host_config()
         self.input_external_oam_config()
+        if self.kubernetes:
+            self.input_dns_config()
         self.input_authentication_config()
 
     def is_valid_management_multicast_subnet(self, ip_subnet):
@@ -3078,6 +3145,19 @@ class ConfigAssistant():
                 'cEXT_OAM', 'EXTERNAL_OAM_1_ADDRESS'))
 
             self.external_oam_interface_configured = True
+
+            # DNS configuration
+            if self.kubernetes:
+                if config.has_section('cDNS'):
+                    self.nameserver_addresses = ["", "", ""]
+                    for x in range(0, len(self.nameserver_addresses)):
+                        if config.has_option('cDNS',
+                                             'NAMESERVER_' + str(x + 1)):
+                            cvalue = config.get('cDNS',
+                                                'NAMESERVER_' + str(x + 1))
+                            if cvalue != "NC" and cvalue != "":
+                                self.nameserver_addresses[x] = \
+                                    IPAddress(cvalue)
 
             # SDN Network configuration
             if config.has_option('cSDN', 'ENABLE_SDN'):
@@ -3511,6 +3591,18 @@ class ConfigAssistant():
         else:
             print("External OAM address: " + str(self.external_oam_address_0))
 
+        if self.kubernetes:
+            print("\nDNS Configuration")
+            print("-----------------")
+            dns_config = False
+            for x in range(0, len(self.nameserver_addresses)):
+                if self.nameserver_addresses[x]:
+                    print("Nameserver " + str(x + 1) + ": " +
+                          str(self.nameserver_addresses[x]))
+                    dns_config = True
+            if not dns_config:
+                print("External DNS servers not configured")
+
         if self.region_config:
             print("\nRegion Configuration")
             print("--------------------")
@@ -3795,6 +3887,17 @@ class ConfigAssistant():
                         str(self.external_oam_address_0) + "\n")
                 f.write("EXTERNAL_OAM_1_ADDRESS=" +
                         str(self.external_oam_address_1) + "\n")
+
+                if self.kubernetes:
+                    # DNS configuration
+                    f.write("\n[cDNS]")
+                    f.write("\n# DNS Configuration\n")
+                    for x in range(0, len(self.nameserver_addresses)):
+                        if self.nameserver_addresses[x]:
+                            f.write("NAMESERVER_" + str(x + 1) + "=" +
+                                    str(self.nameserver_addresses[x]) + "\n")
+                        else:
+                            f.write("NAMESERVER_" + str(x + 1) + "=NC" + "\n")
 
                 # Network configuration
                 f.write("\n[cNETWORK]")
@@ -5188,6 +5291,17 @@ class ConfigAssistant():
                  "required_patches": "N/A"}
         client.sysinv.load.create(**patch)
 
+    def _populate_dns_config(self, client):
+        # Retrieve the list of dns servers to get the uuid
+        dns_list = client.sysinv.idns.list()
+        dns_record = dns_list[0]
+        values = {
+            'nameservers': self.get_dns_servers(),
+            'action': 'apply'
+        }
+        patch = sysinv.dict_to_patch(values)
+        client.sysinv.idns.update(dns_record.uuid, patch)
+
     def populate_initial_config(self):
         """Populate initial system inventory configuration"""
         try:
@@ -5195,6 +5309,8 @@ class ConfigAssistant():
                 self._populate_system_config(client)
                 self._populate_load_config(client)
                 self._populate_network_config(client)
+                if self.kubernetes:
+                    self._populate_dns_config(client)
                 controller = self._populate_controller_config(client)
                 # ceph_mon config requires controller host to be created
                 self._inventory_config_complete_wait(client, controller)

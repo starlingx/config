@@ -23,6 +23,7 @@ from configutilities.common.utils import is_mtu_valid
 from configutilities.common.utils import get_service
 from configutilities.common.utils import get_optional
 from configutilities.common.utils import validate_address_str
+from configutilities.common.utils import validate_nameserver_address_str
 from configutilities.common.exceptions import ConfigFail
 from configutilities.common.exceptions import ValidateFail
 
@@ -944,8 +945,25 @@ class ConfigValidator(object):
             raise ConfigFail("SDN Configuration is no longer supported")
 
     def validate_dns(self):
-        if self.conf.has_section('DNS'):
-            raise ConfigFail("DNS Configuration is no longer supported")
+        # DNS config is optional
+        if not self.conf.has_section('DNS'):
+            return
+        if self.cgcs_conf is not None:
+            self.cgcs_conf.add_section('cDNS')
+        for x in range(0, 3):
+            if self.conf.has_option('DNS', 'NAMESERVER_' + str(x + 1)):
+                dns_address_str = self.conf.get('DNS', 'NAMESERVER_' + str(
+                    x + 1))
+                try:
+                    dns_address = validate_nameserver_address_str(
+                        dns_address_str)
+                    if self.cgcs_conf is not None:
+                        self.cgcs_conf.set('cDNS', 'NAMESERVER_' + str(x + 1),
+                                           str(dns_address))
+                except ValidateFail as e:
+                    raise ConfigFail(
+                        "Invalid DNS NAMESERVER value of %s.\nReason: %s" %
+                        (dns_address_str, e))
 
     def validate_ntp(self):
         if self.conf.has_section('NTP'):

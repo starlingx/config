@@ -58,15 +58,8 @@ class platform::kubernetes::master::init
     # For initial controller install, configure kubernetes from scratch.
     $resolv_conf = '/etc/resolv.conf'
 
-    # Add a DNS server to allow access to kubernetes repo. This will no longer
-    # be required once we are using our own internal repo.
-    file_line { "${resolv_conf} nameserver 8.8.8.8":
-      path => $resolv_conf,
-      line => 'nameserver 8.8.8.8',
-    }
-
     # Configure the master node.
-    -> file { '/etc/kubernetes/kubeadm.yaml':
+    file { '/etc/kubernetes/kubeadm.yaml':
       ensure  => file,
       content => template('platform/kubeadm.yaml.erb'),
     }
