@@ -176,7 +176,6 @@ function install_sysinv {
     sudo install -d -m 755  $SYSINV_CONF_DIR
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/policy.json $SYSINV_CONF_DIR/policy.json
     sudo install -p -D -m 640 $SYSINV_DIR/etc/sysinv/profileSchema.xsd  $SYSINV_CONF_DIR/profileSchema.xsd
-    sudo install -p -D -m 655 $SYSINV_DIR/etc/sysinv/crushmap.bin  $SYSINV_CONF_DIR/crushmap.bin
     sudo install -d -m 755 $SYSINV_ETC_MOTDD
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/motd-system $SYSINV_ETC_MOTDD/10-system
     sudo install -d -m 755 $SYSINV_CONF_DIR/upgrades
