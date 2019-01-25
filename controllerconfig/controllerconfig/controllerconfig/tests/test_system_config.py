@@ -647,3 +647,10 @@ def test_kubernetes():
     cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
                                validate_only=True)
     validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test absence of optional docker proxy configuration
+    system_config = cr.parse_system_config(systemfile)
+    system_config.remove_section('DOCKER_PROXY')
+    cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                               validate_only=True)
+    validate(system_config, DEFAULT_CONFIG, None, False)

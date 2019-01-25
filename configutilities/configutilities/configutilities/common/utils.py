@@ -11,6 +11,8 @@ import six
 from netaddr import IPNetwork
 from netaddr import IPAddress
 from netaddr import AddrFormatError
+from netaddr import valid_ipv4
+from netaddr import valid_ipv6
 
 from configutilities.common.exceptions import ValidateFail
 
@@ -129,6 +131,65 @@ def is_valid_filename(filename):
 
 def is_valid_by_path(filename):
     return "/dev/disk/by-path" in filename and "-part" not in filename
+
+
+def is_valid_url(url_str):
+    # Django URL validation patterns
+    r = re.compile(
+        r'^(?:http|ftp)s?://'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
+        r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
+    url = r.match(url_str)
+    if url:
+        return True
+    else:
+        return False
+
+
+def is_valid_domain(url_str):
+    r = re.compile(
+        r'^(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
+        r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+        r'[A-Za-z0-9-_]*)'  # localhost, hostname
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
+    url = r.match(url_str)
+    if url:
+        return True
+    else:
+        return False
+
+
+def is_valid_ipv4(address):
+    """Verify that address represents a valid IPv4 address."""
+    try:
+        return valid_ipv4(address)
+    except Exception:
+        return False
+
+
+def is_valid_ipv6(address):
+    try:
+        return valid_ipv6(address)
+    except Exception:
+        return False
+
+
+def is_valid_domain_or_ip(url_str):
+    if is_valid_domain(url_str):
+        return True
+    elif is_valid_ipv4(url_str):
+        return True
+    elif is_valid_ipv6(url_str):
+        return True
+    else:
+        return False
 
 
 def validate_address_str(ip_address_str, network):
