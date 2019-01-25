@@ -131,8 +131,6 @@ class CephMon(base.APIBase):
                                           'ceph_mon_gib',
                                           'state',
                                           'task',
-                                          'ceph_mon_dev_ctrl0',
-                                          'ceph_mon_dev_ctrl1',
                                           'hostname'])
 
         if ceph_mon.device_path:

@@ -42,9 +42,9 @@ def _tier_formatter(values):
 
 
 def _print_cluster_show(obj):
-    fields = ['uuid', 'cluster_uuid', 'type', 'name', 'peers', 'tiers']
+    fields = ['uuid', 'cluster_uuid', 'type', 'name', 'peers', 'tiers', 'deployment_model']
     labels = ['uuid', 'cluster_uuid', 'type', 'name', 'replication_groups',
-              'storage_tiers']
+              'storage_tiers', 'deployment_model']
     data = [(f, getattr(obj, f, '')) for f in fields]
     utils.print_tuple_list(
         data, labels, formatters={'peers': _peer_formatter,
@@ -65,7 +65,7 @@ def do_cluster_list(cc, args):
     """List Clusters."""
     clusters = cc.cluster.list()
 
-    fields = ['uuid', 'cluster_uuid', 'type', 'name']
+    fields = ['uuid', 'cluster_uuid', 'type', 'name', 'deployment_model']
     utils.print_list(clusters, fields, fields, sortby=1)
 
 

@@ -1463,8 +1463,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'state': 'String',
             'task': 'String',
             'ceph_mon_gib': 'Integer',
-            'ceph_mon_dev_ctrl0': 'String',
-            'ceph_mon_dev_ctrl1': 'String',
         }
         for col, coltype in storconfigs_cols.items():
             self.assertTrue(isinstance(storconfigs.c[col].type,
