@@ -25,6 +25,7 @@ from cgtsclient.v1 import ceph_mon
 from cgtsclient.v1 import certificate
 from cgtsclient.v1 import cluster
 from cgtsclient.v1 import controller_fs
+from cgtsclient.v1 import datanetwork
 from cgtsclient.v1 import drbdconfig
 from cgtsclient.v1 import ethernetport
 from cgtsclient.v1 import fernet
@@ -42,6 +43,7 @@ from cgtsclient.v1 import iinterface
 from cgtsclient.v1 import ilvg
 from cgtsclient.v1 import imemory
 from cgtsclient.v1 import inode
+from cgtsclient.v1 import interface_datanetwork
 from cgtsclient.v1 import interface_network
 from cgtsclient.v1 import intp
 from cgtsclient.v1 import iprofile
@@ -132,6 +134,9 @@ class Client(http.HTTPClient):
         self.load = load.LoadManager(self)
         self.upgrade = upgrade.UpgradeManager(self)
         self.network = network.NetworkManager(self)
+        self.datanetwork = datanetwork.DataNetworkManager(self)
+        self.interface_datanetwork = \
+            interface_datanetwork.InterfaceDataNetworkManager(self)
         self.interface_network = interface_network.InterfaceNetworkManager(self)
         self.service_parameter = service_parameter.ServiceParameterManager(self)
         self.cluster = cluster.ClusterManager(self)

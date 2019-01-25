@@ -13,6 +13,7 @@ from cgtsclient.v1 import ceph_mon_shell
 from cgtsclient.v1 import certificate_shell
 from cgtsclient.v1 import cluster_shell
 from cgtsclient.v1 import controller_fs_shell
+from cgtsclient.v1 import datanetwork_shell
 from cgtsclient.v1 import drbdconfig_shell
 from cgtsclient.v1 import ethernetport_shell
 from cgtsclient.v1 import firewallrules_shell
@@ -29,6 +30,7 @@ from cgtsclient.v1 import iinfra_shell
 from cgtsclient.v1 import iinterface_shell
 from cgtsclient.v1 import ilvg_shell
 from cgtsclient.v1 import imemory_shell
+from cgtsclient.v1 import interface_datanetwork_shell
 from cgtsclient.v1 import interface_network_shell
 from cgtsclient.v1 import intp_shell
 from cgtsclient.v1 import iprofile_shell
@@ -100,6 +102,8 @@ COMMAND_MODULES = [
     upgrade_shell,
     network_shell,
     interface_network_shell,
+    datanetwork_shell,
+    interface_datanetwork_shell,
     service_parameter_shell,
     cluster_shell,
     lldp_agent_shell,

@@ -17,7 +17,8 @@
 #
 # Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
-
+# SPDX-License-Identifier: Apache-2.0
+#
 """
 SQLAlchemy models for sysinv data.
 """
@@ -26,6 +27,7 @@ import json
 
 from six.moves.urllib.parse import urlparse
 from oslo_config import cfg
+from oslo_db.sqlalchemy import models
 
 from sqlalchemy import Column, ForeignKey, Integer, BigInteger, Boolean
 from sqlalchemy import Enum, UniqueConstraint, String, Table, Text, Float
@@ -35,7 +37,7 @@ from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.types import TypeDecorator, VARCHAR
 from sqlalchemy.orm import relationship, backref
 
-from oslo_db.sqlalchemy import models
+from sysinv.common import constants
 
 sql_opts = [
     cfg.StrOpt('mysql_engine',
@@ -321,32 +323,6 @@ class imemory(Base):
     UniqueConstraint('forihostid', 'forinodeid', name='u_hostnode')
 
 
-class iinterface(Base):
-    __tablename__ = 'i_interface'
-
-    id = Column(Integer, primary_key=True, nullable=False)
-    uuid = Column(String(36))
-
-    ifname = Column(String(255))
-    iftype = Column(String(255))
-    imac = Column(String(255), unique=True)
-    imtu = Column(Integer)
-    networktype = Column(String(255))
-    aemode = Column(String(255))  # e.g. balanced, active_standby
-    aedict = Column(JSONEncodedDict)  # e.g. 802.3ad parameters
-    txhashpolicy = Column(String(255))  # e.g. L2, L2L3, L3L4
-    providernetworks = Column(String(255))  # ['physnet0','physnet1']
-    providernetworksdict = Column(JSONEncodedDict)
-    schedpolicy = Column(String(255))
-    ifcapabilities = Column(JSONEncodedDict)
-    sriov_numvfs = Column(Integer)
-    # JSON{'mode':"xor", 'bond':'false'}
-
-    farend = Column(JSONEncodedDict)
-    forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
-    UniqueConstraint('ifname', 'forihostid', name='u_ifnameihost')
-
-
 interfaces_to_interfaces = Table("interfaces_to_interfaces", Base.metadata,
     Column("used_by_id", Integer, ForeignKey("interfaces.id", ondelete='CASCADE'), primary_key=True),
     Column("uses_id", Integer, ForeignKey("interfaces.id", ondelete='CASCADE'), primary_key=True)
@@ -408,8 +384,6 @@ class EthernetCommon(object):
 
     imac = Column(String(255))
     imtu = Column(Integer)
-    providernetworks = Column(String(255))  # ['physnet0','physnet1']
-    providernetworksdict = Column(JSONEncodedDict)
 
 
 class EthernetInterfaces(EthernetCommon, Interfaces):
@@ -1178,6 +1152,85 @@ class InterfaceNetworks(Base):
     interface = relationship("Interfaces", lazy="joined", backref="interface_networks")
     network = relationship("Networks", lazy="joined", backref="interface_networks")
     UniqueConstraint('interface_id', 'network_id', name='u_interface_id@network_id')
+
+
+class DataNetworks(Base):
+    __tablename__ = 'datanetworks'
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36), unique=True)
+    name = Column(String(255), unique=True)
+    network_type = Column(String(255))
+    description = Column(String(255))
+    mtu = Column(Integer)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'datanetwork',
+        'polymorphic_on': network_type
+    }
+
+
+class DataNetworksCommon(object):
+    @declared_attr
+    def id(cls):
+        return Column(Integer,
+                      ForeignKey('datanetworks.id', ondelete="CASCADE"),
+                      primary_key=True, nullable=False)
+
+
+class DataNetworksFlat(DataNetworksCommon, DataNetworks):
+    __tablename__ = 'datanetworks_flat'
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'flat',
+    }
+
+
+class DataNetworksVlan(DataNetworksCommon, DataNetworks):
+    __tablename__ = 'datanetworks_vlan'
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'vlan',
+    }
+
+
+class DataNetworksVXlan(DataNetworksCommon, DataNetworks):
+    __tablename__ = 'datanetworks_vxlan'
+
+    # IP address of the multicast group
+    multicast_group = Column(String(64), nullable=True)
+
+    # Destination DP port for all instances
+    port_num = Column(Integer, nullable=False)
+
+    # Time-to-live value for all instances
+    ttl = Column(Integer, nullable=False)
+
+    # defines dynamic learning with multicast enable/disabled
+    mode = Column(String(32), nullable=False,
+                  default=constants.DATANETWORK_MODE_DYNAMIC)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'vxlan',
+    }
+
+
+class InterfaceDataNetworks(Base):
+    __tablename__ = 'interface_datanetworks'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36), unique=True)
+
+    interface_id = Column(
+        Integer, ForeignKey('interfaces.id', ondelete='CASCADE'))
+    datanetwork_id = Column(
+        Integer, ForeignKey('datanetworks.id', ondelete='CASCADE'))
+
+    interface = relationship(
+        "Interfaces", lazy="joined", backref="interface_datanetworks")
+    datanetwork = relationship(
+        "DataNetworks", lazy="joined", backref="interface_datanetworks")
+    UniqueConstraint(
+        'interface_id', 'datanetwork_id', name='u_interface_id@datanetwork_id')
 
 
 class SensorGroups(Base):

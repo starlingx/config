@@ -63,7 +63,7 @@ def get_interfaceconfig(iprofile):
     for interface in iprofile.interfaces:
         istr = istr + "%s: %s" % (interface.ifname, interface.networktype)
         if interface.networktype == 'data':
-            istr = istr + "( %s )" % interface.providernetworks
+            istr = istr + "( %s )" % interface.datanetworks
         _get_interface_ports_interfaces(iprofile, interface)
         if interface.ports:
             istr = istr + " | %s | PORTS = %s" % (interface.iftype, interface.ports)

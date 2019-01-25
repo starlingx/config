@@ -192,15 +192,17 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 # obtain the assigned bridge for interface
                 brname = 'br-phy%d' % index
                 if brname:
-                    providernets = self._get_interface_providernets(iface)
-                    for providernet in providernets:
+                    datanets = self._get_interface_datanets(iface)
+                    for datanet in datanets:
+                        LOG.info("_get_dynamic_ovs_agent_config datanet %s" %
+                                 datanet)
                         address = self._get_interface_primary_address(
                             self.context, host, iface)
                         if address:
                             local_ip = address
-                            tunnel_types = constants.NEUTRON_PROVIDERNET_VXLAN
+                            tunnel_types = constants.DATANETWORK_TYPE_VXLAN
                         else:
-                            bridge_mappings += ('%s:%s,' % (providernet, brname))
+                            bridge_mappings += ('%s:%s,' % (datanet, brname))
                 index += 1
 
         agent = {}
@@ -217,6 +219,12 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         if bridge_mappings:
             ovs['bridge_mappings'] = str(bridge_mappings)
 
+        # https://access.redhat.com/documentation/en-us/
+        # red_hat_enterprise_linux_openstack_platform/7/html/
+        # networking_guide/bridge-mappings
+        # required for vlan, not flat, vxlan:
+        #     ovs['network_vlan_ranges'] = physnet1:10:20,physnet2:21:25
+
         return {
             'agent': agent,
             'ovs': ovs,
@@ -230,11 +238,11 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         for iface in sorted(self.dbapi.iinterface_get_by_ihost(host.id),
                             key=self._interface_sort_key):
             if self._is_sriov_network_type(iface):
-                # obtain the assigned providernets for interface
-                providernets = self._get_interface_providernets(iface)
+                # obtain the assigned datanets for interface
+                datanets = self._get_interface_datanets(iface)
                 port_name = self._get_interface_port_name(iface)
-                for providernet in providernets:
-                    physical_device_mappings += ('%s:%s,' % (providernet, port_name))
+                for datanet in datanets:
+                    physical_device_mappings += ('%s:%s,' % (datanet, port_name))
         sriov_nic = {
             'physical_device_mappings': str(physical_device_mappings),
         }
@@ -289,6 +297,15 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
 
         return neutron_config
 
+    def _get_ml2_physical_network_mtus(self):
+        ml2_physical_network_mtus = []
+        datanetworks = self.dbapi.datanetworks_get_all()
+        for datanetwork in datanetworks:
+            dn_str = str(datanetwork.name) + ":" + str(datanetwork.mtu)
+            ml2_physical_network_mtus.append(dn_str)
+
+        return ",".join(ml2_physical_network_mtus)
+
     def _get_neutron_ml2_config(self):
         ml2_config = {
             'ml2': {
@@ -296,12 +313,14 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 'tenant_network_types': 'vlan,vxlan',
                 'mechanism_drivers': 'openvswitch,sriovnicswitch,l2population',
                 'path_mtu': 0,
+                'physical_network_mtus': self._get_ml2_physical_network_mtus()
 
             },
             'securitygroup': {
                 'firewall_driver': 'noop',
             },
         }
+        LOG.info("_get_neutron_ml2_config=%s" % ml2_config)
         return ml2_config
 
     def _is_data_network_type(self, iface):
@@ -312,14 +331,14 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         networktypelist = utils.get_network_type_list(iface)
         return bool(any(n in SRIOV_NETWORK_TYPES for n in networktypelist))
 
-    def _get_interface_providernets(self, iface):
+    def _get_interface_datanets(self, iface):
         """
-        Return the provider networks of the supplied interface as a list.
+        Return the data networks of the supplied interface as a list.
         """
-        providernetworks = iface['providernetworks']
-        if not providernetworks:
-            return []
-        return [x.strip() for x in providernetworks.split(',')]
+
+        ifdatanets = self.dbapi.interface_datanetwork_get_by_interface(
+            iface.uuid)
+        return [ifdn['datanetwork_name'].strip() for ifdn in ifdatanets]
 
     def _get_interface_port_name(self, iface):
         """

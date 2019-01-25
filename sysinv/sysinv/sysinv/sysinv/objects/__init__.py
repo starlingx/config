@@ -27,6 +27,7 @@ from sysinv.objects import cluster
 from sysinv.objects import community
 from sysinv.objects import controller_fs
 from sysinv.objects import cpu
+from sysinv.objects import datanetwork
 from sysinv.objects import disk
 from sysinv.objects import firewallrules
 from sysinv.objects import partition
@@ -41,6 +42,7 @@ from sysinv.objects import network_infra
 from sysinv.objects import interface
 from sysinv.objects import interface_ae
 from sysinv.objects import interface_ethernet
+from sysinv.objects import interface_datanetwork
 from sysinv.objects import interface_network
 from sysinv.objects import interface_virtual
 from sysinv.objects import interface_vlan
@@ -128,6 +130,7 @@ ae_interface = interface_ae.AEInterface
 virtual_interface = interface_virtual.VirtualInterface
 vlan_interface = interface_vlan.VLANInterface
 interface_network = interface_network.InterfaceNetwork
+interface_datanetwork = interface_datanetwork.InterfaceDataNetwork
 port = port.Port
 ethernet_port = port_ethernet.EthernetPort
 disk = disk.Disk
@@ -183,6 +186,7 @@ storage_ceph_external = storage_ceph_external.StorageCephExternal
 helm_overrides = helm_overrides.HelmOverrides
 label = label.Label
 kube_app = kube_app.KubeApp
+datanetwork = datanetwork.DataNetwork
 
 __all__ = (system,
            cluster,
@@ -251,6 +255,8 @@ __all__ = (system,
            storage_ceph_external,
            helm_overrides,
            kube_app,
+           datanetwork,
+           interface_network,
            # alias objects for RPC compatibility
            ihost,
            ilvg,

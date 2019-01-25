@@ -404,6 +404,26 @@ def add_interface_filter_by_ihost(query, value):
         return query.filter(models.ihost.uuid == value)
 
 
+def add_datanetwork_filter(query, value):
+    """Adds a datanetwork-specific filter to a query.
+
+    :param query: Initial query to add filter to.
+    :param value: Value for filtering results by.
+    :return: Modified query.
+    """
+
+    if uuidutils.is_uuid_like(value):
+        return query.filter(or_(models.DataNetworksFlat.uuid == value,
+                                models.DataNetworksVlan.uuid == value,
+                                models.DataNetworksVXlan.uuid == value))
+    elif utils.is_int_like(value):
+        return query.filter(or_(models.DataNetworksFlat.id == value,
+                                models.DataNetworksVlan.id == value,
+                                models.DataNetworksVXlan.id == value))
+    else:
+        return add_identity_filter(query, value, use_name=True)
+
+
 def add_port_filter_by_numa_node(query, nodeid):
     """Adds a port-specific numa node filter to a query.
 
@@ -534,9 +554,9 @@ def add_port_filter_by_host_interface(query, hostid, interfaceid):
 
     elif utils.is_uuid_like(hostid) and utils.is_uuid_like(interfaceid):
         query = query.join(models.ihost,
-                           models.iinterface)
+                           models.Interface)
         return query.filter(models.ihost.uuid == hostid,
-                            models.iinterface.uuid == interfaceid)
+                            models.Interface.uuid == interfaceid)
 
     LOG.debug("port_filter_by_host_iinterface: "
               "No match for supplied filter ids (%s, %s)"
@@ -1325,9 +1345,6 @@ class Connection(api.Connection):
             model_query(models.imemory, read_deleted="no").\
                 filter_by(forihostid=server_id).\
                 delete()
-            model_query(models.iinterface, read_deleted="no").\
-                filter_by(forihostid=server_id).\
-                delete()
             model_query(models.idisk, read_deleted="no").\
                 filter_by(forihostid=server_id).\
                 delete()
@@ -2063,7 +2080,6 @@ class Connection(api.Connection):
         return query.all()
 
     def _iinterface_get(self, iinterface_id, ihost=None, network=None):
-        # query = model_query(models.iinterface)
         entity = with_polymorphic(models.Interfaces, '*')
         query = model_query(entity)
         query = add_interface_filter(query, iinterface_id)
@@ -2215,15 +2231,12 @@ class Connection(api.Connection):
             if obj.id is None:
                 obj.id = temp_id
 
-            # Ensure networktype and providernetworks results are None when they
+            # Ensure networktype results are None when they
             # are specified as 'none'.  Otherwise the 'none' value is written to
             # the database which causes issues with checks that expects it to be
             # the None type
             if getattr(obj, 'networktype', None) == constants.NETWORK_TYPE_NONE:
                 setattr(obj, 'networktype', None)
-
-            if getattr(obj, 'providernetworks', None) == 'none':
-                setattr(obj, 'providernetworks', None)
 
             try:
                 session.add(obj)
@@ -2301,7 +2314,7 @@ class Connection(api.Connection):
                 for k, v in values.items():
                     if k == 'networktype' and v == constants.NETWORK_TYPE_NONE:
                         v = None
-                    if k == 'providernetworks' and v == 'none':
+                    if k == 'datanetworks' and v == 'none':
                         v = None
                     if k == 'uses':
                         del obj.uses[:]
@@ -7579,3 +7592,263 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.KubeAppNotFound(name)
             query.delete()
+
+    def _datanetwork_get(self, model_class, datanetwork_id, obj=None):
+        session = None
+        if obj:
+            session = inspect(obj).session
+        query = model_query(model_class, session=session)
+
+        query = add_datanetwork_filter(query, datanetwork_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DataNetworkNotFound(
+                datanetwork_uuid=datanetwork_id)
+        except MultipleResultsFound:
+            raise exception.InvalidParameterValue(
+                    err="Multiple entries found for datanetwork %s" % datanetwork_id)
+        return result
+
+    def _datanetwork_get_one(self, datanetwork_id, datanetwork=None):
+        entity = with_polymorphic(models.DataNetworks, '*')
+        query = model_query(entity)
+        query = add_datanetwork_filter(query, datanetwork_id)
+        if datanetwork is not None:
+            query = query.filter_by(network_type=datanetwork)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DataNetworkNotFound(
+                datanetwork_uuid=datanetwork_id)
+        except MultipleResultsFound:
+            raise exception.InvalidParameterValue(
+                err="Multiple entries found for datanetwork %s" % datanetwork_id)
+
+        return result
+
+    def _datanetwork_create(self, obj, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+
+        with _session_for_write() as session:
+            # The id is null for ae interfaces with more than one member interface
+            temp_id = obj.id
+            obj.update(values)
+            if obj.id is None:
+                obj.id = temp_id
+
+            try:
+                session.add(obj)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add datanetwork (uuid: %s), "
+                          "name %s already exists." %
+                          (values['uuid'], values.get('name')))
+
+                raise exception.DataNetworkAlreadyExists(
+                    name=values.get('name'))
+
+        return self._datanetwork_get(type(obj), values['uuid'])
+
+    @objects.objectify(objects.datanetwork)
+    def datanetwork_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+
+        network_type = values.get('network_type')
+        if network_type == constants.DATANETWORK_TYPE_FLAT:
+            datanetwork = models.DataNetworksFlat()
+        elif network_type == constants.DATANETWORK_TYPE_VLAN:
+            datanetwork = models.DataNetworksVlan()
+        elif network_type == constants.DATANETWORK_TYPE_VXLAN:
+            datanetwork = models.DataNetworksVXlan()
+        else:
+            raise exception.DataNetworkTypeUnsupported(
+                network_type=network_type)
+        return self._datanetwork_create(datanetwork, values)
+
+    @objects.objectify(objects.datanetwork)
+    def datanetwork_get(self, datanetwork_id):
+        return self._datanetwork_get_one(datanetwork_id)
+
+    def _add_datanetworks_filters(self, query, filters):
+        if filters is None:
+            filters = dict()
+        supported_filters = {'network_type',
+                             'name',
+                             }
+        unsupported_filters = set(filters).difference(supported_filters)
+        if unsupported_filters:
+            msg = _("SqlAlchemy API does not support "
+                    "filtering by %s") % ', '.join(unsupported_filters)
+            raise ValueError(msg)
+
+        for field in supported_filters:
+            if field in filters:
+                query = query.filter_by(**{field: filters[field]})
+
+        return query
+
+    @objects.objectify(objects.datanetwork)
+    def datanetworks_get_all(self, filters=None, limit=None, marker=None,
+                             sort_key=None, sort_dir=None):
+
+        with _session_for_read() as session:
+            datanetworks = with_polymorphic(models.DataNetworks, '*')
+            query = model_query(datanetworks, session=session)
+            query = self._add_datanetworks_filters(query, filters)
+
+        return _paginate_query(models.DataNetworks, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.datanetwork)
+    def datanetwork_update(self, datanetwork_uuid, values):
+        with _session_for_write() as session:
+            query = model_query(models.DataNetworks, session=session)
+            query = add_identity_filter(query, datanetwork_uuid)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.DataNetworkNotFound(
+                    datanetwork_uuid=datanetwork_uuid)
+            return query.one()
+
+    def datanetwork_destroy(self, datanetwork_uuid):
+        query = model_query(models.DataNetworks)
+        query = add_identity_filter(query, datanetwork_uuid)
+        try:
+            query.one()
+        except NoResultFound:
+            raise exception.DataNetworkNotFound(
+                datanetwork_uuid=datanetwork_uuid)
+        query.delete()
+
+    def _interface_datanetwork_get(self, uuid, session=None):
+        query = model_query(models.InterfaceDataNetworks, session=session)
+        query = add_identity_filter(query, uuid)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.InterfaceDataNetworkNotFound(uuid=uuid)
+        return result
+
+    def _interface_datanetwork_get_all(
+            self, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        query = model_query(models.InterfaceDataNetworks)
+        return _paginate_query(
+            models.InterfaceDataNetworks, limit, marker,
+            sort_key, sort_dir, query)
+
+    def _interface_datanetwork_get_by_host(
+            self, host_uuid, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+
+        query = model_query(models.InterfaceDataNetworks)
+        query = (query.
+                 join(models.Interfaces).
+                 join(models.ihost,
+                      models.ihost.id == models.Interfaces.forihostid))
+        query, field = add_filter_by_many_identities(
+            query, models.ihost, [host_uuid])
+        return _paginate_query(
+            models.InterfaceDataNetworks, limit, marker,
+            sort_key, sort_dir, query)
+
+    def _interface_datanetwork_get_by_interface(
+            self, interface_uuid, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        query = model_query(models.InterfaceDataNetworks)
+        query = (query.join(models.Interfaces))
+        query, field = add_filter_by_many_identities(
+            query, models.Interfaces, [interface_uuid])
+        return _paginate_query(models.InterfaceDataNetworks,
+                               limit, marker, sort_key, sort_dir, query)
+
+    def _interface_datanetwork_get_by_datanetwork(
+            self, datanetwork_uuid, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        query = model_query(models.InterfaceDataNetworks)
+        query = (query.join(models.DataNetworks))
+        query, field = add_filter_by_many_identities(
+            query, models.DataNetworks, [datanetwork_uuid])
+        return _paginate_query(models.InterfaceDataNetworks,
+                               limit, marker, sort_key, sort_dir, query)
+
+    def _interface_datanetwork_query(self, values):
+        query = model_query(models.InterfaceDataNetworks)
+        query = (query.
+                 filter(models.InterfaceDataNetworks.interface_id ==
+                        values['interface_id']).
+                 filter(models.InterfaceDataNetworks.datanetwork_id ==
+                        values['datanetwork_id']))
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.InterfaceDataNetworkNotFoundByKeys(
+                interface_id=values['interface_id'],
+                datanetwork_id=values['datanetwork_id'])
+        return result
+
+    @objects.objectify(objects.interface_datanetwork)
+    def interface_datanetwork_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+
+        interface_datanetwork = models.InterfaceDataNetworks(**values)
+        with _session_for_write() as session:
+            try:
+                session.add(interface_datanetwork)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.InterfaceDataNetworkAlreadyExists(
+                    interface_id=values['interface_id'],
+                    datanetwork_id=values['datanetwork_id'])
+            return self._interface_datanetwork_get(values['uuid'], session)
+
+    @objects.objectify(objects.interface_datanetwork)
+    def interface_datanetwork_get(self, uuid):
+        return self._interface_datanetwork_get(uuid)
+
+    @objects.objectify(objects.interface_datanetwork)
+    def interface_datanetwork_get_all(
+            self, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        return self._interface_datanetwork_get_all(
+            limit, marker, sort_key, sort_dir)
+
+    @objects.objectify(objects.interface_datanetwork)
+    def interface_datanetwork_get_by_host(
+            self, host_id, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        return self._interface_datanetwork_get_by_host(
+            host_id, limit, marker, sort_key, sort_dir)
+
+    @objects.objectify(objects.interface_datanetwork)
+    def interface_datanetwork_get_by_interface(
+            self, interface_id, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        return self._interface_datanetwork_get_by_interface(
+            interface_id, limit, marker, sort_key, sort_dir)
+
+    @objects.objectify(objects.interface_datanetwork)
+    def interface_datanetwork_get_by_datanetwork(
+            self, datanetwork_id, limit=None, marker=None,
+            sort_key=None, sort_dir=None):
+        return self._interface_datanetwork_get_by_datanetwork(
+            datanetwork_id, limit, marker, sort_key, sort_dir)
+
+    def interface_datanetwork_destroy(self, uuid):
+        query = model_query(models.InterfaceDataNetworks)
+        query = add_identity_filter(query, uuid)
+        try:
+            query.one()
+        except NoResultFound:
+            raise exception.InterfaceDataNetworkNotFound(uuid=uuid)
+        query.delete()
+
+    @objects.objectify(objects.interface_datanetwork)
+    def interface_datanetwork_query(self, values):
+        return self._interface_datanetwork_query(values)

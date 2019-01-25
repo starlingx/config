@@ -770,7 +770,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'created_at': 'DateTime', 'updated_at': 'DateTime',
             'ifname': 'String', 'iftype': 'String', 'imac': 'String', 'imtu': 'Integer',
             'networktype': 'String', 'aemode': 'String', 'txhashpolicy': 'String',
-            'providernetworks': 'String', 'providernetworksdict': 'Text',
             'schedpolicy': 'String', 'ifcapabilities': 'Text', 'farend': 'Text',
             'forihostid': 'Integer',
         }
@@ -1016,7 +1015,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         ethernet_interfaces_col = {
             'id': 'Integer', 'deleted_at': 'DateTime', 'created_at': 'DateTime',
             'updated_at': 'DateTime', 'imac': 'String', 'imtu': 'Integer',
-            'providernetworks': 'String', 'providernetworksdict': 'Text',
         }
         for col, coltype in ethernet_interfaces_col.items():
             self.assertTrue(isinstance(ethernet_interfaces.c[col].type,
@@ -1027,7 +1025,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'id': 'Integer', 'deleted_at': 'DateTime', 'created_at': 'DateTime',
             'updated_at': 'DateTime', 'aemode': 'String', 'aedict': 'Text',
             'txhashpolicy': 'String', 'schedpolicy': 'String', 'imac': 'String',
-            'imtu': 'Integer', 'providernetworks': 'String', 'providernetworksdict': 'Text',
+            'imtu': 'Integer',
         }
         for col, coltype in ae_interfaces_col.items():
             self.assertTrue(isinstance(ae_interfaces.c[col].type,
@@ -1037,8 +1035,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         vlan_interfaces_col = {
             'id': 'Integer', 'deleted_at': 'DateTime', 'created_at': 'DateTime',
             'updated_at': 'DateTime', 'vlan_id': 'String', 'vlan_type': 'String',
-            'imac': 'String', 'imtu': 'Integer', 'providernetworks': 'String',
-            'providernetworksdict': 'Text',
+            'imac': 'String', 'imtu': 'Integer',
         }
         for col, coltype in vlan_interfaces_col.items():
             self.assertTrue(isinstance(vlan_interfaces.c[col].type,
@@ -1708,8 +1705,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'id': 'Integer',
             'imac': 'String',
             'imtu': 'Integer',
-            'providernetworks': 'String',
-            'providernetworksdict': 'Text',
         }
         for col, coltype in virtual_interfaces_col.items():
             self.assertTrue(isinstance(virtual_interfaces.c[col].type,
