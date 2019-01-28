@@ -93,8 +93,14 @@ class platform::dns::resolv (
 
 
 class platform::dns {
-  include ::platform::dns::resolv
-  include ::platform::dns::dnsmasq
+  Anchor['platform::networking'] -> Class[$name]
+
+  # The "contain" ensures that the resolv and dnsmasq classes are not applied
+  # until the dns class is begun, which will wait for networking to be
+  # complete, as per the anchor dependency above. This is necessary because
+  # the networking configuration can wipe the /etc/resolv.conf file.
+  contain ::platform::dns::resolv
+  contain ::platform::dns::dnsmasq
 }
 
 
