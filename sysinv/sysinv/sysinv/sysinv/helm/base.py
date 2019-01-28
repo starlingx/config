@@ -188,3 +188,16 @@ class BaseHelm(object):
         address = self._get_address_by_name(
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)
         return address.address
+
+    def get_meta_overrides(self, namespace):
+        """
+        Return Armada-formatted chart-specific meta-overrides
+
+        This allows a helm chart class to specify overrides (in Armada format)
+        for things other than the "values" section of a chart.  This includes
+        other sections of a chart, as well as chart groups or even the
+        overall manifest itself.
+
+        May be left blank to indicate that there are no additional overrides.
+        """
+        return {}
