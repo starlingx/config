@@ -18,6 +18,7 @@ install:
 	install -d -m 755 $(PLATFORMCONFDIR)
 	install -d -m 755 $(SYSTEMDDIR)
 	install -p -D -m 755 affine-platform.sh $(INITDDIR)/affine-platform.sh
+	install -p -D -m 755 affine-tasks.sh $(INITDDIR)/affine-tasks.sh
 	install -p -D -m 755 cpumap_functions.sh $(INITDDIR)/cpumap_functions.sh
 	install -p -D -m 755 task_affinity_functions.sh $(INITDDIR)/task_affinity_functions.sh
 	install -p -D -m 755 ps-sched.sh $(BINDIR)/ps-sched.sh
@@ -29,3 +30,4 @@ install:
 	install -p -D -m 755 worker_reserved.conf $(PLATFORMCONFDIR)/worker_reserved.conf
 	install -p -D -m 755 worker-goenabled.sh $(GOENABLEDDIR)/worker-goenabled.sh
 	install -p -D -m 664 affine-platform.sh.service $(SYSTEMDDIR)/affine-platform.sh.service
+	install -p -D -m 664 affine-tasks.service $(SYSTEMDDIR)/affine-tasks.service
