@@ -4347,15 +4347,6 @@ class ConductorManager(service.PeriodicService):
         config_uuid = imsg_dict['config_applied']
         self._update_host_config_applied(context, ihost, config_uuid)
 
-    def update_nova_local_aggregates(self, context, ihost_uuid):
-        """Synchronously, have a conductor configure nova_local for an ihost.
-
-        :param context: request context.
-        :param ihost_uuid: ihost uuid
-        """
-        if not utils.is_kubernetes_config(self.dbapi):
-            self._openstack.update_nova_local_aggregates(ihost_uuid)
-
     def subfunctions_update_by_ihost(self, context,
                                 ihost_uuid, subfunctions):
         """Update subfunctions for a host.
