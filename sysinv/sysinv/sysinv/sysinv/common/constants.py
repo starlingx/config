@@ -239,10 +239,42 @@ HWMON_PORT = 2212
 NEUTRON_HOST_ALIAS = "host"
 NEUTRON_WRS_PROVIDER_ALIAS = "wrs-provider"
 
-# Neutron provider networks
-NEUTRON_PROVIDERNET_FLAT = "flat"
-NEUTRON_PROVIDERNET_VXLAN = "vxlan"
-NEUTRON_PROVIDERNET_VLAN = "vlan"
+# Data Networks
+DATANETWORK_TYPE_NONE = "none"
+DATANETWORK_TYPE_FLAT = "flat"
+DATANETWORK_TYPE_VLAN = "vlan"
+DATANETWORK_TYPE_VXLAN = "vxlan"
+
+DATANETWORK_MODE_DYNAMIC = "dynamic"
+DATANETWORK_MODE_STATIC = "static"
+
+DATANETWORK_VXLAN_MODES = [
+    DATANETWORK_MODE_DYNAMIC,
+    DATANETWORK_MODE_STATIC
+]
+
+# Represents the number of bytes added to a tenant packet when it is carried
+# by a VXLAN based provider network.  We start by assuming a tenant network
+# with an MTU of 1500 bytes.  This means that at the host vswitch the
+# ethernet frame will be 1514 bytes (+4 if VLAN tagged) not including the FCS
+# trailer.   To get this packet on to the provider network it must be
+# encapsulated as-is with a {IPv4|IPv6}+UDP+VXLAN headers.  The ETH+VLAN
+# headers are not included because they themselves are not included in the
+# provider network MTU (i.e., the VXLAN packet must fit within the ethernet
+# payload of the provider interface).
+# Therefore the maximum overhead, assuming a VLAN tagged provider network, is:
+#
+#  IPv4 = 20 + 8 + 8 = 36
+#  IPv6 = 40 + 8 + 8 = 56
+#
+# This brings the maximum tenant packet size to:
+#  IPv4 = 36 + 1518 = 1554
+#  IPv6 = 56 + 1518 = 1574
+#
+# Therefore to support an tenant MTU of 1500 the underlying physical
+# interface must support an MTU of 1574 bytes.
+#
+VXLAN_MTU_OVERHEAD = 74
 
 # Supported worker node vswitch types
 VSWITCH_TYPE_OVS_DPDK = "ovs-dpdk"

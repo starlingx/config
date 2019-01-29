@@ -836,7 +836,6 @@ class Connection(object):
                          'aemode': 'balanced',
                          'schedpolicy': 'xor',
                          'txhashpolicy': 'L2',
-                         'providernetworks': 'physnet0, physnet1'
                          'extra': { ... },
                         }
         :returns: An iinterface.

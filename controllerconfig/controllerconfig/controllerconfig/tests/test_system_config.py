@@ -42,7 +42,7 @@ def _test_system_config(filename):
     cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
                                validate_only=True)
 
-    # Validate the region config file.
+    # Validate the system config file.
     # Using onboard validation since the validator's reference version number
     # is only set at build-time when validating offboard
     validate(system_config, DEFAULT_CONFIG, None, False)
@@ -508,14 +508,6 @@ def test_system_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
 
-    # Test detection of unsupported DNS NAMESERVER
-    system_config = cr.parse_system_config(simple_systemfile)
-    system_config.add_section('DNS')
-    system_config.set('DNS', 'NAMESERVER_1', '8.8.8.8')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
-
     # Test detection of unsupported NTP NTP_SERVER
     system_config = cr.parse_system_config(simple_systemfile)
     system_config.add_section('NTP')
@@ -606,12 +598,13 @@ def test_pxeboot_range():
         validate(system_config, DEFAULT_CONFIG, None, False)
 
 
-def test_cluster_network():
-    """ Test import of system_config file for cluster network address """
+def test_kubernetes():
+    """ Test import of system_config file for kubernetes """
 
     # Create the path to the system_config file
     systemfile = os.path.join(
-        os.getcwd(), "controllerconfig/tests/files/", "system_config.cluster")
+        os.getcwd(), "controllerconfig/tests/files/",
+        "system_config.kubernetes")
 
     # Test import and generation of answer file
     _test_system_config(systemfile)
@@ -647,3 +640,10 @@ def test_cluster_network():
                                    validate_only=True)
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
+
+    # Test absence of optional DNS configuration
+    system_config = cr.parse_system_config(systemfile)
+    system_config.remove_section('DNS')
+    cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
+                               validate_only=True)
+    validate(system_config, DEFAULT_CONFIG, None, False)

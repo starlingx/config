@@ -422,11 +422,11 @@ class SystemController(rest.RestController):
                                                      timezone))
 
             if p['path'] == '/sdn_enabled':
-                sdn_enabled = p['value']
+                sdn_enabled = p['value'].lower()
                 patch.remove(p)
 
             if p['path'] == '/https_enabled':
-                https_enabled = p['value']
+                https_enabled = p['value'].lower()
                 patch.remove(p)
 
             if p['path'] == '/distributed_cloud_role':

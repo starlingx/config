@@ -60,7 +60,7 @@ def do_show(cc, args):
            help='The name of the system')
 @utils.arg('-s', '--sdn_enabled',
            metavar='<sdn_enabled>',
-           choices=['true', 'false'],
+           choices=['true', 'false', 'True', 'False'],
            help='The SDN enabled or disabled flag')
 @utils.arg('-t', '--timezone',
            metavar='<timezone>',
@@ -79,7 +79,7 @@ def do_show(cc, args):
            help='The location of the system')
 @utils.arg('-p', '--https_enabled',
            metavar='<https_enabled>',
-           choices=['true', 'false'],
+           choices=['true', 'false', 'True', 'False'],
            help='The HTTPS enabled or disabled flag')
 @utils.arg('-v', '--vswitch_type',
            metavar='<vswitch_type>',

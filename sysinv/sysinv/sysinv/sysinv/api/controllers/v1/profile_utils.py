@@ -54,13 +54,13 @@ class Network(object):
             raise InvalidProfileData("At least one provider network must be selected.")
 
 
-class DataNetwork(Network):
+class DataclassNetwork(Network):
     def __init__(self, node):
 
-        super(DataNetwork, self).__init__(node, constants.NETWORK_TYPE_DATA)
-        self.ipv4Mode = DataNetwork.getIpMode(node, "ipv4")
-        self.ipv6Mode = DataNetwork.getIpMode(node, "ipv6")
-        self.routes = DataNetwork.getRoutes(node)
+        super(DataclassNetwork, self).__init__(node, constants.NETWORK_TYPE_DATA)
+        self.ipv4Mode = DataclassNetwork.getIpMode(node, "ipv4")
+        self.ipv6Mode = DataclassNetwork.getIpMode(node, "ipv6")
+        self.routes = DataclassNetwork.getRoutes(node)
 
     @staticmethod
     def getRoutes(node):
@@ -288,7 +288,7 @@ class EthInterface(Interface):
 
     def getNetworkMap(self):
         return {
-                    'dataNetwork': lambda node: DataNetwork(node),
+                    'dataclassNetwork': lambda node: DataclassNetwork(node),
                     'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
                     'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
                     'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT),
@@ -330,7 +330,7 @@ class AeInterface(Interface):
 
     def getNetworkMap(self):
         return {
-                    'dataNetwork': lambda node: DataNetwork(node),
+                    'dataclassNetwork': lambda node: DataclassNetwork(node),
                     'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
                     'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
                     'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)
@@ -365,7 +365,7 @@ class VlanInterface(Interface):
 
     def getNetworkMap(self):
         return {
-                'dataNetwork': lambda (node): DataNetwork(node),
+                'dataclassNetwork': lambda (node): DataclassNetwork(node),
                 'infraNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
                 'oamNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
                 'mgmtNetwork': lambda (node): ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)

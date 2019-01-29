@@ -213,8 +213,8 @@
 			be combined.
 			-->
 			<networks>
-				<dataNetwork>
-					<!--one or more provider network is required for a dataNetwork-->
+				<dataclassNetwork>
+					<!--one or more provider network is required for a dataclassNetwork-->
 					<providerNetworks>
 						<providerNetwork name="group0-data0" />
 						<providerNetwork name="group0-data0b" />
@@ -232,7 +232,7 @@
 						linkLocal, and
 						static-->
 					<ipv6 mode="link-local"></ipv6>
-				</dataNetwork>
+				</dataclassNetwork>
 		  </networks>
 		</ethernetInterface>
 
@@ -267,13 +267,13 @@
 		<ethernetInterface ifName="data1"  mtu="1500" >
 		  <port name="eth6" pciAddress="0000:07:00.0" class="Ethernet controller" device="82599ES 10-Gigabit SFI/SFP+ Network Connection" />
 		  <networks>
-			<dataNetwork>
+			<dataclassNetwork>
 			  <providerNetworks>
 				  <providerNetwork name="group0-data1" />
 			  </providerNetworks>
 			  <ipv4 mode="disabled"></ipv4>
 			  <ipv6 mode="disabled"></ipv6>
-			</dataNetwork>
+			</dataclassNetwork>
 		  </networks>
 		</ethernetInterface>
 	
@@ -322,8 +322,8 @@
 
 		<vlanInterface ifName="vlan11" interface="ae0" vlanId="11" mtu="1600">
 		  <networks>
-			<dataNetwork>
-              <!--This dataNetwork uses ip address pools. See ipv4 and ipv6 tag below
+			<dataclassNetwork>
+              <!--This dataclassNetwork uses ip address pools. See ipv4 and ipv6 tag below
               -->
 			  <providerNetworks>
 				<providerNetwork name="group0-ext0" />
@@ -336,7 +336,7 @@
 			  <ipv6 mode="pool">
                   <pool name="pool-2" />
               </ipv6>
-			</dataNetwork>
+			</dataclassNetwork>
 		  </networks>
 		</vlanInterface>
     </interfaceProfile>

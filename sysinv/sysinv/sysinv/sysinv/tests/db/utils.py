@@ -609,6 +609,39 @@ def get_test_ethernet_port(**kw):
     return ethernet_port
 
 
+def get_test_datanetwork(**kw):
+    datanetwork = {
+        'uuid': kw.get('uuid', '60d41820-a4a0-4c25-a6a0-2a3b98746640'),
+        'name': kw.get('name'),
+        'network_type': kw.get('network_type', 'vxlan'),
+        'mtu': kw.get('mtu', '1500'),
+        'multicast_group': kw.get('multicast_group', '239.0.2.1'),
+        'port_num': kw.get('port_num', 8472),
+        'ttl': kw.get('ttl', 10),
+        'mode': kw.get('mode', 'dynamic'),
+    }
+    return datanetwork
+
+
+def create_test_datanetwork(**kw):
+    """Create test datanetwork entry in DB and return datanetwork DB object.
+    Function to be used to create test datanetwork objects in the database.
+    :param kw: kwargs with overriding values for datanework attributes.
+    :returns: Test datanetwork DB object.
+    """
+    datanetwork = get_test_datanetwork(**kw)
+
+    if kw['network_type'] != constants.DATANETWORK_TYPE_VXLAN:
+        # Remove DB fields which are specific to VXLAN
+        del datanetwork['multicast_group']
+        del datanetwork['port_num']
+        del datanetwork['ttl']
+        del datanetwork['mode']
+
+    dbapi = db_api.get_instance()
+    return dbapi.datanetwork_create(datanetwork)
+
+
 def create_test_ethernet_port(**kw):
     """Create test ethernet port entry in DB and return ethernet port DB object.
     Function to be used to create test ethernet port objects in the database.
@@ -624,6 +657,13 @@ def create_test_ethernet_port(**kw):
 
 
 def post_get_test_interface(**kw):
+    datanetworks = kw.get('datanetworks') or ""
+
+    if datanetworks:
+        datanetworks_list = datanetworks.split(',')
+    else:
+        datanetworks_list = []
+
     interface = {
         'forihostid': kw.get('forihostid'),
         'ihost_uuid': kw.get('ihost_uuid'),
@@ -636,7 +676,7 @@ def post_get_test_interface(**kw):
         'networks': kw.get('networks', []),
         'aemode': kw.get('aemode', 'balanced'),
         'txhashpolicy': kw.get('txhashpolicy', 'layer2'),
-        'providernetworks': kw.get('providernetworks'),
+        'datanetworks': datanetworks_list,
         'vlan_id': kw.get('vlan_id'),
         'uses': kw.get('uses', None),
         'used_by': kw.get('used_by', []),
@@ -650,6 +690,13 @@ def post_get_test_interface(**kw):
 
 
 def get_test_interface(**kw):
+
+    datanetworks = kw.get('datanetworks') or ""
+    if datanetworks:
+        datanetworks_list = datanetworks.split(',')
+    else:
+        datanetworks_list = []
+
     interface = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
@@ -664,7 +711,7 @@ def get_test_interface(**kw):
         'networks': kw.get('networks', []),
         'aemode': kw.get('aemode'),
         'txhashpolicy': kw.get('txhashpolicy', None),
-        'providernetworks': kw.get('providernetworks'),
+        'datanetworks': datanetworks_list,
         'vlan_id': kw.get('vlan_id', None),
         'uses': kw.get('uses', []),
         'used_by': kw.get('used_by', []),
@@ -683,13 +730,31 @@ def create_test_interface(**kw):
     :param kw: kwargs with overriding values for interface's attributes.
     :returns: Test Interface DB object.
     """
+
     interface = get_test_interface(**kw)
+    datanetworks_list = interface.get('datanetworks') or []
+
     # Let DB generate ID if it isn't specified explicitly
     if 'id' not in kw:
         del interface['id']
+
+    if 'datanetworks' in interface:
+        del interface['datanetworks']
+
     dbapi = db_api.get_instance()
     forihostid = kw.get('forihostid')
-    return dbapi.iinterface_create(forihostid, interface)
+    interface_obj = dbapi.iinterface_create(forihostid, interface)
+
+    # assign the interface to the datanetwork
+    for datanetwork in datanetworks_list:
+        if not datanetwork:
+            continue
+        dn = dbapi.datanetwork_get(datanetwork)
+        values = {'interface_id': interface_obj.id,
+                  'datanetwork_id': dn.id}
+        dbapi.interface_datanetwork_create(values)
+
+    return interface_obj
 
 
 def create_test_interface_network(**kw):

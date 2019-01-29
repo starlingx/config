@@ -19,13 +19,14 @@ import controllerconfig.common.constants as constants
 def _test_answerfile(tmpdir, filename,
                      mock_get_net_device_list,
                      mock_get_rootfs_node,
-                     compare_results=True):
+                     compare_results=True,
+                     ca_options={}):
     """ Test import and generation of answerfile """
     mock_get_net_device_list.return_value = \
         ['eth0', 'eth1', 'eth2']
     mock_get_rootfs_node.return_value = '/dev/sda'
 
-    assistant = ca.ConfigAssistant()
+    assistant = ca.ConfigAssistant(**ca_options)
 
     # Create the path to the answerfile
     answerfile = os.path.join(
@@ -93,3 +94,10 @@ def test_answerfile_region_nuage_vrs(tmpdir):
     """ Test import of answerfile with region values for nuage_vrs"""
 
     _test_answerfile(tmpdir, "cgcs_config.region_nuage_vrs")
+
+
+def test_answerfile_kubernetes(tmpdir):
+    """ Test import of answerfile with kubernetes values """
+
+    _test_answerfile(tmpdir, "cgcs_config.kubernetes",
+                     ca_options={"kubernetes": True})

@@ -18,8 +18,6 @@ class EthernetInterface(interface_base.InterfaceBase):
     fields = dict({
         'imtu': utils.int_or_none,
         'imac': utils.str_or_none,
-        'providernetworks': utils.str_or_none,
-        'providernetworksdict': utils.dict_or_none,
     }, **interface_base.InterfaceBase.fields)
 
     @base.remotable_classmethod
