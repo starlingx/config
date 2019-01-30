@@ -16,6 +16,9 @@ CONFIG_PATH=${PLATFORM_PATH}/config/${SW_VERSION}
 PUPPET_PATH=${PLATFORM_PATH}/puppet/${SW_VERSION}
 CGCS_PATH=/opt/cgcs
 
+# System configuration flags
+INITIAL_CONFIG_COMPLETE_FLAG=${PLATFORM_CONF_PATH}/.initial_config_complete
+
 # Worker configuration flags
 
 # Set after the first application of worker manifests
