@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -141,7 +141,7 @@ start()
     fi
 
     # Check whether our installed load matches the active controller
-    CONTROLLER_UUID=`curl -sf http://controller/feed/rel-${SW_VERSION}/install_uuid`
+    CONTROLLER_UUID=`curl -sf http://controller:${http_port}/feed/rel-${SW_VERSION}/install_uuid`
     if [ $? -ne 0 ]
     then
         fatal_error "Unable to retrieve installation uuid from active controller"

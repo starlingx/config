@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -1877,3 +1877,18 @@ def find_manifest_file(path):
                 return None
 
     return mfiles
+
+
+def get_http_port(dbapi):
+    http_port = constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT
+    try:
+        http_port = int(dbapi.service_parameter_get_one(
+            constants.SERVICE_TYPE_HTTP,
+            constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
+            constants.SERVICE_PARAM_HTTP_PORT_HTTP).value)
+    except exception.NotFound:
+        LOG.error("Failed to find service parameter for %s,%s,%s" % (
+            constants.SERVICE_TYPE_HTTP,
+            constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
+            constants.SERVICE_PARAM_HTTP_PORT_HTTP))
+    return http_port

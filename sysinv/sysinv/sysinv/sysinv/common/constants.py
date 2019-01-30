@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -902,6 +902,7 @@ SERVICE_TYPE_AODH = 'aodh'
 SERVICE_TYPE_GLANCE = 'glance'
 SERVICE_TYPE_BARBICAN = 'barbican'
 SERVICE_TYPE_DOCKER = 'docker'
+SERVICE_TYPE_HTTP = 'http'
 
 SERVICE_PARAM_SECTION_MURANO_RABBITMQ = 'rabbitmq'
 SERVICE_PARAM_SECTION_MURANO_ENGINE = 'engine'
@@ -1101,6 +1102,13 @@ SERVICE_PARAM_NAME_DOCKER_NO_PROXY = 'no_proxy'
 
 # default filesystem size to 25 MB
 SERVICE_PARAM_SWIFT_FS_SIZE_MB_DEFAULT = 25
+
+# HTTP Service Parameters
+SERVICE_PARAM_SECTION_HTTP_CONFIG = 'config'
+SERVICE_PARAM_HTTP_PORT_HTTP = 'http_port'
+SERVICE_PARAM_HTTP_PORT_HTTPS = 'https_port'
+SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT = 8080
+SERVICE_PARAM_HTTP_PORT_HTTPS_DEFAULT = 8443
 
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
@@ -1414,6 +1422,7 @@ HELM_CHART_OPENVSWITCH = 'openvswitch'
 HELM_CHART_PANKO = 'panko'
 HELM_CHART_RABBITMQ = 'rabbitmq'
 HELM_CHART_RBD_PROVISIONER = 'rbd-provisioner'
+HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
 
 SUPPORTED_HELM_CHARTS = [
     HELM_CHART_AODH,
@@ -1439,6 +1448,7 @@ SUPPORTED_HELM_CHARTS = [
     HELM_CHART_PANKO,
     HELM_CHART_RABBITMQ,
     HELM_CHART_RBD_PROVISIONER,
+    HELM_CHART_HELM_TOOLKIT,
 ]
 
 # Helm: Supported application (aka chart bundles)
@@ -1469,7 +1479,8 @@ SUPPORTED_HELM_APP_CHARTS = {
         HELM_CHART_GNOCCHI,
         HELM_CHART_CEILOMETER,
         HELM_CHART_PANKO,
-        HELM_CHART_AODH
+        HELM_CHART_AODH,
+        HELM_CHART_HELM_TOOLKIT,
     ]
 }
 

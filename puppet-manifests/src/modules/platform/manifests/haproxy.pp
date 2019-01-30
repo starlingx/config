@@ -143,7 +143,9 @@ class platform::haproxy::runtime {
   }
   include ::openstack::keystone::haproxy
   include ::openstack::neutron::haproxy
-  include ::openstack::nova::haproxy
+  if $::platform::kubernetes::params::enabled != true {
+    include ::openstack::nova::haproxy
+  }
   include ::openstack::glance::haproxy
   include ::openstack::cinder::haproxy
   include ::openstack::aodh::haproxy

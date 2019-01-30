@@ -10,6 +10,8 @@
 import copy
 import netaddr
 import pecan
+from fm_api import constants as fm_constants
+from fm_api import fm_api
 from pecan import rest
 import six
 import wsme
@@ -938,6 +940,36 @@ class ServiceParameterController(rest.RestController):
                     ))
             raise wsme.exc.ClientSideError(msg)
 
+    @staticmethod
+    def _service_parameter_apply_semantic_check_http():
+        """Semantic checks for the HTTP Service Type """
+
+        # check if a patching operation in progress
+        fm = fm_api.FaultAPIs()
+
+        alarms = fm.get_faults_by_id(fm_constants.
+                                     FM_ALARM_ID_PATCH_IN_PROGRESS)
+        if alarms is not None:
+            msg = _("Unable to apply %s service parameters. "
+                    "A patching operation is in progress."
+                    % constants.SERVICE_TYPE_HTTP)
+            raise wsme.exc.ClientSideError(msg)
+
+        # check if all hosts are unlocked/enabled
+        hosts = pecan.request.dbapi.ihost_get_list()
+        for host in hosts:
+            if (host['administrative'] == constants.ADMIN_UNLOCKED and
+                        host['operational'] == constants.OPERATIONAL_ENABLED):
+                continue
+            else:
+                # the host name might be None for a newly discovered host
+                if not host['hostname']:
+                    host_id = host['uuid']
+                else:
+                    host_id = host['hostname']
+                raise wsme.exc.ClientSideError(
+                    _("Host %s must be unlocked and enabled." % host_id))
+
     def _service_parameter_apply_semantic_check(self, service):
         """Semantic checks for the service-parameter-apply command """
 
@@ -986,6 +1018,9 @@ class ServiceParameterController(rest.RestController):
 
         if service == constants.SERVICE_TYPE_PLATFORM:
             self._service_parameter_apply_semantic_check_mtce()
+
+        if service == constants.SERVICE_TYPE_HTTP:
+            self._service_parameter_apply_semantic_check_http()
 
     def _get_service(self, body):
         service = body.get('service') or ""

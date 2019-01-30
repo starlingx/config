@@ -64,6 +64,10 @@ class BaseHelm(object):
     def quoted_str(value):
         return quoted_str(value)
 
+    def get_chart_location(self, chart_name):
+        return 'http://controller:%s/helm_charts/%s-0.1.0.tgz' % (
+            utils.get_http_port(self.dbapi), chart_name)
+
     @staticmethod
     def _generate_random_password(length=16):
         suffix = "Ti0*"
