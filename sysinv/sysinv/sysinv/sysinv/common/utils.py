@@ -1952,3 +1952,8 @@ def has_openstack_compute(labels):
 
     # We haven't found the openstack compute node key. Return False
     return False
+
+
+def get_vswitch_type(dbapi):
+    system = dbapi.isystem_get_one()
+    return system.capabilities.get('vswitch_type', None)

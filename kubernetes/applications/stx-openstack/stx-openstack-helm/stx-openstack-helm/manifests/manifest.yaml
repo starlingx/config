@@ -591,6 +591,42 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-openvswitch
+data:
+  chart_name: openvswitch
+  release: openstack-openvswitch
+  namespace: openstack
+  # If we deploy ovs-dpdk on the host, ovs pod will not be created.
+  # We can use "native wait" instead. But it's not supported in current armada version.
+  # Before we upgrade armada to new version, we comment the wait
+  # https://github.com/openstack/airship-armada/blob/master/armada/schemas/armada-chart-schema.yaml#L81-L111
+  #wait:
+  #  timeout: 1800
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-openvswitch
+  values:
+    labels:
+      ovs:
+        node_selector_key: openvswitch
+        node_selector_value: enabled
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/openvswitch-0.1.0.tgz
+    subpath: openvswitch
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-nova
 data:
   chart_name: nova
@@ -2761,6 +2797,7 @@ data:
   sequenced: false
   chart_group:
     - openstack-libvirt
+    - openstack-openvswitch
     - openstack-nova
     - openstack-nova-api-proxy
     - openstack-neutron
