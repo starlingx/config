@@ -21,6 +21,9 @@ controllerManagerExtraArgs:
   node-monitor-period: "2s"
   node-monitor-grace-period: "20s"
   pod-eviction-timeout: "30s"
+<%- if @k8s_registry -%>
+imageRepository: "<%= @k8s_registry %>"
+<%- end -%>
 ---
 kind: KubeletConfiguration
 apiVersion: kubelet.config.k8s.io/v1beta1

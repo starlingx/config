@@ -3,6 +3,11 @@ class platform::docker::params (
   $http_proxy   = undef,
   $https_proxy  = undef,
   $no_proxy     = undef,
+  $k8s_registry    = undef,
+  $gcr_registry    = undef,
+  $quay_registry   = undef,
+  $docker_registry = undef,
+  $insecure_registry    = undef,
 ) { }
 
 class platform::docker::config

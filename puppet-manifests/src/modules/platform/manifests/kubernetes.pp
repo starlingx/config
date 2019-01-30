@@ -13,8 +13,26 @@ class platform::kubernetes::params (
 ) { }
 
 class platform::kubernetes::kubeadm {
+  include ::platform::docker::params
+
   $iptables_file = "net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1"
+
+  if $::platform::docker::params::k8s_registry {
+    $k8s_registry = $::platform::docker::params::k8s_registry
+  } else {
+    $k8s_registry = undef
+  }
+
+  # kubelet use --pod-infra-container-image to indentify the specified image
+  # TODO: this is not needed after kubernetes upgraded to 1.13
+  #       because the imageRepository setting will be used
+  if $k8s_registry {
+    file { '/etc/sysconfig/kubelet':
+      ensure  => file,
+      content => template('platform/kubelet.conf.erb'),
+    }
+  }
 
   # Update iptables config. This is required based on:
   # https://kubernetes.io/docs/tasks/tools/install-kubeadm
@@ -52,6 +70,21 @@ class platform::kubernetes::master::init
   inherits ::platform::kubernetes::params {
 
   include ::platform::params
+  include ::platform::docker::params
+
+  # This is used for imageRepository in template kubeadm.yaml.erb
+  if $::platform::docker::params::k8s_registry {
+    $k8s_registry = $::platform::docker::params::k8s_registry
+  } else {
+    $k8s_registry = undef
+  }
+
+  # This is used for calico image in template calico.yaml.erb
+  if $::platform::docker::params::quay_registry {
+    $quay_registry = $::platform::docker::params::quay_registry
+  } else {
+    $quay_registry = 'quay.io'
+  }
 
   if str2bool($::is_initial_config_primary) {
     # For initial controller install, configure kubernetes from scratch.
@@ -347,10 +380,11 @@ class platform::kubernetes::worker
 }
 
 # TODO: remove port 9001 once we have a public docker image registry using standard ports.
+# add 5000 as the default port for private registry
 class platform::kubernetes::firewall::params (
   $transport = 'tcp',
   $table = 'nat',
-  $dports = [80, 443, 9001],
+  $dports = [80, 443, 9001, 5000],
   $chain = 'POSTROUTING',
   $jump = 'SNAT',
 ) {}

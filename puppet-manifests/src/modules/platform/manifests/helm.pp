@@ -7,6 +7,7 @@ class platform::helm
   inherits ::platform::helm::repository::params {
 
   include ::platform::kubernetes::params
+  include ::platform::docker::params
 
   if $::platform::kubernetes::params::enabled {
     file {$source_helm_repo_dir:
@@ -27,17 +28,29 @@ class platform::helm
 
       if str2bool($::is_initial_config_primary) {
 
+        if $::platform::docker::params::gcr_registry {
+          $gcr_registry = $::platform::docker::params::gcr_registry
+        } else {
+          $gcr_registry = 'gcr.io'
+        }
+
+        if $::platform::docker::params::quay_registry {
+          $quay_registry = $::platform::docker::params::quay_registry
+        } else {
+          $quay_registry = 'quay.io'
+        }
+
         Class['::platform::kubernetes::master']
 
         # TODO(jrichard): Upversion tiller image to v2.11.1 once released.
         -> exec { 'load tiller docker image':
-          command   => 'docker image pull gcr.io/kubernetes-helm/tiller:v2.12.1',
+          command   => "docker image pull ${gcr_registry}/kubernetes-helm/tiller:v2.12.1",
           logoutput => true,
         }
 
         # TODO(tngo): If and when tiller image is upversioned, please ensure armada compatibility as part of the test
         -> exec { 'load armada docker image':
-          command   => 'docker image pull quay.io/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9',
+          command   => "docker image pull ${quay_registry}/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9",
           logoutput => true,
         }
 
@@ -54,7 +67,7 @@ class platform::helm
         # TODO(jrichard): Upversion tiller image to v2.11.1 once released.
         -> exec { 'initialize helm':
           environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
-          command     => 'helm init --skip-refresh --service-account tiller --node-selectors "node-role.kubernetes.io/master"="" --tiller-image=gcr.io/kubernetes-helm/tiller:v2.12.1', # lint:ignore:140chars
+          command     => "helm init --skip-refresh --service-account tiller --node-selectors \"node-role.kubernetes.io/master\"=\"\" --tiller-image=${gcr_registry}/kubernetes-helm/tiller:v2.12.1", # lint:ignore:140chars
           logoutput   => true,
           user        => 'wrsroot',
           group       => 'wrs',
