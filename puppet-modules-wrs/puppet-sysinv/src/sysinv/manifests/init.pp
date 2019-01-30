@@ -77,6 +77,7 @@ class sysinv (
 
   include sysinv::params
   include ::platform::kubernetes::params
+  include ::platform::docker::params
 
   Package['sysinv'] -> Sysinv_config<||>
   Package['sysinv'] -> Sysinv_api_paste_ini<||>
@@ -217,7 +218,13 @@ class sysinv (
   }
 
   if $::platform::kubernetes::params::enabled == true {
-    $armada_img_tag = 'quay.io/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9'
+    if $::platform::docker::params::quay_registry {
+      $quay_registry = $::platform::docker::params::quay_registry
+    } else {
+      $quay_registry = 'quay.io'
+    }
+
+    $armada_img_tag = "${quay_registry}/airshipit/armada:f807c3a1ec727c883c772ffc618f084d960ed5c9"
     sysinv_config {
       'DEFAULT/armada_image_tag':    value =>  $armada_img_tag;
     }

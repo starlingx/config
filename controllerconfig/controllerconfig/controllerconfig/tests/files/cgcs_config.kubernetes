@@ -79,6 +79,14 @@ DOCKER_HTTP_PROXY=http://proxy.com:123
 DOCKER_HTTPS_PROXY=https://proxy.com:123
 DOCKER_NO_PROXY=localhost,127.0.0.1,192.168.204.2
 
+[cDOCKER_REGISTRY]
+# Docker Registry Configuration
+DOCKER_K8S_REGISTRY=my.registry.com:5000
+DOCKER_GCR_REGISTRY=my.registry.com
+DOCKER_QUAY_REGISTRY=1.2.3.4:5000
+DOCKER_DOCKER_REGISTRY=[1:2:3:4:a:b:c:d]:5000
+IS_SECURE_REGISTRY=False
+
 [cNETWORK]
 # Data Network Configuration
 VSWITCH_TYPE=ovs-dpdk
