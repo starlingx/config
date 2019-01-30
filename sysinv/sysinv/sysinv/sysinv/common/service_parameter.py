@@ -648,6 +648,25 @@ def _validate_swift_enabled(name, value):
             "Swift API is already supported by Ceph Object Gateway."))
 
 
+def _validate_docker_proxy_address(name, value):
+    """Check if proxy value is valid"""
+    if not cutils.is_url(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid address." % name))
+
+
+def _validate_docker_no_proxy_address(name, value):
+    """Check if no proxy value is valid"""
+    values = value.split(',')
+    for item in values:
+        # will extend to more cases if CIDR notation is supported
+        if not cutils.is_valid_domain(item):
+            if not cutils.is_valid_ip(item):
+                raise wsme.exc.ClientSideError(_(
+                    "Parameter '%s' includes an invalid address '%s'." %
+                    (name, item)))
+
+
 # LDAP Identity Service Parameters (mandatory)
 SERVICE_PARAM_IDENTITY_LDAP_URL = 'url'
 
@@ -1476,6 +1495,27 @@ SWIFT_CONFIG_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED: SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN,
 }
 
+DOCKER_PROXY_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_DOCKER_HTTP_PROXY,
+    constants.SERVICE_PARAM_NAME_DOCKER_HTTPS_PROXY,
+    constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY,
+]
+
+DOCKER_PROXY_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_DOCKER_HTTP_PROXY: _validate_docker_proxy_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_HTTPS_PROXY: _validate_docker_proxy_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY: _validate_docker_no_proxy_address,
+}
+
+DOCKER_PROXY_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_DOCKER_HTTP_PROXY:
+        'platform::docker::params::http_proxy',
+    constants.SERVICE_PARAM_NAME_DOCKER_HTTPS_PROXY:
+        'platform::docker::params::https_proxy',
+    constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY:
+        'platform::docker::params::no_proxy',
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -1650,6 +1690,13 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: SWIFT_CONFIG_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: SWIFT_CONFIG_PARAMETER_RESOURCE,
             SERVICE_PARAM_DATA_FORMAT: SWIFT_CONFIG_PARAMETER_DATA_FORMAT,
+        },
+    },
+    constants.SERVICE_TYPE_DOCKER: {
+        constants.SERVICE_PARAM_SECTION_DOCKER_PROXY: {
+            SERVICE_PARAM_OPTIONAL: DOCKER_PROXY_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DOCKER_PROXY_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: DOCKER_PROXY_PARAMETER_RESOURCE,
         },
     },
 }
