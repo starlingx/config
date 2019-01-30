@@ -60,6 +60,16 @@ function cleanup_sysinv {
     sudo rm -rf $SYSINV_AUTHO_CACHE_DIR $SYSINV_CONF_DIR
 }
 
+stx_services="sysinv-api sysinv-cond sysinv-agent"
+function check_sysinv_services {
+    local service
+    for service in $stx_services; do
+        if $SYSTEMCTL is-enabled devstack@$service.service; then
+            $SYSTEMCTL status devstack@$service.service --no-pager
+        fi
+    done
+}
+
 function configure_sysinv {
     sudo install -d -o $STACK_USER $SYSINV_CONF_DIR
     cp $SYSINV_DIR/etc/sysinv/sysinv.conf.sample $SYSINV_CONF_FILE
@@ -195,7 +205,8 @@ function install_sysinv {
 }
 
 function install_sysinv_agent {
-    sudo install -p -D -m 755 $SYSINV_AGENT_DIR/sysinv-agent $SYSINV_BIN_DIR/sysinv-agent
+    #rename to sysinv-agent.sh to avoid overwrite entry_point of sysinv-agent
+    sudo install -p -D -m 755 $SYSINV_AGENT_DIR/sysinv-agent $SYSINV_BIN_DIR/sysinv-agent.sh
 }
 
 function install_sysinv_depends {
