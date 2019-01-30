@@ -41,6 +41,7 @@ PASSWORD_FORMAT_CEPH = 'ceph-auth'
 LABEL_CONTROLLER = 'openstack-control-plane'
 LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
+LABEL_REMOTE_STORAGE = 'remote-storage'
 
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'

@@ -78,7 +78,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 },
                 'conf': {
                     'ceph': {
-                        'enabled': False
+                        'enabled': True
                     },
                     'nova': {
                         'DEFAULT': {
@@ -298,28 +298,17 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             default_config.update({'shared_pcpu_map': shared_cpu_fmt})
 
     def _update_host_storage(self, host, default_config, libvirt_config):
-        pvs = self.dbapi.ipv_get_by_ihost(host.id)
+        remote_storage = False
+        labels = self.dbapi.label_get_all(host.id)
+        for label in labels:
+            if (label.label_key == common.LABEL_REMOTE_STORAGE and
+                    label.label_value == common.LABEL_VALUE_ENABLED):
+                remote_storage = True
+                break
 
-        instance_backing = constants.LVG_NOVA_BACKING_IMAGE
-        concurrent_disk_operations = constants.LVG_NOVA_PARAM_DISK_OPS_DEFAULT
         rbd_pool = constants.CEPH_POOL_EPHEMERAL_NAME
         rbd_ceph_conf = os.path.join(constants.CEPH_CONF_PATH,
                                      constants.SB_TYPE_CEPH_CONF_FILENAME)
-
-        nova_lvg_uuid = None
-        for pv in pvs:
-            if (pv.lvm_vg_name == constants.LVG_NOVA_LOCAL and
-                    pv.pv_state != constants.PV_ERR):
-                nova_lvg_uuid = pv.ilvg_uuid
-
-        if nova_lvg_uuid:
-            lvg = self.dbapi.ilvg_get(nova_lvg_uuid)
-            instance_backing = lvg.capabilities.get(
-                constants.LVG_NOVA_PARAM_BACKING)
-            concurrent_disk_operations = lvg.capabilities.get(
-                constants.LVG_NOVA_PARAM_DISK_OPS)
-
-        default_config.update({'concurrent_disk_operations': concurrent_disk_operations})
 
         # If NOVA is a service on a ceph-external backend, use the ephemeral_pool
         # and ceph_conf file that are stored in that DB entry.
@@ -336,12 +325,12 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     rbd_ceph_conf = \
                         constants.CEPH_CONF_PATH + os.path.basename(ceph_ext_obj.ceph_conf)
 
-        if instance_backing == constants.LVG_NOVA_BACKING_IMAGE:
-            libvirt_config.update({'images_type': 'default'})
-        elif instance_backing == constants.LVG_NOVA_BACKING_REMOTE:
+        if remote_storage:
             libvirt_config.update({'images_type': 'rbd',
                                    'images_rbd_pool': rbd_pool,
                                    'images_rbd_ceph_conf': rbd_ceph_conf})
+        else:
+            libvirt_config.update({'images_type': 'default'})
 
     def _update_host_addresses(self, host, default_config, vnc_config, libvirt_config):
         interfaces = self.dbapi.iinterface_get_by_ihost(host.id)
