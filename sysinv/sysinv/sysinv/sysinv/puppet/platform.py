@@ -48,7 +48,6 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_sm_config())
         config.update(self._get_firewall_config())
         config.update(self._get_drbd_sync_config())
-        config.update(self._get_nfs_config())
         config.update(self._get_remotelogging_config())
         config.update(self._get_snmp_config())
         return config
@@ -61,6 +60,7 @@ class PlatformPuppet(base.BasePuppet):
     def get_host_config(self, host):
         config = {}
         config.update(self._get_hosts_config(host))
+        config.update(self._get_nfs_config(host))
         config.update(self._get_host_platform_config(host, self.config_uuid))
         config.update(self._get_host_ntp_config(host))
         config.update(self._get_host_ptp_config(host))
@@ -782,24 +782,26 @@ class PlatformPuppet(base.BasePuppet):
 
         return config
 
-    def _get_nfs_config(self):
+    def _get_nfs_config(self, host):
 
         # Calculate the optimal NFS r/w size based on the network mtu based
         # on the configured network(s)
         mtu = constants.DEFAULT_MTU
         try:
-            interfaces = self.dbapi.iinterface_get_by_network(
+            infra_network = self.dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_INFRA)
-            for interface in interfaces:
-                mtu = interface.imtu
-        except exception.InvalidParameterValue:
-            try:
-                interfaces = self.dbapi.iinterface_get_by_network(
-                    constants.NETWORK_TYPE_MGMT)
-                for interface in interfaces:
-                    mtu = interface.imtu
-            except exception.InvalidParameterValue:
-                pass
+            network_id = infra_network.id
+        except exception.NetworkTypeNotFound:
+            mgmt_network = self.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_MGMT)
+            network_id = mgmt_network.id
+        interfaces = self.dbapi.iinterface_get_by_ihost(host.uuid)
+        for interface in interfaces:
+            if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+                for net_id in interface['networks']:
+                    if int(net_id) == network_id:
+                        mtu = interface.imtu
+                        break
 
         if self._get_address_by_name(
                 constants.CONTROLLER_PLATFORM_NFS,

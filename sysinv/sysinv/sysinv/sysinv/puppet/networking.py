@@ -214,7 +214,9 @@ class NetworkingPuppet(base.BasePuppet):
             networktype = networktype.replace('-', '_')
             config.update({
                 'platform::network::%s::params::interface_name' % networktype:
-                    interface_name
+                    interface_name,
+                'platform::network::%s::params::mtu' % networktype:
+                    network_interface.imtu
             })
 
             interface_address = interface.get_interface_primary_address(
