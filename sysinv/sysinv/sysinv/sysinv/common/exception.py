@@ -164,8 +164,16 @@ class CephCrushInvalidTierUse(CephFailure):
     message = _("Cannot use tier '%(tier)s' for this operation. %(reason)s")
 
 
+class CephCrushTierAlreadyExists(CephCrushInvalidTierUse):
+    message = _("Tier '%(tier)s' already exists")
+
+
 class CephCrushInvalidRuleOperation(CephFailure):
     message = _("Cannot perform operation on rule '%(rule)s'. %(reason)s")
+
+
+class CephCrushRuleAlreadyExists(CephCrushInvalidRuleOperation):
+    message = _("Rule '%(rule)s' for storage tier '%(tier)s' already exists")
 
 
 class CephPoolCreateFailure(CephFailure):

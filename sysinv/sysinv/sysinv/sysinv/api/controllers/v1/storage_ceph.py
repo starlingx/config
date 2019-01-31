@@ -694,15 +694,7 @@ def _check_and_update_rbd_provisioner(new_storceph, remove=False):
 def _apply_backend_changes(op, sb_obj):
     services = api_helper.getListFromServices(sb_obj.as_dict())
 
-    if op == constants.SB_API_OP_CREATE:
-        if sb_obj.name != constants.SB_DEFAULT_NAMES[
-                constants.SB_TYPE_CEPH]:
-            # Enable the service(s) use of the backend
-            if constants.SB_SVC_CINDER in services:
-                pecan.request.rpcapi.update_ceph_services(
-                    pecan.request.context, sb_obj.uuid)
-
-    elif op == constants.SB_API_OP_MODIFY:
+    if op == constants.SB_API_OP_MODIFY:
         if sb_obj.name == constants.SB_DEFAULT_NAMES[
                 constants.SB_TYPE_CEPH]:
 
@@ -710,13 +702,6 @@ def _apply_backend_changes(op, sb_obj):
             pecan.request.rpcapi.update_ceph_config(pecan.request.context,
                                                     sb_obj.uuid,
                                                     services)
-        else:
-            # Services have been added or removed
-            pecan.request.rpcapi.update_ceph_services(
-                pecan.request.context, sb_obj.uuid)
-
-    elif op == constants.SB_API_OP_DELETE:
-        pass
 
 
 def _apply_nova_specific_changes(sb_obj, old_sb_obj=None):

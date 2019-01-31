@@ -156,7 +156,7 @@ class ConductorManager(service.PeriodicService):
         self._app = None
         self._ceph = None
         self._ceph_api = ceph.CephWrapper(
-            endpoint='http://localhost:5001/api/v0.1/')
+            endpoint='http://localhost:5001')
         self._kube = None
         self._fernet = None
 
@@ -5924,40 +5924,6 @@ class ConductorManager(service.PeriodicService):
         if constants.SB_SVC_NOVA in services:
             self.config_update_nova_local_backed_hosts(
                 context, constants.LVG_NOVA_BACKING_REMOTE)
-
-    def update_ceph_services(self, context, sb_uuid):
-        """Update service configs for Ceph tier pools."""
-
-        LOG.info("Updating configuration for ceph services")
-
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-
-        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        valid_ctrls = [ctrl for ctrl in ctrls if
-                       (utils.is_host_active_controller(ctrl) and
-                        ctrl.administrative == constants.ADMIN_LOCKED and
-                        ctrl.availability == constants.AVAILABILITY_ONLINE) or
-                       (ctrl.administrative == constants.ADMIN_UNLOCKED and
-                        ctrl.operational == constants.OPERATIONAL_ENABLED)]
-
-        if not valid_ctrls:
-            raise exception.SysinvException("Ceph services were not updated. "
-                                            "No valid controllers were found.")
-
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['openstack::cinder::backends::ceph::runtime'],
-            "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
-            puppet_common.REPORT_STATUS_CFG:
-            puppet_common.REPORT_CEPH_SERVICES_CONFIG,
-        }
-
-        self.dbapi.storage_ceph_update(sb_uuid,
-            {'state': constants.SB_STATE_CONFIGURING,
-             'task': str({h.hostname: constants.SB_TASK_APPLY_MANIFESTS for h in valid_ctrls})})
-
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def _update_storage_backend_alarm(self, alarm_state, backend, reason_text=None):
         """ Update storage backend configuration alarm"""

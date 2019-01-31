@@ -451,15 +451,18 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             StorageBackendConfig.get_ceph_pool_replication(self.dbapi)
 
         # For now, the ephemeral pool will only be on the primary Ceph tier
-        # that's using the 0 crush ruleset.
-        ruleset = 0
+        rule_name = "{0}{1}{2}".format(
+            constants.SB_TIER_DEFAULT_NAMES[
+                constants.SB_TIER_TYPE_CEPH],
+            constants.CEPH_CRUSH_TIER_SUFFIX,
+            "-ruleset").replace('-', '_')
 
         # Form the dictionary with the info for the ephemeral pool.
         # If needed, multiple pools can be specified.
         ephemeral_pool = {
             'rbd_pool_name': constants.CEPH_POOL_EPHEMERAL_NAME,
             'rbd_user': RBD_POOL_USER,
-            'rbd_crush_rule': ruleset,
+            'rbd_crush_rule': rule_name,
             'rbd_replication': replication,
             'rbd_chunk_size': constants.CEPH_POOL_EPHEMERAL_PG_NUM
         }
