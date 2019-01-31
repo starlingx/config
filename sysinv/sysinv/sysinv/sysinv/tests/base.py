@@ -205,6 +205,18 @@ class TestCase(testtools.TestCase):
         else:
             return root
 
+    def stub_out(self, old, new):
+        """Replace a function for the duration of the test.
+
+        Use the monkey patch fixture to replace a function for the
+        duration of a test. Useful when you want to provide fake
+        methods instead of mocks during testing.
+
+        This should be used instead of self.stubs.Set (which is based
+        on mox) going forward.
+        """
+        self.useFixture(fixtures.MonkeyPatch(old, new))
+
 
 class TimeOverride(fixtures.Fixture):
     """Fixture to start and remove time override."""

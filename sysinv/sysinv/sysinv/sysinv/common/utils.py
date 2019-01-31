@@ -549,7 +549,8 @@ def sanitize_hostname(hostname):
     """Return a hostname which conforms to RFC-952 and RFC-1123 specs."""
     if isinstance(hostname, six.string_types):
         hostname = hostname.encode('latin-1', 'ignore')
-
+    if six.PY3:
+        hostname = hostname.decode()
     hostname = re.sub('[ _]', '-', hostname)
     hostname = re.sub('[^\w.-]+', '', hostname)
     hostname = hostname.lower()
@@ -595,7 +596,9 @@ def hash_file(file_like_object):
     """Generate a hash for the contents of a file."""
     checksum = hashlib.sha1()
     for chunk in iter(lambda: file_like_object.read(32768), b''):
-        checksum.update(chunk)
+        encoded_chunk = (chunk.encode(encoding='utf-8')
+                        if isinstance(chunk, six.string_types) else chunk)
+        checksum.update(encoded_chunk)
     return checksum.hexdigest()
 
 
@@ -1798,6 +1801,21 @@ def is_url(url_str):
         r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
         r'localhost|'  # localhost...
         r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
+    url = r.match(url_str)
+    if url:
+        return True
+    else:
+        return False
+
+
+def is_valid_domain(url_str):
+    r = re.compile(
+        r'^(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
+        r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
+        r'[A-Za-z0-9-_]*)'  # localhost, hostname
         r'(?::\d+)?'  # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 

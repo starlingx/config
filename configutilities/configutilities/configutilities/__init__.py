@@ -26,6 +26,8 @@ from configutilities.common.utils import is_mtu_valid  # noqa: F401
 from configutilities.common.utils import validate_network_str  # noqa: F401
 from configutilities.common.utils import validate_address_str  # noqa: F401
 from configutilities.common.utils import validate_address  # noqa: F401
+from configutilities.common.utils import is_valid_url  # noqa: F401
+from configutilities.common.utils import is_valid_domain_or_ip  # noqa: F401
 from configutilities.common.utils import ip_version_to_string  # noqa: F401
 from configutilities.common.utils import lag_mode_to_str  # noqa: F401
 from configutilities.common.utils import validate_openstack_password  # noqa: F401

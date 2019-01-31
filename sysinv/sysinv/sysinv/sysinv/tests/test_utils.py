@@ -1,4 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
+
 
 # Copyright 2011 Justin Santa Barbara
 # Copyright 2012 Hewlett-Packard Development Company, L.P.
@@ -16,17 +16,16 @@
 #    under the License.
 
 import errno
-import hashlib
+import mock
 import os
 import os.path
 import tempfile
 import wsme
 
-import mox
 import netaddr
 from oslo_config import cfg
 
-from six import StringIO
+from mox3 import mox
 from six.moves import builtins
 from sysinv.common import exception
 from sysinv.common import service_parameter
@@ -50,6 +49,7 @@ class BareMetalUtilsTestCase(base.TestCase):
 
         self.mox.ReplayAll()
         utils.unlink_without_raise("/fake/path")
+        self.mox.UnsetStubs()
         self.mox.VerifyAll()
 
     def test_unlink_ENOENT(self):
@@ -58,6 +58,7 @@ class BareMetalUtilsTestCase(base.TestCase):
 
         self.mox.ReplayAll()
         utils.unlink_without_raise("/fake/path")
+        self.mox.UnsetStubs()
         self.mox.VerifyAll()
 
     def test_create_link(self):
@@ -110,7 +111,7 @@ exit 1
             self.assertRaises(exception.ProcessExecutionError,
                               utils.execute,
                               tmpfilename, tmpfilename2, attempts=10,
-                              process_input='foo',
+                              process_input='foo'.encode('utf-8'),
                               delay_on_retry=False)
             fp = open(tmpfilename2, 'r')
             runs = fp.read()
@@ -154,7 +155,7 @@ grep foo
             os.chmod(tmpfilename, 0o755)
             utils.execute(tmpfilename,
                           tmpfilename2,
-                          process_input='foo',
+                          process_input='foo'.encode('utf-8'),
                           attempts=2)
         finally:
             os.unlink(tmpfilename)
@@ -203,12 +204,9 @@ class GenericUtilsTestCase(base.TestCase):
         fake_contents = "lorem ipsum"
         fake_file = self.mox.CreateMockAnything()
         fake_file.read().AndReturn(fake_contents)
-        fake_context_manager = self.mox.CreateMockAnything()
-        fake_context_manager.__enter__().AndReturn(fake_file)
-        fake_context_manager.__exit__(mox.IgnoreArg(),
-                                      mox.IgnoreArg(),
-                                      mox.IgnoreArg())
-
+        fake_context_manager = mock.Mock()
+        fake_context_manager.__enter__ = mock.Mock(return_value=fake_file)
+        fake_context_manager.__exit__ = mock.Mock(return_value=False)
         builtins.open(mox.IgnoreArg()).AndReturn(fake_context_manager)
 
         self.mox.ReplayAll()
@@ -223,13 +221,6 @@ class GenericUtilsTestCase(base.TestCase):
                                                 reload_func=test_reload)
         self.assertEqual(data, fake_contents)
         self.assertTrue(self.reload_called)
-
-    def test_hash_file(self):
-        data = 'Mary had a little lamb, its fleece as white as snow'
-        flo = StringIO(data)
-        h1 = utils.hash_file(flo)
-        h2 = hashlib.sha1(data).hexdigest()
-        self.assertEqual(h1, h2)
 
     def test_is_valid_boolstr(self):
         self.assertTrue(utils.is_valid_boolstr('true'))

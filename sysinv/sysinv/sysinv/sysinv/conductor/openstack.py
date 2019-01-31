@@ -17,7 +17,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.openstack.common.gettextutils import _
-from sysinv.openstack.common import lockutils
 from sysinv.openstack.common import log as logging
 from novaclient.v2 import client as nova_client_v2
 from neutronclient.v2_0 import client as neutron_client_v2_0
@@ -305,152 +304,6 @@ class OpenStackOperator(object):
 
         return interfaces
 
-    @lockutils.synchronized('update_nova_local_aggregates', 'sysinv-')
-    def update_nova_local_aggregates(self, ihost_uuid, aggregates=None):
-        """
-        Update nova_local aggregates for a host
-        """
-        availability_zone = None
-
-        if not aggregates:
-            try:
-                aggregates = self._get_novaclient().aggregates.list()
-            except Exception:
-                self.nova_client = None  # password may have updated
-                aggregates = self._get_novaclient().aggregates.list()
-
-        nova_aggset_provider = set()
-        for aggregate in aggregates:
-            nova_aggset_provider.add(aggregate.name)
-
-        aggset_storage = set([
-            constants.HOST_AGG_NAME_LOCAL_IMAGE,
-            constants.HOST_AGG_NAME_REMOTE])
-        agglist_missing = list(aggset_storage - nova_aggset_provider)
-        LOG.debug("AGG Storage agglist_missing = %s." % agglist_missing)
-
-        # Only add the ones that don't exist
-        for agg_name in agglist_missing:
-            # Create the aggregate
-            try:
-                aggregate = self._get_novaclient().aggregates.create(
-                    agg_name, availability_zone)
-                LOG.info("AGG-AS Storage aggregate= %s created. " % (
-                    aggregate))
-            except Exception:
-                LOG.error("AGG-AS EXCEPTION Storage aggregate "
-                          "agg_name=%s not created" % (agg_name))
-                raise
-
-            # Add the metadata
-            try:
-                if agg_name == constants.HOST_AGG_NAME_LOCAL_IMAGE:
-                    metadata = {'storage': constants.HOST_AGG_META_LOCAL_IMAGE}
-                else:
-                    metadata = {'storage': constants.HOST_AGG_META_REMOTE}
-                LOG.debug("AGG-AS storage aggregate metadata = %s." % metadata)
-                aggregate = self._get_novaclient().aggregates.set_metadata(
-                    aggregate.id, metadata)
-            except Exception:
-                LOG.error("AGG-AS EXCEPTION Storage aggregate "
-                          "=%s metadata not added" % aggregate)
-                raise
-
-        # refresh the aggregate list
-        try:
-            aggregates = dict([(agg.name, agg) for agg in
-                               self._get_novaclient().aggregates.list()])
-        except Exception:
-            self.nova_client = None  # password may have updated
-            aggregates = dict([(agg.name, agg) for agg in
-                               self._get_novaclient().aggregates.list()])
-
-        # Add the host to the local or remote aggregate group
-        # determine if this host is configured for local storage
-        host_has_lvg = False
-        lvg_backing = False
-        try:
-            ilvgs = self.dbapi.ilvg_get_by_ihost(ihost_uuid)
-            for lvg in ilvgs:
-                if lvg.lvm_vg_name == constants.LVG_NOVA_LOCAL and \
-                   lvg.vg_state == constants.PROVISIONED:
-                    host_has_lvg = True
-                    lvg_backing = lvg.capabilities.get(
-                        constants.LVG_NOVA_PARAM_BACKING)
-                    break
-                else:
-                    LOG.debug("AGG-AS Found LVG %s with state %s "
-                              "for host %s." % (
-                                  lvg.lvm_vg_name,
-                                  lvg.vg_state,
-                                  ihost_uuid))
-        except Exception:
-            LOG.error("AGG-AS ilvg_get_by_ihost failed "
-                          "for %s." % ihost_uuid)
-            raise
-
-        LOG.debug("AGG-AS ihost (%s) %s in a local storage configuration." %
-                  (ihost_uuid,
-                   "is not"
-                   if (lvg_backing == constants.LVG_NOVA_BACKING_REMOTE) else
-                   "is"))
-
-        # Select the appropriate aggregate id based on the presence of an LVG
-        #
-        agg_add_to = ""
-        if host_has_lvg:
-            agg_add_to = {
-                constants.LVG_NOVA_BACKING_IMAGE:
-                constants.HOST_AGG_NAME_LOCAL_IMAGE,
-                constants.LVG_NOVA_BACKING_REMOTE:
-                constants.HOST_AGG_NAME_REMOTE
-            }.get(lvg_backing)
-
-        if not agg_add_to:
-            LOG.error("The nova-local LVG for host: %s has an invalid "
-                      "instance backing: " % ihost_uuid)
-
-        ihost = self.dbapi.ihost_get(ihost_uuid)
-        for aggregate in aggregates.values():
-            if aggregate.name not in aggset_storage \
-               or aggregate.name == agg_add_to:
-                continue
-            if hasattr(aggregate, 'hosts') \
-               and ihost.hostname in aggregate.hosts:
-                try:
-                    self._get_novaclient().aggregates.remove_host(
-                        aggregate.id,
-                        ihost.hostname)
-                    LOG.info("AGG-AS remove ihost = %s from aggregate = %s." %
-                             (ihost.hostname, aggregate.name))
-                except Exception:
-                    LOG.error(("AGG-AS EXCEPTION remove ihost= %s "
-                               "from aggregate = %s.") % (
-                                   ihost.hostname,
-                                   aggregate.name))
-                    raise
-            else:
-                LOG.info("skip removing host=%s not in storage "
-                         "aggregate id=%s" % (
-                             ihost.hostname,
-                             aggregate))
-        if hasattr(aggregates[agg_add_to], 'hosts') \
-           and ihost.hostname in aggregates[agg_add_to].hosts:
-            LOG.info(("skip adding host=%s already in storage "
-                      "aggregate id=%s") % (
-                          ihost.hostname,
-                          agg_add_to))
-        else:
-            try:
-                self._get_novaclient().aggregates.add_host(
-                    aggregates[agg_add_to].id, ihost.hostname)
-                LOG.info("AGG-AS add ihost = %s to aggregate = %s." % (
-                    ihost.hostname, agg_add_to))
-            except Exception:
-                LOG.error("AGG-AS EXCEPTION add ihost= %s to aggregate = %s." %
-                          (ihost.hostname, agg_add_to))
-                raise
-
     def _get_interface_datanetworks(self, interface):
         ifdatanets = self.dbapi.interface_datanetwork_get_by_interface(
             interface.uuid)
@@ -656,11 +509,6 @@ class OpenStackOperator(object):
         else:
             LOG.debug("AGG ihost_datanets empty %s." % ihost_uuid)
 
-        # setup the valid set of storage aggregates for host removal
-        aggset_storage = set([
-            constants.HOST_AGG_NAME_LOCAL_IMAGE,
-            constants.HOST_AGG_NAME_REMOTE])
-
         # Remove aggregates from provider network. Anything with host in list.
         # 4. nova aggregate-remove-host provider_physnet0 compute-0
         #    cs.aggregates.remove_host(aggregate.id, args.host)
@@ -668,16 +516,14 @@ class OpenStackOperator(object):
         ihost = self.dbapi.ihost_get(ihost_uuid)
 
         for aggregate in aggregates:
-            if aggregate.name in ihost_datanets or \
-               aggregate.name in aggset_storage:  # or just do it for all aggs
-                try:
-                    LOG.debug("AGG10 remove aggregate id = %s ihost= %s." %
-                              (aggregate.id, ihost.hostname))
-                    self._get_novaclient().aggregates.remove_host(
-                        aggregate.id, ihost.hostname)
-                except Exception:
-                    LOG.debug("AGG10 EXCEPTION remove aggregate")
-                    pass
+            try:
+                LOG.debug("AGG10 remove aggregate id = %s ihost= %s." %
+                          (aggregate.id, ihost.hostname))
+                self._get_novaclient().aggregates.remove_host(
+                    aggregate.id, ihost.hostname)
+            except Exception:
+                LOG.debug("AGG10 EXCEPTION remove aggregate")
+                pass
 
         return True
 

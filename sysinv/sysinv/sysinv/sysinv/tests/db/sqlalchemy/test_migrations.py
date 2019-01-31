@@ -521,14 +521,20 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
 
     def setUp(self):
         super(TestMigrations, self).setUp()
-
+        if six.PY2:
+            version = -1
+        else:
+            version = 0
         self.migration = __import__('sysinv.db.migration',
-                                    globals(), locals(), ['INIT_VERSION'], -1)
+                                    globals(), locals(), ['INIT_VERSION'], version)
         self.INIT_VERSION = self.migration.INIT_VERSION
         if self.migration_api is None:
-            temp = __import__('sysinv.db.sqlalchemy.migration',
-                                globals(), locals(), ['versioning_api'], -1)
-            self.migration_api = temp.versioning_api
+            try:
+                temp = __import__('sysinv.db.sqlalchemy.migration',
+                                  globals(), locals(), ['versioning_api'], version)
+                self.migration_api = temp.versioning_api
+            except Exception as e:
+                print('import warning :%s' % e)
 
     def column_exists(self, engine, table_name, column):
         metadata = MetaData()

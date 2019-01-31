@@ -120,12 +120,21 @@ class HelmChartsController(rest.RestController):
                 raise
 
         if flag == 'reuse':
-            file_overrides.insert(0, db_chart.user_overrides)
+            if db_chart.user_overrides is not None:
+                file_overrides.insert(0, db_chart.user_overrides)
         elif flag == 'reset':
             pass
         else:
             raise wsme.exc.ClientSideError(_("Invalid flag: %s must be either "
                                              "'reuse' or 'reset'.") % flag)
+
+        if set_overrides:
+            for overrides in set_overrides:
+                if ',' in overrides:
+                    raise wsme.exc.ClientSideError(
+                        _("Invalid input: One (or more) set overrides contains "
+                          "multiple values. Consider using --values option "
+                          "instead."))
 
         user_overrides = pecan.request.rpcapi.merge_overrides(
             pecan.request.context, file_overrides=file_overrides,

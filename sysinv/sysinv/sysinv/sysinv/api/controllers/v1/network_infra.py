@@ -100,7 +100,7 @@ class InfraNetwork(base.APIBase):
     updated_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
-        self.fields = objects.infra_network.fields.keys()
+        self.fields = list(objects.infra_network.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

@@ -120,7 +120,7 @@ class LVG(base.APIBase):
     "Links to the collection of ipvs on this lvg"
 
     def __init__(self, **kwargs):
-        self.fields = objects.lvg.fields.keys()
+        self.fields = list(objects.lvg.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 
@@ -148,7 +148,7 @@ class LVG(base.APIBase):
         # lvm_vg_size is Volume Group's total size in byte
         # lvm_vg_free_pe is Volume Group's free Physical Extents
         # lvm_vg_total_pe is Volume Group's total Physical Extents
-        if lvg.lvm_vg_total_pe > 0:
+        if lvg.lvm_vg_total_pe and lvg.lvm_vg_total_pe > 0:
             lvg.lvm_vg_avail_size = \
                 lvg.lvm_vg_size * lvg.lvm_vg_free_pe / lvg.lvm_vg_total_pe
         else:
@@ -665,7 +665,7 @@ def _check(op, lvg):
                     _("cinder-volumes LVG cannot be removed once it is "
                       "provisioned and LVM backend is added."))
         elif lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
-            if (lvg['lvm_cur_lv'] > 1):
+            if (lvg['lvm_cur_lv'] and lvg['lvm_cur_lv'] > 1):
                 raise wsme.exc.ClientSideError(
                     _("Can't delete volume group: %s. There are currently %d "
                       "instance volumes present in the volume group. Terminate"

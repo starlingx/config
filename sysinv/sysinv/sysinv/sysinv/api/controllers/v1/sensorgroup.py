@@ -157,7 +157,7 @@ class SensorGroup(base.APIBase):
     "Links to the collection of isensors on this isensorgroup"
 
     def __init__(self, **kwargs):
-        self.fields = objects.sensorgroup.fields.keys()
+        self.fields = list(objects.sensorgroup.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

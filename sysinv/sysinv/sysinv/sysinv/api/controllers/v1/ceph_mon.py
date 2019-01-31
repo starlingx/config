@@ -107,7 +107,7 @@ class CephMon(base.APIBase):
         defaults = {'state': constants.SB_STATE_CONFIGURED,
                     'task': constants.SB_TASK_NONE}
 
-        self.fields = objects.ceph_mon.fields.keys()
+        self.fields = list(objects.ceph_mon.fields.keys())
 
         for k in self.fields:
             setattr(self, k, kwargs.get(k, defaults.get(k)))

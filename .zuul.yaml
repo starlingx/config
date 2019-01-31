@@ -8,6 +8,7 @@
         - build-openstack-releasenotes
         - openstack-tox-linters
         - sysinv-tox-py27
+        - sysinv-tox-py35
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - controllerconfig-tox-flake8
@@ -27,6 +28,7 @@
         - build-openstack-releasenotes
         - openstack-tox-linters
         - sysinv-tox-py27
+        - sysinv-tox-py35
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - controllerconfig-tox-flake8
@@ -57,6 +59,21 @@
       - sysinv/sysinv/*
     vars:
       tox_envlist: py27
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: sysinv-tox-py35
+    parent: tox
+    description: |
+      Run py35 test for sysinv
+    required-projects:
+      - openstack/stx-update
+      - openstack/stx-fault
+      - openstack/stx-integ
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: py35
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:

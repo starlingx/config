@@ -181,7 +181,7 @@ class StorageCeph(base.APIBase):
                     'confirmed': False,
                     'object_gateway': False}
 
-        self.fields = objects.storage_ceph.fields.keys()
+        self.fields = list(objects.storage_ceph.fields.keys())
 
         # 'confirmed' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)

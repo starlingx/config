@@ -98,7 +98,7 @@ class RemoteLogging(base.APIBase):
     updated_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
-        self.fields = objects.remotelogging.fields.keys()
+        self.fields = list(objects.remotelogging.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

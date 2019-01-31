@@ -89,7 +89,7 @@ class Certificate(base.APIBase):
     updated_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
-        self.fields = objects.certificate.fields.keys()
+        self.fields = list(objects.certificate.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

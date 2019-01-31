@@ -161,16 +161,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('unconfigure_ihost',
                                        ihost_obj=ihost_obj))
 
-    def update_nova_local_aggregates(self, context, ihost_uuid):
-        """Synchronously, have a conductor configure nova_local for an ihost.
-
-        :param context: request context.
-        :param ihost_uuid: a host uuid.
-        """
-        self.call(context,
-                  self.make_msg('update_nova_local_aggregates',
-                                ihost_uuid=ihost_uuid))
-
     def create_controller_filesystems(self, context, rootfs_device):
         """Synchronously, create the controller file systems.
 

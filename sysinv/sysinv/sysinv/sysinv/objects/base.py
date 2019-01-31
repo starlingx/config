@@ -47,7 +47,14 @@ def make_class_properties(cls):
         def getter(self, name=name):
             attrname = get_attrname(name)
             if not hasattr(self, attrname):
-                self.obj_load_attr(name)
+                # if name in  _optional_fields, we just return None
+                # as class not implement obj_load_attr function
+                if hasattr(self, '_optional_fields') and name in self._optional_fields:
+                    LOG.exception(_('This is Optional field in %(field)s') %
+                                  {'field': name})
+                    return None
+                else:
+                    self.obj_load_attr(name)
             return getattr(self, attrname)
 
         def setter(self, value, name=name, typefn=typefn):
@@ -397,7 +404,7 @@ class SysinvObject(object):
 
         NOTE(danms): May be removed in the future.
         """
-        for name in self.fields.keys() + self.obj_extra_fields:
+        for name in list(self.fields.keys()) + self.obj_extra_fields:
             if (hasattr(self, get_attrname(name)) or
                     name in self.obj_extra_fields):
                 yield name, getattr(self, name)

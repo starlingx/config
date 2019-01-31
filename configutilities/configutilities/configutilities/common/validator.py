@@ -24,6 +24,8 @@ from configutilities.common.utils import get_service
 from configutilities.common.utils import get_optional
 from configutilities.common.utils import validate_address_str
 from configutilities.common.utils import validate_nameserver_address_str
+from configutilities.common.utils import is_valid_url
+from configutilities.common.utils import is_valid_domain_or_ip
 from configutilities.common.exceptions import ConfigFail
 from configutilities.common.exceptions import ValidateFail
 
@@ -965,6 +967,48 @@ class ConfigValidator(object):
                         "Invalid DNS NAMESERVER value of %s.\nReason: %s" %
                         (dns_address_str, e))
 
+    def validate_docker_proxy(self):
+        if not self.conf.has_section('DOCKER_PROXY'):
+            return
+        if self.cgcs_conf is not None:
+            self.cgcs_conf.add_section('cDOCKER_PROXY')
+        # check http_proxy
+        if self.conf.has_option('DOCKER_PROXY', 'DOCKER_HTTP_PROXY'):
+            docker_http_proxy_str = self.conf.get(
+                'DOCKER_PROXY', 'DOCKER_HTTP_PROXY')
+            if is_valid_url(docker_http_proxy_str):
+                if self.cgcs_conf is not None:
+                    self.cgcs_conf.set('cDOCKER_PROXY', 'DOCKER_HTTP_PROXY',
+                                       docker_http_proxy_str)
+            else:
+                raise ConfigFail(
+                    "Invalid DOCKER_HTTP_PROXY value of %s." %
+                    docker_http_proxy_str)
+        # check https_proxy
+        if self.conf.has_option('DOCKER_PROXY', 'DOCKER_HTTPS_PROXY'):
+            docker_https_proxy_str = self.conf.get(
+                'DOCKER_PROXY', 'DOCKER_HTTPS_PROXY')
+            if is_valid_url(docker_https_proxy_str):
+                if self.cgcs_conf is not None:
+                    self.cgcs_conf.set('cDOCKER_PROXY', 'DOCKER_HTTPS_PROXY',
+                                       docker_https_proxy_str)
+            else:
+                raise ConfigFail(
+                    "Invalid DOCKER_HTTPS_PROXY value of %s." %
+                    docker_https_proxy_str)
+        # check no_proxy
+        if self.conf.has_option('DOCKER_PROXY', 'DOCKER_NO_PROXY'):
+            docker_no_proxy_list_str = self.conf.get(
+                'DOCKER_PROXY', 'DOCKER_NO_PROXY').split(',')
+            for no_proxy_str in docker_no_proxy_list_str:
+                if not is_valid_domain_or_ip(no_proxy_str):
+                    raise ConfigFail(
+                        "Invalid DOCKER_NO_PROXY value of %s." %
+                        no_proxy_str)
+            if self.cgcs_conf is not None:
+                self.cgcs_conf.set('cDOCKER_PROXY', 'DOCKER_NO_PROXY',
+                                   docker_no_proxy_list_str)
+
     def validate_ntp(self):
         if self.conf.has_section('NTP'):
             raise ConfigFail("NTP Configuration is no longer supported")
@@ -1421,6 +1465,8 @@ def validate(system_config, config_type=REGION_CONFIG, cgcs_config=None,
     # Neutron configuration - leave blank to use defaults
     # DNS configuration
     validator.validate_dns()
+    # Docker Proxy configuration
+    validator.validate_docker_proxy()
     # NTP configuration
     validator.validate_ntp()
     # Network configuration

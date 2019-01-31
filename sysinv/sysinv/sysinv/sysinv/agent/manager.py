@@ -889,19 +889,6 @@ class AgentManager(service.PeriodicService):
                 if iscsi_initiator_name is not None:
                     imsg_dict.update({'iscsi_initiator_name': iscsi_initiator_name})
 
-                # Before setting the host to AVAILABILITY_AVAILABLE make
-                # sure that nova_local aggregates are correctly set otherwise starting
-                # instances from images will fail as no host is found.
-                for volume in nova_lvgs:
-                    # Skip making the aggregate RPC call on hosts that don't
-                    # have a nova-local volume group.
-                    if (volume.lvm_vg_name == constants.LVG_NOVA_LOCAL):
-                        try:
-                            rpcapi.update_nova_local_aggregates(icontext, self._ihost_uuid)
-                        except AttributeError:
-                            # safe to ignore during upgrades
-                            LOG.warn("Skip configuration of nova-local aggregates. "
-                                     "Upgrade in progress?")
                 self.platform_update_by_host(rpcapi,
                                              icontext,
                                              self._ihost_uuid,
@@ -1105,19 +1092,6 @@ class AgentManager(service.PeriodicService):
                                       "conductor.")
                         pass
 
-                # Before setting the host to AVAILABILITY_AVAILABLE make
-                # sure that nova_local aggregates are correctly set otherwise starting
-                # instances from images will fail as no host is found.
-                for volume in nova_lvgs:
-                    # Skip making the aggregate RPC call on hosts that don't
-                    # have a nova-local volume group.
-                    if (volume.lvm_vg_name == constants.LVG_NOVA_LOCAL):
-                        try:
-                            rpcapi.update_nova_local_aggregates(icontext, self._ihost_uuid)
-                        except AttributeError:
-                            # safe to ignore during upgrades
-                            LOG.warn("Skip configuration of nova-local aggregates. "
-                                     "Upgrade in progress?")
                 self.platform_update_by_host(rpcapi,
                                              icontext,
                                              self._ihost_uuid,

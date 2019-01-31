@@ -606,7 +606,7 @@ class PlatformPuppet(base.BasePuppet):
             # change the CPU list to ranges
             rcu_nocbs_ranges = ""
             for key, group in itertools.groupby(enumerate(rcu_nocbs),
-                                                lambda (x, y): y - x):
+                                                lambda xy: xy[1] - xy[0]):
                 group = list(group)
                 rcu_nocbs_ranges += "%s-%s," % (group[0][1], group[-1][1])
             rcu_nocbs_ranges = rcu_nocbs_ranges.rstrip(',')
@@ -619,7 +619,7 @@ class PlatformPuppet(base.BasePuppet):
             # change the CPU list to ranges
             non_vswitch_cpus_ranges = ""
             for key, group in itertools.groupby(enumerate(non_vswitch_cpus),
-                                                lambda (x, y): y - x):
+                                                lambda xy: xy[1] - xy[0]):
                 group = list(group)
                 non_vswitch_cpus_ranges += "\"%s-%s\"," % (group[0][1], group[-1][1])
 

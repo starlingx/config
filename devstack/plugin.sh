@@ -29,6 +29,9 @@ if is_service_enabled stx-config; then
     elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
         # do sanity test for sysinv
         echo_summary "do test-config"
+        # check sysinv services status
+        echo_summary "do check sysinv services"
+        check_sysinv_services
     fi
 
     if [[ "$1" == "unstack" ]]; then

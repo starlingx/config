@@ -109,7 +109,7 @@ class StorageFile(base.APIBase):
                     'services': None,
                     'confirmed': False}
 
-        self.fields = objects.storage_file.fields.keys()
+        self.fields = list(objects.storage_file.fields.keys())
 
         # 'confirmed' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)

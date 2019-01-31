@@ -15,7 +15,19 @@ import mock
 from six.moves import http_client
 
 from cephclient import wrapper as ceph
-from contextlib import nested
+try:
+    from contextlib import nested  # Python 2
+except ImportError:
+    from contextlib import ExitStack
+    from contextlib import contextmanager
+
+    @contextmanager
+    def nested(*contexts):
+        """
+        Reimplementation of nested in python 3.
+        """
+        with ExitStack() as stack:
+            yield tuple(stack.enter_context(cm) for cm in contexts)
 from oslo_serialization import jsonutils
 from sysinv.conductor import manager
 from sysinv.conductor import rpcapi
@@ -659,7 +671,6 @@ class StorageTierDependentTCs(base.FunctionalTest):
             def fake_configure_osd_istor(context, istor_obj):
                 istor_obj['osdid'] = 0
                 return istor_obj
-
             mock_mon_status.return_value = [3, 2, ['controller-0', 'controller-1', 'storage-0']]
             mock_osd.side_effect = fake_configure_osd_istor
 

@@ -23,9 +23,9 @@ import os
 import tempfile
 import testtools
 import time
+import six
 
-import mox
-
+from mox3 import mox
 from sysinv.cmd import sysinv_deploy_helper as bmdh
 from sysinv import db
 from sysinv.openstack.common import log as logging
@@ -233,7 +233,10 @@ class SwitchPxeConfigTestCase(tests_base.TestCase):
     def setUp(self):
         super(SwitchPxeConfigTestCase, self).setUp()
         (fd, self.fname) = tempfile.mkstemp()
-        os.write(fd, _PXECONF_DEPLOY)
+        if six.PY2:
+            os.write(fd, _PXECONF_DEPLOY)
+        else:
+            os.write(fd, bytes(_PXECONF_DEPLOY, 'UTF-8'))
         os.close(fd)
 
     def tearDown(self):

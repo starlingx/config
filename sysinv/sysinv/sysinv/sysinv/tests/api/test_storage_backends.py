@@ -752,6 +752,8 @@ class StorageBackendTestCases(base.FunctionalTest):
             'capabilities': {'test_bparam3': 'foo'},
             'confirmed': True
         }
+        services_string = '%s,%s' % (constants.SB_SVC_CINDER, constants.SB_SVC_GLANCE)
+        services_string2 = '%s,%s' % (constants.SB_SVC_GLANCE, constants.SB_SVC_CINDER)
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
@@ -759,15 +761,13 @@ class StorageBackendTestCases(base.FunctionalTest):
 
         patch_response = self.patch_dict_json('/storage_backend/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
-                                              services=(',').join([constants.SB_SVC_CINDER,
-                                                                   constants.SB_SVC_GLANCE]),
+                                              services=services_string,
                                               capabilities=jsonutils.dumps({'test_cparam3': 'bar',
                                                                             'test_gparam3': 'too'}),
                                               expect_errors=False)
         self.assertEqual(http_client.OK, patch_response.status_int)
-        self.assertEqual((',').join([constants.SB_SVC_CINDER,
-                                     constants.SB_SVC_GLANCE]),  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['services'])  # Result
+        json_result = self.get_json('/storage_backend/%s/' % response.json['uuid'])['services']
+        self.assertTrue(services_string == json_result or services_string2 == json_result)
         self.assertEqual({'test_bparam3': 'foo',
                           'test_cparam3': 'bar',
                           'test_gparam3': 'too'},  # Expected
