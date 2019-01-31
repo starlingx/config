@@ -32,6 +32,7 @@ system_mode = None
 security_profile = None
 distributed_cloud_role = None
 security_feature = None
+http_port = "8080"
 
 PLATFORM_CONF_PATH = '/etc/platform'
 PLATFORM_CONF_FILE = os.path.join(PLATFORM_CONF_PATH, 'platform.conf')
@@ -147,6 +148,10 @@ def _load():
         global security_feature
         if config.has_option('platform_conf', 'security_feature'):
             security_feature = str(config.get('platform_conf', 'security_feature'))
+
+        global http_port
+        if config.has_option('platform_conf', 'http_port'):
+            http_port = str(config.get('platform_conf', 'http_port'))
 
     except configparser.Error:
         logging.exception("Failed to read platform.conf")
