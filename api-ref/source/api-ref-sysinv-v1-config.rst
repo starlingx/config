@@ -2366,6 +2366,544 @@ In order to delete an osd stor, the host must be locked and deleted.
 
 This operation does not accept a request body.
 
+----------
+Interfaces
+----------
+
+These APIs allow the create, display, modify and delete of the L2
+interfaces of a host.
+
+*****************************************
+List the L2 interfaces of a specific host
+*****************************************
+
+.. rest_method:: GET /v1/ihosts/{host_id}/iinterfaces
+
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "iinterfaces (Optional)", "plain", "xsd:list", "The list of L2 interfaces for a specific host."
+   "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
+   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
+   "providernetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a comma-separated list of provider networks that this ``data`` interface is attached to."
+   "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
+   "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
+   "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
+   "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
+   "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+
+::
+
+   {
+     "iinterfaces": [
+       {
+         "forihostid": 2,
+         "iftype": "ethernet",
+         "uuid": "1425e76f-eb40-41bd-825f-f692a3064043",
+         "links": [
+           {
+             "href": "http://192.168.204.2:6385/v1/iinterfaces/1425e76f-eb40-41bd-825f-f692a3064043",
+             "rel": "self"
+           },
+           {
+             "href": "http://192.168.204.2:6385/iinterfaces/1425e76f-eb40-41bd-825f-f692a3064043",
+             "rel": "bookmark"
+           }
+         ],
+         "txhashpolicy": null,
+         "schedpolicy": null,
+         "imac": "08:00:27:80:aa:6e",
+         "sriov_numvfs": 0,
+         "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
+         "vlan_id": null,
+         "imtu": 1500,
+         "aemode": null,
+         "providernetworks": null,
+         "networktype": "mgmt",
+         "ifname": "eth1"
+       },
+       {
+         "forihostid": 2,
+         "iftype": "ae",
+         "uuid": "92dec2e1-a793-4c63-a408-affc492b7856",
+         "links": [
+           {
+             "href": "http://192.168.204.2:6385/v1/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856",
+             "rel": "self"
+           },
+           {
+             "href": "http://192.168.204.2:6385/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856",
+             "rel": "bookmark"
+           }
+         ],
+         "txhashpolicy": "layer2",
+         "schedpolicy": null,
+         "imac": null,
+         "sriov_numvfs": 0,
+         "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
+         "imtu": 1500,
+         "uses": [
+           "eth2",
+           "eth3"
+         ],
+         "used_by": [
+
+         ],
+         "aemode": "balanced",
+         "providernetworks": "physnet-0,physnet-1",
+         "networktype": "data",
+         "ifname": "data1"
+       }
+     ]
+   }
+
+This operation does not accept a request body.
+
+***********************************************
+Shows information about a specific L2 interface
+***********************************************
+
+.. rest_method:: GET /v1/iinterfaces/{interface_id}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_id", "URI", "csapi:UUID", "The unique identifier of an existing interface."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
+   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
+   "providernetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a comma-separated list of provider networks that this ``data`` interface is attached to."
+   "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
+   "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
+   "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
+   "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
+   "ifcapabilities (Optional)", "plain", "xsd:list", "Currently not supported."
+   "providernetworksdict (Optional)", "plain", "xsd:list", "Currently not supported."
+   "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
+   "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
+   "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   {
+      "ports" : [
+         {
+            "rel" : "self",
+            "href" : "http://10.10.10.2:6385/v1/iinterfaces/740a5bec-b7a8-4645-93ed-aea0d4cfbf86/ports"
+         },
+         {
+            "rel" : "bookmark",
+            "href" : "http://10.10.10.2:6385/iinterfaces/740a5bec-b7a8-4645-93ed-aea0d4cfbf86/ports"
+         }
+      ],
+      "providernetworks" : "physnet-0,physnet-1",
+      "txhashpolicy" : "layer2",
+      "schedpolicy" : null,
+      "networktype" : "data",
+      "uuid" : "740a5bec-b7a8-4645-93ed-aea0d4cfbf86",
+      "ihost_uuid" : "ff453a51-1d3b-437f-a65e-b2d163f79f85",
+      "vlan_id": null,
+      "created_at" : "2014-09-29T11:12:42.556372+00:00",
+      "ifcapabilities" : {},
+      "iftype" : "ae",
+      "links" : [
+         {
+            "rel" : "self",
+            "href" : "http://10.10.10.2:6385/v1/iinterfaces/740a5bec-b7a8-4645-93ed-aea0d4cfbf86"
+         },
+         {
+            "rel" : "bookmark",
+            "href" : "http://10.10.10.2:6385/iinterfaces/740a5bec-b7a8-4645-93ed-aea0d4cfbf86"
+         }
+      ],
+      "providernetworksdict" : {},
+      "imac" : null,
+      "sriov_numvfs": 0,
+      "aemode" : "balanced",
+      "ifname" : "data1",
+      "ports" : null,
+      "uses": [
+
+      ],
+      "used_by": [
+
+      ],
+      "forihostid" : 2,
+      "updated_at" : null,
+      "imtu" : 1500
+   }
+
+This operation does not accept a request body.
+
+******************************************
+Creates an L2 interface on a specific host
+******************************************
+
+.. rest_method:: POST /v1/ihosts/{host_id}/iinterfaces
+
+Note that ``mgmt`` and ``oam`` can only be added through the REST API if
+their networktype is unassigned to none. ``mgmt`` and ``oam`` are
+automatically added by the system by default.
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
+   "ifname (Optional)", "plain", "xsd:string", "The name for the interface."
+   "networktype (Optional)", "plain", "xsd:string", "The type of network that this interface will be attached to; i.e. ``mgmt``, ``infra``, ``oam``, ``data``, ``pci-passthrough``, ``pci-sriov``, ``infra``."
+   "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ae`` or ``vlan``."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` or ``802.3ad`` across its links. The ``balanced`` and ``active_standby`` are the only modes supported by ``data`` type interface. For ``mgmt`` type interface the ``802.3ad`` option must be selected."
+   "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
+   "providernetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute specifies a comma-separated list of provider networks that this ``data`` interface is attached to."
+   "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
+   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
+   "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
+   "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
+   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
+   "providernetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a comma-separated list of provider networks that this ``data`` interface is attached to."
+   "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
+   "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
+   "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
+   "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
+   "ifcapabilities (Optional)", "plain", "xsd:list", "Currently not supported."
+   "providernetworksdict (Optional)", "plain", "xsd:list", "Currently not supported."
+   "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
+   "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
+   "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   {
+     "iftype": "ae",
+     "txhashpolicy": "layer2",
+     "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
+     "imtu": "1500",
+     "providernetworks": "physnet-0,physnet1",
+     "networktype": "data",
+     "ifname": "data1",
+     "uses": ['eth2','eth3'],
+     "aemode": "balanced",
+     "sriov_numvfs": 0
+   }
+
+::
+
+   {
+     "ports": [
+       {
+         "href": "http://192.168.204.2:6385/v1/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856/ports",
+         "rel": "self"
+       },
+       {
+         "href": "http://192.168.204.2:6385/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856/ports",
+         "rel": "bookmark"
+       }
+     ],
+     "forihostid": 2,
+     "iftype": "ae",
+     "uuid": "92dec2e1-a793-4c63-a408-affc492b7856",
+     "links": [
+       {
+         "href": "http://192.168.204.2:6385/v1/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856",
+         "rel": "self"
+       },
+       {
+         "href": "http://192.168.204.2:6385/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856",
+         "rel": "bookmark"
+       }
+     ],
+     "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
+     "vlan_id": null,
+     "txhashpolicy": "layer2",
+     "created_at": "2014-09-29T10:55:20.515705+00:00",
+     "schedpolicy": null,
+     "providernetworksdict": {
+
+     },
+     "imac": null,
+     "updated_at": null,
+     "ifcapabilities": {
+
+     },
+     "imtu": 1500,
+     "uses": [
+       "eth2",
+       "eth3"
+     ],
+     "used_by": [
+
+     ],
+     "aemode": "balanced",
+     "sriov_numvfs": 0,
+     "providernetworks": "physnet-0,physnet-1",
+     "networktype": "data",
+     "ifname": "data1",
+     "ports": null,
+   }
+
+
+********************************
+Modifies a specific L2 interface
+********************************
+
+.. rest_method:: PATCH /v1/iinterfaces/{interface_id}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_id", "URI", "csapi:UUID", "The unique identifier of an existing interface."
+   "ifname (Optional)", "plain", "xsd:string", "The name for the interface."
+   "networktype (Optional)", "plain", "xsd:string", "The type of network that this interface will be attached to; i.e. ``mgmt``, ``infra``, ``oam``, ``data``, ``pci-passthrough``, ``pci-sriov``, ``infra`` or ``none``."
+   "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ethernet`` or ``ae`` or ``vlan``."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` across its links. These are the only modes supported by ``data`` type interface."
+   "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
+   "providernetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute specifies a comma-separated list of provider networks that this ``data`` interface is attached to."
+   "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
+   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
+   "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
+   "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
+   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
+   "providernetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a comma-separated list of provider networks that this ``data`` interface is attached to."
+   "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
+   "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
+   "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
+   "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
+   "ifcapabilities (Optional)", "plain", "xsd:list", "Currently not supported."
+   "providernetworksdict (Optional)", "plain", "xsd:list", "Currently not supported."
+   "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
+   "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
+   "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   [
+     {
+       "path": "/imtu",
+       "value": "1500",
+       "op": "replace"
+     },
+     {
+       "path": "/txhashpolicy",
+       "value": "layer2",
+       "op": "replace"
+     },
+     {
+       "path": "/providernetworks",
+       "value": "physnet-0,physnet-1",
+       "op": "replace"
+     },
+     {
+       "path": "/aemode",
+       "value": "active_standby",
+       "op": "replace"
+     },
+     {
+       "path": "/uses",
+       "value": ['eth2','eth3'],
+       "op": "replace"
+     }
+   ]
+
+::
+
+   {
+     "ports": [
+       {
+         "href": "http://192.168.204.2:6385/v1/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856/ports",
+         "rel": "self"
+       },
+       {
+         "href": "http://192.168.204.2:6385/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856/ports",
+         "rel": "bookmark"
+       }
+     ],
+     "forihostid": 2,
+     "iftype": "ae",
+     "uuid": "92dec2e1-a793-4c63-a408-affc492b7856",
+     "links": [
+       {
+         "href": "http://192.168.204.2:6385/v1/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856",
+         "rel": "self"
+       },
+       {
+         "href": "http://192.168.204.2:6385/iinterfaces/92dec2e1-a793-4c63-a408-affc492b7856",
+         "rel": "bookmark"
+       }
+     ],
+     "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
+     "vlan_id": null,
+     "txhashpolicy": "layer2",
+     "created_at": "2014-09-29T10:55:20.515705+00:00",
+     "schedpolicy": null,
+     "providernetworksdict": {
+
+     },
+     "imac": null,
+     "sriov_numvfs": 0,
+     "updated_at": "2014-09-29T11:08:21.016145+00:00",
+     "ifcapabilities": {
+
+     },
+     "imtu": 1500,
+     "uses": [
+       "eth2",
+       "eth3"
+     ],
+     "used_by": [
+
+     ],
+     "aemode": "active_standby",
+     "providernetworks": "physnet-0,physnet-1",
+     "networktype": "data",
+     "ifname": "data1",
+     "ports": null
+   }
+
+*******************************
+Deletes a specific L2 interface
+*******************************
+
+.. rest_method:: DELETE /v1/iinterfaces/{interface_id}
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_id", "URI", "csapi:UUID", "The unique identifier of an existing interface."
+
+This operation does not accept a request body.
+
 ---------
 Profiles
 ---------
