@@ -686,6 +686,21 @@ class AppOperator(object):
                 missing_overrides.append(overrides_file)
             else:
                 available_overrides.append(overrides_file)
+
+                # Now handle any meta-overrides files.  These can affect
+                # sections of the chart schema other than "values, and can
+                # affect the chartgroup or even the manifest.
+                if self._helm.generate_meta_overrides(
+                        chart.name, chart.namespace):
+                    overrides = chart.namespace + '-' + chart.name + \
+                                '-meta' + '.yaml'
+                    overrides_file = os.path.join(common.HELM_OVERRIDES_PATH,
+                                                  overrides)
+                    if not os.path.exists(overrides_file):
+                        missing_overrides.append(overrides_file)
+                    else:
+                        available_overrides.append(overrides_file)
+
         if missing_overrides:
             LOG.error("Missing the following overrides: %s" % missing_overrides)
             return None

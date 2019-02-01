@@ -29,6 +29,42 @@ class GarbdHelm(base.BaseHelm):
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 
+    def get_meta_overrides(self, namespace):
+
+        def _meta_overrides():
+            if self._num_controllers() < 2:
+                # If there are fewer than 2 controllers we'll use a single
+                # mariadb server and so we don't want to run garbd.  This
+                # will remove "openstack-garbd" from the charts in the
+                # openstack-mariadb chartgroup.
+                return {
+                    'schema': 'armada/ChartGroup/v1',
+                    'metadata': {
+                        'schema': 'metadata/Document/v1',
+                        'name': 'openstack-mariadb',
+                    },
+                    'data': {
+                        'description': 'Mariadb',
+                        'sequenced': True,
+                        'chart_group': [
+                            'openstack-mariadb',
+                        ]
+                    }
+                }
+            else:
+                return {}
+
+        overrides = {
+            common.HELM_NS_OPENSTACK: _meta_overrides()
+        }
+        if namespace in self.SUPPORTED_NAMESPACES:
+            return overrides[namespace]
+        elif namespace:
+            raise exception.InvalidHelmNamespace(chart=self.CHART,
+                                                 namespace=namespace)
+        else:
+            return overrides
+
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {

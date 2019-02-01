@@ -168,6 +168,39 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-garbd
+data:
+  chart_name: garbd
+  release: openstack-garbd
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-garbd
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-garbd
+  values:
+    labels:
+      server:
+        node_selector_key: openstack-compute-node
+        node_selector_value: enabled
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/garbd-0.1.0.tgz
+    subpath: garbd
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-memcached
 data:
   chart_name: memcached
@@ -2446,6 +2479,7 @@ data:
   sequenced: true
   chart_group:
     - openstack-mariadb
+    - openstack-garbd
 ---
 schema: armada/ChartGroup/v1
 metadata:
