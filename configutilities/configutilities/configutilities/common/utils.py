@@ -331,7 +331,7 @@ def extract_openstack_password_rules_from_file(
         config = configparser.RawConfigParser()
         parsed_config = config.read(rules_file)
         if not parsed_config:
-            msg = ("Cannot parse rules file: %" % rules_file)
+            msg = ("Cannot parse rules file: %s" % rules_file)
             raise Exception(msg)
         if not config.has_section(section):
             msg = ("Required section '%s' not found in rules file" % section)

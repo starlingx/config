@@ -15,6 +15,7 @@
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - configutilities-tox-flake8
+        - configutilities-tox-pylint
         - stx-devstack-config:
             voting: false
         - cgtsclient-tox-py27
@@ -35,6 +36,7 @@
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - configutilities-tox-flake8
+        - configutilities-tox-pylint
         - cgtsclient-tox-py27
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
@@ -146,6 +148,18 @@
       - configutilities/*
     vars:
       tox_envlist: flake8
+      tox_extra_args: -c configutilities/configutilities/tox.ini
+
+- job:
+    name: configutilities-tox-pylint
+    parent: tox
+    description: Run pylint tests for configutilities
+    required-projects:
+      - openstack/stx-update
+    files:
+      - configutilities/*
+    vars:
+      tox_envlist: pylint
       tox_extra_args: -c configutilities/configutilities/tox.ini
 
 - job:
