@@ -528,10 +528,15 @@ class AppOperator(object):
             }
         }
         body['metadata']['labels'].update(label_dict)
-        self._kube.kube_patch_node(hostname, body)
+        try:
+            self._kube.kube_patch_node(hostname, body)
+        except exception.K8sNodeNotFound:
+            pass
 
     def _assign_host_labels(self, hosts, labels):
         for host in hosts:
+            if host.administrative != constants.ADMIN_LOCKED:
+                continue
             for label_str in labels:
                 k, v = label_str.split('=')
                 try:
@@ -553,6 +558,8 @@ class AppOperator(object):
 
     def _remove_host_labels(self, hosts, labels):
         for host in hosts:
+            if host.administrative != constants.ADMIN_LOCKED:
+                continue
             null_labels = {}
             for label_str in labels:
                 lbl_obj = self._find_label(host.uuid, label_str)
@@ -937,43 +944,60 @@ class AppOperator(object):
 
         if self._make_armada_request_with_monitor(app, constants.APP_DELETE_OP):
             if app.system_app:
-                try:
-                    # TODO convert these kubectl commands to use the k8s api
-                    p1 = subprocess.Popen(
-                        ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
-                         'get', 'pvc', '--no-headers', '-n', 'openstack'],
-                        stdout=subprocess.PIPE)
-                    p2 = subprocess.Popen(['awk', '{print $3}'],
-                                          stdin=p1.stdout,
-                                          stdout=subprocess.PIPE)
-                    p3 = subprocess.Popen(
-                        ['xargs', '-i', 'kubectl',
-                         '--kubeconfig=/etc/kubernetes/admin.conf', 'delete',
-                         'pv', '{}', '--wait=false'],
-                        stdin=p2.stdout,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE)
 
+                # TODO convert these kubectl commands to use the k8s api
+                p1 = subprocess.Popen(
+                    ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                     'get', 'pvc', '--no-headers', '-n', 'openstack'],
+                    stdout=subprocess.PIPE)
+                p2 = subprocess.Popen(['awk', '{print $3}'],
+                                      stdin=p1.stdout,
+                                      stdout=subprocess.PIPE)
+                p3 = subprocess.Popen(
+                    ['xargs', '-i', 'kubectl',
+                     '--kubeconfig=/etc/kubernetes/admin.conf', 'delete',
+                     'pv', '{}', '--wait=false'],
+                    stdin=p2.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+                timer = threading.Timer(10, p3.kill)
+                try:
+                    timer.start()
                     p1.stdout.close()
                     p2.stdout.close()
                     out, err = p3.communicate()
-                    if not err:
+                    if out and not err:
                         LOG.info("Persistent Volumes marked for deletion.")
+                    else:
+                        self._abort_operation(app, constants.APP_REMOVE_OP)
+                        LOG.error("Failed to clean up PVs after app removal.")
                 except Exception as e:
+                    self._abort_operation(app, constants.APP_REMOVE_OP)
                     LOG.exception("Failed to clean up PVs after app "
                                   "removal: %s" % e)
+                finally:
+                    timer.cancel()
 
+                p4 = subprocess.Popen(
+                    ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+                     'delete', 'namespace', 'openstack'],
+                    stdout=subprocess.PIPE)
+                timer2 = threading.Timer(10, p4.kill)
                 try:
-                    p1 = subprocess.Popen(
-                        ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
-                         'delete', 'namespace', 'openstack'],
-                        stdout=subprocess.PIPE)
-                    out, err = p1.communicate()
-                    if not err:
+                    timer2.start()
+                    out, err = p4.communicate()
+                    if out and not err:
                         LOG.info("Openstack namespace delete completed.")
+                    else:
+                        self._abort_operation(app, constants.APP_REMOVE_OP)
+                        LOG.error("Failed to clean up openstack namespace"
+                                  " after app removal.")
                 except Exception as e:
+                    self._abort_operation(app, constants.APP_REMOVE_OP)
                     LOG.exception("Failed to clean up openstack namespace "
                                   "after app removal: %s" % e)
+                finally:
+                    timer2.cancel()
 
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
             LOG.info("Application (%s) remove completed." % app.name)

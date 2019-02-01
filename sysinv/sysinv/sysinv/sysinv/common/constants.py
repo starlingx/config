@@ -123,6 +123,7 @@ HOST_DELETE = 'host_delete'  # for personality sub-type validation
 
 # Availability
 AVAILABILITY_AVAILABLE = 'available'
+AVAILABILITY_INTEST = 'intest'
 AVAILABILITY_OFFLINE = 'offline'
 AVAILABILITY_ONLINE = 'online'
 AVAILABILITY_DEGRADED = 'degraded'

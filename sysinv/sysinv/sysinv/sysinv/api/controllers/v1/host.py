@@ -2110,6 +2110,11 @@ class HostController(rest.RestController):
                     ihost_obj['uuid'],
                     ibm_msg_dict)
 
+            # Trigger a system app reapply if the host has been unlocked
+            if (utils.is_kubernetes_config() and patched_ihost.get('action') in
+                    [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
+                self._reapply_system_app()
+
         elif mtc_response['status'] is None:
             raise wsme.exc.ClientSideError(
                 _("Timeout waiting for maintenance response. "
@@ -2341,6 +2346,15 @@ class HostController(rest.RestController):
                 # wait for VIM signal
                 return
 
+        openstack_worker = False
+        if utils.is_kubernetes_config():
+            labels = objects.label.get_by_host_id(pecan.request.context, ihost.uuid)
+            for l in labels:
+                if (constants.COMPUTE_NODE_LABEL ==
+                        str(l.label_key) + '=' + str(l.label_value)):
+                    openstack_worker = True
+                    break
+
         idict = {'operation': constants.DELETE_ACTION,
                  'uuid': ihost.uuid,
                  'invprovision': ihost.invprovision}
@@ -2463,6 +2477,32 @@ class HostController(rest.RestController):
             self._ceph.host_crush_remove(ihost.hostname)
 
         pecan.request.dbapi.ihost_destroy(ihost_id)
+
+        # If the host being removed was an openstack worker node, trigger
+        # a reapply
+        if openstack_worker:
+            self._reapply_system_app()
+
+    def _reapply_system_app(self):
+        try:
+            db_app = objects.kube_app.get_by_name(
+                pecan.request.context, constants.HELM_APP_OPENSTACK)
+
+            if db_app.status == constants.APP_APPLY_SUCCESS:
+                LOG.info(
+                    "Reapplying the %s app" % constants.HELM_APP_OPENSTACK)
+                db_app.status = constants.APP_APPLY_IN_PROGRESS
+                db_app.progress = None
+                db_app.save()
+                pecan.request.rpcapi.perform_app_apply(
+                    pecan.request.context, db_app)
+            else:
+                LOG.info("%s system app is present but not applied, "
+                         "skipping re-apply" % constants.HELM_APP_OPENSTACK)
+        except exception.KubeAppNotFound:
+            LOG.info(
+                "%s system app not present, skipping re-apply" %
+                constants.HELM_APP_OPENSTACK)
 
     def _check_upgrade_provision_order(self, personality, hostname):
         LOG.info("_check_upgrade_provision_order personality=%s, hostname=%s" %
