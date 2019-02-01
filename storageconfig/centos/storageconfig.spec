@@ -15,7 +15,6 @@ Initial storage node configuration
 
 %define local_etc_initd /etc/init.d/
 %define local_etc_goenabledd /etc/goenabled.d/
-%define local_etc_systemd /etc/systemd/system/
 
 %define debug_package %{nil}
 
@@ -25,16 +24,10 @@ Initial storage node configuration
 %build
 
 %install
-
-install -d -m 755 %{buildroot}%{local_etc_initd}
-install -p -D -m 700 storage_config %{buildroot}%{local_etc_initd}/storage_config
-
-install -d -m 755 %{buildroot}%{local_etc_goenabledd}
-install -p -D -m 755 config_goenabled_check.sh %{buildroot}%{local_etc_goenabledd}/config_goenabled_check.sh
-
-install -d -m 755 %{buildroot}%{local_etc_systemd}
-install -p -D -m 664 storageconfig.service %{buildroot}%{local_etc_systemd}/storageconfig.service
-#install -p -D -m 664 config.service %{buildroot}%{local_etc_systemd}/config.service
+make install \
+     INITDDIR=%{buildroot}%{local_etc_initd} \
+     GOENABLEDDIR=%{buildroot}%{local_etc_goenabledd} \
+     SYSTEMDDIR=%{buildroot}%{_unitdir}
 
 %post
 systemctl enable storageconfig.service
@@ -48,11 +41,11 @@ systemctl enable storageconfig.service
 # update-rc.d $OPT storage_config defaults 60
 
 %clean
-rm -rf $RPM_BUILD_ROOT 
+rm -rf %{buildroot}
 
 %files
 %defattr(-,root,root,-)
 %doc LICENSE
 %{local_etc_initd}/*
 %{local_etc_goenabledd}/*
-%{local_etc_systemd}/*
+%{_unitdir}/*
