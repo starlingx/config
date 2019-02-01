@@ -57,6 +57,7 @@ helm repo add local http://localhost:8879/charts
 # Make the charts. These produce a tgz file
 make nova-api-proxy
 make rbd-provisioner
+make garbd
 
 # terminate helm server (the last backgrounded task)
 kill %1
