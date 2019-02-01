@@ -50,6 +50,9 @@ MELLANOX_DRIVERS = [DRIVER_MLX_CX3,
 
 LOOPBACK_IFNAME = 'lo'
 LOOPBACK_METHOD = 'loopback'
+STATIC_METHOD = 'static'
+MANUAL_METHOD = 'manual'
+DHCP_METHOD = 'dhcp'
 
 NETWORK_CONFIG_RESOURCE = 'platform::interfaces::network_config'
 ROUTE_CONFIG_RESOURCE = 'platform::interfaces::route_config'
@@ -593,13 +596,13 @@ def get_interface_primary_address(context, iface, network_id=None):
                 return _set_address_netmask(address)
 
 
-def get_interface_address_family(context, iface):
+def get_interface_address_family(context, iface, network_id=None):
     """
     Determine the IP family/version of the interface primary address.  If there
     is no address then the IPv4 family identifier is returned so that an
     appropriate default is always present in interface configurations.
     """
-    address = get_interface_primary_address(context, iface)
+    address = get_interface_primary_address(context, iface, network_id)
     if not address:
         return 'inet'  # default to ipv4
     elif IPAddress(address['address']).version == 4:
@@ -615,55 +618,55 @@ def get_interface_gateway_address(context, networktype):
     return context['gateways'].get(networktype, None)
 
 
-def get_interface_address_method(context, iface):
+def get_interface_address_method(context, iface, network_id=None):
     """
     Determine what type of interface to configure for each network type.
     """
+    networktype = find_networktype_by_network_id(context, network_id)
 
     if not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE \
-            or not iface.networktype:
+            or not networktype:
         # Interfaces that are configured purely as a dependency from other
         # interfaces (i.e., vlan lower interface, bridge member, bond slave)
         # should be left as manual config
-        return 'manual'
+        return MANUAL_METHOD
     elif iface.ifclass == constants.INTERFACE_CLASS_DATA:
         # All data interfaces configured in the kernel because they are not
         # natively supported in vswitch or need to be shared with the kernel
         # because of a platform VLAN should be left as manual config
-        return 'manual'
+        return MANUAL_METHOD
     elif iface.ifclass in PCI_INTERFACE_CLASSES:
-        return 'manual'
+        return MANUAL_METHOD
     else:
         if is_controller(context):
             # All other interface types that exist on a controller are setup
             # statically since the controller themselves run the DHCP server.
-            return 'static'
-        elif iface.networktype == constants.NETWORK_TYPE_CLUSTER_HOST:
-            return 'static'
-        elif iface.networktype == constants.NETWORK_TYPE_PXEBOOT:
+            return STATIC_METHOD
+        elif networktype == constants.NETWORK_TYPE_CLUSTER_HOST:
+            return STATIC_METHOD
+        elif networktype == constants.NETWORK_TYPE_PXEBOOT:
             # All pxeboot interfaces that exist on non-controller nodes are set
             # to manual as they are not needed/used once the install is done.
             # They exist only in support of the vlan mgmt interface above it.
-            return 'manual'
+            return MANUAL_METHOD
         else:
             # All other types get their addresses from the controller
-            return 'dhcp'
+            return DHCP_METHOD
 
 
 def get_interface_traffic_classifier(context, iface, network_id=None):
     """
     Get the interface traffic classifier command line (if any)
     """
-    if (iface.networktype and
-            iface.networktype in [constants.NETWORK_TYPE_MGMT,
-                                  constants.NETWORK_TYPE_INFRA]):
+    networktype = find_networktype_by_network_id(context, network_id)
+    if (networktype and
+            networktype in [constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_INFRA]):
         networkspeed = constants.LINK_SPEED_10G
         ifname = get_interface_os_ifname(context, iface)
-        if network_id:
-            ifname = ifname + ':' + str(network_id)
         return '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' \
                % (ifname,
-                  iface.networktype,
+                  networktype,
                   networkspeed)
     return None
 
@@ -915,8 +918,8 @@ def get_common_network_config(context, iface, config, network_id=None):
     if traffic_classifier:
         config['options']['post_up'] = traffic_classifier
 
-    method = get_interface_address_method(context, iface)
-    if method == 'static':
+    method = get_interface_address_method(context, iface, network_id)
+    if method == STATIC_METHOD:
         address = get_interface_primary_address(context, iface, network_id)
         if address:
             config['ipaddress'] = address['address']
@@ -924,12 +927,10 @@ def get_common_network_config(context, iface, config, network_id=None):
         else:
             LOG.info("Interface %s has no primary address" % iface['ifname'])
 
-        if network_id is None and len(iface.networks) > 0:
-            networktype = find_networktype_by_network_id(
-                context, int(iface.networks[0]))
-            gateway = get_interface_gateway_address(context, networktype)
-            if gateway:
-                config['gateway'] = gateway
+        networktype = find_networktype_by_network_id(context, network_id)
+        gateway = get_interface_gateway_address(context, networktype)
+        if gateway:
+            config['gateway'] = gateway
     return config
 
 
@@ -939,14 +940,27 @@ def get_interface_network_config(context, iface, network_id=None):
     """
     # Create a basic network config resource
     os_ifname = get_interface_os_ifname(context, iface)
-    method = get_interface_address_method(context, iface)
-    family = get_interface_address_family(context, iface)
+    method = get_interface_address_method(context, iface, network_id)
+    family = get_interface_address_family(context, iface, network_id)
+
+    # setup an alias interface if there are multiple addresses assigned
+    # NOTE: DHCP will only operate over a non-alias interface
+    if len(iface.networks) > 1 and network_id and method != DHCP_METHOD:
+        ifname = "%s:%d" % (os_ifname, network_id)
+    else:
+        ifname = os_ifname
+
     mtu = get_interface_mtu(context, iface)
     config = get_basic_network_config(
-        os_ifname, method=method, family=family, mtu=mtu)
+        ifname, method=method, family=family, mtu=mtu)
 
     # Add options common to all top level interfaces
     config = get_common_network_config(context, iface, config, network_id)
+
+    # ensure addresses have host scope when configured against the loopback
+    if os_ifname == LOOPBACK_IFNAME:
+        options = {'SCOPE': 'scope host'}
+        config['options'].update(options)
 
     # Add type specific options
     if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
@@ -966,38 +980,25 @@ def generate_network_config(context, config, iface):
     resource, while in other cases it will emit multiple resources to create a
     bridge, or to add additional route resources.
     """
-    if len(iface.networks) == 1:
-        # get the network type of the single network
-        iface.networktype = find_networktype_by_network_id(
-            context, int(iface.networks[0]))
-    else:
-        # Either no network assigned to the interface or multiple networks
-        iface.networktype = None
+    ifname = get_interface_os_ifname(context, iface)
 
-    # Set up the interface network config or the parent of alias interfaces
-    network_config = get_interface_network_config(context, iface)
+    # Setup the default device configuration for the interface.  This will be
+    # overridden if there is a specific network type configuration, otherwise
+    # it will act as the parent device for the aliases
+    net_config = get_interface_network_config(context, iface)
     config[NETWORK_CONFIG_RESOURCE].update({
-        network_config['ifname']: format_network_config(network_config)
+        net_config['ifname']: format_network_config(net_config)
     })
-    if len(iface.networks) > 1:
-        # Loop over the networks to create network config for each
-        # alias interface
-        for net_id in iface.networks:
-            iface.networktype = find_networktype_by_network_id(
-                context, int(net_id))
-            net_config = get_interface_network_config(context, iface,
-                                                      int(net_id))
-            ifname = net_config['ifname'] + ':' + net_id
-            if context['system_mode'] == constants.SYSTEM_MODE_SIMPLEX:
-                options = {'SCOPE': 'scope host'}
-                net_config['options'].update(options)
-            config[NETWORK_CONFIG_RESOURCE].update({
-                ifname: format_network_config(net_config)
-            })
+
+    for net_id in iface.networks:
+        net_config = get_interface_network_config(context, iface, int(net_id))
+        config[NETWORK_CONFIG_RESOURCE].update({
+            net_config['ifname']: format_network_config(net_config)
+        })
 
     # Add complementary puppet resource definitions (if needed)
     for route in get_interface_routes(context, iface):
-        route_config = get_route_config(route, network_config['ifname'])
+        route_config = get_route_config(route, ifname)
         config[ROUTE_CONFIG_RESOURCE].update({
             route_config['name']: route_config
         })

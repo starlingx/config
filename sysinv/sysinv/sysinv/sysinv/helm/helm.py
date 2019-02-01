@@ -341,6 +341,18 @@ class HelmOperator(object):
             LOG.exception("chart name is required")
 
     @helm_context
+    def generate_meta_overrides(self, chart_name, chart_namespace):
+        overrides = {}
+        if chart_name in self.implemented_charts:
+            try:
+                overrides.update(
+                    self.chart_operators[chart_name].get_meta_overrides(
+                        chart_namespace))
+            except exception.InvalidHelmNamespace:
+                raise
+        return overrides
+
+    @helm_context
     def generate_helm_application_overrides(self, app_name, cnamespace=None,
                                             armada_format=False,
                                             combined=False):
@@ -404,6 +416,17 @@ class HelmOperator(object):
                         overrides[key] = new_overrides
 
                 self._write_chart_overrides(chart_name, cnamespace, overrides)
+
+                # Write any meta-overrides for this chart.  These will be in
+                # armada format already.
+                if armada_format:
+                    overrides = self.generate_meta_overrides(chart_name,
+                                                             cnamespace)
+                    if overrides:
+                        chart_meta_name = chart_name + '-meta'
+                        self._write_chart_overrides(
+                            chart_meta_name, cnamespace, overrides)
+
         elif app_name:
             LOG.exception("%s application is not supported" % app_name)
         else:

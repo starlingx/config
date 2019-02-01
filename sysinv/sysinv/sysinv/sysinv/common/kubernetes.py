@@ -51,6 +51,19 @@ class KubeOperator(object):
             if e.status == httplib.UNPROCESSABLE_ENTITY:
                 reason = json.loads(e.body).get('message', "")
                 raise exception.HostLabelInvalid(reason=reason)
+            elif e.status == httplib.NOT_FOUND:
+                raise exception.K8sNodeNotFound(name=name)
+            else:
+                raise
         except Exception as e:
-            LOG.error("Kubernetes exception: %s" % e)
+            LOG.error("Kubernetes exception in kube_patch_node: %s" % e)
+            raise
+
+    def kube_get_nodes(self):
+        try:
+            api_response = self._get_kubernetesclient().list_node()
+            LOG.debug("Response: %s" % api_response)
+            return api_response.items
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_get_nodes: %s" % e)
             raise
