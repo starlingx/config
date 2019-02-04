@@ -88,15 +88,10 @@ Platform puppet configuration files and manifests
 %setup
 
 %install
-install -m 755 -D bin/puppet-manifest-apply.sh %{buildroot}%{local_bindir}/puppet-manifest-apply.sh
-install -m 755 -D bin/apply_network_config.sh %{buildroot}%{local_bindir}/apply_network_config.sh
-install -d -m 0755 %{buildroot}%{config_dir}
-install -m 640 etc/hiera.yaml %{buildroot}%{config_dir}
-cp -R hieradata %{buildroot}%{config_dir}
-cp -R manifests %{buildroot}%{config_dir}
-install -d -m 0755 %{buildroot}%{module_dir}
-cp -R modules/platform %{buildroot}%{module_dir}
-cp -R modules/openstack %{buildroot}%{module_dir}
+make install \
+     BINDIR=%{buildroot}%{local_bindir} \
+     CONFIGDIR=%{buildroot}%{config_dir} \
+     MODULEDIR=%{buildroot}%{module_dir}
 
 %files
 %defattr(-,root,root,-)
