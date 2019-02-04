@@ -170,7 +170,7 @@ class BaseHelm(object):
 
     def _get_ceph_monitor_ips(self):
         if self._system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-            monitors = [self._get_oam_address()]
+            monitors = [self._get_controller_0_management_address()]
         else:
             monitors = StorageBackendConfig.get_ceph_mon_ip_addresses(
                 self.dbapi).values()
@@ -187,6 +187,11 @@ class BaseHelm(object):
     def _get_management_address(self):
         address = self._get_address_by_name(
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)
+        return address.address
+
+    def _get_controller_0_management_address(self):
+        address = self._get_address_by_name(
+            constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
         return address.address
 
     def get_meta_overrides(self, namespace):
