@@ -50,11 +50,7 @@ class HelmChartsController(rest.RestController):
                 pecan.request.context, name, namespace)
             user_overrides = db_chart.user_overrides
         except exception.HelmOverrideNotFound:
-            if name in constants.SUPPORTED_HELM_CHARTS:
-                user_overrides = ''
-            else:
-                # Unsupported/invalid chart name (and namespace)
-                raise wsme.exc.ClientSideError(_("Override not found."))
+            user_overrides = ''
 
         # Get any system overrides.
         try:
@@ -109,15 +105,12 @@ class HelmChartsController(rest.RestController):
             db_chart = objects.helm_overrides.get_by_name(
                 pecan.request.context, name, namespace)
         except exception.HelmOverrideNotFound:
-            if name in constants.SUPPORTED_HELM_CHARTS:
-                pecan.request.dbapi.helm_override_create({
-                    'name': name,
-                    'namespace': namespace,
-                    'user_overrides': ''})
-                db_chart = objects.helm_overrides.get_by_name(
-                    pecan.request.context, name, namespace)
-            else:
-                raise
+            pecan.request.dbapi.helm_override_create({
+                'name': name,
+                'namespace': namespace,
+                'user_overrides': ''})
+            db_chart = objects.helm_overrides.get_by_name(
+                pecan.request.context, name, namespace)
 
         if flag == 'reuse':
             if db_chart.user_overrides is not None:
