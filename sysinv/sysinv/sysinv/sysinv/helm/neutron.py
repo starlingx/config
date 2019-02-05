@@ -128,7 +128,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
 
     def update_dynamic_options(self, overrides):
         if utils.is_virtual():
-            overrides['neutron']['vhost']['vhost_user_enabled'] = False
+            overrides['plugins']['ml2_conf']['ovs_driver']['vhost_user_enabled'] = False
 
     def update_from_service_parameters(self, overrides):
         service_parameters = self._get_service_parameters(service=constants.SERVICE_TYPE_NETWORK)
@@ -294,9 +294,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 'allow_automatic_dhcp_failover': True,
                 'allow_automatic_l3agent_failover': True,
             },
-            'vhost': {
-                'vhost_user_enabled': True,
-            },
             'agent': {
                 'root_helper': 'sudo',
             },
@@ -322,6 +319,9 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 'path_mtu': 0,
                 'physical_network_mtus': self._get_ml2_physical_network_mtus()
 
+            },
+            'ovs_driver': {
+                'vhost_user_enabled': True,
             },
             'securitygroup': {
                 'firewall_driver': 'noop',
