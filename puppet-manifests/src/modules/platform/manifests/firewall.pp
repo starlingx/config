@@ -298,38 +298,38 @@ class platform::firewall::oam (
     version   => 'ipv4',
   }
 
-  platform::firewall::common { 'platform:firewall:ipv6':
+  -> platform::firewall::common { 'platform:firewall:ipv6':
     interface => $interface_name,
     version   => 'ipv6',
   }
 
-  platform::firewall::services { 'platform:firewall:services':
+  -> platform::firewall::services { 'platform:firewall:services':
     version => $version,
   }
 
   # Set default table policies
-  firewallchain { 'INPUT:filter:IPv4':
+  -> firewallchain { 'INPUT:filter:IPv4':
     ensure => present,
     policy => drop,
     before => undef,
     purge  => false,
   }
 
-  firewallchain { 'INPUT:filter:IPv6':
+  -> firewallchain { 'INPUT:filter:IPv6':
     ensure => present,
     policy => drop,
     before => undef,
     purge  => false,
   }
 
-  firewallchain { 'FORWARD:filter:IPv4':
+  -> firewallchain { 'FORWARD:filter:IPv4':
     ensure => present,
     policy => drop,
     before => undef,
     purge  => false,
   }
 
-  firewallchain { 'FORWARD:filter:IPv6':
+  -> firewallchain { 'FORWARD:filter:IPv6':
     ensure => present,
     policy => drop,
     before => undef,
