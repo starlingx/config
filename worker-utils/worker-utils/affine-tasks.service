@@ -1,0 +1,12 @@
+[Unit]
+Description=StarlingX Affine Tasks
+After=syslog.service network.service dbus.service sw-patch.service affine-platform.sh.service
+Before=kubelet.service
+Requires=kubelet.service
+
+[Service]
+Type=oneshot
+ExecStart=/etc/init.d/affine-tasks.sh start
+
+[Install]
+WantedBy=multi-user.target
