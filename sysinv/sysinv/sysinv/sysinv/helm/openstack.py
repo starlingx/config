@@ -21,6 +21,9 @@ LOG = log.getLogger(__name__)
 class OpenstackBaseHelm(base.BaseHelm):
     """Class to encapsulate Openstack service operations for helm"""
 
+    SUPPORTED_NAMESPACES = \
+        base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+
     def _get_service_config(self, service):
         configs = self.context.setdefault('_service_configs', {})
         if service not in configs:

@@ -38,16 +38,10 @@ class NovaHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the nova chart"""
 
     CHART = constants.HELM_CHART_NOVA
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'nova'
     AUTH_USERS = ['nova', 'placement']
     SERVICE_USERS = ['neutron', 'ironic']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         scheduler_filters = SCHEDULER_FILTERS_COMMON

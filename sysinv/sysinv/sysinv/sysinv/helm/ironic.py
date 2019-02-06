@@ -15,14 +15,8 @@ class IronicHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the ironic chart"""
 
     CHART = constants.HELM_CHART_IRONIC
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = constants.HELM_CHART_IRONIC
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {
