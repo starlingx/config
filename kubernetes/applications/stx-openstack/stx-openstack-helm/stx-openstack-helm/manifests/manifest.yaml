@@ -783,6 +783,10 @@ data:
       job:
         node_selector_key: openstack-control-plane
         node_selector_value: enabled
+    conf:
+      policy:
+        stacks:global_index: rule:context_is_admin
+        software_configs:global_index: rule:context_is_admin
     pod:
       replicas:
         api: 2
