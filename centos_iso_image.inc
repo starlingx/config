@@ -34,3 +34,9 @@ config-gate-worker
 
 # puppet-manifests
 puppet-manifests
+
+# ansible
+sshpass
+python2-ptyprocess
+python2-pexpect
+ansible
