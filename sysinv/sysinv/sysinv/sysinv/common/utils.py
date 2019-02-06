@@ -1785,7 +1785,13 @@ def is_openstack_installed(dbapi):
     """ Checks whether the OpenStack application is installed. """
     try:
         openstack_app = dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
-        if openstack_app.status == constants.APP_APPLY_SUCCESS:
+        # The application can be re-applied (either manually or as a result of
+        # a host unlock, so it will cycle through the APP_APPLY_IN_PROGRESS
+        # status and possibly the APP_APPLY_FAILURE status, but still be
+        # installed.
+        if openstack_app.status in [constants.APP_APPLY_SUCCESS,
+                                    constants.APP_APPLY_IN_PROGRESS,
+                                    constants.APP_APPLY_FAILURE]:
             return True
         else:
             return False

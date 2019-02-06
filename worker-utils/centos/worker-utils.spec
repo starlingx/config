@@ -39,6 +39,7 @@ make install BINDIR=%{buildroot}%{local_bindir} \
 
 %post
 /bin/systemctl enable affine-platform.sh.service >/dev/null 2>&1
+/bin/systemctl enable affine-tasks.service >/dev/null 2>&1
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -53,3 +54,4 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{local_etc_platform}/worker_reserved.conf
 
 %{_unitdir}/affine-platform.sh.service
+%{_unitdir}/affine-tasks.service
