@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -15,23 +15,6 @@ from sysinv.helm import common
 from sysinv.helm import openstack
 
 LOG = logging.getLogger(__name__)
-
-
-SCHEDULER_FILTERS_COMMON = [
-    'RetryFilter',
-    'ComputeFilter',
-    'BaremetalFilter',
-    'AvailabilityZoneFilter',
-    'AggregateInstanceExtraSpecsFilter',
-    'ComputeCapabilitiesFilter',
-    'ImagePropertiesFilter',
-    'VCpuModelFilter',
-    'NUMATopologyFilter',
-    'ServerGroupAffinityFilter',
-    'ServerGroupAntiAffinityFilter',
-    'PciPassthroughFilter',
-    'DiskFilter',
-]
 
 
 class NovaHelm(openstack.OpenstackBaseHelm):
@@ -50,7 +33,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
-        scheduler_filters = SCHEDULER_FILTERS_COMMON
 
         ssh_privatekey, ssh_publickey = \
             self._get_or_generate_ssh_keys(self.SERVICE_NAME, common.HELM_NS_OPENSTACK)
@@ -65,103 +47,16 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                         'consoleauth': self._num_controllers(),
                         'scheduler': self._num_controllers(),
                         # set replicas for novncproxy once it's validated.
-                    },
-                    'user': {
-                        'nova': {
-                            'uid': 0
-                        }
                     }
                 },
-                'manifests': {
-                    'cron_job_cell_setup': False,
-                    'cron_job_service_cleaner': False
-                },
                 'conf': {
-                    'ceph': {
-                        'enabled': True
-                    },
                     'nova': {
-                        'DEFAULT': {
-                            'default_mempages_size': 2048,
-                            'reserved_host_memory_mb': 0,
-                            'compute_monitors': 'cpu.virt_driver',
-                            'running_deleted_instance_poll_interval': 60,
-                            'mkisofs_cmd': '/usr/bin/genisoimage',
-                            'network_allocate_retries': 2,
-                            'force_raw_images': False,
-                            'concurrent_disk_operations': 2,
-                            # Set number of block device allocate retries and interval
-                            # for volume create when VM boots and creates a new volume.
-                            # The total block allocate retries time is set to 2 hours
-                            # to satisfy the volume allocation time on slow RPM disks
-                            # which may take 1 hour and a half per volume when several
-                            # volumes are created in parallel.
-                            'block_device_allocate_retries_interval': 3,
-                            'block_device_allocate_retries': 2400,
-                            'disk_allocation_ratio': 1.0,
-                            'cpu_allocation_ratio': 16.0,
-                            'ram_allocation_ratio': 1.0,
-                            'remove_unused_original_minimum_age_seconds': 3600,
-                            'enable_new_services': False,
-                            'map_new_hosts': False
-                        },
                         'libvirt': {
                             'virt_type': self._get_virt_type(),
-                            'cpu_mode': 'none',
-                            'live_migration_completion_timeout': 180,
-                            'live_migration_permit_auto_converge': True,
-                            'mem_stats_period_seconds': 0,
-                            'rbd_secret_uuid': None,
-                            'rbd_user': None,
-                            # Allow up to 1 day for resize confirm
-                            'remove_unused_resized_minimum_age_seconds': 86400
-                        },
-                        'database': {
-                            'max_overflow': 64,
-                            'idle_timeout': 60,
-                            'max_pool_size': 1
-                        },
-                        'api_database': {
-                            'max_overflow': 64,
-                            'idle_timeout': 60,
-                            'max_pool_size': 1
-                        },
-                        'cell0_database': {
-                            'max_overflow': 64,
-                            'idle_timeout': 60,
-                            'max_pool_size': 1
-                        },
-                        'placement': {
-                            'os_interface': 'internal'
-                        },
-                        'neutron': {
-                            'default_floating_pool': 'public'
-                        },
-                        'notifications': {
-                            'notification_format': 'unversioned'
-                        },
-                        'filter_scheduler': {
-                            'enabled_filters': scheduler_filters,
-                            'ram_weight_multiplier': 0.0,
-                            'disk_weight_multiplier': 0.0,
-                            'io_ops_weight_multiplier': -5.0,
-                            'pci_weight_multiplier': 0.0,
-                            'soft_affinity_weight_multiplier': 0.0,
-                            'soft_anti_affinity_weight_multiplier': 0.0
-                        },
-                        'scheduler': {
-                            'periodic_task_interval': -1,
-                            'discover_hosts_in_cells_interval': 30
-                        },
-                        'metrics': {
-                            'required': False,
-                            'weight_setting_multi': 'vswitch.multi_avail=100.0',
-                            'weight_setting': 'vswitch.max_avail=100.0'
                         },
                         'vnc': {
                             'novncproxy_base_url': self._get_novncproxy_base_url(),
-                        },
-                        'upgrade_levels': 'None'
+                        }
                     },
                     'overrides': {
                         'nova_compute': {
@@ -175,7 +70,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 'images': self._get_images_overrides(),
                 'network': {
                     'sshd': {
-                        'enabled': True,
                         'from_subnet': self._get_ssh_subnet(),
                     }
                 }
