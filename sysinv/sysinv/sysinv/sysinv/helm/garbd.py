@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
@@ -32,11 +33,12 @@ class GarbdHelm(base.BaseHelm):
     def get_meta_overrides(self, namespace):
 
         def _meta_overrides():
-            if self._num_controllers() < 2:
-                # If there are fewer than 2 controllers we'll use a single
-                # mariadb server and so we don't want to run garbd.  This
-                # will remove "openstack-garbd" from the charts in the
-                # openstack-mariadb chartgroup.
+            if (self._num_controllers() < 2 or
+                    utils.is_aio_duplex_system(self.dbapi)):
+                # If there are fewer than 2 controllers or we're on AIO-DX
+                # we'll use a single mariadb server and so we don't want to
+                # run garbd.  This will remove "openstack-garbd" from the
+                # charts in the openstack-mariadb chartgroup.
                 return {
                     'schema': 'armada/ChartGroup/v1',
                     'metadata': {
