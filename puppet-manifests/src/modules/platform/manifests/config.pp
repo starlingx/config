@@ -36,6 +36,7 @@ class platform::config::file {
   include ::platform::network::oam::params
   include ::platform::network::cluster_host::params
   include ::platform::kubernetes::params
+  include ::openstack::horizon::params
   $kubernetes_enabled = $::platform::kubernetes::params::enabled
 
   # dependent template variables
@@ -164,6 +165,12 @@ class platform::config::file {
       line  => "security_feature=\"${::platform::params::security_feature}\"",
       match => '^security_feature=*',
     }
+  }
+
+  file_line { "${platform_conf} http_port":
+    path  => $platform_conf,
+    line  => "http_port=${::openstack::horizon::params::http_port}",
+    match => '^http_port=',
   }
 
 }

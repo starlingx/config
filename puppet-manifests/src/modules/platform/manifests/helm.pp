@@ -54,7 +54,7 @@ class platform::helm
         # TODO(jrichard): Upversion tiller image to v2.11.1 once released.
         -> exec { 'initialize helm':
           environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
-          command     => 'helm init --skip-refresh --service-account tiller --node-selectors "node-role.kubernetes.io/master"="" --tiller-image=gcr.io/kubernetes-helm/tiller@sha256:022ce9d4a99603be1d30a4ca96a7fa57a45e6f2ef11172f4333c18aaae407f5b', # lint:ignore:140chars
+          command     => 'helm init --skip-refresh --service-account tiller --node-selectors "node-role.kubernetes.io/master"="" --tiller-image=gcr.io/kubernetes-helm/tiller:v2.12.1', # lint:ignore:140chars
           logoutput   => true,
           user        => 'wrsroot',
           group       => 'wrs',
@@ -65,6 +65,16 @@ class platform::helm
           command => "mount -o bind -t ext4 ${source_helm_repo_dir} ${target_helm_repo_dir}",
           require => Exec['add local starlingx helm repo']
         }
+        # it needs to create the index file after the bind mount, otherwise
+        # helm repo could not be updated until application-upload adds index
+        -> exec { 'generate helm repo index on source':
+          command   => "helm repo index ${source_helm_repo_dir}",
+          logoutput => true,
+          user      => 'www',
+          group     => 'www',
+          require   => User['www']
+        }
+
       } else {
         exec { 'initialize helm':
           environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
@@ -76,6 +86,8 @@ class platform::helm
         }
       }
 
+      include ::openstack::horizon::params
+      $port = $::openstack::horizon::params::http_port
       exec { 'restart lighttpd for helm':
         require   => [File['/etc/lighttpd/lighttpd.conf', $target_helm_repo_dir], Exec['initialize helm']],
         command   => 'systemctl restart lighttpd.service',
@@ -93,12 +105,34 @@ class platform::helm
       -> exec { 'add local starlingx helm repo':
         before      => Exec['Stop lighttpd'],
         environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf' , 'HOME=/home/wrsroot'],
-        command     => 'helm repo add starlingx http://127.0.0.1/helm_charts',
+        command     => "helm repo add starlingx http://127.0.0.1:${port}/helm_charts",
         logoutput   => true,
         user        => 'wrsroot',
         group       => 'wrs',
         require     => User['wrsroot']
       }
+    }
+  }
+}
+
+class platform::helm::runtime
+{
+  include ::platform::kubernetes::params
+
+  if $::platform::kubernetes::params::enabled {
+
+    include ::platform::users
+
+    include ::openstack::horizon::params
+    $port = $::openstack::horizon::params::http_port
+
+    exec { 'update local starlingx helm repo':
+      environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf' , 'HOME=/home/wrsroot'],
+      command     => "helm repo add starlingx http://127.0.0.1:${port}/helm_charts",
+      logoutput   => true,
+      user        => 'wrsroot',
+      group       => 'wrs',
+      require     => User['wrsroot']
     }
   }
 }

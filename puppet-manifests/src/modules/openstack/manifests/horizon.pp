@@ -17,6 +17,9 @@ class openstack::horizon::params (
 
   $tpm_object = undef,
   $tpm_engine = '/usr/lib64/openssl/engines/libtpm2.so',
+
+  $http_port = 8080,
+  $https_port = 8443,
 ) { }
 
 
@@ -198,9 +201,9 @@ class openstack::horizon::firewall
   # of HTTPS for external protocols.  The horizon
   # server runs on port 8080 behind the proxy server.
   if $enable_https {
-    $firewall_port = 443
+    $firewall_port = $https_port
   } else {
-    $firewall_port = 80
+    $firewall_port = $http_port
   }
 
   platform::firewall::rule { 'dashboard':
@@ -232,4 +235,16 @@ class openstack::horizon::runtime {
   class {'::openstack::horizon::reload':
     stage => post
   }
+}
+
+class openstack::lighttpd::runtime
+  inherits ::openstack::horizon::params {
+
+  Class[$name] -> Class['::platform::helm::runtime']
+
+  file {'/etc/lighttpd/lighttpd.conf':
+      ensure  => present,
+      content => template('openstack/lighttpd.conf.erb')
+  }
+  -> platform::sm::restart {'lighttpd': }
 }

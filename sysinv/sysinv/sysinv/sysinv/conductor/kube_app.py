@@ -673,13 +673,9 @@ class AppOperator(object):
 
         missing_overrides = []
         available_overrides = []
-        excluded = ['helm-toolkit']
 
         for chart in charts:
             overrides = chart.namespace + '-' + chart.name + '.yaml'
-            if chart.name in excluded:
-                LOG.debug("Skipping overrides %s " % overrides)
-                continue
             overrides_file = os.path.join(common.HELM_OVERRIDES_PATH,
                                           overrides)
             if not os.path.exists(overrides_file):
