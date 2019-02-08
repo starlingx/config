@@ -451,6 +451,7 @@ data:
       cinder:
         DEFAULT:
           backup_driver: cinder.backup.drivers.swift
+    storage: rbd
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/cinder-0.1.0.tgz
