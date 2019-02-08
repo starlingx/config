@@ -594,6 +594,8 @@ data:
         libvirt:
           virt_type: qemu
           cpu_mode: none
+        workarounds:
+          enable_numa_live_migration: True
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/nova-0.1.0.tgz
