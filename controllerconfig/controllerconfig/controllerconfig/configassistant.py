@@ -2475,7 +2475,7 @@ class ConfigAssistant():
 
         while True:
             user_input = input(
-                "Configure an cluster host VLAN [y/N]: ")
+                "Configure a cluster host VLAN [y/N]: ")
             if user_input.lower() == 'q':
                 raise UserQuit
             elif user_input.lower() == 'y':
@@ -3223,6 +3223,7 @@ class ConfigAssistant():
                     self.cluster_host_interface_name = \
                         self.management_interface_name
                     self.cluster_host_interface = self.management_interface
+                    self.cluster_host_vlan = self.management_vlan
                 self.cluster_host_interface_configured = True
 
             # External OAM network configuration
