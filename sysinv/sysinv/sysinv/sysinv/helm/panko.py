@@ -17,15 +17,9 @@ class PankoHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the panko chart"""
 
     CHART = constants.HELM_CHART_PANKO
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'panko'
     AUTH_USERS = ['panko']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {

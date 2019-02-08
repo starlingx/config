@@ -17,13 +17,11 @@ class IngressHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the ingress chart"""
 
     CHART = constants.HELM_CHART_INGRESS
-    SUPPORTED_NAMESPACES = [
+
+    SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + [
         common.HELM_NS_KUBE_SYSTEM,
         common.HELM_NS_OPENSTACK
     ]
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         # Currently have conflicts with ports 80 and 8080, use 8081 for now

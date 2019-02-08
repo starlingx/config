@@ -17,15 +17,9 @@ class NovaApiProxyHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the nova chart"""
 
     CHART = constants.HELM_CHART_NOVA_API_PROXY
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'nova-api-proxy'
     AUTH_USERS = ['nova']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
 

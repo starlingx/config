@@ -27,6 +27,7 @@ class BaseHelm(object):
 
     DEFAULT_REGION_NAME = 'RegionOne'
     CEPH_MON_SERVICE_PORT = 6789
+    SUPPORTED_NAMESPACES = []
 
     def __init__(self, operator):
         self._operator = operator
@@ -197,6 +198,26 @@ class BaseHelm(object):
         address = self._get_address_by_name(
             constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
         return address.address
+
+    def get_namespaces(self):
+        """
+        Return list of namespaces supported by this chart
+
+        If a chart supports namespaces other than common.HELM_NS_OPENSTACK
+        then it can override self.SUPPORTED_NAMESPACES as desired.
+        """
+        return self.SUPPORTED_NAMESPACES
+
+    def get_overrides(self, namespace=None):
+        """
+        Return chart-specific values overrides
+
+        This allows a helm chart class to specify overrides (in Helm format)
+        for the "values" section of a helm chart.
+
+        May be left blank to indicate that there are no additional overrides.
+        """
+        return {}
 
     def get_meta_overrides(self, namespace):
         """

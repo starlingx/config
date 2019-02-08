@@ -15,14 +15,8 @@ class MagnumHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the magnum chart"""
 
     CHART = constants.HELM_CHART_MAGNUM
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = constants.HELM_CHART_MAGNUM
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {

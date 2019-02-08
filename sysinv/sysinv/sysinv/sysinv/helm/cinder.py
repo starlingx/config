@@ -19,16 +19,10 @@ class CinderHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the cinder chart"""
 
     CHART = constants.HELM_CHART_CINDER
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'cinder'
     SERVICE_TYPE = 'volume'
     AUTH_USERS = ['cinder']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {
