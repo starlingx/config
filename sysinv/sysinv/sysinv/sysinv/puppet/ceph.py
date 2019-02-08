@@ -271,8 +271,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 osd_config.update({name: osd})
 
         return {
-            'platform::ceph::storage::osd_config': osd_config,
-            'platform::ceph::storage::journal_config': journal_config,
+            'platform::ceph::osds::osd_config': osd_config,
+            'platform::ceph::osds::journal_config': journal_config,
         }
 
     def _format_ceph_mon_address(self, ip_address):

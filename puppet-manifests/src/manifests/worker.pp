@@ -35,10 +35,7 @@ include ::platform::dockerdistribution::compute
 include ::platform::kubernetes::worker
 include ::platform::multipath
 include ::platform::client
-
-include ::platform::ceph
-include ::platform::ceph::monitor
-
+include ::platform::ceph::worker
 include ::openstack::client
 include ::openstack::neutron
 include ::openstack::neutron::agents
