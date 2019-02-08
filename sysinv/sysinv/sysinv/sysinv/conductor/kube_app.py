@@ -9,8 +9,10 @@
 
 """ System Inventory Kubernetes Application Operator."""
 
+import base64
 import docker
 import grp
+import keyring
 import os
 import pwd
 import re
@@ -57,6 +59,9 @@ INSTALLATION_TIMEOUT = 3600
 MAX_DOWNLOAD_THREAD = 20
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
+DOCKER_REGISTRY_USER = 'admin'
+DOCKER_REGISTRY_SERVICE = 'CGCS'
+DOCKER_REGISTRY_SECRET = 'default-registry-key'
 
 
 # Helper functions
@@ -97,6 +102,17 @@ def get_app_install_root_path_ownership():
     return (uid, gid)
 
 
+def get_local_docker_registry_auth():
+    registry_password = keyring.get_password(
+        DOCKER_REGISTRY_SERVICE, DOCKER_REGISTRY_USER)
+    if not registry_password:
+        raise exception.DockerRegistryCredentialNotFound(
+            name=DOCKER_REGISTRY_USER)
+
+    return dict(username=DOCKER_REGISTRY_USER,
+                password=registry_password)
+
+
 Chart = namedtuple('Chart', 'name namespace')
 
 
@@ -105,7 +121,7 @@ class AppOperator(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
-        self._docker = DockerHelper()
+        self._docker = DockerHelper(self._dbapi)
         self._helm = helm.HelmOperator(self._dbapi)
         self._kube = kubernetes.KubeOperator(self._dbapi)
         self._lock = threading.Lock()
@@ -653,6 +669,111 @@ class AppOperator(object):
                 self._remove_host_labels(controller_hosts, controller_labels_set)
                 self._remove_host_labels(compute_hosts, compute_labels_set)
 
+    def _create_local_registry_secrets(self, app_name):
+        # Temporary function to create default registry secret
+        # which would be used by kubernetes to pull images from
+        # local registry.
+        # This should be removed after OSH supports the deployment
+        # with registry has authentication turned on.
+        # https://blueprints.launchpad.net/openstack-helm/+spec/
+        # support-docker-registry-with-authentication-turned-on
+        body = {
+            'type': 'kubernetes.io/dockerconfigjson',
+            'metadata': {},
+            'data': {}
+        }
+
+        app_ns = self._helm.get_helm_application_namespaces(app_name)
+        namespaces = \
+            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
+        for ns in namespaces:
+            if (ns == common.HELM_NS_HELM_TOOLKIT or
+                 self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns)):
+                # Secret already exist
+                continue
+
+            try:
+                local_registry_server = self._docker.get_local_docker_registry_server()
+                local_registry_auth = get_local_docker_registry_auth()
+
+                auth = '{0}:{1}'.format(local_registry_auth['username'],
+                                        local_registry_auth['password'])
+                token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
+                    local_registry_server, base64.b64encode(auth))
+
+                body['data'].update({'.dockerconfigjson': base64.b64encode(token)})
+                body['metadata'].update({'name': DOCKER_REGISTRY_SECRET,
+                                         'namespace': ns})
+
+                if not self._kube.kube_get_namespace(ns):
+                    self._kube.kube_create_namespace(ns)
+                self._kube.kube_create_secret(ns, body)
+                LOG.info("Secret %s created under Namespace %s." % (DOCKER_REGISTRY_SECRET, ns))
+            except Exception as e:
+                LOG.error(e)
+                raise
+
+    def _delete_local_registry_secrets(self, app_name):
+        # Temporary function to delete default registry secrets
+        # which created during stx-opesntack app apply.
+        # This should be removed after OSH supports the deployment
+        # with registry has authentication turned on.
+        # https://blueprints.launchpad.net/openstack-helm/+spec/
+        # support-docker-registry-with-authentication-turned-on
+
+        app_ns = self._helm.get_helm_application_namespaces(app_name)
+        namespaces = \
+            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
+
+        for ns in namespaces:
+            if ns == common.HELM_NS_HELM_TOOLKIT:
+                continue
+
+            try:
+                LOG.info("Deleting Secret %s under Namespace "
+                         "%s ..." % (DOCKER_REGISTRY_SECRET, ns))
+                self._kube.kube_delete_secret(
+                    DOCKER_REGISTRY_SECRET, ns, grace_period_seconds=0)
+                LOG.info("Secret %s under Namespace %s delete "
+                         "completed." % (DOCKER_REGISTRY_SECRET, ns))
+            except Exception as e:
+                LOG.error(e)
+                raise
+
+    def _delete_namespace(self, namespace):
+        loop_timeout = 1
+        timeout = 300
+        try:
+            LOG.info("Deleting Namespace %s ..." % namespace)
+            self._kube.kube_delete_namespace(namespace,
+                                             grace_periods_seconds=0)
+
+            # Namespace termination timeout 5mins
+            while(loop_timeout <= timeout):
+                if not self._kube.kube_get_namespace(namespace):
+                    # Namepace has been terminated
+                    break
+                loop_timeout += 1
+                time.sleep(1)
+
+            if loop_timeout > timeout:
+                raise exception.K8sNamespaceDeleteTimeout(name=namespace)
+            LOG.info("Namespace %s delete completed." % namespace)
+        except Exception as e:
+            LOG.error(e)
+            raise
+
+    def _delete_persistent_volume_claim(self, namespace):
+        try:
+            LOG.info("Deleting Persistent Volume Claim "
+                     "under Namespace %s ..." % namespace)
+            self._kube.kube_delete_persistent_volume_claim(namespace,
+                                                           timeout_seconds=10)
+            LOG.info("Persistent Volume Claim delete completed.")
+        except Exception as e:
+            LOG.error(e)
+            raise
+
     def _get_list_of_charts(self, manifest_file):
         charts = []
         with open(manifest_file, 'r') as f:
@@ -893,6 +1014,7 @@ class AppOperator(object):
         try:
             app.charts = self._get_list_of_charts(app.armada_mfile_abs)
             if app.system_app:
+                self._create_local_registry_secrets(app.name)
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
                 LOG.info("Generating application overrides...")
@@ -956,59 +1078,14 @@ class AppOperator(object):
         if self._make_armada_request_with_monitor(app, constants.APP_DELETE_OP):
             if app.system_app:
 
-                # TODO convert these kubectl commands to use the k8s api
-                p1 = subprocess.Popen(
-                    ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
-                     'get', 'pvc', '--no-headers', '-n', 'openstack'],
-                    stdout=subprocess.PIPE)
-                p2 = subprocess.Popen(['awk', '{print $3}'],
-                                      stdin=p1.stdout,
-                                      stdout=subprocess.PIPE)
-                p3 = subprocess.Popen(
-                    ['xargs', '-i', 'kubectl',
-                     '--kubeconfig=/etc/kubernetes/admin.conf', 'delete',
-                     'pv', '{}', '--wait=false'],
-                    stdin=p2.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE)
-                timer = threading.Timer(10, p3.kill)
                 try:
-                    timer.start()
-                    p1.stdout.close()
-                    p2.stdout.close()
-                    out, err = p3.communicate()
-                    if out and not err:
-                        LOG.info("Persistent Volumes marked for deletion.")
-                    else:
-                        self._abort_operation(app, constants.APP_REMOVE_OP)
-                        LOG.error("Failed to clean up PVs after app removal.")
+                    self._delete_local_registry_secrets(app.name)
+                    self._delete_persistent_volume_claim(common.HELM_NS_OPENSTACK)
+                    self._delete_namespace(common.HELM_NS_OPENSTACK)
                 except Exception as e:
                     self._abort_operation(app, constants.APP_REMOVE_OP)
-                    LOG.exception("Failed to clean up PVs after app "
-                                  "removal: %s" % e)
-                finally:
-                    timer.cancel()
-
-                p4 = subprocess.Popen(
-                    ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
-                     'delete', 'namespace', 'openstack'],
-                    stdout=subprocess.PIPE)
-                timer2 = threading.Timer(10, p4.kill)
-                try:
-                    timer2.start()
-                    out, err = p4.communicate()
-                    if out and not err:
-                        LOG.info("Openstack namespace delete completed.")
-                    else:
-                        self._abort_operation(app, constants.APP_REMOVE_OP)
-                        LOG.error("Failed to clean up openstack namespace"
-                                  " after app removal.")
-                except Exception as e:
-                    self._abort_operation(app, constants.APP_REMOVE_OP)
-                    LOG.exception("Failed to clean up openstack namespace "
-                                  "after app removal: %s" % e)
-                finally:
-                    timer2.cancel()
+                    LOG.exception(e)
+                    return False
 
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
             LOG.info("Application (%s) remove completed." % app.name)
@@ -1103,6 +1180,9 @@ class AppOperator(object):
 
 class DockerHelper(object):
     """ Utility class to encapsulate Docker related operations """
+
+    def __init__(self, dbapi):
+        self._dbapi = dbapi
 
     def _start_armada_service(self, client):
         try:
@@ -1229,34 +1309,60 @@ class DockerHelper(object):
                       (request, manifest_file, e))
         return rc
 
-    def download_an_image(self, loc_img_tag):
+    def get_local_docker_registry_server(self):
+        registry_ip = self._dbapi.address_get_by_name(
+            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                   constants.NETWORK_TYPE_MGMT)
+        ).address
+        registry_server = '{}:{}'.format(registry_ip, common.REGISTRY_PORT)
+        return registry_server
+
+    def download_an_image(self, img_tag):
 
         rc = True
+        local_registry_server = self.get_local_docker_registry_server()
+
         start = time.time()
-        try:
-            # Pull image from local docker registry
-            LOG.info("Image %s download started from local registry" % loc_img_tag)
-            client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
-            client.pull(loc_img_tag)
-        except docker.errors.NotFound:
+        if img_tag.startswith(local_registry_server):
             try:
-                # Image is not available in local docker registry, get the image
-                # from the public registry and push to the local registry
-                LOG.info("Image %s is not available in local registry, "
-                         "download started from public registry" % loc_img_tag)
-                pub_img_tag = loc_img_tag[1 + loc_img_tag.find('/'):]
-                client.pull(pub_img_tag)
-                client.tag(pub_img_tag, loc_img_tag)
-                client.push(loc_img_tag)
+                LOG.info("Image %s download started from local registry" % img_tag)
+                local_registry_auth = get_local_docker_registry_auth()
+                client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
+                client.pull(img_tag, auth_config=local_registry_auth)
+            except docker.errors.NotFound:
+                try:
+                    # Pull the image from the public registry
+                    LOG.info("Image %s is not available in local registry, "
+                             "download started from public registry" % img_tag)
+                    pub_img_tag = img_tag.replace(local_registry_server + "/", "")
+                    client.pull(pub_img_tag)
+                except Exception as e:
+                    rc = False
+                    LOG.error("Image %s download failed from public registry: %s" % (pub_img_tag, e))
+                    return img_tag, rc
+
+                try:
+                    # Tag and push the image to the local registry
+                    client.tag(pub_img_tag, img_tag)
+                    client.push(img_tag, auth_config=local_registry_auth)
+                except Exception as e:
+                    rc = False
+                    LOG.error("Image %s push failed to local registry: %s" % (img_tag, e))
             except Exception as e:
                 rc = False
-                LOG.error("Image %s download failed from public registry: %s" % (pub_img_tag, e))
-        except Exception as e:
-            rc = False
-            LOG.error("Image %s download failed from local registry: %s" % (loc_img_tag, e))
-        elapsed_time = time.time() - start
+                LOG.error("Image %s download failed from local registry: %s" % (img_tag, e))
 
+        else:
+            try:
+                LOG.info("Image %s download started from public registry" % img_tag)
+                client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
+                client.pull(img_tag)
+            except Exception as e:
+                rc = False
+                LOG.error("Image %s download failed from public registry: %s" % (img_tag, e))
+
+        elapsed_time = time.time() - start
         if rc:
             LOG.info("Image %s download succeeded in %d seconds" %
-                     (loc_img_tag, elapsed_time))
-        return loc_img_tag, rc
+                     (img_tag, elapsed_time))
+        return img_tag, rc
