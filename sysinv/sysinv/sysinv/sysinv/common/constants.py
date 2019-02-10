@@ -1015,6 +1015,9 @@ SERVICE_PARAM_NETWORK_ML2_EXT_DRIVERS = \
 SERVICE_PARAM_NETWORK_ML2_TENANT_TYPES = \
     ['vlan', 'vxlan']
 
+# service plugin for neutron network segment range feature
+NEUTRON_PLUGIN_NETWORK_SEGMENT_RANGE = 'network_segment_range'
+
 # a subset of Neutron service plugins that are supported
 SERVICE_PARAM_NETWORK_DEFAULT_SERVICE_PLUGINS = \
     ['odl-router',
@@ -1023,7 +1026,8 @@ SERVICE_PARAM_NETWORK_DEFAULT_SERVICE_PLUGINS = \
      'networking_odl.l3.l3_odl_v2:OpenDaylightL3RouterPlugin',
      'neutron_dynamic_routing.services.bgp.bgp_plugin.BgpPlugin',
      'networking_bgpvpn.neutron.services.plugin.BGPVPNPlugin',
-     'router']
+     'router',
+     NEUTRON_PLUGIN_NETWORK_SEGMENT_RANGE]
 
 # Neutron service plugins for SDN
 SERVICE_PLUGINS_SDN = \
