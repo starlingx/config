@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,7 +41,6 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                     'ceph': self._get_conf_ceph_overrides(),
                     'backends': self._get_conf_backends_overrides(),
                 },
-                'storage': 'rbd',
                 'endpoints': self._get_endpoints_overrides(),
             }
         }
