@@ -17,12 +17,6 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the rabbitmq chart"""
 
     CHART = constants.HELM_CHART_RABBITMQ
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {

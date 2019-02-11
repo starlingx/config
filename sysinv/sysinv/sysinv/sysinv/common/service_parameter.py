@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1516,6 +1516,23 @@ DOCKER_PROXY_PARAMETER_RESOURCE = {
         'platform::docker::params::no_proxy',
 }
 
+HTTPD_PORT_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_HTTP_PORT_HTTP,
+    constants.SERVICE_PARAM_HTTP_PORT_HTTPS,
+]
+
+HTTPD_PORT_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_HTTP_PORT_HTTP: _validate_integer,
+    constants.SERVICE_PARAM_HTTP_PORT_HTTPS: _validate_integer,
+}
+
+HTTPD_PORT_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_HTTP_PORT_HTTP:
+        'openstack::horizon::params::http_port',
+    constants.SERVICE_PARAM_HTTP_PORT_HTTPS:
+        'openstack::horizon::params::https_port',
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -1697,6 +1714,13 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DOCKER_PROXY_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DOCKER_PROXY_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: DOCKER_PROXY_PARAMETER_RESOURCE,
+        },
+    },
+    constants.SERVICE_TYPE_HTTP: {
+        constants.SERVICE_PARAM_SECTION_HTTP_CONFIG: {
+            SERVICE_PARAM_OPTIONAL: HTTPD_PORT_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: HTTPD_PORT_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: HTTPD_PORT_PARAMETER_RESOURCE,
         },
     },
 }

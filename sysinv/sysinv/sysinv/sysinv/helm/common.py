@@ -23,6 +23,7 @@ HELM_NS_DEFAULT = 'default'
 HELM_NS_KUBE_SYSTEM = 'kube-system'
 HELM_NS_NFS = 'nfs'
 HELM_NS_OPENSTACK = 'openstack'
+HELM_NS_HELM_TOOLKIT = 'helm-toolkit'
 
 # Services
 # Matches configassistant.py value => Should change to STARLINGX

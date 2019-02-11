@@ -144,7 +144,7 @@ static-file.exclude-extensions = ( ".php", ".pl", ".fcgi" )
 ######### Options that are good to be but not neccesary to be changed #######
 
 ## bind to port (default: 80)
-#server.port                = 81
+server.port                = <%= @http_port %>
 
 ## bind to localhost (default: all interfaces)
 #server.bind                = "grisu.home.kneschke.de"
@@ -223,7 +223,7 @@ $HTTP["url"] !~ "^/(rel-[^/]*|feed|updates|static|helm_charts)/" {
                                ( "localhost" =>
                                  (
                                    "host" => "127.0.0.1",
-                                   "port" => 8080
+                                   "port" => 8008
                                  )
                                )
                              )
@@ -247,11 +247,11 @@ $HTTP["url"] !~ "^/(rel-[^/]*|feed|updates|static|helm_charts)/" {
 #
 
 #### Listen to IPv6
-$SERVER["socket"] == "[::]:80" { }
+$SERVER["socket"] == "[::]:<%= @http_port %>" { }
 
 <% if @enable_https %>
 #### SSL engine
-$SERVER["socket"] == ":443" {
+$SERVER["socket"] == ":<%= @https_port %>" {
     ssl.engine                 = "enable"
     ssl.pemfile                = "/etc/ssl/private/server-cert.pem"
     ssl.use-sslv2              = "disable"
@@ -259,7 +259,7 @@ $SERVER["socket"] == ":443" {
     ssl.cipher-list            = "ALL:!aNULL:!eNULL:!EXPORT:!TLSv1:!DES:!MD5:!PSK:!RC4:!EDH-RSA-DES-CBC3-SHA:!EDH-DSS-DES-CBC3-SHA:!DHE-RSA-AES128-SHA:!DHE-RSA-AES256-SHA:!ECDHE-RSA-DES-CBC3-SHA:!ECDHE-RSA-AES128-SHA:!ECDHE-RSA-AES256-SHA:!DES-CBC3-SHA:!AES128-SHA:!AES256-SHA:!DHE-DSS-AES128-SHA:!DHE-DSS-AES256-SHA:!CAMELLIA128-SHA:!CAMELLIA256-SHA:!DHE-DSS-CAMELLIA128-SHA:!DHE-DSS-CAMELLIA256-SHA:!DHE-RSA-CAMELLIA128-SHA:!DHE-RSA-CAMELLIA256-SHA:!ECDHE-ECDSA-DES-CBC3-SHA:!ECDHE-ECDSA-AES128-SHA:!ECDHE-ECDSA-AES256-SHA"
 }
 
-$SERVER["socket"] == "[::]:443" {
+$SERVER["socket"] == "[::]:<%= @https_port %>" {
     ssl.engine                 = "enable"
     ssl.pemfile                = "/etc/ssl/private/server-cert.pem"
     ssl.use-sslv2              = "disable"

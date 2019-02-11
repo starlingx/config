@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,17 +13,20 @@ from sysinv.helm import base
 LOG = logging.getLogger(__name__)
 
 
-class MemcachedHelm(base.BaseHelm):
-    """Class to encapsulate helm operations for the memcached chart"""
+class HelmToolkitHelm(base.BaseHelm):
+    """Class to encapsulate helm operations for the helm toolkit"""
 
-    CHART = constants.HELM_CHART_MEMCACHED
-    SUPPORTED_NAMESPACES = \
-        base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    CHART = constants.HELM_CHART_HELM_TOOLKIT
+    SUPPORTED_NAMESPACES = [
+        common.HELM_NS_HELM_TOOLKIT,
+    ]
+
+    def get_namespaces(self):
+        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {
-            common.HELM_NS_OPENSTACK: {
-            }
+            common.HELM_NS_HELM_TOOLKIT: {}
         }
 
         if namespace in self.SUPPORTED_NAMESPACES:

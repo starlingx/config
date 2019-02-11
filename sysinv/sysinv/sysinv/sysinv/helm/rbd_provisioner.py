@@ -19,15 +19,11 @@ class RbdProvisionerHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the rbd-provisioner chart"""
 
     CHART = constants.HELM_CHART_RBD_PROVISIONER
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
+    SUPPORTED_NAMESPACES = \
+        base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
 
     SERVICE_NAME = 'rbd-provisioner'
     SERVICE_PORT_MON = 6789
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
 

@@ -17,15 +17,9 @@ class AodhHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the aodh chart"""
 
     CHART = constants.HELM_CHART_AODH
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'aodh'
     AUTH_USERS = ['aodh']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {

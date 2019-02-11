@@ -35,6 +35,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import storage_tier as storage_tier_api
 from sysinv.api.controllers.v1.query import Query
+from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -98,6 +99,9 @@ class Cluster(base.APIBase):
     name = wtypes.text
     "User defined name of the cluster"
 
+    deployment_model = wtypes.text
+    "Deployment model used by cluster"
+
     peers = types.MultiType([list])
     "List of peers info in the cluster"
 
@@ -132,7 +136,18 @@ class Cluster(base.APIBase):
         if not expand:
             cluster.unset_fields_except(['uuid', 'cluster_uuid',
                                          'type', 'name', 'peers',
-                                         'tiers'])
+                                         'tiers', 'deployment_model'])
+
+        # All Ceph type clusters have the same storage model
+        if cluster.type == constants.CLUSTER_TYPE_CEPH:
+            try:
+                # Storage model is defined dynamically, displayed by CLI
+                # and used by Horizon.
+                cluster.deployment_model = ceph.get_ceph_storage_model()
+            except Exception:
+                cluster.deployment_model = constants.CEPH_UNDEFINED_MODEL
+        else:
+            cluster.deployment_model = None
 
         cluster.links = [link.Link.make_link('self', pecan.request.host_url,
                                           'clusters', cluster.uuid),

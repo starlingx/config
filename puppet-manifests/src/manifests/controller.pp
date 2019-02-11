@@ -55,9 +55,7 @@ include ::platform::memcached
 include ::platform::nfv
 include ::platform::nfv::api
 
-include ::platform::ceph
-include ::platform::ceph::monitor
-include ::platform::ceph::storage
+include ::platform::ceph::controller
 include ::platform::ceph::rgw
 
 include ::platform::influxdb

@@ -50,8 +50,7 @@ def make_class_properties(cls):
                 # if name in  _optional_fields, we just return None
                 # as class not implement obj_load_attr function
                 if hasattr(self, '_optional_fields') and name in self._optional_fields:
-                    LOG.exception(_('This is Optional field in %(field)s') %
-                                  {'field': name})
+                    # This is optional fields , so just return none if no such attr
                     return None
                 else:
                     self.obj_load_attr(name)

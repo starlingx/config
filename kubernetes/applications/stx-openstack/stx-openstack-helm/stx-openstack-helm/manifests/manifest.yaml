@@ -480,6 +480,7 @@ data:
       cinder:
         DEFAULT:
           backup_driver: cinder.backup.drivers.swift
+    storage: rbd
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/cinder-0.1.0.tgz
@@ -567,6 +568,8 @@ data:
       job_ks_endpoints: false
       ingress_osapi: false
       service_ingress_osapi: false
+      cron_job_cell_setup: false
+      cron_job_service_cleaner: false
     labels:
       agent:
         compute:
@@ -618,13 +621,95 @@ data:
         anti:
           type:
             default: requiredDuringSchedulingIgnoredDuringExecution
+      user:
+        nova:
+          uid: 0
     conf:
+      ceph:
+        enabled: true
       nova:
+        DEFAULT:
+          default_mempages_size: 2048
+          reserved_host_memory_mb: 0
+          compute_monitors: cpu.virt_driver
+          running_deleted_instance_poll_interval: 60
+          mkisofs_cmd: /usr/bin/genisoimage
+          network_allocate_retries: 2
+          force_raw_images: false
+          concurrent_disk_operations: 2
+          # Set number of block device allocate retries and interval
+          # for volume create when VM boots and creates a new volume.
+          # The total block allocate retries time is set to 2 hours
+          # to satisfy the volume allocation time on slow RPM disks
+          # which may take 1 hour and a half per volume when several
+          # volumes are created in parallel.
+          block_device_allocate_retries_interval: 3
+          block_device_allocate_retries: 2400
+          disk_allocation_ratio: 1.0
+          cpu_allocation_ratio: 16.0
+          ram_allocation_ratio: 1.0
+          remove_unused_original_minimum_age_seconds: 3600
+          enable_new_services: false
+          map_new_hosts: false
+
         libvirt:
-          virt_type: qemu
           cpu_mode: none
+          live_migration_completion_timeout: 180
+          live_migration_permit_auto_converge: true
+          mem_stats_period_seconds: 0
+          rbd_secret_uuid: null
+          rbd_user: null
+          # Allow up to 1 day for resize conf
+          remove_unused_resized_minimum_age_seconds: 86400
+        database:
+          idle_timeout: 60
+          max_overflow: 64
+          max_pool_size: 1
+        api_database:
+          idle_timeout: 60
+          max_overflow: 64
+          max_pool_size: 1
+        cell0_database:
+          idle_timeout: 60
+          max_overflow: 64
+          max_pool_size: 1
+        placement:
+          os_interface: internal
+        neutron:
+          default_floating_pool: public
+        notifications:
+          notification_format: unversioned
+        filter_scheduler:
+          disk_weight_multiplier: 0.0
+          enabled_filters:
+            - RetryFilter
+            - ComputeFilter
+            - AvailabilityZoneFilter
+            - AggregateInstanceExtraSpecsFilter
+            - ComputeCapabilitiesFilter
+            - ImagePropertiesFilter
+            - NUMATopologyFilter
+            - ServerGroupAffinityFilter
+            - ServerGroupAntiAffinityFilter
+            - PciPassthroughFilter
+            - DiskFilter
+          io_ops_weight_multiplier: -5.0
+          pci_weight_multiplier: 0.0
+          ram_weight_multiplier: 0.0
+          soft_affinity_weight_multiplier: 0.0
+          soft_anti_affinity_weight_multiplier: 0.0
+        scheduler:
+          discover_hosts_in_cells_interval: 30
+          periodic_task_interval: -1
+        upgrade_levels: None
+        metrics:
+          required: false
         workarounds:
           enable_numa_live_migration: True
+    network:
+      sshd:
+        enabled: true
+
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/nova-0.1.0.tgz
@@ -2222,12 +2307,6 @@ data:
             # DISALLOW_IFRAME_EMBED = True
 
             STATIC_ROOT = '/var/www/html/horizon'
-
-            # StarlingX additions
-            # Change session and CSRF cookie names to prevent conflict with
-            # platform horizon
-            CSRF_COOKIE_NAME = 'appcsrftoken'
-            SESSION_COOKIE_NAME = 'appsessionid'
 
             #OPENSTACK_KEYSTONE_URL = "http://%s:5000/v3" % OPENSTACK_HOST
             #present OPENSTACK_API_VERSIONS={"identity":3}

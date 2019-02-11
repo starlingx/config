@@ -17,15 +17,9 @@ class HeatHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the heat chart"""
 
     CHART = constants.HELM_CHART_HEAT
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = constants.HELM_CHART_HEAT
     AUTH_USERS = ['heat', 'heat_trustee', 'heat_stack_user']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {

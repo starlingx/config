@@ -340,11 +340,10 @@ define platform_ceph_journal(
 }
 
 
-class platform::ceph::storage(
+class platform::ceph::osds(
   $osd_config = {},
   $journal_config = {},
 ) inherits ::platform::ceph::params {
-
   # Ensure partitions update prior to ceph storage configuration
   Class['::platform::partitions'] -> Class[$name]
 
@@ -483,6 +482,24 @@ class platform::ceph::rgw::keystone::auth(
   }
 }
 
+class platform::ceph::worker {
+  if $::personality == 'worker' {
+    include ::platform::ceph
+    include ::platform::ceph::monitor
+  }
+}
+
+class platform::ceph::storage {
+    include ::platform::ceph
+    include ::platform::ceph::monitor
+    include ::platform::ceph::osds
+}
+
+class platform::ceph::controller {
+    include ::platform::ceph
+    include ::platform::ceph::monitor
+    include ::platform::ceph::osds
+}
 
 class platform::ceph::runtime {
   include ::platform::ceph::monitor

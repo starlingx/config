@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -517,6 +517,16 @@ class ConductorManager(service.PeriodicService):
          'section': constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB,
          'value': constants.SERVICE_PARAM_SWIFT_FS_SIZE_MB_DEFAULT},
+        {'service': constants.SERVICE_TYPE_HTTP,
+         'section': constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
+         'name': constants.SERVICE_PARAM_HTTP_PORT_HTTP,
+         'value': constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT
+         },
+        {'service': constants.SERVICE_TYPE_HTTP,
+         'section': constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
+         'name': constants.SERVICE_PARAM_HTTP_PORT_HTTPS,
+         'value': constants.SERVICE_PARAM_HTTP_PORT_HTTPS_DEFAULT
+         },
     ]
 
     for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
@@ -1054,6 +1064,9 @@ class ConductorManager(service.PeriodicService):
            sw_version != tsc.SW_VERSION_1803:
             install_opts += ['-k', system.security_feature]
 
+        base_url = "http://pxecontroller:%d" % cutils.get_http_port(self.dbapi)
+        install_opts += ['-l', base_url]
+
         if host['mgmt_mac']:
             dashed_mac = host["mgmt_mac"].replace(":", "-")
             pxeboot_update = "/usr/sbin/pxeboot-update-%s.sh" % sw_version
@@ -1068,7 +1081,6 @@ class ConductorManager(service.PeriodicService):
                 os.remove("/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
             except OSError:
                 pass
-
             with open(os.devnull, "w") as fnull:
                 try:
                     subprocess.check_call(
@@ -7086,6 +7098,12 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER,
                                                      constants.WORKER])
+        elif service == constants.SERVICE_TYPE_HTTP:
+            config_uuid = self._config_update_hosts(context,
+                                                    [constants.CONTROLLER,
+                                                     constants.WORKER,
+                                                     constants.STORAGE])
+
         else:
             # All other services
             personalities = [constants.CONTROLLER]
@@ -7198,6 +7216,28 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['openstack::barbican::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+            elif service == constants.SERVICE_TYPE_HTTP:
+                # the platform::config class will be applied that will
+                # configure the http port
+                personalities = [constants.WORKER, constants.STORAGE]
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['platform::patching::runtime']}
+                self._config_apply_runtime_manifest(context, config_uuid,
+                                                    config_dict)
+
+                # the runtime classes on controllers will be applied
+                personalities = [constants.CONTROLLER]
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['openstack::lighttpd::runtime',
+                                'platform::helm::runtime',
+                                'platform::firewall::runtime',
+                                'platform::patching::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid,
+                                                    config_dict)
 
     def update_security_feature_config(self, context):
         """Update the kernel options configuration"""

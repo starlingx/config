@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,16 +19,10 @@ class CinderHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the cinder chart"""
 
     CHART = constants.HELM_CHART_CINDER
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'cinder'
     SERVICE_TYPE = 'volume'
     AUTH_USERS = ['cinder']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {
@@ -47,7 +41,6 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                     'ceph': self._get_conf_ceph_overrides(),
                     'backends': self._get_conf_backends_overrides(),
                 },
-                'storage': 'rbd',
                 'endpoints': self._get_endpoints_overrides(),
             }
         }

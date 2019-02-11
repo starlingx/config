@@ -370,7 +370,8 @@ class CephApiOperator(object):
     def crushmap_tiers_add(self):
         """Add all custom storage tiers to the crushmap. """
 
-        cluster = pecan.request.dbapi.clusters_get_all(name='ceph_cluster')
+        ceph_cluster_name = constants.CLUSTER_CEPH_DEFAULT_NAME
+        cluster = pecan.request.dbapi.clusters_get_all(name=ceph_cluster_name)
 
         # get the list of tiers
         tiers = pecan.request.dbapi.storage_tier_get_by_cluster(
@@ -404,7 +405,8 @@ class CephApiOperator(object):
     def _crushmap_tiers_bucket_add(self, bucket_name, bucket_type):
         """Add a new bucket to all the tiers in the crushmap. """
 
-        cluster = pecan.request.dbapi.clusters_get_all(name='ceph_cluster')
+        ceph_cluster_name = constants.CLUSTER_CEPH_DEFAULT_NAME
+        cluster = pecan.request.dbapi.clusters_get_all(name=ceph_cluster_name)
         tiers = pecan.request.dbapi.storage_tier_get_by_cluster(
             cluster[0].uuid)
         for t in tiers:
@@ -418,7 +420,8 @@ class CephApiOperator(object):
     def _crushmap_tiers_bucket_remove(self, bucket_name):
         """Remove an existing bucket from all the tiers in the crushmap. """
 
-        cluster = pecan.request.dbapi.clusters_get_all(name='ceph_cluster')
+        ceph_cluster_name = constants.CLUSTER_CEPH_DEFAULT_NAME
+        cluster = pecan.request.dbapi.clusters_get_all(name=ceph_cluster_name)
         tiers = pecan.request.dbapi.storage_tier_get_by_cluster(
             cluster[0].uuid)
         for t in tiers:
@@ -433,7 +436,8 @@ class CephApiOperator(object):
                                     ancestor_name):
         """Move common bucket in all the tiers in the crushmap. """
 
-        cluster = pecan.request.dbapi.clusters_get_all(name='ceph_cluster')
+        ceph_cluster_name = constants.CLUSTER_CEPH_DEFAULT_NAME
+        cluster = pecan.request.dbapi.clusters_get_all(name=ceph_cluster_name)
         tiers = pecan.request.dbapi.storage_tier_get_by_cluster(
             cluster[0].uuid)
         for t in tiers:
@@ -769,8 +773,6 @@ def get_ceph_storage_model(dbapi=None):
         for chost in controller_hosts:
             istors = dbapi.istor_get_by_ihost(chost['uuid'])
             if len(istors):
-                LOG.info("Controller host %s has OSDs configured. System has ceph "
-                         "controller storage." % chost['hostname'])
                 is_controller_model = True
                 break
 

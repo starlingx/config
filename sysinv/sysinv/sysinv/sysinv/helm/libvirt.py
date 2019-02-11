@@ -17,14 +17,8 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the libvirt chart"""
 
     CHART = constants.HELM_CHART_LIBVIRT
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'libvirt'
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {

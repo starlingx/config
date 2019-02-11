@@ -231,18 +231,42 @@ class HelmOperator(object):
                         LOG.info(e)
         return overrides
 
-    @staticmethod
-    def _add_armada_override_header(chart_name, namespace, overrides):
+    def _get_helm_chart_location(self, chart_name):
+        """Get supported chart location.
+
+        This method returns the download location for a given chart.
+
+        :param chart_name: name of the chart
+        :returns: a URL as location or None if the chart is not supported
+        """
+        if chart_name in self.implemented_charts:
+            return self.chart_operators[chart_name].get_chart_location(
+                chart_name)
+        return None
+
+    def _add_armada_override_header(self, chart_name, namespace, overrides):
+        use_chart_name_only = [common.HELM_NS_HELM_TOOLKIT]
+        if namespace in use_chart_name_only:
+            name = chart_name
+        else:
+            name = namespace + '-' + chart_name
         new_overrides = {
             'schema': 'armada/Chart/v1',
             'metadata': {
                 'schema': 'metadata/Document/v1',
-                'name': namespace + '-' + chart_name
+                'name': name
             },
             'data': {
                 'values': overrides
             }
         }
+        location = self._get_helm_chart_location(chart_name)
+        if location:
+            new_overrides['data'].update({
+                'source': {
+                    'location': location
+                }
+            })
         return new_overrides
 
     def merge_overrides(self, file_overrides=[], set_overrides=[]):

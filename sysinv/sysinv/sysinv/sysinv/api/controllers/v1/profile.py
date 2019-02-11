@@ -46,6 +46,7 @@ from sysinv.api.controllers.v1 import cpu_utils
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import port as port_api
 from sysinv.api.controllers.v1 import ethernet_port as ethernet_port_api
+from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -898,29 +899,25 @@ class ProfileController(rest.RestController):
             if 'profiletype' in profile_dict and profile_dict['profiletype']:
                 profiletype = profile_dict['profiletype']
                 if profiletype == constants.PROFILE_TYPE_STORAGE:
+                    stor_model = ceph.get_ceph_storage_model()
                     if constants.WORKER in from_ihost.subfunctions:
                         #  combo has no ceph
                         profiletype = constants.PROFILE_TYPE_LOCAL_STORAGE
                         LOG.info("No ceph backend for stor profile, assuming "
                             "%s" % profiletype)
-                    elif constants.CONTROLLER in from_ihost.subfunctions:
+                    elif not StorageBackendConfig.has_backend_configured(
+                        pecan.request.dbapi,
+                        constants.CINDER_BACKEND_CEPH
+                    ):
                         raise wsme.exc.ClientSideError(_("Storage profiles "
-                            "not applicable for %s with subfunctions %s." %
-                            (from_ihost.hostname, from_ihost.subfunctions)))
-                    elif constants.STORAGE in from_ihost.subfunctions:
-                        if not StorageBackendConfig.has_backend_configured(
-                            pecan.request.dbapi,
-                            constants.CINDER_BACKEND_CEPH
-                        ):
-                            raise wsme.exc.ClientSideError(_("Storage profiles "
-                                "not applicable for %s with subfunctions %s "
-                                "and non Ceph backend." %
-                                (from_ihost.hostname, from_ihost.subfunctions)))
-                    else:
+                            "not applicable for %s with non Ceph backend." %
+                            from_ihost.hostname))
+                    elif (from_ihost.personality == constants.CONTROLLER and
+                            stor_model != constants.CEPH_CONTROLLER_MODEL):
                         raise wsme.exc.ClientSideError(_("Storage profiles "
-                            "not applicable for %s with unsupported "
-                            "subfunctions %s." %
-                            (from_ihost.hostname, from_ihost.subfunctions)))
+                            "not applicable for %s as storage deployment "
+                            "model is: %s" %
+                            (from_ihost.hostname, stor_model)))
 
             # Create profile
             LOG.debug("iprofileihost is: %s " % profile_dict)

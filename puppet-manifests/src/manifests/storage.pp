@@ -28,11 +28,7 @@ include ::platform::grub
 include ::platform::collectd
 include ::platform::filesystem::storage
 include ::platform::docker
-
-include ::platform::ceph
-include ::platform::ceph::monitor
 include ::platform::ceph::storage
-
 include ::openstack::ceilometer
 include ::openstack::ceilometer::polling
 

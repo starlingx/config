@@ -18,15 +18,9 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the ceilometer chart"""
 
     CHART = constants.HELM_CHART_CEILOMETER
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
 
     SERVICE_NAME = 'ceilometer'
     AUTH_USERS = ['ceilometer']
-
-    def get_namespaces(self):
-        return self.SUPPORTED_NAMESPACES
 
     def get_overrides(self, namespace=None):
         overrides = {

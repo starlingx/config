@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -416,6 +416,10 @@ GLANCE_BACKEND_RBD = 'rbd'
 GLANCE_BACKEND_HTTP = 'http'
 GLANCE_BACKEND_GLANCE = 'glance'
 
+# Clusters
+CLUSTER_TYPE_CEPH = "ceph"
+CLUSTER_CEPH_DEFAULT_NAME = "ceph_cluster"
+
 # Storage Tiers: types (aligns with polymorphic backends)
 SB_TIER_TYPE_CEPH = SB_TYPE_CEPH
 SB_TIER_SUPPORTED = [SB_TIER_TYPE_CEPH]
@@ -471,8 +475,8 @@ SB_CONFIGURATION_TIMEOUT = 1200
 # Controller model: OSDs are on controllers, no storage nodes can
 # be defined.
 # Storage model: OSDs are on dedicated storage nodes.
-CEPH_STORAGE_MODEL = 'storage'
-CEPH_CONTROLLER_MODEL = 'controller'
+CEPH_STORAGE_MODEL = 'storage-nodes'
+CEPH_CONTROLLER_MODEL = 'controller-nodes'
 CEPH_AIO_SX_MODEL = 'aio-sx'
 CEPH_UNDEFINED_MODEL = 'undefined'
 
@@ -902,6 +906,7 @@ SERVICE_TYPE_AODH = 'aodh'
 SERVICE_TYPE_GLANCE = 'glance'
 SERVICE_TYPE_BARBICAN = 'barbican'
 SERVICE_TYPE_DOCKER = 'docker'
+SERVICE_TYPE_HTTP = 'http'
 
 SERVICE_PARAM_SECTION_MURANO_RABBITMQ = 'rabbitmq'
 SERVICE_PARAM_SECTION_MURANO_ENGINE = 'engine'
@@ -1101,6 +1106,13 @@ SERVICE_PARAM_NAME_DOCKER_NO_PROXY = 'no_proxy'
 
 # default filesystem size to 25 MB
 SERVICE_PARAM_SWIFT_FS_SIZE_MB_DEFAULT = 25
+
+# HTTP Service Parameters
+SERVICE_PARAM_SECTION_HTTP_CONFIG = 'config'
+SERVICE_PARAM_HTTP_PORT_HTTP = 'http_port'
+SERVICE_PARAM_HTTP_PORT_HTTPS = 'https_port'
+SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT = 8080
+SERVICE_PARAM_HTTP_PORT_HTTPS_DEFAULT = 8443
 
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
@@ -1415,6 +1427,7 @@ HELM_CHART_PANKO = 'panko'
 HELM_CHART_RABBITMQ = 'rabbitmq'
 HELM_CHART_RBD_PROVISIONER = 'rbd-provisioner'
 HELM_CHART_CEPH_POOLS_AUDIT = 'ceph-pools-audit'
+HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
 
 SUPPORTED_HELM_CHARTS = [
     HELM_CHART_AODH,
@@ -1441,6 +1454,7 @@ SUPPORTED_HELM_CHARTS = [
     HELM_CHART_RABBITMQ,
     HELM_CHART_RBD_PROVISIONER,
     HELM_CHART_CEPH_POOLS_AUDIT,
+    HELM_CHART_HELM_TOOLKIT,
 ]
 
 # Helm: Supported application (aka chart bundles)
@@ -1472,7 +1486,8 @@ SUPPORTED_HELM_APP_CHARTS = {
         HELM_CHART_GNOCCHI,
         HELM_CHART_CEILOMETER,
         HELM_CHART_PANKO,
-        HELM_CHART_AODH
+        HELM_CHART_AODH,
+        HELM_CHART_HELM_TOOLKIT,
     ]
 }
 
