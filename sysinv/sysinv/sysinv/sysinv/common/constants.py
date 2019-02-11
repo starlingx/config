@@ -416,6 +416,10 @@ GLANCE_BACKEND_RBD = 'rbd'
 GLANCE_BACKEND_HTTP = 'http'
 GLANCE_BACKEND_GLANCE = 'glance'
 
+# Clusters
+CLUSTER_TYPE_CEPH = "ceph"
+CLUSTER_CEPH_DEFAULT_NAME = "ceph_cluster"
+
 # Storage Tiers: types (aligns with polymorphic backends)
 SB_TIER_TYPE_CEPH = SB_TYPE_CEPH
 SB_TIER_SUPPORTED = [SB_TIER_TYPE_CEPH]
@@ -471,8 +475,8 @@ SB_CONFIGURATION_TIMEOUT = 1200
 # Controller model: OSDs are on controllers, no storage nodes can
 # be defined.
 # Storage model: OSDs are on dedicated storage nodes.
-CEPH_STORAGE_MODEL = 'storage'
-CEPH_CONTROLLER_MODEL = 'controller'
+CEPH_STORAGE_MODEL = 'storage-nodes'
+CEPH_CONTROLLER_MODEL = 'controller-nodes'
 CEPH_AIO_SX_MODEL = 'aio-sx'
 CEPH_UNDEFINED_MODEL = 'undefined'
 
