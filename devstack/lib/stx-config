@@ -162,15 +162,17 @@ function install_cgtsclient {
 }
 
 function install_configutilities {
-    pushd $STXCONFIG_CONFUTILS
-    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
-    popd
+    # We can't use setup_develop as there is no setup.cfg file present for configutilities
+    setup_package $STXCONFIG_CONFUTILS -e
 }
 
 function install_controllerconfig {
-    pushd $STXCONFIG_CONTROL
-    sudo python setup.py install --root=/ --install-lib=$PYTHON_SITE_DIR --prefix=/usr --install-data=/usr/share --single-version-externally-managed
-    popd
+    # This is a hack to work around the lack of proper global-requirements
+    # setup in these packages
+    pip_install pycrypto
+
+    # We can't use setup_develop as there is no setup.cfg file present for controllerconfig
+    setup_package $STXCONFIG_CONTROL -e
 }
 
 function install_sysinv {

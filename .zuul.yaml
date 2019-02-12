@@ -180,7 +180,8 @@
         # fm-rest-api: true
         # fm-mgr: true
         sysinv-agent: true
-        sysinv-api: true
+        # Skip sysinv-api for now, needs more attention
+        # sysinv-api: true
         sysinv-cond: true
         mysql: false
         postgresql: true
