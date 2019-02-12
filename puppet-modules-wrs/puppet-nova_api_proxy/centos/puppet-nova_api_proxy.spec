@@ -10,7 +10,6 @@ Packager:       Wind River <info@windriver.com>
 URL:            unknown
 
 Source0:        %{name}-%{version}.tar.gz
-Source1:        LICENSE
 
 BuildArch:      noarch
 
@@ -20,16 +19,15 @@ BuildRequires: python2-devel
 A puppet module for Nova API Proxy
 
 %prep
-%autosetup -c %{module_dir}
+%setup
 
 #
 # The src for this puppet module needs to be staged to packstack/puppet/modules
 #
 %install
-install -d -m 0755 %{buildroot}%{_datadir}/puppet/modules/%{module_dir}
-cp -R %{name}-%{version}/%{module_dir} %{buildroot}%{_datadir}/puppet/modules
+make install \
+     MODULEDIR=%{buildroot}%{_datadir}/puppet/modules
 
 %files
-%license  %{name}-%{version}/LICENSE
+%license LICENSE
 %{_datadir}/puppet/modules/%{module_dir}
-
