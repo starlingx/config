@@ -48,6 +48,10 @@ data:
       replicas:
         error_page: 2
         ingress: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
@@ -89,6 +93,10 @@ data:
       replicas:
         error_page: 2
         ingress: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
@@ -118,6 +126,12 @@ data:
         - type: job
           labels:
             app: rbd-provisioner
+  values:
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/rbd-provisioner-0.1.0.tgz
@@ -158,6 +172,11 @@ data:
       prometheus_mysql_exporter:
         node_selector_key: openstack-control-plane
         node_selector_value: enabled
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/mariadb-0.1.0.tgz
@@ -331,6 +350,10 @@ data:
     pod:
       replicas:
         api: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/keystone-0.1.0.tgz
@@ -970,6 +993,10 @@ data:
       user:
         aodh:
           uid: 0
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
     jobs:
       alarms_cleaner:
         # daily at the 35 minute mark
@@ -1070,6 +1097,11 @@ data:
         app:healthcheck:
           use: egg:oslo.middleware#healthcheck
           oslo_config_project: gnocchi
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/gnocchi-0.1.0.tgz
@@ -1110,6 +1142,10 @@ data:
       user:
         panko:
           uid: 0
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
     jobs:
       events_cleaner:
         # hourly at the 10 minute mark
@@ -1756,6 +1792,11 @@ data:
             attributes:
               controller: resource_metadata.controller
               switch: resource_metadata.switch
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/ceilometer-0.1.0.tgz

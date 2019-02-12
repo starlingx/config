@@ -69,7 +69,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                         'conductor': self._num_controllers(),
                         'consoleauth': self._num_controllers(),
                         'scheduler': self._num_controllers(),
-                        # set replicas for novncproxy once it's validated.
+                        'novncproxy': self._num_controllers()
                     }
                 },
                 'conf': {
