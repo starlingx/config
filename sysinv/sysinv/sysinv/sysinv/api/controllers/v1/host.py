@@ -4815,6 +4815,7 @@ class HostController(rest.RestController):
                   "Please wait for this host's availability state "
                   "to be 'online' and then re-issue the reinstall "
                   "command." % hostupdate.displayid))
+        hostupdate.configure_required = True
 
     def check_unlock(self, hostupdate, force_unlock=False):
         """Check semantics on  host-unlock."""
