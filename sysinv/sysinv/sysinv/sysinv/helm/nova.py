@@ -259,41 +259,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         address_pool = self.dbapi.address_pool_get(cluster_host_network.pool_uuid)
         return '%s/%s' % (str(address_pool.network), str(address_pool.prefix))
 
-    def _update_host_memory(self, host, default_config):
-        vswitch_2M_pages = []
-        vswitch_1G_pages = []
-        vm_4K_pages = []
-        # The retrieved information is not necessarily ordered by numa node.
-        host_memory = self.dbapi.imemory_get_by_ihost(host.id)
-        # This makes it ordered by numa node.
-        memory_numa_list = utils.get_numa_index_list(host_memory)
-        # Process them in order of numa node.
-        for node, memory_list in memory_numa_list.items():
-            memory = memory_list[0]
-            # first the 4K memory
-            vm_hugepages_nr_4K = memory.vm_hugepages_nr_4K if (
-                    memory.vm_hugepages_nr_4K is not None) else 0
-            vm_4K_pages.append(vm_hugepages_nr_4K)
-            # Now the vswitch memory of each hugepage size.
-            vswitch_2M_page = 0
-            vswitch_1G_page = 0
-            if memory.vswitch_hugepages_size_mib == constants.MIB_2M:
-                vswitch_2M_page = memory.vswitch_hugepages_nr
-            elif memory.vswitch_hugepages_size_mib == constants.MIB_1G:
-                vswitch_1G_page = memory.vswitch_hugepages_nr
-            vswitch_2M_pages.append(vswitch_2M_page)
-            vswitch_1G_pages.append(vswitch_1G_page)
-        # Build up the config values.
-        vswitch_2M = "\"%s\"" % ','.join([str(i) for i in vswitch_2M_pages])
-        vswitch_1G = "\"%s\"" % ','.join([str(i) for i in vswitch_1G_pages])
-        vm_4K = "\"%s\"" % ','.join([str(i) for i in vm_4K_pages])
-        # Add the new entries to the DEFAULT config section.
-        default_config.update({
-            'compute_vm_4K_pages': vm_4K,
-            'compute_vswitch_2M_pages': vswitch_2M,
-            'compute_vswitch_1G_pages': vswitch_1G,
-        })
-
     def _get_per_host_overrides(self):
         host_list = []
         hosts = self.dbapi.ihost_get_list()
@@ -311,7 +276,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     self._update_host_storage(host, default_config, libvirt_config)
                     self._update_host_addresses(host, default_config, vnc_config,
                                                 libvirt_config)
-                    self._update_host_memory(host, default_config)
                     host_nova = {
                         'name': hostname,
                         'conf': {
