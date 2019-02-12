@@ -1,0 +1,15 @@
+;
+; Copyright (c) 2019 Wind River Systems, Inc.
+;
+; SPDX-License-Identifier: Apache-2.0
+;
+[process]
+process  = kubelet
+service  = kubelet
+pidfile  = /var/run/kubelet.pid
+style    = lsb            ; lsb
+severity = critical       ; minor, major, critical
+restarts = 3              ; restarts before error assertion
+startuptime = 5           ; seconds to wait after process start
+interval = 5              ; number of seconds to wait between restarts
+debounce = 20             ; number of seconds to wait before degrade clear

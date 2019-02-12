@@ -124,10 +124,19 @@ class platform::kubernetes::master::init
       logoutput => true,
     }
 
-    # Add a dependency to kubelet on config so it doesn't enter a bad state on subsequent boots
+    # Add kubelet service override
     -> file { '/etc/systemd/system/kubelet.service.d/kube-stx-override.conf':
       ensure  => file,
       content => template('platform/kube-stx-override.conf.erb'),
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+    }
+
+    # set kubelet monitored by pmond
+    -> file { '/etc/pmon.d/kubelet.conf':
+      ensure  => file,
+      content => template('platform/kubelet-pmond-conf.erb'),
       owner   => 'root',
       group   => 'root',
       mode    => '0644',
@@ -221,10 +230,19 @@ class platform::kubernetes::master::init
         logoutput => true,
       }
 
-      # Add a dependency to kubelet on config so it doesn't enter a bad state on subsequent boots
+      # Add kubelet service override
       -> file { '/etc/systemd/system/kubelet.service.d/kube-stx-override.conf':
         ensure  => file,
         content => template('platform/kube-stx-override.conf.erb'),
+        owner   => 'root',
+        group   => 'root',
+        mode    => '0644',
+      }
+
+      # set kubelet monitored by pmond
+      -> file { '/etc/pmon.d/kubelet.conf':
+        ensure  => file,
+        content => template('platform/kubelet-pmond-conf.erb'),
         owner   => 'root',
         group   => 'root',
         mode    => '0644',
@@ -272,10 +290,19 @@ class platform::kubernetes::worker::init
     unless    => 'test -f /etc/kubernetes/kubelet.conf',
   }
 
-  # Add a dependency to kubelet on config so it doesn't enter a bad state
+  # Add kubelet service override
   -> file { '/etc/systemd/system/kubelet.service.d/kube-stx-override.conf':
     ensure  => file,
     content => template('platform/kube-stx-override.conf.erb'),
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+  }
+
+  # set kubelet monitored by pmond
+  -> file { '/etc/pmon.d/kubelet.conf':
+    ensure  => file,
+    content => template('platform/kubelet-pmond-conf.erb'),
     owner   => 'root',
     group   => 'root',
     mode    => '0644',
