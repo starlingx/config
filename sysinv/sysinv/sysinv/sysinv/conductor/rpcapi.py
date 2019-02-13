@@ -1343,37 +1343,27 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_vswitch_type'))
 
-    def configure_keystore_account(self, context, service_name,
-                                   username, password):
-        """Synchronously, have a conductor configure a ks(keyring) account.
-
-        Does the following tasks:
-        - call keyring API to create an account under a service.
+    def create_barbican_secret(self, context, name, payload):
+        """Calls Barbican API to create a secret
 
         :param context: request context.
-        :param service_name: the keystore service.
-        :param username: account username
-        :param password: account password
+        :param name: secret name
+        :param payload: secret payload
         """
         return self.call(context,
-                         self.make_msg('configure_keystore_account',
-                                       service_name=service_name,
-                                       username=username, password=password))
+                         self.make_msg('create_barbican_secret',
+                                       name=name,
+                                       payload=payload))
 
-    def unconfigure_keystore_account(self, context, service_name, username):
-        """Synchronously, have a conductor unconfigure a ks(keyring) account.
-
-        Does the following tasks:
-        - call keyring API to delete an account under a service.
+    def delete_barbican_secret(self, context, name):
+        """Calls Barbican API to delete a secret
 
         :param context: request context.
-        :param service_name: the keystore service.
-        :param username: account username
+        :param name: secret name
         """
         return self.call(context,
-                         self.make_msg('unconfigure_keystore_account',
-                                       service_name=service_name,
-                                       username=username))
+                         self.make_msg('delete_barbican_secret',
+                                       name=name))
 
     def update_snmp_config(self, context):
         """Synchronously, have a conductor configure the SNMP configuration.

@@ -45,7 +45,6 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 
-import keyring
 import tsconfig.tsconfig as tsc
 from cgcs_patch.patch_verify import verify_files
 from controllerconfig.upgrades import management as upgrades_management
@@ -9428,38 +9427,23 @@ class ConductorManager(service.PeriodicService):
         target_load = self.dbapi.load_get(host_upgrade.target_load)
         return target_load.software_version == tsc.SW_VERSION
 
-    def configure_keystore_account(self, context, service_name,
-                                   username, password):
-        """Synchronously, have a conductor configure a ks(keyring) account.
-
-        Does the following tasks:
-        - call keyring API to create an account under a service.
+    def create_barbican_secret(self, context, name, payload):
+        """Calls Barbican API to create a secret
 
         :param context: request context.
-        :param service_name: the keystore service.
-        :param username: account username
-        :param password: account password
+        :param name: secret name
+        :param payload: secret payload
         """
-        if (not service_name.strip()):
-            raise exception.SysinvException(_(
-                "Keystore service is a blank value"))
+        self._openstack.create_barbican_secret(context=context,
+                                               name=name, payload=payload)
 
-        keyring.set_password(service_name, username, password)
-
-    def unconfigure_keystore_account(self, context, service_name, username):
-        """Synchronously, have a conductor unconfigure a ks(keyring) account.
-
-        Does the following tasks:
-        - call keyring API to delete an account under a service.
+    def delete_barbican_secret(self, context, name):
+        """Calls Barbican API to delete a secret
 
         :param context: request context.
-        :param service_name: the keystore service.
-        :param username: account username
+        :param name: secret name
         """
-        try:
-            keyring.delete_password(service_name, username)
-        except keyring.errors.PasswordDeleteError:
-            pass
+        self._openstack.delete_barbican_secret(context=context, name=name)
 
     def update_snmp_config(self, context):
         """Update the snmpd configuration"""

@@ -55,12 +55,15 @@ class openstack::barbican::service
     }
     $api_fqdn = $::platform::params::controller_hostname
     $url_host = "http://${api_fqdn}:${api_port}"
-
+    if str2bool($::is_initial_config_primary) {
+        $enabled = true
+    } else {
+        $enabled = false
+    }
     include ::platform::amqp::params
 
     class { '::barbican::api':
-      enabled                      => true,
-      manage_service               => true,
+      enabled                      => $enabled,
       bind_host                    => $api_host,
       bind_port                    => $api_port,
       host_href                    => $url_host,
