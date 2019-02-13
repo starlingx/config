@@ -999,8 +999,9 @@ class ConfigValidator(object):
         # check no_proxy
         if self.conf.has_option('DOCKER_PROXY', 'DOCKER_NO_PROXY'):
             docker_no_proxy_list_str = self.conf.get(
-                'DOCKER_PROXY', 'DOCKER_NO_PROXY').split(',')
-            for no_proxy_str in docker_no_proxy_list_str:
+                'DOCKER_PROXY', 'DOCKER_NO_PROXY')
+            docker_no_proxy_list = docker_no_proxy_list_str.split(',')
+            for no_proxy_str in docker_no_proxy_list:
                 if not is_valid_domain_or_ip(no_proxy_str):
                     raise ConfigFail(
                         "Invalid DOCKER_NO_PROXY value of %s." %
