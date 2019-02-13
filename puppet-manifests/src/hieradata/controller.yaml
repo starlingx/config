@@ -546,20 +546,13 @@ fm::database_max_overflow: 20
 fm::database_max_pool_size: 1
 
 # Barbican
-barbican::use_syslog: true
-barbican::log_facility: 'local2'
-barbican::database_idle_timeout: 60
-barbican::database_max_pool_size: 1
-barbican::database_max_overflow: 10
-barbican::alarm_history_time_to_live: 86400
-
-barbican::auth::auth_endpoint_type: 'internalURL'
-
-barbican::db::sync::user: 'root'
-
 barbican::api::enabled: false
 barbican::api::service_name: 'barbican-api'
 barbican::api::enable_proxy_headers_parsing: true
-
+barbican::api::logging::use_syslog: true
+barbican::api::logging::log_facility: 'local2'
+barbican::db::sync::user: 'root'
+barbican::db::database_idle_timeout: 60
+barbican::db::database_max_pool_size: 1
 barbican::keystone-listener::enabled: false
 barbican::worker::enabled: false
