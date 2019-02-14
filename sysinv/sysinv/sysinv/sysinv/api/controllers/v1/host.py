@@ -2442,7 +2442,7 @@ class HostController(rest.RestController):
 
         # tell conductor to delete the barbican entry associated with this host (if present)
         pecan.request.rpcapi.delete_barbican_secret(pecan.request.context,
-                                                    host.uuid)
+                                                    ihost.uuid)
 
         # Notify patching to drop the host
         if ihost.hostname is not None:
