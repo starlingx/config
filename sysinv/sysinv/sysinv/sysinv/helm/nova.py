@@ -9,12 +9,41 @@ import os
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import interface
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 from sysinv.helm import openstack
 
 LOG = logging.getLogger(__name__)
+
+
+DEFAULT_NOVA_PCI_ALIAS = [
+    {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
+     "product_id": constants.NOVA_PCI_ALIAS_QAT_DH895XCC_PF_DEVICE,
+     "name": constants.NOVA_PCI_ALIAS_QAT_DH895XCC_PF_NAME},
+    {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_VF_VENDOR,
+     "product_id": constants.NOVA_PCI_ALIAS_QAT_DH895XCC_VF_DEVICE,
+     "name": constants.NOVA_PCI_ALIAS_QAT_DH895XCC_VF_NAME},
+    {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
+     "product_id": constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE,
+     "name": constants.NOVA_PCI_ALIAS_QAT_C62X_PF_NAME},
+    {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_VF_VENDOR,
+     "product_id": constants.NOVA_PCI_ALIAS_QAT_C62X_VF_DEVICE,
+     "name": constants.NOVA_PCI_ALIAS_QAT_C62X_VF_NAME},
+    {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS,
+     "name": constants.NOVA_PCI_ALIAS_GPU_NAME}
+]
+
+SERVICE_PARAM_NOVA_PCI_ALIAS = [
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU,
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_PF,
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_VF,
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_PF,
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_VF,
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_PF,
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_VF,
+                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_USER]
 
 
 class NovaHelm(openstack.OpenstackBaseHelm):
@@ -50,7 +79,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                         },
                         'vnc': {
                             'novncproxy_base_url': self._get_novncproxy_base_url(),
-                        }
+                        },
+                        'pci': self._get_pci_alias(),
                     },
                     'overrides': {
                         'nova_compute': {
@@ -185,6 +215,133 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 "%r:%r" % (node, cpu) for node, cpu in shared_cpu_map.items())
             default_config.update({'shared_pcpu_map': shared_cpu_fmt})
 
+    def _get_pci_pt_whitelist(self, host, iface_context):
+        # Process all configured PCI passthrough interfaces and add them to
+        # the list of devices to whitelist
+        devices = []
+        for iface in iface_context['interfaces'].values():
+            if iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_PASSTHROUGH]:
+                port = interface.get_interface_port(iface_context, iface)
+                dnames = interface._get_datanetwork_names(iface_context, iface)
+                device = {
+                    'address': port['pciaddr'],
+                    'physical_network': dnames,
+                }
+                LOG.debug('_get_pci_pt_whitelist '
+                          'host=%s, device=%s', host.hostname, device)
+                devices.append(device)
+
+        # Process all enabled PCI devices configured for PT and SRIOV and
+        # add them to the list of devices to whitelist.
+        # Since we are now properly initializing the qat driver and
+        # restarting sysinv, we need to add VF devices to the regular
+        # whitelist instead of the sriov whitelist
+        pci_devices = self.dbapi.pci_device_get_by_host(host.id)
+        for pci_device in pci_devices:
+            if pci_device.enabled:
+                device = {
+                    'address': pci_device.pciaddr,
+                    'class_id': pci_device.pclass_id
+                }
+                LOG.debug('_get_pci_pt_whitelist '
+                          'host=%s, device=%s', host.hostname, device)
+                devices.append(device)
+
+        return devices
+
+    def _get_pci_sriov_whitelist(self, host, iface_context):
+        # Process all configured SRIOV interfaces and add each VF
+        # to the list of devices to whitelist
+        devices = []
+        for iface in iface_context['interfaces'].values():
+            if iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_SRIOV]:
+                port = interface.get_interface_port(iface_context, iface)
+                dnames = interface._get_datanetwork_names(iface_context, iface)
+                vf_addrs = port['sriov_vfs_pci_address']
+                if vf_addrs:
+                    for vf_addr in vf_addrs.split(","):
+                        device = {
+                            'address': vf_addr,
+                            'physical_network': dnames,
+                        }
+                        LOG.debug('_get_pci_sriov_whitelist '
+                                  'host=%s, device=%s', host.hostname, device)
+                        devices.append(device)
+
+        return devices
+
+    def _get_pci_alias(self):
+        """
+        Generate multistring values containing global PCI alias
+        configuration for QAT and GPU devices.
+
+        The multistring type with list of JSON string values is used
+        to generate one-line-per-entry formatting, since JSON list of
+        dict is not supported by nova.
+        """
+        service_parameters = self._get_service_parameter_configs(
+            constants.SERVICE_TYPE_NOVA)
+
+        alias_config = DEFAULT_NOVA_PCI_ALIAS[:]
+
+        if service_parameters is not None:
+            for p in SERVICE_PARAM_NOVA_PCI_ALIAS:
+                value = self._service_parameter_lookup_one(
+                    service_parameters,
+                    constants.SERVICE_PARAM_SECTION_NOVA_PCI_ALIAS,
+                    p, None)
+                if value is not None:
+                    # Replace any references to device_id with product_id
+                    # This is to align with the requirements of the
+                    # Nova PCI request alias schema.
+                    # (sysinv used device_id, nova uses product_id)
+                    value = value.replace("device_id", "product_id")
+
+                    aliases = value.rstrip(';').split(';')
+                    for alias_str in aliases:
+                        alias = dict((str(k), str(v)) for k, v in
+                                     (x.split('=') for x in
+                                      alias_str.split(',')))
+                        alias_config.append(alias)
+
+        LOG.debug('_get_pci_alias: aliases = %s', alias_config)
+        multistring = self._oslo_multistring_override(
+            name='alias', values=alias_config)
+        return multistring
+
+    def _update_host_pci_whitelist(self, host, pci_config):
+        """
+        Generate multistring values containing PCI passthrough
+        and SR-IOV devices.
+
+        The multistring type with list of JSON string values is used
+        to generate one-line-per-entry pretty formatting.
+        """
+        # obtain interface information specific to this host
+        iface_context = {
+            'ports': interface._get_port_interface_id_index(
+                self.dbapi, host),
+            'interfaces': interface._get_interface_name_index(
+                self.dbapi, host),
+            'interfaces_datanets': interface._get_interface_name_datanets(
+                self.dbapi, host),
+            'addresses': interface._get_address_interface_name_index(
+                self.dbapi, host),
+        }
+
+        # This host's list of PCI passthrough and SR-IOV device dictionaries
+        devices = []
+        devices.extend(self._get_pci_pt_whitelist(host, iface_context))
+        devices.extend(self._get_pci_sriov_whitelist(host, iface_context))
+        if not devices:
+            return
+
+        # Convert device list into passthrough_whitelist multistring
+        multistring = self._oslo_multistring_override(
+            name='passthrough_whitelist', values=devices)
+        if multistring is not None:
+            pci_config.update(multistring)
+
     def _update_host_storage(self, host, default_config, libvirt_config):
         remote_storage = False
         labels = self.dbapi.label_get_all(host.id)
@@ -272,10 +429,12 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     default_config = {}
                     vnc_config = {}
                     libvirt_config = {}
+                    pci_config = {}
                     self._update_host_cpu_maps(host, default_config)
                     self._update_host_storage(host, default_config, libvirt_config)
                     self._update_host_addresses(host, default_config, vnc_config,
                                                 libvirt_config)
+                    self._update_host_pci_whitelist(host, pci_config)
                     host_nova = {
                         'name': hostname,
                         'conf': {
@@ -283,6 +442,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                                 'DEFAULT': default_config,
                                 'vnc': vnc_config,
                                 'libvirt': libvirt_config,
+                                'pci': pci_config if pci_config else None,
                             }
                         }
                     }

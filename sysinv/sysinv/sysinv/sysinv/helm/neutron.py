@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -195,8 +195,8 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 if brname:
                     datanets = self._get_interface_datanets(iface)
                     for datanet in datanets:
-                        LOG.info("_get_dynamic_ovs_agent_config datanet %s" %
-                                 datanet)
+                        LOG.debug('_get_dynamic_ovs_agent_config '
+                                  'host=%s datanet=%s', host.hostname, datanet)
                         address = self._get_interface_primary_address(
                             self.context, host, iface)
                         if address:
