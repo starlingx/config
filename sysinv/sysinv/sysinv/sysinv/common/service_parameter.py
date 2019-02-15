@@ -680,6 +680,14 @@ def _validate_docker_insecure_registry_bool(name, value):
             "Parameter '%s' must be a valid bool string." % name))
 
 
+def _validate_domain(name, value):
+    """Check if domain name is valid"""
+    if not cutils.is_valid_domain_name(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' includes an invalid domain name '%s'." %
+            (name, value)))
+
+
 # LDAP Identity Service Parameters (mandatory)
 SERVICE_PARAM_IDENTITY_LDAP_URL = 'url'
 
@@ -1575,6 +1583,17 @@ HTTPD_PORT_PARAMETER_RESOURCE = {
         'openstack::horizon::params::https_port',
 }
 
+OPENSTACK_HELM_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN,
+]
+OPENSTACK_HELM_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN: _validate_domain,
+}
+OPENSTACK_HELM_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN:
+        'openstack::helm::params::endpoint_domain',
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -1768,6 +1787,13 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: HTTPD_PORT_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: HTTPD_PORT_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: HTTPD_PORT_PARAMETER_RESOURCE,
+        },
+    },
+    constants.SERVICE_TYPE_OPENSTACK: {
+        constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM: {
+            SERVICE_PARAM_OPTIONAL: OPENSTACK_HELM_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: OPENSTACK_HELM_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: OPENSTACK_HELM_PARAMETER_RESOURCE,
         },
     },
 }

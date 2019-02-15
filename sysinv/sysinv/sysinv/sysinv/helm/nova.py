@@ -176,8 +176,17 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         return overrides
 
     def _get_novncproxy_base_url(self):
-        oam_addr = self._get_oam_address(),
-        url = "http://%s:6080/vnc_auto.html" % oam_addr
+        # Get the openstack endpoint public domain name
+        endpoint_domain = self._get_service_parameter(
+            constants.SERVICE_TYPE_OPENSTACK,
+            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
+            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN)
+        if endpoint_domain is not None:
+            location = "%s.%s" % (constants.HELM_CHART_HORIZON,
+                                  str(endpoint_domain.value).lower())
+        else:
+            location = self._get_oam_address()
+        url = "http://%s:6080/vnc_auto.html" % location
         return url
 
     def _get_virt_type(self):

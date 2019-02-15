@@ -1855,6 +1855,19 @@ def is_valid_domain_or_ip(url_str):
             else:
                 # check ipv6 without port
                 return is_valid_ipv6(url_str)
+
+
+def is_valid_domain_name(value):
+    """ Validate domain name based on RFC specs including IDN """
+    p = re.compile(
+        r'^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|'
+        r'([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|'
+        r'([a-zA-Z0-9][-_.a-zA-Z0-9]{0,61}[a-zA-Z0-9]))\.'
+        r'([a-zA-Z]{2,13}|[a-zA-Z0-9-]{2,30}.[a-zA-Z]{2,3})$'
+    )
+    m = p.match(value)
+    if m:
+        return True
     else:
         return False
 

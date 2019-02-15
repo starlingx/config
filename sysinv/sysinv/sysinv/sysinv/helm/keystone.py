@@ -244,6 +244,9 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
             'identity': {
                 'auth': self._get_endpoints_identity_overrides(
                     self.SERVICE_NAME, []),
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        self.SERVICE_NAME),
             },
             'oslo_cache': {
                 'auth': {

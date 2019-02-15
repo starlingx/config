@@ -86,6 +86,11 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
 
     def _get_endpoints_overrides(self):
         return {
+            'image': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        constants.HELM_CHART_GLANCE),
+            },
             'identity': {
                 'auth': self._get_endpoints_identity_overrides(
                     self.SERVICE_NAME, self.AUTH_USERS),
