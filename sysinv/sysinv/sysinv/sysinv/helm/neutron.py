@@ -246,6 +246,14 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
             'securitygroup': {
                 'firewall_driver': 'noop',
             },
+            # Mitigate host OS memory leak of cgroup session-*scope files
+            # and kernel slab resources. The leak is triggered using 'sudo'
+            # which utilizes the host dbus-daemon. The sriov agent frequently
+            # polls devices via 'ip link show' using run_as_root=True, but
+            # does not actually require 'sudo'.
+            'agent': {
+                'root_helper': '',
+            },
             'sriov_nic': sriov_nic,
         }
 
