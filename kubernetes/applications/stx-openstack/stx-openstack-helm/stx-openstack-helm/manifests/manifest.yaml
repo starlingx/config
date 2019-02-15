@@ -927,6 +927,10 @@ data:
             release_group: osh-openstack-heat
             component: test
   values:
+    endpoints:
+      oslo_cache:
+        hosts:
+          default: heat-memcached
     labels:
       api:
         node_selector_key: openstack-control-plane
