@@ -1102,6 +1102,45 @@ data:
         anti:
           type:
             default: requiredDuringSchedulingIgnoredDuringExecution
+      gnocchi:
+        indexer:
+          driver: mariadb
+        keystone_authtoken:
+          interface: internal
+    dependencies:
+      static:
+        db_sync:
+          jobs:
+            - gnocchi-storage-init
+            - gnocchi-db-init
+          services:
+            - endpoint: internal
+              service: oslo_db
+        metricd:
+          services:
+            - endpoint: internal
+              service: oslo_db
+            - endpoint: internal
+              service: oslo_cache
+            - endpoint: internal
+              service: metric
+        tests:
+          services:
+            - endpoint: internal
+              service: identity
+            - endpoint: internal
+              service: oslo_db
+            - endpoint: internal
+              service: metric
+    manifests:
+      daemonset_statsd: false
+      job_db_init_indexer: false
+      secret_db_indexer: false
+      service_statsd: false
+    endpoints:
+      oslo_cache:
+        hosts:
+          default: memcached
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/gnocchi-0.1.0.tgz
@@ -1265,6 +1304,8 @@ data:
         oslo_messaging_notifications:
           topics:
             - notifications
+        notification:
+          batch_size: 100
       pipeline:
         sources:
           - name: meter_source
