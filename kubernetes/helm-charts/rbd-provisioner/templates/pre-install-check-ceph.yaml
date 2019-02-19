@@ -153,25 +153,7 @@ spec:
             - name: config-volume-{{- $root.Values.global.name }}
               mountPath: {{ $mount }}
         {{- end }}
-        {{- range $ephemeralPool := $root.Values.ephemeral_pools }}
-        - name: storage-init-{{- $ephemeralPool.pool_name }}
-          image: {{ $root.Values.images.tags.rbd_provisioner_storage_init | quote }}
-          command: [ "/bin/bash", "{{ $mount }}/check_ceph.sh" ]
-          env:
-            - name: NAMESPACE
-              value: {{ $root.Release.Namespace }}
-            - name: POOL_NAME
-              value: {{ $ephemeralPool.pool_name }}
-            - name: POOL_REPLICATION
-              value: {{ $ephemeralPool.replication | quote }}
-            - name: POOL_CRUSH_RULE_NAME
-              value: {{ $ephemeralPool.crush_rule_name | quote }}
-            - name: POOL_CHUNK_SIZE
-              value: {{ $ephemeralPool.chunk_size | quote }}
-          volumeMounts:
-            - name: config-volume-{{- $root.Values.global.name }}
-              mountPath: {{ $mount }}
-        {{- end }}
+
 ---
 # This ConfigMap is needed because we're not using ceph's helm chart
 apiVersion: v1
