@@ -7,8 +7,13 @@
 STX_CONFIG_NAME=stx-config
 
 ######### Plugin Specific ##########
-enable_service $STX_CONFIG_NAME sysinv sysinv-api sysinv-cond
-#define_plugin sysinv
+enable_service $STX_CONFIG_NAME
+
+# This must not use any variables to work properly in OpenStack's DevStack playbook
+define_plugin stx-config
+# This works for Zuul jobs using OpenStack's DevStack roles
+plugin_requires stx-config stx-integ
+plugin_requires stx-config stx-update
 
 # Handle STX pre-reqs
 # stx-integ
