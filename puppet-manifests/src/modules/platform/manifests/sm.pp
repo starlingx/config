@@ -192,6 +192,10 @@ class platform::sm
     $os_region_name         = $keystone_region
   }
 
+  # Barbican
+  include ::openstack::barbican::params
+  $barbican_enabled = $::openstack::barbican::params::service_enabled
+
   $ost_cl_ctrl_host         = $::platform::network::mgmt::params::controller_address_url
 
   include ::platform::client::params
@@ -266,9 +270,6 @@ class platform::sm
   # Panko
   include ::openstack::panko::params
 
-  # Barbican
-  include ::openstack::barbican::params
-
   if $system_mode == 'simplex' {
     $hostunit = '0'
     $management_my_unit_ip   = $::platform::network::mgmt::params::controller0_address
@@ -338,7 +339,6 @@ class platform::sm
     $gnocchi_enabled   = false
     $aodh_enabled      = false
     $panko_enabled     = false
-    $barbican_enabled  = false
   } else {
       $heat_service_enabled   = $::openstack::heat::params::service_enabled
       $murano_configured      = $::openstack::murano::params::service_enabled
@@ -347,7 +347,6 @@ class platform::sm
       $gnocchi_enabled        = $::openstack::gnocchi::params::service_enabled
       $aodh_enabled           = $::openstack::aodh::params::service_enabled
       $panko_enabled          = $::openstack::panko::params::service_enabled
-      $barbican_enabled       = $::openstack::barbican::params::service_enabled
   }
 
   # lint:ignore:140chars
@@ -622,6 +621,21 @@ class platform::sm
   if $configure_keystone {
     exec { 'Configure OpenStack - Keystone':
         command => "sm-configure service_instance keystone keystone \"config=/etc/keystone/keystone.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},os_auth_url=${os_auth_url}, \"",
+    }
+  }
+
+  # Barbican
+  if $barbican_enabled {
+    exec { 'Configure OpenStack - Barbican API':
+      command => "sm-configure service_instance barbican-api barbican-api \"config=/etc/barbican/barbican.conf\"",
+    }
+
+    exec { 'Configure OpenStack - Barbican Keystone Listener':
+      command => "sm-configure service_instance barbican-keystone-listener barbican-keystone-listener \"config=/etc/barbican/barbican.conf\"",
+    }
+
+    exec { 'Configure OpenStack - Barbican Worker':
+      command => "sm-configure service_instance barbican-worker barbican-worker \"config=/etc/barbican/barbican.conf\"",
     }
   }
 
@@ -1123,49 +1137,6 @@ class platform::sm
     command => "sm-configure service_instance ironic-conductor ironic-conductor \"config=/etc/ironic/ironic.conf,tftproot=${ironic_tftproot}\"",
   }
 
-  # Barbican
-  if $barbican_enabled {
-
-    exec { 'Configure OpenStack - Barbican API':
-      command => "sm-configure service_instance barbican-api barbican-api \"config=/etc/barbican/barbican.conf\"",
-    }
-
-    exec { 'Configure OpenStack - Barbican Keystone Listener':
-      command => "sm-configure service_instance barbican-keystone-listener barbican-keystone-listener \"config=/etc/barbican/barbican.conf\"",
-    }
-
-    exec { 'Configure OpenStack - Barbican Worker':
-      command => "sm-configure service_instance barbican-worker barbican-worker \"config=/etc/barbican/barbican.conf\"",
-    }
-  } else {
-      exec { 'Deprovision OpenStack - Barbican API (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services barbican-api',
-      }
-      -> exec { 'Deprovision OpenStack - Barbican API (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service barbican-api',
-      }
-
-      exec { 'Deprovision OpenStack - Barbican Keystone Listener (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services barbican-keystone-listener',
-      }
-      -> exec { 'Deprovision OpenStack - Barbican Keystone Listener (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service barbican-keystone-listener',
-      }
-
-      exec { 'Deprovision OpenStack - Barbican Worker (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services barbican-worker',
-      }
-      -> exec { 'Deprovision OpenStack - Barbican Worker (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service barbican-worker',
-      }
-  }
-
   exec { 'Configure OpenStack - Nova Compute':
     command => "sm-configure service_instance nova-compute nova-compute \"config=/etc/nova/nova-ironic.conf\"",
   }
@@ -1360,6 +1331,55 @@ class platform::sm
     -> exec { 'Provision Docker Distribution (service)':
       command => 'sm-provision service docker-distribution',
     }
+  }
+
+  # Barbican
+  if $barbican_enabled {
+    exec { 'Provision OpenStack - Barbican API (service-group-member)':
+      command => 'sm-provision service-group-member cloud-services barbican-api',
+        }
+    -> exec { 'Provision OpenStack - Barbican API (service)':
+      command => 'sm-provision service barbican-api',
+    }
+    -> exec { 'Provision OpenStack - Barbican Keystone Listener (service-group-member)':
+      command => 'sm-provision service-group-member cloud-services barbican-keystone-listener',
+    }
+    -> exec { 'Provision OpenStack - Barbican Keystone Listener (service)':
+      command => 'sm-provision service barbican-keystone-listener',
+        }
+    -> exec { 'Provision OpenStack - Barbican Worker (service-group-member)':
+      command => 'sm-provision service-group-member cloud-services barbican-worker',
+        }
+    -> exec { 'Provision OpenStack - Barbican Worker (service)':
+      command => 'sm-provision service barbican-worker',
+    }
+  } else {
+      exec { 'Deprovision OpenStack - Barbican API (service-group-member)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => 'sm-deprovision service-group-member cloud-services barbican-api',
+      }
+      -> exec { 'Deprovision OpenStack - Barbican API (service)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => 'sm-deprovision service barbican-api',
+      }
+
+      exec { 'Deprovision OpenStack - Barbican Keystone Listener (service-group-member)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => 'sm-deprovision service-group-member cloud-services barbican-keystone-listener',
+      }
+      -> exec { 'Deprovision OpenStack - Barbican Keystone Listener (service)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => 'sm-deprovision service barbican-keystone-listener',
+      }
+
+      exec { 'Deprovision OpenStack - Barbican Worker (service-group-member)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => 'sm-deprovision service-group-member cloud-services barbican-worker',
+      }
+      -> exec { 'Deprovision OpenStack - Barbican Worker (service)':
+        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+        command => 'sm-deprovision service barbican-worker',
+      }
   }
 
   exec { 'Configure Murano Rabbit':
