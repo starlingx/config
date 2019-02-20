@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -72,11 +72,6 @@ class HeatHelm(openstack.OpenstackBaseHelm):
             'identity': {
                 'auth': self._get_endpoints_identity_overrides(
                     self.SERVICE_NAME, self.AUTH_USERS),
-            },
-            'oslo_cache': {
-                'hosts': {
-                    'default': 'heat-memcached'
-                }
             },
             'oslo_db': {
                 'auth': self._get_endpoints_oslo_db_overrides(
