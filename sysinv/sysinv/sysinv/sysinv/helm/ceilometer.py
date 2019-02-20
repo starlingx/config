@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -112,19 +112,14 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
         return shared_services_types
 
     def _get_conf_ceilometer_notification_overrides(self):
-        notification_overrides = {
-            'batch_size': 100
-        }
-
         system = self._get_system()
         if system.system_type == constants.TIS_AIO_BUILD:
             batch_timeout = 25
         else:
             batch_timeout = 5
 
-        notification_overrides.update(
-            {'batch_timeout': batch_timeout,
-             'messaging_urls': {'values': self._get_notification_messaging_urls()}})
+        notification_overrides = {'batch_timeout': batch_timeout,
+                                  'messaging_urls': {'values': self._get_notification_messaging_urls()}}
         return notification_overrides
 
     def _get_notification_messaging_urls(self):
