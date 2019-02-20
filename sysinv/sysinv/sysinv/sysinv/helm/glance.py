@@ -36,6 +36,7 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
                 'storage': self._get_storage_overrides(),
                 'conf': self._get_conf_overrides(),
                 'images': self._get_images_overrides(),
+                'bootstrap': self._get_bootstrap_overrides()
             }
         }
 
@@ -160,6 +161,15 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
             conf['ceph'] = self._get_ceph_overrides()
 
         return conf
+
+    def _get_bootstrap_overrides(self):
+        # By default, prevent the download and creation of the Cirros image.
+        # TODO: Remove if/when pulling from external registries is supported.
+        bootstrap = {
+            'enabled': False
+        }
+
+        return bootstrap
 
     def _get_primary_ceph_backend(self):
         try:
