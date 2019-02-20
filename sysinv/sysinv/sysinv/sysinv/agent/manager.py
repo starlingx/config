@@ -1291,6 +1291,12 @@ class AgentManager(service.PeriodicService):
             fileinput.close()
             os.rename(temp_platform_conf_file, tsc.PLATFORM_CONF_FILE)
 
+    def _retry_on_personality_is_none(ex):
+        LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
+        return isinstance(ex, exception.LocalManagementPersonalityNotFound)
+
+    @retrying.retry(wait_fixed=10 * 1000, stop_max_delay=300 * 1000,
+                    retry_on_exception=_retry_on_personality_is_none)
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def iconfig_update_file(self, context, iconfig_uuid, iconfig_dict):
         """Configure the iiconfig_uuid, by updating file based upon
@@ -1313,6 +1319,11 @@ class AgentManager(service.PeriodicService):
         nobackup = iconfig_dict.get('nobackup')
         if not permissions:
             permissions = constants.CONFIG_FILE_PERMISSION_DEFAULT
+
+        if not self._ihost_personality:
+            raise exception.LocalManagementPersonalityNotFound(
+                config_uuid=iconfig_uuid, config_dict=iconfig_dict,
+                host_personality=self._ihost_personality)
 
         if self._ihost_personality in iconfig_dict['personalities']:
             file_content = iconfig_dict['file_content']
