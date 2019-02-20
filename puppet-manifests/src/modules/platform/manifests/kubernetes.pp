@@ -16,10 +16,14 @@ class platform::kubernetes::kubeadm {
   $iptables_file = "net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1"
 
+  # Ensure DNS is configured as name resolution is required when
+  # kubeadm init is run.
+  Class['::platform::dns']
+
   # Update iptables config. This is required based on:
   # https://kubernetes.io/docs/tasks/tools/install-kubeadm
   # This probably belongs somewhere else - initscripts package?
-  file { '/etc/sysctl.d/k8s.conf':
+  -> file { '/etc/sysctl.d/k8s.conf':
     ensure  => file,
     content => $iptables_file,
     owner   => 'root',

@@ -76,9 +76,12 @@ class platform::helm
         }
 
       } else {
-        exec { 'initialize helm':
+
+        Class['::platform::kubernetes::master']
+
+        -> exec { 'initialize helm':
           environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
-          command     => 'helm init --client-only',
+          command     => 'helm init --skip-refresh --client-only',
           logoutput   => true,
           user        => 'wrsroot',
           group       => 'wrs',

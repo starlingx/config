@@ -32,40 +32,13 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': {
-                    'user': {
-                        'neutron': {
-                            'uid': 0
-                        }
-                    },
                     'replicas': {
                         'server': self._num_controllers()
                     },
                 },
-                'network': {
-                    'interface': {
-                        'tunnel': 'docker0'
-                    },
-                    'backend': ['openvswitch', 'sriov'],
-                },
                 'conf': {
-                    'neutron': self._get_neutron_config(),
                     'plugins': {
-                        'ml2_conf': self._get_neutron_ml2_config(),
-                    },
-                    'dhcp_agent': {
-                        'DEFAULT': {
-                            'resync_interval': 30,
-                            'enable_isolated_metadata': True,
-                            'enable_metadata_network': False,
-                            'interface_driver': 'openvswitch',
-                        },
-                    },
-                    'l3_agent': {
-                        'DEFAULT': {
-                            'interface_driver': 'openvswitch',
-                            'agent_mode': 'dvr_snat',
-                            'metadata_port': 80,
-                        },
+                        'ml2_conf': self._get_neutron_ml2_config()
                     },
                     'overrides': {
                         'neutron_ovs-agent': {
@@ -91,7 +64,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                         },
                     },
                 },
-                'labels': self._get_labels_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
                 'images': self._get_images_overrides(),
             }
@@ -122,30 +94,92 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
 
     def update_dynamic_options(self, overrides):
         if utils.is_virtual():
-            overrides['plugins']['ml2_conf']['ovs_driver']['vhost_user_enabled'] = False
+            overrides.update({
+                'plugins': {
+                    'ml2_conf': {
+                        'ovs_driver': {
+                            'vhost_user_enabled': False
+                        }
+                    }
+                }
+            })
 
     def update_from_service_parameters(self, overrides):
         service_parameters = self._get_service_parameters(service=constants.SERVICE_TYPE_NETWORK)
         for param in service_parameters:
             if param.section == constants.SERVICE_PARAM_SECTION_NETWORK_DEFAULT:
                 if param.name == constants.SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS:
-                    overrides['neutron']['DEFAULT']['service_plugins'] = str(param.value)
+                    overrides.update({
+                        'neutron': {
+                            'DEFAULT': {
+                                'service_plugins': str(param.value)
+                            }
+                        }
+                    })
                 if param.name == constants.SERVICE_PARAM_NAME_DEFAULT_DNS_DOMAIN:
-                    overrides['neutron']['DEFAULT']['dns_domain'] = str(param.value)
+                    overrides.update({
+                        'neutron': {
+                            'DEFAULT': {
+                                'dns_domain': str(param.value)
+                            }
+                        }
+                    })
                 if param.name == constants.SERVICE_PARAM_NAME_BASE_MAC:
-                    overrides['neutron']['DEFAULT']['base_mac'] = str(param.value)
+                    overrides.update({
+                        'neutron': {
+                            'DEFAULT': {
+                                'base_mac': str(param.value)
+                            }
+                        }
+                    })
                 if param.name == constants.SERVICE_PARAM_NAME_DVR_BASE_MAC:
-                    overrides['neutron']['DEFAULT']['dvr_base_mac'] = str(param.value)
+                    overrides.update({
+                        'neutron': {
+                            'DEFAULT': {
+                                'dvr_base_mac': str(param.value)
+                            }
+                        }
+                    })
             elif param.section == constants.SERVICE_PARAM_SECTION_NETWORK_ML2:
                 if param.name == constants.SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS:
-                    overrides['plugins']['ml2_conf']['ml2']['mechanism_drivers'] = str(param.value)
+                    overrides.update({
+                        'plugins': {
+                            'ml2_conf': {
+                                'ml2': {
+                                    'mechanism_drivers': str(param.value)
+                                }
+                            }
+                        }
+                    })
                 if param.name == constants.SERVICE_PARAM_NAME_ML2_EXTENSION_DRIVERS:
-                    overrides['plugins']['ml2_conf']['ml2']['extension_drivers'] = str(param.value)
+                    overrides.update({
+                        'plugins': {
+                            'ml2_conf': {
+                                'ml2': {
+                                    'extension_drivers': str(param.value)
+                                }
+                            }
+                        }
+                    })
                 if param.name == constants.SERVICE_PARAM_NAME_ML2_TENANT_NETWORK_TYPES:
-                    overrides['plugins']['ml2_conf']['ml2']['tenant_network_types'] = str(param.value)
+                    overrides.update({
+                        'plugins': {
+                            'ml2_conf': {
+                                'ml2': {
+                                    'tenant_network_types': str(param.value)
+                                }
+                            }
+                        }
+                    })
             elif param.section == constants.SERVICE_PARAM_SECTION_NETWORK_DHCP:
                 if param.name == constants.SERVICE_PARAM_NAME_DHCP_FORCE_METADATA:
-                    overrides['dhcp_agent']['DEFAULT']['force_metadata'] = str(param.value)
+                    overrides.update({
+                        'dhcp_agent': {
+                            'DEFAULT': {
+                                'force_metadata': str(param.value)
+                            }
+                        }
+                    })
 
     def _get_per_host_overrides(self):
         host_list = []
@@ -252,49 +286,16 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
             'securitygroup': {
                 'firewall_driver': 'noop',
             },
+            # Mitigate host OS memory leak of cgroup session-*scope files
+            # and kernel slab resources. The leak is triggered using 'sudo'
+            # which utilizes the host dbus-daemon. The sriov agent frequently
+            # polls devices via 'ip link show' using run_as_root=True, but
+            # does not actually require 'sudo'.
+            'agent': {
+                'root_helper': '',
+            },
             'sriov_nic': sriov_nic,
         }
-
-    def _get_neutron_config(self):
-        neutron_config = {
-            'DEFAULT': {
-                'l3_ha': False,
-                'min_l3_agents_per_router': 1,
-                'max_l3_agents_per_router': 1,
-                'l3_ha_network_type': 'vxlan',
-                'dhcp_agents_per_network': 1,
-                'max_overflow': 64,
-                'max_pool_size': 1,
-                'idle_timeout': 60,
-                'router_status_managed': True,
-                'vlan_transparent': True,
-                'wsgi_default_pool_size': 100,
-                'notify_nova_on_port_data_changes': True,
-                'notify_nova_on_port_status_changes': True,
-                'control_exchange': 'neutron',
-                'core_plugin': 'neutron.plugins.ml2.plugin.Ml2Plugin',
-                'state_path': '/var/run/neutron',
-                'syslog_log_facility': 'local2',
-                'use_syslog': True,
-                'pnet_audit_enabled': False,
-                'driver': 'messagingv2',
-                'enable_proxy_headers_parsing': True,
-                'lock_path': '/var/run/neutron/lock',
-                'log_format': '[%(name)s] %(message)s',
-                'policy_file': '/etc/neutron/policy.json',
-                'service_plugins':
-                    'router' + ',' + constants.NEUTRON_PLUGIN_NETWORK_SEGMENT_RANGE,
-                'dns_domain': 'openstacklocal',
-                'enable_new_agents': False,
-                'allow_automatic_dhcp_failover': True,
-                'allow_automatic_l3agent_failover': True,
-            },
-            'agent': {
-                'root_helper': 'sudo',
-            },
-        }
-
-        return neutron_config
 
     def _get_ml2_physical_network_mtus(self):
         ml2_physical_network_mtus = []
@@ -308,22 +309,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
     def _get_neutron_ml2_config(self):
         ml2_config = {
             'ml2': {
-                'type_drivers': 'flat,vlan,vxlan',
-                'tenant_network_types': 'vlan,vxlan',
-                'mechanism_drivers': 'openvswitch,sriovnicswitch,l2population',
-                'path_mtu': 0,
                 'physical_network_mtus': self._get_ml2_physical_network_mtus()
-
-            },
-            'ovs_driver': {
-                'vhost_user_enabled': True,
-            },
-            'securitygroup': {
-                'firewall_driver': 'noop',
-            },
-            'ml2_type_vxlan': {
-                'vni_ranges': '',
-                'vxlan_group': '',
             },
         }
         LOG.info("_get_neutron_ml2_config=%s" % ml2_config)
@@ -423,17 +409,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                         user, common.HELM_NS_OPENSTACK, user)
                 }
             })
-
-        return overrides
-
-    def _get_labels_overrides(self):
-        overrides = {
-            'agent': {
-                'dhcp': {'node_selector_key': 'openvswitch'},
-                'l3': {'node_selector_key': 'openvswitch'},
-                'metadata': {'node_selector_key': 'openvswitch'},
-            },
-        }
 
         return overrides
 

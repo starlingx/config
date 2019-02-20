@@ -67,3 +67,113 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Kubernetes exception in kube_get_nodes: %s" % e)
             raise
+
+    def kube_create_namespace(self, namespace):
+        body = {'metadata': {'name': namespace}}
+
+        c = self._get_kubernetesclient()
+        try:
+            c.create_namespace(body)
+        except ApiException as e:
+            if e.status == httplib.CONFLICT:
+                # Already exist
+                LOG.warn("Namespace %s already exist." % namespace)
+            else:
+                LOG.error("Failed to create Namespace %s: %s" % (namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "_kube_create_namespace %s: %s" % (namespace, e))
+            raise
+
+    def kube_get_namespace(self, namespace):
+        c = self._get_kubernetesclient()
+        try:
+            c.read_namespace(namespace)
+            return True
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return False
+            else:
+                LOG.error("Failed to get Namespace %s: %s" % (namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_namespace %s: %s" % (namespace, e))
+            raise
+
+    def kube_get_secret(self, name, namespace):
+        c = self._get_kubernetesclient()
+        try:
+            c.read_namespaced_secret(name, namespace)
+            return True
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return False
+            else:
+                LOG.error("Failed to get Secret %s under "
+                          "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_get_secret: %s" % e)
+            raise
+
+    def kube_create_secret(self, namespace, body):
+        c = self._get_kubernetesclient()
+        try:
+            c.create_namespaced_secret(namespace, body)
+        except Exception as e:
+            LOG.error("Failed to create Secret %s under Namespace %s: "
+                      "%s" % (body['metadata']['name'], namespace, e))
+            raise
+
+    def kube_delete_persistent_volume_claim(self, namespace, **kwargs):
+        c = self._get_kubernetesclient()
+        try:
+            c.delete_collection_namespaced_persistent_volume_claim(
+                namespace, **kwargs)
+        except Exception as e:
+            LOG.error("Failed to delete Persistent Volume Claim "
+                      "under Namespace %s: %s" % (namespace, e))
+            raise
+
+    def kube_delete_secret(self, name, namespace, **kwargs):
+        body = {}
+
+        if kwargs:
+            body.update(kwargs)
+
+        c = self._get_kubernetesclient()
+        try:
+            c.delete_namespaced_secret(name, namespace, body)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("Secret %s under Namespace %s "
+                         "not found." % (name, namespace))
+            else:
+                LOG.error("Failed to clean up Secret %s under "
+                          "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_delete_secret: %s" % e)
+            raise
+
+    def kube_delete_namespace(self, namespace, **kwargs):
+        body = {}
+
+        if kwargs:
+            body.update(kwargs)
+
+        c = self._get_kubernetesclient()
+        try:
+            c.delete_namespace(namespace, body)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("Namespace %s not found." % namespace)
+            else:
+                LOG.error("Failed to clean up Namespace %s: "
+                          "%s" % (namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_delete_namespace: %s" % e)
+            raise

@@ -48,6 +48,10 @@ data:
       replicas:
         error_page: 2
         ingress: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
@@ -89,6 +93,10 @@ data:
       replicas:
         error_page: 2
         ingress: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
@@ -118,6 +126,12 @@ data:
         - type: job
           labels:
             app: rbd-provisioner
+  values:
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/rbd-provisioner-0.1.0.tgz
@@ -187,6 +201,11 @@ data:
       prometheus_mysql_exporter:
         node_selector_key: openstack-control-plane
         node_selector_value: enabled
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/mariadb-0.1.0.tgz
@@ -360,6 +379,10 @@ data:
     pod:
       replicas:
         api: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/keystone-0.1.0.tgz
@@ -793,6 +816,9 @@ data:
     pod:
       replicas:
         server: 2
+      user:
+        neutron:
+          uid: 0
       affinity:
         anti:
           type:
@@ -800,13 +826,13 @@ data:
     labels:
       agent:
         dhcp:
-          node_selector_key: openstack-control-plane
+          node_selector_key: openstack-compute-node
           node_selector_value: enabled
         l3:
-          node_selector_key: openstack-control-plane
+          node_selector_key: openstack-compute-node
           node_selector_value: enabled
         metadata:
-          node_selector_key: openstack-control-plane
+          node_selector_key: openstack-compute-node
           node_selector_value: enabled
       job:
         node_selector_key: openstack-control-plane
@@ -829,19 +855,73 @@ data:
         node_selector_value: enabled
     network:
       interface:
-        tunnel: enp0s3
+        tunnel: docker0
+      backend:
+        - openvswitch
+        - sriov
     conf:
       neutron:
         DEFAULT:
-          l3_ha: true
-          min_l3_agents_per_router: 2
-          max_l3_agents_per_router: 5
+          l3_ha: false
+          min_l3_agents_per_router: 1
+          max_l3_agents_per_router: 1
           l3_ha_network_type: vxlan
-          dhcp_agents_per_network: 2
+          dhcp_agents_per_network: 1
+          max_overflow: 64
+          max_pool_size: 1
+          idle_timeout: 60
+          router_status_managed: true
+          vlan_transparent: true
+          wsgi_default_pool_size: 100
+          notify_nova_on_port_data_changes: true
+          notify_nova_on_port_status_changes: true
+          control_exchange: neutron
+          core_plugin: neutron.plugins.ml2.plugin.Ml2Plugin
+          state_path: /var/run/neutron
+          syslog_log_facility: local2
+          use_syslog: true
+          pnet_audit_enabled: false
+          driver: messagingv2
+          enable_proxy_headers_parsing: true
+          lock_path: /var/run/neutron/lock
+          log_format: '[%(name)s] %(message)s'
+          policy_file: /etc/neutron/policy.json
+          service_plugins: router,network_segment_range
+          dns_domain: openstacklocal
+          enable_new_agents: false
+          allow_automatic_dhcp_failover: true
+          allow_automatic_l3agent_failover: true
+        agent:
+          root_helper: sudo
+        vhost:
+          vhost_user_enabled: true
+      dhcp_agent:
+        DEFAULT:
+          enable_isolated_metadata: true
+          enable_metadata_network: false
+          interface_driver: openvswitch
+          resync_interval: 30
+      l3_agent:
+        DEFAULT:
+          agent_mode: dvr_snat
+          interface_driver: openvswitch
+          metadata_port: 80
       plugins:
         ml2_conf:
           ml2_type_flat:
             flat_networks: public
+          ml2:
+            mechanism_drivers: openvswitch,sriovnicswitch,l2population
+            path_mtu: 0
+            tenant_network_types: vlan,vxlan
+            type_drivers: flat,vlan,vxlan
+          ml2_type_vxlan:
+            vni_ranges: ''
+            vxlan_group: ''
+          ovs_driver:
+            vhost_user_enabled: true
+          securitygroup:
+            firewall_driver: noop
         openvswitch_agent:
           agent:
             tunnel_types: vxlan
@@ -953,6 +1033,10 @@ data:
       user:
         aodh:
           uid: 0
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
     jobs:
       alarms_cleaner:
         # daily at the 35 minute mark
@@ -1050,6 +1134,11 @@ data:
         app:healthcheck:
           use: egg:oslo.middleware#healthcheck
           oslo_config_project: gnocchi
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/gnocchi-0.1.0.tgz
@@ -1090,6 +1179,10 @@ data:
       user:
         panko:
           uid: 0
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
     jobs:
       events_cleaner:
         # hourly at the 10 minute mark
@@ -1602,6 +1695,11 @@ data:
             attributes:
               controller: resource_metadata.controller
               switch: resource_metadata.switch
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/ceilometer-0.1.0.tgz

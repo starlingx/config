@@ -104,6 +104,7 @@ class RbdProvisionerHelm(base.BaseHelm):
                 "classes": classes,
                 "ephemeral_pools": ephemeral_pools,
                 "images": self._get_images_overrides(),
+                "pods": self._get_pod_overrides()
             }
         }
 
@@ -114,6 +115,14 @@ class RbdProvisionerHelm(base.BaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_pod_overrides(self):
+        overrides = {
+            'replicas': {
+                'rbd-provisioner': self._num_controllers()
+            }
+        }
+        return overrides
 
     def _get_images_overrides(self):
         # TODO: Remove after ceph upgrade

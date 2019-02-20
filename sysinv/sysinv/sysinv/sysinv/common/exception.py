@@ -923,6 +923,11 @@ class KubeAppNotFound(NotFound):
     message = _("No application with name %(name)s.")
 
 
+class DockerRegistryCredentialNotFound(NotFound):
+    message = _("Credentials to access local docker registry "
+                "for user %(name)s could not be found.")
+
+
 class SDNNotEnabled(SysinvException):
     message = _("SDN configuration is not enabled.")
 
@@ -1053,6 +1058,10 @@ class SysInvSignalTimeout(SysinvException):
 
 class KubeAppProgressMonitorTimeout(SysinvException):
     message = "Armada execution progress monitor timed out."
+
+
+class K8sNamespaceDeleteTimeout(SysinvException):
+    message = "Namespace %(name)s deletion timeout."
 
 
 class InvalidEndpoint(SysinvException):

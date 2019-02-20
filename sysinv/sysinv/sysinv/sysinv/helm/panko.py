@@ -24,6 +24,7 @@ class PankoHelm(openstack.OpenstackBaseHelm):
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {
+                'pod': self._get_pod_overrides(),
                 'images': self._get_images_overrides(),
                 'endpoints': self._get_endpoints_overrides()
             }
@@ -36,6 +37,14 @@ class PankoHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_pod_overrides(self):
+        overrides = {
+            'replicas': {
+                'api': self._num_controllers()
+            }
+        }
+        return overrides
 
     def _get_images_overrides(self):
         heat_image = self._operator.chart_operators[
