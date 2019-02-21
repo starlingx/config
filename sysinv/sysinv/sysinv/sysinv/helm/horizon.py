@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,37 +24,10 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'images': self._get_images_overrides(),
-                'network': {
-                    'node_port': {
-                        'enabled': 'true',
-                        'port': 31000
-                    }
-                },
                 'conf': {
                     'horizon': {
                         'local_settings': {
                             'config': self._get_local_settings_config_overrides(),
-                        }
-                    }
-                },
-                'pod': {
-                    'mounts': {
-                        'horizon': {
-                            'horizon': {
-                                # Branding directory mount
-                                'volumeMounts': [{
-                                    'name': 'horizon-branding',
-                                    'mountPath': '/opt/branding',
-                                }],
-                                'volumes': [{
-                                    'name': 'horizon-branding',
-                                    'hostPath':
-                                        {
-                                            'path': '/opt/branding',
-                                            'type': 'Directory'
-                                        },
-                                }],
-                            }
                         }
                     }
                 },
@@ -92,27 +65,12 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
 
     def _get_local_settings_config_overrides(self):
         local_settings_config = {
-            # Region Modes
-            'ss_enabled': 'False',
-            'dc_mode': 'False',
-
-            # Security
-            'https_enabled': 'False',
-            'lockout_period_sec': '300',
-            'lockout_retries_num': '3',
             'horizon_secret_key': self._get_or_generate_password(
                 self.SERVICE_NAME, common.HELM_NS_OPENSTACK,
                 'horizon_secret_key'),
 
-            # Optional Services
-            'enable_murano': 'False',
-            'enable_magnum': 'False',
-
-            # Turn off domain support as we aren't using it
-            'keystone_multidomain_support': 'False',
+            'system_region_name': self._region_name()
         }
-
-        local_settings_config.update({'system_region_name': self._region_name()})
 
         # Basic region config additions
         if self._region_config():
