@@ -124,7 +124,7 @@ class platform::kubernetes::master::init
 
     # Remove the taint from the master node
     -> exec { 'remove taint from master node':
-      command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
+      command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master- || true", # lint:ignore:140chars
       logoutput => true,
     }
 
@@ -230,7 +230,7 @@ class platform::kubernetes::master::init
 
       # Remove the taint from the master node
       -> exec { 'remove taint from master node':
-        command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
+        command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master- || true", # lint:ignore:140chars
         logoutput => true,
       }
 
