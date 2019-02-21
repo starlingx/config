@@ -1183,6 +1183,37 @@ class DockerHelper(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
+        self.k8s_registry = None
+        self.gcr_registry = None
+        self.quay_registry = None
+        self.docker_registry = None
+
+    def _get_registry_parameters(self):
+        try:
+            registry = self._dbapi.service_parameter_get_all(
+                service=constants.SERVICE_TYPE_DOCKER,
+                section=constants.SERVICE_PARAM_SECTION_DOCKER_REGISTRY,
+                        )
+            return registry
+        except Exception:
+            return None
+
+    def _retrieve_specified_registries(self):
+        registry_params = self._get_registry_parameters()
+        if registry_params:
+            for param in registry_params:
+                if param.name == \
+                        constants.SERVICE_PARAM_NAME_DOCKER_K8S_REGISTRY:
+                    self.k8s_registry = str(param.value)
+                if param.name == \
+                        constants.SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY:
+                    self.gcr_registry = str(param.value)
+                if param.name == \
+                        constants.SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY:
+                    self.quay_registry = str(param.value)
+                if param.name == \
+                        constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY:
+                    self.docker_registry = str(param.value)
 
     def _start_armada_service(self, client):
         try:
@@ -1317,9 +1348,50 @@ class DockerHelper(object):
         registry_server = '{}:{}'.format(registry_ip, common.REGISTRY_PORT)
         return registry_server
 
+    def _get_img_tag_with_registry(self, pub_img_tag):
+        registry_name = pub_img_tag[0:1 + pub_img_tag.find('/')]
+        img_name = pub_img_tag[1 + pub_img_tag.find('/'):]
+        if registry_name:
+            if 'k8s.gcr.io' in registry_name:
+                registry = self.k8s_registry
+            elif 'gcr.io' in registry_name:
+                registry = self.gcr_registry
+            elif 'quay.io' in registry_name:
+                registry = self.quay_registry
+            elif 'docker.io' in registry_name:
+                registry = self.docker_registry
+            else:
+                # try docker.io registry as default
+                # if other registries newly added
+                # or docker.io repository detected
+                LOG.info("Registry %s not recognized or docker.io repository "
+                         "detected. Pulling from public/private registry"
+                         % registry_name)
+                registry = self.docker_registry
+                if registry:
+                    return str(registry) + '/' + pub_img_tag
+                else:
+                    return pub_img_tag
+
+            # replace registry
+            if registry:
+                return str(registry) + '/' + img_name
+            else:
+                return pub_img_tag
+        else:
+            # docker.io registry as default
+            # if no registries specified in img tag
+            registry = self.docker_registry
+            if registry:
+                return str(registry) + '/' + pub_img_tag
+            else:
+                return pub_img_tag
+
     def download_an_image(self, img_tag):
 
         rc = True
+        # retrieve user specified registries first
+        self._retrieve_specified_registries()
         local_registry_server = self.get_local_docker_registry_server()
 
         start = time.time()
@@ -1333,17 +1405,20 @@ class DockerHelper(object):
                 try:
                     # Pull the image from the public registry
                     LOG.info("Image %s is not available in local registry, "
-                             "download started from public registry" % img_tag)
+                             "download started from public/private registry"
+                             % img_tag)
                     pub_img_tag = img_tag.replace(local_registry_server + "/", "")
-                    client.pull(pub_img_tag)
+                    target_img_tag = self._get_img_tag_with_registry(pub_img_tag)
+                    client.pull(target_img_tag)
                 except Exception as e:
                     rc = False
-                    LOG.error("Image %s download failed from public registry: %s" % (pub_img_tag, e))
+                    LOG.error("Image %s download failed from public/private"
+                              "registry: %s" % (target_img_tag, e))
                     return img_tag, rc
 
                 try:
                     # Tag and push the image to the local registry
-                    client.tag(pub_img_tag, img_tag)
+                    client.tag(target_img_tag, img_tag)
                     client.push(img_tag, auth_config=local_registry_auth)
                 except Exception as e:
                     rc = False
@@ -1354,9 +1429,11 @@ class DockerHelper(object):
 
         else:
             try:
-                LOG.info("Image %s download started from public registry" % img_tag)
+                LOG.info("Image %s download started from public/private registry" % img_tag)
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
-                client.pull(img_tag)
+                target_img_tag = self._get_img_tag_with_registry(img_tag)
+                client.pull(target_img_tag)
+                client.tag(target_img_tag, img_tag)
             except Exception as e:
                 rc = False
                 LOG.error("Image %s download failed from public registry: %s" % (img_tag, e))

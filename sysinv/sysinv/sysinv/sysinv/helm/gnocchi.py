@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -26,11 +26,6 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
             common.HELM_NS_OPENSTACK: {
                 'images': self._get_images_overrides(),
                 'pod': self._get_pod_overrides(),
-                'conf': self._get_conf_overrides(),
-                'dependencies': {
-                    'static': self._get_static_dependencies_overrides()
-                },
-                'manifests': self._get_manifests_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
             }
         }
@@ -68,53 +63,6 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
             }
         }
 
-    def _get_static_dependencies_overrides(self):
-        return {
-            'db_sync': {
-                'jobs': [
-                    'gnocchi-storage-init',
-                    'gnocchi-db-init',
-                ],
-                'services': [
-                    {'endpoint': 'internal', 'service': 'oslo_db'}
-                ]
-            },
-            'metricd': {
-                'services': [
-                    {'endpoint': 'internal', 'service': 'oslo_db'},
-                    {'endpoint': 'internal', 'service': 'oslo_cache'},
-                    {'endpoint': 'internal', 'service': 'metric'}
-                ]
-            },
-            'tests': {
-                'services': [
-                    {'endpoint': 'internal', 'service': 'identity'},
-                    {'endpoint': 'internal', 'service': 'oslo_db'},
-                    {'endpoint': 'internal', 'service': 'metric'}
-                ]
-            }
-        }
-
-    def _get_manifests_overrides(self):
-        return {
-            'daemonset_statsd': False,
-            'service_statsd': False,
-            'job_db_init_indexer': False,
-            'secret_db_indexer': False,
-        }
-
-    def _get_conf_overrides(self):
-        return {
-            'gnocchi': {
-                'indexer': {
-                    'driver': 'mariadb'
-                },
-                'keystone_authtoken': {
-                    'interface': 'internal'
-                }
-            }
-        }
-
     def _get_endpoints_overrides(self):
         return {
             'identity': {
@@ -125,9 +73,6 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
                 'auth': {
                     'memcached_secret_key':
                         self._get_common_password('auth_memcache_key')
-                },
-                'hosts': {
-                    'default': 'memcached'
                 }
             },
             'oslo_db': {
