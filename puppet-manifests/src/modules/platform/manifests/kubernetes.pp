@@ -16,14 +16,10 @@ class platform::kubernetes::kubeadm {
   $iptables_file = "net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1"
 
-  # Ensure DNS is configured as name resolution is required when
-  # kubeadm init is run.
-  Class['::platform::dns']
-
   # Update iptables config. This is required based on:
   # https://kubernetes.io/docs/tasks/tools/install-kubeadm
   # This probably belongs somewhere else - initscripts package?
-  -> file { '/etc/sysctl.d/k8s.conf':
+  file { '/etc/sysctl.d/k8s.conf':
     ensure  => file,
     content => $iptables_file,
     owner   => 'root',
@@ -124,7 +120,7 @@ class platform::kubernetes::master::init
 
     # Remove the taint from the master node
     -> exec { 'remove taint from master node':
-      command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
+      command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master- || true", # lint:ignore:140chars
       logoutput => true,
     }
 
@@ -230,7 +226,7 @@ class platform::kubernetes::master::init
 
       # Remove the taint from the master node
       -> exec { 'remove taint from master node':
-        command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master-", # lint:ignore:140chars
+        command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master- || true", # lint:ignore:140chars
         logoutput => true,
       }
 
@@ -271,6 +267,9 @@ class platform::kubernetes::master
 
     Class['::platform::etcd'] -> Class[$name]
     Class['::platform::docker::config'] -> Class[$name]
+    # Ensure DNS is configured as name resolution is required when
+    # kubeadm init is run.
+    Class['::platform::dns'] -> Class[$name]
     Class['::platform::kubernetes::kubeadm']
     -> Class['::platform::kubernetes::master::init']
     -> Class['::platform::kubernetes::firewall']

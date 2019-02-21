@@ -7,7 +7,15 @@ Exec {
   path => '/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin:/usr/local/sbin'
 }
 
-include ::firewall
+#
+# Disable the firewall to protect against attempted
+# restoration of kubernetes-related iptables rules
+# during puppet apply, as kubernetes may not yet
+# be running and the restore will fail.
+#
+class { '::firewall':
+  ensure => stopped
+}
 
 include ::platform::config
 include ::platform::users
