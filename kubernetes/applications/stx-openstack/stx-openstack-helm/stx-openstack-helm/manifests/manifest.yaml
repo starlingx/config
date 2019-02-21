@@ -732,6 +732,8 @@ data:
     network:
       sshd:
         enabled: true
+    console:
+      address_search_enabled: false
 
   source:
     type: tar
