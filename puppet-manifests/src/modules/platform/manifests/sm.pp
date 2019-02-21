@@ -352,6 +352,12 @@ class platform::sm
 
   # lint:ignore:140chars
 
+  if str2bool($::is_virtual) {
+    exec { 'Configure sm process priority':
+      command => 'sm-configure system --sm_process_priority -10',
+    }
+  }
+
   if $system_mode == 'simplex' {
     exec { 'Deprovision oam-ip service group member':
       command => 'sm-deprovision service-group-member oam-services oam-ip',
