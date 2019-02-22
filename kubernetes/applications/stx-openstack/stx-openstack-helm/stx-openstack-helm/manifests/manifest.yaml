@@ -1042,6 +1042,11 @@ data:
             component: test
   values:
     conf:
+      gnocchi:
+        indexer:
+          driver: mariadb
+        keystone_authtoken:
+          interface: internal
       apache: |
         Listen 0.0.0.0:{{ tuple "metric" "internal" "api" . | include "helm-toolkit.endpoints.endpoint_port_lookup" }}
 
@@ -1106,11 +1111,6 @@ data:
         anti:
           type:
             default: requiredDuringSchedulingIgnoredDuringExecution
-      gnocchi:
-        indexer:
-          driver: mariadb
-        keystone_authtoken:
-          interface: internal
     dependencies:
       static:
         db_sync:
