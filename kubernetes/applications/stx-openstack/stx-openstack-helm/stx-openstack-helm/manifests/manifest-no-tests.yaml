@@ -1084,6 +1084,11 @@ data:
             component: test
   values:
     conf:
+      gnocchi:
+        indexer:
+          driver: mariadb
+        keystone_authtoken:
+          interface: internal
       apache: |
         Listen 0.0.0.0:{{ tuple "metric" "internal" "api" . | include "helm-toolkit.endpoints.endpoint_port_lookup" }}
 
@@ -1145,11 +1150,6 @@ data:
         anti:
           type:
             default: requiredDuringSchedulingIgnoredDuringExecution
-      gnocchi:
-        indexer:
-          driver: mariadb
-        keystone_authtoken:
-          interface: internal
     dependencies:
       static:
         db_sync:
@@ -1775,9 +1775,39 @@ data:
           labels:
             release_group: osh-openstack-horizon
   values:
+    network:
+      node_port:
+        enabled: 'true'
+        port: 31000
+    pod:
+      mounts:
+        horizon:
+          horizon:
+            # Branding directory mount
+            volumeMounts:
+              - mountPath: /opt/branding
+                name: horizon-branding
+            volumes:
+              - hostPath:
+                  path: /opt/branding
+                  type: Directory
+                name: horizon-branding
     conf:
       horizon:
         local_settings:
+          config:
+            # Region Modes
+            ss_enabled: 'False'
+            dc_mode: 'False'
+            # Security
+            https_enabled: 'False'
+            lockout_period_sec: '300'
+            lockout_retries_num: '3'
+            # Optional Services
+            enable_magnum: 'False'
+            enable_murano: 'False'
+            # Turn off domain support as we aren't using
+            keystone_multidomain_support: 'False'
           template: |
             import os
 
