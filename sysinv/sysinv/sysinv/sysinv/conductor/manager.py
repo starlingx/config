@@ -10669,14 +10669,18 @@ class ConductorManager(service.PeriodicService):
         rpcapi = agent_rpcapi.AgentAPI()
         rpcapi.update_host_memory(context, host.uuid)
 
-    def update_fernet_keys(self, context, keys):
+    def update_fernet_repo(self, context, keys=None):
         """Update the fernet repo with the new keys.
 
           :param context: request context.
           :param keys: a list of keys
           :returns: nothing
           """
-        self._fernet.update_fernet_keys(keys)
+
+        if keys:
+            self._fernet.update_fernet_keys(keys)
+        else:
+            self._fernet.reset_fernet_keys()
 
     def get_fernet_keys(self, context, key_id=None):
         """Get the keys from the fernet repo.
