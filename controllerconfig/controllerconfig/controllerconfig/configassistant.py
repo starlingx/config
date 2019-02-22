@@ -326,8 +326,7 @@ class ConfigAssistant():
         """
 
         self.labmode = labmode
-        # Temporary flag to be removed once kubernetes installs are the default
-        self.kubernetes = kubernetes
+        self.kubernetes = True
 
         self.config_uuid = "install"
 
