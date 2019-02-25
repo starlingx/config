@@ -660,11 +660,24 @@ def _validate_docker_no_proxy_address(name, value):
     values = value.split(',')
     for item in values:
         # will extend to more cases if CIDR notation is supported
-        if not cutils.is_valid_domain(item):
-            if not cutils.is_valid_ip(item):
-                raise wsme.exc.ClientSideError(_(
-                    "Parameter '%s' includes an invalid address '%s'." %
-                    (name, item)))
+        if not cutils.is_valid_domain_or_ip(item):
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' includes an invalid address '%s'." %
+                (name, item)))
+
+
+def _validate_docker_registry_address(name, value):
+    """Check if registry address is valid"""
+    if not cutils.is_valid_domain_or_ip(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid address." % name))
+
+
+def _validate_docker_insecure_registry_bool(name, value):
+    """Check if insecure registry is a valid bool"""
+    if not cutils.is_valid_boolstr(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid bool string." % name))
 
 
 # LDAP Identity Service Parameters (mandatory)
@@ -1516,6 +1529,35 @@ DOCKER_PROXY_PARAMETER_RESOURCE = {
         'platform::docker::params::no_proxy',
 }
 
+DOCKER_REGISTRY_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_DOCKER_K8S_REGISTRY,
+    constants.SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY,
+    constants.SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY,
+    constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY,
+    constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY,
+]
+
+DOCKER_REGISTRY_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_DOCKER_K8S_REGISTRY: _validate_docker_registry_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY: _validate_docker_registry_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY: _validate_docker_registry_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY: _validate_docker_registry_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY: _validate_docker_insecure_registry_bool,
+}
+
+DOCKER_REGISTRY_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_DOCKER_K8S_REGISTRY:
+        'platform::docker::params::k8s_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY:
+        'platform::docker::params::gcr_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY:
+        'platform::docker::params::quay_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY:
+        'platform::docker::params::docker_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY:
+        'platform::docker::params::insecure_registry',
+}
+
 HTTPD_PORT_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_HTTP_PORT_HTTP,
     constants.SERVICE_PARAM_HTTP_PORT_HTTPS,
@@ -1714,6 +1756,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DOCKER_PROXY_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DOCKER_PROXY_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: DOCKER_PROXY_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_DOCKER_REGISTRY: {
+            SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRY_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRY_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: DOCKER_REGISTRY_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_HTTP: {

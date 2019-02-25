@@ -26,6 +26,7 @@ from configutilities.common.utils import validate_address_str
 from configutilities.common.utils import validate_nameserver_address_str
 from configutilities.common.utils import is_valid_url
 from configutilities.common.utils import is_valid_domain_or_ip
+from configutilities.common.utils import is_valid_bool_str
 from configutilities.common.exceptions import ConfigFail
 from configutilities.common.exceptions import ValidateFail
 
@@ -1010,6 +1011,77 @@ class ConfigValidator(object):
                 self.cgcs_conf.set('cDOCKER_PROXY', 'DOCKER_NO_PROXY',
                                    docker_no_proxy_list_str)
 
+    def validate_docker_registry(self):
+        if not self.conf.has_section('DOCKER_REGISTRY'):
+            return
+        if self.cgcs_conf is not None:
+            self.cgcs_conf.add_section('cDOCKER_REGISTRY')
+        # check k8s_registry
+        if self.conf.has_option('DOCKER_REGISTRY', 'DOCKER_K8S_REGISTRY'):
+            docker_k8s_registry_str = self.conf.get(
+                'DOCKER_REGISTRY', 'DOCKER_K8S_REGISTRY')
+            if is_valid_domain_or_ip(docker_k8s_registry_str):
+                if self.cgcs_conf is not None:
+                    self.cgcs_conf.set('cDOCKER_REGISTRY',
+                                       'DOCKER_K8S_REGISTRY',
+                                       docker_k8s_registry_str)
+            else:
+                raise ConfigFail(
+                    "Invalid DOCKER_K8S_REGISTRY value of %s." %
+                    docker_k8s_registry_str)
+        # check gcr_registry
+        if self.conf.has_option('DOCKER_REGISTRY', 'DOCKER_GCR_REGISTRY'):
+            docker_gcr_registry_str = self.conf.get(
+                'DOCKER_REGISTRY', 'DOCKER_GCR_REGISTRY')
+            if is_valid_domain_or_ip(docker_gcr_registry_str):
+                if self.cgcs_conf is not None:
+                    self.cgcs_conf.set('cDOCKER_REGISTRY',
+                                       'DOCKER_GCR_REGISTRY',
+                                       docker_gcr_registry_str)
+            else:
+                raise ConfigFail(
+                    "Invalid DOCKER_GCR_REGISTRY value of %s." %
+                    docker_gcr_registry_str)
+        # check quay_registry
+        if self.conf.has_option('DOCKER_REGISTRY', 'DOCKER_QUAY_REGISTRY'):
+            docker_quay_registry_str = self.conf.get(
+                'DOCKER_REGISTRY', 'DOCKER_QUAY_REGISTRY')
+            if is_valid_domain_or_ip(docker_quay_registry_str):
+                if self.cgcs_conf is not None:
+                    self.cgcs_conf.set('cDOCKER_REGISTRY',
+                                       'DOCKER_QUAY_REGISTRY',
+                                       docker_quay_registry_str)
+            else:
+                raise ConfigFail(
+                    "Invalid DOCKER_QUAY_REGISTRY value of %s." %
+                    docker_quay_registry_str)
+        # check docker_registry
+        if self.conf.has_option('DOCKER_REGISTRY', 'DOCKER_DOCKER_REGISTRY'):
+            docker_docker_registry_str = self.conf.get(
+                'DOCKER_REGISTRY', 'DOCKER_DOCKER_REGISTRY')
+            if is_valid_domain_or_ip(docker_docker_registry_str):
+                if self.cgcs_conf is not None:
+                    self.cgcs_conf.set('cDOCKER_REGISTRY',
+                                       'DOCKER_DOCKER_REGISTRY',
+                                       docker_docker_registry_str)
+            else:
+                raise ConfigFail(
+                    "Invalid DOCKER_DOCKER_REGISTRY value of %s." %
+                    docker_docker_registry_str)
+        # check is_secure_registry
+        if self.conf.has_option('DOCKER_REGISTRY', 'IS_SECURE_REGISTRY'):
+            docker_is_secure_registry_str = self.conf.get(
+                'DOCKER_REGISTRY', 'IS_SECURE_REGISTRY')
+            if is_valid_bool_str(docker_is_secure_registry_str):
+                if self.cgcs_conf is not None:
+                    self.cgcs_conf.set('cDOCKER_REGISTRY',
+                                       'IS_SECURE_REGISTRY',
+                                       docker_is_secure_registry_str)
+            else:
+                raise ConfigFail(
+                    "Invalid IS_SECURE_REGISTRY value of %s." %
+                    docker_is_secure_registry_str)
+
     def validate_ntp(self):
         if self.conf.has_section('NTP'):
             raise ConfigFail("NTP Configuration is no longer supported")
@@ -1468,6 +1540,8 @@ def validate(system_config, config_type=REGION_CONFIG, cgcs_config=None,
     validator.validate_dns()
     # Docker Proxy configuration
     validator.validate_docker_proxy()
+    # Docker Registry configuration
+    validator.validate_docker_registry()
     # NTP configuration
     validator.validate_ntp()
     # Network configuration

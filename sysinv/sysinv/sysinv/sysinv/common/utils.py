@@ -1832,6 +1832,33 @@ def is_valid_domain(url_str):
         return False
 
 
+def is_valid_domain_or_ip(url_str):
+    if url_str:
+        if is_valid_domain(url_str):
+            return True
+        ip_with_port = url_str.split(':')
+        if len(ip_with_port) <= 2:
+            # check ipv4 or ipv4 with port
+            return is_valid_ipv4(ip_with_port[0])
+        else:
+            # check ipv6 with port
+            if '[' in url_str:
+                try:
+                    bkt_idx = url_str.index(']')
+                    if bkt_idx + 1 == len(url_str):
+                        # brackets without port
+                        return False
+                    else:
+                        return is_valid_ipv6(url_str[1:bkt_idx])
+                except Exception:
+                    return False
+            else:
+                # check ipv6 without port
+                return is_valid_ipv6(url_str)
+    else:
+        return False
+
+
 def verify_checksum(path):
     """ Find and validate the checksum file in a given directory. """
     rc = True

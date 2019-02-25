@@ -470,6 +470,14 @@ class ConfigAssistant():
         self.docker_https_proxy = ""
         self.docker_no_proxy = ""
 
+        # Docker registry config
+        self.docker_use_default_registry = True
+        self.docker_k8s_registry = ""
+        self.docker_gcr_registry = ""
+        self.docker_quay_registry = ""
+        self.docker_docker_registry = ""
+        self.is_secure_registry = True
+
         # SDN config
         self.enable_sdn = False
 
@@ -2741,7 +2749,7 @@ class ConfigAssistant():
         """Allow user to input docker proxy config."""
 
         print("\nDocker Proxy:")
-        print("-------------------------\n")
+        print("-------------\n")
         print(textwrap.fill(
               "Docker proxy is needed if host OAM network is behind a proxy.",
               80))
@@ -2762,7 +2770,7 @@ class ConfigAssistant():
                             self.docker_http_proxy = user_input
                             break
                         else:
-                            print("Please input a valid url")
+                            print("Please enter a valid url")
                             continue
                     else:
                         self.docker_http_proxy = ""
@@ -2778,7 +2786,7 @@ class ConfigAssistant():
                             self.docker_https_proxy = user_input
                             break
                         else:
-                            print("Please input a valid url")
+                            print("Please enter a valid url")
                             continue
                     else:
                         self.docker_https_proxy = ""
@@ -2844,6 +2852,145 @@ class ConfigAssistant():
                 break
             elif user_input.lower() in ('n', ''):
                 self.enable_docker_proxy = False
+                break
+            else:
+                print("Invalid choice")
+                continue
+
+    def input_docker_registry_config(self):
+        """Allow user to input docker registry config."""
+
+        print("\nDocker Registry:")
+        print("----------------\n")
+        print("Configure docker registries to pull images from.\n"
+              "Default registries are:\n"
+              "k8s.gcr.io, gcr.io, quay.io, docker.io\n"
+              )
+        while True:
+            user_input = input(
+                "Use default docker registries [Y/n]: ")
+            if user_input.lower() == 'q':
+                raise UserQuit
+            elif user_input.lower() == 'n':
+                # unexpected newline displayed if textwrap.fill with
+                # '\n' included
+                print("\nEach registry can be specified as one of the"
+                      "following:\n"
+                      " - domain (e.g. example.domain)\n"
+                      " - domain with port (e.g. example.domain:5000)\n"
+                      " - IPv4 address (e.g. 1.2.3.4)\n"
+                      " - IPv4 address with port (e.g. 1.2.3.4:5000)\n"
+                      )
+                while True:
+                    user_input = input(
+                        "Use a unified registry replacing all "
+                        "default registries [y/n]: ")
+                    if user_input.lower() == 'q':
+                        raise UserQuit
+                    elif user_input.lower() == 'y':
+                        # Input a unified registry to avoid
+                        # inputing the same registry repeatly
+                        while True:
+                            user_input = input(
+                                "Enter a unified registry: ")
+                            if user_input.lower() == 'q':
+                                raise UserQuit
+                            if is_valid_domain_or_ip(user_input):
+                                self.docker_k8s_registry = user_input
+                                self.docker_gcr_registry = user_input
+                                self.docker_quay_registry = user_input
+                                self.docker_docker_registry = user_input
+                                self.docker_use_default_registry = False
+                                break
+                            else:
+                                print("Please enter a valid registry address")
+                                continue
+
+                        # Only if a unified registry set, it could be
+                        # an insecure registry
+                        while True:
+                            user_input = input(
+                                "Is '" + self.docker_k8s_registry +
+                                "' a secure registry (https) [Y/n]: ")
+                            if user_input.lower() == 'q':
+                                raise UserQuit
+                            elif user_input.lower() in ('y', ''):
+                                self.is_secure_registry = True
+                                break
+                            elif user_input.lower() == 'n':
+                                self.is_secure_registry = False
+                                break
+                            else:
+                                print("Invalid choice")
+                                continue
+                        break
+
+                    elif user_input.lower() == 'n':
+                        # Input alternative registries separately
+                        while True:
+                            user_input = input(
+                                "Alternative registry to k8s.gcr.io: ")
+                            if user_input.lower() == 'q':
+                                raise UserQuit
+                            if is_valid_domain_or_ip(user_input):
+                                self.docker_k8s_registry = user_input
+                                break
+                            else:
+                                print("Please enter a valid registry address")
+                                continue
+
+                        while True:
+                            user_input = input(
+                                "Alternative registry to gcr.io: ")
+                            if user_input.lower() == 'q':
+                                raise UserQuit
+                            if is_valid_domain_or_ip(user_input):
+                                self.docker_gcr_registry = user_input
+                                break
+                            else:
+                                print("Please enter a valid registry address")
+                                continue
+
+                        while True:
+                            user_input = input(
+                                "Alternative registry to quay.io: ")
+                            if user_input.lower() == 'q':
+                                raise UserQuit
+                            if is_valid_domain_or_ip(user_input):
+                                self.docker_quay_registry = user_input
+                                break
+                            else:
+                                print("Please enter a valid registry address")
+                                continue
+
+                        while True:
+                            user_input = input(
+                                "Alternative registry to docker.io: ")
+                            if user_input.lower() == 'q':
+                                raise UserQuit
+                            if is_valid_domain_or_ip(user_input):
+                                self.docker_docker_registry = user_input
+                                break
+                            else:
+                                print("Please enter a valid registry address")
+                                continue
+
+                        if (self.docker_k8s_registry or
+                                self.docker_gcr_registry or
+                                self.docker_quay_registry or
+                                self.docker_docker_registry):
+                            self.docker_use_default_registry = False
+                            break
+                        else:
+                            print("At least one registry is required")
+                            continue
+                    else:
+                        print("Invalid choice")
+                        continue
+                break
+
+            elif user_input.lower() in ('y', ''):
+                self.docker_use_default_registry = True
                 break
             else:
                 print("Invalid choice")
@@ -2936,6 +3083,7 @@ class ConfigAssistant():
             self.input_dns_config()
             # Docker proxy is only used in kubernetes config
             self.input_docker_proxy_config()
+            self.input_docker_registry_config()
         self.input_authentication_config()
 
     def is_valid_management_multicast_subnet(self, ip_subnet):
@@ -3297,6 +3445,32 @@ class ConfigAssistant():
                                          'DOCKER_NO_PROXY'):
                         self.docker_no_proxy = config.get(
                             'cDOCKER_PROXY', 'DOCKER_NO_PROXY')
+
+                # Docker Registry Configuration
+                if config.has_section('cDOCKER_REGISTRY'):
+                    self.docker_use_default_registry = False
+                    if config.has_option('cDOCKER_REGISTRY',
+                                         'DOCKER_K8S_REGISTRY'):
+                        self.docker_k8s_registry = config.get(
+                            'cDOCKER_REGISTRY', 'DOCKER_K8S_REGISTRY')
+                    if config.has_option('cDOCKER_REGISTRY',
+                                         'DOCKER_GCR_REGISTRY'):
+                        self.docker_gcr_registry = config.get(
+                            'cDOCKER_REGISTRY', 'DOCKER_GCR_REGISTRY')
+                    if config.has_option('cDOCKER_REGISTRY',
+                                         'DOCKER_QUAY_REGISTRY'):
+                        self.docker_quay_registry = config.get(
+                            'cDOCKER_REGISTRY', 'DOCKER_QUAY_REGISTRY')
+                    if config.has_option('cDOCKER_REGISTRY',
+                                         'DOCKER_DOCKER_REGISTRY'):
+                        self.docker_docker_registry = config.get(
+                            'cDOCKER_REGISTRY', 'DOCKER_DOCKER_REGISTRY')
+                    if config.has_option('cDOCKER_REGISTRY',
+                                         'IS_SECURE_REGISTRY'):
+                        self.is_secure_registry = config.getboolean(
+                            'cDOCKER_REGISTRY', 'IS_SECURE_REGISTRY')
+                    else:
+                        self.is_secure_registry = True
 
             # SDN Network configuration
             if config.has_option('cSDN', 'ENABLE_SDN'):
@@ -3742,14 +3916,31 @@ class ConfigAssistant():
             if not dns_config:
                 print("External DNS servers not configured")
             if self.enable_docker_proxy:
-                print("\nDocker Proxy Configuraton")
-                print("----------------------")
+                print("\nDocker Proxy Configuration")
+                print("--------------------------")
                 if self.docker_http_proxy:
                     print("Docker HTTP proxy: " + self.docker_http_proxy)
                 if self.docker_https_proxy:
                     print("Docker HTTPS proxy: " + self.docker_https_proxy)
                 if self.docker_no_proxy:
                     print("Docker NO proxy: " + self.docker_no_proxy)
+            if not self.docker_use_default_registry:
+                print("\nDocker Registry Configuration")
+                print("-----------------------------")
+                if self.docker_k8s_registry:
+                    print("Alternative registry to k8s.gcr.io: " +
+                          self.docker_k8s_registry)
+                if self.docker_gcr_registry:
+                    print("Alternative registry to gcr.io: " +
+                          self.docker_gcr_registry)
+                if self.docker_quay_registry:
+                    print("Alternative registry to quay.io: " +
+                          self.docker_quay_registry)
+                if self.docker_docker_registry:
+                    print("Alternative registry to docker.io: " +
+                          self.docker_docker_registry)
+                print("Is registries secure: " +
+                      str(self.is_secure_registry))
 
         if self.region_config:
             print("\nRegion Configuration")
@@ -4063,6 +4254,30 @@ class ConfigAssistant():
                             f.write(
                                 "DOCKER_NO_PROXY=" +
                                 str(self.docker_no_proxy) + "\n")
+
+                    # Docker registry configuration
+                    if not self.docker_use_default_registry:
+                        f.write("\n[cDOCKER_REGISTRY]")
+                        f.write("\n# Docker Registry Configuration\n")
+                        if self.docker_k8s_registry:
+                            f.write(
+                                "DOCKER_K8S_REGISTRY=" +
+                                str(self.docker_k8s_registry) + "\n")
+                        if self.docker_gcr_registry:
+                            f.write(
+                                "DOCKER_GCR_REGISTRY=" +
+                                str(self.docker_gcr_registry) + "\n")
+                        if self.docker_quay_registry:
+                            f.write(
+                                "DOCKER_QUAY_REGISTRY=" +
+                                str(self.docker_quay_registry) + "\n")
+                        if self.docker_docker_registry:
+                            f.write(
+                                "DOCKER_DOCKER_REGISTRY=" +
+                                str(self.docker_docker_registry) + "\n")
+                        f.write(
+                            "IS_SECURE_REGISTRY=" +
+                            str(self.is_secure_registry) + "\n")
 
                 # Network configuration
                 f.write("\n[cNETWORK]")
@@ -5468,22 +5683,54 @@ class ConfigAssistant():
         client.sysinv.idns.update(dns_record.uuid, patch)
 
     def _populate_docker_config(self, client):
-        parameter = {}
-        if self.docker_http_proxy:
-            parameter['http_proxy'] = self.docker_http_proxy
-        if self.docker_https_proxy:
-            parameter['https_proxy'] = self.docker_https_proxy
-        if self.docker_no_proxy:
-            parameter['no_proxy'] = self.docker_no_proxy
+        if self.enable_docker_proxy:
+            proxy_parameter = {}
+            if self.docker_http_proxy:
+                proxy_parameter['http_proxy'] = self.docker_http_proxy
+            if self.docker_https_proxy:
+                proxy_parameter['https_proxy'] = self.docker_https_proxy
+            if self.docker_no_proxy:
+                proxy_parameter['no_proxy'] = self.docker_no_proxy
 
-        if parameter:
-            client.sysinv.service_parameter.create(
-                sysinv_constants.SERVICE_TYPE_DOCKER,
-                sysinv_constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
-                None,
-                None,
-                parameter
-            )
+            if proxy_parameter:
+                client.sysinv.service_parameter.create(
+                    sysinv_constants.SERVICE_TYPE_DOCKER,
+                    sysinv_constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                    None,
+                    None,
+                    proxy_parameter
+                )
+
+        if not self.docker_use_default_registry:
+            registry_parameter = {}
+            if self.docker_k8s_registry:
+                registry_parameter['k8s'] = \
+                    self.docker_k8s_registry
+
+            if self.docker_gcr_registry:
+                registry_parameter['gcr'] = \
+                    self.docker_gcr_registry
+
+            if self.docker_quay_registry:
+                registry_parameter['quay'] = \
+                    self.docker_quay_registry
+
+            if self.docker_docker_registry:
+                registry_parameter['docker'] = \
+                    self.docker_docker_registry
+
+            if not self.is_secure_registry:
+                registry_parameter['insecure_registry'] = "True"
+
+            if registry_parameter:
+                client.sysinv.service_parameter.create(
+                    sysinv_constants.SERVICE_TYPE_DOCKER,
+                    sysinv_constants.
+                    SERVICE_PARAM_SECTION_DOCKER_REGISTRY,
+                    None,
+                    None,
+                    registry_parameter
+                )
 
     def populate_initial_config(self):
         """Populate initial system inventory configuration"""
@@ -5494,8 +5741,7 @@ class ConfigAssistant():
                 self._populate_network_config(client)
                 if self.kubernetes:
                     self._populate_dns_config(client)
-                    if self.enable_docker_proxy:
-                        self._populate_docker_config(client)
+                    self._populate_docker_config(client)
                 controller = self._populate_controller_config(client)
                 # ceph_mon config requires controller host to be created
                 self._inventory_config_complete_wait(client, controller)

@@ -7,8 +7,17 @@ class platform::dockerdistribution::config
 
   if $enabled {
     include ::platform::network::mgmt::params
+    include ::platform::docker::params
 
     $docker_registry_ip = $::platform::network::mgmt::params::controller_address
+
+    # check insecure registries
+    if $::platform::docker::params::insecure_registry {
+      # insecure registry is true means unified registry was set
+      $insecure_registries = "\"${::platform::docker::params::k8s_registry}\", \"${docker_registry_ip}:9001\""
+    } else {
+      $insecure_registries = "\"${docker_registry_ip}:9001\""
+    }
 
     # currently docker registry is running insecure mode
     # when proper authentication is implemented, this would go away
@@ -52,8 +61,17 @@ class platform::dockerdistribution::compute
   $enabled = $::platform::kubernetes::params::enabled
   if $enabled {
     include ::platform::network::mgmt::params
+    include ::platform::docker::params
 
     $docker_registry_ip = $::platform::network::mgmt::params::controller_address
+
+    # check insecure registries
+    if $::platform::docker::params::insecure_registry {
+      # insecure registry is true means unified registry was set
+      $insecure_registries = "\"${::platform::docker::params::k8s_registry}\", \"${docker_registry_ip}:9001\""
+    } else {
+      $insecure_registries = "\"${docker_registry_ip}:9001\""
+    }
 
     # currently docker registry is running insecure mode
     # when proper authentication is implemented, this would go away
