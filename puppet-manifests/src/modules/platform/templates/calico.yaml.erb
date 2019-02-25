@@ -107,7 +107,7 @@ spec:
       # as a host-networked pod.
       serviceAccountName: calico-node
       containers:
-      - image: quay.io/calico/typha:v3.1.4
+      - image: <%= @quay_registry %>/calico/typha:v3.1.4
         name: calico-typha
         ports:
         - containerPort: 5473
@@ -198,7 +198,7 @@ spec:
         # container programs network policy and routes on each
         # host.
         - name: calico-node
-          image: quay.io/calico/node:v3.1.4
+          image: <%= @quay_registry %>/calico/node:v3.1.4
           env:
             # Use Kubernetes API as the backing datastore.
             - name: DATASTORE_TYPE
@@ -283,7 +283,7 @@ spec:
         # This container installs the Calico CNI binaries
         # and CNI network config file on each node.
         - name: install-cni
-          image: quay.io/calico/cni:v3.1.4
+          image: <%= @quay_registry %>/calico/cni:v3.1.4
           command: ["/install-cni.sh"]
           env:
             # Name of the CNI config file to create.
