@@ -1,0 +1,12 @@
+Metadata-Version: 1.0
+Name: playbookconfig
+Version: 1.0
+Summary: Ansible Playbooks for StarlingX Configurations
+Home-page: https://wiki.openstack.org/wiki/StarlingX
+Author: Windriver
+Author-email: starlingx-discuss@lists.starlingx.io
+License: Apache-2.0
+
+Description: This package contains playbooks used for StarlingX Configurations
+
+Platform: UNKNOWN

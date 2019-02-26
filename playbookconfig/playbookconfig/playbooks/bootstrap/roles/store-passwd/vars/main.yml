@@ -1,0 +1,3 @@
+---
+use_vault_credentials: false
+password_rules_file: /etc/keystone/password-rules.conf

@@ -398,15 +398,22 @@ class SystemController(rest.RestController):
                     system_mode_options = [constants.SYSTEM_MODE_DUPLEX,
                                            constants.SYSTEM_MODE_DUPLEX_DIRECT]
                     new_system_mode = p['value']
-                    if rpc_isystem.system_mode == \
-                            constants.SYSTEM_MODE_SIMPLEX:
-                        msg = _("Cannot modify system mode when it is "
-                                "already set to %s." % rpc_isystem.system_mode)
-                        raise wsme.exc.ClientSideError(msg)
-                    elif new_system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                        msg = _("Cannot modify system mode to simplex when "
-                                "it is set to %s " % rpc_isystem.system_mode)
-                        raise wsme.exc.ClientSideError(msg)
+                    # Allow modification to system mode during bootstrap. Once the
+                    # initial configuration is complete, this type of request will
+                    # be bound to the conditions below.
+                    if cutils.is_initial_config_complete():
+                        if rpc_isystem.system_mode == \
+                                constants.SYSTEM_MODE_SIMPLEX:
+                            msg = _("Cannot modify system mode when it is "
+                                    "already set to %s." % rpc_isystem.system_mode)
+                            raise wsme.exc.ClientSideError(msg)
+                        elif new_system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                            msg = _("Cannot modify system mode to simplex when "
+                                    "it is set to %s " % rpc_isystem.system_mode)
+                            raise wsme.exc.ClientSideError(msg)
+                    else:
+                        system_mode_options.append(constants.SYSTEM_MODE_SIMPLEX)
+
                     if new_system_mode not in system_mode_options:
                         raise wsme.exc.ClientSideError(
                             "Invalid value for system_mode, it can only"

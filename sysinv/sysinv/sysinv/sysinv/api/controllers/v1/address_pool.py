@@ -74,7 +74,12 @@ class AddressPoolPatchType(types.JsonPatchType):
     @staticmethod
     def readonly_attrs():
         """These attributes cannot be updated."""
-        return ['/network', '/prefix']
+        # Once the initial configuration is complete, pool resizing is
+        # disallowed
+        if cutils.is_initial_config_complete():
+            return ['/network', '/prefix']
+        else:
+            return ['/network']
 
     @staticmethod
     def validate(patch):
@@ -329,15 +334,12 @@ class AddressPoolController(rest.RestController):
             self._check_valid_range(network, start, end, ipset)
             ipset.update(netaddr.IPRange(start, end))
 
-    def _check_allocated_addresses(self, address_pool_id):
-        addresses = pecan.request.dbapi.addresses_get_by_pool(
-            address_pool_id)
-        if addresses:
-            raise exception.AddressPoolInUseByAddresses()
-
     def _check_pool_readonly(self, address_pool_id):
         networks = pecan.request.dbapi.networks_get_by_pool(address_pool_id)
-        if networks:
+        # Pool is considered readonly after the initial configuration is
+        # complete. During bootstrap it should be modifiable even though
+        # it is allocated to a network.
+        if networks and cutils.is_initial_config_complete():
             # network managed address pool, no changes permitted
             raise exception.AddressPoolReadonly()
 
@@ -466,6 +468,7 @@ class AddressPoolController(rest.RestController):
         addrpool_dict = addrpool.as_dict()
         self._set_defaults(addrpool_dict)
         self._sort_ranges(addrpool_dict)
+
         # Check for semantic conflicts
         self._check_name_conflict(addrpool_dict)
         self._check_valid_ranges(addrpool_dict)
@@ -560,5 +563,15 @@ class AddressPoolController(rest.RestController):
         """Delete an IP address pool."""
         addrpool = self._get_one(address_pool_uuid)
         self._check_pool_readonly(addrpool.id)
-        self._check_allocated_addresses(addrpool.id)
+        addresses = pecan.request.dbapi.addresses_get_by_pool(
+            addrpool.id)
+        if addresses:
+            if cutils.is_initial_config_complete():
+                raise exception.AddressPoolInUseByAddresses()
+            else:
+                # Must be a request as a result of network reconfiguration
+                # during bootstrap. Delete the addresses in the pool
+                # before deleting the pool
+                for addr in addresses:
+                    pecan.request.dbapi.address_destroy(addr.uuid)
         pecan.request.dbapi.address_pool_destroy(address_pool_uuid)

@@ -1,0 +1,417 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ROLE DESCRIPTION:
+#   This role is to check the target host environment before proceeding to
+#   the next step.
+#
+
+# Check host connectivity, change password if provided
+- block:
+  - name: Update SSH known hosts
+    lineinfile:
+      path: ~/.ssh/known_hosts
+      state: absent
+      regexp: '^{{ ansible_host }}'
+    delegate_to: localhost
+
+  - name: Check connectivity
+    local_action: command ping -c 1 {{ ansible_host }}
+    failed_when: false
+    register: ping_result
+
+  - name: Fail if host is unreachable
+    fail: msg='Host {{ ansible_host }} is unreachable!'
+    with_items:
+      - "{{ ping_result.stdout_lines|list }}"
+    when: ping_result.rc != 0 and item is search('100% packet loss')
+
+  - block:
+    - debug:
+        msg: "Changing the initial password.."
+    - name: Change initial password
+      expect:
+        echo: yes
+        command: "ssh {{ ansible_ssh_user }}@{{ ansible_host }}"
+        responses: "{{ password_change_responses }}"
+      failed_when: false
+      delegate_to: localhost
+
+    rescue:
+      # Initial password has been changed and the user forgot to exclude
+      # password_change option in the command line for the replay.
+      - debug:
+          msg: "Password has already been changed"
+
+    when: change_password
+
+  when: inventory_hostname != 'localhost'
+
+# Check for one of unmistakenly StarlingX packages
+- name: "Look for unmistakenly {{ image_brand }} package"
+  command: rpm -q controllerconfig
+  args:
+    warn: false
+  failed_when: false
+  register: controllerconfig_installed
+
+- name: Fail if host is not running the right image
+  fail: msg='Host {{ ansible_host }} does not have the right image!.'
+  when: controllerconfig_installed.rc > 0
+
+# Bail if the host has been unlocked
+- name: Check initial config flag
+  stat:
+    path: /etc/platform/.initial_config_complete
+  register: initial_config_complete
+
+- block:
+  - name: Set skip_play flag for host
+    set_fact:
+      skip_play: true
+
+  - name: Skip remaining tasks if host is already unlocked
+    debug: msg="Host {{ ansible_host }} has been unlocked. There's nothing to play!"
+
+  - name: Stop playing if this is the only target host
+    meta: end_play
+    when: play_hosts | length == 1
+
+  when: initial_config_complete.stat.exists
+
+
+# Proceed only if skip_play flag is not turned on
+- block:
+  #- name: Disable SSH timeout
+  #  lineinfile:
+  #    path: /etc/profile.d/custom.sh
+  #    regexp: "export TMOUT*"
+  #    line: "export TMOUT=0"
+
+  # The following parameters should exist in default.yml. If any of them is
+  # not available, the file is invalid.
+  - name: Fail if any of the mandatory configurations are not defined
+    fail:
+      msg: "Mandatory configuration parameter {{ item }} is not defined."
+    when: item is not defined
+    with_items:
+      - system_mode
+      - timezone
+      - pxeboot_subnet
+      - management_subnet
+      - cluster_host_subnet
+      - cluster_pod_subnet
+      - cluster_service_subnet
+      - external_oam_subnet
+      - external_oam_gateway_address
+      - external_oam_floating_address
+      - management_multicast_subnet
+      - dynamic_address_allocation
+      - dns_servers
+      - docker_registries
+      - admin_username
+      - admin_password
+      - override_files_dir
+
+  - name: Set initial address facts if not defined. They will be updated later
+    set_fact:
+      pxeboot_start_address: "{{ pxeboot_start_address | default('derived') }}"
+      pxeboot_end_address: "{{ pxeboot_end_address | default('derived') }}"
+      management_start_address: "{{ management_start_address | default('derived') }}"
+      management_end_address: "{{ management_end_address | default('derived') }}"
+      cluster_host_start_address: "{{ cluster_host_start_address | default('derived') }}"
+      cluster_host_end_address: "{{ cluster_host_end_address | default('derived') }}"
+      cluster_pod_start_address: "{{ cluster_pod_start_address | default('derived') }}"
+      cluster_pod_end_address: "{{ cluster_pod_end_address | default('derived') }}"
+      cluster_service_start_address: "{{ cluster_service_start_address | default('derived') }}"
+      cluster_service_end_address: "{{ cluster_service_end_address | default('derived') }}"
+      external_oam_start_address: "{{ external_oam_start_address | default('derived') }}"
+      external_oam_end_address: "{{ external_oam_end_address | default('derived') }}"
+      management_multicast_start_address: "{{ management_multicast_start_address | default('derived') }}"
+      management_multicast_end_address: "{{ management_multicast_end_address | default('derived') }}"
+      external_oam_node_0_address: "{{ external_oam_node_0_address | default('derived') }}"
+      external_oam_node_1_address: "{{ external_oam_node_1_address | default('derived') }}"
+      
+  - name: Set docker registries to default values if not specified
+    set_fact:
+      docker_registries:
+        - k8s.gcr.io
+        - gcr.io
+        - quay.io
+        - docker.io
+    when: docker_registries is none
+
+  - name: Initialize some flags to be used in subsequent roles/tasks
+    set_fact:
+      reconfigured: false
+      system_config_update: false
+      network_config_update: false
+      docker_config_update: false
+      admin_config_update: false
+      save_config: true
+      use_docker_proxy: false
+      use_unified_registry: false
+      restart_services: false
+
+  - name: Set initial facts
+    set_fact:
+      system_params:
+        'system_mode': "{{ system_mode }}"
+        'timezone': "{{ timezone }}"
+      root_disk_size: "{{ standard_root_disk_size }}"
+      localhost_name_ip_mapping: "127.0.0.1\tlocalhost\tlocalhost.localdomain localhost4 localhost4.localdomain4"
+      network_params:
+        'pxeboot_subnet': "{{ pxeboot_subnet }}"
+        'management_subnet': "{{ management_subnet }}"
+        'cluster_host_subnet': "{{ cluster_host_subnet }}"
+        'cluster_pod_subnet': "{{ cluster_pod_subnet }}"
+        'cluster_service_subnet': "{{ cluster_service_subnet }}"
+        'external_oam_subnet': "{{ external_oam_subnet }}"
+        'external_oam_gateway_address': "{{ external_oam_gateway_address }}"
+        'external_oam_floating_address': "{{ external_oam_floating_address }}"
+        'management_multicast_subnet': "{{ management_multicast_subnet }}"
+      # Set this placeholder here to workaround an Ansible quirk
+      derived_network_params:
+        place_holder: place_holder
+
+  - name: Turn on use_docker_proxy flag
+    set_fact:
+      use_docker_proxy: true
+    when: (docker_http_proxy is defined and docker_http_proxy is not none) or
+          (docker_https_proxy is defined and docker_https_proxy is not none)
+
+  - name: Set default values for docker proxies if not defined
+    set_fact:
+      docker_http_proxy: "{{ docker_http_proxy | default('undef') }}"
+      docker_https_proxy: "{{ docker_https_proxy | default('undef') }}"
+      docker_no_proxy: "{{ docker_no_proxy | default([]) }}"
+
+  - name: Retrieve software version number
+    # lookup module does not work with /etc/build.info as it does not have ini
+    # format. Resort to shell source.
+    shell: source /etc/build.info; echo $SW_VERSION
+    register: sw_version_result
+
+  - name: Fail if software version is not defined
+    fail:
+      msg: "SW_VERSION is missing in /etc/build.info"
+    when: sw_version_result.stdout_lines|length == 0
+
+  - name: Retrieve system type
+    shell: source /etc/platform/platform.conf; echo $system_type
+    register: system_type_result
+
+  - name: Fail if system type is not defined
+    fail:
+      msg: "system_type is missing in /etc/platform/platform.conf"
+    when: system_type_result.stdout_lines|length == 0
+
+  - name: Set software version, system type config path facts
+    set_fact:
+      software_version: "{{ sw_version_result.stdout_lines[0] }}"
+      system_type: "{{ system_type_result.stdout_lines[0] }}"
+
+  - name: Set config path facts
+    set_fact:
+      keyring_permdir: "{{ platform_path + '/.keyring/' + software_version }}"
+      config_permdir: "{{ platform_path + '/config/' + software_version }}"
+      puppet_permdir: "{{ platform_path + '/puppet/' + software_version }}"
+
+  - name: Check Docker status
+    command: systemctl status docker
+    failed_when: false
+    register: docker
+
+  - name: Look for openrc file
+    stat:
+      path: /etc/platform/openrc
+    register: openrc_file
+
+  - name: Turn on replayed flag
+    set_fact:
+      replayed: true
+    when: openrc_file.stat.exists and docker.rc == 0
+
+  - block:
+    - name: Check if the controller-0 host has been successfully provisioned
+      shell: source /etc/platform/openrc; system host-list|grep controller-0
+      failed_when: false
+      register: host_check
+
+    - block: # system has been configured
+      - name: Set flag to indicate that this host has been previously configured
+        set_fact:
+          reconfigured: true
+
+      - name: Find previous config file for this host
+        stat:
+          path: /tmp/last_bootstrap_config.yml
+        register: last_config_file
+
+      - block:
+        - name: Read in last config values
+          include_vars:
+            file: /tmp/last_bootstrap_config.yml
+
+        - name: Turn on system attributes reconfiguration flag
+          set_fact:
+            system_config_update: true
+          when: (prev_system_mode != system_mode) or
+                (prev_timezone != timezone) or
+                (prev_dns_servers.split(',') | sort != dns_servers | sort)
+
+        - name: Turn on docker reconfiguration flag
+          set_fact:
+            docker_config_update: true
+          when: (prev_docker_registries.split(',') | sort != docker_registries | sort) or
+                ((use_docker_proxy) and
+                 (prev_docker_http_proxy != docker_http_proxy or
+                  prev_docker_https_proxy != docker_https_proxy or
+                  prev_docker_no_proxy != docker_no_proxy))
+
+        - name: Turn on restart services flag if any of the management, cluster and docker settings is changed
+          set_fact:
+            restart_services: true
+          when: (prev_management_subnet != management_subnet) or
+                (prev_cluster_host_subnet != cluster_host_subnet) or
+                (prev_cluster_pod_subnet != cluster_pod_subnet) or
+                (prev_cluster_service_subnet != cluster_service_subnet) or
+                docker_config_update
+                 
+        - name: Turn on network reconfiguration flag if any of the network related settings is changed
+          set_fact:
+            network_config_update: true
+          when: (prev_pxeboot_subnet != pxeboot_subnet) or
+                (prev_management_subnet != management_subnet) or
+                (prev_cluster_host_subnet != cluster_host_subnet) or
+                (prev_cluster_pod_subnet != cluster_pod_subnet) or
+                (prev_cluster_service_subnet != cluster_service_subnet) or
+                (prev_external_oam_subnet != external_oam_subnet) or
+                (prev_external_oam_gateway_address != external_oam_gateway_address) or
+                (prev_external_oam_floating_address != external_oam_floating_address) or
+                (prev_management_multicast_subnet != management_multicast_subnet) or
+                (prev_dynamic_address_allocation != dynamic_address_allocation) or
+                (prev_pxeboot_start_address != pxeboot_start_address) or
+                (prev_pxeboot_end_address != pxeboot_end_address) or
+                (prev_management_start_address != management_start_address) or
+                (prev_management_end_address != management_end_address) or
+                (prev_cluster_host_start_address != cluster_host_start_address) or
+                (prev_cluster_host_end_address != cluster_host_end_address) or
+                (prev_cluster_pod_start_address != cluster_pod_start_address) or
+                (prev_cluster_pod_end_address != cluster_pod_end_address) or
+                (prev_cluster_service_start_address != cluster_service_start_address) or
+                (prev_cluster_service_end_address != cluster_service_end_address) or
+                (prev_external_oam_start_address != external_oam_start_address) or
+                (prev_external_oam_end_address != external_oam_end_address) or
+                (prev_management_multicast_start_address != management_multicast_start_address) or
+                (prev_management_multicast_end_address != management_multicast_end_address) or
+                (prev_external_oam_node_0_address != external_oam_node_0_address) or
+                (prev_external_oam_node_1_address != external_oam_node_1_address)
+
+        - name: Turn on admin info reconfiguration flag
+          set_fact:
+            admin_config_update: true
+          when: (prev_admin_username != admin_username|hash('sha1')) or
+                (prev_admin_password != admin_password|hash('sha1'))
+
+        - block:
+          # Re-evaluate condition to save configuration to sysinv database
+          - name: Turn off save_config flag
+            set_fact:
+              save_config: false
+
+          # Re-evaluate condition to continue playing
+          - block:
+            - block:
+              - name: Stop playing if this is the only target host
+                debug:
+                  msg: "Configurations are unchanged. There's nothing to play!"
+              - meta: end_play
+              when: play_hosts | length == 1
+
+            # This is not the only target host, turn on skip_play flag for this host
+            - name: Turn on skip_play flag
+              set_fact:
+                skip_play: true
+
+            when: not admin_config_update
+
+          when: not system_config_update and
+                not network_config_update and
+                not docker_config_update
+
+        when: last_config_file.stat.exists
+      when: host_check.rc == 0
+    when: replayed # bootstrap manifest has been applied
+
+  - name: Check volume groups
+    command: vgdisplay cgts-vg
+    register: vg_result
+    failed_when: false
+
+  - name: Fail if volume groups are not configured
+    fail: msg='Volume groups not configured.'
+    when: vg_result.rc != 0
+
+  - name: Check size of root disk
+    script: check_root_disk_size.py {{ standard_root_disk_size }}
+    register: disk_size_check_result
+    failed_when: false
+
+  - name: Update root disk size
+    set_fact:
+      root_disk_size: "{{ disk_size_check_result.stdout_lines[1] }}"
+
+  - debug:
+      msg: >-
+         [WARNING]: Root disk {{ disk_size_check_result.stdout_lines[0] }} size is
+         {{ root_disk_size }}GB which is less than the standard size of
+         {{ standard_root_disk_size }}GB. Please consult the Software Installation
+         Guide for details.
+    when: disk_size_check_result.rc != 0
+
+  - name: Look for branding tar file
+    find:
+      paths: /opt/branding
+      patterns: '*.tgz'
+    register: find_tar_result
+
+  - name: Fail if there are more than one branding tar files
+    fail:
+      msg: >-
+           Only one branding tarball is permitted in /opt/branding. Refer to
+           the branding readme in the SDK.
+    when: find_tar_result.matched > 1
+
+  - name: Look for other branding files
+    find:
+      paths: /opt/branding
+      excludes: '*.tgz,applied,horizon-region-exclusions.csv'
+    register: find_result
+
+  - name: Fail if the branding filename is not valid
+    fail:
+      msg: >
+        {{ find_result.files[0].path }} is not a valid branding
+        filename. Refer to the branding readme in the SDK.
+    when: find_result.matched > 0
+
+  - name: Mark environment as Ansible bootstrap
+    file:
+      path: /var/run/.ansible_bootstrap
+      state: touch
+
+  - debug:
+      msg: >-
+        system_config_update flag: {{ system_config_update }},
+        network_config_update flag: {{ network_config_update }},
+        docker_config_update flag: {{ docker_config_update }},
+        admin_config_update flag: {{ admin_config_update }},
+        restart_services flag:  {{ restart_services }},
+        save_config flag: {{ save_config }},
+        skip_play flag: {{ skip_play }}
+
+  when: not skip_play

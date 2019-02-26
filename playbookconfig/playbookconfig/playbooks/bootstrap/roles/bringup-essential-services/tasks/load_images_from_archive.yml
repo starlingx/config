@@ -1,0 +1,39 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Load system images needed for Kubernetes and Helm bringup from archive
+#   directory
+#
+
+- name: Set default directory for image files copy
+  set_fact:
+    images_dir: /home/wrsroot
+  when: (images_dir is not defined) or (images_dir is none)
+
+- name: Copy Docker images to remote host
+  copy:
+    src: "{{ docker_images_archive_source }}"
+    dest: "{{ images_dir }}"
+  when: inventory_hostname != 'localhost'
+
+- name: Adjust the images directory fact for local host
+  set_fact:
+    images_dir: "{{ docker_images_archive_source }}"
+  when: inventory_hostname == 'localhost'
+
+- name: Get list of archived files
+  find:
+    paths: "{{ images_dir }}"
+    patterns: "*.tar"
+  register: archive_find_output
+  #run_once: true
+  #delegate_to: localhost
+
+- name: Load system images
+  # Due to docker_image module deficiency, resort to shell
+  shell: docker load < {{ images_dir }}/{{ item.path | basename }}
+  with_items: "{{ archive_find_output.files }}"

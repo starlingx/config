@@ -1,0 +1,5 @@
+---
+keyring_workdir: /tmp/python_keyring
+docker_proxy_conf: /etc/systemd/system/docker.service.d/http-proxy.conf
+minimum_root_disk_size: 240
+default_security_feature: "nopti nospectre_v2"

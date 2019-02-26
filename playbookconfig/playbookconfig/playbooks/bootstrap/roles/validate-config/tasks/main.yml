@@ -1,0 +1,426 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ROLE DESCRIPTION:
+#   This role is to validate amd save host (non secure) config.
+#
+
+- debug:
+    msg:
+      - System mode is {{ system_mode }}
+      - Timezone is {{ timezone }}
+      - DNS servers is {{ dns_servers }}
+      - PXE boot subnet is {{ pxeboot_subnet }}
+      - Management subnet is {{ management_subnet }}
+      - Cluster host subnet is {{ cluster_host_subnet }}
+      - Cluster pod subnet is {{ cluster_pod_subnet }}
+      - Cluster service subnet is {{ cluster_service_subnet }}
+      - OAM subnet is {{ external_oam_subnet }}
+      - OAM gateway is {{ external_oam_gateway_address }}
+      - OAM floating ip is {{ external_oam_floating_address }}
+      - Dynamic address allocation is {{ dynamic_address_allocation }}
+      - Docker registries is {{ docker_registries }}
+      - Docker HTTP proxy is {{ docker_http_proxy }}
+      - Docker HTTPS proxy is {{ docker_https_proxy }}
+      - Docker no proxy list is {{ docker_no_proxy }}
+
+# System parameters config validation
+- block:
+  - name: Set system mode fact
+    set_fact:
+      system_mode: "{{ system_mode|lower }}"
+
+  - block:
+    - debug:
+        msg: "System type is Standard, system mode will be set to duplex."
+    - name: Set system mode to duplex for Standard system
+      set_fact:
+        system_mode: duplex
+    when: system_type == 'Standard'
+
+  - name: Validate system mode if system type is All-in-one
+    fail:
+      msg: "Invalid system mode. Valid values are: simplex, duplex or duplex-direct."
+    when: >
+      (system_mode != 'simplex' and
+       system_mode != 'duplex' and
+       system_mode != 'duplex-direct') and
+      (system_type == 'All-in-one')
+
+  - name: Checking registered timezones
+    stat:
+      path: "{{ '/usr/share/zoneinfo/' + timezone }}"
+    register: timezone_file
+
+  - name: Fail if provided timezone is unknown
+    fail: msg="The provided timezone {{ timezone }} is invalid."
+    when: not timezone_file.stat.exists
+
+  - name: Fail if the number of dns servers provided is not at least 1 and no more than 3
+    fail:
+      msg: "The number of DNS servers exceeds maximum allowable number of 3."
+    when: (dns_servers | length == 0) or (dns_servers | length > 3)
+
+
+# DNS servers config validation
+- block:
+  # Looping over a block of tasks is not yet supported. For now, move the
+  # DNS validation to a seprate tasks file.
+  - include: validate_dns.yml dns_server={{ item }}
+    with_items: "{{ dns_servers }}"
+
+
+# Networks config validation
+- block:
+  - name: Validate provided subnets (both IPv4 & IPv6 notations)
+    debug:
+      msg: "{{ item.key }}: {{ item.value }}"
+    failed_when: item.value|ipaddr == False
+    with_dict: "{{ network_params }}"
+
+  - name: Fail if cluster pod/service subnet size is too small (minimum size = 65536)
+    fail:
+      msg: "Subnet size is too small, must have minimum {{ min_pod_service_num_addresses }} addresses."
+    when: item|ipaddr('size') < min_pod_service_num_addresses
+    with_items:
+      - "{{ network_params.cluster_pod_subnet }}"
+      - "{{ network_params.cluster_service_subnet }}"
+
+  - name: Fail if pxeboot/management/multicast subnet size is too small (minimum size = 16)
+    fail:
+      msg: "Subnet size is too small, must have minimum {{ min_16_addresses }} addresses."
+    when: item|ipaddr('size') < min_16_addresses
+    with_items:
+      - "{{ network_params.pxeboot_subnet }}"
+      - "{{ network_params.management_subnet }}"
+      - "{{ network_params.management_multicast_subnet }}"
+
+  - name: Fail if the size of the remaining subnets is too small (minimum size = 8)
+    fail:
+      msg: "Subnet size is too small, must have minimum {{ min_8_addresses }} addresses."
+    when: item|ipaddr('size') < min_8_addresses
+    with_items:
+      - "{{ network_params.cluster_host_subnet }}"
+      - "{{ network_params.external_oam_subnet }}"
+
+  - name: Generate warning if subnet prefix is not typical for Standard systems
+    debug:
+      msg: "WARNING: Subnet prefix of less than /24 is not typical. This will affect scaling of the system!"
+    when: item|ipaddr('prefix')|int > typical_subnet_prefix and system_type == 'Standard'
+    with_items:
+      - "{{ network_params.pxeboot_subnet }}"
+      - "{{ network_params.management_subnet }}"
+      - "{{ network_params.cluster_host_subnet }}"
+      - "{{ network_params.external_oam_subnet }}"
+      - "{{ network_params.management_multicast_subnet }}"
+
+  - set_fact:
+      ipv6_addressing: "{{ network_params.management_subnet|ipv6 }}"
+
+  - block:
+    - name: Fail if IPv6 management on simplex
+      fail:
+        msg: "IPv6 management network not supported on simplex configuration."
+      when: system_mode == 'simplex'
+
+    - name: Fail if IPv6 prefix length is too short
+      fail:
+        msg: "IPv6 minimum prefix length is {{ minimum_prefix_length }}"
+      when: network_params.management_subnet|ipaddr('prefix')|int < minimum_ipv6_prefix_length
+
+    - name: Update localhost name ip mapping for IPv6
+      set_fact:
+        localhost_name_ip_mapping: "::1\tlocalhost\tlocalhost.localdomain localhost6 localhost6.localdomain6"
+
+    when: ipv6_addressing
+
+  - name: Fail if address allocation is misconfigured
+    fail:
+      msg: "dynamic_address_allocation is misconfigured. Valid value is either 'True' or 'False'."
+    when: not dynamic_address_allocation | bool
+
+  # The provided subnets have passed validation, set the default addresses
+  # based on the subnet values
+  - name: Set default start and end addresses based on provided subnets
+    set_fact:
+      default_pxeboot_start_address: "{{ (pxeboot_subnet | ipaddr(2)).split('/')[0] }}"
+      default_pxeboot_end_address: "{{ (pxeboot_subnet | ipaddr(-2)).split('/')[0] }}"
+      default_management_start_address: "{{ (management_subnet | ipaddr(2)).split('/')[0] }}"
+      default_management_end_address: "{{ (management_subnet | ipaddr(-2)).split('/')[0] }}"
+      default_cluster_host_start_address: "{{ (cluster_host_subnet | ipaddr(2)).split('/')[0] }}"
+      default_cluster_host_end_address: "{{ (cluster_host_subnet | ipaddr(-2)).split('/')[0] }}"
+      default_cluster_pod_start_address: "{{ (cluster_pod_subnet | ipaddr(1)).split('/')[0] }}"
+      default_cluster_pod_end_address: "{{ (cluster_pod_subnet | ipaddr(-2)).split('/')[0] }}"
+      default_cluster_service_start_address: "{{ (cluster_service_subnet | ipaddr(1)).split('/')[0] }}"
+      default_cluster_service_end_address: "{{ (cluster_service_subnet | ipaddr(-2)).split('/')[0] }}"
+      default_external_oam_start_address: "{{ (external_oam_subnet | ipaddr(1)).split('/')[0] }}"
+      default_external_oam_end_address: "{{ (external_oam_subnet | ipaddr(-2)).split('/')[0] }}"
+      default_management_multicast_start_address: "{{ (management_multicast_subnet | ipaddr(1)).split('/')[0] }}"
+      default_management_multicast_end_address: "{{ (management_multicast_subnet | ipaddr(-2)).split('/')[0] }}"
+      default_external_oam_node_0_address: "{{ external_oam_floating_address | ipmath(1) }}"
+      default_external_oam_node_1_address: "{{ external_oam_floating_address | ipmath(2) }}"
+
+  - name: Build address pairs for validation, merging default and user provided values
+    set_fact:
+      address_pairs:
+        pxeboot:
+          start: "{{ pxeboot_start_address if pxeboot_start_address != 'derived' else default_pxeboot_start_address }}"
+          end: "{{ pxeboot_end_address if pxeboot_end_address != 'derived' else default_pxeboot_end_address }}"
+          subnet: "{{ network_params.pxeboot_subnet }}"
+          use_default: "{{ true if pxeboot_start_address == 'derived' and pxeboot_end_address == 'derived' else false }}"
+        management:
+          start: "{{ management_start_address if management_start_address != 'derived' else default_management_start_address }}"
+          end: "{{ management_end_address if management_end_address != 'derived' else default_management_end_address }}"
+          subnet: "{{ network_params.management_subnet }}"
+          use_default: "{{ true if management_start_address == 'derived' and management_end_address == 'derived' else false }}"
+        cluster_host:
+          start: "{{ cluster_host_start_address if cluster_host_start_address != 'derived' else default_cluster_host_start_address }}"
+          end: "{{ cluster_host_end_address if cluster_host_end_address != 'derived' else default_cluster_host_end_address}}"
+          subnet: "{{ network_params.cluster_host_subnet }}"
+          use_default: "{{ true if cluster_host_start_address == 'derived' and cluster_host_end_address == 'derived' else false }}"
+        cluster_pod:
+          start: "{{ cluster_pod_start_address if cluster_pod_start_address != 'derived' else default_cluster_pod_start_address }}"
+          end: "{{ cluster_pod_end_address if cluster_pod_end_address != 'derived' else default_cluster_pod_end_address }}"
+          subnet: "{{ network_params.cluster_pod_subnet }}"
+          use_default: "{{ true if cluster_pod_start_address == 'derived' and cluster_pod_end_address == 'derived' else false }}"
+        cluster_service:
+          start: "{{ cluster_service_start_address if cluster_service_start_address != 'derived' else default_cluster_service_start_address }}"
+          end: "{{ cluster_service_end_address if cluster_service_end_address != 'derived' else default_cluster_service_end_address }}"
+          subnet: "{{ network_params.cluster_service_subnet }}"
+          use_default: "{{ true if cluster_service_start_address == 'derived' and cluster_service_end_address == 'derived' else false }}"
+        oam:
+          start: "{{ external_oam_start_address if external_oam_start_address != 'derived' else default_external_oam_start_address }}"
+          end: "{{ external_oam_end_address if external_oam_end_address != 'derived' else default_external_oam_end_address }}"
+          subnet: "{{ network_params.external_oam_subnet }}"
+          use_default: "{{ true if external_oam_start_address == 'derived' and external_oam_end_address == 'derived' else false }}"
+        multicast:
+          start: "{{ management_multicast_start_address if management_multicast_start_address != 'derived' else default_management_multicast_start_address }}"
+          end: "{{ management_multicast_end_address if management_multicast_end_address != 'derived' else default_management_multicast_end_address }}"
+          subnet: "{{ network_params.management_multicast_subnet }}"
+          use_default: "{{ true if management_multicast_start_address == 'derived' and management_multicast_end_address == 'derived' else false }}"
+        oam_node:
+          start: "{{ external_oam_node_0_address if external_oam_node_0_address != 'derived' else default_external_oam_node_0_address }}"
+          end: "{{ external_oam_node_1_address if external_oam_node_1_address != 'derived' else default_external_oam_node_1_address }}"
+          subnet: "{{ network_params.external_oam_subnet }}"
+          use_default: "{{ true if external_oam_node_0_address == 'derived' and external_oam_node_1_address == 'derived' else false }}"
+
+  - include: validate_address_range.yml
+    with_dict: "{{ address_pairs }}"
+
+  - name: Set floating addresses based on subnets or start addresses
+    set_fact:
+      # Not sure why ipaddr('address') and ipsubnet filter did not extract the IP from CIDR input. Resort to string split for now.
+      controller_floating_address: "{{ (management_subnet | ipaddr(2)).split('/')[0] if management_start_address == 'derived' else management_start_address }}"
+      controller_pxeboot_floating_address: "{{ (pxeboot_subnet | ipaddr(2)).split('/')[0] if pxeboot_start_address == 'derived' else  pxeboot_start_address }}"
+      cluster_floating_address: "{{ (cluster_host_subnet | ipaddr(2)).split('/')[0] if cluster_host_start_address == 'derived' else cluster_host_start_address }}"
+
+  - name: Set derived facts for subsequent roles
+    set_fact:
+      derived_network_params:
+        'management_interface': lo
+        'management_interface_name': lo
+        'controller_0_address': "{{ controller_floating_address|ipmath(1) }}"
+        'controller_1_address': "{{ controller_floating_address|ipmath(2) }}"
+        'nfs_management_address_1': "{{ controller_floating_address|ipmath(3) }}"
+        'nfs_management_address_2': "{{ controller_floating_address|ipmath(4) }}"
+        'controller_pxeboot_address_0': "{{ controller_pxeboot_floating_address|ipmath(1) }}"
+        'controller_pxeboot_address_1': "{{ controller_pxeboot_floating_address|ipmath(2) }}"
+
+      # Make common facts available to other roles
+      config_workdir: "{{ config_workdir }}"
+      dns_servers: "{{ dns_servers }}"
+
+      # Derived network parameters that don't apply to bootstrap_config but are required for
+      # subsequent roles
+      management_subnet_prefix: "{{ management_subnet | ipaddr('prefix') }}"
+      management_broadcast: "{{ management_subnet | ipaddr('broadcast') }}"
+      pxe_subnet_prefix: "{{ pxeboot_subnet | ipaddr('prefix') }}"
+      cluster_subnet_prefix: "{{ cluster_host_subnet | ipaddr('prefix') }}"
+      cluster_broadcast: "{{ cluster_host_subnet | ipaddr('broadcast') }}"
+      controller_0_cluster_host: "{{ cluster_floating_address|ipmath(1) }}"
+      controller_1_cluster_host: "{{ cluster_floating_address|ipmath(2) }}"
+
+# Docker config validation
+- block:
+  - set_fact:
+      use_default_registries: true
+      # Define these just in case we need them later
+      default_k8s_registry: k8s.gcr.io
+      default_gcr_registry: gcr.io
+      default_quay_registry: quay.io
+      default_docker_registry: docker.io
+      default_no_proxy:
+        - localhost
+        - 127.0.0.1
+        - "{{ controller_floating_address }}"
+        - "{{ derived_network_params.controller_0_address }}"
+        - "{{ derived_network_params.controller_1_address }}"
+      sx_proxy_addons:
+        - "{{ address_pairs['oam']['start'] }}"
+      non_sx_proxy_addons:
+        - "{{ external_oam_floating_address }},"
+        - "{{ address_pairs['oam_node']['start'] }},"
+        - "{{ address_pairs['oam_node']['end'] }}"
+      docker_no_proxy_combined: []
+
+  - block:
+    - name: Set default no-proxy address list (simplex)
+      set_fact:
+        default_no_proxy: "{{ default_no_proxy + sx_proxy_addons }}"
+      when: system_mode == 'simplex'
+
+    - name: Set default no-proxy address list (non simplex)
+      set_fact:
+        default_no_proxy: "{{ default_no_proxy + non_sx_proxy_addons }}"
+      when: system_mode != 'simplex'
+
+    - block:
+      - name: Validate http proxy urls
+        include: validate_url.yml input_url={{ item }}
+        with_items:
+          - "{{ docker_http_proxy }}"
+          - "{{ docker_https_proxy }}"
+
+    - block:
+      - name: Validate no proxy addresses
+        include: validate_address.yml input_address={{ item }}
+        with_items: "{{ docker_no_proxy }}"
+        when: docker_no_proxy|length > 0
+
+    - name: Add user defined no-proxy address list to default
+      set_fact:
+        docker_no_proxy_combined: "{{ default_no_proxy + docker_no_proxy }}"
+
+    when: use_docker_proxy
+
+  - block:
+    - name: Fail if secure registry flag is misconfigured
+      fail:
+        msg: "is_secure_registry is misconfigured. Valid value is either 'True' or 'False'."
+      when: (is_secure_registry is defined) and
+            (not is_secure_registry | bool)
+
+    - name: Default the unified registry to secure if not specified
+      set_fact:
+        is_secure_registry: True
+      when: is_secure_registry is not defined
+
+    - name: Turn on use_unified_registry flag
+      set_fact:
+        use_unified_registry: true
+        unified_registry: "{{ docker_registries }}"
+
+    when: docker_registries|length == 1
+
+  - name: Update use_default_registries flag
+    set_fact:
+      use_default_registries: false
+    when: use_unified_registry or
+          docker_registries|length != 4 or
+          default_k8s_registry not in docker_registries or
+          default_gcr_registry not in docker_registries or
+          default_quay_registry not in docker_registries or
+          default_docker_registry not in docker_registries
+
+  - block:
+    - include: validate_address.yml  input_address={{ item }}
+      with_items: "{{ docker_registries }}"
+    when: not use_default_registries
+
+
+# Docker images archive source validation
+- block:
+  - set_fact:
+      images_archive_exists: false
+
+  - block:
+    - name: Check if images archive location exists
+      stat:
+        path: "{{ docker_images_archive_source }}"
+      register: archive_source
+
+    - block:
+      - name: Get list of archived files
+        find:
+          paths: "{{ docker_images_archive_source }}"
+          patterns: "*.tar"
+        register: archive_find_output
+
+      - name: Turn on images archive flag
+        set_fact:
+          images_archive_exists: true
+        when: archive_find_output.matched > 0
+
+      when: archive_source.stat.exists
+    delegate_to: localhost
+    when: (docker_images_archive_source is defined) and
+          (docker_images_archive_source is not none)
+
+
+# bootstrap_config ini file generation
+- block:
+  - name: Create config workdir
+    file:
+      path: "{{ config_workdir }}"
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+
+  - name: Generate config ini file for python sysinv db population script
+    lineinfile:
+      path: "{{ bootstrap_config_file }}"
+      line: "{{ item }}"
+      create: yes
+    with_items:
+      - "[BOOTSTRAP_CONFIG]"
+      - "CONTROLLER_HOSTNAME=controller-0"
+      - "SYSTEM_TYPE={{ system_type }}"
+      - "SYSTEM_MODE={{ system_mode }}"
+      - "TIMEZONE={{ timezone }}"
+      - "SW_VERSION={{ software_version }}"
+      - "NAMESERVERS={{ dns_servers| join(',') }}"
+      - "PXEBOOT_SUBNET={{ pxeboot_subnet }}"
+      - "PXEBOOT_START_ADDRESS={{ address_pairs['pxeboot']['start'] }}"
+      - "PXEBOOT_END_ADDRESS={{ address_pairs['pxeboot']['end'] }}"
+      - "MANAGEMENT_SUBNET={{ management_subnet }}"
+      - "MANAGEMENT_START_ADDRESS={{ address_pairs['management']['start'] }}"
+      - "MANAGEMENT_END_ADDRESS={{ address_pairs['management']['end'] }}"
+      - "DYNAMIC_ADDRESS_ALLOCATION={{ dynamic_address_allocation }}"
+      - "MANAGEMENT_INTERFACE=lo"
+      - "CONTROLLER_0_ADDRESS={{ derived_network_params.controller_0_address }}"
+      - "CLUSTER_HOST_SUBNET={{ cluster_host_subnet }}"
+      - "CLUSTER_HOST_START_ADDRESS={{ address_pairs['cluster_host']['start'] }}"
+      - "CLUSTER_HOST_END_ADDRESS={{ address_pairs['cluster_host']['end'] }}"
+      - "CLUSTER_POD_SUBNET={{ cluster_pod_subnet }}"
+      - "CLUSTER_POD_START_ADDRESS={{ address_pairs['cluster_pod']['start'] }}"
+      - "CLUSTER_POD_END_ADDRESS={{ address_pairs['cluster_pod']['end'] }}"
+      - "CLUSTER_SERVICE_SUBNET={{ cluster_service_subnet }}"
+      - "CLUSTER_SERVICE_START_ADDRESS={{ address_pairs['cluster_service']['start'] }}"
+      - "CLUSTER_SERVICE_END_ADDRESS={{ address_pairs['cluster_service']['start'] }}"
+      - "EXTERNAL_OAM_SUBNET={{ external_oam_subnet }}"
+      - "EXTERNAL_OAM_START_ADDRESS={{ address_pairs['oam']['start'] }}"
+      - "EXTERNAL_OAM_END_ADDRESS={{ address_pairs['oam']['end'] }}"
+      - "EXTERNAL_OAM_GATEWAY_ADDRESS={{ external_oam_gateway_address }}"
+      - "EXTERNAL_OAM_FLOATING_ADDRESS={{ external_oam_floating_address }}"
+      - "EXTERNAL_OAM_0_ADDRESS={{ address_pairs['oam_node']['start'] }}"
+      - "EXTERNAL_OAM_1_ADDRESS={{ address_pairs['oam_node']['end'] }}"
+      - "MANAGEMENT_MULTICAST_SUBNET={{ management_multicast_subnet }}"
+      - "MANAGEMENT_MULTICAST_START_ADDRESS={{ address_pairs['multicast']['start'] }}"
+      - "MANAGEMENT_MULTICAST_END_ADDRESS={{ address_pairs['multicast']['end'] }}"
+      - "DOCKER_HTTP_PROXY={{ docker_http_proxy }}"
+      - "DOCKER_HTTPS_PROXY={{ docker_https_proxy }}"
+      - "DOCKER_NO_PROXY={{ docker_no_proxy_combined | join(',') }}"
+      - "DOCKER_REGISTRIES={{ docker_registries | join(',') }}"
+      - "USE_DEFAULT_REGISTRIES={{ use_default_registries }}"
+      - "IS_SECURE_REGISTRY={{ is_secure_registry | default(True) }}"
+
+  - name: Write simplex flag
+    file:
+      path: /etc/platform/simplex
+      state: touch
+
+  when: save_config

@@ -108,6 +108,7 @@ FIRST_BOOT_FLAG = os.path.join(
 PUPPET_HIERADATA_PATH = os.path.join(tsc.PUPPET_PATH, 'hieradata')
 
 LOCK_AGENT_ACTION = 'agent-exclusive-action'
+UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
 
 
 class FakeGlobalSectionHead(object):
@@ -332,7 +333,10 @@ class AgentManager(service.PeriodicService):
             config is completed
         """
         if (not self._first_grub_update and
-                os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)):
+                # config_controller case
+                (os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG) or
+                # ansible bootstrap case
+                 os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG))):
             self._first_grub_update = True
             return True
         return False
@@ -1540,6 +1544,14 @@ class AgentManager(service.PeriodicService):
                                          personality,
                                          'runtime', tmpfile,
                                          hieradata_path=hieradata_path)
+            applied_classes = config.get('classes')
+            LOG.info('Runtime manifest apply completed for classes %s.' %
+                     applied_classes)
+            if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
+                    applied_classes == ['openstack::keystone::endpoint::runtime']):
+                # Set ready flag for maintenance to proceed with the unlock of
+                # the initial controller.
+                utils.touch(UNLOCK_READY_FLAG)
         except Exception:
             LOG.exception("failed to apply runtime manifest")
             raise

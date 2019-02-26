@@ -1,6 +1,6 @@
 class platform::fm::params (
   $api_port = 18002,
-  $api_host = undef,
+  $api_host = '127.0.0.1',
   $region_name = undef,
   $system_name = undef,
   $service_create = false,
@@ -99,3 +99,16 @@ class platform::fm::runtime {
   }
 }
 
+class platform::fm::bootstrap {
+  # Set up needed config to enable launching of fmManager later
+  include ::platform::fm::params
+  include ::platform::fm
+  if $::platform::params::init_keystone {
+    include ::fm::keystone::auth
+    class { '::fm::api':
+      host    => $::platform::fm::params::api_host,
+      workers => $::platform::params::eng_workers,
+      sync_db => $::platform::params::init_database,
+    }
+  }
+}

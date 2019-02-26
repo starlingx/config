@@ -1,0 +1,124 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ROLE DESCRIPTION:
+#   This role is to bring up Kubernetes and essential flock services required
+#   initial controller unlock.
+#
+
+- block:
+  - name: Set facts for IP address provisioning against loopback interface
+    set_fact:
+      mgmt_virtual: "{{ derived_network_params.controller_0_address }}/{{ management_subnet_prefix }}"
+      cluster_virtual: "{{ controller_0_cluster_host }}/{{ cluster_subnet_prefix }}"
+      pxe_virtual: "{{ controller_pxeboot_floating_address }}/{{ pxe_subnet_prefix }}"
+      cluster_floating_virtual: "{{ cluster_floating_address }}/{{ cluster_subnet_prefix }}"
+      mgmt_floating_virtual: "{{ controller_floating_address }}/{{ management_subnet_prefix }}"
+      mgmt_nfs_1_virtual: "{{ derived_network_params.nfs_management_address_1 }}/{{ management_subnet_prefix }}"
+      mgmt_nfs_2_virtual: "{{ derived_network_params.nfs_management_address_2 }}/{{ management_subnet_prefix }}"
+
+  - name: Add loopback interface
+   # Had to resort to shell module as source is an internal shell command
+    shell: "{{ item }}"
+    with_items:
+      - source /etc/platform/openrc; system host-if-add controller-0 lo virtual none lo -c platform --networks mgmt -m 1500
+      - source /etc/platform/openrc; system host-if-modify controller-0 -c platform --networks cluster-host lo
+      - "ip addr add {{ cluster_virtual }}  brd {{ cluster_broadcast }} dev lo scope host label lo:5"
+      - "ip addr add {{ mgmt_virtual }} brd {{ management_broadcast }} dev lo scope host label lo:1"
+      - "ip addr add {{ pxe_virtual }} dev lo scope host"
+      - "ip addr add {{ cluster_floating_virtual }} dev lo scope host"
+      - "ip addr add {{ mgmt_floating_virtual }} dev lo scope host"
+      - "ip addr add {{ mgmt_nfs_1_virtual }} dev lo scope host"
+      - "ip addr add {{ mgmt_nfs_2_virtual }} dev lo scope host"
+
+  - name: Refresh local DNS (i.e. /etc/hosts)
+    include: refresh_local_dns.yml
+
+  - name: Load images from archives if configured
+    include: load_images_from_archive.yml
+    when: images_archive_exists
+
+  - block:
+    - name: Bring up Kubernetes master
+      include: bringup_kubemaster.yml
+
+    - name: Bring up Helm
+      include: bringup_helm.yml
+
+    - name: Set up controller registry certificate and keys
+      include: setup_registry_certificate_and_keys.yml
+
+    - name: Bring up essential flock services
+      include: bringup_flock_services.yml
+
+    when: (not replayed) or (restart_services)
+
+  - name: Set dnsmasq.leases flag for unlock
+    file:
+      path: "{{ config_permdir }}/dnsmasq.leases"
+      state: touch
+
+  - name: Update resolv.conf file for unlock
+    lineinfile:
+      path: /etc/resolv.conf
+      line: "nameserver {{ controller_floating_address }}"
+      insertbefore: BOF
+
+  when: (not replayed) or (network_config_update) or (docker_config_update)
+
+
+- block:
+  - name: Remove config file from previous play
+    file:
+      path: /tmp/last_bootstrap_config.yml
+      state: absent
+
+  - name: Save the current system and network config for reference in subsequent replays
+    lineinfile:
+      # This file should be cleared upon host reboot
+      path: /tmp/last_bootstrap_config.yml
+      line: "{{ item }}"
+      create: yes
+    with_items:
+      - "prev_system_mode: {{ system_mode }}"
+      - "prev_timezone: {{ timezone }}"
+      - "prev_dynamic_address_allocation: {{ dynamic_address_allocation }}"
+      - "prev_pxeboot_subnet: {{ pxeboot_subnet }}"
+      - "prev_management_subnet: {{ management_subnet }}"
+      - "prev_cluster_host_subnet: {{ cluster_host_subnet }}"
+      - "prev_cluster_pod_subnet: {{ cluster_pod_subnet }}"
+      - "prev_cluster_service_subnet: {{ cluster_service_subnet }}"
+      - "prev_external_oam_subnet: {{ external_oam_subnet }}"
+      - "prev_external_oam_gateway_address: {{ external_oam_gateway_address }}"
+      - "prev_external_oam_floating_address: {{ external_oam_floating_address }}"
+      - "prev_management_multicast_subnet: {{ management_multicast_subnet }}"
+      - "prev_dns_servers: {{ dns_servers | join(',') }}"
+      - "prev_docker_registries: {{ docker_registries | join(',') }}"
+      - "prev_docker_http_proxy: {{ docker_http_proxy }}"
+      - "prev_docker_https_proxy: {{ docker_https_proxy }}"
+      - "prev_docker_no_proxy: {{ docker_no_proxy | join(',') }}"
+      - "prev_admin_username: {{ username | hash('sha1') }}"
+      - "prev_admin_password: {{ password | hash('sha1') }}"
+      # Store the addresses as values determined in prepare-env stage not as merged values in
+      # validate-config stage as the latter requires subnet validation.
+      - "prev_pxeboot_start_address: {{  pxeboot_start_address }}"
+      - "prev_pxeboot_end_address: {{  pxeboot_end_address }}"
+      - "prev_management_start_address: {{  management_start_address }}"
+      - "prev_management_end_address: {{  management_end_address }}"
+      - "prev_cluster_host_start_address: {{ cluster_host_start_address }}"
+      - "prev_cluster_host_end_address: {{ cluster_host_end_address }}"
+      - "prev_cluster_pod_start_address: {{ cluster_pod_start_address }}"
+      - "prev_cluster_pod_end_address: {{ cluster_pod_end_address }}"
+      - "prev_cluster_service_start_address: {{ cluster_service_start_address }}"
+      - "prev_cluster_service_end_address:  {{ cluster_service_end_address }}"
+      - "prev_external_oam_start_address: {{ external_oam_start_address }}"
+      - "prev_external_oam_end_address: {{ external_oam_end_address }}"
+      - "prev_management_multicast_start_address: {{ management_multicast_start_address }}"
+      - "prev_management_multicast_end_address: {{ management_multicast_end_address }}"
+      - "prev_external_oam_node_0_address: {{ external_oam_node_0_address }}"
+      - "prev_external_oam_node_1_address: {{ external_oam_node_1_address }}"
+
+  when: save_config

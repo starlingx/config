@@ -1,0 +1,44 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASK DESCRIPTION:
+#   This tasks is to update /etc/hosts for local name lookup.
+#
+
+# Check host connectivity, change password if provided
+
+- name: Remove existing /etc/hosts
+  file:
+    path: /etc/hosts
+    state: absent
+
+- name: Populate /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ item }}"
+    create: yes
+  with_items:
+    - "{{ localhost_name_ip_mapping }}"
+    - "{{ controller_floating_address }}\tcontroller"
+    # May not need this entry
+    - "{{ controller_0_cluster_host }}\tcontroller-0-infra"
+    - "{{ controller_pxeboot_floating_address }}\tpxecontroller"
+    - "{{ external_oam_floating_address }}\toamcontroller"
+    - "{{ derived_network_params.nfs_management_address_1 }}\tcontroller-platform-nfs"
+    - "{{ derived_network_params.controller_1_address }}\tcontroller-1"
+    - "{{ derived_network_params.controller_0_address }}\tcontroller-0"
+    # May not need this entry
+    - "{{ controller_1_cluster_host }}\tcontroller-1-infra"
+    - "{{ derived_network_params.nfs_management_address_2 }}\tcontroller-nfs"
+
+- name: Save hosts file to permanent location
+  copy:
+    src: /etc/hosts
+    dest: "{{ config_permdir }}"
+    remote_src: yes
+
+- name: Update name service caching server
+  command: nscd -i hosts

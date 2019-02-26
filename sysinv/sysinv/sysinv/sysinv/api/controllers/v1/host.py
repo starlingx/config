@@ -4932,7 +4932,13 @@ class HostController(rest.RestController):
         self.check_unlock_patching(hostupdate, force_unlock)
 
         hostupdate.configure_required = True
-        hostupdate.notify_vim = True
+        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
+                hostupdate.ihost_patch['hostname'] == 'controller-0'):
+            # For the first unlock of the initial controller bootstrapped by
+            # Ansible, don't notify vim.
+            hostupdate.notify_vim = False
+        else:
+            hostupdate.notify_vim = True
 
         return True
 

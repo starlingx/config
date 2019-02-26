@@ -114,7 +114,13 @@ def get_client(api_version, **kwargs):
                'and token'))
         raise exc.AmbigiousAuthSystem(e)
 
-    smapi_endpoint = _get_sm_endpoint(_ksclient, **ep_kwargs)
+    try:
+        smapi_endpoint = _get_sm_endpoint(_ksclient, **ep_kwargs)
+    except Exception:
+        # Could be invoked during controller bootstrap where smapi
+        # endpoint is not yet available.
+        smapi_endpoint = None
+
     cli_kwargs = {
         'token': token,
         'insecure': kwargs.get('insecure'),

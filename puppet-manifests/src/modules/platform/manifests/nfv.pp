@@ -84,4 +84,3 @@ class platform::nfv::api
   include ::platform::nfv::firewall
   include ::platform::nfv::haproxy
 }
-

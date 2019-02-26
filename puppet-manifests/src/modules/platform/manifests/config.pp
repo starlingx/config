@@ -281,13 +281,6 @@ class platform::config::post
   # When applying manifests to upgrade controller-1, we do not want SM or the
   # sysinv-agent or anything else that depends on these flags to start.
   if ! $::platform::params::controller_upgrade {
-
-    if ! str2bool($::is_initial_config_primary) {
-      file { '/etc/platform/.initial_config_complete':
-        ensure => present,
-      }
-    }
-
     file { '/etc/platform/.config_applied':
       ensure  => present,
       mode    => '0640',
@@ -300,11 +293,22 @@ class platform::config::controller::post
 {
   include ::platform::params
 
+  # TODO(tngo): The following block will be removed when we switch to Ansible
   if str2bool($::is_initial_config_primary) {
     # copy configured hosts to redundant storage
     file { "${::platform::params::config_path}/hosts":
       source  => '/etc/hosts',
       replace => false,
+    }
+
+    file { '/etc/platform/.unlock_ready':
+      ensure => present,
+    }
+  }
+
+  if ! $::platform::params::controller_upgrade {
+    file { '/etc/platform/.initial_config_complete':
+      ensure => present,
     }
   }
 
@@ -319,6 +323,14 @@ class platform::config::controller::post
 
 class platform::config::worker::post
 {
+  include ::platform::params
+
+  if ! $::platform::params::controller_upgrade {
+    file { '/etc/platform/.initial_config_complete':
+      ensure => present,
+    }
+  }
+
   file { '/etc/platform/.initial_worker_config_complete':
     ensure => present,
   }
@@ -330,6 +342,14 @@ class platform::config::worker::post
 
 class platform::config::storage::post
 {
+  include ::platform::params
+
+  if ! $::platform::params::controller_upgrade {
+    file { '/etc/platform/.initial_config_complete':
+      ensure => present,
+    }
+  }
+
   file { '/etc/platform/.initial_storage_config_complete':
     ensure => present,
   }

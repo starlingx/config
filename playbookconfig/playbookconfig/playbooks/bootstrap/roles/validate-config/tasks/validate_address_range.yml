@@ -1,0 +1,66 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Validate addresses in provided range and the range size
+#
+
+- set_fact:
+    network: "{{ item.key }}"
+    start_addr: "{{ item.value['start'] }}"
+    end_addr: "{{ item.value['end'] }}"
+    subnet: "{{ item.value['subnet'] }}"
+    use_default: "{{ item.value['use_default'] }}"
+
+- block:
+  - name: Validate {{ network }} start and end address format
+    debug:
+      msg: "{{ network }}: {{ start_addr }} {{ end_addr }}"
+    failed_when: (start_addr | ipaddr == False) or (end_addr | ipaddr == False)
+
+  - block:
+    - name: Validate {{ network }} start and end range
+      vars:
+        script_content: |
+          from netaddr import IPAddress
+          from netaddr import IPNetwork
+          from netaddr import IPRange
+
+          start = IPAddress("{{ start_addr }}")
+          end = IPAddress("{{ end_addr }}")
+          subnet = IPNetwork("{{ subnet }}")
+
+          if not start < end:
+            raise Exception("Failed validation, {{ network }} start address must be less than end address.")
+
+          if start not in subnet or end not in subnet:
+            raise Exception("Failed validation, {{ network }} start or end address must be within its subnet range.")
+
+          range = IPRange("{{ start_addr }}", "{{ end_addr }}")
+          if (("{{ network }}" == 'cluster_pod' or "{{ network }}" == 'cluster_service') and
+              range.size < {{ min_pod_service_num_addresses|int }}):
+            raise Exception("Failed validation, {{ network }} address range must contain at least %d addresses." %
+                            int("{{ min_pod_service_num_addresses }}"))
+          elif (("{{ network }}" == 'pxeboot' or "{{ network }}" == 'multicast' or "{{ network }}" == 'management') and
+                range.size < {{ min_16_addresses|int }}):
+            raise Exception("Failed validation, {{ network }} address range must contain at least %d addresses." %
+                            int("{{ min_16_addresses }}"))
+          elif range.size < {{ min_8_addresses|int }}:
+            raise Exception("Failed validation, {{ network }} address range must contain at least %d addresses." %
+                            int("{{ min_8_addresses }}"))
+      shell: "{{ script_content }}"
+      args:
+        executable: /usr/bin/python
+      failed_when: false
+      register: range_check_result
+
+    - name: Fail if address range did not meet required criteria
+      fail:
+        msg: "{{ range_check_result.stderr_lines[-1] }}"
+      when: range_check_result.rc != 0
+
+    when: network != 'oam_node'
+  when: not use_default

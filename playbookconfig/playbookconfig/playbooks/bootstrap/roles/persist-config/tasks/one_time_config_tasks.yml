@@ -1,0 +1,140 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   - Save Postgres config to replicated filesystem for mate
+#   - Save branding config to replicated filesystem
+#   - Set up symlink for PXE boot
+#   - Add default security feature to kernel command line parameters
+#   - Resize some filesytems
+#
+
+- name: Set Postgres, PXE, branding config directory fact
+  set_fact:
+    postgres_config_dir: "{{ config_permdir + '/postgresql' }}"
+    pxe_config_dir: "{{ config_permdir + '/pxelinux.cfg' }}"
+    branding_config_dir: "{{ config_permdir + '/branding' }}"
+
+- debug:
+    msg: >-
+      postgres_config_dir: {{ postgres_config_dir }}
+      pxe_config_dir: {{ pxe_config_dir }}
+      branding_config_dir: {{ pxe_config_dir }}
+
+- name: Ensure Postres, PXE config directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    recurse: yes
+    owner: root
+    group: root
+    mode: 0755
+  with_items:
+    - "{{ postgres_config_dir }}"
+    - "{{ pxe_config_dir }}"
+
+- name: Get list of Postgres conf files
+  find:
+    paths: /etc/postgresql
+    patterns: '*.conf'
+  register: postgres_result
+
+- name: Copy postgres conf files for mate
+  copy:
+    src: "{{ item.path }}"
+    dest: "{{ postgres_config_dir }}"
+    mode: preserve
+    owner: postgres
+    group: postgres
+    remote_src: yes
+  # with_fileglob can only be used for local lookup
+  # with_fileglob:
+  #   - /etc/postgresql/*
+  with_items:
+    - "{{ postgres_result.files }}"
+
+- name: Create a symlink to PXE config files
+  file:
+    src: "{{ pxe_config_dir }}"
+    dest: /pxeboot/pxelinux.cfg
+    state: link
+
+- name: Check if copying of branding files for mate is required
+  stat:
+    path: /opt/branding
+  register: branding_result
+
+- block:
+    - name: Ensure branding config directory exists
+      file:
+        path: "{{ branding_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: Check if horizon-region-exclusion.csv file exists
+      stat:
+        path: /opt/branding/horizon-region-exclusions.csv
+      register: hre_result
+
+    - name: Copy horizon-region-exclusions.csv if exists
+      copy:
+        src: /opt/branding/horizon-region-exclusions.csv
+        dest: "{{ branding_config_dir }}"
+        remote_src: yes
+        mode: preserve
+      when: hre_result.stat.exists
+
+    - name: Check if branding tar files exist (there should be only one)
+      find:
+        paths: /opt/branding
+        patterns: '*.tgz'
+      register: bt_result
+
+    - name: Copy branding tar files
+      copy:
+        src: "{{ item.path }}"
+        dest: "{{ branding_config_dir }}"
+        remote_src: yes
+        mode: preserve
+      with_items:
+        - "{{ bt_result.files }}"
+
+  when: branding_result.stat.exists and branding_result.stat.isdir
+
+- name: Get grub default kernel
+  command: grubby --default-kernel
+  register: grub_kernel_output
+
+- name: Add default security feature to kernel parameters
+  command: "{{ item }}"
+  with_items:
+    - "grubby --update-kernel={{ grub_kernel_output.stdout_lines[0] }} --args='{{ default_security_feature }}'"
+    - "grubby --efi --update-kernel={{ grub_kernel_output.stdout_lines[0] }} --args='{{ default_security_feature }}'"
+
+- name: Resize filesystems (default)
+  command: "{{ item }}"
+  with_items:
+    - lvextend -L20G /dev/cgts-vg/pgsql-lv
+    - lvextend -L10G /dev/cgts-vg/cgcs-lv
+    - lvextend -L16G /dev/cgts-vg/dockerdistribution-lv
+    - lvextend -L40G /dev/cgts-vg/backup-lv
+    - drbdadm -- --assume-peer-has-space resize all
+    - resize2fs /dev/drbd0
+    - resize2fs /dev/drbd3
+    - resize2fs /dev/drbd8
+
+- name: Further resize if root disk size is larger than 240G
+  command: "{{ item }}"
+  with_items:
+    - lvextend -L40G /dev/cgts-vg/pgsql-lv
+    - lvextend -L20G /dev/cgts-vg/cgcs-lv
+    - lvextend -L50G /dev/cgts-vg/backup-lv
+    - drbdadm -- --assume-peer-has-space resize all
+    - resize2fs /dev/drbd0
+    - resize2fs /dev/drbd3
+  when: root_disk_size|int > minimum_root_disk_size

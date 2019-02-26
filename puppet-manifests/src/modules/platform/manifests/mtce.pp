@@ -8,15 +8,15 @@ class platform::mtce::params (
   $auth_user_domain = undef,
   $auth_project_domain = undef,
   $auth_region = undef,
-  $worker_boot_timeout = undef,
-  $controller_boot_timeout = undef,
-  $heartbeat_degrade_threshold = undef,
-  $heartbeat_failure_threshold = undef,
-  $heartbeat_failure_action = undef,
-  $heartbeat_period = undef,
+  $worker_boot_timeout = 720,
+  $controller_boot_timeout = 1200,
+  $heartbeat_degrade_threshold = 6,
+  $heartbeat_failure_threshold = 10,
+  $heartbeat_failure_action = 'fail',
+  $heartbeat_period = 100,
   $mtce_multicast = undef,
-  $mnfa_threshold = undef,
-  $mnfa_timeout = undef,
+  $mnfa_threshold = 2,
+  $mnfa_timeout = 0,
   $sm_client_port = 2224,
   $sm_server_port = 2124,
 ) { }
@@ -84,4 +84,10 @@ class platform::mtce::runtime {
   class {'::platform::mtce::reload':
     stage => post
   }
+}
+
+class platform::mtce::bootstrap {
+  include ::platform::params
+  include ::platform::mtce
+  include ::platform::mtce::agent
 }

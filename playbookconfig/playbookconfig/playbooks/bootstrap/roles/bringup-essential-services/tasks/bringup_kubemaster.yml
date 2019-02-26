@@ -1,0 +1,166 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Bring up Kubernetes master
+#   - Update iptables
+#   - Create manifest directory
+#   - Enable kubelet service (with default/custom registry)
+#   - Run kubeadm init
+#   - Prepare admin.conf
+#   - Set k8s environment variable for new shell
+#   - Generate conf files for Calico
+#   - Bring up Calico networking
+#   - Restrict coredns to master node
+#   - Use anti-affinity for coredns pods
+#   - Remove taint from master node
+#   - Add kubelet service override
+#   - Register kubelet with pmond
+#   - Reload systemd
+#
+
+- name: Setup iptables for Kubernetes
+  lineinfile:
+    path: /etc/sysctl.d/k8s.conf
+    line: "{{ item }}"
+    create: yes
+  with_items:
+    - net.bridge.bridge-nf-call-ip6tables = 1
+    - net.bridge.bridge-nf-call-iptables = 1
+
+- name: Set image repository to unified registry for kubelet
+  lineinfile:
+    path: /etc/sysconfig/kubelet
+    line: KUBELET_EXTRA_ARGS=--pod-infra-container-image={{ docker_registries[0] }}/pause:3.1
+    create: yes
+  when: use_unified_registry
+
+- name: Update kernel parameters for iptables
+  command: sysctl --system &>/dev/null
+
+- name: Create manifests directory required by kubelet
+  file:
+    path: /etc/kubernetes/manifests
+    state: directory
+    mode: 0700
+
+- name: Enable kubelet
+  systemd:
+    name: kubelet
+    enabled: yes
+
+- name: Create Kube admin yaml
+  copy:
+    src: "{{ kube_admin_yaml_template }}"
+    dest: /etc/kubernetes/kubeadm.yaml
+    remote_src: yes
+
+- name: Update Kube admin yaml with network info
+  command: "{{ item }}"
+  args:
+    warn: false
+  with_items:
+    - "sed -i -e 's|<%= @apiserver_advertise_address %>|'$CLUSTER_IP'|g' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i -e 's|<%= @etcd_endpoint %>|'http://\"$CLUSTER_IP\":$ETCD_PORT'|g' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i -e 's|<%= @service_domain %>|'cluster.local'|g' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i -e 's|<%= @pod_network_cidr %>|'$POD_NETWORK_CIDR'|g' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i -e 's|<%= @service_network_cidr %>|'$SERVICE_NETWORK_CIDR'|g' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i '/<%- /d' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i -e 's|<%= @k8s_registry %>|'$K8S_REGISTRY'|g' /etc/kubernetes/kubeadm.yaml"
+  environment:
+    CLUSTER_IP: "{{ cluster_floating_address }}"
+    ETCD_PORT: 2379
+    POD_NETWORK_CIDR: "{{ cluster_pod_subnet }}"
+    SERVICE_NETWORK_CIDR: "{{ cluster_service_subnet }}"
+    K8S_REGISTRY: "{{ default_k8s_registry }}"
+
+- name: Update image repo in admin yaml if unified registry is used
+  replace:
+    path: /etc/kubernetes/kubeadm.yaml
+    regexp: "imageRepository: .*$"
+    replace: 'imageRepository: "{{ docker_registries[0] }}"'
+  when: use_unified_registry
+
+- name: Initializing Kubernetes master
+  command: kubeadm init --config=/etc/kubernetes/kubeadm.yaml
+
+- name: Update kube admin.conf file mode and owner
+  file:
+    path: /etc/kubernetes/admin.conf
+    mode: 0640
+    group: wrs_protected
+
+- name: Set up k8s environment variable
+  copy:
+    src: /usr/share/puppet/modules/platform/files/kubeconfig.sh
+    dest: /etc/profile.d/kubeconfig.sh
+    remote_src: yes
+
+# Configure calico networking using the Kubernetes API datastore.
+- name: Create Calico config file
+  copy:
+    src: "{{ calico_yaml_template }}"
+    dest: /etc/kubernetes/calico.yaml
+    remote_src: yes
+
+- name: Update Calico config files with networking info
+  command: "{{ item }}"
+  args:
+    warn: false
+  with_items:
+    - "sed -i -e 's|<%= @apiserver_advertise_address %>|'$CLUSTER_IP'|g' /etc/kubernetes/calico.yaml"
+    - "sed -i -e 's|<%= @pod_network_cidr %>|'$POD_NETWORK_CIDR'|g' /etc/kubernetes/calico.yaml"
+    - "sed -i -e 's|<%= @quay_registry %>|'$QUAY_REGISTRY'|g' /etc/kubernetes/calico.yaml"
+  environment:
+    CLUSTER_IP: "{{ cluster_floating_address }}"
+    POD_NETWORK_CIDR: "{{ cluster_pod_subnet }}"
+    QUAY_REGISTRY: "{{ default_quay_registry }}"
+
+- name: Update Calico yaml file with new registry info if unified registry is used
+  command: "sed -i -e 's|{{ default_quay_registry }}|'$QUAY_REGISTRY'|g' /etc/kubernetes/calico.yaml"
+  args:
+    warn: false
+  environment:
+    QUAY_REGISTRY: "{{ docker_registries[0] }}"
+  when: use_unified_registry
+
+- name: Activate Calico Networking
+  command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/calico.yaml"
+
+- name: Restrict coredns to master node
+  command: >-
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p
+    '{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}'
+
+- name: Use anti-affinity for coredns pods
+  command: >-
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p
+    '{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}'
+
+- name: Remove taint from master node
+  shell: "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node controller-0 node-role.kubernetes.io/master- || true"
+
+- name: Add kubelet service override
+  copy:
+    src: "{{ kubelet_override_template }}"
+    dest: /etc/systemd/system/kubelet.service.d/kube-stx-override.conf
+    mode: preserve
+    remote_src: yes
+
+- name: Register kubelet with pmond
+  copy:
+    src: "{{ kubelet_pmond_template }}"
+    dest: /etc/pmon.d/kubelet.conf
+    mode: preserve
+    remote_src: yes
+
+- name: Reload systemd
+  command: systemctl daemon-reload
+
+- name: Mark Kubernetes config complete
+  file:
+    path: /etc/platform/.initial_k8s_config_complete
+    state: touch

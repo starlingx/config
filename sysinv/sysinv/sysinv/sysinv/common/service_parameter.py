@@ -1549,6 +1549,7 @@ DOCKER_REGISTRY_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY,
     constants.SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY,
     constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY,
+    constants.SERVICE_PARAM_NAME_DOCKER_REGISTRIES,
     constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY,
 ]
 
@@ -1557,6 +1558,7 @@ DOCKER_REGISTRY_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY: _validate_docker_registry_address,
     constants.SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY: _validate_docker_registry_address,
     constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY: _validate_docker_registry_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_REGISTRIES: _validate_docker_registry_address,
     constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY: _validate_docker_insecure_registry_bool,
 }
 
@@ -1569,6 +1571,8 @@ DOCKER_REGISTRY_PARAMETER_RESOURCE = {
         'platform::docker::params::quay_registry',
     constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY:
         'platform::docker::params::docker_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_REGISTRIES:
+        'platform::docker::params::docker_registries',
     constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY:
         'platform::docker::params::insecure_registry',
 }

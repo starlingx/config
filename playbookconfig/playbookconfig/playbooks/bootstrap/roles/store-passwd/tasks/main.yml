@@ -1,0 +1,99 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ROLE DESCRIPTION:
+#   This role is to validate and store admin credentials using python keyring.
+#
+
+# Setting admin username and password
+- block:
+  - debug:
+      msg: "Use encrypted admin username and password."
+  - set_fact:
+      username: "{{ vault_admin_username }}"
+      password: "{{ vault_admin_password }}"
+      use_vault_credentials: true
+  when: (vault_admin_password is defined) and (vault_admin_username is defined)
+
+- block:
+  - name: Print warning if admin credentials are not stored in vault
+    debug:
+      msg: >-
+           [WARNING: Default admin username and password (unencrypted) are
+           used. Consider storing both of these variables in Ansible vault.]
+  - name: Set admin username and password facts
+    set_fact:
+      username: "{{ admin_username }}"
+      password: "{{ admin_password }}"
+  when: not use_vault_credentials
+
+# Validating password per configured rules
+- name: Look for password rules file
+  stat:
+    path: "{{ password_rules_file }}"
+  register: password_rules
+
+- name: Fail if password rules file is missing
+  fail: msg="Password rules file {{ password_rules_file }} is missing."
+  when: not password_rules.stat.exists
+
+- name: Get password rules
+  shell: grep -w password_regex {{ password_rules_file }} | awk '{print $3}'
+  register: pattern_result
+
+- name: Get password rules description
+  shell: >
+    grep -w password_regex_description {{  password_rules_file }} |
+    cut -d'=' -f2
+  register: description_result
+
+- name: Set password regex facts
+  set_fact:
+    password_regex: "{{ pattern_result.stdout }}"
+    password_regex_desc: "{{ 'ADMIN_PASSWORD: ' + description_result.stdout }}"
+
+- name: Fail if password regex cannot be found
+  fail: msg="Required option password_regex not found in {{ password_rules_file }}."
+  when: pattern_result.stdout == ""
+
+- name: Set password regex description fact
+  set_fact:
+     password_regex_desc: "ADMIN_PASSWORD: Password does not meet complexity criteria."
+  when: description_result.stdout == ""
+
+- name: Validate admin password
+  # Have to use a small python script, Ansible regex_search filter does not accept the
+  # keystone regex pattern.
+  vars:
+    script_content: |
+      import re
+      prx = "{{ password_regex }}"
+      prx = prx.strip('"')
+      if not re.match(prx, "{{ password }}"):
+        raise Exception()
+  shell: "{{ script_content }}"
+  args:
+    executable: /usr/bin/python
+  failed_when: false
+  register: password_validation_result
+
+- name: Fail if provided admin password does not meet required complexity
+  fail:
+    msg: "{{ password_regex_desc }}"
+  when: password_validation_result.rc != 0
+
+- name: Store admin password
+  vars:
+    script_content: |
+      import keyring
+      import os
+      os.environ['XDG_DATA_HOME'] = '/tmp'
+      keyring.set_password("CGCS", "{{ username }}", "{{ password }}")
+      del os.environ['XDG_DATA_HOME']
+  shell: "{{ script_content }}"
+  args:
+    executable: /usr/bin/python
+  no_log: true

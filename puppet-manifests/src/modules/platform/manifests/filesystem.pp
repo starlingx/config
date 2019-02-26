@@ -316,3 +316,27 @@ class platform::filesystem::img_conversions::runtime {
     devmapper => $devmapper,
   }
 }
+
+class platform::filesystem::docker::params::bootstrap (
+  $lv_size = '30',
+  $lv_name = 'docker-lv',
+  $mountpoint = '/var/lib/docker',
+  $devmapper = '/dev/mapper/cgts--vg-docker--lv',
+  $fs_type = 'xfs',
+  $fs_options = '-n ftype=1',
+  $fs_use_all = false
+) { }
+
+class platform::filesystem::docker::bootstrap
+  inherits ::platform::filesystem::docker::params::bootstrap {
+
+  platform::filesystem { $lv_name:
+    lv_name    => $lv_name,
+    lv_size    => $lv_size,
+    mountpoint => $mountpoint,
+    fs_type    => $fs_type,
+    fs_options => $fs_options,
+    fs_use_all => $fs_use_all,
+    mode       => '0711',
+  }
+}

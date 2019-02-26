@@ -13,6 +13,7 @@ class FmPuppet(openstack.OpenstackBasePuppet):
 
     SERVICE_NAME = 'fm'
     SERVICE_PORT = 18002
+    BOOTSTRAP_MGMT_IP = '127.0.0.1'
 
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
@@ -26,10 +27,12 @@ class FmPuppet(openstack.OpenstackBasePuppet):
 
         return {
             'fm::db::postgresql::password': dbpass,
-
             'fm::keystone::auth::password': kspass,
             'fm::keystone::authtoken::password': kspass,
             'fm::auth::auth_password': kspass,
+            'fm::database_connection':
+                self._format_database_connection(self.SERVICE_NAME,
+                                                 self.BOOTSTRAP_MGMT_IP),
         }
 
     def get_system_config(self):

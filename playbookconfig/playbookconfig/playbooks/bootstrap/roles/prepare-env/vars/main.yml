@@ -1,0 +1,6 @@
+---
+image_brand: StarlingX
+platform_path: /opt/platform
+puppet_path: /opt/platform/puppet
+
+standard_root_disk_size: 500

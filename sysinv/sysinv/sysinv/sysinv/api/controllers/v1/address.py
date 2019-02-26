@@ -353,7 +353,9 @@ class AddressController(rest.RestController):
             raise exception.HostMustBeLocked(host=host['hostname'])
 
     def _check_from_pool(self, pool_uuid):
-        if pool_uuid:
+        # Disallow the removal of an allocated address after the initial
+        # configuration is complete.
+        if pool_uuid and cutils.is_initial_config_complete():
             raise exception.AddressAllocatedFromPool()
 
     def _check_orphaned_routes(self, interface_id, address):

@@ -1,0 +1,76 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Shut down flock services, helm, kubernetes and revert configurations
+#   against loopback interface upon network/docker config changes.
+#
+
+- block: # Shut down essential flock services
+  - name: Shutdown Maintenance services
+    command: /usr/lib/ocf/resource.d/platform/mtcAgent stop
+
+  - name: Shutdown FM services
+    command: "{{ item }}"
+    with_items:
+      - /etc/init.d/fminit stop
+      - /etc/init.d/fm-api stop
+
+  environment:
+    OCF_ROOT: "/usr/lib/ocf"
+    OCF_RESKEY_state: "active"
+
+
+- block: # Revert changes done by kubeadm init, clear data cache
+  - name: Shut down and remove Kubernetes components
+    command: kubeadm reset -f
+
+  - name: Clear etcd data cache
+    shell: /bin/rm -rf /opt/etcd/{{ software_version }}/controller.etcd/*
+    args:
+      warn: false
+
+  - name: Restart etcd
+    systemd:
+      name: etcd
+      state: restarted
+
+- block: # Revert configurations to loopback interface
+  - name: Set facts derived from previous network configurations
+    set_fact:
+      prev_management_subnet_prefix: "{{ prev_management_subnet | ipaddr('prefix') }}"
+      prev_controller_floating_address: "{{ (prev_management_subnet | ipaddr(2)).split('/')[0] if prev_management_start_address == 'derived' else prev_management_start_address }}"
+      prev_cluster_floating_address: "{{ (prev_cluster_host_subnet | ipaddr(2)).split('/')[0] if prev_cluster_host_start_address == 'derived' else prev_cluster_host_start_address }}"
+      prev_cluster_subnet_prefix: "{{ prev_cluster_host_subnet | ipaddr('prefix') }}"
+      prev_controller_pxeboot_floating_address: "{{ (prev_pxeboot_subnet | ipaddr(2)).split('/')[0] if prev_pxeboot_start_address == 'derived' else prev_pxeboot_start_address }}"
+      prev_pxe_subnet_prefix: "{{ prev_pxeboot_subnet | ipaddr('prefix') }}"
+
+  - name: Set facts derived from previous floating addresses
+    set_fact:
+      prev_controller_0_address: "{{ prev_controller_floating_address|ipmath(1) }}"
+      prev_controller_0_cluster_host: "{{ prev_cluster_floating_address|ipmath(1) }}"
+
+  - name: Set facts for the removal of addresses assigned to loopback interface
+    set_fact:
+      prev_mgmt_nfs_1_virtual: "{{ prev_controller_floating_address|ipmath(3) }}/{{ prev_management_subnet_prefix }}"
+      prev_mgmt_nfs_2_virtual: "{{ prev_controller_floating_address|ipmath(4) }}/{{ prev_management_subnet_prefix }}"
+      prev_mgmt_floating_virtual: "{{ prev_controller_floating_address }}/{{ prev_management_subnet_prefix }}"
+      prev_cluster_floating_virtual: "{{ prev_cluster_floating_address }}/{{ prev_cluster_subnet_prefix }}"
+      prev_pxe_virtual: "{{ prev_controller_pxeboot_floating_address }}/{{ prev_pxe_subnet_prefix }}"
+      prev_mgmt_virtual: "{{ prev_controller_0_address }}/{{ prev_management_subnet_prefix }}"
+      prev_cluster_virtual: "{{ prev_controller_0_cluster_host }}/{{ prev_cluster_subnet_prefix }}" 
+
+  - name: Remove loopback interface
+    shell: "{{ item }}"
+    with_items:
+      - source /etc/platform/openrc; system host-if-delete controller-0 lo
+      - "ip addr delete {{ prev_mgmt_nfs_2_virtual }} dev lo scope host"
+      - "ip addr delete {{ prev_mgmt_nfs_1_virtual }} dev lo scope host"
+      - "ip addr delete {{ prev_mgmt_floating_virtual }} dev lo scope host"
+      - "ip addr delete {{ prev_cluster_floating_virtual }} dev lo scope host"
+      - "ip addr delete {{ prev_pxe_virtual }} dev lo scope host"
+      - "ip addr delete {{ prev_mgmt_virtual }} brd {{ management_broadcast }} dev lo:1 scope host"
+      - "ip addr delete {{ prev_cluster_virtual }}  brd {{ cluster_broadcast }} dev lo:5 scope host"

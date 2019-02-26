@@ -1,0 +1,30 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Validate docker proxy url format
+#
+
+- block:
+  - name: Check if the supplied proxy is a valid URL
+    vars:
+      script_content: |
+        # Use this utility to be consistent with the current config_controller
+        # and sysinv
+        from controllerconfig.utils import is_valid_url
+        if not is_valid_url( "{{ input_url }}" ):
+          raise Exception("Invalid url format!")
+    shell: "{{ script_content }}"
+    args:
+      executable: /usr/bin/python
+    failed_when: false
+    register: proxy_url_check
+
+  - name: Fail if proxy has the wrong format
+    fail:
+      msg: "{{ input_url }} is an invalid URL."
+    when: proxy_url_check.rc != 0
+  when: input_url != 'undef'
