@@ -363,8 +363,24 @@ for cfg_path in $(find /var/run/network-scripts.puppet/ -name "${IFNAME_INCLUDE}
             is_eq_ifcfg /var/run/network-scripts.puppet/$cfg \
                         /etc/sysconfig/network-scripts/$cfg
             if [ $? -ne 0 ] ; then
-                log_it "$cfg changed - adding to upDown list"
-                upDown+=($cfg)
+                log_it "$cfg changed"
+                # Remove alias portion in the interface name if any.
+                # Check if the base interface is already on the list for
+                # restart. If not, add it to the list.
+                # The alias interface does not need to be restarted.
+                base_cfg=${cfg/:*/}
+                found=0
+                for chk in ${upDown[@]}; do
+                    if [ "$base_cfg" = "$chk" ]; then
+                        found=1
+                        break
+                    fi
+                done
+
+                if [ $found -eq 0 ]; then
+                    log_it "Adding $base_cfg to upDown list"
+                    upDown+=($base_cfg)
+                fi
             fi
         fi
     fi
