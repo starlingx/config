@@ -3172,6 +3172,40 @@ class HostController(rest.RestController):
                     'count': count})
             raise wsme.exc.ClientSideError(msg)
 
+    @staticmethod
+    def _semantic_check_sriov_interface(host, interface, force_unlock=False):
+        """
+        Perform semantic checks on an SRIOV interface.
+        """
+        if (force_unlock or
+                interface.ifclass != constants.INTERFACE_CLASS_PCI_SRIOV):
+            return
+
+        if_configured_sriov_numvfs = interface.sriov_numvfs
+        if not if_configured_sriov_numvfs:
+            return
+
+        ports = pecan.request.dbapi.port_get_by_host_interface(
+            host['id'], interface.id)
+
+        for p in ports:
+            if (p.sriov_vfs_pci_address and
+                    if_configured_sriov_numvfs ==
+                    len(p.sriov_vfs_pci_address.split(','))):
+                LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
+                         (if_configured_sriov_numvfs, p.sriov_vfs_pci_address))
+                break
+        else:
+            msg = (_("Expecting number of interface sriov_numvfs=%s. "
+                     "Please wait a few minutes for inventory update and "
+                     "retry host-unlock." %
+                     if_configured_sriov_numvfs))
+            LOG.info(msg)
+            pecan.request.rpcapi.update_sriov_config(
+                pecan.request.context,
+                host['uuid'])
+            raise wsme.exc.ClientSideError(msg)
+
     def _semantic_check_unlock_upgrade(self, ihost, force_unlock=False):
         """
         Perform semantic checks related to upgrades prior to unlocking host.
@@ -3288,7 +3322,8 @@ class HostController(rest.RestController):
                         "is not supported by current vswitch" % p.name)
                 raise wsme.exc.ClientSideError(msg)
 
-    def _semantic_check_data_interfaces(self, ihost):
+    def _semantic_check_data_interfaces(
+            self, ihost, kubernetes_config, force_unlock=False):
         """
         Perform semantic checks against data interfaces to ensure validity of
         the node configuration prior to unlocking it.
@@ -3305,10 +3340,11 @@ class HostController(rest.RestController):
             self._semantic_check_interface_addresses(ihost, iif)
             if not iif.ifclass:
                 continue
+            self._semantic_check_sriov_interface(ihost, iif, force_unlock)
             if iif.ifclass == constants.NETWORK_TYPE_DATA:
                 data_interface_configured = True
 
-        if not data_interface_configured:
+        if not data_interface_configured and not kubernetes_config:
             msg = _("Can not unlock a worker host without data interfaces. "
                     "Add at least one data interface before re-attempting "
                     "this command.")
@@ -4885,7 +4921,7 @@ class HostController(rest.RestController):
             self.check_unlock_controller(hostupdate, force_unlock)
 
         if cutils.host_has_function(hostupdate.ihost_patch, constants.WORKER):
-            self.check_unlock_worker(hostupdate)
+            self.check_unlock_worker(hostupdate, force_unlock)
         elif personality == constants.STORAGE:
             self.check_unlock_storage(hostupdate)
 
@@ -5098,7 +5134,7 @@ class HostController(rest.RestController):
         if utils.get_https_enabled():
             self._semantic_check_tpm_config(hostupdate.ihost_orig)
 
-    def check_unlock_worker(self, hostupdate):
+    def check_unlock_worker(self, hostupdate, force_unlock=False):
         """Check semantics on  host-unlock of a worker."""
         LOG.info("%s ihost check_unlock_worker" % hostupdate.displayid)
         ihost = hostupdate.ihost_orig
@@ -5110,8 +5146,13 @@ class HostController(rest.RestController):
 
         # Check whether a restore was properly completed
         self._semantic_check_restore_complete(ihost)
-        # Disable worker unlock checks in a kubernetes config
-        if not utils.is_kubernetes_config():
+        # Disable certain worker unlock checks in a kubernetes config
+        kubernetes_config = utils.is_kubernetes_config()
+        if kubernetes_config:
+            self._semantic_check_data_interfaces(ihost,
+                                                 kubernetes_config,
+                                                 force_unlock)
+        else:
             # sdn configuration check
             self._semantic_check_sdn_attributes(ihost)
 
@@ -5119,7 +5160,9 @@ class HostController(rest.RestController):
             self._semantic_check_data_routes(ihost)
 
             # check whether data interfaces have been configured
-            self._semantic_check_data_interfaces(ihost)
+            self._semantic_check_data_interfaces(ihost,
+                                                 kubernetes_config,
+                                                 force_unlock)
             self._semantic_check_data_addresses(ihost)
             self._semantic_check_data_vrs_attributes(ihost)
 

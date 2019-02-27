@@ -1310,6 +1310,10 @@ class LocalManagementIpNotFound(NotFound):
                 "host_personality=%(host_personality)s")
 
 
+class LocalHostUUIDNotFound(NotFound):
+    message = _("Local Host UUID not found")
+
+
 class InvalidHelmDockerImageSource(Invalid):
     message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
 

@@ -554,9 +554,9 @@ def add_port_filter_by_host_interface(query, hostid, interfaceid):
 
     elif utils.is_uuid_like(hostid) and utils.is_uuid_like(interfaceid):
         query = query.join(models.ihost,
-                           models.Interface)
+                           models.Interfaces)
         return query.filter(models.ihost.uuid == hostid,
-                            models.Interface.uuid == interfaceid)
+                            models.Interfaces.uuid == interfaceid)
 
     LOG.debug("port_filter_by_host_iinterface: "
               "No match for supplied filter ids (%s, %s)"

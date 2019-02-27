@@ -537,7 +537,8 @@ class InterfaceController(rest.RestController):
                 temp_interface[
                         'ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV):
             temp_interface['sriov_numvfs'] = None
-        _check_interface_sriov(temp_interface.as_dict(), ihost)
+
+        sriov_update = _check_interface_sriov(temp_interface.as_dict(), ihost)
 
         # Get the ethernet port associated with the interface if network type
         # is changed
@@ -785,6 +786,10 @@ class InterfaceController(rest.RestController):
 
             # Update shared data interface bindings, if required
             _update_shared_interface_neutron_bindings(ihost, new_interface)
+            if sriov_update:
+                pecan.request.rpcapi.update_sriov_config(
+                    pecan.request.context,
+                    ihost['uuid'])
 
             return Interface.convert_with_links(new_interface)
         except Exception as e:
@@ -1021,8 +1026,10 @@ def _check_interface_mtu(interface, ihost, from_profile=False):
 
 
 def _check_interface_sriov(interface, ihost, from_profile=False):
+    sriov_update = False
+
     if 'ifclass' in interface.keys() and not interface['ifclass']:
-        return interface
+        return sriov_update
 
     if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
             'sriov_numvfs' not in interface.keys()):
@@ -1069,8 +1076,8 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
         driver = port_list[0][2]
         if driver is None or not driver:
             raise wsme.exc.ClientSideError(_("Corresponding port has invalid driver"))
-
-    return interface
+        sriov_update = True
+    return sriov_update
 
 
 def _check_host(ihost):
