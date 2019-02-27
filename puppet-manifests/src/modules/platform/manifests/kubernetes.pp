@@ -391,6 +391,35 @@ class platform::kubernetes::firewall
   include ::platform::params
   include ::platform::network::oam::params
   include ::platform::network::mgmt::params
+  include ::platform::docker::params
+
+  # add http_proxy and https_proxy port to k8s firewall
+  # in order to allow worker node access public network via proxy
+  if $::platform::docker::params::http_proxy {
+    $http_proxy_str_array = split($::platform::docker::params::http_proxy, ':')
+    $http_proxy_port = $http_proxy_str_array[length($http_proxy_str_array) - 1]
+    if $http_proxy_port =~ /^\d+$/ {
+      $http_proxy_port_val = $http_proxy_port
+    }
+  }
+
+  if $::platform::docker::params::https_proxy {
+    $https_proxy_str_array = split($::platform::docker::params::https_proxy, ':')
+    $https_proxy_port = $https_proxy_str_array[length($https_proxy_str_array) - 1]
+    if $https_proxy_port =~ /^\d+$/ {
+      $https_proxy_port_val = $https_proxy_port
+    }
+  }
+
+  if defined('$http_proxy_port_val') {
+    if defined('$https_proxy_port_val') and ($http_proxy_port_val != $https_proxy_port_val) {
+      $dports = $dports << $http_proxy_port_val << $https_proxy_port_val
+    } else {
+      $dports = $dports << $http_proxy_port_val
+    }
+  } elsif defined('$https_proxy_port_val') {
+    $dports = $dports << $https_proxy_port_val
+  }
 
   $system_mode = $::platform::params::system_mode
   $oam_float_ip = $::platform::network::oam::params::controller_address
