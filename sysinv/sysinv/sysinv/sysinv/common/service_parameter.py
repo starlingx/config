@@ -54,6 +54,13 @@ def _validate_boolean(name, value):
             "Parameter '%s' must be a boolean value." % name))
 
 
+def _validate_no_update(name, value):
+    msg = _(
+        "Unable to configure service parameter,"
+        " %s is disabled." % name)
+    raise wsme.exc.ClientSideError(msg)
+
+
 def _validate_yes_no(name, value):
     if value.lower() not in ['y', 'n']:
         raise wsme.exc.ClientSideError(_(
@@ -1138,7 +1145,7 @@ CINDER_DEFAULT_PARAMETER_VALIDATOR = {
     # Required parameters
     # Optional parameters
     constants.SERVICE_PARAM_CINDER_DEFAULT_VOLUME_TYPE: _validate_not_empty,
-    constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH: _validate_boolean,
+    constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH: _validate_no_update,
 }
 
 CINDER_DEFAULT_PARAMETER_RESOURCE = {
