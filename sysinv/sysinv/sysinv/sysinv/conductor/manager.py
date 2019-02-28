@@ -7232,7 +7232,7 @@ class ConductorManager(service.PeriodicService):
                     "personalities": personalities,
                     "classes": ['openstack::lighttpd::runtime',
                                 'platform::helm::runtime',
-                                'platform::firewall::runtime',
+                                'openstack::horizon::firewall',
                                 'platform::patching::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid,
