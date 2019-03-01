@@ -56,7 +56,13 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                         'neutron_sriov-agent': {
                             'hosts': self._get_per_host_overrides()
                         },
-                    }
+                    },
+                    'paste': {
+                        'app:neutronversions': {
+                            'paste.app_factory':
+                                'neutron.pecan_wsgi.app:versions_factory'
+                        },
+                    },
                 },
                 'endpoints': self._get_endpoints_overrides(),
                 'images': self._get_images_overrides(),
@@ -89,9 +95,11 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
     def update_dynamic_options(self, overrides):
         if utils.is_virtual():
             overrides.update({
-                'neutron': {
-                    'vhost': {
-                        'vhost_user_enabled': False
+                'plugins': {
+                    'ml2_conf': {
+                        'ovs_driver': {
+                            'vhost_user_enabled': False
+                        }
                     }
                 }
             })

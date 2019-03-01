@@ -103,9 +103,6 @@ include ::openstack::ceilometer
 include ::openstack::ceilometer::agent::notification
 include ::openstack::ceilometer::polling
 
-include ::openstack::aodh
-include ::openstack::aodh::api
-
 include ::openstack::panko
 include ::openstack::panko::api
 

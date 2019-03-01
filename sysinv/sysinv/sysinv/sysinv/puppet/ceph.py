@@ -103,8 +103,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             'platform::ceph::params::mon_1_addr': mon_1_addr,
             'platform::ceph::params::mon_2_addr': mon_2_addr,
 
-            'platform::ceph::params::rgw_enabled':
-                ceph_backend.object_gateway,
             'platform::ceph::params::rgw_admin_user':
                 ksuser,
             'platform::ceph::params::rgw_admin_domain':

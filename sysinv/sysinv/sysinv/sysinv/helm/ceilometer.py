@@ -79,7 +79,14 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
         return {
             'ceilometer': {
                 'DEFAULT': self._get_conf_ceilometer_default_overrides(),
-                'notification': self._get_conf_ceilometer_notification_overrides()
+                'notification': {
+                    'messaging_urls': {
+                        'values': self._get_notification_messaging_urls()
+                    }
+                },
+                'meter': {
+                    'meter_definitions_dirs': '/etc/ceilometer/meters.d'
+                }
             }
         }
 
@@ -110,17 +117,6 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
                                       constants.SERVICE_TYPE_VOLUME + 'v3']
 
         return shared_services_types
-
-    def _get_conf_ceilometer_notification_overrides(self):
-        system = self._get_system()
-        if system.system_type == constants.TIS_AIO_BUILD:
-            batch_timeout = 25
-        else:
-            batch_timeout = 5
-
-        notification_overrides = {'batch_timeout': batch_timeout,
-                                  'messaging_urls': {'values': self._get_notification_messaging_urls()}}
-        return notification_overrides
 
     def _get_notification_messaging_urls(self):
         rabbit_user = 'rabbitmq-admin'

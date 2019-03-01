@@ -75,7 +75,7 @@ IMG_PREFIX_LOC = 'stx-'
 
 TAGS_PIKE = 'pike'
 TAGS_LATEST = 'latest'
-TAGS_STX_LATEST = 'dev-centos-pike-latest'
+TAGS_STX_LATEST = 'f-stein-centos-master-latest'
 
 DOCKER_SRCS = {
     DOCKER_SRC_OSH: {

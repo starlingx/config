@@ -148,7 +148,6 @@ class platform::haproxy::runtime {
   }
   include ::openstack::glance::haproxy
   include ::openstack::cinder::haproxy
-  include ::openstack::aodh::haproxy
   include ::openstack::heat::haproxy
   include ::openstack::murano::haproxy
   include ::openstack::magnum::haproxy

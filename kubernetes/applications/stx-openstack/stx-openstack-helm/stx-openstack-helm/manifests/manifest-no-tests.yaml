@@ -143,6 +143,35 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-ceph-pools-audit
+data:
+  chart_name: ceph-pools-audit
+  release: openstack-ceph-pools-audit
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      app: ceph-pools-audit
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            app: ceph-pools-audit
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/ceph-pools-audit-0.1.0.tgz
+    subpath: ceph-pools-audit
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-mariadb
 data:
   chart_name: mariadb
@@ -698,9 +727,13 @@ data:
         upgrade_levels: None
         metrics:
           required: false
+        workarounds:
+          enable_numa_live_migration: True
     network:
       sshd:
         enabled: true
+    console:
+      address_search_enabled: false
 
   source:
     type: tar
@@ -753,10 +786,10 @@ data:
   chart_name: neutron
   release: openstack-neutron
   namespace: openstack
-  install:
-    no_hooks: false
   test:
     enabled: false
+  install:
+    no_hooks: false
   upgrade:
     no_hooks: false
     pre:
@@ -855,7 +888,7 @@ data:
           lock_path: /var/run/neutron/lock
           log_format: '[%(name)s] %(message)s'
           policy_file: /etc/neutron/policy.json
-          service_plugins: router
+          service_plugins: router,network_segment_range
           dns_domain: openstacklocal
           enable_new_agents: false
           allow_automatic_dhcp_failover: true
@@ -863,7 +896,7 @@ data:
         agent:
           root_helper: sudo
         vhost:
-          vhost_user_enabled: false
+          vhost_user_enabled: true
       dhcp_agent:
         DEFAULT:
           enable_isolated_metadata: true
@@ -883,7 +916,12 @@ data:
             mechanism_drivers: openvswitch,sriovnicswitch,l2population
             path_mtu: 0
             tenant_network_types: vlan,vxlan
-            type_drivers: managed_flat,managed_vlan,managed_vxlan
+            type_drivers: flat,vlan,vxlan
+          ml2_type_vxlan:
+            vni_ranges: ''
+            vxlan_group: ''
+          ovs_driver:
+            vhost_user_enabled: true
           securitygroup:
             firewall_driver: noop
         openvswitch_agent:
@@ -947,6 +985,10 @@ data:
       job:
         node_selector_key: openstack-control-plane
         node_selector_value: enabled
+    conf:
+      policy:
+        stacks:global_index: rule:context_is_admin
+        software_configs:global_index: rule:context_is_admin
     pod:
       replicas:
         api: 2
@@ -1086,11 +1128,11 @@ data:
           /v1: gnocchiv1+noauth
           /healthcheck: healthcheck
         pipeline:gnocchiv1+noauth:
-          pipeline: http_proxy_to_wsgi gnocchiv1
+          pipeline: gnocchiv1
         pipeline:gnocchiv1+keystone:
-          pipeline: http_proxy_to_wsgi keystone_authtoken gnocchiv1
+          pipeline: keystone_authtoken gnocchiv1
         pipeline:gnocchiversions_pipeline:
-          pipeline: http_proxy_to_wsgi gnocchiversions
+          pipeline: gnocchiversions
         app:gnocchiversions:
           paste.app_factory: gnocchi.rest.app:app_factory
           root: gnocchi.rest.api.VersionsController
@@ -1099,9 +1141,6 @@ data:
           root: gnocchi.rest.api.V1Controller
         filter:keystone_authtoken:
           use: egg:keystonemiddleware#auth_token
-          oslo_config_project: gnocchi
-        filter:http_proxy_to_wsgi:
-          use: egg:oslo.middleware#http_proxy_to_wsgi
           oslo_config_project: gnocchi
         app:healthcheck:
           use: egg:oslo.middleware#healthcheck
@@ -1292,14 +1331,6 @@ data:
             public: 80
     conf:
       ceilometer:
-        DEFAULT:
-          csv_location: /var/lib/ceilometer/
-          csv_location_strict: true
-          shuffle_time_before_polling_task: 30
-          batch_polled_samples: true
-        dispatcher_gnocchi:
-          archive_policy: ''
-          filter_project: ''
         cache:
           expiration_time: 86400
         compute:
@@ -1308,8 +1339,6 @@ data:
         oslo_messaging_notifications:
           topics:
             - notifications
-        notification:
-          batch_size: 100
       pipeline:
         sources:
           - name: meter_source
@@ -1317,105 +1346,10 @@ data:
               - "*"
             sinks:
               - meter_sink
-              - csv_sink
-          - name: cpu_source
-            meters:
-              - "cpu"
-            sinks:
-              - cpu_sink
-              - cpu_delta_sink
-              - vcpu_sink
-          - name: disk_source
-            meters:
-              - "disk.read.bytes"
-              - "disk.read.requests"
-              - "disk.write.bytes"
-              - "disk.write.requests"
-              - "disk.device.read.bytes"
-              - "disk.device.read.requests"
-              - "disk.device.write.bytes"
-              - "disk.device.write.requests"
-            sinks:
-              - disk_sink
-          - name: network_source
-            meters:
-              - "network.incoming.bytes"
-              - "network.incoming.packets"
-              - "network.outgoing.bytes"
-              - "network.outgoing.packets"
-            sinks:
-              - network_sink
         sinks:
           - name: meter_sink
-            transformers:
             publishers:
               - gnocchi://
-          - name: cpu_sink
-            transformers:
-              - name: "rate_of_change"
-                parameters:
-                  target:
-                    name: "cpu_util"
-                    unit: "%"
-                    type: "gauge"
-                    max: 100
-                    scale: "100.0 / (10**9 * (resource_metadata.cpu_number or 1))"
-            publishers:
-              - gnocchi://
-          - name: cpu_delta_sink
-            transformers:
-              - name: "delta"
-                parameters:
-                  target:
-                    name: "cpu.delta"
-                    growth_only: true
-            publishers:
-              - gnocchi://
-          - name: vcpu_sink
-            transformers:
-              - name: "rate_of_change"
-                parameters:
-                  target:
-                    name: "vcpu_util"
-                    unit: "%"
-                    type: "gauge"
-                    max: 100
-                    scale: "100.0 / (10**9 * (resource_metadata.vcpu_number or 1))"
-            publishers:
-              - gnocchi://
-          - name: disk_sink
-            transformers:
-              - name: "rate_of_change"
-                parameters:
-                  source:
-                    map_from:
-                    name: "(disk\\.device|disk)\\.(read|write)\\.(bytes|requests)"
-                    unit: "(B|request)"
-                  target:
-                    map_to:
-                    name: "\\1.\\2.\\3.rate"
-                    unit: "\\1/s"
-                    type: "gauge"
-            publishers:
-              - gnocchi://
-          - name: network_sink
-            transformers:
-              - name: "rate_of_change"
-                parameters:
-                  source:
-                    map_from:
-                    name: "network\\.(incoming|outgoing)\\.(bytes|packets)"
-                    unit: "(B|packet)"
-                    target:
-                      map_to:
-                      name: "network.\\1.\\2.rate"
-                      unit: "\\1/s"
-                      type: "gauge"
-            publishers:
-              - gnocchi://
-          - name: csv_sink
-            publishers:
-              - csvfile:///var/lib/ceilometer/pm.csv?max_bytes=10000000&backup_count=5&compress=True&enabled=True
       event_pipeline:
         sources:
           - name: event_source
@@ -1425,26 +1359,11 @@ data:
               - event_sink
         sinks:
           - name: event_sink
-            transformers:
             publishers:
               - panko://
               - gnocchi://
       polling:
         sources:
-          - name: instance_pollster
-            interval: 600
-            meters:
-              - disk.read.bytes
-              - disk.read.bytes.rate
-              - disk.read.requests
-              - disk.read.requests.rate
-              - disk.write.bytes
-              - disk.write.bytes.rate
-              - disk.write.requests
-              - disk.write.requests.rate
-              - disk.capacity
-              - disk.allocation
-              - disk.usage
           - name: instance_cpu_pollster
             interval: 30
             meters:
@@ -1452,14 +1371,13 @@ data:
           - name: instance_disk_pollster
             interval: 600
             meters:
+              - disk.capacity
+              - disk.allocation
+              - disk.usage
               - disk.device.read.requests
-              - disk.device.read.requests.rate
               - disk.device.write.requests
-              - disk.device.write.requests.rate
               - disk.device.read.bytes
-              - disk.device.read.bytes.rate
               - disk.device.write.bytes
-              - disk.device.write.bytes.rate
               - disk.device.capacity
               - disk.device.allocation
               - disk.device.usage
@@ -1556,26 +1474,11 @@ data:
               memory.bandwidth.local:
               vcpus:
                 archive_policy_name: ceilometer-low-rate
-              vcpu_util:
               cpu:
                 archive_policy_name: ceilometer-low-rate
-              cpu.delta:
-              cpu_util:
               cpu_l3_cache:
               disk.root.size:
               disk.ephemeral.size:
-              disk.read.requests:
-                archive_policy_name: ceilometer-low-rate
-              disk.read.requests.rate:
-              disk.write.requests:
-                archive_policy_name: ceilometer-low-rate
-              disk.write.requests.rate:
-              disk.read.bytes:
-                archive_policy_name: ceilometer-low-rate
-              disk.read.bytes.rate:
-              disk.write.bytes:
-                archive_policy_name: ceilometer-low-rate
-              disk.write.bytes.rate:
               disk.latency:
               disk.iops:
               disk.capacity:
@@ -1589,6 +1492,9 @@ data:
             attributes:
               host: resource_metadata.(instance_host|host)
               image_ref: resource_metadata.image_ref
+              launched_at: resource_metadata.launched_at
+              created_at: resource_metadata.created_at
+              deleted_at: resource_metadata.deleted_at
               display_name: resource_metadata.display_name
               flavor_id: resource_metadata.(instance_flavor_id|(flavor.id)|flavor_id)
               flavor_name: resource_metadata.(instance_type|(flavor.name)|flavor_name)
@@ -1601,8 +1507,6 @@ data:
               instance_disk: '{"=": {"instance_id": "%s"}}'
           - resource_type: instance_network_interface
             metrics:
-              network.outgoing.packets.rate:
-              network.incoming.packets.rate:
               network.outgoing.packets:
                 archive_policy_name: ceilometer-low-rate
               network.incoming.packets:
@@ -1615,8 +1519,6 @@ data:
                 archive_policy_name: ceilometer-low-rate
               network.incoming.packets.error:
                 archive_policy_name: ceilometer-low-rate
-              network.outgoing.bytes.rate:
-              network.incoming.bytes.rate:
               network.outgoing.bytes:
                 archive_policy_name: ceilometer-low-rate
               network.incoming.bytes:
@@ -1628,16 +1530,12 @@ data:
             metrics:
               disk.device.read.requests:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.read.requests.rate:
               disk.device.write.requests:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.write.requests.rate:
               disk.device.read.bytes:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.read.bytes.rate:
               disk.device.write.bytes:
                 archive_policy_name: ceilometer-low-rate
-              disk.device.write.bytes.rate:
               disk.device.latency:
               disk.device.read.latency:
               disk.device.write.latency:
@@ -1674,10 +1572,14 @@ data:
               hardware.ipmi.node.cpu_util:
               hardware.ipmi.node.mem_util:
               hardware.ipmi.node.io_util:
-              hardware.ipmi.temperature:
-              hardware.ipmi.voltage:
-              hardware.ipmi.current:
+          - resource_type: ipmi_sensor
+            metrics:
               hardware.ipmi.fan:
+              hardware.ipmi.temperature:
+              hardware.ipmi.current:
+              hardware.ipmi.voltage:
+            attributes:
+              node: resource_metadata.node
           - resource_type: network
             metrics:
               bandwidth:
@@ -1696,7 +1598,6 @@ data:
             metrics:
               storage.objects.incoming.bytes:
               storage.objects.outgoing.bytes:
-              storage.api.request:
               storage.objects.size:
               storage.objects:
               storage.objects.containers:
@@ -1712,6 +1613,8 @@ data:
             attributes:
               display_name: resource_metadata.(display_name|name)
               volume_type: resource_metadata.volume_type
+              image_id: resource_metadata.image_id
+              instance_id: resource_metadata.instance_id
             event_delete: volume.delete.start
             event_attributes:
               id: resource_id
@@ -2720,6 +2623,16 @@ data:
 schema: armada/ChartGroup/v1
 metadata:
   schema: metadata/Document/v1
+  name: ceph-pools-audit
+data:
+  description: "Ceph pools audit"
+  sequenced: false
+  chart_group:
+    - openstack-ceph-pools-audit
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-mariadb
 data:
   description: "Mariadb"
@@ -2834,6 +2747,7 @@ data:
     - kube-system-ingress
     - openstack-ingress
     - provisioner
+    - ceph-pools-audit
     - openstack-mariadb
     - openstack-memcached
     - openstack-rabbitmq
@@ -2843,3 +2757,4 @@ data:
     - openstack-heat
     - openstack-horizon
     - openstack-cinder
+    - openstack-telemetry

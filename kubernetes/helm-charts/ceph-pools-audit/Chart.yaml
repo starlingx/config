@@ -1,0 +1,10 @@
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+apiVersion: v1
+appVersion: "1.0"
+description: Ceph RBD pool replication monitor chart
+name: ceph-pools-audit
+version: 0.1.0

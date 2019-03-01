@@ -1015,6 +1015,9 @@ SERVICE_PARAM_NETWORK_ML2_EXT_DRIVERS = \
 SERVICE_PARAM_NETWORK_ML2_TENANT_TYPES = \
     ['vlan', 'vxlan']
 
+# service plugin for neutron network segment range feature
+NEUTRON_PLUGIN_NETWORK_SEGMENT_RANGE = 'network_segment_range'
+
 # a subset of Neutron service plugins that are supported
 SERVICE_PARAM_NETWORK_DEFAULT_SERVICE_PLUGINS = \
     ['odl-router',
@@ -1023,7 +1026,8 @@ SERVICE_PARAM_NETWORK_DEFAULT_SERVICE_PLUGINS = \
      'networking_odl.l3.l3_odl_v2:OpenDaylightL3RouterPlugin',
      'neutron_dynamic_routing.services.bgp.bgp_plugin.BgpPlugin',
      'networking_bgpvpn.neutron.services.plugin.BGPVPNPlugin',
-     'router']
+     'router',
+     NEUTRON_PLUGIN_NETWORK_SEGMENT_RANGE]
 
 # Neutron service plugins for SDN
 SERVICE_PLUGINS_SDN = \
@@ -1432,6 +1436,7 @@ HELM_CHART_OPENVSWITCH = 'openvswitch'
 HELM_CHART_PANKO = 'panko'
 HELM_CHART_RABBITMQ = 'rabbitmq'
 HELM_CHART_RBD_PROVISIONER = 'rbd-provisioner'
+HELM_CHART_CEPH_POOLS_AUDIT = 'ceph-pools-audit'
 HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
 
 SUPPORTED_HELM_CHARTS = [
@@ -1458,6 +1463,7 @@ SUPPORTED_HELM_CHARTS = [
     HELM_CHART_PANKO,
     HELM_CHART_RABBITMQ,
     HELM_CHART_RBD_PROVISIONER,
+    HELM_CHART_CEPH_POOLS_AUDIT,
     HELM_CHART_HELM_TOOLKIT,
 ]
 
@@ -1472,6 +1478,7 @@ SUPPORTED_HELM_APP_CHARTS = {
     HELM_APP_OPENSTACK: [
         HELM_CHART_INGRESS,
         HELM_CHART_RBD_PROVISIONER,
+        HELM_CHART_CEPH_POOLS_AUDIT,
         HELM_CHART_MARIADB,
         HELM_CHART_GARBD,
         HELM_CHART_RABBITMQ,

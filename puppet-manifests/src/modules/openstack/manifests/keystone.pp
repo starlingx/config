@@ -339,11 +339,6 @@ class openstack::keystone::endpoint::runtime {
     include ::nfv::keystone::auth
     include ::fm::keystone::auth
 
-    include ::openstack::aodh::params
-    if $::openstack::aodh::params::service_enabled {
-      include ::aodh::keystone::auth
-    }
-
     include ::ceilometer::keystone::auth
 
     include ::openstack::heat::params
@@ -391,7 +386,7 @@ class openstack::keystone::endpoint::runtime {
     }
 
     include ::platform::ceph::params
-    if $::platform::ceph::params::rgw_enabled {
+    if $::platform::ceph::params::service_enabled {
       include ::platform::ceph::rgw::keystone::auth
     }
 
