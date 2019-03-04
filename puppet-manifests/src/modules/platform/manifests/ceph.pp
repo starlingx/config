@@ -342,8 +342,6 @@ class platform::ceph::osds(
   $osd_config = {},
   $journal_config = {},
 ) inherits ::platform::ceph::params {
-  # Ensure partitions update prior to ceph storage configuration
-  Class['::platform::partitions'] -> Class[$name]
 
   file { '/var/lib/ceph/osd':
     ensure => 'directory',
@@ -491,15 +489,21 @@ class platform::ceph::storage {
     include ::platform::ceph
     include ::platform::ceph::monitor
     include ::platform::ceph::osds
+
+    # Ensure partitions update prior to ceph storage configuration
+    Class['::platform::partitions'] -> Class['::platform::ceph::osds']
 }
 
 class platform::ceph::controller {
     include ::platform::ceph
     include ::platform::ceph::monitor
     include ::platform::ceph::osds
+
+    # Ensure partitions update prior to ceph storage configuration
+    Class['::platform::partitions'] -> Class['::platform::ceph::osds']
 }
 
-class platform::ceph::runtime {
+class platform::ceph::runtime_base {
   include ::platform::ceph::monitor
   include ::platform::ceph
 
@@ -509,6 +513,52 @@ class platform::ceph::runtime {
     Ceph::Mon <| |>
     -> exec { '/etc/init.d/ceph-rest-api start':
       command => '/etc/init.d/ceph-rest-api start'
+    }
+  }
+}
+
+class platform::ceph::runtime_osds {
+  include ::ceph::params
+  include ::platform::ceph::osds
+
+  # Since this is runtime we have to avoid checking status of Ceph while we
+  # configure it. On AIO-DX ceph-osd processes are monitored by SM & on other
+  # deployments they are pmon managed.
+  $system_mode = $::platform::params::system_mode
+  $system_type = $::platform::params::system_type
+
+  if $system_type == 'All-in-one' and 'duplex' in $system_mode {
+    exec { 'sm-unmanage service ceph-osd':
+      command => 'sm-unmanage service ceph-osd'
+    }
+    -> exec { 'stop Ceph OSDs':
+      command => '/etc/init.d/ceph-init-wrapper stop osd'
+    }
+    -> Class['::platform::ceph::osds']
+    -> exec { 'start Ceph OSDs':
+      command => '/etc/init.d/ceph-init-wrapper start osd'
+    }
+    -> exec { 'sm-manage service ceph-osd':
+      command => 'sm-manage service ceph-osd'
+    }
+  } else {
+    exec { 'remove /etc/pmon.d/ceph.conf':
+      command => 'rm -f /etc/pmon.d/ceph.conf'
+    }
+    -> exec { 'stop Ceph OSDs':
+      command => '/etc/init.d/ceph-init-wrapper stop osd'
+    }
+    -> Class['::platform::ceph::osds']
+    -> exec { 'start Ceph OSDs':
+      command => '/etc/init.d/ceph-init-wrapper start osd'
+    }
+    -> file { 'link /etc/pmon.d/ceph.conf':
+      ensure => link,
+      path   => '/etc/pmon.d/ceph.conf',
+      target => '/etc/ceph/ceph.conf.pmon',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0640',
     }
   }
 }

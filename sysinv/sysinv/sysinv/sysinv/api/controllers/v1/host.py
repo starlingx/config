@@ -5024,6 +5024,19 @@ class HostController(rest.RestController):
                     _("%s : Rejected: Can not lock an active "
                         "controller.") % hostupdate.ihost_orig['hostname'])
 
+        # Reject lock while Ceph OSD storage devices are configuring
+        if not force:
+            stors = pecan.request.dbapi.istor_get_by_ihost(
+                hostupdate.ihost_orig['uuid']
+            )
+            for stor in stors:
+                if stor.state == constants.SB_STATE_CONFIGURING:
+                    raise wsme.exc.ClientSideError(
+                        _("%s : Rejected: Can not lock a controller "
+                          "with storage devices in '%s' state.") %
+                         (hostupdate.ihost_orig['hostname'],
+                          constants.SB_STATE_CONFIGURING))
+
         if StorageBackendConfig.has_backend_configured(
                     pecan.request.dbapi,
                     constants.SB_TYPE_CEPH):

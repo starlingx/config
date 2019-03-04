@@ -96,6 +96,8 @@ CONF.register_opts(agent_opts, 'agent')
 MAXSLEEP = 300  # 5 minutes
 
 SYSINV_READY_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_ready")
+SYSINV_FIRST_REPORT_FLAG = os.path.join(tsc.VOLATILE_PATH,
+                                        ".sysinv_agent_report_sent")
 
 CONFIG_APPLIED_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied")
 CONFIG_APPLIED_DEFAULT = "install"
@@ -173,6 +175,9 @@ class AgentManager(service.PeriodicService):
             utils.touch(SYSINV_READY_FLAG)
 
     def _report_to_conductor_iplatform_avail(self):
+        # First report sent to conductor since boot
+        utils.touch(SYSINV_FIRST_REPORT_FLAG)
+        # Sysinv-agent ready; used also by the init script.
         utils.touch(SYSINV_READY_FLAG)
         time.sleep(1)  # give time for conductor to process
         self._report_to_conductor_iplatform_avail_flag = True
@@ -906,6 +911,10 @@ class AgentManager(service.PeriodicService):
                 iscsi_initiator_name = self.get_host_iscsi_initiator_name()
                 if iscsi_initiator_name is not None:
                     imsg_dict.update({'iscsi_initiator_name': iscsi_initiator_name})
+
+                # Is this the first time since boot we are reporting to conductor?
+                imsg_dict.update({constants.SYSINV_AGENT_FIRST_REPORT:
+                                  not os.path.exists(SYSINV_FIRST_REPORT_FLAG)})
 
                 self.platform_update_by_host(rpcapi,
                                              icontext,

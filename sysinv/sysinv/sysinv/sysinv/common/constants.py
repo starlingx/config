@@ -451,6 +451,7 @@ SB_API_OP_DELETE = "delete"
 SB_STATE_CONFIGURED = 'configured'
 SB_STATE_CONFIGURING = 'configuring'
 SB_STATE_CONFIG_ERR = 'configuration-failed'
+SB_STATE_CONFIGURING_ON_UNLOCK = 'configuring-on-unlock'
 
 # Storage backend tasks
 SB_TASK_NONE = None
@@ -1310,6 +1311,9 @@ NETWORK_CONFIG_LOCK_FILE = os.path.join(
 SYSINV_USERNAME = "sysinv"
 SYSINV_GRPNAME = "sysinv"
 SYSINV_WRS_GRPNAME = "wrs_protected"
+
+# This is the first report sysinv is sending to conductor since boot
+SYSINV_AGENT_FIRST_REPORT = 'first_report'
 
 # SSL configuration
 CERT_TYPE_SSL = 'ssl'
