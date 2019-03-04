@@ -178,18 +178,14 @@ class platform::filesystem::docker::params (
 class platform::filesystem::docker
   inherits ::platform::filesystem::docker::params {
 
-  include ::platform::kubernetes::params
-
-  if $::platform::kubernetes::params::enabled {
-    platform::filesystem { $lv_name:
-      lv_name    => $lv_name,
-      lv_size    => $lv_size,
-      mountpoint => $mountpoint,
-      fs_type    => $fs_type,
-      fs_options => $fs_options,
-      fs_use_all => $fs_use_all,
-      mode       => '0711',
-    }
+  platform::filesystem { $lv_name:
+    lv_name    => $lv_name,
+    lv_size    => $lv_size,
+    mountpoint => $mountpoint,
+    fs_type    => $fs_type,
+    fs_options => $fs_options,
+    fs_use_all => $fs_use_all,
+    mode       => '0711',
   }
 }
 
@@ -219,33 +215,25 @@ class platform::filesystem::img_conversions
 
 class platform::filesystem::storage {
 
-  include ::platform::kubernetes::params
-
-  if $::platform::kubernetes::params::enabled {
-    class {'platform::filesystem::docker::params' :
-      lv_size => 30
-    }
-    -> class {'platform::filesystem::docker' :
-    }
-
-    Class['::platform::lvm::vg::cgts_vg'] -> Class['::platform::filesystem::docker']
+  class {'platform::filesystem::docker::params' :
+    lv_size => 30
   }
+  -> class {'platform::filesystem::docker' :
+  }
+
+  Class['::platform::lvm::vg::cgts_vg'] -> Class['::platform::filesystem::docker']
 }
 
 
 class platform::filesystem::compute {
 
-  include ::platform::kubernetes::params
-
-  if $::platform::kubernetes::params::enabled {
-    class {'platform::filesystem::docker::params' :
-      lv_size => 30
-    }
-    -> class {'platform::filesystem::docker' :
-    }
-
-    Class['::platform::lvm::vg::cgts_vg'] -> Class['::platform::filesystem::docker']
+  class {'platform::filesystem::docker::params' :
+    lv_size => 30
   }
+  -> class {'platform::filesystem::docker' :
+  }
+
+  Class['::platform::lvm::vg::cgts_vg'] -> Class['::platform::filesystem::docker']
 }
 
 class platform::filesystem::controller {

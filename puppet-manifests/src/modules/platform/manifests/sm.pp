@@ -15,9 +15,6 @@ class platform::sm
   $system_mode                   = $::platform::params::system_mode
   $system_type                   = $::platform::params::system_type
 
-  include ::platform::kubernetes::params
-  $kubernetes_enabled            = $::platform::kubernetes::params::enabled
-
   include ::platform::network::pxeboot::params
   if $::platform::network::pxeboot::params::interface_name {
     $pxeboot_ip_interface = $::platform::network::pxeboot::params::interface_name
@@ -33,15 +30,11 @@ class platform::sm
   $mgmt_ip_param_ip              = $::platform::network::mgmt::params::controller_address
   $mgmt_ip_param_mask            = $::platform::network::mgmt::params::subnet_prefixlen
 
-  if $kubernetes_enabled {
-    # Repurposing the infra interface for cluster-host interface
-    include ::platform::network::cluster_host::params
-    $infra_ip_interface          = $::platform::network::cluster_host::params::interface_name
-    $cluster_host_ip_param_ip    = $::platform::network::cluster_host::params::controller_address
-    $cluster_host_ip_param_mask  = $::platform::network::cluster_host::params::subnet_prefixlen
-  } else {
-    $infra_ip_interface          = $::platform::network::infra::params::interface_name
-  }
+  # Repurposing the infra interface for cluster-host interface
+  include ::platform::network::cluster_host::params
+  $infra_ip_interface          = $::platform::network::cluster_host::params::interface_name
+  $cluster_host_ip_param_ip    = $::platform::network::cluster_host::params::controller_address
+  $cluster_host_ip_param_mask  = $::platform::network::cluster_host::params::subnet_prefixlen
 
   include ::platform::network::oam::params
   $oam_ip_interface              = $::platform::network::oam::params::interface_name
@@ -140,36 +133,16 @@ class platform::sm
   $platform_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
 
   # CGCS NFS network is over the infrastructure network if configured
-  if $kubernetes_enabled {
-    $cgcs_nfs_ip_interface = $::platform::network::mgmt::params::interface_name
-    $cgcs_nfs_ip_param_ip = $::platform::network::mgmt::params::cgcs_nfs_address
-    $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
-    $cgcs_nfs_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
+  $cgcs_nfs_ip_interface = $::platform::network::mgmt::params::interface_name
+  $cgcs_nfs_ip_param_ip = $::platform::network::mgmt::params::cgcs_nfs_address
+  $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
+  $cgcs_nfs_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
 
-    # Re-using cinder-ip for cluster-host-ip for now
-    # This will be changed when the cluster-host-ip resource is added to SM
-    $cinder_ip_interface = $::platform::network::cluster_host::params::interface_name
-    $cinder_ip_param_ip = $::platform::network::cluster_host::params::controller_address
-    $cinder_ip_param_mask = $::platform::network::cluster_host::params::subnet_prefixlen
-  } else {
-    if $infra_ip_interface {
-      $cgcs_nfs_ip_interface = $::platform::network::infra::params::interface_name
-      $cgcs_nfs_ip_param_ip = $::platform::network::infra::params::cgcs_nfs_address
-      $cgcs_nfs_ip_network_url = $::platform::network::infra::params::subnet_network_url
-      $cgcs_nfs_ip_param_mask = $::platform::network::infra::params::subnet_prefixlen
-
-      $cinder_ip_interface = $::platform::network::infra::params::interface_name
-      $cinder_ip_param_mask = $::platform::network::infra::params::subnet_prefixlen
-    } else {
-      $cgcs_nfs_ip_interface = $::platform::network::mgmt::params::interface_name
-      $cgcs_nfs_ip_param_ip = $::platform::network::mgmt::params::cgcs_nfs_address
-      $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
-      $cgcs_nfs_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
-
-      $cinder_ip_interface = $::platform::network::mgmt::params::interface_name
-      $cinder_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
-    }
-  }
+  # Re-using cinder-ip for cluster-host-ip for now
+  # This will be changed when the cluster-host-ip resource is added to SM
+  $cinder_ip_interface = $::platform::network::cluster_host::params::interface_name
+  $cinder_ip_param_ip = $::platform::network::cluster_host::params::controller_address
+  $cinder_ip_param_mask = $::platform::network::cluster_host::params::subnet_prefixlen
 
   $platform_nfs_subnet_url = "${platform_nfs_ip_network_url}/${platform_nfs_ip_param_mask}"
   $cgcs_nfs_subnet_url = "${cgcs_nfs_ip_network_url}/${cgcs_nfs_ip_param_mask}"
@@ -229,9 +202,6 @@ class platform::sm
   include ::openstack::cinder::params
   $cinder_service_enabled = $::openstack::cinder::params::service_enabled
   $cinder_region_name     = $::openstack::cinder::params::region_name
-  if $kubernetes_enabled != true {
-    $cinder_ip_param_ip   = $::openstack::cinder::params::cinder_address
-  }
   $cinder_backends        = $::openstack::cinder::params::enabled_backends
   $cinder_drbd_resource   = $::openstack::cinder::params::drbd_resource
   $cinder_vg_name         = $::openstack::cinder::params::cinder_vg_name
@@ -270,10 +240,8 @@ class platform::sm
     $hostunit = '0'
     $management_my_unit_ip   = $::platform::network::mgmt::params::controller0_address
     $oam_my_unit_ip          = $::platform::network::oam::params::controller_address
-    if $kubernetes_enabled {
-      # Repurposing the infra interface for cluster-host interface
-      $infra_my_unit_ip = $::platform::network::cluster_host::params::controller_address
-    }
+    # Repurposing the infra interface for cluster-host interface
+    $infra_my_unit_ip = $::platform::network::cluster_host::params::controller_address
   } else {
     case $::hostname {
       $controller_0_hostname: {
@@ -282,14 +250,9 @@ class platform::sm
         $management_peer_unit_ip = $::platform::network::mgmt::params::controller1_address
         $oam_my_unit_ip          = $::platform::network::oam::params::controller0_address
         $oam_peer_unit_ip        = $::platform::network::oam::params::controller1_address
-        if $kubernetes_enabled {
-          # Repurposing the infra interface for cluster-host interface
-          $infra_my_unit_ip = $::platform::network::cluster_host::params::controller0_address
-          $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller1_address
-        } else {
-          $infra_my_unit_ip = $::platform::network::infra::params::controller0_address
-          $infra_peer_unit_ip = $::platform::network::infra::params::controller1_address
-        }
+        # Repurposing the infra interface for cluster-host interface
+        $infra_my_unit_ip = $::platform::network::cluster_host::params::controller0_address
+        $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller1_address
       }
       $controller_1_hostname: {
         $hostunit = '1'
@@ -297,14 +260,9 @@ class platform::sm
         $management_peer_unit_ip = $::platform::network::mgmt::params::controller0_address
         $oam_my_unit_ip          = $::platform::network::oam::params::controller1_address
         $oam_peer_unit_ip        = $::platform::network::oam::params::controller0_address
-        if $kubernetes_enabled {
-          # Repurposing the infra interface for cluster-host interface
-          $infra_my_unit_ip = $::platform::network::cluster_host::params::controller1_address
-          $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller0_address
-        } else {
-          $infra_my_unit_ip = $::platform::network::infra::params::controller1_address
-          $infra_peer_unit_ip = $::platform::network::infra::params::controller0_address
-        }
+        # Repurposing the infra interface for cluster-host interface
+        $infra_my_unit_ip = $::platform::network::cluster_host::params::controller1_address
+        $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller0_address
       }
       default: {
         $hostunit = '2'
@@ -327,21 +285,12 @@ class platform::sm
   # Workaround for the time being to prevent SM from enabling the openstack
   # services when kubernetes is enabled to avoid making changes to individual
   # openstack manifests
-  if $kubernetes_enabled {
-    $heat_service_enabled   = false
-    $murano_configured = false
-    $ironic_configured = false
-    $magnum_configured = false
-    $gnocchi_enabled   = false
-    $panko_enabled     = false
-  } else {
-      $heat_service_enabled   = $::openstack::heat::params::service_enabled
-      $murano_configured      = $::openstack::murano::params::service_enabled
-      $ironic_configured      = $::openstack::ironic::params::service_enabled
-      $magnum_configured      = $::openstack::magnum::params::service_enabled
-      $gnocchi_enabled        = $::openstack::gnocchi::params::service_enabled
-      $panko_enabled          = $::openstack::panko::params::service_enabled
-  }
+  $heat_service_enabled   = false
+  $murano_configured = false
+  $ironic_configured = false
+  $magnum_configured = false
+  $gnocchi_enabled   = false
+  $panko_enabled     = false
 
   # lint:ignore:140chars
 
@@ -367,10 +316,8 @@ class platform::sm
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
 
-    if $kubernetes_enabled {
-      exec { 'Configure Cluster Host Interface':
-        command => "sm-configure interface controller infrastructure-interface \"\" ${infra_my_unit_ip} 2222 2223 \"\" 2222 2223",
-      }
+    exec { 'Configure Cluster Host Interface':
+      command => "sm-configure interface controller infrastructure-interface \"\" ${infra_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
 
   } else {
@@ -380,10 +327,8 @@ class platform::sm
     exec { 'Configure Management Interface':
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 ${management_peer_unit_ip} 2222 2223",
     }
-    if $kubernetes_enabled or $infra_ip_interface {
-      exec { 'Configure Infrastructure Interface':
-        command => "sm-configure interface controller infrastructure-interface ${infra_ip_multicast} ${infra_my_unit_ip} 2222 2223 ${infra_peer_unit_ip} 2222 2223",
-      }
+    exec { 'Configure Infrastructure Interface':
+      command => "sm-configure interface controller infrastructure-interface ${infra_ip_multicast} ${infra_my_unit_ip} 2222 2223 ${infra_peer_unit_ip} 2222 2223",
     }
   }
 
@@ -449,38 +394,23 @@ class platform::sm
     command => "sm-configure service_instance rabbit rabbit \"server=${rabbitmq_server},ctl=${rabbitmqctl},pid_file=${rabbit_pid},nodename=${rabbit_node_name},mnesia_base=${rabbit_mnesia_base},ip=${mgmt_ip_param_ip}\"",
   }
 
-  if $kubernetes_enabled {
-    exec { 'Provision Docker Distribution FS in SM (service-group-member dockerdistribution-fs)':
-      command => 'sm-provision service-group-member controller-services dockerdistribution-fs',
-    }
-    -> exec { 'Provision Docker Distribution FS in SM (service dockerdistribution-fs)':
-      command => 'sm-provision service dockerdistribution-fs',
-    }
-    -> exec { 'Provision Docker Distribution DRBD in SM (service-group-member drbd-dockerdistribution)':
-      command => 'sm-provision service-group-member controller-services drbd-dockerdistribution',
-    }
-    -> exec { 'Provision Docker Distribution DRBD in SM (service drbd-dockerdistribution)':
-      command => 'sm-provision service drbd-dockerdistribution',
-    }
-    -> exec { 'Configure Docker Distribution DRBD':
-      command => "sm-configure service_instance drbd-dockerdistribution drbd-dockerdistribution:${hostunit} \"drbd_resource=${dockerdistribution_drbd_resource}\"",
-    }
-    -> exec { 'Configure Docker Distribution FileSystem':
-      command => "sm-configure service_instance dockerdistribution-fs dockerdistribution-fs \"device=${dockerdistribution_fs_device},directory=${dockerdistribution_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
-    }
-  } else {
-    exec { 'Deprovision Docker Distribution FS in SM (service-group-member dockerdistribution-fs)':
-      command => 'sm-deprovision service-group-member controller-services dockerdistribution-fs',
-    }
-    -> exec { 'Deprovision Docker Distribution FS in SM (service dockerdistribution-fs)':
-      command => 'sm-deprovision service dockerdistribution-fs',
-    }
-    -> exec { 'Deprovision Docker Distribution DRBD in SM (service-group-member drbd-dockerdistribution)':
-      command => 'sm-deprovision service-group-member controller-services drbd-dockerdistribution',
-    }
-    -> exec { 'Deprovision Docker Distribution DRBD in SM (service drbd-dockerdistribution)':
-      command => 'sm-deprovision service drbd-dockerdistribution',
-    }
+  exec { 'Provision Docker Distribution FS in SM (service-group-member dockerdistribution-fs)':
+    command => 'sm-provision service-group-member controller-services dockerdistribution-fs',
+  }
+  -> exec { 'Provision Docker Distribution FS in SM (service dockerdistribution-fs)':
+    command => 'sm-provision service dockerdistribution-fs',
+  }
+  -> exec { 'Provision Docker Distribution DRBD in SM (service-group-member drbd-dockerdistribution)':
+    command => 'sm-provision service-group-member controller-services drbd-dockerdistribution',
+  }
+  -> exec { 'Provision Docker Distribution DRBD in SM (service drbd-dockerdistribution)':
+    command => 'sm-provision service drbd-dockerdistribution',
+  }
+  -> exec { 'Configure Docker Distribution DRBD':
+    command => "sm-configure service_instance drbd-dockerdistribution drbd-dockerdistribution:${hostunit} \"drbd_resource=${dockerdistribution_drbd_resource}\"",
+  }
+  -> exec { 'Configure Docker Distribution FileSystem':
+    command => "sm-configure service_instance dockerdistribution-fs dockerdistribution-fs \"device=${dockerdistribution_fs_device},directory=${dockerdistribution_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   exec { 'Configure CGCS DRBD':
@@ -518,33 +448,22 @@ class platform::sm
   }
 
   # Configure helm chart repository
-  if $kubernetes_enabled {
-    exec { 'Provision Helm Chart Repository FS in SM (service-group-member helmrepository-fs)':
-      command => 'sm-provision service-group-member controller-services helmrepository-fs',
-    }
-    -> exec { 'Provision Helm Chart Repository FS in SM (service helmrepository-fs)':
-      command => 'sm-provision service helmrepository-fs',
-    }
-    -> exec { 'Configure Helm Chart Repository FileSystem':
-      command => "sm-configure service_instance helmrepository-fs helmrepository-fs \"rmon_rsc_name=helm-charts-storage,device=${helmrepo_fs_source_dir},directory=${helmrepo_fs_target_dir},options=bind,noatime,nodiratime,fstype=ext4,check_level=20\"",
-    }
-  } else {
-    exec { 'Deprovision Helm Chart Repository FS in SM (service-group-member helmrepository-fs)':
-      command => 'sm-deprovision service-group-member controller-services helmrepository-fs',
-    }
-    -> exec { 'Deprovision Helm Chart Repository FS in SM (service helmrepository-fs)':
-      command => 'sm-deprovision service helmrepository-fs',
-    }
+  exec { 'Provision Helm Chart Repository FS in SM (service-group-member helmrepository-fs)':
+    command => 'sm-provision service-group-member controller-services helmrepository-fs',
+  }
+  -> exec { 'Provision Helm Chart Repository FS in SM (service helmrepository-fs)':
+    command => 'sm-provision service helmrepository-fs',
+  }
+  -> exec { 'Configure Helm Chart Repository FileSystem':
+    command => "sm-configure service_instance helmrepository-fs helmrepository-fs \"rmon_rsc_name=helm-charts-storage,device=${helmrepo_fs_source_dir},directory=${helmrepo_fs_target_dir},options=bind,noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
-  if $kubernetes_enabled {
-    exec { 'Configure ETCD DRBD':
-      command => "sm-configure service_instance drbd-etcd drbd-etcd:${hostunit} drbd_resource=${etcd_drbd_resource}",
-    }
+  exec { 'Configure ETCD DRBD':
+    command => "sm-configure service_instance drbd-etcd drbd-etcd:${hostunit} drbd_resource=${etcd_drbd_resource}",
+  }
 
-    exec { 'Configure ETCD DRBD FileSystem':
-      command => "sm-configure service_instance etcd-fs etcd-fs \"device=${etcd_fs_device},directory=${etcd_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
-    }
+  exec { 'Configure ETCD DRBD FileSystem':
+    command => "sm-configure service_instance etcd-fs etcd-fs \"device=${etcd_fs_device},directory=${etcd_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
@@ -557,6 +476,7 @@ class platform::sm
       }
   }
 
+  # TODO: region code needs to be revisited
   if $region_config {
     # In a default Multi-Region configuration, Keystone is running as a
     # shared service in the Primary Region so need to deprovision that
@@ -610,12 +530,9 @@ class platform::sm
         }
       }
     }
-  } elsif $kubernetes_enabled {
-      $configure_keystone = true
-      $configure_glance = false
   } else {
       $configure_keystone = true
-      $configure_glance = true
+      $configure_glance = false
   }
 
   if $configure_keystone {
@@ -808,28 +725,27 @@ class platform::sm
       }
   }
 
-  if $kubernetes_enabled {
-    # Re-using cinder-ip for cluster-host-ip for now
-    # This will be changed when the cluster-host-ip resource is added to SM
-    exec { 'Configure Cinder IP in SM (service-group-member cinder-ip)':
-      command =>
-        'sm-provision service-group-member controller-services cinder-ip',
-    }
-    -> exec { 'Configure Cinder IP  in SM (service cinder-ip)':
-      command => 'sm-provision service cinder-ip',
-    }
+  # Re-using cinder-ip for cluster-host-ip for now
+  # This will be changed when the cluster-host-ip resource is added to SM
+  exec { 'Configure Cinder IP in SM (service-group-member cinder-ip)':
+    command =>
+      'sm-provision service-group-member controller-services cinder-ip',
+  }
+  -> exec { 'Configure Cinder IP  in SM (service cinder-ip)':
+    command => 'sm-provision service cinder-ip',
+  }
 
-    if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
-      exec { 'Configure Cinder IP service instance':
-        command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7,dc=yes\"",
-      }
-    } else {
-      exec { 'Configure Cinder IP service instance':
-        command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7\"",
-      }
+  if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
+    exec { 'Configure Cinder IP service instance':
+      command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7,dc=yes\"",
+    }
+  } else {
+    exec { 'Configure Cinder IP service instance':
+      command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7\"",
     }
   }
 
+  # TODO: revisit region mode
   if $region_config {
       if $neutron_region_name != $region_2_name {
           $configure_neturon = false
@@ -843,10 +759,8 @@ class platform::sm
       } else {
           $configure_neturon = true
       }
-  } elsif $kubernetes_enabled {
-      $configure_neturon = false
   } else {
-      $configure_neturon = true
+      $configure_neturon = false
   }
 
   if $configure_neturon {
@@ -855,103 +769,75 @@ class platform::sm
       }
   }
 
-  if $kubernetes_enabled != true {
+  # TODO: this entire section needs to be removed from SM.
+  # After these are removed from SM, this entire section of
+  # deprovision calls will not be needed
+  # Deprovision Openstack services if Kubernetes Config is enabled
 
-    exec { 'Configure OpenStack - Nova API':
-      command => "sm-configure service_instance nova-api nova-api \"config=/etc/nova/nova.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens\"",
-    }
+  # Deprovision Nova Services
+  exec { 'Deprovision OpenStack - Nova API (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services nova-api',
+  }
+  -> exec { 'Deprovision OpenStack - Nova API(service)':
+      command => 'sm-deprovision service nova-api',
+  }
 
-    exec { 'Configure OpenStack - Nova Placement API':
-      command => "sm-configure service_instance nova-placement-api nova-placement-api \"config=/etc/nova/nova.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens,host=${mgmt_ip_param_ip}\"",
-    }
+  exec { 'Deprovision OpenStack - Nova API Proxy (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services nova-api-proxy',
+  }
+  -> exec { 'Deprovision OpenStack - Nova API Proxy(service)':
+      command => 'sm-deprovision service nova-api-proxy',
+  }
 
-    exec { 'Configure OpenStack - Nova Scheduler':
-      command => "sm-configure service_instance nova-scheduler nova-scheduler \"config=/etc/nova/nova.conf,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
-    }
+  exec { 'Deprovision OpenStack - Nova Placement API (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services nova-placement-api',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Placement API(service)':
+      command => 'sm-deprovision service nova-placement-api',
+  }
 
-    exec { 'Configure OpenStack - Nova Conductor':
-      command => "sm-configure service_instance nova-conductor nova-conductor \"config=/etc/nova/nova.conf,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
-    }
+  exec { 'Deprovision OpenStack - Nova Scheduler (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services nova-scheduler',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Scheduler(service)':
+      command => 'sm-deprovision service nova-scheduler',
+  }
 
-    exec { 'Configure OpenStack - Nova Console Authorization':
-      command => "sm-configure service_instance nova-console-auth nova-console-auth \"config=/etc/nova/nova.conf,user=root,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
-    }
+  exec { 'Deprovision OpenStack - Nova Conductor (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services nova-conductor',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Conductor(service)':
+      command => 'sm-deprovision service nova-conductor',
+  }
 
-    exec { 'Configure OpenStack - Nova NoVNC':
-      command => "sm-configure service_instance nova-novnc nova-novnc \"config=/etc/nova/nova.conf,user=root,console_port=${novnc_console_port}\"",
-    }
+  exec { 'Deprovision OpenStack - Nova Console Auth (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services nova-console-auth',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Console Auth(service)':
+      command => 'sm-deprovision service nova-console-auth',
+  }
 
-    exec { 'Configure OpenStack - Ceilometer Agent Notification':
-      command => "sm-configure service_instance ceilometer-agent-notification ceilometer-agent-notification \"config=/etc/ceilometer/ceilometer.conf\"",
-    }
-  } else {
-      # Deprovision Openstack services if Kubernetes Config is enabled
+  exec { 'Deprovision OpenStack - Nova NoVNC (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services nova-novnc',
+  }
+  -> exec { 'Deprovision OpenStack - Nova NoVNC(service)':
+      command => 'sm-deprovision service nova-novnc',
+  }
 
-      # Deprovision Nova Services
-      exec { 'Deprovision OpenStack - Nova API (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services nova-api',
-      }
-      -> exec { 'Deprovision OpenStack - Nova API(service)':
-          command => 'sm-deprovision service nova-api',
-      }
+  # Deprovision Celiometer
+  exec { 'Deprovision OpenStack - Ceilometer Agent Notification (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services ceilometer-agent-notification',
+  }
+  -> exec { 'Deprovision OpenStack - Ceilometer Agent Notification(service)':
+      command => 'sm-deprovision service ceilometer-agent-notification',
+  }
 
-      exec { 'Deprovision OpenStack - Nova API Proxy (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services nova-api-proxy',
-      }
-      -> exec { 'Deprovision OpenStack - Nova API Proxy(service)':
-          command => 'sm-deprovision service nova-api-proxy',
-      }
-
-      exec { 'Deprovision OpenStack - Nova Placement API (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services nova-placement-api',
-      }
-      -> exec { 'Deprovision OpenStack - Nova Placement API(service)':
-          command => 'sm-deprovision service nova-placement-api',
-      }
-
-      exec { 'Deprovision OpenStack - Nova Scheduler (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services nova-scheduler',
-      }
-      -> exec { 'Deprovision OpenStack - Nova Scheduler(service)':
-          command => 'sm-deprovision service nova-scheduler',
-      }
-
-      exec { 'Deprovision OpenStack - Nova Conductor (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services nova-conductor',
-      }
-      -> exec { 'Deprovision OpenStack - Nova Conductor(service)':
-          command => 'sm-deprovision service nova-conductor',
-      }
-
-      exec { 'Deprovision OpenStack - Nova Console Auth (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services nova-console-auth',
-      }
-      -> exec { 'Deprovision OpenStack - Nova Console Auth(service)':
-          command => 'sm-deprovision service nova-console-auth',
-      }
-
-      exec { 'Deprovision OpenStack - Nova NoVNC (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services nova-novnc',
-      }
-      -> exec { 'Deprovision OpenStack - Nova NoVNC(service)':
-          command => 'sm-deprovision service nova-novnc',
-      }
-
-      # Deprovision Celiometer
-      exec { 'Deprovision OpenStack - Ceilometer Agent Notification (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services ceilometer-agent-notification',
-      }
-      -> exec { 'Deprovision OpenStack - Ceilometer Agent Notification(service)':
-          command => 'sm-deprovision service ceilometer-agent-notification',
-      }
-
-      # Deprovision Neutron Server
-      exec { 'Deprovision OpenStack - Neutron Server (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services neutron-server',
-      }
-      -> exec { 'Deprovision OpenStack - Neutron Server (service)':
-          command => 'sm-deprovision service neutron-server',
-      }
+  # Deprovision Neutron Server
+  exec { 'Deprovision OpenStack - Neutron Server (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services neutron-server',
+  }
+  -> exec { 'Deprovision OpenStack - Neutron Server (service)':
+      command => 'sm-deprovision service neutron-server',
   }
 
   if $heat_service_enabled {
@@ -1275,43 +1161,31 @@ class platform::sm
   }
 
   # Configure ETCD for Kubernetes
-  if $kubernetes_enabled {
-    exec { 'Provision etcd-fs (service-group-member)':
-      command => 'sm-provision service-group-member controller-services etcd-fs',
-    }
-    -> exec { 'Provision etcd-fs (service)':
-      command => 'sm-provision service etcd-fs',
-    }
-    -> exec { 'Provision drbd-etcd (service-group-member)':
-      command => 'sm-provision service-group-member controller-services drbd-etcd',
-    }
-    -> exec { 'Provision drbd-etcd (service)':
-      command => 'sm-provision service drbd-etcd',
-    }
-    -> exec { 'Provision ETCD (service-group-member)':
-        command => 'sm-provision service-group-member controller-services etcd',
-    }
-    -> exec { 'Provision ETCD (service)':
-      command => 'sm-provision service etcd',
-    }
+  exec { 'Provision etcd-fs (service-group-member)':
+    command => 'sm-provision service-group-member controller-services etcd-fs',
   }
-  else {
-    exec { 'Deprovision ETCD (service-group-member)':
-      command => 'sm-deprovision service-group-member controller-services etcd',
-    }
-    -> exec { 'Deprovision ETCD (service)':
-      command => 'sm-deprovision service etcd',
-    }
+  -> exec { 'Provision etcd-fs (service)':
+    command => 'sm-provision service etcd-fs',
+  }
+  -> exec { 'Provision drbd-etcd (service-group-member)':
+    command => 'sm-provision service-group-member controller-services drbd-etcd',
+  }
+  -> exec { 'Provision drbd-etcd (service)':
+    command => 'sm-provision service drbd-etcd',
+  }
+  -> exec { 'Provision ETCD (service-group-member)':
+      command => 'sm-provision service-group-member controller-services etcd',
+  }
+  -> exec { 'Provision ETCD (service)':
+    command => 'sm-provision service etcd',
   }
 
   # Configure Docker Distribution
-  if $kubernetes_enabled {
-    exec { 'Provision Docker Distribution (service-group-member)':
-        command => 'sm-provision service-group-member controller-services docker-distribution',
-    }
-    -> exec { 'Provision Docker Distribution (service)':
-      command => 'sm-provision service docker-distribution',
-    }
+  exec { 'Provision Docker Distribution (service-group-member)':
+      command => 'sm-provision service-group-member controller-services docker-distribution',
+  }
+  -> exec { 'Provision Docker Distribution (service)':
+    command => 'sm-provision service docker-distribution',
   }
 
   # Barbican

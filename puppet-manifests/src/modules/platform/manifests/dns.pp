@@ -64,14 +64,8 @@ class platform::dns::dnsmasq {
   }
 
   include ::platform::kubernetes::params
-  $kubernetes_enabled = $::platform::kubernetes::params::enabled
-  if $kubernetes_enabled {
-    $service_domain = $::platform::kubernetes::params::service_domain
-    $dns_service_ip = $::platform::kubernetes::params::dns_service_ip
-  } else {
-    $service_domain = undef
-    $dns_service_ip = undef
-  }
+  $service_domain = $::platform::kubernetes::params::service_domain
+  $dns_service_ip = $::platform::kubernetes::params::dns_service_ip
 
   file { '/etc/dnsmasq.conf':
       ensure  => 'present',

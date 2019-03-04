@@ -13,37 +13,32 @@ class platform::docker::params (
 class platform::docker::config
   inherits ::platform::docker::params {
 
-  include ::platform::kubernetes::params
-
-  if $::platform::kubernetes::params::enabled {
-
-    if $http_proxy or $https_proxy {
-      file { '/etc/systemd/system/docker.service.d':
-        ensure => 'directory',
-        owner  => 'root',
-        group  => 'root',
-        mode   => '0755',
-      }
-      -> file { '/etc/systemd/system/docker.service.d/http-proxy.conf':
-        ensure  => present,
-        owner   => 'root',
-        group   => 'root',
-        mode    => '0644',
-        content => template('platform/dockerproxy.conf.erb'),
-      }
+  if $http_proxy or $https_proxy {
+    file { '/etc/systemd/system/docker.service.d':
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0755',
     }
-
-    Class['::platform::filesystem::docker'] ~> Class[$name]
-
-    service { 'docker':
-      ensure  => 'running',
-      name    => 'docker',
-      enable  => true,
-      require => Package['docker']
+    -> file { '/etc/systemd/system/docker.service.d/http-proxy.conf':
+      ensure  => present,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => template('platform/dockerproxy.conf.erb'),
     }
-    -> exec { 'enable-docker':
-      command => '/usr/bin/systemctl enable docker.service',
-    }
+  }
+
+  Class['::platform::filesystem::docker'] ~> Class[$name]
+
+  service { 'docker':
+    ensure  => 'running',
+    name    => 'docker',
+    enable  => true,
+    require => Package['docker']
+  }
+  -> exec { 'enable-docker':
+    command => '/usr/bin/systemctl enable docker.service',
   }
 }
 

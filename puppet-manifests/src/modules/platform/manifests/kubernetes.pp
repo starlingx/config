@@ -1,5 +1,5 @@
 class platform::kubernetes::params (
-  $enabled = false,
+  $enabled = true,
   $pod_network_cidr = undef,
   $service_network_cidr = undef,
   $apiserver_advertise_address = undef,
@@ -293,20 +293,18 @@ class platform::kubernetes::master::init
 class platform::kubernetes::master
   inherits ::platform::kubernetes::params {
 
-  if $enabled {
-    contain ::platform::kubernetes::kubeadm
-    contain ::platform::kubernetes::master::init
-    contain ::platform::kubernetes::firewall
+  contain ::platform::kubernetes::kubeadm
+  contain ::platform::kubernetes::master::init
+  contain ::platform::kubernetes::firewall
 
-    Class['::platform::etcd'] -> Class[$name]
-    Class['::platform::docker::config'] -> Class[$name]
-    # Ensure DNS is configured as name resolution is required when
-    # kubeadm init is run.
-    Class['::platform::dns'] -> Class[$name]
-    Class['::platform::kubernetes::kubeadm']
-    -> Class['::platform::kubernetes::master::init']
-    -> Class['::platform::kubernetes::firewall']
-  }
+  Class['::platform::etcd'] -> Class[$name]
+  Class['::platform::docker::config'] -> Class[$name]
+  # Ensure DNS is configured as name resolution is required when
+  # kubeadm init is run.
+  Class['::platform::dns'] -> Class[$name]
+  Class['::platform::kubernetes::kubeadm']
+  -> Class['::platform::kubernetes::master::init']
+  -> Class['::platform::kubernetes::firewall']
 }
 
 class platform::kubernetes::worker::params (
@@ -356,7 +354,7 @@ class platform::kubernetes::worker
 
   # Worker configuration is not required on AIO hosts, since the master
   # will already be configured and includes support for running pods.
-  if $enabled and $::personality != 'controller' {
+  if $::personality != 'controller' {
     contain ::platform::kubernetes::kubeadm
     contain ::platform::kubernetes::worker::init
 
@@ -364,18 +362,16 @@ class platform::kubernetes::worker
     -> Class['::platform::kubernetes::worker::init']
   }
 
-  if $enabled {
-    file { '/var/run/.disable_worker_services':
-      ensure  => file,
-      replace => no,
-    }
-    # TODO: The following exec is a workaround. Once kubernetes becomes the
-    # default installation, /etc/pmon.d/libvirtd.conf needs to be removed from
-    # the load.
-    exec { 'Update PMON libvirtd.conf':
-      command => "/bin/sed -i 's#mode  = passive#mode  = ignore #' /etc/pmon.d/libvirtd.conf",
-      onlyif  => '/usr/bin/test -e /etc/pmon.d/libvirtd.conf'
-    }
+  file { '/var/run/.disable_worker_services':
+    ensure  => file,
+    replace => no,
+  }
+  # TODO: The following exec is a workaround. Once kubernetes becomes the
+  # default installation, /etc/pmon.d/libvirtd.conf needs to be removed from
+  # the load.
+  exec { 'Update PMON libvirtd.conf':
+    command => "/bin/sed -i 's#mode  = passive#mode  = ignore #' /etc/pmon.d/libvirtd.conf",
+    onlyif  => '/usr/bin/test -e /etc/pmon.d/libvirtd.conf'
   }
 }
 

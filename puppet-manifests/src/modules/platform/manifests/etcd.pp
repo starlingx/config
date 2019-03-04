@@ -67,20 +67,15 @@ class platform::etcd::init
 class platform::etcd
   inherits ::platform::etcd::params {
 
-  include ::platform::kubernetes::params
-
   Class['::platform::drbd::etcd'] -> Class[$name]
 
-  if $::platform::kubernetes::params::enabled {
-    include ::platform::etcd::datadir
-    include ::platform::etcd::setup
-    include ::platform::etcd::init
+  include ::platform::etcd::datadir
+  include ::platform::etcd::setup
+  include ::platform::etcd::init
 
-    Class['::platform::etcd::datadir']
-    -> Class['::platform::etcd::setup']
-    -> Class['::platform::etcd::init']
-
-  }
+  Class['::platform::etcd::datadir']
+  -> Class['::platform::etcd::setup']
+  -> Class['::platform::etcd::init']
 }
 
 class platform::etcd::datadir

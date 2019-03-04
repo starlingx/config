@@ -319,8 +319,6 @@ class platform::drbd::etcd::params (
 class platform::drbd::etcd (
 ) inherits ::platform::drbd::etcd::params {
 
-  include ::platform::kubernetes::params
-
   if str2bool($::is_initial_config_primary) {
     $drbd_primary = true
     $drbd_initial = true
@@ -333,20 +331,18 @@ class platform::drbd::etcd (
     $drbd_manage = undef
   }
 
-  if $::platform::kubernetes::params::enabled {
-    platform::drbd::filesystem { $resource_name:
-      vg_name                => $vg_name,
-      lv_name                => $lv_name,
-      lv_size                => $lv_size,
-      port                   => $port,
-      device                 => $device,
-      mountpoint             => $mountpoint,
-      resync_after           => undef,
-      manage_override        => $drbd_manage,
-      ha_primary_override    => $drbd_primary,
-      initial_setup_override => $drbd_initial,
-      automount_override     => $drbd_automount,
-    }
+  platform::drbd::filesystem { $resource_name:
+    vg_name                => $vg_name,
+    lv_name                => $lv_name,
+    lv_size                => $lv_size,
+    port                   => $port,
+    device                 => $device,
+    mountpoint             => $mountpoint,
+    resync_after           => undef,
+    manage_override        => $drbd_manage,
+    ha_primary_override    => $drbd_primary,
+    initial_setup_override => $drbd_initial,
+    automount_override     => $drbd_automount,
   }
 }
 
@@ -363,8 +359,6 @@ class platform::drbd::dockerdistribution::params (
 class platform::drbd::dockerdistribution ()
   inherits ::platform::drbd::dockerdistribution::params {
 
-  include ::platform::kubernetes::params
-
   if str2bool($::is_initial_config_primary) {
     $drbd_primary = true
     $drbd_initial = true
@@ -377,20 +371,18 @@ class platform::drbd::dockerdistribution ()
     $drbd_manage = undef
   }
 
-  if $::platform::kubernetes::params::enabled {
-    platform::drbd::filesystem { $resource_name:
-      vg_name                => $vg_name,
-      lv_name                => $lv_name,
-      lv_size                => $lv_size,
-      port                   => $port,
-      device                 => $device,
-      mountpoint             => $mountpoint,
-      resync_after           => undef,
-      manage_override        => $drbd_manage,
-      ha_primary_override    => $drbd_primary,
-      initial_setup_override => $drbd_initial,
-      automount_override     => $drbd_automount,
-    }
+  platform::drbd::filesystem { $resource_name:
+    vg_name                => $vg_name,
+    lv_name                => $lv_name,
+    lv_size                => $lv_size,
+    port                   => $port,
+    device                 => $device,
+    mountpoint             => $mountpoint,
+    resync_after           => undef,
+    manage_override        => $drbd_manage,
+    ha_primary_override    => $drbd_primary,
+    initial_setup_override => $drbd_initial,
+    automount_override     => $drbd_automount,
   }
 }
 

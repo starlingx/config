@@ -164,10 +164,8 @@ class platform::ceph::post
 class platform::ceph::monitor
   inherits ::platform::ceph::params {
 
-  include ::platform::kubernetes::params
   $system_mode = $::platform::params::system_mode
   $system_type = $::platform::params::system_type
-  $k8s_enabled = $::platform::kubernetes::params::enabled
 
   if $service_enabled {
     if $system_type == 'All-in-one' and 'duplex' in $system_mode {
@@ -191,7 +189,7 @@ class platform::ceph::monitor
     $configure_ceph_mon = false
   }
 
-  if $::personality == 'worker' and ! $configure_ceph_mon and $k8s_enabled {
+  if $::personality == 'worker' and ! $configure_ceph_mon {
     # Reserve space for ceph-mon on all worker nodes.
     include ::platform::filesystem::params
     logical_volume { $mon_lv_name:
@@ -222,7 +220,7 @@ class platform::ceph::monitor
         fs_options => $mon_fs_options,
       } -> Class['::ceph']
 
-      if $k8s_enabled and $::personality == 'worker' {
+      if $::personality == 'worker' {
         Platform::Filesystem[$mon_lv_name] -> Class['platform::filesystem::docker']
       }
 
