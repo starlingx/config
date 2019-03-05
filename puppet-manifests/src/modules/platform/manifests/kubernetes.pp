@@ -151,6 +151,11 @@ class platform::kubernetes::master::init
       logoutput => true,
     }
 
+    -> exec { 'Use anti-affinity for coredns pods':
+      command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}\'', # lint:ignore:140chars
+      logoutput => true,
+    }
+
     # Remove the taint from the master node
     -> exec { 'remove taint from master node':
       command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master- || true", # lint:ignore:140chars
@@ -254,6 +259,11 @@ class platform::kubernetes::master::init
       # kubeadm init is run, it undoes any changes to the deployment.
       -> exec { 'restrict coredns to master nodes':
         command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'', # lint:ignore:140chars
+        logoutput => true,
+      }
+
+      -> exec { 'Use anti-affinity for coredns pods':
+        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}\'', # lint:ignore:140chars
         logoutput => true,
       }
 
