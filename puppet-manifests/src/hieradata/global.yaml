@@ -24,68 +24,6 @@ sysinv::verbose: true
 sysinv::log_facility: 'local6'
 
 
-# neutron
-neutron::state_path: '/var/run/neutron'
-neutron::lock_path: '/var/run/neutron/lock'
-neutron::root_helper: 'sudo'
-neutron::host_driver: 'neutron.plugins.wrs.drivers.host.DefaultHostDriver'
-neutron::fm_driver: 'neutron.plugins.wrs.drivers.fm.DefaultFmDriver'
-
-neutron::logging::use_syslog: true
-neutron::logging::syslog_log_facility: 'local2'
-neutron::logging::log_dir: false
-neutron::logging::verbose: false
-neutron::logging::debug: false
-
-neutron::core_plugin: 'neutron.plugins.ml2.plugin.Ml2Plugin'
-neutron::service_plugins:
-  - 'router'
-neutron::allow_overlapping_ips: true
-neutron::vlan_transparent: true
-neutron::pnet_audit_enabled: false
-
-neutron::verbose: false
-neutron::log_dir: false
-neutron::use_syslog: true
-neutron::notification_driver: ['messagingv2']
-neutron::dns_domain: 'openstacklocal'
-
-
-# nova
-nova::use_syslog: true
-nova::debug: false
-nova::log_facility: 'local6'
-nova::notification_driver: 'messagingv2'
-nova::cinder_catalog_info: 'volumev2:cinderv2:internalURL'
-nova::notify_on_state_change: 'vm_and_task_state'
-
-nova::database_idle_timeout: 60
-nova::database_max_pool_size: 1
-nova::database_max_overflow: 64
-
-
-# Set number of block device allocate retries and interval
-# for volume create when VM boots and creates a new volume.
-# The total block allocate retries time is set to 2 hours
-# to satisfy the volume allocation time on slow RPM disks
-# which may take 1 hour and a half per volume when several
-# volumes are created in parallel.
-nova::block_device_allocate_retries: 2400
-nova::block_device_allocate_retries_interval: 3
-
-nova::disk_allocation_ratio: 1.0
-nova::cpu_allocation_ratio: 16.0
-nova::ram_allocation_ratio: 1.0
-
-# require Nova Placement to use the internal endpoint only
-nova::placement::os_interface: 'internal'
-
-
-# ceilometer
-ceilometer::telemetry_secret: ''
-ceilometer::use_syslog: true
-ceilometer::log_facility: 'local2'
-
 # collectd: configuration
 platform::collectd::params::interval: 30
 platform::collectd::params::timeout: 2

@@ -75,50 +75,10 @@ include ::platform::fm::api
 
 include ::platform::multipath
 include ::platform::client
-include ::openstack::client
 include ::openstack::keystone
 include ::openstack::keystone::api
 
-include ::openstack::glance
-include ::openstack::glance::api
-
-include ::openstack::cinder
-include ::openstack::cinder::api
-
-include ::openstack::neutron
-include ::openstack::neutron::api
-include ::openstack::neutron::server
-
-include ::openstack::nova
-include ::openstack::nova::api
-include ::openstack::nova::network
-include ::openstack::nova::controller
-include ::openstack::nova::placement
-
-include ::openstack::gnocchi
-include ::openstack::gnocchi::api
-include ::openstack::gnocchi::metricd
-
-include ::openstack::ceilometer
-include ::openstack::ceilometer::agent::notification
-include ::openstack::ceilometer::polling
-
-include ::openstack::panko
-include ::openstack::panko::api
-
-include ::openstack::heat
-include ::openstack::heat::api
-
 include ::openstack::horizon
-
-include ::openstack::murano
-include ::openstack::murano::api
-
-include ::openstack::magnum
-include ::openstack::magnum::api
-
-include ::openstack::ironic
-include ::openstack::ironic::api
 
 include ::platform::dcmanager
 include ::platform::dcmanager::manager

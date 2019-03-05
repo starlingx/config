@@ -238,13 +238,9 @@ class platform::drbd::extension (
 ) inherits ::platform::drbd::extension::params {
 
   include ::platform::params
-  include ::openstack::cinder::params
   include ::platform::drbd::cgcs::params
 
-  if ($::platform::params::system_mode != 'simplex' and
-      'lvm' in $::openstack::cinder::params::enabled_backends) {
-    $resync_after = $::openstack::cinder::params::drbd_resource
-  } elsif str2bool($::is_primary_disk_rotational) {
+  if str2bool($::is_primary_disk_rotational) {
     $resync_after = $::platform::drbd::cgcs::params::resource_name
   } else {
     $resync_after = undef
@@ -448,14 +444,9 @@ class platform::drbd(
   $service_enable = false,
   $service_ensure = 'stopped',
 ) {
-  if (str2bool($::is_initial_config_primary) or
-    ('lvm' in $openstack::cinder::params::enabled_backends and
-      str2bool($::is_standalone_controller) and str2bool($::is_node_cinder_lvm_config))
+  if (str2bool($::is_initial_config_primary)
   ){
-    # Enable DRBD in two cases:
-    # 1) At config_controller,
-    # 2) When cinder volumes disk is replaced on a standalone controller
-    #   (e.g. AIO SX).
+    # Enable DRBD at config_controller
     class { '::drbd':
       service_enable => true,
       service_ensure => 'running',

@@ -82,20 +82,6 @@ class openstack::horizon
 
   $workers = $::platform::params::eng_workers_by_2
 
-  include ::openstack::murano::params
-  if $::openstack::murano::params::service_enabled {
-    $murano_enabled = 'True'
-  } else {
-    $murano_enabled = 'False'
-  }
-
-  include ::openstack::magnum::params
-  if $::openstack::magnum::params::service_enabled {
-    $magnum_enabled = 'True'
-  } else {
-    $magnum_enabled = 'False'
-  }
-
   if str2bool($::is_initial_config) {
     exec { 'Stop lighttpd':
       command => 'systemctl stop lighttpd; systemctl disable lighttpd',

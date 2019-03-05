@@ -29,8 +29,6 @@ include ::platform::collectd
 include ::platform::filesystem::storage
 include ::platform::docker
 include ::platform::ceph::storage
-include ::openstack::ceilometer
-include ::openstack::ceilometer::polling
 
 class { '::platform::config::storage::post':
   stage => post,

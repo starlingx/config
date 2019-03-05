@@ -36,17 +36,7 @@ include ::platform::kubernetes::worker
 include ::platform::multipath
 include ::platform::client
 include ::platform::ceph::worker
-include ::openstack::client
-include ::openstack::neutron
-include ::openstack::neutron::agents
-include ::openstack::nova
-include ::openstack::nova::compute
-include ::openstack::nova::compute::pci
 include ::openstack::nova::storage
-include ::openstack::nova::network
-include ::openstack::nova::placement
-include ::openstack::ceilometer
-include ::openstack::ceilometer::polling
 
 class { '::platform::config::worker::post':
   stage => post,

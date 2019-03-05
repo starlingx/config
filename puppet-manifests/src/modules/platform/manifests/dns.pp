@@ -48,21 +48,6 @@ class platform::dns::dnsmasq {
     $infra_subnet_netmask = $::platform::network::infra::params::subnet_prefixlen
   }
 
-  include ::openstack::ironic::params
-  $ironic_tftp_dir_version = $::platform::params::software_version
-  $ironic_tftpboot_dir = $::openstack::ironic::params::ironic_tftpboot_dir
-  case $::hostname {
-    $::platform::params::controller_0_hostname: {
-      $ironic_tftp_interface = $::openstack::ironic::params::controller_0_if
-    }
-    $::platform::params::controller_1_hostname: {
-      $ironic_tftp_interface = $::openstack::ironic::params::controller_1_if
-    }
-    default: {
-      $ironic_tftp_interface = undef
-    }
-  }
-
   include ::platform::kubernetes::params
   $service_domain = $::platform::kubernetes::params::service_domain
   $dns_service_ip = $::platform::kubernetes::params::dns_service_ip

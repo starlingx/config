@@ -7,9 +7,9 @@
 #
 ########################################################################
 
-NOVAOPENRC="/etc/nova/openrc"
-if [ -e ${NOVAOPENRC} ] ; then
-    source  ${NOVAOPENRC} &>/dev/null
+PLATFORMOPENRC="/etc/platform/openrc"
+if [ -e ${PLATFORMOPENRC} ] ; then
+    source  ${PLATFORMOPENRC} &>/dev/null
 else
     echo "Admin credentials not found"
     exit

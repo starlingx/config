@@ -6,9 +6,6 @@ interface=<%= @mgmt_interface %>
 <%- if @infra_interface != nil -%>
 interface=<%= @infra_interface %>
 <%- end -%>
-<%- if @ironic_tftp_interface != nil -%>
-interface=<%= @ironic_tftp_interface %>
-<%- end -%>
 bind-interfaces
 
 # Serve addresses from the pxeboot subnet
@@ -91,9 +88,6 @@ tftp-max=200
 tftp-root=/pxeboot,<%= @pxeboot_interface %>
 <%- else -%>
 tftp-root=/pxeboot,<%= @mgmt_interface %>
-<%- end -%>
-<%- if @ironic_tftp_interface != nil -%>
-tftp-root=<%= @ironic_tftpboot_dir %>,<%= @ironic_tftp_interface %>
 <%- end -%>
 
 dhcp-boot=tag:bios,tag:pxeboot,pxelinux.0,<%= @pxeboot_hostname %>,<%= @pxeboot_controller_address %>

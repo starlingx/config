@@ -47,7 +47,6 @@ class platform::dcorch
 class platform::dcorch::firewall
   inherits ::platform::dcorch::params {
   if $::platform::params::distributed_cloud_role =='systemcontroller' {
-    include ::openstack::cinder::params
     platform::firewall::rule { 'dcorch-api':
       service_name => 'dcorch',
       ports        => $api_port,
@@ -64,11 +63,9 @@ class platform::dcorch::firewall
       service_name => 'dcorch-neutron-api-proxy',
       ports        => $neutron_api_proxy_port,
     }
-    if $::openstack::cinder::params::service_enabled {
-      platform::firewall::rule { 'dcorch-cinder-api-proxy':
-        service_name => 'dcorch-cinder-api-proxy',
-        ports        => $cinder_api_proxy_port,
-      }
+    platform::firewall::rule { 'dcorch-cinder-api-proxy':
+      service_name => 'dcorch-cinder-api-proxy',
+      ports        => $cinder_api_proxy_port,
     }
     platform::firewall::rule { 'dcorch-patch-api-proxy':
       service_name => 'dcorch-patch-api-proxy',
@@ -85,7 +82,6 @@ class platform::dcorch::firewall
 class platform::dcorch::haproxy
   inherits ::platform::dcorch::params {
   if $::platform::params::distributed_cloud_role =='systemcontroller' {
-    include ::openstack::cinder::params
     platform::haproxy::proxy { 'dcorch-neutron-api-proxy':
       server_name  => 's-dcorch-neutron-api-proxy',
       public_port  => $neutron_api_proxy_port,
@@ -101,12 +97,10 @@ class platform::dcorch::haproxy
       public_port  => $sysinv_api_proxy_port,
       private_port => $sysinv_api_proxy_port,
     }
-    if $::openstack::cinder::params::service_enabled {
-      platform::haproxy::proxy { 'dcorch-cinder-api-proxy':
-        server_name  => 's-cinder-dc-api-proxy',
-        public_port  => $cinder_api_proxy_port,
-        private_port => $cinder_api_proxy_port,
-      }
+    platform::haproxy::proxy { 'dcorch-cinder-api-proxy':
+      server_name  => 's-cinder-dc-api-proxy',
+      public_port  => $cinder_api_proxy_port,
+      private_port => $cinder_api_proxy_port,
     }
     platform::haproxy::proxy { 'dcorch-patch-api-proxy':
       server_name  => 's-dcorch-patch-api-proxy',

@@ -22,6 +22,11 @@ class platform::client
     group   => 'root',
     content => template('platform/openrc.admin.erb'),
   }
+  -> file {'/etc/bash_completion.d/openstack':
+    ensure  => 'present',
+    mode    => '0644',
+    content => generate('/usr/bin/openstack', 'complete'),
+  }
 }
 
 class platform::client::credentials::params (

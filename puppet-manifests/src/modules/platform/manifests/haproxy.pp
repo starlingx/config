@@ -142,15 +142,6 @@ class platform::haproxy::runtime {
     include ::platform::dcorch::haproxy
   }
   include ::openstack::keystone::haproxy
-  include ::openstack::neutron::haproxy
-  include ::openstack::glance::haproxy
-  include ::openstack::cinder::haproxy
-  include ::openstack::heat::haproxy
-  include ::openstack::murano::haproxy
-  include ::openstack::magnum::haproxy
-  include ::openstack::ironic::haproxy
-  include ::openstack::panko::haproxy
-  include ::openstack::gnocchi::haproxy
   include ::openstack::swift::haproxy
   include ::openstack::barbican::haproxy
 

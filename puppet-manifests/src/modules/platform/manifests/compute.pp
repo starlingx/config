@@ -322,7 +322,6 @@ class platform::compute::pmqos (
 class platform::compute {
 
   Class[$name] -> Class['::platform::vswitch']
-  Class[$name] -> Class['::nova::compute']
 
   require ::platform::compute::grub::audit
   require ::platform::compute::hugetlbf

@@ -17,7 +17,3 @@ include ::platform::amqp::upgrade
 
 include ::openstack::keystone::upgrade
 include ::platform::client::upgrade
-include ::openstack::client::upgrade
-
-include ::openstack::murano::upgrade
-include ::openstack::ironic::upgrade

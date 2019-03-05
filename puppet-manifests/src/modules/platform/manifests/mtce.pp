@@ -25,9 +25,6 @@ class platform::mtce::params (
 class platform::mtce
   inherits ::platform::mtce::params {
 
-  include ::openstack::ceilometer::params
-  $ceilometer_port = $::openstack::ceilometer::params::api_port
-
   include ::platform::client::credentials::params
   $keyring_directory = $::platform::client::credentials::params::keyring_directory
 

@@ -197,22 +197,9 @@ class platform::postgresql::upgrade
   -> class {'::postgresql::server':
   }
 
-  include ::aodh::db::postgresql
   include ::barbican::db::postgresql
-  include ::cinder::db::postgresql
-  include ::glance::db::postgresql
-  include ::gnocchi::db::postgresql
-  include ::heat::db::postgresql
-  include ::murano::db::postgresql
-  include ::magnum::db::postgresql
-  include ::neutron::db::postgresql
-  include ::nova::db::postgresql
-  include ::nova::db::postgresql_api
-  include ::panko::db::postgresql
   include ::sysinv::db::postgresql
   include ::keystone::db::postgresql
-  include ::ironic::db::postgresql
   include ::fm::db::postgresql
-
 }
 

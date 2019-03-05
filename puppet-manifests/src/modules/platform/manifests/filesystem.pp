@@ -200,8 +200,6 @@ class platform::filesystem::img_conversions::params (
 
 class platform::filesystem::img_conversions
   inherits ::platform::filesystem::img_conversions::params {
-  include ::openstack::cinder::params
-  include ::openstack::glance::params
 
   platform::filesystem { $lv_name:
     lv_name    => $lv_name,
@@ -308,8 +306,6 @@ class platform::filesystem::docker::runtime {
 class platform::filesystem::img_conversions::runtime {
 
   include ::platform::filesystem::img_conversions::params
-  include ::openstack::cinder::params
-  include ::openstack::glance::params
   $lv_name = $::platform::filesystem::img_conversions::params::lv_name
   $lv_size = $::platform::filesystem::img_conversions::params::lv_size
   $devmapper = $::platform::filesystem::img_conversions::params::devmapper

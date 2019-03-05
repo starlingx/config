@@ -102,9 +102,6 @@ class platform::sm
   $amqp_server_port              = $::platform::amqp::params::port
   $rabbit_node_name              = $::platform::amqp::params::node
   $rabbit_mnesia_base            = "/var/lib/rabbitmq/${platform_sw_version}/mnesia"
-  $murano_rabbit_node_name       = "murano-${rabbit_node_name}"
-  $murano_rabbit_mnesia_base     = "/var/lib/rabbitmq/murano/${platform_sw_version}/mnesia"
-  $murano_rabbit_config_file     = '/etc/rabbitmq/murano-rabbitmq'
 
   include ::platform::ldap::params
   $ldapserver_remote             = $::platform::ldap::params::ldapserver_remote
@@ -112,10 +109,6 @@ class platform::sm
   # This variable is used also in create_sm_db.sql.
   # please change that one as well when modifying this variable
   $rabbit_pid              = '/var/run/rabbitmq/rabbitmq.pid'
-  $murano_rabbit_env_config_file  = '/etc/rabbitmq/murano-rabbitmq-env.conf'
-
-  $murano_rabbit_pid              = '/var/run/rabbitmq/murano-rabbit.pid'
-  $murano_rabbit_dist_port        = 25673
 
   $rabbitmq_server = '/usr/lib/rabbitmq/bin/rabbitmq-server'
   $rabbitmqctl     = '/usr/lib/rabbitmq/bin/rabbitmqctl'
@@ -180,61 +173,9 @@ class platform::sm
   $os_user_domain_name      = $::platform::client::params::admin_user_domain
   $os_project_domain_name   = $::platform::client::params::admin_project_domain
 
-  # Nova
-  $db_server_port           = '5432'
-
-  include ::openstack::nova::params
-  $novnc_console_port       = $::openstack::nova::params::nova_novnc_port
-
-  # Heat
-  include ::openstack::heat::params
-  $heat_api_cfn_port        = $::openstack::heat::params::cfn_port
-  $heat_api_cloudwatch_port = $::openstack::heat::params::cloudwatch_port
-  $heat_api_port            = $::openstack::heat::params::api_port
-
-  # Neutron
-  include ::openstack::neutron::params
-  $neutron_region_name = $::openstack::neutron::params::region_name
-  $neutron_plugin_config = '/etc/neutron/plugin.ini'
-  $neutron_sriov_plugin_config = '/etc/neutron/plugins/ml2/ml2_conf_sriov.ini'
-
-  # Cinder
-  include ::openstack::cinder::params
-  $cinder_service_enabled = $::openstack::cinder::params::service_enabled
-  $cinder_region_name     = $::openstack::cinder::params::region_name
-  $cinder_backends        = $::openstack::cinder::params::enabled_backends
-  $cinder_drbd_resource   = $::openstack::cinder::params::drbd_resource
-  $cinder_vg_name         = $::openstack::cinder::params::cinder_vg_name
-
-  # Glance
-  include ::openstack::glance::params
-  $glance_region_name = $::openstack::glance::params::region_name
-  $glance_cached = $::openstack::glance::params::glance_cached
-
-  # Murano
-  include ::openstack::murano::params
-  $disable_murano_agent = $::openstack::murano::params::disable_murano_agent
-
-  # Magnum
-  include ::openstack::magnum::params
-
-  # Ironic
-  include ::openstack::ironic::params
-  $ironic_tftp_ip = $::openstack::ironic::params::tftp_server
-  $ironic_controller_0_nic = $::openstack::ironic::params::controller_0_if
-  $ironic_controller_1_nic = $::openstack::ironic::params::controller_1_if
-  $ironic_netmask = $::openstack::ironic::params::netmask
-  $ironic_tftproot = $::openstack::ironic::params::ironic_tftpboot_dir
-
   # Ceph-Rados-Gateway
   include ::platform::ceph::params
   $ceph_configured = $::platform::ceph::params::service_enabled
-
-  # Gnocchi
-  include ::openstack::gnocchi::params
-
-  # Panko
-  include ::openstack::panko::params
 
   if $system_mode == 'simplex' {
     $hostunit = '0'
@@ -281,16 +222,6 @@ class platform::sm
   user { 'postgres':
     shell => '/bin/sh'
   }
-
-  # Workaround for the time being to prevent SM from enabling the openstack
-  # services when kubernetes is enabled to avoid making changes to individual
-  # openstack manifests
-  $heat_service_enabled   = false
-  $murano_configured = false
-  $ironic_configured = false
-  $magnum_configured = false
-  $gnocchi_enabled   = false
-  $panko_enabled     = false
 
   # lint:ignore:140chars
 
@@ -503,36 +434,8 @@ class platform::sm
       }
       $configure_keystone = false
     }
-
-    if $glance_region_name != $region_2_name {
-      $configure_glance = false
-
-      exec { 'Deprovision OpenStack - Glance Registry (service-group-member)':
-        command => 'sm-deprovision service-group-member cloud-services glance-registry',
-      }
-      -> exec { 'Deprovision OpenStack - Glance Registry (service)':
-        command => 'sm-deprovision service glance-registry',
-      }
-      -> exec { 'Deprovision OpenStack - Glance API (service-group-member)':
-        command => 'sm-deprovision service-group-member cloud-services glance-api',
-      }
-      -> exec { 'Deprovision OpenStack - Glance API (service)':
-        command => 'sm-deprovision service glance-api',
-      }
-    } else {
-      $configure_glance = true
-      if $glance_cached {
-        exec { 'Deprovision OpenStack - Glance Registry (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services glance-registry',
-        }
-        -> exec { 'Deprovision OpenStack - Glance Registry (service)':
-          command => 'sm-deprovision service glance-registry',
-        }
-      }
-    }
   } else {
       $configure_keystone = true
-      $configure_glance = false
   }
 
   if $configure_keystone {
@@ -556,173 +459,53 @@ class platform::sm
     }
   }
 
-  if $configure_glance {
-      if !$glance_cached {
-        exec { 'Configure OpenStack - Glance Registry':
-          command => "sm-configure service_instance glance-registry glance-registry \"config=/etc/glance/glance-registry.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens\"",
-        }
-        -> exec { 'Provision OpenStack - Glance Registry (service-group-member)':
-          command => 'sm-provision service-group-member cloud-services glance-registry',
-        }
-        -> exec { 'Provision OpenStack - Glance Registry (service)':
-          command => 'sm-provision service glance-registry',
-        }
-      }
-
-      exec { 'Configure OpenStack - Glance API':
-        command => "sm-configure service_instance glance-api glance-api \"config=/etc/glance/glance-api.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},os_auth_url=${os_auth_url}\"",
-      }
-      -> exec { 'Provision OpenStack - Glance API (service-group-member)':
-        command => 'sm-provision service-group-member cloud-services glance-api',
-      }
-      -> exec { 'Provision OpenStack - Glance API (service)':
-        command => 'sm-provision service glance-api',
-      }
-  } else {
-      # Deprovision Glance API and Glance Registry incase of a kubernetes config
-      exec { 'Deprovision OpenStack - Glance Registry (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services glance-registry',
-      }
-      -> exec { 'Deprovision OpenStack - Glance Registry(service)':
-          command => 'sm-deprovision service glance-registry',
-      }
-
-      exec { 'Deprovision OpenStack - Glance API (service-group-member)':
-          command => 'sm-deprovision service-group-member cloud-services glance-api',
-      }
-      -> exec { 'Deprovision OpenStack - Glance API(service)':
-          command => 'sm-deprovision service glance-api',
-      }
+  # Glance
+  exec { 'Deprovision OpenStack - Glance Registry (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services glance-registry',
+  }
+  -> exec { 'Deprovision OpenStack - Glance Registry(service)':
+      command => 'sm-deprovision service glance-registry',
   }
 
-  if $cinder_service_enabled {
-      exec { 'Configure OpenStack - Cinder API':
-        command => "sm-configure service_instance cinder-api cinder-api \"config=/etc/cinder/cinder.conf,user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens\"",
-      }
-      -> exec { 'Provision OpenStack - Cinder API (service-group-member)':
-        command => 'sm-provision service-group-member cloud-services cinder-api',
-      }
-      -> exec { 'Provision OpenStack - Cinder API (service)':
-        command => 'sm-provision service cinder-api',
-      }
+  exec { 'Deprovision OpenStack - Glance API (service-group-member)':
+      command => 'sm-deprovision service-group-member cloud-services glance-api',
+  }
+  -> exec { 'Deprovision OpenStack - Glance API(service)':
+      command => 'sm-deprovision service glance-api',
+  }
 
-      exec { 'Configure OpenStack - Cinder Scheduler':
-        command => "sm-configure service_instance cinder-scheduler cinder-scheduler \"config=/etc/cinder/cinder.conf,user=root,amqp_server_port=${amqp_server_port}\"",
-      }
-      -> exec { 'Provision OpenStack - Cinder Scheduler (service-group-member)':
-        command => 'sm-provision service-group-member cloud-services cinder-scheduler',
-      }
-      -> exec { 'Provision OpenStack - Cinder Scheduler (service)':
-        command => 'sm-provision service cinder-scheduler',
-      }
-
-      exec { 'Configure OpenStack - Cinder Volume':
-        command => "sm-configure service_instance cinder-volume cinder-volume \"config=/etc/cinder/cinder.conf,user=root,amqp_server_port=${amqp_server_port},multibackend=true\"",
-      }
-      -> exec { 'Provision OpenStack - Cinder Volume (service-group-member)':
-        command => 'sm-provision service-group-member cloud-services cinder-volume',
-      }
-      -> exec { 'Configure Cinder Volume in SM':
-        command => 'sm-provision service cinder-volume',
-      }
-
-      exec { 'Configure OpenStack - Cinder Backup':
-        command => "sm-configure service_instance cinder-backup cinder-backup \"config=/etc/cinder/cinder.conf,user=root,amqp_server_port=${amqp_server_port}\"",
-      }
-      -> exec { 'Provision OpenStack - Cinder Backup (service-group-member)':
-        command => 'sm-provision service-group-member cloud-services cinder-backup',
-      }
-      -> exec { 'Provision OpenStack - Cinder Backup (service)':
-        command => 'sm-provision service cinder-backup',
-      }
-
-      if 'lvm' in $cinder_backends {
-          # Cinder DRBD
-          exec { 'Configure Cinder LVM in SM (service-group-member drbd-cinder)':
-            command => 'sm-provision service-group-member controller-services drbd-cinder',
-          }
-          -> exec { 'Configure Cinder LVM in SM (service drbd-cinder)':
-            command => 'sm-provision service drbd-cinder',
-          }
-
-          # Cinder LVM
-          -> exec { 'Configure Cinder LVM in SM (service-group-member cinder-lvm)':
-            command => 'sm-provision service-group-member controller-services cinder-lvm',
-          }
-          -> exec { 'Configure Cinder LVM in SM (service cinder-lvm)':
-            command => 'sm-provision service cinder-lvm',
-          }
-
-          # TGTd
-          -> exec { 'Configure Cinder LVM in SM (service-group-member iscsi)':
-            command => 'sm-provision service-group-member controller-services iscsi',
-          }
-          -> exec { 'Configure Cinder LVM in SM (service iscsi)':
-            command => 'sm-provision service iscsi',
-          }
-
-          -> exec { 'Configure Cinder DRBD service instance':
-            command => "sm-configure service_instance drbd-cinder drbd-cinder:${hostunit} drbd_resource=${cinder_drbd_resource}",
-          }
-          exec { 'Configure Cinder LVM service instance':
-            command => "sm-configure service_instance cinder-lvm cinder-lvm \"rmon_rsc_name=volume-storage,volgrpname=${cinder_vg_name}\"",
-          }
-          exec { 'Configure iscsi service instance':
-            command => "sm-configure service_instance iscsi iscsi \"\"",
-          }
-
-
-          # Cinder IP
-          exec { 'Configure Cinder LVM in SM (service-group-member cinder-ip)':
-            command => 'sm-provision service-group-member controller-services cinder-ip',
-          }
-          -> exec { 'Configure Cinder LVM in SM (service cinder-ip)':
-            command => 'sm-provision service cinder-ip',
-          }
-
-          if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
-            exec { 'Configure Cinder IP service instance':
-                command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7,dc=yes\"",
-            }
-          } else {
-            exec { 'Configure Cinder IP service instance':
-                command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7\"",
-            }
-        }
-    }
-  } else {
-      exec { 'Deprovision OpenStack - Cinder API (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services cinder-api',
-      }
-      -> exec { 'Deprovision OpenStack - Cinder API (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service cinder-api',
-      }
-      -> exec { 'Deprovision OpenStack - Cinder Scheduler (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services cinder-scheduler',
-      }
-      -> exec { 'Deprovision OpenStack - Cinder Scheduler (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service cinder-scheduler',
-      }
-      -> exec { 'Deprovision OpenStack - Cinder Volume (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services cinder-volume',
-      }
-      -> exec { 'Deprovision OpenStack - Cinder Volume (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service cinder-volume',
-      }
-      -> exec { 'Deprovision OpenStack - Cinder Backup (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services cinder-backup',
-      }
-      -> exec { 'Deprovision OpenStack - Cinder Backup (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service cinder-backup',
-      }
+  # Cinder
+  exec { 'Deprovision OpenStack - Cinder API (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services cinder-api',
+  }
+  -> exec { 'Deprovision OpenStack - Cinder API (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service cinder-api',
+  }
+  -> exec { 'Deprovision OpenStack - Cinder Scheduler (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services cinder-scheduler',
+  }
+  -> exec { 'Deprovision OpenStack - Cinder Scheduler (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service cinder-scheduler',
+  }
+  -> exec { 'Deprovision OpenStack - Cinder Volume (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services cinder-volume',
+  }
+  -> exec { 'Deprovision OpenStack - Cinder Volume (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service cinder-volume',
+  }
+  -> exec { 'Deprovision OpenStack - Cinder Backup (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services cinder-backup',
+  }
+  -> exec { 'Deprovision OpenStack - Cinder Backup (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service cinder-backup',
   }
 
   # Re-using cinder-ip for cluster-host-ip for now
@@ -743,30 +526,6 @@ class platform::sm
     exec { 'Configure Cinder IP service instance':
       command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7\"",
     }
-  }
-
-  # TODO: revisit region mode
-  if $region_config {
-      if $neutron_region_name != $region_2_name {
-          $configure_neturon = false
-
-          exec { 'Deprovision OpenStack - Neutron Server (service-group-member)':
-            command => 'sm-deprovision service-group-member cloud-services neutron-server',
-          }
-          -> exec { 'Deprovision OpenStack - Neutron Server (service)':
-            command => 'sm-deprovision service neutron-server',
-          }
-      } else {
-          $configure_neturon = true
-      }
-  } else {
-      $configure_neturon = false
-  }
-
-  if $configure_neturon {
-      exec { 'Configure OpenStack - Neutron Server':
-        command => "sm-configure service_instance neutron-server neutron-server \"config=/etc/neutron/neutron.conf,plugin_config=${neutron_plugin_config},sriov_plugin_config=${neutron_sriov_plugin_config},user=root,os_username=${os_username},os_project_name=${os_project_name},os_user_domain_name=${os_user_domain_name},os_project_domain_name=${os_project_domain_name},keystone_get_token_url=${os_auth_url}/tokens\"",
-      }
   }
 
   # TODO: this entire section needs to be removed from SM.
@@ -840,91 +599,62 @@ class platform::sm
       command => 'sm-deprovision service neutron-server',
   }
 
-  if $heat_service_enabled {
-    exec { 'Configure OpenStack - Heat Engine':
-      command => "sm-configure service_instance heat-engine heat-engine \"config=/etc/heat/heat.conf,user=root,database_server_port=${db_server_port},amqp_server_port=${amqp_server_port}\"",
-    }
+  # Heat
+  exec { 'Deprovision OpenStack - Heat Engine (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services heat-engine',
+  }
+  -> exec { 'Deprovision OpenStack - Heat Engine(service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service heat-engine',
+  }
 
-    exec { 'Configure OpenStack - Heat API':
-      command => "sm-configure service_instance heat-api heat-api \"config=/etc/heat/heat.conf,user=root,server_port=${heat_api_port}\"",
-    }
+  exec { 'Deprovision OpenStack - Heat API (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services heat-api',
+  }
+  -> exec { 'Deprovision OpenStack - Heat API (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service heat-api',
+  }
 
-    exec { 'Configure OpenStack - Heat API CFN':
-      command => "sm-configure service_instance heat-api-cfn heat-api-cfn \"config=/etc/heat/heat.conf,user=root,server_port=${heat_api_cfn_port}\"",
-    }
+  exec { 'Deprovision OpenStack - Heat API CFN (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services heat-api-cfn',
+  }
+  -> exec { 'Deprovision OpenStack - Heat API CFN (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service heat-api-cfn',
+  }
 
-    exec { 'Configure OpenStack - Heat API CloudWatch':
-      command => "sm-configure service_instance heat-api-cloudwatch heat-api-cloudwatch \"config=/etc/heat/heat.conf,user=root,server_port=${heat_api_cloudwatch_port}\"",
-    }
-  } else {
-      exec { 'Deprovision OpenStack - Heat Engine (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services heat-engine',
-      }
-      -> exec { 'Deprovision OpenStack - Heat Engine(service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service heat-engine',
-      }
-
-      exec { 'Deprovision OpenStack - Heat API (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services heat-api',
-      }
-      -> exec { 'Deprovision OpenStack - Heat API (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service heat-api',
-      }
-
-      exec { 'Deprovision OpenStack - Heat API CFN (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services heat-api-cfn',
-      }
-      -> exec { 'Deprovision OpenStack - Heat API CFN (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service heat-api-cfn',
-      }
-
-      exec { 'Deprovision OpenStack - Heat API CloudWatch (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services heat-api-cloudwatch',
-      }
-      -> exec { 'Deprovision OpenStack - Heat API CloudWatch (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service heat-api-cloudwatch',
-      }
+  exec { 'Deprovision OpenStack - Heat API CloudWatch (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services heat-api-cloudwatch',
+  }
+  -> exec { 'Deprovision OpenStack - Heat API CloudWatch (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service heat-api-cloudwatch',
   }
 
   # Gnocchi
-  if $gnocchi_enabled {
-
-    exec { 'Configure OpenStack - Gnocchi API':
-      command => "sm-configure service_instance gnocchi-api gnocchi-api \"config=/etc/gnocchi/gnocchi.conf\"",
-    }
-
-    exec { 'Configure OpenStack - Gnocchi metricd':
-      command => "sm-configure service_instance gnocchi-metricd gnocchi-metricd \"config=/etc/gnocchi/gnocchi.conf\"",
-    }
-  } else {
-      exec { 'Deprovision OpenStack - Gnocchi API (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services gnocchi-api',
-      }
-      -> exec { 'Deprovision OpenStack - Gnocchi API (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service gnocchi-api',
-      }
-
-      exec { 'Deprovision OpenStack - Gnocchi metricd (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services gnocchi-metricd',
-      }
-      -> exec { 'Deprovision OpenStack - Gnocchi metricd (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service gnocchi-metricd',
-      }
+  exec { 'Deprovision OpenStack - Gnocchi API (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services gnocchi-api',
+  }
+  -> exec { 'Deprovision OpenStack - Gnocchi API (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service gnocchi-api',
+  }
+  exec { 'Deprovision OpenStack - Gnocchi metricd (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services gnocchi-metricd',
+  }
+  -> exec { 'Deprovision OpenStack - Gnocchi metricd (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service gnocchi-metricd',
   }
 
-  # AODH (not enabled)
+  # AODH
   exec { 'Deprovision OpenStack - AODH API (service-group-member)':
     path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
     command => 'sm-deprovision service-group-member cloud-services aodh-api',
@@ -962,63 +692,14 @@ class platform::sm
   }
 
   # Panko
-  if $panko_enabled {
-    exec { 'Configure OpenStack - Panko API':
-      command => "sm-configure service_instance panko-api panko-api \"config=/etc/panko/panko.conf\"",
-    }
-  } else {
-      exec { 'Deprovision OpenStack - Panko API (service-group-member)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service-group-member cloud-services panko-api',
-      }
-      -> exec { 'Deprovision OpenStack - Panko API (service)':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => 'sm-deprovision service panko-api',
-      }
+  exec { 'Deprovision OpenStack - Panko API (service-group-member)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service-group-member cloud-services panko-api',
   }
-
-  # Murano
-  exec { 'Configure OpenStack - Murano API':
-    command => "sm-configure service_instance murano-api murano-api \"config=/etc/murano/murano.conf\"",
+  -> exec { 'Deprovision OpenStack - Panko API (service)':
+    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
+    command => 'sm-deprovision service panko-api',
   }
-
-  exec { 'Configure OpenStack - Murano Engine':
-    command => "sm-configure service_instance murano-engine murano-engine \"config=/etc/murano/murano.conf\"",
-  }
-
-  # Magnum
-  exec { 'Configure OpenStack - Magnum API':
-    command => "sm-configure service_instance magnum-api magnum-api \"config=/etc/magnum/magnum.conf\"",
-  }
-
-  exec { 'Configure OpenStack - Magnum Conductor':
-    command => "sm-configure service_instance magnum-conductor magnum-conductor \"config=/etc/magnum/magnum.conf\"",
-  }
-
-  # Ironic
-  exec { 'Configure OpenStack - Ironic API':
-    command => "sm-configure service_instance ironic-api ironic-api \"config=/etc/ironic/ironic.conf\"",
-  }
-
-  exec { 'Configure OpenStack - Ironic Conductor':
-    command => "sm-configure service_instance ironic-conductor ironic-conductor \"config=/etc/ironic/ironic.conf,tftproot=${ironic_tftproot}\"",
-  }
-
-  exec { 'Configure OpenStack - Nova Compute':
-    command => "sm-configure service_instance nova-compute nova-compute \"config=/etc/nova/nova-ironic.conf\"",
-  }
-
-  exec { 'Configure OpenStack - Nova Serialproxy':
-    command => "sm-configure service_instance nova-serialproxy nova-serialproxy \"config=/etc/nova/nova-ironic.conf\"",
-  }
-
-  #exec { 'Configure Power Management Conductor':
-  #  command => "sm-configure service_instance power-mgmt-conductor power-mgmt-conductor \"config=/etc/power_mgmt/power-mgmt-conductor.ini\"",
-  #}
-
-  #exec { 'Configure Power Management API':
-  #  command => "sm-configure service_instance power-mgmt-api power-mgmt-api \"config=/etc/power_mgmt/power-mgmt-api.ini\"",
-  #}
 
   exec { 'Configure NFS Management':
     command => "sm-configure service_instance nfs-mgmt nfs-mgmt \"exports=${nfs_server_mgmt_exports},mounts=${nfs_server_mgmt_mounts}\"",
@@ -1250,42 +931,14 @@ class platform::sm
       }
   }
 
-  exec { 'Configure Murano Rabbit':
-    command => "sm-configure service_instance murano-rabbit murano-rabbit \"server=${rabbitmq_server},ctl=${rabbitmqctl},nodename=${murano_rabbit_node_name},mnesia_base=${murano_rabbit_mnesia_base},ip=${oam_ip_param_ip},config_file=${murano_rabbit_config_file},env_config_file=${murano_rabbit_env_config_file},pid_file=${murano_rabbit_pid},dist_port=${murano_rabbit_dist_port}\"",
-  }
-
-  # optionally bring up/down Murano and murano agent's rabbitmq
-  if $disable_murano_agent {
+    # Murano
     exec { 'Deprovision Murano Rabbitmq (service-group-member)':
       command => 'sm-deprovision service-group-member controller-services murano-rabbit',
     }
     -> exec { 'Deprovision Murano Rabbitmq (service)':
       command => 'sm-deprovision service murano-rabbit',
     }
-  } else {
-    exec { 'Provision Murano Rabbitmq (service-group-member)':
-      command => 'sm-provision service-group-member controller-services murano-rabbit',
-    }
-    -> exec { 'Provision Murano Rabbitmq (service)':
-      command => 'sm-provision service murano-rabbit',
-    }
-  }
-
-  if $murano_configured {
-    exec { 'Provision OpenStack - Murano API (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services murano-api',
-    }
-    -> exec { 'Provision OpenStack - Murano API (service)':
-      command => 'sm-provision service murano-api',
-    }
-    -> exec { 'Provision OpenStack - Murano Engine (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services murano-engine',
-    }
-    -> exec { 'Provision OpenStack - Murano Engine (service)':
-      command => 'sm-provision service murano-engine',
-    }
-  } else {
-    exec { 'Deprovision OpenStack - Murano API (service-group-member)':
+    -> exec { 'Deprovision OpenStack - Murano API (service-group-member)':
       command => 'sm-deprovision service-group-member cloud-services murano-api',
     }
     -> exec { 'Deprovision OpenStack - Murano API (service)':
@@ -1297,23 +950,8 @@ class platform::sm
     -> exec { 'Deprovision OpenStack - Murano Engine (service)':
       command => 'sm-deprovision service murano-engine',
     }
-  }
 
-  # optionally bring up/down Magnum
-  if $magnum_configured {
-    exec { 'Provision OpenStack - Magnum API (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services magnum-api',
-    }
-    -> exec { 'Provision OpenStack - Magnum API (service)':
-      command => 'sm-provision service magnum-api',
-    }
-    -> exec { 'Provision OpenStack - Magnum Conductor (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services magnum-conductor',
-    }
-    -> exec { 'Provision OpenStack - Magnum Conductor (service)':
-      command => 'sm-provision service magnum-conductor',
-    }
-  } else {
+    # Magnum
     exec { 'Deprovision OpenStack - Magnum API (service-group-member)':
       command => 'sm-deprovision service-group-member cloud-services magnum-api',
     }
@@ -1326,88 +964,37 @@ class platform::sm
     -> exec { 'Deprovision OpenStack - Magnum Conductor (service)':
       command => 'sm-deprovision service magnum-conductor',
     }
+
+  # Ironic
+  exec { 'Deprovision OpenStack - Ironic API (service-group-member)':
+    command => 'sm-deprovision service-group-member cloud-services ironic-api',
   }
-
-  # optionally bring up/down Ironic
-  if $ironic_configured {
-    exec { 'Provision OpenStack - Ironic API (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services ironic-api',
-    }
-    -> exec { 'Provision OpenStack - Ironic API (service)':
-      command => 'sm-provision service ironic-api',
-    }
-    -> exec { 'Provision OpenStack - Ironic Conductor (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services ironic-conductor',
-    }
-    -> exec { 'Provision OpenStack - Ironic Conductor (service)':
-      command => 'sm-provision service ironic-conductor',
-    }
-    -> exec { 'Provision OpenStack - Nova Compute (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services nova-compute',
-    }
-    -> exec { 'Provision OpenStack - Nova Compute (service)':
-      command => 'sm-provision service nova-compute',
-    }
-    -> exec { 'Provision OpenStack - Nova Serialproxy (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services nova-serialproxy',
-    }
-    -> exec { 'Provision OpenStack - Nova Serialproxy (service)':
-      command => 'sm-provision service nova-serialproxy',
-    }
-    if $ironic_tftp_ip != undef {
-      case $::hostname {
-        $controller_0_hostname: {
-          exec { 'Configure Ironic TFTP IP service instance':
-            command => "sm-configure service_instance ironic-tftp-ip ironic-tftp-ip \"ip=${ironic_tftp_ip},cidr_netmask=${ironic_netmask},nic=${ironic_controller_0_nic},arp_count=7\"",
-          }
-        }
-        $controller_1_hostname: {
-          exec { 'Configure Ironic TFTP IP service instance':
-            command => "sm-configure service_instance ironic-tftp-ip ironic-tftp-ip \"ip=${ironic_tftp_ip},cidr_netmask=${ironic_netmask},nic=${ironic_controller_1_nic},arp_count=7\"",
-          }
-        }
-        default: {
-        }
-      }
-
-      exec { 'Provision Ironic TFTP Floating IP (service-group-member)':
-        command => 'sm-provision service-group-member controller-services ironic-tftp-ip',
-      }
-      -> exec { 'Provision Ironic TFTP Floating IP (service)':
-        command => 'sm-provision service ironic-tftp-ip',
-      }
-    }
-  } else {
-    exec { 'Deprovision OpenStack - Ironic API (service-group-member)':
-      command => 'sm-deprovision service-group-member cloud-services ironic-api',
-    }
-    -> exec { 'Deprovision OpenStack - Ironic API (service)':
-      command => 'sm-deprovision service ironic-api',
-    }
-    -> exec { 'Deprovision OpenStack - Ironic Conductor (service-group-member)':
-      command => 'sm-deprovision service-group-member cloud-services ironic-conductor',
-    }
-    -> exec { 'Deprovision OpenStack - Ironic Conductor (service)':
-      command => 'sm-deprovision service ironic-conductor',
-    }
-    -> exec { 'Deprovision OpenStack - Nova Compute (service-group-member)':
-      command => 'sm-deprovision service-group-member cloud-services nova-compute',
-    }
-    -> exec { 'Deprovision OpenStack - Nova Compute (service)':
-      command => 'sm-deprovision service nova-compute',
-    }
-    -> exec { 'Deprovision OpenStack - Nova Serialproxy (service-group-member)':
-      command => 'sm-deprovision service-group-member cloud-services nova-serialproxy',
-    }
-    -> exec { 'Deprovision OpenStack - Nova Serialproxy (service)':
-      command => 'sm-deprovision service nova-serialproxy',
-    }
-    -> exec { 'Provision Ironic TFTP Floating IP (service-group-member)':
-      command => 'sm-deprovision service-group-member controller-services ironic-tftp-ip',
-    }
-    -> exec { 'Provision Ironic TFTP Floating IP (service)':
-      command => 'sm-deprovision service ironic-tftp-ip',
-    }
+  -> exec { 'Deprovision OpenStack - Ironic API (service)':
+    command => 'sm-deprovision service ironic-api',
+  }
+  -> exec { 'Deprovision OpenStack - Ironic Conductor (service-group-member)':
+    command => 'sm-deprovision service-group-member cloud-services ironic-conductor',
+  }
+  -> exec { 'Deprovision OpenStack - Ironic Conductor (service)':
+    command => 'sm-deprovision service ironic-conductor',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Compute (service-group-member)':
+    command => 'sm-deprovision service-group-member cloud-services nova-compute',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Compute (service)':
+    command => 'sm-deprovision service nova-compute',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Serialproxy (service-group-member)':
+    command => 'sm-deprovision service-group-member cloud-services nova-serialproxy',
+  }
+  -> exec { 'Deprovision OpenStack - Nova Serialproxy (service)':
+    command => 'sm-deprovision service nova-serialproxy',
+  }
+  -> exec { 'Provision Ironic TFTP Floating IP (service-group-member)':
+    command => 'sm-deprovision service-group-member controller-services ironic-tftp-ip',
+  }
+  -> exec { 'Provision Ironic TFTP Floating IP (service)':
+    command => 'sm-deprovision service ironic-tftp-ip',
   }
 
   if $ceph_configured {
@@ -1587,17 +1174,15 @@ class platform::sm
     -> exec { 'Configure OpenStack - DCOrch-patch-api-proxy':
       command => "sm-configure service_instance dcorch-patch-api-proxy dcorch-patch-api-proxy \"\"",
     }
-    if $cinder_service_enabled {
-      notice('Enable cinder-api-proxy')
-      exec { 'Provision DCOrch-Cinder-Api-Proxy (service-group-member dcorch-cinder-api-proxy)':
-        command => 'sm-provision service-group-member distributed-cloud-services dcorch-cinder-api-proxy',
-      }
-      -> exec { 'Provision DCOrch-Cinder-Api-Proxy in SM (service dcorch-cinder-api-proxy)':
-        command => 'sm-provision service dcorch-cinder-api-proxy',
-      }
-      -> exec { 'Configure OpenStack - DCOrch-cinder-api-proxy':
-        command => "sm-configure service_instance dcorch-cinder-api-proxy dcorch-cinder-api-proxy \"\"",
-      }
+
+    exec { 'Provision DCOrch-Cinder-Api-Proxy (service-group-member dcorch-cinder-api-proxy)':
+      command => 'sm-provision service-group-member distributed-cloud-services dcorch-cinder-api-proxy',
+    }
+    -> exec { 'Provision DCOrch-Cinder-Api-Proxy in SM (service dcorch-cinder-api-proxy)':
+      command => 'sm-provision service dcorch-cinder-api-proxy',
+    }
+    -> exec { 'Configure OpenStack - DCOrch-cinder-api-proxy':
+      command => "sm-configure service_instance dcorch-cinder-api-proxy dcorch-cinder-api-proxy \"\"",
     }
   }
 
