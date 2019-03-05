@@ -11,12 +11,14 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import interface
 from sysinv.common import utils
+from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 from sysinv.helm import openstack
 
 LOG = logging.getLogger(__name__)
 
+RBD_POOL_USER = "ephemeral"
 
 DEFAULT_NOVA_PCI_ALIAS = [
     {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
@@ -73,6 +75,9 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     }
                 },
                 'conf': {
+                    'ceph': {
+                        'ephemeral_storage': self._get_rbd_ephemeral_storage()
+                    },
                     'nova': {
                         'libvirt': {
                             'virt_type': self._get_virt_type(),
@@ -111,6 +116,15 @@ class NovaHelm(openstack.OpenstackBaseHelm):
     def _get_images_overrides(self):
         heat_image = self._operator.chart_operators[
             constants.HELM_CHART_HEAT].docker_image
+
+        # TODO: Remove after ceph upgrade
+        # Format the name of the stx specific ceph config helper
+        ceph_config_helper_image = "{}:{}/{}/{}{}:{}".format(
+            self._get_management_address(), common.REGISTRY_PORT,
+            common.REPO_LOC,
+            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
+            'ceph-config-helper', self.docker_repo_tag)
+
         return {
             'tags': {
                 'bootstrap': heat_image,
@@ -132,7 +146,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 'nova_placement': self.docker_image,
                 'nova_scheduler': self.docker_image,
                 'nova_spiceproxy': self.docker_image,
-                'nova_spiceproxy_assets': self.docker_image
+                'nova_spiceproxy_assets': self.docker_image,
+                'nova_storage_init': ceph_config_helper_image,
             }
         }
 
@@ -451,3 +466,34 @@ class NovaHelm(openstack.OpenstackBaseHelm):
 
     def get_region_name(self):
         return self._get_service_region_name(self.SERVICE_NAME)
+
+    def _get_rbd_ephemeral_storage(self):
+        ephemeral_storage_conf = {}
+        ephemeral_pools = []
+
+        # Get the values for replication and min replication from the storage
+        # backend attributes.
+        replication, min_replication = \
+            StorageBackendConfig.get_ceph_pool_replication(self.dbapi)
+
+        # For now, the ephemeral pool will only be on the primary Ceph tier
+        # that's using the 0 crush ruleset.
+        ruleset = 0
+
+        # Form the dictionary with the info for the ephemeral pool.
+        # If needed, multiple pools can be specified.
+        ephemeral_pool = {
+            'rbd_pool_name': constants.CEPH_POOL_EPHEMERAL_NAME,
+            'rbd_user': RBD_POOL_USER,
+            'rbd_crush_rule': ruleset,
+            'rbd_replication': replication,
+            'rbd_chunk_size': constants.CEPH_POOL_EPHEMERAL_PG_NUM
+        }
+        ephemeral_pools.append(ephemeral_pool)
+
+        ephemeral_storage_conf = {
+            'type': 'rbd',
+            'rbd_pools': ephemeral_pools
+        }
+
+        return ephemeral_storage_conf

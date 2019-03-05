@@ -41,8 +41,6 @@ class RbdProvisionerHelm(base.BaseHelm):
 
         # Get tier info.
         tiers = self.dbapi.storage_tier_get_list()
-        primary_tier_name = \
-            constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]
 
         classes = []
         for bk in ceph_bks:
@@ -67,42 +65,10 @@ class RbdProvisionerHelm(base.BaseHelm):
                   }
             classes.append(cls)
 
-        # Get all the info for creating the ephemeral pool.
-        ephemeral_pools = []
-        # Right now the ephemeral pool will only use the primary tier.
-        rule_name = "{0}{1}{2}".format(
-            primary_tier_name,
-            constants.CEPH_CRUSH_TIER_SUFFIX,
-            "-ruleset").replace('-', '_')
-
-        sb_list_ext = self.dbapi.storage_backend_get_list_by_type(
-            backend_type=constants.SB_TYPE_CEPH_EXTERNAL)
-
-        if sb_list_ext:
-            for sb in sb_list_ext:
-                if constants.SB_SVC_NOVA in sb.services:
-                    rbd_pool = sb.capabilities.get('ephemeral_pool')
-                    ephemeral_pool = {
-                        "pool_name": rbd_pool,
-                        "replication": int(sb.capabilities.get("replication")),
-                        "crush_rule_name": rule_name,
-                        "chunk_size": 64,
-                    }
-                    ephemeral_pools.append(ephemeral_pool)
-        # Treat internal CEPH.
-        ephemeral_pool = {
-            "pool_name": constants.CEPH_POOL_EPHEMERAL_NAME,
-            "replication": int(ceph_bks[0].capabilities.get("replication")),
-            "crush_rule_name": rule_name,
-            "chunk_size": 64,
-        }
-        ephemeral_pools.append(ephemeral_pool)
-
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 "classdefaults": classdefaults,
                 "classes": classes,
-                "ephemeral_pools": ephemeral_pools,
                 "images": self._get_images_overrides(),
                 "pods": self._get_pod_overrides()
             }
