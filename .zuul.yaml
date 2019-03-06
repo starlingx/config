@@ -179,12 +179,11 @@
         fm-api: true
         # fm-rest-api: true
         # fm-mgr: true
+        cgtsclient: true
         sysinv-agent: true
         # Skip sysinv-api for now, needs more attention
         # sysinv-api: true
         sysinv-cond: true
-        mysql: false
-        postgresql: true
         tls-proxy: false
       devstack_plugins:
         stx-config: git://git.starlingx.io/stx-config
