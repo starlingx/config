@@ -7102,7 +7102,9 @@ class ConductorManager(service.PeriodicService):
                                                     [constants.CONTROLLER,
                                                      constants.WORKER,
                                                      constants.STORAGE])
-
+        elif service == constants.SERVICE_TYPE_OPENSTACK:
+            # Do nothing. Does not need to update target config of any hosts
+            pass
         else:
             # All other services
             personalities = [constants.CONTROLLER]

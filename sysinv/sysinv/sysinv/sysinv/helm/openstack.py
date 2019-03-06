@@ -191,6 +191,18 @@ class OpenstackBaseHelm(base.BaseHelm):
             })
         return overrides
 
+    def _get_endpoints_host_fqdn_overrides(self, service_name):
+        overrides = {'public': {}}
+        endpoint_domain = self._get_service_parameter(
+            constants.SERVICE_TYPE_OPENSTACK,
+            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
+            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN)
+        if endpoint_domain is not None:
+            overrides['public'].update({
+                'host': service_name + '.' + str(endpoint_domain.value).lower()
+            })
+        return overrides
+
     def _get_endpoints_oslo_db_overrides(self, service_name, users):
         overrides = {
             'admin': {
