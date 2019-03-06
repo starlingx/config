@@ -555,21 +555,10 @@ class AgentManager(service.PeriodicService):
             fcntl.flock(lockfd, fcntl.LOCK_UN)
             os.close(lockfd)
 
-    def ihost_inv_get_and_report(self, icontext):
-        """Collect data for an ihost.
+    def _get_ports_inventory(self):
+        """Collect ports inventory for this host"""
 
-        This method allows an ihost data to be collected.
-
-        :param:   icontext: an admin context
-        :returns: updated ihost object, including all fields.
-        """
-
-        rpcapi = conductor_rpcapi.ConductorAPI(
-                           topic=conductor_rpcapi.MANAGER_TOPIC)
-
-        ihost = None
-
-        # find list of network related inics for this ihost
+        # find list of network related inics for this host
         inics = self._ipci_operator.inics_get()
 
         # create an array of ports for each net entry of the NIC device
@@ -591,24 +580,132 @@ class AgentManager(service.PeriodicService):
         # create an array of pci_devs for each net entry of the device
         pci_devs = []
         for pci_dev in pci_devices:
-            pci_dev_array = self._ipci_operator.pci_get_device_attrs(pci_dev.pciaddr)
+            pci_dev_array = self._ipci_operator.pci_get_device_attrs(
+                pci_dev.pciaddr)
             for dev in pci_dev_array:
                 pci_devs.append(pci.PCIDevice(pci_dev, **dev))
 
         # create a list of MAC addresses that will be used to identify the
         # inventoried host (one of the MACs should be the management MAC)
-        ihost_macs = [port.mac for port in iports if port.mac]
+        host_macs = [port.mac for port in iports if port.mac]
+
+        port_list = []
+        for port in iports:
+            inic_dict = {'pciaddr': port.ipci.pciaddr,
+                         'pclass': port.ipci.pclass,
+                         'pvendor': port.ipci.pvendor,
+                         'pdevice': port.ipci.pdevice,
+                         'prevision': port.ipci.prevision,
+                         'psvendor': port.ipci.psvendor,
+                         'psdevice': port.ipci.psdevice,
+                         'pname': port.name,
+                         'numa_node': port.numa_node,
+                         'sriov_totalvfs': port.sriov_totalvfs,
+                         'sriov_numvfs': port.sriov_numvfs,
+                         'sriov_vfs_pci_address': port.sriov_vfs_pci_address,
+                         'driver': port.driver,
+                         'mac': port.mac,
+                         'mtu': port.mtu,
+                         'speed': port.speed,
+                         'link_mode': port.link_mode,
+                         'dev_id': port.dev_id,
+                         'dpdksupport': port.dpdksupport}
+
+            LOG.debug('Sysinv Agent inic {}'.format(inic_dict))
+
+            port_list.append(inic_dict)
+
+        pci_device_list = []
+        for dev in pci_devs:
+            pci_dev_dict = {'name': dev.name,
+                            'pciaddr': dev.pci.pciaddr,
+                            'pclass_id': dev.pclass_id,
+                            'pvendor_id': dev.pvendor_id,
+                            'pdevice_id': dev.pdevice_id,
+                            'pclass': dev.pci.pclass,
+                            'pvendor': dev.pci.pvendor,
+                            'pdevice': dev.pci.pdevice,
+                            'prevision': dev.pci.prevision,
+                            'psvendor': dev.pci.psvendor,
+                            'psdevice': dev.pci.psdevice,
+                            'numa_node': dev.numa_node,
+                            'sriov_totalvfs': dev.sriov_totalvfs,
+                            'sriov_numvfs': dev.sriov_numvfs,
+                            'sriov_vfs_pci_address': dev.sriov_vfs_pci_address,
+                            'driver': dev.driver,
+                            'enabled': dev.enabled,
+                            'extra_info': dev.extra_info}
+            LOG.debug('Sysinv Agent dev {}'.format(pci_dev_dict))
+
+            pci_device_list.append(pci_dev_dict)
+
+        return port_list, pci_device_list, host_macs
+
+    def _retry_on_missing_host_uuid(ex):
+        LOG.info('Caught missing host_uuid exception. Retrying... '
+                 'Exception: {}'.format(ex))
+        return isinstance(ex, exception.LocalHostUUIDNotFound)
+
+    @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
+                    retry_on_exception=_retry_on_missing_host_uuid)
+    def _report_port_inventory(self, context, rpcapi=None,
+                               port_list=None, pci_device_list=None):
+
+        host_uuid = self._ihost_uuid
+        if not host_uuid:
+            raise exception.LocalHostUUIDNotFound()
+
+        if rpcapi is None:
+            rpcapi = conductor_rpcapi.ConductorAPI(
+                topic=conductor_rpcapi.MANAGER_TOPIC)
+
+        if pci_device_list is None or port_list is None:
+            port_list, pci_device_list, host_macs = self._get_ports_inventory()
+
+        try:
+            rpcapi.iport_update_by_ihost(context,
+                                         host_uuid,
+                                         port_list)
+        except RemoteError as e:
+            LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
+                      e.exc_type)
+            self._report_to_conductor = False
+        except exception.SysinvException:
+            LOG.exception("Sysinv Agent exception updating port.")
+            pass
+
+        try:
+            rpcapi.pci_device_update_by_host(context,
+                                             host_uuid,
+                                             pci_device_list)
+        except exception.SysinvException:
+            LOG.exception("Sysinv Agent exception updating pci_device.")
+            pass
+
+    def ihost_inv_get_and_report(self, icontext):
+        """Collect data for an ihost.
+
+        This method allows an ihost data to be collected.
+
+        :param:   icontext: an admin context
+        :returns: updated ihost object, including all fields.
+        """
+
+        ihost = None
+        rpcapi = conductor_rpcapi.ConductorAPI(
+            topic=conductor_rpcapi.MANAGER_TOPIC)
+
+        port_list, pci_device_list, host_macs = self._get_ports_inventory()
 
         # get my ihost record which should be avail since booted
-
-        LOG.debug('Sysinv Agent iports={}, ihost_macs={}'.format(
-            iports, ihost_macs))
+        LOG.debug('Sysinv Agent host_macs={} '.format(
+            host_macs))
 
         slept = 0
         while slept < MAXSLEEP:
             # wait for controller to come up first may be a DOR
             try:
-                ihost = rpcapi.get_ihost_by_macs(icontext, ihost_macs)
+                ihost = rpcapi.get_ihost_by_macs(icontext, host_macs)
             except Timeout:
                 LOG.info("get_ihost_by_macs rpc Timeout.")
                 return  # wait for next audit cycle
@@ -676,7 +773,6 @@ class AgentManager(service.PeriodicService):
             pass
 
         subfunctions = self.subfunctions_get()
-
         try:
             rpcapi.subfunctions_update_by_ihost(icontext,
                                                 ihost['uuid'],
@@ -686,86 +782,8 @@ class AgentManager(service.PeriodicService):
                           "conductor.")
             pass
 
-        # post to sysinv db by ihost['uuid']
-        iport_dict_array = []
-        for port in iports:
-            inic_dict = {'pciaddr': port.ipci.pciaddr,
-                         'pclass': port.ipci.pclass,
-                         'pvendor': port.ipci.pvendor,
-                         'pdevice': port.ipci.pdevice,
-                         'prevision': port.ipci.prevision,
-                         'psvendor': port.ipci.psvendor,
-                         'psdevice': port.ipci.psdevice,
-                         'pname': port.name,
-                         'numa_node': port.numa_node,
-                         'sriov_totalvfs': port.sriov_totalvfs,
-                         'sriov_numvfs': port.sriov_numvfs,
-                         'sriov_vfs_pci_address': port.sriov_vfs_pci_address,
-                         'driver': port.driver,
-                         'mac': port.mac,
-                         'mtu': port.mtu,
-                         'speed': port.speed,
-                         'link_mode': port.link_mode,
-                         'dev_id': port.dev_id,
-                         'dpdksupport': port.dpdksupport}
-
-            LOG.debug('Sysinv Agent inic {}'.format(inic_dict))
-
-            iport_dict_array.append(inic_dict)
-        try:
-            # may get duplicate key if already sent on earlier init
-            rpcapi.iport_update_by_ihost(icontext,
-                                         ihost['uuid'],
-                                         iport_dict_array)
-        except RemoteError as e:
-            LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
-                      e.exc_type)
-            self._report_to_conductor = False
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating iport conductor.")
-            pass
-
-        try:
-            rpcapi.subfunctions_update_by_ihost(icontext,
-                                                ihost['uuid'],
-                                                subfunctions)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating subfunctions "
-                          "conductor.")
-            pass
-
-        # post to sysinv db by ihost['uuid']
-        pci_device_dict_array = []
-        for dev in pci_devs:
-            pci_dev_dict = {'name': dev.name,
-                            'pciaddr': dev.pci.pciaddr,
-                            'pclass_id': dev.pclass_id,
-                            'pvendor_id': dev.pvendor_id,
-                            'pdevice_id': dev.pdevice_id,
-                            'pclass': dev.pci.pclass,
-                            'pvendor': dev.pci.pvendor,
-                            'pdevice': dev.pci.pdevice,
-                            'prevision': dev.pci.prevision,
-                            'psvendor': dev.pci.psvendor,
-                            'psdevice': dev.pci.psdevice,
-                            'numa_node': dev.numa_node,
-                            'sriov_totalvfs': dev.sriov_totalvfs,
-                            'sriov_numvfs': dev.sriov_numvfs,
-                            'sriov_vfs_pci_address': dev.sriov_vfs_pci_address,
-                            'driver': dev.driver,
-                            'enabled': dev.enabled,
-                            'extra_info': dev.extra_info}
-            LOG.debug('Sysinv Agent dev {}'.format(pci_dev_dict))
-
-            pci_device_dict_array.append(pci_dev_dict)
-        try:
-            # may get duplicate key if already sent on earlier init
-            rpcapi.pci_device_update_by_host(icontext,
-                                             ihost['uuid'],
-                                             pci_device_dict_array)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating iport conductor.")
-            pass
+        self._report_port_inventory(icontext, rpcapi,
+                                    port_list, pci_device_list)
 
         # Find list of numa_nodes and cpus for this ihost
         inumas, icpus = self._inode_operator.inodes_get_inumas_icpus()
@@ -1365,6 +1383,14 @@ class AgentManager(service.PeriodicService):
             self._update_config_applied(iconfig_uuid)
             self._report_config_applied(context)
 
+    def _report_inventory(self, context, config_dict):
+        inventory_update = config_dict.get(puppet.REPORT_INVENTORY_UPDATE, None)
+        LOG.info("report_inventory request=%s" % inventory_update)
+        if inventory_update == puppet.REPORT_PCI_SRIOV_CONFIG:
+            self._report_port_inventory(context)
+        else:
+            LOG.error("report_inventory unknown request=%s" % inventory_update)
+
     def _retry_on_missing_mgmt_ip(ex):
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalManagementIpNotFound)
@@ -1465,6 +1491,9 @@ class AgentManager(service.PeriodicService):
             rpcapi.report_config_status(context, config_dict,
                                         status=puppet.REPORT_SUCCESS,
                                         error=None)
+
+        if config_dict.get(puppet.REPORT_INVENTORY_UPDATE):
+            self._report_inventory(context, config_dict)
 
         self._report_config_applied(context)
 

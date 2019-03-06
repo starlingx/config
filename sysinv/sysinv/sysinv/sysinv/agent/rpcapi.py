@@ -46,8 +46,6 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         if topic is None:
             topic = MANAGER_TOPIC
 
-        # if  host is None: ? JKUNG
-
         super(AgentAPI, self).__init__(
             topic=topic,
             serializer=objects_base.SysinvObjectSerializer(),

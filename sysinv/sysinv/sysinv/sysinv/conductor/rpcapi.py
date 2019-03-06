@@ -516,6 +516,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                   " update_route_config to conductor")
         return self.call(context, self.make_msg('update_route_config'))
 
+    def update_sriov_config(self, context, host_uuid):
+        """Synchronously, have a conductor configure sriov config.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - who sends a message to all inventory agents
+        - who each apply the network manifest
+
+        :param context: request context.
+        :param host_uuid: the host unique uuid
+        """
+        LOG.debug("ConductorApi.update_sriov_config: sending "
+                  "update_sriov_config to conductor")
+        return self.call(context, self.make_msg('update_sriov_config',
+                                                host_uuid=host_uuid))
+
     def update_distributed_cloud_role(self, context):
         """Synchronously, have a conductor configure the distributed cloud
            role of the system.
