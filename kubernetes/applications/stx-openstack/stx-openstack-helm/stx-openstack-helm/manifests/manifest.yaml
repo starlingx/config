@@ -299,7 +299,7 @@ data:
     labels:
       release_group: osh-openstack-rabbitmq
   test:
-    enabled: true
+    enabled: false
   install:
     no_hooks: false
   upgrade:
@@ -404,7 +404,7 @@ data:
     labels:
       release_group: osh-openstack-glance
   test:
-    enabled: true
+    enabled: false
   install:
     no_hooks: false
   upgrade:
@@ -458,7 +458,7 @@ data:
     labels:
       release_group: osh-openstack-cinder
   test:
-    enabled: true
+    enabled: false
   install:
     no_hooks: false
   upgrade:
@@ -950,7 +950,7 @@ data:
     labels:
       release_group: osh-openstack-heat
   test:
-    enabled: true
+    enabled: false
   install:
     no_hooks: false
   upgrade:
@@ -1020,7 +1020,7 @@ data:
     labels:
       release_group: osh-openstack-aodh
   test:
-    enabled: true
+    enabled: false
   install:
     no_hooks: false
   upgrade:
@@ -1205,7 +1205,7 @@ data:
     labels:
       release_group: osh-openstack-panko
   test:
-    enabled: true
+    enabled: false
   install:
     no_hooks: false
   upgrade:
