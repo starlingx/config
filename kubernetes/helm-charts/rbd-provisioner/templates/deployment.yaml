@@ -24,6 +24,16 @@ spec:
     {{- if (.Values.global.rbac) or (.Values.global.reuseRbac)}}
       serviceAccount: {{ .Values.rbac.serviceAccount }}
     {{- end }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - {{ .Values.global.name }}
+            topologyKey: kubernetes.io/hostname
       containers:
       - name: {{ .Values.global.name }}
         image: {{ .Values.images.tags.rbd_provisioner | quote }}

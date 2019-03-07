@@ -65,12 +65,16 @@ class RbdProvisionerHelm(base.BaseHelm):
                   }
             classes.append(cls)
 
+        global_settings = {
+            "replicas": self._num_controllers()
+        }
+
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 "classdefaults": classdefaults,
                 "classes": classes,
                 "images": self._get_images_overrides(),
-                "pods": self._get_pod_overrides()
+                "global": global_settings
             }
         }
 
@@ -81,14 +85,6 @@ class RbdProvisionerHelm(base.BaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_pod_overrides(self):
-        overrides = {
-            'replicas': {
-                'rbd-provisioner': self._num_controllers()
-            }
-        }
-        return overrides
 
     def _get_images_overrides(self):
         # TODO: Remove after ceph upgrade
