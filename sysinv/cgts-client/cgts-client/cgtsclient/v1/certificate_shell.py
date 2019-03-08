@@ -69,7 +69,8 @@ def do_certificate_list(cc, args):
            help='The passphrase for the PEM file')
 @utils.arg('-m', '--mode',
            metavar='<mode>',
-           help="optional mode: 'tpm_mode', 'murano', 'murano_ca'. "
+           help="optional mode: 'tpm_mode', 'murano', 'murano_ca',"
+                "'docker_registry'. "
                 "Default is 'ssl'.")
 def do_certificate_install(cc, args):
     """Install certificate."""

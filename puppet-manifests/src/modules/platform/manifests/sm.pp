@@ -1046,6 +1046,11 @@ class platform::sm
     command => "sm-configure service_instance docker-distribution docker-distribution \"\"",
   }
 
+  # Docker Registry Token Server
+  exec { 'Configure Docker Registry Token Server':
+    command => "sm-configure service_instance registry-token-server registry-token-server \"\"",
+  }
+
   if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
       exec { 'Configure Platform NFS':
         command => "sm-configure service_instance platform-nfs-ip platform-nfs-ip \"ip=${platform_nfs_ip_param_ip},cidr_netmask=${platform_nfs_ip_param_mask},nic=${mgmt_ip_interface},arp_count=7,dc=yes\"",
@@ -1186,6 +1191,14 @@ class platform::sm
   }
   -> exec { 'Provision Docker Distribution (service)':
     command => 'sm-provision service docker-distribution',
+  }
+
+  # Configure Docker Registry Token Server
+  exec { 'Provision Docker Registry Token Server (service-group-member)':
+      command => 'sm-provision service-group-member controller-services registry-token-server',
+  }
+  -> exec { 'Provision Docker Registry Token Server (service)':
+    command => 'sm-provision service registry-token-server',
   }
 
   # Barbican

@@ -249,6 +249,17 @@ start()
         then
             fatal_error "This node is running a different load than the active controller and must be reinstalled"
         fi
+
+        # Install docker certificate if required
+        # this is management network for now
+        REGISTRY_IP=$(get_ip controller)
+        mkdir -p /etc/docker/certs.d/$REGISTRY_IP:9001/
+        chmod 700 /etc/docker/certs.d/$REGISTRY_IP:9001/
+        cp $CONFIG_DIR/registry-cert.crt /etc/docker/certs.d/$REGISTRY_IP:9001/registry-cert.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/registry-cert.crt to docker dir"
+        fi
     fi
 
     # banner customization always returns 0, success:
