@@ -329,6 +329,12 @@ data:
         anti:
           type:
             default: requiredDuringSchedulingIgnoredDuringExecution
+    # TODO: Revert to upstream defaults once the following LP is resolved:
+    # https://bugs.launchpad.net/starlingx/+bug/1814595. By changing this PV
+    # size to 1Gi from the default 265Mi, this avoids the kernel hang from the
+    # filesystem race as seen in the LP.
+    volume:
+      size: 1Gi
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/rabbitmq-0.1.0.tgz
