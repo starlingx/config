@@ -269,6 +269,8 @@ class CertificateController(rest.RestController):
                murano: install certificate for rabbit-murano
                murano_ca: install ca certificate for rabbit-murano
                docker_registry: install certificate for docker registry
+               openstack: install certificate for openstack
+               openstack_ca: install ca certificate for openstack
         """
 
         log_start = cutils.timestamped("certificate_do_post_start")
@@ -303,6 +305,16 @@ class CertificateController(rest.RestController):
             system_https_enabled = capabilities.get('https_enabled', False)
             if system_https_enabled is False or system_https_enabled == 'n':
                 msg = "No certificates have been added, https is not enabled."
+                LOG.info(msg)
+                return dict(success="", error=msg)
+
+        if mode.startswith(constants.CERT_MODE_OPENSTACK):
+            try:
+                pecan.request.dbapi.certificate_get_by_certtype(
+                    constants.CERT_MODE_SSL)
+            except exception.CertificateTypeNotFound:
+                msg = "No openstack certificates have been added, " \
+                      "platform SSL certificate is not installed."
                 LOG.info(msg)
                 return dict(success="", error=msg)
 

@@ -76,5 +76,7 @@ class NovaApiProxyHelm(openstack.OpenstackBaseHelm):
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
                         constants.HELM_CHART_NOVA),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
             },
         }

@@ -5,6 +5,7 @@
 #
 
 import keyring
+import os
 import subprocess
 
 from Crypto.PublicKey import RSA
@@ -191,6 +192,27 @@ class OpenstackBaseHelm(base.BaseHelm):
             })
         return overrides
 
+    def _get_file_content(self, filename):
+        file_contents = ''
+        with open(filename) as f:
+            file_contents = f.read()
+        return file_contents
+
+    def _get_endpoint_public_tls(self):
+        overrides = {}
+        if (os.path.exists(constants.OPENSTACK_CERT_FILE) and
+                os.path.exists(constants.OPENSTACK_CERT_KEY_FILE)):
+            overrides.update({
+                'crt': self._get_file_content(constants.OPENSTACK_CERT_FILE),
+                'key': self._get_file_content(
+                    constants.OPENSTACK_CERT_KEY_FILE),
+            })
+        if os.path.exists(constants.OPENSTACK_CERT_CA_FILE):
+            overrides.update({
+                'ca': self._get_file_content(constants.OPENSTACK_CERT_CA_FILE),
+            })
+        return overrides
+
     def _get_endpoints_host_fqdn_overrides(self, service_name):
         overrides = {'public': {}}
         endpoint_domain = self._get_service_parameter(
@@ -201,6 +223,38 @@ class OpenstackBaseHelm(base.BaseHelm):
             overrides['public'].update({
                 'host': service_name + '.' + str(endpoint_domain.value).lower()
             })
+
+        # Get TLS certificate files if installed
+        cert = None
+        try:
+            cert = self.dbapi.certificate_get_by_certtype(
+                constants.CERT_MODE_OPENSTACK)
+        except exception.CertificateTypeNotFound:
+            pass
+        if cert is not None:
+            tls_overrides = self._get_endpoint_public_tls()
+            if tls_overrides:
+                overrides['public'].update({
+                    'tls': tls_overrides
+                })
+        return overrides
+
+    def _get_endpoints_scheme_public_overrides(self):
+        overrides = {}
+        if self._https_enabled():
+            overrides = {
+                'public': 'https'
+            }
+        return overrides
+
+    def _get_endpoints_port_api_public_overrides(self):
+        overrides = {}
+        if self._https_enabled():
+            overrides = {
+                'api': {
+                    'public': 443
+                }
+            }
         return overrides
 
     def _get_endpoints_oslo_db_overrides(self, service_name, users):
@@ -335,3 +389,10 @@ class OpenstackBaseHelm(base.BaseHelm):
                    }
         }
         return override
+
+    def _get_public_protocol(self):
+        return 'https' if self._https_enabled() else 'http'
+
+    def _get_service_default_dns_name(self, service):
+        return "{}.{}.svc.{}".format(service, common.HELM_NS_OPENSTACK,
+                                     constants.DEFAULT_DNS_SERVICE_DOMAIN)
