@@ -42,5 +42,7 @@ if is_service_enabled stx-config; then
 
     if [[ "$1" == "clean" ]]; then
         cleanup_sysinv
+        cleanup_sysinv_depends
+        cleanup_cgtsclient
     fi
 fi
