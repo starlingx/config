@@ -394,6 +394,56 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-barbican
+data:
+  chart_name: barbican
+  release: openstack-barbican
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-barbican
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-barbican
+        - type: pod
+          labels:
+            release_group: osh-openstack-barbican
+            component: test
+  values:
+    labels:
+      api:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        api: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/barbican-0.1.0.tgz
+    subpath: barbican
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-glance
 data:
   chart_name: glance
@@ -2665,6 +2715,16 @@ data:
 schema: armada/ChartGroup/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-barbican
+data:
+  description: "Deploy barbican"
+  sequenced: true
+  chart_group:
+    - openstack-barbican
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-glance
 data:
   description: "Deploy glance"
@@ -2742,6 +2802,7 @@ data:
     - openstack-memcached
     - openstack-rabbitmq
     - openstack-keystone
+    - openstack-barbican
     - openstack-glance
     - openstack-compute-kit
     - openstack-heat

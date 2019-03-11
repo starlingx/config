@@ -76,7 +76,7 @@ class PankoHelm(openstack.OpenstackBaseHelm):
             },
             'oslo_cache': {
                 'auth': {
-                    'memcached_secret_key':
+                    'memcache_secret_key':
                         self._get_common_password('auth_memcache_key')
                 }
             },

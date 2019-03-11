@@ -203,6 +203,7 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
                 "'admin':%(target.role.name)s or 'heat_admin':%(target.user.name)s",
             "protected_services": [
                 ["'aodh':%(target.user.name)s"],
+                ["'barbican':%(target.user.name)s"],
                 ["'ceilometer':%(target.user.name)s"],
                 ["'cinder':%(target.user.name)s"],
                 ["'glance':%(target.user.name)s"],
@@ -247,12 +248,6 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
                         self.SERVICE_NAME),
-            },
-            'oslo_cache': {
-                'auth': {
-                    'memcached_secret_key':
-                        self._get_common_password('auth_memcache_key')
-                }
             },
             'oslo_db': {
                 'auth': self._get_endpoints_oslo_db_overrides(
