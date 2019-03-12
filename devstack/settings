@@ -1,6 +1,13 @@
 #!/bin/bash
 # Devstack settings
 
+# Services
+# cgtsclient
+# sysinv
+# sysinv-agent
+# sysinv-api
+# sysinv-cond
+
 # Defaults
 # --------
 
@@ -20,6 +27,19 @@ plugin_requires stx-config stx-update
 enable_service platform-util
 # stx-update
 enable_service sw-patch tsconfig
+
+if is_service_enabled sysinv-agent; then
+    enable_service sysinv
+fi
+
+if is_service_enabled sysinv-agent; then
+    local req_services="key rabbit nova neutron"
+    for srv in $req_services;do
+        if ! is_service_enabled "$srv"; then
+            die $LINENO "$srv should be enabled for SysInv"
+        fi
+    done
+fi
 
 # Initial source of lib script
 source $DEST/stx-config/devstack/lib/stx-config

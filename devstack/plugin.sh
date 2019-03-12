@@ -9,18 +9,12 @@ echo_summary "sysinv devstack plugin.sh called: $1/$2"
 if is_service_enabled stx-config; then
     if [[ "$1" == "stack" && "$2" == "install" ]]; then
         # Perform installation of source
-        echo_summary "Installing cgts_client"
-        install_cgtsclient
-        echo_summary "Installing depends"
-        install_sysinv_depends
-        echo_summary "Installing sysinv service"
-        install_sysinv
+        echo_summary "Installing stx-config"
+        install_config
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         # Configure after the other layer 1 and 2 services have been configured
         echo_summary "Configure sysinv"
-        configure_sysinv
-        create_sysinv_user_group
-        create_sysinv_accounts
+        configure_config
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
         # Initialize and start the sysinv service
         echo_summary "Initialize and start sysinv "
