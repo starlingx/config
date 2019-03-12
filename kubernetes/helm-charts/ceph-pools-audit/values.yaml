@@ -28,6 +28,21 @@ images:
   tags:
     ceph_config_helper: docker.io/port/ceph-config-helper:v1.10.3
   pullPolicy: "IfNotPresent"
+  local_registry:
+    active: false
+    exclude:
+      - dep_check
+      - image_repo_sync
+
+dependencies:
+  dynamic:
+    common:
+      local_image_registry:
+        jobs:
+          - image-repo-sync
+        services:
+          - endpoint: node
+            service: local_image_registry
 
 jobs:
   job_ceph_pools_audit:

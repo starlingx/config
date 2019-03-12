@@ -8,6 +8,9 @@
 
 {{- if .Values.manifests.job_ceph_pools_audit }}
 {{- $envAll := . }}
+
+{{- $serviceAccountName := "ceph-pools-audit" }}
+{{ tuple $envAll "job_ceph_pools_audit" $serviceAccountName | include "helm-toolkit.snippets.kubernetes_pod_rbac_serviceaccount" }}
 ---
 #
 # The CronJob makes sure all the Ceph pools have the right replication,
@@ -40,6 +43,7 @@ spec:
           labels:
             app: ceph-pools-audit
         spec:
+          serviceAccountName: {{ $serviceAccountName }}
           restartPolicy: OnFailure
           nodeSelector:
             {{ .Values.labels.job.node_selector_key }}: {{ .Values.labels.job.node_selector_value }}
