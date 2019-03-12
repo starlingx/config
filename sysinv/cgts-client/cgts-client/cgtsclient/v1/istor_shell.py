@@ -16,11 +16,11 @@ from cgtsclient.v1 import istor as istor_utils
 
 
 def _print_istor_show(istor):
-    fields = ['osdid', 'function', 'journal_location',
+    fields = ['osdid', 'function', 'state', 'journal_location',
               'journal_size_mib', 'journal_path', 'journal_node',
               'uuid', 'ihost_uuid', 'idisk_uuid', 'tier_uuid', 'tier_name',
               'created_at', 'updated_at']
-    labels = ['osdid', 'function', 'journal_location',
+    labels = ['osdid', 'function', 'state', 'journal_location',
               'journal_size_gib', 'journal_path', 'journal_node',
               'uuid', 'ihost_uuid', 'idisk_uuid', 'tier_uuid', 'tier_name',
               'created_at', 'updated_at']
@@ -76,10 +76,10 @@ def do_host_stor_list(cc, args):
         if i.journal_size_mib:
             i.journal_size_mib = i.journal_size_mib / 1024
 
-    field_labels = ['uuid', 'function', 'osdid', 'capabilities',
+    field_labels = ['uuid', 'function', 'osdid', 'state',
                     'idisk_uuid', 'journal_path', 'journal_node',
                     'journal_size_gib', 'tier_name']
-    fields = ['uuid', 'function', 'osdid', 'capabilities',
+    fields = ['uuid', 'function', 'osdid', 'state',
               'idisk_uuid', 'journal_path', 'journal_node', 'journal_size_mib',
               'tier_name']
     utils.print_list(istors, fields, field_labels, sortby=0)

@@ -4204,23 +4204,41 @@ class ConductorManager(service.PeriodicService):
                 else:
                     LOG.error("Host: %s not found in database" % host_id)
 
+    def _clear_ceph_stor_state(self, ihost_uuid):
+        """ Once a node starts, clear status of OSD storage devices
+
+        On reboot storage devices are expected to be 'configured', even if they
+        were in 'configuration-failed'.
+        This code will not be reached if manifests fail.
+        Also, realtime status of Ceph's OSD is queried by pmon/sm, no need to do
+        it in sysinv.
+        """
+        stors = self.dbapi.istor_get_by_ihost(ihost_uuid)
+        for stor in stors:
+            if stor.state != constants.SB_STATE_CONFIGURED:
+                LOG.info("State of stor: '%s' is '%s', resetting to '%s'." %
+                         (stor.uuid, stor.state,
+                          constants.SB_STATE_CONFIGURED))
+                values = {'state': constants.SB_STATE_CONFIGURED}
+                self.dbapi.istor_update(stor.uuid, values)
+
     def iplatform_update_by_ihost(self, context,
                                   ihost_uuid, imsg_dict):
-        """Create or update imemory for an ihost with the supplied data.
+        """Update node data when sysinv-agent is started after a boot.
 
-        This method allows records for memory for ihost to be created,
-        or updated.
-
-        This method is invoked on initialization once.  Note, swact also
-        results in restart, but not of sysinv-agent?
+        This method is invoked on initialization and allows
+        updates that need to happen once, when a node is started.
+        Note, swact also results in restart of services, but not
+        of sysinv-agent.
 
         :param context: an admin context
         :param ihost_uuid: ihost uuid unique id
         :param imsg_dict:  inventory message
         :returns: pass or fail
         """
-
         ihost_uuid.strip()
+        LOG.info("Updating platform data for host: %s "
+                 "with: %s" % (ihost_uuid, imsg_dict))
         try:
             ihost = self.dbapi.ihost_get(ihost_uuid)
         except exception.ServerNotFound:
@@ -4334,6 +4352,9 @@ class ConductorManager(service.PeriodicService):
                     self._resize_cinder_volumes()
 
         if availability == constants.AVAILABILITY_AVAILABLE:
+            if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
+                # This should be run once after a boot
+                self._clear_ceph_stor_state(ihost_uuid)
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
@@ -5735,7 +5756,7 @@ class ConductorManager(service.PeriodicService):
                    'platform::haproxy::runtime',
                    'openstack::keystone::endpoint::runtime',
                    'platform::filesystem::img_conversions::runtime',
-                   'platform::ceph::runtime',
+                   'platform::ceph::runtime_base',
                    ]
 
         if utils.is_aio_duplex_system(self.dbapi):
@@ -5805,10 +5826,30 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             "host_uuids": [node.uuid for node in valid_nodes],
-            "classes": ['platform::ceph::runtime'],
+            "classes": ['platform::ceph::runtime_base'],
             puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_MONITOR_CONFIG
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_ceph_osd_config(self, context, host, stor_uuid, runtime_manifests=True):
+        """ Update Ceph OSD configuration at runtime"""
+        personalities = [host.personality]
+        config_uuid = self._config_update_hosts(context, personalities, [host.uuid],
+                                                reboot=not runtime_manifests)
+
+        if runtime_manifests:
+            # Make sure that we have the correct CRUSH map before applying
+            # the manifests.
+            cceph.fix_crushmap(self.dbapi)
+
+            config_dict = {
+                "personalities": host.personality,
+                "host_uuids": host.uuid,
+                "stor_uuid": stor_uuid,
+                "classes": ['platform::ceph::runtime_osds'],
+                puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_OSD_CONFIG
+            }
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def config_update_nova_local_backed_hosts(self, context, instance_backing):
         hosts_uuid = self.hosts_with_nova_local(instance_backing)
@@ -6098,6 +6139,20 @@ class ConductorManager(service.PeriodicService):
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
                 self.report_ceph_base_config_failure(host_uuid, error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
+        elif reported_cfg == puppet_common.REPORT_CEPH_OSD_CONFIG:
+            host_uuid = iconfig['host_uuid']
+            stor_uuid = iconfig['stor_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                self.report_ceph_osd_config_success(host_uuid, stor_uuid)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Configuration has failed
+                self.report_ceph_osd_config_failure(host_uuid, stor_uuid, error)
             else:
                 args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
                 LOG.error("No match for sysinv-agent manifest application reported! "
@@ -6679,6 +6734,27 @@ class ConductorManager(service.PeriodicService):
         # Set monitor to error state
         values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
         self.dbapi.ceph_mon_update(monitor.uuid, values)
+
+    def report_ceph_osd_config_success(self, host_uuid, stor_uuid):
+        """
+           Callback for Sysinv Agent on ceph OSD config success
+        """
+
+        LOG.info("Ceph OSD stor '%s' update succeeded on host: %s" % (stor_uuid, host_uuid))
+
+        values = {'state': constants.SB_STATE_CONFIGURED}
+        self.dbapi.istor_update(stor_uuid, values)
+
+    def report_ceph_osd_config_failure(self, host_uuid, stor_uuid, error):
+        """
+           Callback for Sysinv Agent on ceph OSD config failure
+        """
+        LOG.error("Ceph OSD stor '%(stor)s' update failed on host: %(host)s. Error: "
+                  "%(error)s" % {'stor': stor_uuid, 'host': host_uuid, 'error': error})
+
+        # Set OSD to error state
+        values = {'state': constants.SB_STATE_CONFIG_ERR}
+        self.dbapi.istor_update(stor_uuid, values)
 
     def create_controller_filesystems(self, context, rootfs_device):
         """ Create the storage config based on disk size for

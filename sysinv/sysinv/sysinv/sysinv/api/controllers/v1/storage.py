@@ -360,7 +360,6 @@ class StorageController(rest.RestController):
         except exception.ServerNotFound:
             raise wsme.exc.ClientSideError(_("No stor with the provided"
                                              " uuid: %s" % stor_uuid))
-
         # replace ihost_uuid and istor_uuid with corresponding
         patch_obj = jsonpatch.JsonPatch(patch)
         for p in patch_obj:
@@ -412,9 +411,25 @@ class StorageController(rest.RestController):
                     "Invalid update: Size of collocated journal is fixed."))
 
         # Update only the fields that have changed
+        updated = False
         for field in objects.storage.fields:
             if rpc_stor[field] != getattr(stor, field):
                 rpc_stor[field] = getattr(stor, field)
+                updated = True
+
+        if not updated:
+            # None of the data fields have been updated, return!
+            return Storage.convert_with_links(rpc_stor)
+
+        # Set status for newly created OSD.
+        if rpc_stor['function'] == constants.STOR_FUNCTION_OSD:
+            ihost_id = rpc_stor['forihostid']
+            ihost = pecan.request.dbapi.ihost_get(ihost_id)
+            if ihost['operational'] == constants.OPERATIONAL_ENABLED:
+                # We are running live manifests
+                rpc_stor['state'] = constants.SB_STATE_CONFIGURING
+            else:
+                rpc_stor['state'] = constants.SB_STATE_CONFIGURING_ON_UNLOCK
 
         # Save istor
         rpc_stor.save()
@@ -428,6 +443,16 @@ class StorageController(rest.RestController):
                 rpc_stor['journal_path'] = st.journal_path
             except Exception as e:
                 LOG.exception(e)
+
+        # Run runtime manifests to update configuration
+        runtime_manifests = False
+        if (rpc_stor['state'] == constants.SB_STATE_CONFIGURING and
+                rpc_stor['function'] == constants.STOR_FUNCTION_OSD):
+            runtime_manifests = True
+
+        pecan.request.rpcapi.update_ceph_osd_config(pecan.request.context,
+                                                    ihost, rpc_stor['uuid'],
+                                                    runtime_manifests)
 
         return Storage.convert_with_links(rpc_stor)
 
@@ -452,11 +477,17 @@ class StorageController(rest.RestController):
 
         # Delete the stor if supported
         if stor.function == constants.STOR_FUNCTION_JOURNAL:
+            # Host must be locked
+            ihost_id = stor['forihostid']
+            ihost = pecan.request.dbapi.ihost_get(ihost_id)
+            if ihost['administrative'] != constants.ADMIN_LOCKED:
+                raise wsme.exc.ClientSideError(_("Host %s must be locked." %
+                                                ihost['hostname']))
             self.delete_stor(stor_uuid)
         else:
             raise wsme.exc.ClientSideError(_(
-                    "Deleting a Storage Function other than %s is not "
-                    "supported on this setup") % constants.STOR_FUNCTION_JOURNAL)
+                   "Deleting a Storage Function other than %s is not "
+                   "supported on this setup") % constants.STOR_FUNCTION_JOURNAL)
 
     def delete_stor(self, stor_uuid):
         """Delete a stor"""
@@ -492,10 +523,36 @@ def _check_profile(stor):
 def _check_host(stor):
     ihost_id = stor['forihostid']
     ihost = pecan.request.dbapi.ihost_get(ihost_id)
+    stor_model = ceph.get_ceph_storage_model()
 
-    # semantic check: whether host is locked
-    if ihost['administrative'] != constants.ADMIN_LOCKED:
-        raise wsme.exc.ClientSideError(_("Host must be locked"))
+    # semantic check: whether OSD can be added to this host.
+    if stor_model == constants.CEPH_STORAGE_MODEL:
+        if ihost.personality != constants.STORAGE:
+            msg = ("Storage model is '%s'. Storage devices can only be added "
+                   "to storage nodes." % stor_model)
+            raise wsme.exc.ClientSideError(_(msg))
+    elif stor_model == constants.CEPH_CONTROLLER_MODEL:
+        if ihost.personality != constants.CONTROLLER:
+            msg = ("Storage model is '%s'. Storage devices can only be added "
+                   "to controller nodes." % stor_model)
+            raise wsme.exc.ClientSideError(_(msg))
+    elif stor_model == constants.CEPH_UNDEFINED_MODEL:
+        msg = ("Please install storage-0 or configure a Ceph monitor "
+               "on a worker node before adding storage devices.")
+        raise wsme.exc.ClientSideError(_(msg))
+
+    # semantic check: whether host is operationally acceptable
+    if (stor_model == constants.CEPH_CONTROLLER_MODEL or
+            stor_model == constants.CEPH_AIO_SX_MODEL):
+        if (ihost['administrative'] == constants.ADMIN_UNLOCKED and
+                ihost['operational'] != constants.OPERATIONAL_ENABLED):
+            msg = _("Host %s must be unlocked and operational state "
+                    "enabled." % ihost['hostname'])
+            raise wsme.exc.ClientSideError(msg)
+    else:
+        if ihost['administrative'] != constants.ADMIN_LOCKED:
+            raise wsme.exc.ClientSideError(_("Host %s must be locked." %
+                                             ihost['hostname']))
 
     # semantic check: only storage nodes are allowed without k8s
     if (not utils.is_kubernetes_config(pecan.request.dbapi) and
@@ -525,23 +582,6 @@ def _check_host(stor):
                 "At least %s unlocked and enabled hosts with monitors are "
                 "required. Please ensure hosts with monitors are unlocked "
                 "and enabled.") % (num_monitors, required_monitors))
-
-    # semantic check: whether OSD can be added to this host.
-    stor_model = ceph.get_ceph_storage_model()
-    if stor_model == constants.CEPH_STORAGE_MODEL:
-        if ihost.personality != constants.STORAGE:
-            msg = ("Storage model is '%s'. Storage devices can only be added "
-                   "to storage nodes." % stor_model)
-            raise wsme.exc.ClientSideError(_(msg))
-    elif stor_model == constants.CEPH_CONTROLLER_MODEL:
-        if ihost.personality != constants.CONTROLLER:
-            msg = ("Storage model is '%s'. Storage devices can only be added "
-                   "to controller nodes." % stor_model)
-            raise wsme.exc.ClientSideError(_(msg))
-    elif stor_model == constants.CEPH_UNDEFINED_MODEL:
-        msg = ("Please install storage-0 or configure a Ceph monitor "
-               "on a worker node.")
-        raise wsme.exc.ClientSideError(_(msg))
 
 
 def _check_disk(stor):
@@ -746,8 +786,7 @@ def _check_journal(old_foristor, new_foristor):
 # Param:
 #       stor - dictionary of stor values
 #       iprofile - True when created by a storage profile
-#       create_pv -  avoid recursion when called from create pv
-def _create(stor, iprofile=None, create_pv=True):
+def _create(stor, iprofile=None):
 
     LOG.debug("storage._create stor with params: %s" % stor)
     # Init
@@ -789,6 +828,18 @@ def _create(stor, iprofile=None, create_pv=True):
 
     create_attrs = {}
     create_attrs.update(stor)
+
+    # Set status for newly created OSD.
+    if function == constants.STOR_FUNCTION_OSD:
+        ihost_id = stor['forihostid']
+        ihost = pecan.request.dbapi.ihost_get(ihost_id)
+        if ihost['operational'] == constants.OPERATIONAL_ENABLED:
+            # We are running live manifests
+            create_attrs['state'] = constants.SB_STATE_CONFIGURING
+        else:
+            create_attrs['state'] = constants.SB_STATE_CONFIGURING_ON_UNLOCK
+    else:
+        create_attrs['state'] = constants.SB_STATE_CONFIGURED
 
     if function == constants.STOR_FUNCTION_OSD:
         # Get the tier the stor should be associated with
@@ -897,7 +948,7 @@ def _create(stor, iprofile=None, create_pv=True):
         setattr(new_stor, "journal_size", new_journal.get("size_mib"))
 
         if not iprofile:
-            # Finally update the state of the storage tier
+            # Update the state of the storage tier
             try:
                 pecan.request.dbapi.storage_tier_update(
                     tier.id,
@@ -906,6 +957,15 @@ def _create(stor, iprofile=None, create_pv=True):
                 # Shouldn't happen. Log exception. Stor is created but tier status
                 # is not updated.
                 LOG.exception(e)
+
+        # Apply runtime manifests for OSDs on "available" nodes.
+        runtime_manifests = False
+        if ihost['operational'] == constants.OPERATIONAL_ENABLED:
+            runtime_manifests = True
+
+        pecan.request.rpcapi.update_ceph_osd_config(pecan.request.context,
+                                                    ihost, new_stor['uuid'],
+                                                    runtime_manifests)
 
     return new_stor
 
