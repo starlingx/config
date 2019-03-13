@@ -43,6 +43,11 @@ dependencies:
         services:
           - endpoint: node
             service: local_image_registry
+  static:
+    image_repo_sync:
+      services:
+        - endpoint: internal
+          service: local_image_registry
 
 jobs:
   job_ceph_pools_audit:
