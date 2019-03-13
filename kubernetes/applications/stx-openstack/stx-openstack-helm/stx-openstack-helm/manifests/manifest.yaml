@@ -145,7 +145,7 @@ data:
   wait:
     timeout: 1800
     labels:
-      app: ceph-pools-audit
+      app: rbd-provisioner
   install:
     no_hooks: false
   upgrade:
@@ -154,7 +154,7 @@ data:
       delete:
         - type: job
           labels:
-            app: ceph-pools-audit
+            app: osh-openstack-ceph-pools-audit
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/ceph-pools-audit-0.1.0.tgz
@@ -2616,18 +2616,9 @@ metadata:
   name: provisioner
 data:
   description: "Provisioner"
-  sequenced: false
+  sequenced: true
   chart_group:
     - openstack-rbd-provisioner
----
-schema: armada/ChartGroup/v1
-metadata:
-  schema: metadata/Document/v1
-  name: ceph-pools-audit
-data:
-  description: "Ceph pools audit"
-  sequenced: false
-  chart_group:
     - openstack-ceph-pools-audit
 ---
 schema: armada/ChartGroup/v1
@@ -2747,7 +2738,6 @@ data:
     - kube-system-ingress
     - openstack-ingress
     - provisioner
-    - ceph-pools-audit
     - openstack-mariadb
     - openstack-memcached
     - openstack-rabbitmq
