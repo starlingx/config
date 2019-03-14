@@ -188,35 +188,6 @@ def create_cgcs_config_file(output_file, system_config,
                         keystone_internal_url)
         cgcs_config.set('cREGION', 'KEYSTONE_PUBLIC_URI', keystone_public_url)
 
-        is_glance_cached = False
-        if system_config.has_option('SHARED_SERVICES', 'GLANCE_CACHED'):
-            if (system_config.get('SHARED_SERVICES',
-                                  'GLANCE_CACHED').upper() == 'TRUE'):
-                is_glance_cached = True
-        cgcs_config.set('cREGION', 'GLANCE_CACHED', is_glance_cached)
-
-        if (system_config.has_option('SHARED_SERVICES',
-                                     'GLANCE_SERVICE_NAME') and
-                not is_glance_cached):
-            glance_service_name = system_config.get('SHARED_SERVICES',
-                                                    'GLANCE_SERVICE_NAME')
-            glance_service_type = system_config.get('SHARED_SERVICES',
-                                                    'GLANCE_SERVICE_TYPE')
-            glance_region_name = region_1_name
-            glance_service_id = services.get_service_id(glance_service_name,
-                                                        glance_service_type)
-            glance_internal_url = endpoints.get_service_url(glance_region_name,
-                                                            glance_service_id,
-                                                            "internal")
-            glance_public_url = endpoints.get_service_url(glance_region_name,
-                                                          glance_service_id,
-                                                          "public")
-
-            cgcs_config.set('cREGION', 'GLANCE_ADMIN_URI', glance_internal_url)
-            cgcs_config.set('cREGION', 'GLANCE_PUBLIC_URI', glance_public_url)
-            cgcs_config.set('cREGION', 'GLANCE_INTERNAL_URI',
-                            glance_internal_url)
-
         # if ldap is a shared service
         if (system_config.has_option('SHARED_SERVICES', 'LDAP_SERVICE_URL')):
             ldap_service_url = system_config.get('SHARED_SERVICES',
@@ -224,11 +195,6 @@ def create_cgcs_config_file(output_file, system_config,
             cgcs_config.set('cREGION', 'LDAP_SERVICE_URI', ldap_service_url)
             cgcs_config.set('cREGION', 'LDAP_SERVICE_NAME', 'open-ldap')
             cgcs_config.set('cREGION', 'LDAP_REGION_NAME', region_1_name)
-
-        # The domains are not available in the validation phase
-        heat_admin_domain = system_config.get('REGION_2_SERVICES',
-                                              'HEAT_ADMIN_DOMAIN')
-        cgcs_config.set('cREGION', 'HEAT_ADMIN_DOMAIN_NAME', heat_admin_domain)
 
         # If primary region is non-TiC and keystone entries already created,
         # the flag will tell puppet not to create them.

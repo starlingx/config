@@ -515,49 +515,12 @@ class ConfigAssistant():
         self.keystone_public_uri = ""
         self.keystone_service_name = ""
         self.keystone_service_type = ""
-        self.glance_service_name = ""
-        self.glance_service_type = ""
-        self.glance_cached = False
-        self.glance_region_name = ""
-        self.glance_ks_user_name = ""
-        self.glance_ks_password = ""
-        self.glance_admin_uri = ""
-        self.glance_internal_uri = ""
-        self.glance_public_uri = ""
-        self.nova_ks_user_name = ""
-        self.nova_ks_password = ""
-        self.nova_service_name = ""
-        self.nova_service_type = ""
-        self.placement_ks_user_name = ""
-        self.placement_ks_password = ""
-        self.placement_service_name = ""
-        self.placement_service_type = ""
-        self.neutron_ks_user_name = ""
-        self.neutron_ks_password = ""
-        self.neutron_region_name = ""
-        self.neutron_service_name = ""
-        self.neutron_service_type = ""
-        self.ceilometer_ks_user_name = ""
-        self.ceilometer_ks_password = ""
-        self.ceilometer_service_name = ""
-        self.ceilometer_service_type = ""
         self.patching_ks_user_name = ""
         self.patching_ks_password = ""
         self.sysinv_ks_user_name = ""
         self.sysinv_ks_password = ""
         self.sysinv_service_name = ""
         self.sysinv_service_type = ""
-        self.heat_ks_user_name = ""
-        self.heat_ks_password = ""
-        self.heat_admin_domain_name = ""
-        self.heat_admin_ks_user_name = ""
-        self.heat_admin_ks_password = ""
-        self.aodh_ks_user_name = ""
-        self.aodh_ks_password = ""
-        self.panko_ks_user_name = ""
-        self.panko_ks_password = ""
-        self.gnocchi_ks_user_name = ""
-        self.gnocchi_ks_password = ""
         self.mtce_ks_user_name = ""
         self.mtce_ks_password = ""
         self.nfv_ks_user_name = ""
@@ -3476,14 +3439,6 @@ class ConfigAssistant():
                 raise ConfigFail("The option ENABLE_SDN is no longer "
                                  "supported.")
 
-            # Network configuration
-            # If the config file doesn't have the cNETWORK section, just use
-            # the default values for these options.
-            if config.has_section('cNETWORK'):
-                # If any of the network options are missing, use defaults.
-                if config.has_option('cNETWORK', 'VSWITCH_TYPE'):
-                    self.vswitch_type = config.get('cNETWORK', 'VSWITCH_TYPE')
-
             # Authentication configuration
             if config.has_section('cAUTHENTICATION'):
                 if config.has_option('cAUTHENTICATION', 'ADMIN_PASSWORD'):
@@ -3563,31 +3518,6 @@ class ConfigAssistant():
                     'cREGION', 'KEYSTONE_SERVICE_NAME')
                 self.keystone_service_type = config.get(
                     'cREGION', 'KEYSTONE_SERVICE_TYPE')
-                self.glance_service_name = config.get(
-                    'cREGION', 'GLANCE_SERVICE_NAME')
-                self.glance_service_type = config.get(
-                    'cREGION', 'GLANCE_SERVICE_TYPE')
-                self.glance_cached = config.get(
-                    'cREGION', 'GLANCE_CACHED')
-                self.glance_region_name = config.get(
-                    'cREGION', 'GLANCE_REGION')
-                if config.has_option('cREGION', 'GLANCE_USER_NAME'):
-                    self.glance_ks_user_name = config.get(
-                        'cREGION', 'GLANCE_USER_NAME')
-                if config.has_option('cREGION', 'GLANCE_PASSWORD'):
-                    self.glance_ks_password = config.get(
-                        'cREGION', 'GLANCE_PASSWORD')
-                    self.add_password_for_validation('GLANCE_PASSWORD',
-                                                     self.glance_ks_password)
-                if config.has_option('cREGION', 'GLANCE_ADMIN_URI'):
-                    self.glance_admin_uri = config.get(
-                        'cREGION', 'GLANCE_ADMIN_URI')
-                if config.has_option('cREGION', 'GLANCE_INTERNAL_URI'):
-                    self.glance_internal_uri = config.get(
-                        'cREGION', 'GLANCE_INTERNAL_URI')
-                if config.has_option('cREGION', 'GLANCE_PUBLIC_URI'):
-                    self.glance_public_uri = config.get(
-                        'cREGION', 'GLANCE_PUBLIC_URI')
                 if config.has_option('cREGION', 'LDAP_REGION_NAME'):
                     self.ldap_region_name = config.get(
                         'cREGION', 'LDAP_REGION_NAME')
@@ -3597,48 +3527,6 @@ class ConfigAssistant():
                 if config.has_option('cREGION', 'LDAP_SERVICE_URI'):
                     self.ldap_service_uri = config.get(
                         'cREGION', 'LDAP_SERVICE_URI')
-                self.nova_ks_user_name = config.get(
-                    'cREGION', 'NOVA_USER_NAME')
-                self.nova_ks_password = config.get(
-                    'cREGION', 'NOVA_PASSWORD')
-                self.add_password_for_validation('NOVA_PASSWORD',
-                                                 self.nova_ks_password)
-                self.nova_service_name = config.get(
-                    'cREGION', 'NOVA_SERVICE_NAME')
-                self.nova_service_type = config.get(
-                    'cREGION', 'NOVA_SERVICE_TYPE')
-                self.placement_ks_user_name = config.get(
-                    'cREGION', 'PLACEMENT_USER_NAME')
-                self.placement_ks_password = config.get(
-                    'cREGION', 'PLACEMENT_PASSWORD')
-                self.add_password_for_validation('PLACEMENT_PASSWORD',
-                                                 self.placement_ks_password)
-                self.placement_service_name = config.get(
-                    'cREGION', 'PLACEMENT_SERVICE_NAME')
-                self.placement_service_type = config.get(
-                    'cREGION', 'PLACEMENT_SERVICE_TYPE')
-                self.neutron_ks_user_name = config.get(
-                    'cREGION', 'NEUTRON_USER_NAME')
-                self.neutron_ks_password = config.get(
-                    'cREGION', 'NEUTRON_PASSWORD')
-                self.add_password_for_validation('NEUTRON_PASSWORD',
-                                                 self.neutron_ks_password)
-                self.neutron_region_name = config.get(
-                    'cREGION', 'NEUTRON_REGION_NAME')
-                self.neutron_service_name = config.get(
-                    'cREGION', 'NEUTRON_SERVICE_NAME')
-                self.neutron_service_type = config.get(
-                    'cREGION', 'NEUTRON_SERVICE_TYPE')
-                self.ceilometer_ks_user_name = config.get(
-                    'cREGION', 'CEILOMETER_USER_NAME')
-                self.ceilometer_ks_password = config.get(
-                    'cREGION', 'CEILOMETER_PASSWORD')
-                self.add_password_for_validation('CEILOMETER_PASSWORD',
-                                                 self.ceilometer_ks_password)
-                self.ceilometer_service_name = config.get(
-                    'cREGION', 'CEILOMETER_SERVICE_NAME')
-                self.ceilometer_service_type = config.get(
-                    'cREGION', 'CEILOMETER_SERVICE_TYPE')
                 self.patching_ks_user_name = config.get(
                     'cREGION', 'PATCHING_USER_NAME')
                 self.patching_ks_password = config.get(
@@ -3655,40 +3543,6 @@ class ConfigAssistant():
                     'cREGION', 'SYSINV_SERVICE_NAME')
                 self.sysinv_service_type = config.get(
                     'cREGION', 'SYSINV_SERVICE_TYPE')
-                self.heat_ks_user_name = config.get(
-                    'cREGION', 'HEAT_USER_NAME')
-                self.heat_ks_password = config.get(
-                    'cREGION', 'HEAT_PASSWORD')
-                self.add_password_for_validation('HEAT_PASSWORD',
-                                                 self.heat_ks_password)
-                self.heat_admin_domain_name = config.get(
-                    'cREGION', 'HEAT_ADMIN_DOMAIN_NAME')
-                self.heat_admin_ks_user_name = config.get(
-                    'cREGION', 'HEAT_ADMIN_USER_NAME')
-                self.heat_admin_ks_password = config.get(
-                    'cREGION', 'HEAT_ADMIN_PASSWORD')
-                self.add_password_for_validation('HEAT_ADMIN_PASSWORD',
-                                                 self.heat_admin_ks_password)
-                self.aodh_ks_user_name = config.get(
-                    'cREGION', 'AODH_USER_NAME')
-                self.aodh_ks_password = config.get(
-                    'cREGION', 'AODH_PASSWORD')
-                self.add_password_for_validation('AODH_PASSWORD',
-                                                 self.aodh_ks_password)
-                self.panko_ks_user_name = config.get(
-                    'cREGION', 'PANKO_USER_NAME')
-                self.panko_ks_password = config.get(
-                    'cREGION', 'PANKO_PASSWORD')
-                self.add_password_for_validation('PANKO_PASSWORD',
-                                                 self.panko_ks_password)
-
-                self.gnocchi_ks_user_name = config.get(
-                    'cREGION', 'GNOCCHI_USER_NAME')
-                self.gnocchi_ks_password = config.get(
-                    'cREGION', 'GNOCCHI_PASSWORD')
-                self.add_password_for_validation('GNOCCHI_PASSWORD',
-                                                 self.gnocchi_ks_password)
-
                 self.mtce_ks_user_name = config.get(
                     'cREGION', 'MTCE_USER_NAME')
                 self.mtce_ks_password = config.get(
@@ -3717,11 +3571,6 @@ class ConfigAssistant():
                                                  self.barbican_ks_password)
 
                 self.shared_services.append(self.keystone_service_type)
-                if self.glance_region_name == self.region_1_name:
-                    self.shared_services.append(self.glance_service_type)
-
-                if self.neutron_region_name == self.region_1_name:
-                    self.shared_services.append(self.neutron_service_type)
 
                 if self.subcloud_config():
                     self.system_controller_subnet = IPNetwork(config.get(
@@ -3960,36 +3809,13 @@ class ConfigAssistant():
             print("Keystone public URI: " + self.keystone_public_uri)
             print("Keystone service name: " + self.keystone_service_name)
             print("Keystone service type: " + self.keystone_service_type)
-            print("Glance user name: " + self.glance_ks_user_name)
-            print("Glance service name: " + self.glance_service_name)
-            print("Glance service type: " + self.glance_service_type)
-            print("Glance cached: " + str(self.glance_cached))
-            print("Glance region: " + self.glance_region_name)
-            print("Glance admin URI: " + self.glance_admin_uri)
-            print("Glance internal URI: " + self.glance_internal_uri)
-            print("Glance public URI: " + self.glance_public_uri)
             print("LDAP service name: " + self.ldap_service_name)
             print("LDAP region: " + self.ldap_region_name)
             print("LDAP service URI:" + self.ldap_service_uri)
-            print("Nova user name: " + self.nova_ks_user_name)
-            print("Nova service name: " + self.nova_service_name)
-            print("Nova service type: " + self.nova_service_type)
-            print("Placement user name: " + self.placement_ks_user_name)
-            print("Placement service name: " + self.placement_service_name)
-            print("Placement service type: " + self.placement_service_type)
-            print("Neutron user name: " + self.neutron_ks_user_name)
-            print("Neutron region name: " + self.neutron_region_name)
-            print("Neutron service name: " + self.neutron_service_name)
-            print("Neutron service type: " + self.neutron_service_type)
-            print("Ceilometer user name: " + self.ceilometer_ks_user_name)
-            print("Ceilometer service name: " + self.ceilometer_service_name)
-            print("Ceilometer service type: " + self.ceilometer_service_type)
             print("Patching user name: " + self.patching_ks_user_name)
             print("Sysinv user name: " + self.sysinv_ks_user_name)
             print("Sysinv service name: " + self.sysinv_service_name)
             print("Sysinv service type: " + self.sysinv_service_type)
-            print("Heat user name: " + self.heat_ks_user_name)
-            print("Heat admin user name: " + self.heat_admin_ks_user_name)
 
         if self.subcloud_config():
             print("\nSubcloud Configuration")
@@ -4278,11 +4104,6 @@ class ConfigAssistant():
                             "IS_SECURE_REGISTRY=" +
                             str(self.is_secure_registry) + "\n")
 
-                # Network configuration
-                f.write("\n[cNETWORK]")
-                f.write("\n# Data Network Configuration\n")
-                f.write("VSWITCH_TYPE=%s\n" % self.vswitch_type)
-
                 # Security configuration
                 f.write("\n[cSECURITY]")
 
@@ -4323,26 +4144,6 @@ class ConfigAssistant():
                             self.keystone_service_name)
                     f.write("KEYSTONE_SERVICE_TYPE=%s\n" %
                             self.keystone_service_type)
-                    f.write("GLANCE_SERVICE_NAME=%s\n" %
-                            self.glance_service_name)
-                    f.write("GLANCE_SERVICE_TYPE=%s\n" %
-                            self.glance_service_type)
-                    f.write("GLANCE_CACHED=%s\n" %
-                            self.glance_cached)
-                    if self.glance_ks_user_name:
-                        f.write("GLANCE_USER_NAME=%s\n" %
-                                self.glance_ks_user_name)
-                    if self.glance_ks_password:
-                        f.write("GLANCE_PASSWORD=%s\n" %
-                                self.glance_ks_password)
-                    f.write("GLANCE_REGION=%s\n" %
-                            self.glance_region_name)
-                    f.write("GLANCE_ADMIN_URI=%s\n" %
-                            self.glance_admin_uri)
-                    f.write("GLANCE_INTERNAL_URI=%s\n" %
-                            self.glance_internal_uri)
-                    f.write("GLANCE_PUBLIC_URI=%s\n" %
-                            self.glance_public_uri)
                     if self.ldap_service_name:
                         f.write("LDAP_SERVICE_NAME=%s\n" %
                                 self.ldap_service_name)
@@ -4352,40 +4153,6 @@ class ConfigAssistant():
                     if self.ldap_service_uri:
                         f.write("LDAP_SERVICE_URI=%s\n" %
                                 self.ldap_service_uri)
-                    f.write("NOVA_USER_NAME=%s\n" %
-                            self.nova_ks_user_name)
-                    f.write("NOVA_PASSWORD=%s\n" %
-                            self.nova_ks_password)
-                    f.write("NOVA_SERVICE_NAME=%s\n" %
-                            self.nova_service_name)
-                    f.write("NOVA_SERVICE_TYPE=%s\n" %
-                            self.nova_service_type)
-                    f.write("PLACEMENT_USER_NAME=%s\n" %
-                            self.placement_ks_user_name)
-                    f.write("PLACEMENT_PASSWORD=%s\n" %
-                            self.placement_ks_password)
-                    f.write("PLACEMENT_SERVICE_NAME=%s\n" %
-                            self.placement_service_name)
-                    f.write("PLACEMENT_SERVICE_TYPE=%s\n" %
-                            self.placement_service_type)
-                    f.write("NEUTRON_USER_NAME=%s\n" %
-                            self.neutron_ks_user_name)
-                    f.write("NEUTRON_PASSWORD=%s\n" %
-                            self.neutron_ks_password)
-                    f.write("NEUTRON_REGION_NAME=%s\n" %
-                            self.neutron_region_name)
-                    f.write("NEUTRON_SERVICE_NAME=%s\n" %
-                            self.neutron_service_name)
-                    f.write("NEUTRON_SERVICE_TYPE=%s\n" %
-                            self.neutron_service_type)
-                    f.write("CEILOMETER_USER_NAME=%s\n" %
-                            self.ceilometer_ks_user_name)
-                    f.write("CEILOMETER_PASSWORD=%s\n" %
-                            self.ceilometer_ks_password)
-                    f.write("CEILOMETER_SERVICE_NAME=%s\n" %
-                            self.ceilometer_service_name)
-                    f.write("CEILOMETER_SERVICE_TYPE=%s\n" %
-                            self.ceilometer_service_type)
                     f.write("PATCHING_USER_NAME=%s\n" %
                             self.patching_ks_user_name)
                     f.write("PATCHING_PASSWORD=%s\n" %
@@ -4398,32 +4165,10 @@ class ConfigAssistant():
                             self.sysinv_service_name)
                     f.write("SYSINV_SERVICE_TYPE=%s\n" %
                             self.sysinv_service_type)
-                    f.write("HEAT_USER_NAME=%s\n" %
-                            self.heat_ks_user_name)
-                    f.write("HEAT_PASSWORD=%s\n" %
-                            self.heat_ks_password)
-                    f.write("HEAT_ADMIN_DOMAIN_NAME=%s\n" %
-                            self.heat_admin_domain_name)
-                    f.write("HEAT_ADMIN_USER_NAME=%s\n" %
-                            self.heat_admin_ks_user_name)
-                    f.write("HEAT_ADMIN_PASSWORD=%s\n" %
-                            self.heat_admin_ks_password)
                     f.write("NFV_USER_NAME=%s\n" %
                             self.nfv_ks_user_name)
                     f.write("NFV_PASSWORD=%s\n" %
                             self.nfv_ks_password)
-                    f.write("AODH_USER_NAME=%s\n" %
-                            self.aodh_ks_user_name)
-                    f.write("AODH_PASSWORD=%s\n" %
-                            self.aodh_ks_password)
-                    f.write("PANKO_USER_NAME=%s\n" %
-                            self.panko_ks_user_name)
-                    f.write("PANKO_PASSWORD=%s\n" %
-                            self.panko_ks_password)
-                    f.write("GNOCCHI_USER_NAME=%s\n" %
-                            self.gnocchi_ks_user_name)
-                    f.write("GNOCCHI_PASSWORD=%s\n" %
-                            self.gnocchi_ks_password)
                     f.write("MTCE_USER_NAME=%s\n" %
                             self.mtce_ks_user_name)
                     f.write("MTCE_PASSWORD=%s\n" %
@@ -4781,32 +4526,6 @@ class ConfigAssistant():
                   'capabilities': capabilities}
         client.sysinv.sm_service.service_create(**values)
 
-        # possible shared services (glance)
-        capabilities = {'service_name': self.glance_service_name,
-                        'service_type': self.glance_service_type,
-                        'glance_cached': self.glance_cached}
-        if self.glance_ks_user_name:
-            capabilities.update({'user_name': self.glance_ks_user_name})
-
-        # TODO (aning): Once we eliminate duplicated endpoints of shared
-        # services for non-primary region(s), we need to re-visit the following
-        # code that pass over the URLs to sysinv for puppet to create these
-        # endpoints, to see if we can remove them completely.
-        if self.glance_admin_uri:
-            capabilities.update({'admin_uri':
-                                self.glance_admin_uri})
-        if self.glance_internal_uri:
-            capabilities.update({'internal_uri':
-                                self.glance_internal_uri})
-        if self.glance_public_uri:
-            capabilities.update({'public_uri': self.glance_public_uri})
-
-        values = {'name': 'glance',
-                  'enabled': True,
-                  'region_name': self.glance_region_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
         # if ldap is a shared service
         if self.ldap_service_uri:
             capabilities = {'service_name': self.ldap_service_name}
@@ -4816,16 +4535,6 @@ class ConfigAssistant():
                       'region_name': self.ldap_region_name,
                       'capabilities': capabilities}
             client.sysinv.sm_service.service_create(**values)
-
-        # neutron service config
-        capabilities = {'service_name': self.neutron_service_name,
-                        'service_type': self.neutron_service_type,
-                        'user_name': self.neutron_ks_user_name}
-        values = {'name': self.neutron_service_name,
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
 
         # sysinv service config
         capabilities = {'service_name': self.sysinv_service_name,
@@ -4837,77 +4546,11 @@ class ConfigAssistant():
                   'capabilities': capabilities}
         client.sysinv.sm_service.service_create(**values)
 
-        # populate nova service config
-        capabilities = {'service_name': self.nova_service_name,
-                        'service_type': self.nova_service_type,
-                        'user_name': self.nova_ks_user_name}
-        values = {'name': self.nova_service_name,
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
-        # populate placement service config
-        capabilities = {'service_name': self.placement_service_name,
-                        'service_type': self.placement_service_type,
-                        'user_name': self.placement_ks_user_name}
-        values = {'name': self.placement_service_name,
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
         # populate patching service config
         capabilities = {'service_name': 'patching',
                         'service_type': 'patching',
                         'user_name': self.patching_ks_user_name}
         values = {'name': 'patching',
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
-        # heat service config
-        capabilities = {'service_name': 'heat',
-                        'service_type': 'orchestration',
-                        'user_name': self.heat_ks_user_name,
-                        'admin_user_name': self.heat_admin_ks_user_name,
-                        'admin_domain_name': self.heat_admin_domain_name}
-        values = {'name': 'heat',
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
-        # ceilometer service config
-        capabilities = {'service_name': self.ceilometer_service_name,
-                        'service_type': self.ceilometer_service_type,
-                        'user_name': self.ceilometer_ks_user_name}
-        values = {'name': self.ceilometer_service_name,
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
-        # aodh service config
-        capabilities = {'user_name': self.aodh_ks_user_name}
-        values = {'name': "aodh",
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
-        # panko service config
-        capabilities = {'user_name': self.panko_ks_user_name}
-        values = {'name': "panko",
-                  'enabled': True,
-                  'region_name': self.region_2_name,
-                  'capabilities': capabilities}
-        client.sysinv.sm_service.service_create(**values)
-
-        # gnocchi service config
-        capabilities = {'user_name': self.gnocchi_ks_user_name}
-        values = {'name': "gnocchi",
                   'enabled': True,
                   'region_name': self.region_2_name,
                   'capabilities': capabilities}
@@ -4942,52 +4585,13 @@ class ConfigAssistant():
 
         os.environ["XDG_DATA_HOME"] = "/tmp"
 
-        # possible shared services (glance)
-
-        if self.glance_ks_password:
-            keyring.set_password('glance',
-                                 constants.DEFAULT_SERVICE_PROJECT_NAME,
-                                 self.glance_ks_password)
-
         keyring.set_password(self.sysinv_service_name,
                              constants.DEFAULT_SERVICE_PROJECT_NAME,
                              self.sysinv_ks_password)
 
-        keyring.set_password(self.nova_service_name,
-                             constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.nova_ks_password)
-
-        keyring.set_password(self.placement_service_name,
-                             constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.placement_ks_password)
-
-        keyring.set_password(self.neutron_service_name,
-                             constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.neutron_ks_password)
-
         keyring.set_password('patching',
                              constants.DEFAULT_SERVICE_PROJECT_NAME,
                              self.patching_ks_password)
-
-        keyring.set_password('heat', constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.heat_ks_password)
-
-        keyring.set_password('heat-domain',
-                             constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.heat_admin_ks_password)
-
-        keyring.set_password(self.ceilometer_service_name,
-                             constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.ceilometer_ks_password)
-
-        keyring.set_password('aodh', constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.aodh_ks_password)
-
-        keyring.set_password('panko', constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.panko_ks_password)
-
-        keyring.set_password('gnocchi', constants.DEFAULT_SERVICE_PROJECT_NAME,
-                             self.gnocchi_ks_password)
 
         keyring.set_password('mtce', constants.DEFAULT_SERVICE_PROJECT_NAME,
                              self.mtce_ks_password)

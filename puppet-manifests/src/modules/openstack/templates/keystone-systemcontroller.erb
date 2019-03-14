@@ -5,7 +5,6 @@ keystone-<%=@system_controller_region %>-filter.conf \
   --os-username <%=@os_username %> \
   --os-password $PASSWORD \
   --os-region-name <%=@identity_region %> \
-  --os-keystone-region-name <%=@keystone_region %> \
   --os-auth-url <%=@auth_url %> \
   --os-identity-api-version <%=@api_version %> \
   --os-project-name <%=@os_project_name %> | awk '/id\ \ / { print $4 }' )
@@ -13,7 +12,6 @@ openstack endpoint group add project $ENDPOINTGROUP_ID services \
   --os-username <%=@os_username %> \
   --os-password $PASSWORD \
   --os-region-name <%=@identity_region %> \
-  --os-keystone-region-name <%=@keystone_region %> \
   --os-auth-url <%=@auth_url %> \
   --os-identity-api-version <%=@api_version %> \
   --os-project-name <%=@os_project_name %>

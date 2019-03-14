@@ -67,10 +67,6 @@ NAMESERVER_1=8.8.8.8
 NAMESERVER_2=8.8.4.4
 NAMESERVER_3=NC
 
-[cNETWORK]
-# Data Network Configuration
-VSWITCH_TYPE=ovs-dpdk
-
 [cSECURITY]
 [cREGION]
 # Region Configuration
