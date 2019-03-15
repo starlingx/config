@@ -123,7 +123,7 @@ class TestUtils(test_base.TestCase):
         dt = timeutils.parse_isotime(timeutils.isotime(naive_dt))
         self.assertEqual(utils.datetime_or_none(dt), dt)
         self.assertEqual(utils.datetime_or_none(dt),
-                         naive_dt.replace(tzinfo=iso8601.iso8601.Utc(),
+                         naive_dt.replace(tzinfo=iso8601.UTC,
                                           microsecond=0))
         self.assertEqual(utils.datetime_or_none(None), None)
         self.assertRaises(ValueError, utils.datetime_or_none, 'foo')
