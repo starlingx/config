@@ -433,6 +433,7 @@ class platform::kubernetes::firewall
 
   $system_mode = $::platform::params::system_mode
   $oam_float_ip = $::platform::network::oam::params::controller_address
+  $oam_interface = $::platform::network::oam::params::interface_name
   $mgmt_subnet = $::platform::network::mgmt::params::subnet_network
   $mgmt_prefixlen = $::platform::network::mgmt::params::subnet_prefixlen
 
@@ -448,7 +449,8 @@ class platform::kubernetes::firewall
       dport       => $dports,
       destination => $d_mgmt_subnet,
       source      => $s_mgmt_subnet,
-      tosource    => $oam_float_ip
+      tosource    => $oam_float_ip,
+      outiface    => $oam_interface,
     }
   }
 }

@@ -84,7 +84,6 @@ class ConfigValidator(object):
         self.cluster_network = None
         self.oam_network = None
         self.vswitch_type = None
-        self.glance_region = None
         self.system_mode = None
         self.system_type = None
         self.system_dc_role = None
@@ -1086,82 +1085,17 @@ class ConfigValidator(object):
         if self.conf.has_section('NTP'):
             raise ConfigFail("NTP Configuration is no longer supported")
 
-    def validate_network(self):
-        if self.conf.has_option('NETWORK', 'VSWITCH_TYPE'):
-            self.vswitch_type = self.conf.get('NETWORK',
-                                              'VSWITCH_TYPE').upper()
-        else:
-            self.vswitch_type = 'OVS-DPDK'
-
-        if self.vswitch_type == 'NUAGE_VRS':
-            metadata_proxy_shared_secret = self.conf.get(
-                'NETWORK', 'METADATA_PROXY_SHARED_SECRET')
-
-        if self.cgcs_conf is not None:
-            self.cgcs_conf.add_section('cNETWORK')
-            self.cgcs_conf.set('cNETWORK', 'VSWITCH_TYPE',
-                               self.vswitch_type.lower())
-            if self.vswitch_type == 'NUAGE_VRS':
-                # Set the neutron config appropriately for the nuage_vrs
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_L2_AGENT', 'nuage_vrs')
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_L3_EXT_BRIDGE',
-                                   'provider')
-                # These are only used by the ML2 plugin
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_L2_PLUGIN', 'NC')
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_ML2_MECHANISM_DRIVERS',
-                                   'NC')
-                self.cgcs_conf.set('cNETWORK',
-                                   'NEUTRON_ML2_SRIOV_AGENT_REQUIRED', 'NC')
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_ML2_TYPE_DRIVERS',
-                                   'NC')
-                # This may be required if we use the openvswitch L2 agent
-                self.cgcs_conf.set('cNETWORK',
-                                   'NEUTRON_ML2_TENANT_NETWORK_TYPES',
-                                   'vlan,vxlan')
-                # These are for the neutron-server or neutron-api
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_HOST_DRIVER', 'NC')
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_FM_DRIVER', 'NC')
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_NETWORK_SCHEDULER',
-                                   'NC')
-                self.cgcs_conf.set('cNETWORK', 'NEUTRON_ROUTER_SCHEDULER',
-                                   'NC')
-                # Additional network options
-                self.cgcs_conf.set('cNETWORK', 'METADATA_PROXY_SHARED_SECRET',
-                                   metadata_proxy_shared_secret)
-
     def validate_region(self, config_type=REGION_CONFIG):
         region_1_name = self.conf.get('SHARED_SERVICES', 'REGION_NAME')
         region_2_name = self.conf.get('REGION_2_SERVICES', 'REGION_NAME')
         if region_1_name == region_2_name:
             raise ConfigFail(
                 "The Region Names must be unique.")
-        # validate VSWITCH_TYPE configuration
-        if self.vswitch_type == 'OVS-DPDK':
-            if self.conf.has_option('SHARED_SERVICES', 'NEUTRON_SERVICE_NAME'):
-                raise ConfigFail(
-                    "When VSWITCH_TYPE is OVS-DPDK, NEUTRON service must "
-                    "only be configured in REGION_2_SERVICES.")
-            neutron_group = 'REGION_2_SERVICES'
-            neutron_region_name = region_2_name
-
-        elif self.vswitch_type == 'NUAGE_VRS':
-            if not self.conf.has_option('SHARED_SERVICES',
-                                        'NEUTRON_SERVICE_NAME'):
-                raise ConfigFail(
-                    "When VSWITCH_TYPE is NUAGE_VRS, NEUTRON service must "
-                    "only be configured in SHARED_SERVICES.")
-            neutron_group = 'SHARED_SERVICES'
-            neutron_region_name = region_1_name
-        else:
-            raise ConfigFail("Invalid VSWITCH_TYPE value of %s." %
-                             self.vswitch_type)
 
         if not (self.conf.has_option('REGION_2_SERVICES', 'CREATE') and
                 self.conf.get('REGION_2_SERVICES', 'CREATE') == 'Y'):
             password_fields = [
-                'NOVA', 'CEILOMETER', 'PATCHING', 'SYSINV', 'HEAT',
-                'HEAT_ADMIN', 'PLACEMENT', 'AODH', 'PANKO', 'GNOCCHI',
-                'BARBICAN'
+                'PATCHING', 'SYSINV', 'FM', 'BARBICAN', 'NFV', 'MTCE'
             ]
             for pw in password_fields:
                 if not self.conf.has_option('REGION_2_SERVICES',
@@ -1202,71 +1136,7 @@ class ConfigValidator(object):
                                             'KEYSTONE_SERVICE_NAME')
         keystone_service_type = get_service(self.conf, 'SHARED_SERVICES',
                                             'KEYSTONE_SERVICE_TYPE')
-        glance_user_name = None
-        glance_password = None
-        glance_cached = 'False'
-        if self.conf.has_option('SHARED_SERVICES', 'GLANCE_SERVICE_NAME'):
-            glance_service_name = get_service(self.conf, 'SHARED_SERVICES',
-                                              'GLANCE_SERVICE_NAME')
-            glance_service_type = get_service(self.conf, 'SHARED_SERVICES',
-                                              'GLANCE_SERVICE_TYPE')
-            self.glance_region = region_1_name
 
-            glance_cached = get_optional(self.conf, 'SHARED_SERVICES',
-                                         'GLANCE_CACHED')
-            if glance_cached is None:
-                glance_cached = 'False'
-            elif glance_cached.upper() == 'TRUE':
-                glance_user_name = self.conf.get(
-                    'REGION_2_SERVICES',
-                    'GLANCE_USER_NAME')
-                glance_password = get_optional(
-                    self.conf, 'REGION_2_SERVICES',
-                    'GLANCE_PASSWORD')
-                self.glance_region = region_2_name
-        else:
-            glance_service_name = get_service(self.conf, 'REGION_2_SERVICES',
-                                              'GLANCE_SERVICE_NAME')
-            glance_service_type = get_service(self.conf, 'REGION_2_SERVICES',
-                                              'GLANCE_SERVICE_TYPE')
-            self.glance_region = region_2_name
-            glance_user_name = self.conf.get('REGION_2_SERVICES',
-                                             'GLANCE_USER_NAME')
-            glance_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                           'GLANCE_PASSWORD')
-
-        nova_user_name = self.conf.get('REGION_2_SERVICES', 'NOVA_USER_NAME')
-        nova_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                     'NOVA_PASSWORD')
-        nova_service_name = get_service(self.conf, 'REGION_2_SERVICES',
-                                        'NOVA_SERVICE_NAME')
-        nova_service_type = get_service(self.conf, 'REGION_2_SERVICES',
-                                        'NOVA_SERVICE_TYPE')
-        placement_user_name = self.conf.get('REGION_2_SERVICES',
-                                            'PLACEMENT_USER_NAME')
-        placement_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                          'PLACEMENT_PASSWORD')
-        placement_service_name = get_service(self.conf, 'REGION_2_SERVICES',
-                                             'PLACEMENT_SERVICE_NAME')
-        placement_service_type = get_service(self.conf, 'REGION_2_SERVICES',
-                                             'PLACEMENT_SERVICE_TYPE')
-
-        neutron_user_name = self.conf.get(neutron_group,
-                                          'NEUTRON_USER_NAME')
-        neutron_password = get_optional(self.conf, neutron_group,
-                                        'NEUTRON_PASSWORD')
-        neutron_service_name = get_service(self.conf, neutron_group,
-                                           'NEUTRON_SERVICE_NAME')
-        neutron_service_type = get_service(self.conf, neutron_group,
-                                           'NEUTRON_SERVICE_TYPE')
-        ceilometer_user_name = self.conf.get('REGION_2_SERVICES',
-                                             'CEILOMETER_USER_NAME')
-        ceilometer_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                           'CEILOMETER_PASSWORD')
-        ceilometer_service_name = get_service(self.conf, 'REGION_2_SERVICES',
-                                              'CEILOMETER_SERVICE_NAME')
-        ceilometer_service_type = get_service(self.conf, 'REGION_2_SERVICES',
-                                              'CEILOMETER_SERVICE_TYPE')
         # validate the patch service name and type
         get_service(self.conf, 'REGION_2_SERVICES', 'PATCHING_SERVICE_NAME')
         get_service(self.conf, 'REGION_2_SERVICES', 'PATCHING_SERVICE_TYPE')
@@ -1283,26 +1153,6 @@ class ConfigValidator(object):
         sysinv_service_type = get_service(self.conf, 'REGION_2_SERVICES',
                                           'SYSINV_SERVICE_TYPE')
 
-        # validate the heat service name and type
-        get_service(self.conf, 'REGION_2_SERVICES', 'HEAT_SERVICE_NAME')
-        get_service(self.conf, 'REGION_2_SERVICES', 'HEAT_SERVICE_TYPE')
-        get_service(self.conf, 'REGION_2_SERVICES', 'HEAT_CFN_SERVICE_NAME')
-        get_service(self.conf, 'REGION_2_SERVICES', 'HEAT_CFN_SERVICE_TYPE')
-        heat_user_name = self.conf.get('REGION_2_SERVICES', 'HEAT_USER_NAME')
-        heat_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                     'HEAT_PASSWORD')
-        heat_admin_user_name = self.conf.get('REGION_2_SERVICES',
-                                             'HEAT_ADMIN_USER_NAME')
-        heat_admin_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                           'HEAT_ADMIN_PASSWORD')
-        # validate aodh service name and type
-
-        get_service(self.conf, 'REGION_2_SERVICES', 'AODH_SERVICE_NAME')
-        get_service(self.conf, 'REGION_2_SERVICES', 'AODH_SERVICE_TYPE')
-        aodh_user_name = self.conf.get('REGION_2_SERVICES', 'AODH_USER_NAME')
-        aodh_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                     'AODH_PASSWORD')
-
         # validate nfv service name and type
         get_service(self.conf, 'REGION_2_SERVICES', 'NFV_SERVICE_NAME')
         get_service(self.conf, 'REGION_2_SERVICES', 'NFV_SERVICE_TYPE')
@@ -1314,19 +1164,6 @@ class ConfigValidator(object):
         mtce_user_name = self.conf.get('REGION_2_SERVICES', 'MTCE_USER_NAME')
         mtce_password = get_optional(self.conf, 'REGION_2_SERVICES',
                                      'MTCE_PASSWORD')
-
-        # validate panko service name and type
-        get_service(self.conf, 'REGION_2_SERVICES', 'PANKO_SERVICE_NAME')
-        get_service(self.conf, 'REGION_2_SERVICES', 'PANKO_SERVICE_TYPE')
-        panko_user_name = self.conf.get('REGION_2_SERVICES', 'PANKO_USER_NAME')
-        panko_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                      'PANKO_PASSWORD')
-
-        # validate gnocchi service name and type
-        gnocchi_user_name = self.conf.get('REGION_2_SERVICES',
-                                          'GNOCCHI_USER_NAME')
-        gnocchi_password = get_optional(self.conf, 'REGION_2_SERVICES',
-                                        'GNOCCHI_PASSWORD')
 
         # validate fm service name and type
         get_service(self.conf, 'REGION_2_SERVICES', 'FM_SERVICE_NAME')
@@ -1381,50 +1218,6 @@ class ConfigValidator(object):
                                keystone_service_name)
             self.cgcs_conf.set('cREGION', 'KEYSTONE_SERVICE_TYPE',
                                keystone_service_type)
-            if glance_user_name is not None:
-                self.cgcs_conf.set('cREGION', 'GLANCE_USER_NAME',
-                                   glance_user_name)
-            if glance_password is not None:
-                self.cgcs_conf.set('cREGION', 'GLANCE_PASSWORD',
-                                   glance_password)
-            self.cgcs_conf.set('cREGION', 'GLANCE_SERVICE_NAME',
-                               glance_service_name)
-            self.cgcs_conf.set('cREGION', 'GLANCE_SERVICE_TYPE',
-                               glance_service_type)
-            self.cgcs_conf.set('cREGION', 'GLANCE_CACHED', glance_cached)
-            self.cgcs_conf.set('cREGION', 'GLANCE_REGION', self.glance_region)
-            self.cgcs_conf.set('cREGION', 'NOVA_USER_NAME', nova_user_name)
-            self.cgcs_conf.set('cREGION', 'NOVA_PASSWORD', nova_password)
-            self.cgcs_conf.set('cREGION', 'NOVA_SERVICE_NAME',
-                               nova_service_name)
-            self.cgcs_conf.set('cREGION', 'NOVA_SERVICE_TYPE',
-                               nova_service_type)
-            self.cgcs_conf.set('cREGION', 'PLACEMENT_USER_NAME',
-                               placement_user_name)
-            self.cgcs_conf.set('cREGION', 'PLACEMENT_PASSWORD',
-                               placement_password)
-            self.cgcs_conf.set('cREGION', 'PLACEMENT_SERVICE_NAME',
-                               placement_service_name)
-            self.cgcs_conf.set('cREGION', 'PLACEMENT_SERVICE_TYPE',
-                               placement_service_type)
-            self.cgcs_conf.set('cREGION', 'NEUTRON_USER_NAME',
-                               neutron_user_name)
-            self.cgcs_conf.set('cREGION', 'NEUTRON_PASSWORD',
-                               neutron_password)
-            self.cgcs_conf.set('cREGION', 'NEUTRON_REGION_NAME',
-                               neutron_region_name)
-            self.cgcs_conf.set('cREGION', 'NEUTRON_SERVICE_NAME',
-                               neutron_service_name)
-            self.cgcs_conf.set('cREGION', 'NEUTRON_SERVICE_TYPE',
-                               neutron_service_type)
-            self.cgcs_conf.set('cREGION', 'CEILOMETER_USER_NAME',
-                               ceilometer_user_name)
-            self.cgcs_conf.set('cREGION', 'CEILOMETER_PASSWORD',
-                               ceilometer_password)
-            self.cgcs_conf.set('cREGION', 'CEILOMETER_SERVICE_NAME',
-                               ceilometer_service_name)
-            self.cgcs_conf.set('cREGION', 'CEILOMETER_SERVICE_TYPE',
-                               ceilometer_service_type)
             self.cgcs_conf.set('cREGION', 'PATCHING_USER_NAME',
                                patch_user_name)
             self.cgcs_conf.set('cREGION', 'PATCHING_PASSWORD', patch_password)
@@ -1434,23 +1227,10 @@ class ConfigValidator(object):
                                sysinv_service_name)
             self.cgcs_conf.set('cREGION', 'SYSINV_SERVICE_TYPE',
                                sysinv_service_type)
-            self.cgcs_conf.set('cREGION', 'HEAT_USER_NAME', heat_user_name)
-            self.cgcs_conf.set('cREGION', 'HEAT_PASSWORD', heat_password)
-            self.cgcs_conf.set('cREGION', 'HEAT_ADMIN_USER_NAME',
-                               heat_admin_user_name)
-            self.cgcs_conf.set('cREGION', 'HEAT_ADMIN_PASSWORD',
-                               heat_admin_password)
-            self.cgcs_conf.set('cREGION', 'AODH_USER_NAME', aodh_user_name)
-            self.cgcs_conf.set('cREGION', 'AODH_PASSWORD', aodh_password)
             self.cgcs_conf.set('cREGION', 'NFV_USER_NAME', nfv_user_name)
             self.cgcs_conf.set('cREGION', 'NFV_PASSWORD', nfv_password)
             self.cgcs_conf.set('cREGION', 'MTCE_USER_NAME', mtce_user_name)
             self.cgcs_conf.set('cREGION', 'MTCE_PASSWORD', mtce_password)
-            self.cgcs_conf.set('cREGION', 'PANKO_USER_NAME', panko_user_name)
-            self.cgcs_conf.set('cREGION', 'PANKO_PASSWORD', panko_password)
-            self.cgcs_conf.set('cREGION', 'GNOCCHI_USER_NAME',
-                               gnocchi_user_name)
-            self.cgcs_conf.set('cREGION', 'GNOCCHI_PASSWORD', gnocchi_password)
             self.cgcs_conf.set('cREGION', 'FM_USER_NAME', fm_user_name)
             self.cgcs_conf.set('cREGION', 'FM_PASSWORD', fm_password)
             self.cgcs_conf.set('cREGION', 'BARBICAN_USER_NAME',
@@ -1544,8 +1324,6 @@ def validate(system_config, config_type=REGION_CONFIG, cgcs_config=None,
     validator.validate_docker_registry()
     # NTP configuration
     validator.validate_ntp()
-    # Network configuration
-    validator.validate_network()
     # Region configuration
     if config_type in [REGION_CONFIG, SUBCLOUD_CONFIG]:
         validator.validate_region(config_type)

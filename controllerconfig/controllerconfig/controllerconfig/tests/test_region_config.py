@@ -599,9 +599,6 @@ def test_region_config_validation():
         os.getcwd(), "controllerconfig/tests/files/", "region_config.simple")
     lag_vlan_regionfile = os.path.join(
         os.getcwd(), "controllerconfig/tests/files/", "region_config.lag.vlan")
-    nuage_vrs_regionfile = os.path.join(os.getcwd(),
-                                        "controllerconfig/tests/files/",
-                                        "region_config.nuage_vrs")
 
     # Test detection of non-required CINDER_* parameters
     region_config = cr.parse_system_config(simple_regionfile)
@@ -813,40 +810,6 @@ def test_region_config_validation():
     # Test two gateways
     region_config = cr.parse_system_config(lag_vlan_regionfile)
     region_config.set('CAN_NETWORK', 'CAN_GATEWAY', '10.10.10.1')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    # Test detection of invalid VSWITCH_TYPE
-    region_config = cr.parse_system_config(nuage_vrs_regionfile)
-    region_config.set('NETWORK', 'VSWITCH_TYPE', 'invalid')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    # Test detection of neutron in wrong region for VSWITCH_TYPE
-    region_config = cr.parse_system_config(nuage_vrs_regionfile)
-    region_config.set('NETWORK', 'VSWITCH_TYPE', 'ovs-dpdk')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    # Test detection of neutron in wrong region for NUAGE_VRS VSWITCH_TYPE
-    region_config = cr.parse_system_config(nuage_vrs_regionfile)
-    region_config.remove_option('SHARED_SERVICES', 'NEUTRON_USER_NAME')
-    region_config.remove_option('SHARED_SERVICES', 'NEUTRON_PASSWORD')
-    region_config.remove_option('SHARED_SERVICES', 'NEUTRON_SERVICE_NAME')
-    region_config.remove_option('SHARED_SERVICES', 'NEUTRON_SERVICE_TYPE')
-    region_config.set('REGION_2_SERVICES', 'NEUTRON_USER_NAME', 'neutron')
-    region_config.set('REGION_2_SERVICES', 'NEUTRON_PASSWORD', 'password2WO*')
-    region_config.set('REGION_2_SERVICES', 'NEUTRON_SERVICE_NAME', 'neutron')
-    region_config.set('REGION_2_SERVICES', 'NEUTRON_SERVICE_TYPE', 'network')
     with pytest.raises(exceptions.ConfigFail):
         cr.create_cgcs_config_file(None, region_config, None, None, None,
                                    validate_only=True)

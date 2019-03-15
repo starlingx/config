@@ -87,10 +87,6 @@ DOCKER_QUAY_REGISTRY=1.2.3.4:5000
 DOCKER_DOCKER_REGISTRY=[1:2:3:4:a:b:c:d]:5000
 IS_SECURE_REGISTRY=False
 
-[cNETWORK]
-# Data Network Configuration
-VSWITCH_TYPE=ovs-dpdk
-
 [cSECURITY]
 [cREGION]
 # Region Configuration

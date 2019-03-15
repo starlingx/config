@@ -1129,18 +1129,6 @@ class platform::sm
     -> exec { 'Provision DCOrch-Sysinv-Api-Proxy in SM (service dcorch-sysinv-api-proxy)':
       command => 'sm-provision service dcorch-sysinv-api-proxy',
     }
-    -> exec { 'Provision DCOrch-Nova-Api-Proxy (service-group-member dcorch-nova-api-proxy)':
-      command => 'sm-provision service-group-member distributed-cloud-services dcorch-nova-api-proxy',
-    }
-    -> exec { 'Provision DCOrch-Nova-Api-Proxy in SM (service dcorch-nova-api-proxy)':
-      command => 'sm-provision service dcorch-nova-api-proxy',
-    }
-    -> exec { 'Provision DCOrch-Neutron-Api-Proxy (service-group-member dcorch-neutron-api-proxy)':
-      command => 'sm-provision service-group-member distributed-cloud-services dcorch-neutron-api-proxy',
-    }
-    -> exec { 'Provision DCOrch-Neutron-Api-Proxy in SM (service dcorch-neutron-api-proxy)':
-      command => 'sm-provision service dcorch-neutron-api-proxy',
-    }
     -> exec { 'Provision DCOrch-Patch-Api-Proxy (service-group-member dcorch-patch-api-proxy)':
       command => 'sm-provision service-group-member distributed-cloud-services dcorch-patch-api-proxy',
     }
@@ -1165,24 +1153,8 @@ class platform::sm
     -> exec { 'Configure OpenStack - DCOrch-sysinv-api-proxy':
       command => "sm-configure service_instance dcorch-sysinv-api-proxy dcorch-sysinv-api-proxy \"\"",
     }
-    -> exec { 'Configure OpenStack - DCOrch-nova-api-proxy':
-      command => "sm-configure service_instance dcorch-nova-api-proxy dcorch-nova-api-proxy \"\"",
-    }
-    -> exec { 'Configure OpenStack - DCOrch-neutron-api-proxy':
-      command => "sm-configure service_instance dcorch-neutron-api-proxy dcorch-neutron-api-proxy \"\"",
-    }
     -> exec { 'Configure OpenStack - DCOrch-patch-api-proxy':
       command => "sm-configure service_instance dcorch-patch-api-proxy dcorch-patch-api-proxy \"\"",
-    }
-
-    exec { 'Provision DCOrch-Cinder-Api-Proxy (service-group-member dcorch-cinder-api-proxy)':
-      command => 'sm-provision service-group-member distributed-cloud-services dcorch-cinder-api-proxy',
-    }
-    -> exec { 'Provision DCOrch-Cinder-Api-Proxy in SM (service dcorch-cinder-api-proxy)':
-      command => 'sm-provision service dcorch-cinder-api-proxy',
-    }
-    -> exec { 'Configure OpenStack - DCOrch-cinder-api-proxy':
-      command => "sm-configure service_instance dcorch-cinder-api-proxy dcorch-cinder-api-proxy \"\"",
     }
   }
 

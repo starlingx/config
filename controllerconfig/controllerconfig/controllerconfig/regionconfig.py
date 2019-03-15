@@ -48,24 +48,12 @@ USER_KEY = 1
 USER_NAME = 2
 
 EXPECTED_USERS = [
-    ('REGION_2_SERVICES', 'NOVA', 'nova'),
-    ('REGION_2_SERVICES', 'PLACEMENT', 'placement'),
     ('REGION_2_SERVICES', 'SYSINV', 'sysinv'),
     ('REGION_2_SERVICES', 'PATCHING', 'patching'),
-    ('REGION_2_SERVICES', 'HEAT', 'heat'),
-    ('REGION_2_SERVICES', 'CEILOMETER', 'ceilometer'),
     ('REGION_2_SERVICES', 'NFV', 'vim'),
-    ('REGION_2_SERVICES', 'AODH', 'aodh'),
     ('REGION_2_SERVICES', 'MTCE', 'mtce'),
-    ('REGION_2_SERVICES', 'PANKO', 'panko'),
-    ('REGION_2_SERVICES', 'GNOCCHI', 'gnocchi'),
     ('REGION_2_SERVICES', 'FM', 'fm'),
     ('REGION_2_SERVICES', 'BARBICAN', 'barbican')]
-
-EXPECTED_SHARED_SERVICES_NEUTRON_USER = ('SHARED_SERVICES', 'NEUTRON',
-                                         'neutron')
-EXPECTED_REGION_2_NEUTRON_USER = ('REGION_2_SERVICES', 'NEUTRON', 'neutron')
-EXPECTED_REGION_2_GLANCE_USER = ('REGION_2_SERVICES', 'GLANCE', 'glance')
 
 # This a description of the region 2 endpoints that we expect to configure or
 # find configured in keystone. The format is as follows:
@@ -84,16 +72,6 @@ ADMIN_URL = 4
 DESCRIPTION = 5
 
 EXPECTED_REGION2_ENDPOINTS = [
-    ('NOVA_SERVICE_NAME', 'NOVA_SERVICE_TYPE',
-     'http://{}:8774/v2.1/%(tenant_id)s',
-     'http://{}:8774/v2.1/%(tenant_id)s',
-     'http://{}:8774/v2.1/%(tenant_id)s',
-     'Openstack Compute Service'),
-    ('PLACEMENT_SERVICE_NAME', 'PLACEMENT_SERVICE_TYPE',
-     'http://{}:8778',
-     'http://{}:8778',
-     'http://{}:8778',
-     'Openstack Placement Service'),
     ('SYSINV_SERVICE_NAME', 'SYSINV_SERVICE_TYPE',
      'http://{}:6385/v1',
      'http://{}:6385/v1',
@@ -104,36 +82,11 @@ EXPECTED_REGION2_ENDPOINTS = [
      'http://{}:5491',
      'http://{}:5491',
      'Patching Service'),
-    ('HEAT_SERVICE_NAME', 'HEAT_SERVICE_TYPE',
-     'http://{}:8004/v1/%(tenant_id)s',
-     'http://{}:8004/v1/%(tenant_id)s',
-     'http://{}:8004/v1/%(tenant_id)s',
-     'Openstack Orchestration Service'),
-    ('HEAT_CFN_SERVICE_NAME', 'HEAT_CFN_SERVICE_TYPE',
-     'http://{}:8000/v1/',
-     'http://{}:8000/v1/',
-     'http://{}:8000/v1/',
-     'Openstack Cloudformation Service'),
     ('NFV_SERVICE_NAME', 'NFV_SERVICE_TYPE',
      'http://{}:4545',
      'http://{}:4545',
      'http://{}:4545',
      'Virtual Infrastructure Manager'),
-    ('AODH_SERVICE_NAME', 'AODH_SERVICE_TYPE',
-     'http://{}:8042',
-     'http://{}:8042',
-     'http://{}:8042',
-     'OpenStack Alarming Service'),
-    ('PANKO_SERVICE_NAME', 'PANKO_SERVICE_TYPE',
-     'http://{}:8977',
-     'http://{}:8977',
-     'http://{}:8977',
-     'OpenStack Event Service'),
-    ('GNOCCHI_SERVICE_NAME', 'GNOCCHI_SERVICE_TYPE',
-     'http://{}:8041',
-     'http://{}:8041',
-     'http://{}:8041',
-     'OpenStack Metric Service'),
     ('FM_SERVICE_NAME', 'FM_SERVICE_TYPE',
      'http://{}:18002',
      'http://{}:18002',
@@ -146,13 +99,6 @@ EXPECTED_REGION2_ENDPOINTS = [
      'OpenStack Key Manager Service'),
 ]
 
-EXPECTED_NEUTRON_ENDPOINT = (
-    'NEUTRON_SERVICE_NAME', 'NEUTRON_SERVICE_TYPE',
-    'http://{}:9696',
-    'http://{}:9696',
-    'http://{}:9696',
-    'Neutron Networking Service')
-
 EXPECTED_KEYSTONE_ENDPOINT = (
     'KEYSTONE_SERVICE_NAME', 'KEYSTONE_SERVICE_TYPE',
     'http://{}:8081/keystone/main/v2.0',
@@ -160,15 +106,6 @@ EXPECTED_KEYSTONE_ENDPOINT = (
     'http://{}:8081/keystone/admin/v2.0',
     'OpenStack Identity')
 
-EXPECTED_GLANCE_ENDPOINT = (
-    'GLANCE_SERVICE_NAME', 'GLANCE_SERVICE_TYPE',
-    'http://{}:9292',
-    'http://{}:9292',
-    'http://{}:9292',
-    'OpenStack Image Service')
-
-DEFAULT_HEAT_ADMIN_DOMAIN = 'heat'
-DEFAULT_HEAT_ADMIN_USER_NAME = 'heat_admin'
 
 LOG = log.get_logger(__name__)
 
@@ -190,28 +127,6 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
     expected_region_2_endpoints = EXPECTED_REGION2_ENDPOINTS
     # Keystone is always in region 1
     expected_region_1_endpoints = [EXPECTED_KEYSTONE_ENDPOINT]
-
-    # Region of neutron user and endpoint depends on vswitch type
-    if region_config.has_option('NETWORK', 'VSWITCH_TYPE'):
-        if region_config.get('NETWORK', 'VSWITCH_TYPE').upper() == 'NUAGE_VRS':
-            expected_users.append(EXPECTED_SHARED_SERVICES_NEUTRON_USER)
-    else:
-        expected_users.append(EXPECTED_REGION_2_NEUTRON_USER)
-        expected_region_2_endpoints.append(EXPECTED_NEUTRON_ENDPOINT)
-
-    # Determine region of glance user and endpoint
-    if not region_config.has_option('SHARED_SERVICES',
-                                    'GLANCE_SERVICE_NAME'):
-        expected_users.append(EXPECTED_REGION_2_GLANCE_USER)
-        expected_region_2_endpoints.append(EXPECTED_GLANCE_ENDPOINT)
-    elif region_config.has_option(
-            'SHARED_SERVICES', 'GLANCE_CACHED'):
-        if region_config.get('SHARED_SERVICES',
-                             'GLANCE_CACHED').upper() == 'TRUE':
-            expected_users.append(EXPECTED_REGION_2_GLANCE_USER)
-            expected_region_2_endpoints.append(EXPECTED_GLANCE_ENDPOINT)
-    else:
-        expected_region_1_endpoints.append(EXPECTED_GLANCE_ENDPOINT)
 
     domains = rutils.get_domains(token, api_url)
     # Verify service project domain, creating if necessary
@@ -254,46 +169,6 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
     role_id = roles.get_role_id('admin')
     if not role_id and create:
         raise ConfigFail("Keystone configuration error: No admin role present")
-
-    # verify that the heat admin domain is configured, creating if necessary
-    heat_admin_domain = region_config.get('REGION_2_SERVICES',
-                                          'HEAT_ADMIN_DOMAIN')
-    domains = rutils.get_domains(token, api_url)
-    heat_domain_id = domains.get_domain_id(heat_admin_domain)
-    if not heat_domain_id:
-        if create and config_type == REGION_CONFIG:
-            region_config.set('REGION_2_SERVICES', 'HEAT_ADMIN_DOMAIN',
-                              heat_admin_domain)
-        else:
-            raise ConfigFail(
-                "Unable to obtain id for %s domain. Please ensure "
-                "keystone configuration is correct." % heat_admin_domain)
-
-    # Verify that the heat stack user is configured, creating if necessary
-    heat_stack_user = region_config.get('REGION_2_SERVICES',
-                                        'HEAT_ADMIN_USER_NAME')
-    if not users.get_user_id(heat_stack_user):
-        if create and config_type == REGION_CONFIG:
-            if not region_config.has_option('REGION_2_SERVICES',
-                                            'HEAT_ADMIN_PASSWORD'):
-                try:
-                    region_config.set('REGION_2_SERVICES',
-                                      'HEAT_ADMIN_PASSWORD',
-                                      uuid.uuid4().hex[:10] + "TiC2*")
-                except Exception as e:
-                    raise ConfigFail("Failed to generate random user "
-                                     "password: %s" % e)
-        else:
-            raise ConfigFail(
-                "Unable to obtain user (%s) from domain (%s). Please ensure "
-                "keystone configuration is correct." % (heat_stack_user,
-                                                        heat_admin_domain))
-    elif config_type == SUBCLOUD_CONFIG:
-        # Add the password to the region config so it will be used when
-        # configuring services.
-        auth_password = user_config.get_password(heat_stack_user)
-        region_config.set('REGION_2_SERVICES', 'HEAT_ADMIN_PASSWORD',
-                          auth_password)
 
     # verify that the service user domain is configured, creating if necessary
     if region_config.has_option('REGION_2_SERVICES', 'USER_DOMAIN_NAME'):
@@ -514,29 +389,10 @@ def set_subcloud_config_defaults(region_config):
     region_config.set('SHARED_SERVICES', 'SERVICE_PROJECT_NAME',
                       constants.DEFAULT_SERVICE_PROJECT_NAME)
 
-    # We use the default heat admin domain
-    region_config.set('REGION_2_SERVICES', 'HEAT_ADMIN_DOMAIN',
-                      DEFAULT_HEAT_ADMIN_DOMAIN)
-
-    # We use the heat admin user already created in the system controller
-    region_config.set('REGION_2_SERVICES', 'HEAT_ADMIN_USER_NAME',
-                      DEFAULT_HEAT_ADMIN_USER_NAME)
-
     # Add the necessary users to the region config, which will allow the
     # validation code to run and will later result in services being
     # configured to use the users from the system controller.
     expected_users = EXPECTED_USERS
-
-    expected_users.append(EXPECTED_REGION_2_NEUTRON_USER)
-
-    if not region_config.has_option('SHARED_SERVICES',
-                                    'GLANCE_SERVICE_NAME'):
-        expected_users.append(EXPECTED_REGION_2_GLANCE_USER)
-    elif region_config.has_option(
-            'SHARED_SERVICES', 'GLANCE_CACHED'):
-        if region_config.get('SHARED_SERVICES',
-                             'GLANCE_CACHED').upper() == 'TRUE':
-            expected_users.append(EXPECTED_REGION_2_GLANCE_USER)
 
     for user in expected_users:
         # Add the user to the region config so to allow validation.

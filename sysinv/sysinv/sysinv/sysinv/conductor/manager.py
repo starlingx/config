@@ -6782,17 +6782,9 @@ class ConductorManager(service.PeriodicService):
         kubernetes_config = system.capabilities.get('kubernetes_enabled', False)
 
         LOG.info("Local  Region Name: %s" % system.region_name)
-        # handle region mode case
+        # TODO: handle region mode case
         if region_config:
-            glance_service = self.dbapi.service_get(constants.SERVICE_TYPE_GLANCE)
-            glance_region_name = glance_service.region_name
-            LOG.info("Glance Region Name: %s" % glance_region_name)
-
-            if glance_region_name != system.region_name:
-                # In region mode where the glance region is different
-                # from this region we do not add glance locally
-                # so set glance local to False
-                glance_local = False
+            glance_local = False
 
         disk_size = cutils.get_disk_capacity_mib(rootfs_device)
         disk_size = int(disk_size / 1024)
