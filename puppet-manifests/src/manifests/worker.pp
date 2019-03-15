@@ -36,7 +36,7 @@ include ::platform::kubernetes::worker
 include ::platform::multipath
 include ::platform::client
 include ::platform::ceph::worker
-include ::openstack::nova::storage
+include ::platform::worker::storage
 
 class { '::platform::config::worker::post':
   stage => post,

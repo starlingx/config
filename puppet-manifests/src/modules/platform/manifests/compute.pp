@@ -260,18 +260,6 @@ class platform::compute::allocate
 }
 # lint:endignore:variable_is_lowercase
 
-class platform::compute::extend
-  inherits ::platform::compute::hugepage::params {
-
-  # nova-compute reads on init, extended nova compute options
-  # used with nova accounting
-  file { '/etc/nova/compute_extend.conf':
-      ensure  => 'present',
-      replace => true,
-      content => template('platform/compute_extend.conf.erb')
-  }
-}
-
 # Mount resctrl to allow Cache Allocation Technology per VM
 class platform::compute::resctrl {
 
@@ -328,6 +316,5 @@ class platform::compute {
   require ::platform::compute::allocate
   require ::platform::compute::pmqos
   require ::platform::compute::resctrl
-  require ::platform::compute::extend
   require ::platform::compute::config
 }

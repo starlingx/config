@@ -74,7 +74,7 @@ class platform::lvm::vg::nova_local(
   $vg_name = 'nova-local',
   $physical_volumes = [],
 ) inherits platform::lvm::params {
-  # TODO(rchurch): refactor portions of openstack::nova::storage an move here
+  # TODO(rchurch): refactor portions of platform::worker::storage and move here
 }
 
 ##################

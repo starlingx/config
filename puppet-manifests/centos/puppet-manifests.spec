@@ -16,7 +16,6 @@ Requires: puppet-dcorch
 Requires: puppet-dcmanager
 Requires: puppet-mtce
 Requires: puppet-nfv
-Requires: puppet-nova_api_proxy
 Requires: puppet-patching
 Requires: puppet-sysinv
 Requires: puppet-sshd
@@ -24,27 +23,13 @@ Requires: puppet-smapi
 Requires: puppet-fm
 
 # Openstack puppet modules
-Requires: puppet-aodh
 Requires: puppet-barbican
-Requires: puppet-ceilometer
 Requires: puppet-ceph
-Requires: puppet-cinder
-Requires: puppet-glance
-Requires: puppet-heat
 Requires: puppet-horizon
 Requires: puppet-keystone
-Requires: puppet-neutron
-Requires: puppet-nova
 Requires: puppet-openstacklib
-Requires: puppet-swift
-Requires: puppet-tempest
 Requires: puppet-vswitch
-Requires: puppet-murano
-Requires: puppet-magnum
-Requires: puppet-ironic
-Requires: puppet-panko
 Requires: puppet-memcached
-Requires: puppet-gnocchi
 
 # Puppetlabs puppet modules
 Requires: puppet-concat
@@ -56,11 +41,8 @@ Requires: puppet-inifile
 Requires: puppet-lvm
 Requires: puppet-postgresql
 Requires: puppet-rabbitmq
-Requires: puppet-rsync
 Requires: puppet-stdlib
 Requires: puppet-sysctl
-Requires: puppet-vcsrepo
-Requires: puppet-xinetd
 Requires: puppet-etcd
 
 # 3rdparty puppet modules

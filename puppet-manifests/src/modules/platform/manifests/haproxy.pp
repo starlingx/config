@@ -142,7 +142,6 @@ class platform::haproxy::runtime {
     include ::platform::dcorch::haproxy
   }
   include ::openstack::keystone::haproxy
-  include ::openstack::swift::haproxy
   include ::openstack::barbican::haproxy
 
   class {'::platform::haproxy::reload':

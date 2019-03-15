@@ -92,9 +92,6 @@ include ::platform::dcorch::snmp
 
 include ::platform::smapi
 
-include ::openstack::swift
-include ::openstack::swift::api
-
 include ::openstack::barbican
 include ::openstack::barbican::api
 
