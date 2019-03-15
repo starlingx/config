@@ -53,6 +53,7 @@
     parent: tox
     description: |
       Run py27 test for sysinv
+    nodeset: ubuntu-xenial
     required-projects:
       - openstack/stx-update
       - openstack/stx-fault
@@ -68,6 +69,7 @@
     parent: tox
     description: |
       Run py35 test for sysinv
+    nodeset: ubuntu-xenial
     required-projects:
       - openstack/stx-update
       - openstack/stx-fault
