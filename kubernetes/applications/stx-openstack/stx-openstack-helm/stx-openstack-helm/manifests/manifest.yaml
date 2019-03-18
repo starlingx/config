@@ -724,6 +724,9 @@ data:
           remove_unused_original_minimum_age_seconds: 3600
           enable_new_services: false
           map_new_hosts: false
+          # Increase from default of 60 seconds to avoid services being
+          # declared down during controller swacts, reboots, etc...
+          service_down_time: 90
 
         libvirt:
           cpu_mode: none
