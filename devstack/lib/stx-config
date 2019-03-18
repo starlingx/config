@@ -54,9 +54,42 @@ PYTHON_SITE_DIR=$(python -c "from distutils.sysconfig import get_python_lib; pri
 
 # Functions
 # ---------
+function cleanup_cgtsclient {
+    pip_uninstall cgtsclient
+}
+
+function cleanup_configutilities {
+    pip_uninstall configutilities
+}
+
+function cleanup_controllerconfig {
+    pip_uninstall controllerconfig
+
+    sudo rm -f /etc/bash_completion.d/system.bash_completion
+}
+
+function cleanup_sysinv_depends {
+    cleanup_configutilities
+    cleanup_controllerconfig
+}
 
 function cleanup_sysinv {
     stop_sysinv
+    pip_uninstall sysinv
+
+    sudo rm -f $SYSINV_ETC_GOENABLEDD/sysinv_goenabled_check.sh
+    sudo rm -f $SYSINV_CONF_DIR/policy.json
+    sudo rm -f $SYSINV_CONF_DIR/profileSchema.xsd
+    sudo rm -f $SYSINV_ETC_MOTDD/10-system
+    sudo rm -f $SYSINV_CONF_DIR/upgrades/delete_load.sh
+    sudo rm -f /usr/lib/ocf/resource.d/platform/sysinv-api
+    sudo rm -f /usr/lib/ocf/resource.d/platform/sysinv-conductor
+    sudo rm -f /usr/lib/systemd/system/sysinv-api.service
+    sudo rm -f /usr/lib/systemd/system/sysinv-conductor.service
+    sudo rm -f $SYSINV_BIN_DIR/partition_info.sh
+    sudo rm -f $SYSINV_BIN_DIR/manage-partitions
+    sudo rm -f $SYSINV_BIN_DIR/query_pci_id
+
     sudo rm -rf $SYSINV_AUTHO_CACHE_DIR $SYSINV_CONF_DIR
 }
 
