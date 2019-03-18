@@ -828,7 +828,6 @@ def mtce_restart():
     """Restart maintenance processes to handle interface changes"""
     restart_service("mtcClient")
     restart_service("hbsClient")
-    restart_service("rmon")
     restart_service("pmon")
 
 
