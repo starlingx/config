@@ -12,13 +12,11 @@
 
 
 import pecan
-import wsme
 import ast
 
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
 
@@ -379,51 +377,6 @@ class StorageBackendConfig(object):
                    backend.name == constants.SB_DEFAULT_NAMES[
                        constants.SB_TYPE_CEPH]:
                 return backend.task == constants.SB_TASK_RESTORE
-
-    @staticmethod
-    def set_img_conversions_defaults(dbapi, controller_fs_api):
-        """
-        initialize img_conversion partitions with default values if not
-        already done
-        :param dbapi
-        :param controller_fs_api
-        """
-        # Img conversions identification
-        values = {'name': constants.FILESYSTEM_NAME_IMG_CONVERSIONS,
-                  'logical_volume': constants.FILESYSTEM_LV_DICT[
-                      constants.FILESYSTEM_NAME_IMG_CONVERSIONS],
-                  'replicated': False}
-
-        # Abort if is already defined
-        controller_fs_list = dbapi.controller_fs_get_list()
-        for fs in controller_fs_list:
-            if values['name'] == fs.name:
-                LOG.info("Image conversions already defined, "
-                         "avoiding reseting values")
-                return
-
-        # Check if there is enough space available
-        cgtsvg_max_free_GiB = controller_fs_api._get_controller_cgtsvg_limit()
-        args = {'avail': cgtsvg_max_free_GiB,
-                'min': constants.DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE,
-                'lvg': constants.LVG_CGTS_VG}
-        if cgtsvg_max_free_GiB >= constants.DEFAULT_IMG_CONVERSION_STOR_SIZE:
-            img_conversions_gib = constants.DEFAULT_IMG_CONVERSION_STOR_SIZE
-        elif cgtsvg_max_free_GiB >= constants.DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE:
-            img_conversions_gib = constants.DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE
-        else:
-            msg = _("Not enough space for image conversion partition. "
-                    "Please ensure that '%(lvg)s' VG has at least %(min)s GiB free space."
-                    "Currently available: %(avail)s GiB." % args)
-            raise wsme.exc.ClientSideError(msg)
-
-        args['size'] = img_conversions_gib
-        LOG.info("Available space in '%(lvg)s' is %(avail)s GiB "
-                 "from which img_conversions will use %(size)s GiB." % args)
-
-        # Create entry
-        values['size'] = img_conversions_gib
-        dbapi.controller_fs_create(values)
 
     @staticmethod
     def get_enabled_services(dbapi, filter_unconfigured=True,

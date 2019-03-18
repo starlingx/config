@@ -639,9 +639,8 @@ class StorageTierDependentTCs(base.FunctionalTest):
             'services': "%s,%s" % (constants.SB_SVC_CINDER, constants.SB_SVC_GLANCE),
             'confirmed': True
         }
-        with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses'),
-                    mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')) as (
-                                          mock_ceph_mon, mock_conv):
+        with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')) as (
+                                          mock_ceph_mon):
             response = self.post_json('/storage_backend', values, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
@@ -811,9 +810,8 @@ class StorageTierDependentTCs(base.FunctionalTest):
             'capabilities': {'test_bparam3': 'foo'},
             'confirmed': True
         }
-        with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses'),
-                    mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')) as (
-                        mock_ceph_mon, mock_conv):
+        with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')) as (
+                        mock_ceph_mon):
             response = self.post_json('/storage_ceph', values, expect_errors=True)
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
@@ -830,9 +828,8 @@ class StorageTierDependentTCs(base.FunctionalTest):
             'name': 'ceph-gold',
             'confirmed': True
         }
-        with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses'),
-                    mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')) as (
-                        mock_ceph_mon, mock_conv):
+        with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')) as (
+                        mock_ceph_mon):
             response = self.post_json('/storage_ceph', values, expect_errors=True)
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
@@ -851,9 +848,8 @@ class StorageTierDependentTCs(base.FunctionalTest):
             'confirmed': True
         }
         with nested(mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses'),
-                    mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults'),
                     mock.patch.object(StorageBackendConfig, 'get_ceph_tier_size')) as (
-                        mock_ceph_mon, mock_conv, mock_space):
+                        mock_ceph_mon, mock_space):
             mock_space.return_value = 0
 
             response = self.post_json('/storage_ceph', values, expect_errors=True)

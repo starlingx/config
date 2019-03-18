@@ -54,11 +54,6 @@ class StoragePuppet(base.BasePuppet):
                     'platform::drbd::extension::params::lv_size':
                         controller_fs.size
                 })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_IMG_CONVERSIONS:
-                config.update({
-                    'platform::filesystem::img_conversions::params::lv_size':
-                        controller_fs.size
-                })
             elif controller_fs.name == constants.FILESYSTEM_NAME_PATCH_VAULT:
                 config.update({
                     'platform::drbd::patch_vault::params::service_enabled':
@@ -79,11 +74,6 @@ class StoragePuppet(base.BasePuppet):
             elif controller_fs.name == constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
                 config.update({
                     'platform::drbd::dockerdistribution::params::lv_size':
-                        controller_fs.size
-                })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_GNOCCHI:
-                config.update({
-                    'platform::filesystem::gnocchi::params::lv_size':
                         controller_fs.size
                 })
 

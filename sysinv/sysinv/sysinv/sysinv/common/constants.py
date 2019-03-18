@@ -283,31 +283,25 @@ VSWITCH_TYPE_NUAGE_VRS = "nuage_vrs"
 VSWITCH_TYPE_NONE = "none"
 
 # Partition default sizes
-DEFAULT_IMAGE_STOR_SIZE = 10
+DEFAULT_CGCS_STOR_SIZE = 20
 DEFAULT_DOCKER_STOR_SIZE = 1
 DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE = 1
 DEFAULT_DATABASE_STOR_SIZE = 20
-DEFAULT_IMG_CONVERSION_STOR_SIZE = 20
-DEFAULT_SMALL_IMAGE_STOR_SIZE = 10
+DEFAULT_SMALL_CGCS_STOR_SIZE = 10
 DEFAULT_SMALL_DATABASE_STOR_SIZE = 10
-DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE = 10
 DEFAULT_SMALL_BACKUP_STOR_SIZE = 40
-DEFAULT_VIRTUAL_IMAGE_STOR_SIZE = 8
 DEFAULT_VIRTUAL_DATABASE_STOR_SIZE = 5
-DEFAULT_VIRTUAL_IMG_CONVERSION_STOR_SIZE = 8
 DEFAULT_VIRTUAL_BACKUP_STOR_SIZE = 5
 DEFAULT_EXTENSION_STOR_SIZE = 1
 DEFAULT_PATCH_VAULT_STOR_SIZE = 8
 DEFAULT_ETCD_STORE_SIZE = 1
-DEFAULT_GNOCCHI_STOR_SIZE = 5
 
 # The threshold between small and large disks is 240GiB
 DEFAULT_SMALL_DISK_SIZE = 240
 # The minimum disk size needed to create all partitions
 # Value based on the following calculation:
-# DEFAULT_SMALL_IMAGE_STOR_SIZE                        10
+# DEFAULT_SMALL_CGCS_STOR_SIZE                         10
 # 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   20 (2*10)
-# DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE               10
 # DEFAULT_SMALL_BACKUP_STOR_SIZE                       40
 # LOG_VOL_SIZE (reserved in kickstarts)                 8
 # SCRATCH_VOL_SIZE (reserved in kickstarts)             8
@@ -315,7 +309,6 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # PLATFORM_LV                                           2
 # ANCHOR_LV                                             1
 # DEFAULT_EXTENSION_STOR_SIZE                           1
-# DEFAULT_GNOCCHI_STOR_SIZE                             5
 # KUBERNETES_DOCKER_STOR_SIZE (--kubernetes)           30
 # DOCKER_DISTRIBUTION_STOR_SIZE (--kubernetes)         16
 # ETCD_STOR_SIZE (--kubernetes)                         5
@@ -325,8 +318,8 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # boot partition (created in kickstarts)                1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     201
-MINIMUM_DISK_SIZE = 201
+#                                                     186
+MINIMUM_DISK_SIZE = 186
 
 # Docker lv size when Kubernetes is configured
 KUBERNETES_DOCKER_STOR_SIZE = 30
@@ -510,14 +503,12 @@ FILESYSTEM_NAME_CGCS = 'cgcs'
 FILESYSTEM_DISPLAY_NAME_CGCS = 'glance'
 FILESYSTEM_NAME_CINDER = 'cinder'
 FILESYSTEM_NAME_DATABASE = 'database'
-FILESYSTEM_NAME_IMG_CONVERSIONS = 'img-conversions'
 FILESYSTEM_NAME_SCRATCH = 'scratch'
 FILESYSTEM_NAME_DOCKER = 'docker'
 FILESYSTEM_NAME_DOCKER_DISTRIBUTION = 'docker-distribution'
 FILESYSTEM_NAME_EXTENSION = 'extension'
 FILESYSTEM_NAME_ETCD = 'etcd'
 FILESYSTEM_NAME_PATCH_VAULT = 'patch-vault'
-FILESYSTEM_NAME_GNOCCHI = 'gnocchi'
 
 FILESYSTEM_LV_DICT = {
     FILESYSTEM_NAME_CGCS: 'cgcs-lv',
@@ -525,12 +516,10 @@ FILESYSTEM_LV_DICT = {
     FILESYSTEM_NAME_SCRATCH: 'scratch-lv',
     FILESYSTEM_NAME_DOCKER: 'docker-lv',
     FILESYSTEM_NAME_DOCKER_DISTRIBUTION: 'dockerdistribution-lv',
-    FILESYSTEM_NAME_IMG_CONVERSIONS: 'img-conversions-lv',
     FILESYSTEM_NAME_DATABASE: 'pgsql-lv',
     FILESYSTEM_NAME_EXTENSION: 'extension-lv',
     FILESYSTEM_NAME_ETCD: 'etcd-lv',
     FILESYSTEM_NAME_PATCH_VAULT: 'patch-vault-lv',
-    FILESYSTEM_NAME_GNOCCHI: 'gnocchi-lv'
 }
 
 SUPPORTED_LOGICAL_VOLUME_LIST = FILESYSTEM_LV_DICT.values()
@@ -541,13 +530,11 @@ SUPPORTED_FILEYSTEM_LIST = [
     FILESYSTEM_NAME_CINDER,
     FILESYSTEM_NAME_DATABASE,
     FILESYSTEM_NAME_EXTENSION,
-    FILESYSTEM_NAME_IMG_CONVERSIONS,
     FILESYSTEM_NAME_SCRATCH,
     FILESYSTEM_NAME_DOCKER,
     FILESYSTEM_NAME_DOCKER_DISTRIBUTION,
     FILESYSTEM_NAME_PATCH_VAULT,
     FILESYSTEM_NAME_ETCD,
-    FILESYSTEM_NAME_GNOCCHI
 ]
 
 SUPPORTED_REPLICATED_FILEYSTEM_LIST = [

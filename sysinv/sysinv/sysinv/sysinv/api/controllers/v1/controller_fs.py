@@ -65,16 +65,12 @@ class ControllerFs(base.APIBase):
           /var/lib/postgresql (pgsql-lv)
     The image GiB of controller_fs - maps to
           /opt/cgcs (cgcs-lv)
-    The image conversion GiB of controller_fs - maps to
-          /opt/img-conversions (img-conversions-lv)
     The backup GiB of controller_fs - maps to
           /opt/backups (backup-lv)
     The scratch GiB of controller_fs - maps to
           /scratch (scratch-lv)
     The extension GiB of controller_fs - maps to
           /opt/extension (extension-lv)
-    The gnocchi GiB of controller_fs - maps to
-          /opt/gnocchi (gnocchi-lv)
     """
 
     uuid = types.uuid
@@ -272,7 +268,7 @@ def _check_controller_multi_fs(controller_fs_new_list,
         if ceph_mon_gib_new:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, img-conversions, "
+                "(doubled for upgrades), glance, "
                 "scratch, backup, extension and ceph-mon exceeds "
                 "growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
@@ -280,7 +276,7 @@ def _check_controller_multi_fs(controller_fs_new_list,
         else:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, img-conversions, scratch, "
+                "(doubled for upgrades), glance, scratch, "
                 "backup and extension exceeds growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
             )
@@ -488,7 +484,7 @@ def _check_controller_fs(controller_fs_new=None,
         if ceph_mon_gib_new:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, img-conversions, "
+                "(doubled for upgrades), glance, "
                 "scratch, backup, extension and ceph-mon exceeds "
                 "growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
@@ -496,43 +492,24 @@ def _check_controller_fs(controller_fs_new=None,
         else:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, img-conversions, scratch, "
+                "(doubled for upgrades), glance, scratch, "
                 "backup and extension exceeds growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
             )
         raise wsme.exc.ClientSideError(msg)
 
 
-def _check_controller_multi_fs_data(context, controller_fs_list_new,
-                                    modified_fs):
+def _check_controller_multi_fs_data(context, controller_fs_list_new):
     """ Check controller filesystem data and return growth
         returns: cgtsvg_growth_gib
     """
 
     cgtsvg_growth_gib = 0
 
-    # Check if we need img_conversions
-    img_conversion_required = False
     lvdisplay_keys = [constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_DATABASE],
                       constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_CGCS],
                       constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_BACKUP],
-                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_SCRATCH],
-                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_GNOCCHI]]
-
-    # On primary region, img-conversions always exists in controller_fs DB table.
-    # On secondary region, if both glance and cinder are sharing from the primary
-    # region, img-conversions won't exist in controller_fs DB table. We already
-    # have semantic check not to allow img-conversions resizing.
-    if (StorageBackendConfig.has_backend(pecan.request.dbapi, constants.SB_TYPE_LVM) or
-            StorageBackendConfig.has_backend(pecan.request.dbapi, constants.SB_TYPE_CEPH)):
-        img_conversion_required = True
-        lvdisplay_keys.append(constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_IMG_CONVERSIONS])
-
-    if (constants.FILESYSTEM_NAME_IMG_CONVERSIONS in modified_fs and
-            not img_conversion_required):
-        raise wsme.exc.ClientSideError(
-            _("%s is not modifiable: no cinder backend is "
-              "currently configured.") % constants.FILESYSTEM_NAME_IMG_CONVERSIONS)
+                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_SCRATCH]]
 
     lvdisplay_dict = pecan.request.rpcapi.get_controllerfs_lv_sizes(context)
 
@@ -760,8 +737,7 @@ class ControllerFsController(rest.RestController):
 
         cgtsvg_growth_gib = _check_controller_multi_fs_data(
                                pecan.request.context,
-                               controller_fs_list_new,
-                               modified_fs)
+                               controller_fs_list_new)
 
         if _check_controller_state():
             _check_controller_multi_fs(controller_fs_list_new,

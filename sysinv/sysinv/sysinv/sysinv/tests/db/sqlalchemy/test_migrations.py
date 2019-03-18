@@ -1317,7 +1317,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         storconfigs = db_utils.get_table(engine, 'i_storconfig')
         storconfigs_col = {
             'glance_backend': 'String', 'glance_gib': 'Integer',
-            'img_conversions_gib': 'String',
         }
         for col, coltype in storconfigs_col.items():
             self.assertTrue(isinstance(storconfigs.c[col].type,
@@ -1571,7 +1570,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'uuid': 'String',
             'database_gib': 'Integer',
             'cgcs_gib': 'Integer',
-            'img_conversions_gib': 'Integer',
             'backup_gib': 'Integer',
             'forisystemid': 'Integer',
         }

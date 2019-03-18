@@ -329,8 +329,7 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.assertIn('WARNING : THIS OPERATION IS NOT REVERSIBLE AND CANNOT BE CANCELLED',
                       response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
-    def test_post_lvm_without_svc_and_confirm(self, mock_img_conv):
+    def test_post_lvm_without_svc_and_confirm(self):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'confirmed': True
@@ -342,10 +341,9 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.assertIn('Service cinder is mandatory for the lvm backend.',
                       response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
-    def test_post_lvm_with_valid_svc_all_svc_param_and_confirm(self, mock_apply, mock_validate, mock_img_conv):
+    def test_post_lvm_with_valid_svc_all_svc_param_and_confirm(self, mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -406,10 +404,9 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.assertIn('Missing required cinder service parameter',
                       response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
-    def test_post_lvm_and_remove_svc(self, mock_apply, mock_validate, mock_img_conv):
+    def test_post_lvm_and_remove_svc(self, mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -431,13 +428,12 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.assertTrue(patch_response.json['error_message'])
         self.assertIn('Removing cinder is not supported', patch_response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                        side_effect=set_backend_state_configured)
     def test_post_lvm_and_confirm_modify_with_invalid_svc(self, mock_set_backend_data, mock_apply,
-                                                          mock_validate, mock_img_conv):
+                                                          mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -460,10 +456,9 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.assertTrue(patch_response.json['error_message'])
         self.assertIn('Service glance is not supported', patch_response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
-    def test_post_lvm_and_confirm_modify_with_no_changes(self, mock_apply, mock_validate, mock_img_conv):
+    def test_post_lvm_and_confirm_modify_with_no_changes(self, mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -486,13 +481,12 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.assertIn('No changes to the existing backend settings were detected',
                       patch_response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                        side_effect=set_backend_state_configured)
     def test_post_lvm_and_confirm_modify_with_svc_with_params(self, mock_set_backend_data,
-                                                              mock_apply, mock_validate, mock_img_conv):
+                                                              mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -518,10 +512,9 @@ class StorageBackendTestCases(base.FunctionalTest):
                           'test_cparam2': 'far2'},  # Expected
                          self.get_json('/storage_backend/%s/' % response.json['uuid'])['capabilities'])  # Result
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
-    def test_post_lvm_and_list(self, mock_apply, mock_validate, mock_img_conv):
+    def test_post_lvm_and_list(self, mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -569,8 +562,7 @@ class StorageBackendTestCases(base.FunctionalTest):
                       response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
-    def test_post_ceph_and_confirm(self, mock_img_conv, mock_mon_ip):
+    def test_post_ceph_and_confirm(self, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -636,10 +628,9 @@ class StorageBackendTestCases(base.FunctionalTest):
                       response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._discover_and_validate_cinder_capabilities')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
-    def test_post_ceph_with_valid_svc_all_svc_param_and_confirm(self, mock_apply, mock_validate, mock_img_conv, mock_mon_ip):
+    def test_post_ceph_with_valid_svc_all_svc_param_and_confirm(self, mock_apply, mock_validate, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'services': (',').join([constants.SB_SVC_CINDER, constants.SB_SVC_GLANCE]),
@@ -654,11 +645,10 @@ class StorageBackendTestCases(base.FunctionalTest):
                          self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                        side_effect=set_backend_state_configured)
     def test_post_ceph_and_confirm_modify_with_invalid_svc(self, mock_set_backend_data,
-                                                           mock_img_conv, mock_mon_ip):
+                                                           mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -680,14 +670,13 @@ class StorageBackendTestCases(base.FunctionalTest):
                       patch_response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._discover_and_validate_cinder_capabilities')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                    side_effect=set_backend_state_configured)
     def test_post_ceph_and_confirm_modify_with_svc_missing_params(self, mock_set_backend_data,
                                                                   mock_apply, mock_validate,
-                                                                  mock_img_conv, mock_mon_ip):
+                                                                  mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -709,13 +698,12 @@ class StorageBackendTestCases(base.FunctionalTest):
                       patch_response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._discover_and_validate_cinder_capabilities')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                side_effect=set_backend_state_configured)
     def test_post_ceph_and_confirm_modify_with_svc_missing_some_params(self, mock_set_backend_data, mock_apply,
-                                                                       mock_validate, mock_img_conv, mock_mon_ip):
+                                                                       mock_validate, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -739,14 +727,13 @@ class StorageBackendTestCases(base.FunctionalTest):
                       patch_response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._discover_and_validate_cinder_capabilities')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
            side_effect=set_backend_state_configured)
     def test_post_ceph_and_confirm_modify_with_svc_with_params(self, mock_set_backend_data,
                                                                mock_apply, mock_validate,
-                                                               mock_img_conv, mock_mon_ip):
+                                                               mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -774,8 +761,7 @@ class StorageBackendTestCases(base.FunctionalTest):
                          self.get_json('/storage_backend/%s/' % response.json['uuid'])['capabilities'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
-    def test_post_ceph_and_list(self, mock_img_conv, mock_mon_ip):
+    def test_post_ceph_and_list(self, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -1052,10 +1038,9 @@ class StorageLvmTestCases(base.FunctionalTest):
         self.assertIn('WARNING : THIS OPERATION IS NOT REVERSIBLE AND CANNOT BE CANCELLED',
                       response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
-    def test_post_and_confirm(self, mock_apply, mock_validate, mock_img_conv):
+    def test_post_and_confirm(self, mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -1116,10 +1101,9 @@ class StorageLvmTestCases(base.FunctionalTest):
         self.assertIn('Missing required cinder service parameter',
                       response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
-    def test_post_with_valid_svc_all_svc_param_and_confirm(self, mock_apply, mock_validate, mock_img_conv):
+    def test_post_with_valid_svc_all_svc_param_and_confirm(self, mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -1132,13 +1116,12 @@ class StorageLvmTestCases(base.FunctionalTest):
         self.assertEqual(constants.SB_TYPE_LVM,  # Expected
                          self.get_json('/storage_lvm/%s/' % response.json['uuid'])['backend'])  # Result
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                    side_effect=set_backend_state_configured)
     def test_post_and_confirm_modify_with_invalid_svc(self, mock_set_backend_data,
-                                                      mock_apply, mock_validate, mock_img_conv):
+                                                      mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -1161,10 +1144,9 @@ class StorageLvmTestCases(base.FunctionalTest):
         self.assertTrue(patch_response.json['error_message'])
         self.assertIn('Service glance is not supported', patch_response.json['error_message'])
 
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
-    def test_post_and_list(self, mock_apply, mock_validate, mock_img_conv):
+    def test_post_and_list(self, mock_apply, mock_validate):
         vals = {
             'backend': constants.SB_TYPE_LVM,
             'services': constants.SB_SVC_CINDER,
@@ -1212,8 +1194,7 @@ class StorageCephTestCases(base.FunctionalTest):
                       response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
-    def test_post_and_confirm(self, mock_img_conv, mock_mon_ip):
+    def test_post_and_confirm(self, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -1240,8 +1221,7 @@ class StorageCephTestCases(base.FunctionalTest):
                       response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
-    def test_post_with_valid_svc_all_svc_param_and_confirm(self, mock_img_conv, mock_mon_ip):
+    def test_post_with_valid_svc_all_svc_param_and_confirm(self, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'services': constants.SB_SVC_SWIFT,
@@ -1255,10 +1235,9 @@ class StorageCephTestCases(base.FunctionalTest):
                          self.get_json('/storage_ceph/%s/' % response.json['uuid'])['backend'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                        side_effect=set_backend_state_configured)
-    def test_post_and_confirm_modify_with_invalid_svc(self, mock_set_backend_data, mock_img_conv, mock_mon_ip):
+    def test_post_and_confirm_modify_with_invalid_svc(self, mock_set_backend_data, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -1279,8 +1258,7 @@ class StorageCephTestCases(base.FunctionalTest):
         self.assertIn('Service invalid_svc is not supported', patch_response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
-    def test_post_and_confirm_modify_with_svc_with_params(self, mock_img_conv, mock_mon_ip):
+    def test_post_and_confirm_modify_with_svc_with_params(self, mock_mon_ip):
         # Test skipped. Fix later.
         self.skipTest("Skipping to prevent failure notification on Jenkins")
         vals = {
@@ -1306,8 +1284,7 @@ class StorageCephTestCases(base.FunctionalTest):
                          self.get_json('/storage_ceph/%s/' % response.json['uuid'])['capabilities'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
-    @mock.patch.object(StorageBackendConfig, 'set_img_conversions_defaults')
-    def test_post_and_list(self, mock_img_conv, mock_mon_ip):
+    def test_post_and_list(self, mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
