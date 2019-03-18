@@ -18,8 +18,8 @@ if is_service_enabled stx-config; then
     elif [[ "$1" == "stack" && "$2" == "extra" ]]; then
         # Initialize and start the sysinv service
         echo_summary "Initialize and start sysinv "
-        init_sysinv
-        start_sysinv
+        init_config
+        start_config
     elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
         # do sanity test for sysinv
         echo_summary "do test-config"
@@ -31,12 +31,10 @@ if is_service_enabled stx-config; then
     if [[ "$1" == "unstack" ]]; then
         # Shut down sysinv services
         echo_summary "Stop Sysinv service"
-        stop_sysinv
+        stop_config
     fi
 
     if [[ "$1" == "clean" ]]; then
-        cleanup_sysinv
-        cleanup_sysinv_depends
-        cleanup_cgtsclient
+        cleanup_config
     fi
 fi
