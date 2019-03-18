@@ -37,4 +37,5 @@ python-magnumclient>=2.0.0  # Apache-2.0
 psutil
 simplejson>=2.2.0 # MIT
 rpm
+docker  # Apache-2.0
 kubernetes  # Apache-2.0
