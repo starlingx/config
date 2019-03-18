@@ -122,7 +122,6 @@ sysinv_conductor_validate() {
 
     check_binary ${OCF_RESKEY_binary}
     check_binary sysinv-api
-    check_binary nova-api
     check_binary pidof
 
     if [ ! -f ${OCF_RESKEY_config} ] ; then
