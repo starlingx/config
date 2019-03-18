@@ -22,6 +22,9 @@ BuildRequires: systemd
 # Needed for python2 and python3 compatible
 Requires: python-six
 
+Requires: python-docker
+Requires: python-kubernetes
+
 %description
 System Inventory
 
