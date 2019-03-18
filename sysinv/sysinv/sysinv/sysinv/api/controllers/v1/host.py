@@ -89,6 +89,7 @@ from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.helm import common as helm_common
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
 from sysinv.openstack.common.gettextutils import _
@@ -3378,6 +3379,26 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
+    def _semantic_check_vswitch_type_attributes(ihost):
+        """
+        Perform semantic checks host label openstack-compute-node if ovs or ovs-dpdk
+        vswitch type is enabled since allocating 2M hugepage is needed
+        validity of the node configuration prior to unlocking it.
+        """
+        vswitch_type = utils.get_vswitch_type()
+        if vswitch_type == constants.VSWITCH_TYPE_NONE:
+            return
+
+        # Check whether compute_label has been assigned
+        if utils.is_openstack_compute(ihost) is not True:
+            raise wsme.exc.ClientSideError(
+                _("Can not unlock worker host %s without "
+                  " %s label if config %s. Action: assign "
+                  "%s label for this host prior to unlock."
+                  % (ihost['hostname'], helm_common.LABEL_COMPUTE_LABEL,
+                    vswitch_type, helm_common.LABEL_COMPUTE_LABEL)))
+
+    @staticmethod
     def _semantic_check_data_vrs_attributes(ihost):
         """
         Perform semantic checks against data-vrs specific attributes to ensure
@@ -3637,16 +3658,27 @@ class HostController(rest.RestController):
                     pecan.request.dbapi.imemory_update(m.uuid, values)
 
     @staticmethod
-    def _update_vm_4k_pages(ihost):
+    def _update_huge_pages(ihost):
         """
-        Update VM 4K huge pages.
+        Update the host huge pages.
         """
         ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
 
+        labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
+        vswitch_type = utils.get_vswitch_type()
         for node in ihost_inodes:
             mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
             for m in mems:
                 if m.hugepages_configured:
+                    value = {}
+                    vs_hugepages_nr = m.vswitch_hugepages_nr
+                    # allocate the default vswitch huge pages if required
+                    if vswitch_type != constants.VSWITCH_TYPE_NONE and \
+                       vs_hugepages_nr == 0:
+                        vs_hugepages_nr = constants.VSWITCH_MEMORY_MB \
+                                      // m.vswitch_hugepages_size_mib
+                        value.update({'vswitch_hugepages_nr': vs_hugepages_nr})
+
                     vm_hugepages_nr_2M = m.vm_hugepages_nr_2M_pending \
                         if m.vm_hugepages_nr_2M_pending is not None \
                         else m.vm_hugepages_nr_2M
@@ -3654,10 +3686,18 @@ class HostController(rest.RestController):
                         if m.vm_hugepages_nr_1G_pending is not None \
                         else m.vm_hugepages_nr_1G
 
+                    # calculate 90% 2M pages if the huge pages have not been
+                    # allocated and the compute label is set
+                    if cutils.has_openstack_compute(labels) and \
+                                    vm_hugepages_nr_2M == 0 and \
+                                    vm_hugepages_nr_1G == 0:
+                        vm_hugepages_nr_2M = m.vm_hugepages_possible_2M * 0.9
+                        value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
+
                     vm_hugepages_4K = \
                         (m.node_memtotal_mib - m.platform_reserved_mib)
                     vm_hugepages_4K -= \
-                        (m.vswitch_hugepages_nr * m.vswitch_hugepages_size_mib)
+                        (vs_hugepages_nr * m.vswitch_hugepages_size_mib)
                     vm_hugepages_4K -= \
                         (constants.MIB_2M * vm_hugepages_nr_2M)
                     vm_hugepages_4K -=  \
@@ -3670,10 +3710,9 @@ class HostController(rest.RestController):
                     if vm_hugepages_4K < min_4K:
                         vm_hugepages_4K = 0
 
-                    value = {'vm_hugepages_nr_4K': vm_hugepages_4K}
-                    LOG.info("Set VM 4K pages for host (%s) node (%d) pages "
-                             "(%d)" % (ihost['hostname'], node['id'],
-                                       vm_hugepages_4K))
+                    value.update({'vm_hugepages_nr_4K': vm_hugepages_4K})
+                    LOG.info("Updating mem values of host(%s) node(%d): %s" %
+                             (ihost['hostname'], node['id'], str(value)))
                     pecan.request.dbapi.imemory_update(m.uuid, value)
 
     @staticmethod
@@ -5204,6 +5243,7 @@ class HostController(rest.RestController):
             self._semantic_check_data_interfaces(ihost,
                                                  kubernetes_config,
                                                  force_unlock)
+            self._semantic_check_vswitch_type_attributes(ihost)
         else:
             # sdn configuration check
             self._semantic_check_sdn_attributes(ihost)
@@ -5265,8 +5305,8 @@ class HostController(rest.RestController):
         if align_2M_memory or align_1G_memory:
             self._align_pending_memory(ihost, align_2M_memory, align_1G_memory)
 
-        # calculate the VM 4K huge pages for nova
-        self._update_vm_4k_pages(ihost)
+        # update ihost huge pages allocation
+        self._update_huge_pages(ihost)
 
         if cutils.is_virtual() or cutils.is_virtual_worker(ihost):
             mib_platform_reserved_no_io = mib_reserved

@@ -23,9 +23,6 @@ import tsconfig.tsconfig as tsc
 
 LOG = logging.getLogger(__name__)
 
-# Defines per-socket vswitch memory requirements (in MB)
-VSWITCH_MEMORY_MB = 1024
-
 # Defines the size of one kilobyte
 SIZE_KB = 1024
 
@@ -386,15 +383,16 @@ class NodeOperator(object):
 
                     vs_hp_nr, vs_hp_size = self._get_vswitch_reserved_memory(
                         node)
-                    if vs_hp_nr == 0 or vs_hp_size == 0:
-                        vs_hp_nr = VSWITCH_MEMORY_MB // size
+                    if vs_hp_size == 0:
                         vs_hp_size = size
 
                     # Libvirt hugepages can be 1G and 2M
                     if size == SIZE_1G_MB:
                         hp_attr = {}
                         if vs_hp_size == size:
-                            nr_hugepages -= vs_hp_nr
+                            # If the huge pages are not allocated
+                            if nr_hugepages != 0:
+                                nr_hugepages -= vs_hp_nr
                             hp_attr.update({
                                 'vswitch_hugepages_size_mib': vs_hp_size,
                                 'vswitch_hugepages_nr': vs_hp_nr,
@@ -410,15 +408,19 @@ class NodeOperator(object):
                             # No 1G hugepage support.
                             hp_attr = {
                                 'vm_hugepages_use_1G': 'False',
+                                'vm_hugepages_nr_1G': 0,
                                 'vswitch_hugepages_size_mib': vs_hp_size,
                                 'vswitch_hugepages_nr': vs_hp_nr,
                                 'vswitch_hugepages_avail': 0
                             }
+                            if nr_hugepages != 0:
+                                nr_hugepages -= vs_hp_nr
                         else:
                             hp_attr = {}
                             if vs_hp_size == size and initial_report is False:
                                 # User manually set 2M pages
-                                nr_hugepages -= vs_hp_nr
+                                if nr_hugepages != 0:
+                                    nr_hugepages -= vs_hp_nr
                                 hp_attr.update({
                                     'vswitch_hugepages_size_mib': vs_hp_size,
                                     'vswitch_hugepages_nr': vs_hp_nr,
@@ -545,18 +547,6 @@ class NodeOperator(object):
                 'vm_hugepages_possible_2M': max_vm_pages_2mb,
                 'vm_hugepages_possible_1G': max_vm_pages_1gb,
             })
-
-            # calculate 90% 2M pages if it is initial report and the huge
-            # pages have not been allocated
-            if initial_report:
-                max_vm_pages_2mb = max_vm_pages_2mb * 0.9
-                total_hp_mb += int(max_vm_pages_2mb * (SIZE_2M_KB / SIZE_KB))
-                free_hp_mb = total_hp_mb
-                attr.update({
-                    'vm_hugepages_nr_2M': max_vm_pages_2mb,
-                    'vm_hugepages_avail_2M': max_vm_pages_2mb,
-                    'vm_hugepages_nr_1G': 0
-                })
 
             attr.update({
                 'numa_node': node,
