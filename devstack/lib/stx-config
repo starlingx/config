@@ -12,16 +12,12 @@
 
 # ``stack.sh`` calls the entry points in this order:
 #
-# - install_cgtsclient
-# - install_sysinv
-# - install_sysinv_agent
-# - configure_sysinv
-# - init_sysinv
-# - start_sysinv
-# - start_sysinv_agent
-# - stop_sysinv
-# - stop_sysinv_agent
-# - cleanup_sysinv
+# - install_config
+# - configure_config
+# - init_config
+# - start_config
+# - stop_config
+# - cleanup_config
 
 _XTRACE_STX_CONFIG=$(set +o | grep xtrace)
 set -o xtrace
@@ -30,32 +26,71 @@ set -o xtrace
 # Defaults
 # --------
 
-SYSINV_CLIENT_NAME=cgts-client
-GITDIR["$SYSINV_CLIENT_NAME"]=$DEST/stx-config/sysinv/cgts-client/cgts-client
-GITDIR["sysinv"]=$DEST/stx-config/sysinv/sysinv/sysinv
-STXCONFIG_CONTROL=$DEST/stx-config/controllerconfig/controllerconfig
-STXCONFIG_CONFUTILS=$DEST/stx-config/configutilities/configutilities
+STX_CONFIG_DIR=${GITDIR[$STX_CONFIG_NAME]}
+STX_SYSCONFDIR=${STX_SYSCONFDIR:-/etc}
+
+# Set up GITDIR so setup_lib and setup_dev_lib work properly
+GITDIR["cgts-client"]=$STX_CONFIG_DIR/sysinv/cgts-client/cgts-client
+
+STX_CONF_UTILS_DIR=$STX_CONFIG_DIR/configutilities/configutilities
+STX_CTRL_CONF_DIR=$STX_CONFIG_DIR/controllerconfig/controllerconfig
+
+SYSINV_DIR=$STX_CONFIG_DIR/sysinv/sysinv/sysinv
+SYSINV_AGENT_DIR=$STX_CONFIG_DIR/sysinv/sysinv-agent
+
+SYSINV_CONF_DIR=$STX_SYSCONFDIR/sysinv
+SYSINV_CONF_FILE=$SYSINV_CONF_DIR/sysinv.conf
+
 SYSINV_SERVICE_PROTOCOL=${SYSINV_SERVICE_PROTOCOL:-$SERVICE_PROTOCOL}
 SYSINV_SERVICE_PORT=${SYSINV_SERVICE_PORT:-6385}
 SYSINV_SERVICE_HOST=${SYSINV_SERVICE_HOST:-$SERVICE_HOST}
-SYSINV_DIR=$DEST/stx-config/sysinv/sysinv/sysinv
-SYSINV_AGENT_DIR=$DEST/stx-config/sysinv/sysinv-agent
 SYSINV_ETC_GOENABLEDD=/etc/goenabled.d
-SYSINV_CONF_DIR=/etc/sysinv
-SYSINV_CONF_FILE=$SYSINV_CONF_DIR/sysinv.conf
 SYSINV_API_PASTE_INI=$SYSINV_CONF_DIR/api-paste.ini
 SYSINV_ETC_MOTDD=/etc/motd.d
-SYSINV_OCF_RESOURCED=/urs/lib/ocf/resource.d
-SYSINV_BIN_DIR=$(get_python_exec_prefix)
 SYSINV_API_PORT=$SYSINV_SERVICE_PORT
 SYSINV_AUTH_STRATEGY=${SYSINV_AUTH_STRATEGY:-keystone}
 SYSINV_AUTH_CACHE_DIR=${SYSINV_AUTH_CACHE_DIR:-/var/cache/sysinv}
+
+# STX_INST_DIR should be a non-root-writable place to install build artifacts
+STX_INST_DIR=${STX_INST_DIR:-/usr/local}
+STX_BIN_DIR=${STX_BIN_DIR:-$STX_INST_DIR/bin}
+STX_SBIN_DIR=${STX_SBIN_DIR:-$STX_INST_DIR/sbin}
+
+# Set up so we don't use sudo for installs when not necessary
+STX_SUDO="sudo"
+[[ -w $STX_INST_DIR ]] && STX_SUDO="env"
+
 PYTHON_SITE_DIR=$(python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())")
+
+STX_OCF_ROOT=${STX_OCF_ROOT:-/usr/lib/ocf}
 
 # Functions
 # ---------
+
+function check_sysinv_services {
+    local stx_services="sysinv-api sysinv-cond sysinv-agent"
+    local service
+    for service in $stx_services; do
+        if [[is_service_enabled $service && $SYSTEMCTL is-enabled devstack@$service.service]]; then
+            $SYSTEMCTL status devstack@$service.service --no-pager
+        fi
+    done
+}
+
 function cleanup_cgtsclient {
     pip_uninstall cgtsclient
+}
+
+function cleanup_config {
+    if is_service_enabled sysinv; then
+        cleanup_sysinv
+        cleanup_configutilities
+        cleanup_controllerconfig
+    fi
+
+    if is_service_enabled cgtsclient; then
+        cleanup_cgtsclient
+    fi
 }
 
 function cleanup_configutilities {
@@ -68,11 +103,6 @@ function cleanup_controllerconfig {
     sudo rm -f /etc/bash_completion.d/system.bash_completion
 }
 
-function cleanup_sysinv_depends {
-    cleanup_configutilities
-    cleanup_controllerconfig
-}
-
 function cleanup_sysinv {
     stop_sysinv
     pip_uninstall sysinv
@@ -82,25 +112,15 @@ function cleanup_sysinv {
     sudo rm -f $SYSINV_CONF_DIR/profileSchema.xsd
     sudo rm -f $SYSINV_ETC_MOTDD/10-system
     sudo rm -f $SYSINV_CONF_DIR/upgrades/delete_load.sh
-    sudo rm -f /usr/lib/ocf/resource.d/platform/sysinv-api
-    sudo rm -f /usr/lib/ocf/resource.d/platform/sysinv-conductor
-    sudo rm -f /usr/lib/systemd/system/sysinv-api.service
-    sudo rm -f /usr/lib/systemd/system/sysinv-conductor.service
-    sudo rm -f $SYSINV_BIN_DIR/partition_info.sh
-    sudo rm -f $SYSINV_BIN_DIR/manage-partitions
-    sudo rm -f $SYSINV_BIN_DIR/query_pci_id
+    sudo rm -f $STX_OCF_ROOT/resource.d/platform/sysinv-api
+    sudo rm -f $STX_OCF_ROOT/resource.d/platform/sysinv-conductor
+    sudo rm -f $STX_SYSCONFDIR/systemd/system/sysinv-api.service
+    sudo rm -f $STX_SYSCONFDIR/systemd/system/sysinv-conductor.service
+    sudo rm -f $STX_BIN_DIR/partition_info.sh
+    sudo rm -f $STX_BIN_DIR/manage-partitions
+    sudo rm -f $STX_BIN_DIR/query_pci_id
 
     sudo rm -rf $SYSINV_AUTHO_CACHE_DIR $SYSINV_CONF_DIR
-}
-
-stx_services="sysinv-api sysinv-cond sysinv-agent"
-function check_sysinv_services {
-    local service
-    for service in $stx_services; do
-        if [[is_service_enabled $service && $SYSTEMCTL is-enabled devstack@$service.service]]; then
-            $SYSTEMCTL status devstack@$service.service --no-pager
-        fi
-    done
 }
 
 function configure_config {
@@ -182,7 +202,7 @@ function create_sysinv_user_group {
     fi
 }
 
-function init_sysinv {
+function init_config {
     if is_service_enabled sysinv; then
         # Migrations need this
         sudo install -d -m 755 -o ${USER} /var/run/sysinv
@@ -190,7 +210,7 @@ function init_sysinv {
             # (Re)create  sysinv database
             echo "recreate_database sysinv and dbsync"
             recreate_database sysinv
-            $SYSINV_BIN_DIR/sysinv-dbsync --config-file=$SYSINV_CONF_FILE
+            $STX_BIN_DIR/sysinv-dbsync --config-file=$SYSINV_CONF_FILE
         fi
         create_sysinv_cache_dir
     fi
@@ -198,7 +218,7 @@ function init_sysinv {
 
 function install_cgtsclient {
     setup_dev_lib "cgts-client"
-    sudo install -D -m 0644 -o $STACK_USER {${GITDIR["$SYSINV_CLIENT_NAME"]}/tools/,/etc/bash_completion.d/}system.bash_completion
+    sudo install -D -m 0644 -o $STACK_USER {${GITDIR["cgts-client"]}/tools/,/etc/bash_completion.d/}system.bash_completion
 }
 
 function install_config {
@@ -217,7 +237,7 @@ function install_config {
 
 function install_configutilities {
     # We can't use setup_develop as there is no setup.cfg file present for configutilities
-    setup_package $STXCONFIG_CONFUTILS -e
+    setup_package $STX_CONF_UTILS_DIR -e
 }
 
 function install_controllerconfig {
@@ -226,7 +246,7 @@ function install_controllerconfig {
     pip_install pycrypto
 
     # We can't use setup_develop as there is no setup.cfg file present for controllerconfig
-    setup_package $STXCONFIG_CONTROL -e
+    setup_package $STX_CTRL_CONF_DIR -e
 }
 
 function install_sysinv {
@@ -240,19 +260,24 @@ function install_sysinv {
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/motd-system $SYSINV_ETC_MOTDD/10-system
     sudo install -d -m 755 $SYSINV_CONF_DIR/upgrades
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/delete_load.sh $SYSINV_CONF_DIR/upgrades/delete_load.sh
-    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api /usr/lib/ocf/resource.d/platform/sysinv-api
-    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-conductor /usr/lib/ocf/resource.d/platform/sysinv-conductor
-    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api.service /usr/lib/systemd/system/sysinv-api.service
-    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-conductor.service /usr/lib/systemd/system/sysinv-conductor.service
-    sudo install -d -m 755 $SYSINV_BIN_DIR
-    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/partition_info.sh $SYSINV_BIN_DIR/partition_info.sh
-    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/manage-partitions $SYSINV_BIN_DIR/manage-partitions
-    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/query_pci_id $SYSINV_BIN_DIR/query_pci_id
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api $STX_OCF_ROOT/resource.d/platform/sysinv-api
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-conductor $STX_OCF_ROOT/resource.d/platform/sysinv-conductor
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-api.service $STX_SYSCONFDIR/systemd/system/sysinv-api.service
+    sudo install -p -D -m 755 $SYSINV_DIR/scripts/sysinv-conductor.service $STX_SYSCONFDIR/systemd/system/sysinv-conductor.service
+    sudo install -d -m 755 $STX_BIN_DIR
+    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/partition_info.sh $STX_BIN_DIR/partition_info.sh
+    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/manage-partitions $STX_BIN_DIR/manage-partitions
+    sudo install -p -D -m 755 $SYSINV_DIR/sysinv/cmd/query_pci_id $STX_BIN_DIR/query_pci_id
 }
 
 function install_sysinv_agent {
     #rename to sysinv-agent.sh to avoid overwrite entry_point of sysinv-agent
-    sudo install -p -D -m 755 $SYSINV_AGENT_DIR/sysinv-agent $SYSINV_BIN_DIR/sysinv-agent.sh
+    sudo install -p -D -m 755 $SYSINV_AGENT_DIR/sysinv-agent $STX_BIN_DIR/sysinv-agent.sh
+}
+function start_config {
+    if is_service_enabled sysinv; then
+        start_sysinv
+    fi
 }
 
 function start_sysinv {
@@ -268,11 +293,11 @@ function start_sysinv {
 }
 
 function start_sysinv_agent {
-    run_process sysinv-agent "$SYSINV_BIN_DIR/sysinv-agent"
+    run_process sysinv-agent "$STX_BIN_DIR/sysinv-agent"
 }
 
 function start_sysinv_api {
-    run_process sysinv-api "$SYSINV_BIN_DIR/sysinv-api --config-file=$SYSINV_CONF_FILE"
+    run_process sysinv-api "$STX_BIN_DIR/sysinv-api --config-file=$SYSINV_CONF_FILE"
 
     # Get right service port for testing
     local service_port=$SYSINV_SERVICE_PORT
@@ -294,9 +319,15 @@ function start_sysinv_api {
 function start_sysinv_conductor {
     # the 1st will fail
     stop_sysinv_conductor
-    run_process sysinv-cond "$SYSINV_BIN_DIR/sysinv-conductor --config-file=$SYSINV_CONF_FILE"
+    run_process sysinv-cond "$STX_BIN_DIR/sysinv-conductor --config-file=$SYSINV_CONF_FILE"
     # TODO: Find a way to check whether the conductor has started.
     # TODO: first run in extra stage will fail, need run second time in test-config
+}
+
+function stop_config {
+    if is_service_enabled sysinv; then
+        stop_sysinv
+    fi
 }
 
 function stop_sysinv {
