@@ -160,6 +160,22 @@ class openstack::keystone::haproxy
   }
 }
 
+define delete_endpoints (
+  $region,
+  $service,
+  $interfaces,
+) {
+  $rc_file = '/etc/platform/openrc'
+  $delete_endpoint = 'openstack endpoint delete'
+  $interfaces.each | String $val | {
+    $get_endpoint_id = "openstack endpoint list --region ${region} --service ${service} --interface ${val} -f value -c ID"
+    exec { "Delete ${region} ${service} ${val} endpoint":
+      command   => "source ${rc_file} && ${get_endpoint_id} | xargs ${delete_endpoint}",
+      logoutput => true,
+      provider  => shell,
+    }
+  }
+}
 
 class openstack::keystone::api
   inherits ::openstack::keystone::params {
@@ -175,8 +191,14 @@ class openstack::keystone::api
     # the subcloud region.
     if ($::platform::params::distributed_cloud_role == 'subcloud' and
         $::platform::params::region_2_name != 'RegionOne') {
+      $interfaces = [ 'public', 'internal', 'admin' ]
       Keystone_endpoint<||> -> Class['::platform::client']
-      # TODO: use exec openstack endpoint delete commands to clean up the bootstrap endpoints
+      # clean up the bootstrap endpoints
+      -> delete_endpoints { 'Start delete endpoints':
+        region     => 'RegionOne',
+        service    => 'keystone',
+        interfaces => $interfaces,
+      }
     }
   }
 
