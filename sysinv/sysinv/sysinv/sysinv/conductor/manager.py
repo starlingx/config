@@ -7880,10 +7880,9 @@ class ConductorManager(service.PeriodicService):
 
         return rc
 
-    # Retry in case of errors or racing issues with rmon autoextend. Rmon is pooling at
-    # 10s intervals and autoextend is fast. Therefore retrying a few times and waiting
-    # between each retry should provide enough protection in the unlikely case
-    # LVM's own locking mechanism is unreliable.
+    # Retrying a few times and waiting between each retry should provide
+    # enough protection in the unlikely case LVM's own locking mechanism
+    # is unreliable.
     @retry(stop_max_attempt_number=5, wait_fixed=1000,
            retry_on_result=(lambda x: True if x == constants.CINDER_RESIZE_FAILURE else False))
     def _resize_cinder_volumes(self, delayed=False):

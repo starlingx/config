@@ -306,7 +306,7 @@ class platform::sm
   }
 
   exec { 'Configure Postgres FileSystem':
-    command => "sm-configure service_instance pg-fs pg-fs \"rmon_rsc_name=database-storage,device=${pg_fs_device},directory=${pg_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    command => "sm-configure service_instance pg-fs pg-fs \"device=${pg_fs_device},directory=${pg_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   exec { 'Configure Postgres':
@@ -318,7 +318,7 @@ class platform::sm
   }
 
   exec { 'Configure Rabbit FileSystem':
-    command => "sm-configure service_instance rabbit-fs rabbit-fs \"rmon_rsc_name=messaging-storage,device=${rabbit_fs_device},directory=${rabbit_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    command => "sm-configure service_instance rabbit-fs rabbit-fs \"device=${rabbit_fs_device},directory=${rabbit_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   exec { 'Configure Rabbit':
@@ -349,7 +349,7 @@ class platform::sm
   }
 
   exec { 'Configure CGCS FileSystem':
-    command => "sm-configure service_instance cgcs-fs cgcs-fs \"rmon_rsc_name=cloud-storage,device=${cgcs_fs_device},directory=${cgcs_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    command => "sm-configure service_instance cgcs-fs cgcs-fs \"device=${cgcs_fs_device},directory=${cgcs_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   exec { 'Configure CGCS Export FileSystem':
@@ -361,7 +361,7 @@ class platform::sm
   }
 
   exec { 'Configure Extension FileSystem':
-    command => "sm-configure service_instance extension-fs extension-fs \"rmon_rsc_name=extension-storage,device=${extension_fs_device},directory=${extension_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    command => "sm-configure service_instance extension-fs extension-fs \"device=${extension_fs_device},directory=${extension_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   exec { 'Configure Extension Export FileSystem':
@@ -374,7 +374,7 @@ class platform::sm
     }
 
     exec { 'Configure Patch-vault FileSystem':
-      command => "sm-configure service_instance patch-vault-fs patch-vault-fs \"rmon_rsc_name=patch-vault-storage,device=${patch_fs_device},directory=${patch_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+      command => "sm-configure service_instance patch-vault-fs patch-vault-fs \"device=${patch_fs_device},directory=${patch_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
     }
   }
 
@@ -386,7 +386,7 @@ class platform::sm
     command => 'sm-provision service helmrepository-fs',
   }
   -> exec { 'Configure Helm Chart Repository FileSystem':
-    command => "sm-configure service_instance helmrepository-fs helmrepository-fs \"rmon_rsc_name=helm-charts-storage,device=${helmrepo_fs_source_dir},directory=${helmrepo_fs_target_dir},options=bind,noatime,nodiratime,fstype=ext4,check_level=20\"",
+    command => "sm-configure service_instance helmrepository-fs helmrepository-fs \"device=${helmrepo_fs_source_dir},directory=${helmrepo_fs_target_dir},options=bind,noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   exec { 'Configure ETCD DRBD':
@@ -710,7 +710,7 @@ class platform::sm
   }
 
   exec { 'Configure Platform FileSystem':
-    command => "sm-configure service_instance platform-fs platform-fs \"rmon_rsc_name=platform-storage,device=${platform_fs_device},directory=${platform_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
+    command => "sm-configure service_instance platform-fs platform-fs \"device=${platform_fs_device},directory=${platform_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
   exec { 'Configure Platform Export FileSystem':

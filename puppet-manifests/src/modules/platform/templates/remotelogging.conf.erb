@@ -55,8 +55,6 @@ rewrite r_rewrite_set{
   set("<%= @system_name %> platform.log ${HOST}", value("HOST") condition(filter(f_local1)));
   set("<%= @system_name %> pmond.log ${HOST}", value("HOST") condition(filter(f_pmon)));
   set("<%= @system_name %> postgres.log ${HOST}", value("HOST") condition(filter(f_local0)));
-  set("<%= @system_name %> rmond.log ${HOST}", value("HOST") condition(filter(f_rmon)));
-  set("<%= @system_name %> rmond_notify.log ${HOST}", value("HOST") condition(filter(f_rmon_notify)));
   set("<%= @system_name %> sm.log ${HOST}", value("HOST") condition(filter(f_local3)));
   set("<%= @system_name %> sysinv-api.log ${HOST}", value("HOST") condition(filter(f_sysinvapi)));
   set("<%= @system_name %> sysinv.log ${HOST}", value("HOST") condition(filter(f_sysinv)));
