@@ -1,6 +1,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+# Copyright (C) 2019 Intel Corporation
+#
 
 SBINDIR ?= /usr/sbin
 SYSTEMDDIR ?= /usr/lib/systemd/system/
