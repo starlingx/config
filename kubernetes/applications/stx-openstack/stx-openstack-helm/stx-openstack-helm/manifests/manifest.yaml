@@ -983,12 +983,14 @@ data:
           ovs_driver:
             vhost_user_enabled: true
           securitygroup:
-            firewall_driver: noop
+            firewall_driver: openvswitch
         openvswitch_agent:
           agent:
             tunnel_types: vxlan
           ovs:
             bridge_mappings: public:br-ex
+          securitygroup:
+            firewall_driver: openvswitch
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/neutron-0.1.0.tgz
