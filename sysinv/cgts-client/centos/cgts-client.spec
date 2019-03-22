@@ -60,10 +60,6 @@ install -m 644 dist/*.whl $RPM_BUILD_ROOT/wheels/
 install -d -m 755 %{buildroot}%{local_etc_bash_completiond}
 install -p -D -m 664 tools/system.bash_completion %{buildroot}%{local_etc_bash_completiond}/system.bash_completion
 
-# prep SDK package
-mkdir -p %{buildroot}/usr/share/remote-clients
-tar zcf %{buildroot}/usr/share/remote-clients/python-wrs-system-client-%{version}.tgz --exclude='.gitignore' --exclude='.gitreview' -C .. --transform="s/%{name}-%{version}/python-wrs-system-client-%{version}/" %{name}-%{version}
-
 %clean
 rm -rf $RPM_BUILD_ROOT
 
@@ -77,8 +73,6 @@ rm -rf $RPM_BUILD_ROOT
 %{pythonroot}/cgtsclient
 %{pythonroot}/cgtsclient-%{version}*.egg-info
 
-%files sdk
-/usr/share/remote-clients/python-wrs-system-client-%{version}.tgz
 
 %package wheels
 Summary: %{name} wheels
