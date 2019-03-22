@@ -24,6 +24,8 @@ import pecan
 import os
 import requests
 
+from sysinv.api.controllers.v1.utils import is_aio_system
+
 LOG = logging.getLogger(__name__)
 
 
@@ -704,11 +706,36 @@ class CephApiOperator(object):
 
 def fix_crushmap(dbapi=None):
     """ Set Ceph's CRUSH Map based on storage model """
+    def _create_crushmap_flag_file():
+        try:
+            open(crushmap_flag_file, "w").close()
+        except IOError as e:
+            LOG.warn(_('Failed to create flag file: {}. '
+                       'Reason: {}').format(crushmap_flag_file, e))
+
     if not dbapi:
         dbapi = pecan.request.dbapi
     crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
                                       constants.CEPH_CRUSH_MAP_APPLIED)
+
     if not os.path.isfile(crushmap_flag_file):
+        _operator = CephApiOperator()
+        if not is_aio_system(dbapi):
+            # At least two monitors have to be running on a standard deployment,
+            # otherwise don't even try to load the crushmap.
+            active_mons, required_mons, __ = _operator.get_monitors_status(dbapi)
+            if required_mons > active_mons:
+                LOG.info("Not enough monitors yet available to fix crushmap.")
+                return False
+
+        # Crushmap may be already loaded thorough puppet, avoid doing it twice.
+        default_ceph_tier_name = constants.SB_TIER_DEFAULT_NAMES[
+                constants.SB_TIER_TYPE_CEPH] + constants.CEPH_CRUSH_TIER_SUFFIX
+        rule_is_present, __, __ = _operator._crush_rule_status(default_ceph_tier_name)
+        if rule_is_present:
+            _create_crushmap_flag_file()
+            return False
+
         stor_model = get_ceph_storage_model(dbapi)
         if stor_model == constants.CEPH_AIO_SX_MODEL:
             crushmap_txt = "/etc/sysinv/crushmap-aio-sx.txt"
@@ -731,13 +758,10 @@ def fix_crushmap(dbapi=None):
             # May not be critical, depends on where this is called.
             reason = "Error: %s Output: %s" % (str(e), e.output)
             raise exception.CephCrushMapNotApplied(reason=reason)
-        try:
-            open(crushmap_flag_file, "w").close()
-        except IOError as e:
-            LOG.warn(_('Failed to create flag file: {}. '
-                       'Reason: {}').format(crushmap_flag_file, e))
+        _create_crushmap_flag_file()
 
         return True
+    return False
 
 
 def get_ceph_storage_model(dbapi=None):

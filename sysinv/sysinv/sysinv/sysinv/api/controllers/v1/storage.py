@@ -471,23 +471,33 @@ class StorageController(rest.RestController):
         except Exception as e:
             LOG.exception(e)
             raise
-
         # Make sure that we are allowed to delete
         _check_host(stor)
 
         # Delete the stor if supported
+        ihost_id = stor['forihostid']
+        ihost = pecan.request.dbapi.ihost_get(ihost_id)
         if stor.function == constants.STOR_FUNCTION_JOURNAL:
             # Host must be locked
-            ihost_id = stor['forihostid']
-            ihost = pecan.request.dbapi.ihost_get(ihost_id)
             if ihost['administrative'] != constants.ADMIN_LOCKED:
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                                 ihost['hostname']))
             self.delete_stor(stor_uuid)
+        elif (stor.function == constants.STOR_FUNCTION_OSD and
+              stor.state == constants.SB_STATE_CONFIGURING_ON_UNLOCK):
+            # Host must be locked
+            if ihost['administrative'] != constants.ADMIN_LOCKED:
+                raise wsme.exc.ClientSideError(_("Host %s must be locked." %
+                                                ihost['hostname']))
+
+            self.delete_stor(stor_uuid)
         else:
             raise wsme.exc.ClientSideError(_(
-                   "Deleting a Storage Function other than %s is not "
-                   "supported on this setup") % constants.STOR_FUNCTION_JOURNAL)
+                   "Deleting a Storage Function other than '%s' and '%s' in "
+                   "state '%s' is not supported on this setup.") %
+                        (constants.STOR_FUNCTION_JOURNAL,
+                         constants.STOR_FUNCTION_OSD,
+                         constants.SB_STATE_CONFIGURING_ON_UNLOCK))
 
     def delete_stor(self, stor_uuid):
         """Delete a stor"""
@@ -497,10 +507,10 @@ class StorageController(rest.RestController):
         try:
             # The conductor will handle removing the stor, not all functions
             # need special handling
-            if stor.function == constants.STOR_FUNCTION_OSD:
-                pecan.request.rpcapi.unconfigure_osd_istor(pecan.request.context,
-                                                           stor)
-            elif stor.function == constants.STOR_FUNCTION_JOURNAL:
+            # if stor.function == constants.STOR_FUNCTION_OSD:
+            #     pecan.request.rpcapi.unconfigure_osd_istor(pecan.request.context,
+            #                                                stor)
+            if stor.function == constants.STOR_FUNCTION_JOURNAL:
                 pecan.request.dbapi.istor_disable_journal(stor_uuid)
             # Now remove the stor from DB
             pecan.request.dbapi.istor_remove_disk_association(stor_uuid)
@@ -901,28 +911,20 @@ def _create(stor, iprofile=None):
                 "Invalid stor device type: only SSD and NVME devices are supported"
                 " for journal functions."))
 
+    if osd_create is True:
+        # Get the next free OSD ID in the system
+        stors = pecan.request.dbapi.istor_get_list(sort_key='osdid', sort_dir='asc')
+        stors_ids = [s['osdid'] for s in stors if s['osdid'] is not None]
+        if stors_ids:
+            candidate_ids = [i for i in range(0, stors_ids[-1] + 2) if i not in stors_ids]
+            create_attrs['osdid'] = candidate_ids[0]
+        else:
+            create_attrs['osdid'] = 0
+    else:
+        create_attrs['osdid'] = None
+
     new_stor = pecan.request.dbapi.istor_create(forihostid,
                                                 create_attrs)
-
-    # Create an osd associated with disk.
-    if osd_create is True:
-        try:
-            new_stor = pecan.request.rpcapi.configure_osd_istor(
-                pecan.request.context, new_stor)
-        except Exception as cpe:
-            LOG.exception(cpe)
-            # Delete the partially configure istor
-            pecan.request.dbapi.istor_destroy(new_stor.uuid)
-            raise wsme.exc.ClientSideError(_(
-                "Internal error: failed to create a storage object. "
-                "Make sure storage cluster is up and healthy."))
-
-        if iprofile:
-            new_stor = pecan.request.dbapi.istor_update(new_stor.uuid,
-                                                        {'osdid': None})
-        else:
-            # Update the database record
-            new_stor.save(pecan.request.context)
 
     # Associate the disk to db record
     values = {'foristorid': new_stor.id}

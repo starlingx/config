@@ -283,15 +283,6 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.remotelogging_create(system_id_attribute_value)
         self.dbapi.ptp_create(system_id_attribute_value)
 
-        # set default storage_backend
-        values.update({'backend': constants.SB_TYPE_FILE,
-                       'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_FILE],
-                       'state': constants.SB_STATE_CONFIGURED,
-                       'task': constants.SB_TASK_NONE,
-                       'services': None,
-                       'capabilities': {}})
-        self.dbapi.storage_backend_create(values)
-
         # populate service table
         for optional_service in constants.ALL_OPTIONAL_SERVICES:
             self.dbapi.service_create({'name': optional_service,
@@ -4378,8 +4369,9 @@ class ConductorManager(service.PeriodicService):
 
         if availability == constants.AVAILABILITY_AVAILABLE:
             if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
-                # This should be run once after a boot
+                # This should be run once after a node boot
                 self._clear_ceph_stor_state(ihost_uuid)
+                cceph.fix_crushmap(self.dbapi)
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
@@ -5214,39 +5206,6 @@ class ConductorManager(service.PeriodicService):
         """
         # Not sure yet what the proper response is here
         pass
-
-    def configure_osd_istor(self, context, istor_obj):
-        """Synchronously, have a conductor configure an OSD istor.
-
-        Does the following tasks:
-        - Allocates an OSD.
-        - Creates or resizes an OSD pool as necessary.
-
-        :param context: request context.
-        :param istor_obj: an istor object.
-        :returns: istor object, with updated osdid
-        """
-
-        if istor_obj['osdid']:
-            LOG.error("OSD already assigned: %s", str(istor_obj['osdid']))
-            raise exception.SysinvException(_(
-                "Invalid method call: osdid already assigned: %s") %
-                    str(istor_obj['osdid']))
-
-        # Create the OSD
-        response, body = self._ceph.osd_create(istor_obj['uuid'], body='json')
-        if not response.ok:
-            LOG.error("OSD create failed: %s", response.reason)
-            response.raise_for_status()
-
-        # Update the osdid in the stor object
-        istor_obj['osdid'] = body['output']['osdid']
-
-        # TODO(CephPoolsDecouple): remove
-        if not utils.is_kubernetes_config(self.dbapi):
-            self._ceph.configure_osd_pools()
-
-        return istor_obj
 
     def restore_ceph_config(self, context, after_storage_enabled=False):
         """Restore Ceph configuration during Backup and Restore process.

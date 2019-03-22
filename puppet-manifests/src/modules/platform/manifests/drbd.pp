@@ -445,16 +445,13 @@ class platform::drbd::cephmon ()
   $system_mode = $::platform::params::system_mode
   $system_type = $::platform::params::system_type
 
-  #TODO: This will change once we remove the native cinder service
-  if (str2bool($::is_initial_config_primary) or
-      (str2bool($::is_controller_active) and str2bool($::is_initial_cinder_ceph_config))
-  ){
+  if str2bool($::is_standalone_controller) and ! str2bool($::is_node_ceph_configured) {
     # Active controller, first time configuration.
     $drbd_primary = true
     $drbd_initial = true
     $drbd_automount = true
 
-  } elsif str2bool($::is_standalone_controller){
+  } elsif str2bool($::is_standalone_controller) {
     # Active standalone controller, successive reboots.
     $drbd_primary = true
     $drbd_initial = undef
@@ -490,9 +487,9 @@ class platform::drbd(
   $service_enable = false,
   $service_ensure = 'stopped',
 ) {
-  if (str2bool($::is_initial_config_primary)
+  if (str2bool($::is_initial_config_primary) or str2bool($::is_standalone_controller)
   ){
-    # Enable DRBD at config_controller
+    # Enable DRBD on standalone
     class { '::drbd':
       service_enable => true,
       service_ensure => 'running',
@@ -553,41 +550,55 @@ class platform::drbd::runtime {
   }
 }
 
+class platform::drbd::runtime_service_enable {
+
+  class { '::drbd':
+    service_enable => true,
+    service_ensure => 'running'
+  }
+}
 
 class platform::drbd::pgsql::runtime {
   include ::platform::drbd::params
+  include ::platform::drbd::runtime_service_enable
   include ::platform::drbd::pgsql
 }
 
 
 class platform::drbd::cgcs::runtime {
   include ::platform::drbd::params
+  include ::platform::drbd::runtime_service_enable
   include ::platform::drbd::cgcs
 }
 
 
 class platform::drbd::extension::runtime {
   include ::platform::drbd::params
+  include ::platform::drbd::runtime_service_enable
   include ::platform::drbd::extension
 }
 
 
 class platform::drbd::patch_vault::runtime {
   include ::platform::drbd::params
+  include ::platform::drbd::runtime_service_enable
   include ::platform::drbd::patch_vault
 }
 
 class platform::drbd::etcd::runtime {
   include ::platform::drbd::params
+  include ::platform::drbd::runtime_service_enable
   include ::platform::drbd::etcd
 }
 
 class platform::drbd::dockerdistribution::runtime {
   include ::platform::drbd::params
+  include ::platform::drbd::runtime_service_enable
   include ::platform::drbd::dockerdistribution
 }
 
 class platform::drbd::cephmon::runtime {
   include ::platform::drbd::params
+  include ::platform::drbd::runtime_service_enable
   include ::platform::drbd::cephmon
 }

@@ -512,6 +512,10 @@ class AgentManager(service.PeriodicService):
             msg_dict.update({constants.HOST_ACTION_STATE:
                              constants.HAS_REINSTALLED})
 
+        # Is this the first time since boot we are reporting to conductor?
+        msg_dict.update({constants.SYSINV_AGENT_FIRST_REPORT:
+                         not os.path.exists(SYSINV_FIRST_REPORT_FLAG)})
+
         try:
             rpcapi.iplatform_update_by_ihost(context,
                                              host_uuid,
@@ -915,10 +919,6 @@ class AgentManager(service.PeriodicService):
                 iscsi_initiator_name = self.get_host_iscsi_initiator_name()
                 if iscsi_initiator_name is not None:
                     imsg_dict.update({'iscsi_initiator_name': iscsi_initiator_name})
-
-                # Is this the first time since boot we are reporting to conductor?
-                imsg_dict.update({constants.SYSINV_AGENT_FIRST_REPORT:
-                                  not os.path.exists(SYSINV_FIRST_REPORT_FLAG)})
 
                 self.platform_update_by_host(rpcapi,
                                              icontext,
