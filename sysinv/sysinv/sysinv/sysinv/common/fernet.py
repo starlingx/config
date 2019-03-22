@@ -5,6 +5,8 @@
 #
 
 import os
+import shutil
+import subprocess
 from grp import getgrnam
 from pwd import getpwnam
 
@@ -152,6 +154,29 @@ class FernetOperator(object):
             msg = _("Failed to update fernet keys: %s") % e.message
             LOG.exception(msg)
             raise exception.SysinvException(msg)
+
+    def reset_fernet_keys(self):
+        try:
+            if os.path.isdir(self.key_repository):
+                LOG.info("Remove fernet repo")
+                shutil.rmtree(self.key_repository)
+        except OSError as e:
+            LOG.exception(e)
+
+        with open(os.devnull, "w") as fnull:
+            try:
+                LOG.info("Re-setup fernet repo")
+                subprocess.check_call(['/usr/bin/keystone-manage',
+                                       'fernet_setup',
+                                       '--keystone-user',
+                                       KEYSTONE_USER,
+                                       '--keystone-group',
+                                       KEYSTONE_GROUP],
+                                      stdout=fnull, stderr=fnull)
+            except subprocess.CalledProcessError as e:
+                msg = _("Failed to setup fernet keys: %s") % e.message
+                LOG.exception(msg)
+                raise exception.SysinvException(msg)
 
     def get_fernet_keys(self, key_id=None):
         keys = []

@@ -113,10 +113,12 @@ class FernetKeyController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, body=[FernetKey],
                          status_code=http_client.CREATED)
-    def post(self, keys):
-        key_list = [k.as_dict() for k in keys]
+    def post(self, keys=None):
+        key_list = None
+        if keys:
+            key_list = [k.as_dict() for k in keys]
         try:
-            pecan.request.rpcapi.update_fernet_keys(pecan.request.context,
+            pecan.request.rpcapi.update_fernet_repo(pecan.request.context,
                                                     key_list)
         except Exception as e:
             LOG.exception(e)
@@ -129,7 +131,7 @@ class FernetKeyController(rest.RestController):
     def put(self, keys):
         key_list = [k.as_dict() for k in keys]
         try:
-            pecan.request.rpcapi.update_fernet_keys(pecan.request.context,
+            pecan.request.rpcapi.update_fernet_repo(pecan.request.context,
                                                     key_list)
         except Exception as e:
             LOG.exception(e)
