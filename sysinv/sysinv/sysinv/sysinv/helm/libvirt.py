@@ -41,8 +41,6 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
             }
         }
 
-        self._get_images_overrides(overrides[common.HELM_NS_OPENSTACK])
-
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]
         elif namespace:
@@ -50,13 +48,3 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self, overrides_dict):
-        if self.docker_repo_source != common.DOCKER_SRC_OSH:
-            overrides_dict.update({
-                'images': {
-                    'tags': {
-                        'libvirt': self.docker_image
-                    }
-                }
-            })

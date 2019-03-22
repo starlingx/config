@@ -35,7 +35,6 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
                 'pod': self._get_pod_overrides(),
                 'conf': self._get_conf_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
-                'images': self._get_images_overrides(),
             }
         }
 
@@ -60,28 +59,7 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
                 }
             }
         }
-        if self.docker_repo_source != common.DOCKER_SRC_OSH:
-            overrides.update({'user': {'keystone': {'uid': 0}}})
         return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        return {
-            'tags': {
-                'bootstrap': heat_image,
-                'db_drop': heat_image,
-                'db_init': heat_image,
-                'keystone_api': self.docker_image,
-                'keystone_credential_rotate': self.docker_image,
-                'keystone_credential_setup': self.docker_image,
-                'keystone_db_sync': self.docker_image,
-                'keystone_domain_manage': self.docker_image,
-                'keystone_fernet_rotate': self.docker_image,
-                'keystone_fernet_setup': self.docker_image,
-                'ks_user': heat_image,
-            }
-        }
 
     def _get_conf_keystone_default_overrides(self):
         return {

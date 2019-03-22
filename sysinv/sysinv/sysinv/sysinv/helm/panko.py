@@ -25,7 +25,6 @@ class PankoHelm(openstack.OpenstackBaseHelm):
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': self._get_pod_overrides(),
-                'images': self._get_images_overrides(),
                 'endpoints': self._get_endpoints_overrides()
             }
         }
@@ -45,23 +44,6 @@ class PankoHelm(openstack.OpenstackBaseHelm):
             }
         }
         return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        return {
-            'tags': {
-                'bootstrap': heat_image,
-                'db_drop': heat_image,
-                'db_init': self.docker_image,
-                'panko_db_sync': self.docker_image,
-                'panko_api': self.docker_image,
-                'panko_events_cleaner': self.docker_image,
-                'ks_endpoints': heat_image,
-                'ks_service': heat_image,
-                'ks_user': heat_image,
-            }
-        }
 
     def _get_endpoints_overrides(self):
         return {

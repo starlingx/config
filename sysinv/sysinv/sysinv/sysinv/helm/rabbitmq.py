@@ -26,7 +26,6 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
                         'server': self._num_controllers()
                     }
                 },
-                'images': self._get_images_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
             }
         }
@@ -38,16 +37,6 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-
-        return {
-            'tags': {
-                'prometheus_rabbitmq_exporter_helm_tests': heat_image
-            }
-        }
 
     def _get_endpoints_overrides(self):
         credentials = self._get_endpoints_oslo_messaging_overrides(

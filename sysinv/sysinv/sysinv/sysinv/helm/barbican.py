@@ -26,7 +26,6 @@ class BarbicanHelm(openstack.OpenstackBaseHelm):
                     }
                 },
                 'endpoints': self._get_endpoints_overrides(),
-                'images': self._get_images_overrides()
             }
         }
 
@@ -60,21 +59,4 @@ class BarbicanHelm(openstack.OpenstackBaseHelm):
                 'auth': self._get_endpoints_oslo_messaging_overrides(
                     self.SERVICE_NAME, self.AUTH_USERS)
             },
-        }
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        return {
-            'tags': {
-                'barbican_api': self.docker_image,
-                'barbican_db_sync': self.docker_image,
-                'bootstrap': heat_image,
-                'db_drop': heat_image,
-                'db_init': heat_image,
-                'ks_endpoints': heat_image,
-                'ks_service': heat_image,
-                'ks_user': heat_image,
-                'scripted_test': heat_image,
-            }
         }

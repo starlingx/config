@@ -23,7 +23,6 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {
-                'images': self._get_images_overrides(),
                 'conf': {
                     'horizon': {
                         'local_settings': {
@@ -61,18 +60,6 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
                 'auth': self._get_endpoints_oslo_db_overrides(
                     self.SERVICE_NAME, [self.SERVICE_NAME])
             },
-        }
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        return {
-            'tags': {
-                'db_drop': heat_image,
-                'db_init': heat_image,
-                'horizon': self.docker_image,
-                'horizon_db_sync': self.docker_image,
-            }
         }
 
     def _get_local_settings_config_overrides(self):

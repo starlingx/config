@@ -44,26 +44,12 @@ def helm_context(func):
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
-    def __init__(self, dbapi=None, path=None, docker_repository=None):
+    def __init__(self, dbapi=None, path=None):
         if path is None:
             path = common.HELM_OVERRIDES_PATH
 
-        # Set the primary source of docker images
-        if docker_repository is None:
-            # During initial development, use upstream OSH images by default and
-            # switch to the STX repo when the images are validated and ready for
-            # use.
-            docker_repository = common.DOCKER_SRC_OSH
-        else:
-            valid_docker_repositories = common.DOCKER_SRCS.keys()
-            if docker_repository not in valid_docker_repositories:
-                raise exception.InvalidHelmDockerImageSource(
-                    source=docker_repository,
-                    valid_srcs=valid_docker_repositories)
-
         self.dbapi = dbapi
         self.path = path
-        self.docker_repo_source = docker_repository
 
         # register chart operators for lookup
         self.chart_operators = {}

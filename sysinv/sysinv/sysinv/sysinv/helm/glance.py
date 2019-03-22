@@ -35,7 +35,6 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
                 'endpoints': self._get_endpoints_overrides(),
                 'storage': self._get_storage_overrides(),
                 'conf': self._get_conf_overrides(),
-                'images': self._get_images_overrides(),
                 'bootstrap': self._get_bootstrap_overrides()
             }
         }
@@ -47,30 +46,6 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        ceph_config_helper_image = "{}:{}/{}/{}{}:{}".format(
-            self._get_management_address(), common.REGISTRY_PORT,
-            common.REPO_LOC,
-            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
-            'ceph-config-helper', self.docker_repo_tag)
-
-        return {
-            'tags': {
-                'bootstrap': heat_image,
-                'db_drop': heat_image,
-                'db_init': heat_image,
-                'glance_storage_init': ceph_config_helper_image,
-                'glance_api': self.docker_image,
-                'glance_db_sync': self.docker_image,
-                'glance_registry': self.docker_image,
-                'ks_endpoints': heat_image,
-                'ks_service': heat_image,
-                'ks_user': heat_image,
-            }
-        }
 
     def _get_pod_overrides(self):
         replicas_count = 1

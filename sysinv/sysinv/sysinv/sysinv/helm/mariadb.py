@@ -36,7 +36,6 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
                         'ingress': self._num_controllers()
                     }
                 },
-                'images': self._get_images_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
             }
         }
@@ -48,16 +47,6 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-
-        return {
-            'tags': {
-                'prometheus_mysql_exporter_helm_tests': heat_image
-            }
-        }
 
     def _get_endpoints_overrides(self):
         return {
