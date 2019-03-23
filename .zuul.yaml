@@ -6,6 +6,7 @@
       jobs:
         - build-openstack-api-ref
         - build-openstack-releasenotes
+        - flock-devstack-config
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py35
@@ -16,8 +17,6 @@
         - controllerconfig-tox-pylint
         - configutilities-tox-flake8
         - configutilities-tox-pylint
-        - stx-devstack-config:
-            voting: false
         - cgtsclient-tox-py27
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
@@ -27,6 +26,7 @@
       jobs:
         - build-openstack-api-ref
         - build-openstack-releasenotes
+        - flock-devstack-config
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py35
@@ -165,22 +165,18 @@
       tox_extra_args: -c configutilities/configutilities/tox.ini
 
 - job:
-    name: stx-devstack-config
-    parent: stx-devstack-base
-    timeout: 7800
+    name: flock-devstack-config
+    parent: flock-devstack-base
     required-projects:
-      - openstack/stx-update
       - openstack/stx-fault
       - openstack/stx-integ
+      - openstack/stx-update
     vars:
       tox_envlist: functional
       devstack_services:
-        horizon: false
         # StarlingX services
         fm-common: true
         fm-api: true
-        # fm-rest-api: true
-        # fm-mgr: true
         cgtsclient: true
         sysinv-agent: true
         # Skip sysinv-api for now, needs more attention
@@ -188,12 +184,10 @@
         sysinv-cond: true
         tls-proxy: false
       devstack_plugins:
-        stx-config: git://git.starlingx.io/stx-config
-        stx-fault: git://git.starlingx.io/stx-fault
-        stx-integ: git://git.starlingx.io/stx-integ
-        stx-update: git://git.starlingx.io/stx-update
-    files:
-      - ^devstack/.*
+        stx-config: https://git.starlingx.io/stx-config
+        stx-fault: https://git.starlingx.io/stx-fault
+        stx-integ: https://git.starlingx.io/stx-integ
+        stx-update: https://git.starlingx.io/stx-update
 
 - job:
     name: cgtsclient-tox-py27
