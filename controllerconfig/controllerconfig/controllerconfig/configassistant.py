@@ -702,7 +702,7 @@ class ConfigAssistant():
         }
         user_input = prompt_for(
             "Configure Distributed Cloud System Controller [y/N]: ", 'n',
-            lambda text: "Invalid choice" if text not in value_mapping
+            lambda text: "Invalid choice" if text.lower() not in value_mapping
             else None
         )
         self.system_dc_role = value_mapping[user_input.lower()]
