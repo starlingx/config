@@ -31,7 +31,12 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
                         }
                     }
                 },
-                'endpoints': self._get_endpoints_overrides()
+                'endpoints': self._get_endpoints_overrides(),
+                'network': {
+                    'node_port': {
+                        'enabled': self._get_network_node_port_overrides()
+                    }
+                }
             }
         }
 
@@ -49,6 +54,8 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
                         constants.HELM_CHART_HORIZON),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
             },
             'oslo_db': {
                 'auth': self._get_endpoints_oslo_db_overrides(
@@ -134,3 +141,15 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
             return False
         else:
             return super(HorizonHelm, self)._region_config()
+
+    def _get_network_node_port_overrides(self):
+        # If openstack endpoint FQDN is configured, disable node_port 31000
+        # which will enable the Ingress for the horizon service
+        endpoint_fqdn = self._get_service_parameter(
+            constants.SERVICE_TYPE_OPENSTACK,
+            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
+            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN)
+        if endpoint_fqdn:
+            return False
+        else:
+            return True

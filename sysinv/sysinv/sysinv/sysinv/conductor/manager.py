@@ -5456,9 +5456,7 @@ class ConductorManager(service.PeriodicService):
             "personalities": personalities,
             "classes": ['platform::haproxy::runtime',
                         'openstack::keystone::endpoint::runtime',
-                        'openstack::horizon::runtime',
-                        'openstack::nova::api::runtime',
-                        'openstack::heat::engine::runtime']
+                        'openstack::horizon::runtime']
         }
 
         config_uuid = self._config_update_hosts(context, personalities)
@@ -10203,8 +10201,9 @@ class ConductorManager(service.PeriodicService):
 
         certificates = self.dbapi.certificate_get_list()
         for certificate in certificates:
-            if certificate.certtype in [
-               constants.CERT_MODE_SSL, constants.CERT_MODE_TPM]:
+            if certificate.certtype in [constants.CERT_MODE_SSL,
+                                        constants.CERT_MODE_TPM,
+                                        constants.CERT_MODE_OPENSTACK]:
                 self.dbapi.certificate_destroy(certificate.uuid)
 
         personalities = [constants.CONTROLLER]
@@ -10274,6 +10273,7 @@ class ConductorManager(service.PeriodicService):
                     constants.CERT_MODE_TPM,
                     constants.CERT_MODE_MURANO,
                     constants.CERT_MODE_DOCKER_REGISTRY,
+                    constants.CERT_MODE_OPENSTACK,
                     ]:
             private_mode = True
 
@@ -10575,6 +10575,73 @@ class ConductorManager(service.PeriodicService):
                 'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
             }
             self._config_update_file(context, config_uuid, config_dict)
+        elif mode == constants.CERT_MODE_OPENSTACK:
+            config_uuid = self._config_update_hosts(context, personalities)
+            key_path = constants.OPENSTACK_CERT_KEY_FILE
+            cert_path = constants.OPENSTACK_CERT_FILE
+            config_dict = {
+                'personalities': personalities,
+                'file_names': [key_path, cert_path],
+                'file_content': {key_path: private_bytes,
+                                 cert_path: public_bytes},
+                'nobackup': True,
+                'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
+            }
+            self._config_update_file(context, config_uuid, config_dict)
+
+            if not os.path.exists(constants.CERT_OPENSTACK_SHARED_DIR):
+                os.makedirs(constants.CERT_OPENSTACK_SHARED_DIR)
+            # copy the certificate to shared directory
+            with os.fdopen(os.open(constants.OPENSTACK_CERT_FILE_SHARED,
+                                   os.O_CREAT | os.O_WRONLY,
+                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
+                                   'wb') as f:
+                f.write(public_bytes)
+            with os.fdopen(os.open(constants.OPENSTACK_CERT_KEY_FILE_SHARED,
+                                   os.O_CREAT | os.O_WRONLY,
+                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
+                                   'wb') as f:
+                f.write(private_bytes)
+
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['openstack::keystone::endpoint::runtime',
+                            'openstack::horizon::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
+
+            self._remove_certificate_file(mode, certificate_file)
+
+        elif mode == constants.CERT_MODE_OPENSTACK_CA:
+            config_uuid = self._config_update_hosts(context, personalities)
+            file_content = public_bytes
+            config_dict = {
+                'personalities': personalities,
+                'file_names': [constants.OPENSTACK_CERT_CA_FILE],
+                'file_content': file_content,
+                'permissions': constants.CONFIG_FILE_PERMISSION_DEFAULT,
+            }
+            self._config_update_file(context, config_uuid, config_dict)
+
+            # copy the certificate to shared directory
+            with os.fdopen(os.open(constants.OPENSTACK_CERT_CA_FILE_SHARED,
+                                   os.O_CREAT | os.O_WRONLY,
+                                   constants.CONFIG_FILE_PERMISSION_DEFAULT),
+                                   'wb') as f:
+                f.write(file_content)
+
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['openstack::keystone::endpoint::runtime',
+                            'openstack::horizon::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
         else:
             msg = "config_certificate unexpected mode=%s" % mode
             LOG.warn(msg)

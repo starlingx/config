@@ -1348,18 +1348,35 @@ SSL_CERT_CA_DIR = "/etc/ssl/certs/"
 SSL_CERT_CA_FILE = os.path.join(SSL_CERT_CA_DIR, CERT_CA_FILE)
 SSL_CERT_CA_FILE_SHARED = os.path.join(tsc.CONFIG_PATH, CERT_CA_FILE)
 
+CERT_OPENSTACK_DIR = "/etc/ssl/private/openstack"
+CERT_OPENSTACK_SHARED_DIR = os.path.join(tsc.CONFIG_PATH, 'openstack')
+OPENSTACK_CERT_FILE = os.path.join(CERT_OPENSTACK_DIR, CERT_FILE)
+OPENSTACK_CERT_KEY_FILE = os.path.join(CERT_OPENSTACK_DIR, CERT_KEY_FILE)
+OPENSTACK_CERT_CA_FILE = os.path.join(CERT_OPENSTACK_DIR, CERT_CA_FILE)
+OPENSTACK_CERT_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
+                                          CERT_FILE)
+OPENSTACK_CERT_KEY_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
+                                              CERT_KEY_FILE)
+OPENSTACK_CERT_CA_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
+                                             CERT_CA_FILE)
+
 CERT_MODE_SSL = 'ssl'
 CERT_MODE_SSL_CA = 'ssl_ca'
 CERT_MODE_TPM = 'tpm_mode'
 CERT_MODE_MURANO = 'murano'
 CERT_MODE_MURANO_CA = 'murano_ca'
 CERT_MODE_DOCKER_REGISTRY = 'docker_registry'
+CERT_MODE_OPENSTACK = 'openstack'
+CERT_MODE_OPENSTACK_CA = 'openstack_ca'
 CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_SSL_CA,
                         CERT_MODE_TPM,
                         CERT_MODE_MURANO,
                         CERT_MODE_MURANO_CA,
-                        CERT_MODE_DOCKER_REGISTRY]
+                        CERT_MODE_DOCKER_REGISTRY,
+                        CERT_MODE_OPENSTACK,
+                        CERT_MODE_OPENSTACK_CA,
+                        ]
 
 # CONFIG file permissions
 CONFIG_FILE_PERMISSION_ROOT_READ_ONLY = 0o400

@@ -299,6 +299,21 @@ start()
         fi
     fi
 
+    if [ -e $CONFIG_DIR/openstack ]
+    then
+        if [ ! -e /etc/ssl/private/openstack ]
+        then
+            mkdir -p /etc/ssl/private/openstack
+            chmod 755 /etc/ssl/private/openstack
+        fi
+
+        cp -p $CONFIG_DIR/openstack/* /etc/ssl/private/openstack
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy openstack certificate files"
+        fi
+    fi
+
     if [ -e $CONFIG_DIR/iptables.rules ]
     then
         cp $CONFIG_DIR/iptables.rules /etc/platform/iptables.rules

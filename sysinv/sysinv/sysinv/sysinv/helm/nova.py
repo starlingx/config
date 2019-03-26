@@ -56,6 +56,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = 'nova'
     AUTH_USERS = ['nova', 'placement']
     SERVICE_USERS = ['neutron', 'ironic']
+    NOVNCPROXY_SERVICE_NAME = 'novncproxy'
 
     def get_overrides(self, namespace=None):
 
@@ -158,6 +159,19 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 'auth': self._get_endpoints_identity_overrides(
                     self.SERVICE_NAME, self.AUTH_USERS),
             },
+            'compute': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(self.SERVICE_NAME),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+            },
+            'compute_novnc_proxy': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        self.NOVNCPROXY_SERVICE_NAME),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+            },
             'oslo_cache': {
                 'auth': {
                     'memcache_secret_key':
@@ -197,11 +211,14 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
             constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN)
         if endpoint_domain is not None:
-            location = "%s.%s" % (constants.HELM_CHART_HORIZON,
+            location = "%s.%s" % (self.NOVNCPROXY_SERVICE_NAME,
                                   str(endpoint_domain.value).lower())
         else:
-            location = self._get_oam_address()
-        url = "http://%s:6080/vnc_auto.html" % location
+            location = self._get_service_default_dns_name(
+                self.NOVNCPROXY_SERVICE_NAME)
+
+        url = "%s://%s/vnc_auto.html" % (self._get_public_protocol(),
+                                         location)
         return url
 
     def _get_virt_type(self):

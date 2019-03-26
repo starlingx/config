@@ -288,7 +288,10 @@ secrets:
   identity:
     admin: nova-keystone-admin
     nova: nova-keystone-user
-
+  tls:
+    compute:
+      api_proxy:
+        public: nova-api-proxy-tls-public
 
 manifests:
   configmap_bin: true

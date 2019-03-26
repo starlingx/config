@@ -27,6 +27,15 @@ class platform::client
     mode    => '0644',
     content => generate('/usr/bin/openstack', 'complete'),
   }
+
+  if $::personality == 'controller' {
+    file {'/etc/ssl/private/openstack':
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0755',
+    }
+  }
 }
 
 class platform::client::credentials::params (

@@ -70,7 +70,7 @@ def do_certificate_list(cc, args):
 @utils.arg('-m', '--mode',
            metavar='<mode>',
            help="optional mode: 'tpm_mode', 'murano', 'murano_ca',"
-                "'docker_registry'. "
+                "'docker_registry, 'openstack', 'openstack_ca'. "
                 "Default is 'ssl'.")
 def do_certificate_install(cc, args):
     """Install certificate."""

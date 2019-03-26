@@ -90,6 +90,8 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
                         constants.HELM_CHART_GLANCE),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+                'port': self._get_endpoints_port_api_public_overrides(),
             },
             'identity': {
                 'auth': self._get_endpoints_identity_overrides(
