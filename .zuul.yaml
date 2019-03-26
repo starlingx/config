@@ -179,8 +179,7 @@
         fm-api: true
         cgtsclient: true
         sysinv-agent: true
-        # Skip sysinv-api for now, needs more attention
-        # sysinv-api: true
+        sysinv-api: true
         sysinv-cond: true
         tls-proxy: false
       devstack_plugins:
