@@ -40,9 +40,8 @@ class platform::helm
 
       Class['::platform::kubernetes::master']
 
-      # TODO(jrichard): Upversion tiller image to v2.11.1 once released.
       -> exec { 'load tiller docker image':
-        command   => "docker image pull ${gcr_registry}/kubernetes-helm/tiller:v2.12.1",
+        command   => "docker image pull ${gcr_registry}/kubernetes-helm/tiller:v2.13.1",
         logoutput => true,
       }
 
@@ -62,10 +61,9 @@ class platform::helm
         logoutput => true,
       }
 
-      # TODO(jrichard): Upversion tiller image to v2.11.1 once released.
       -> exec { 'initialize helm':
         environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
-        command     => "helm init --skip-refresh --service-account tiller --node-selectors \"node-role.kubernetes.io/master\"=\"\" --tiller-image=${gcr_registry}/kubernetes-helm/tiller:v2.12.1", # lint:ignore:140chars
+        command     => "helm init --skip-refresh --service-account tiller --node-selectors \"node-role.kubernetes.io/master\"=\"\" --tiller-image=${gcr_registry}/kubernetes-helm/tiller:v2.13.1", # lint:ignore:140chars
         logoutput   => true,
         user        => 'wrsroot',
         group       => 'wrs',

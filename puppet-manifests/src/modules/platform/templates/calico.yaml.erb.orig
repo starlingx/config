@@ -1,30 +1,4 @@
 ---
-# Calico Version v3.6
-# Based off:
-# https://docs.projectcalico.org/v3.6/getting-started/kubernetes/installation/
-#              hosted/kubernetes-datastore/calico-networking/typha/calico.yaml
-# Original file located in the source tree as calico.yaml.erb.orig
-#
-# Notes when upversioning calico:
-#
-# Refer to configuration instructions here:
-# https://docs.projectcalico.org/v3.6/getting-started/kubernetes/installation/
-#              calico
-#
-# It is important to test in a multi-controller environment (ie: AIO-DX)  that
-# the pods can be pinged by their endpoint.  ie: A pod running on controller-1
-# can be pinged from controller-0, and vica versa.
-#
-# An additional test (run on controller-0) that queries the calico daemon
-# health and status
-#
-# curl -O -L https://github.com/projectcalico/calicoctl/releases/download/
-#                   v3.6.1/calicoctl
-# chmod +x calicoctl
-# sudo mv calicoctl /usr/local/bin
-# export DATASTORE_TYPE=kubernetes
-# sudo calicoctl node status
-#
 # Source: calico/templates/calico-config.yaml
 # This ConfigMap is used to configure a self-hosted Calico installation.
 kind: ConfigMap
@@ -539,7 +513,7 @@ spec:
       # as a host-networked pod.
       serviceAccountName: calico-node
       containers:
-      - image: <%= @quay_registry %>/calico/typha:v3.6.1
+      - image: calico/typha:v3.6.1
         name: calico-typha
         ports:
         - containerPort: 5473
@@ -652,7 +626,7 @@ spec:
         # It can be deleted if this is a fresh installation, or if you have already
         # upgraded to use calico-ipam.
         - name: upgrade-ipam
-          image: <%= @quay_registry %>/calico/cni:v3.6.1
+          image: calico/cni:v3.6.1
           command: ["/opt/cni/bin/calico-ipam", "-upgrade"]
           env:
             - name: KUBERNETES_NODE_NAME
@@ -672,7 +646,7 @@ spec:
         # This container installs the Calico CNI binaries
         # and CNI network config file on each node.
         - name: install-cni
-          image: <%= @quay_registry %>/calico/cni:v3.6.1
+          image: calico/cni:v3.6.1
           command: ["/install-cni.sh"]
           env:
             # Name of the CNI config file to create.
@@ -708,7 +682,7 @@ spec:
         # container programs network policy and routes on each
         # host.
         - name: calico-node
-          image: <%= @quay_registry %>/calico/node:v3.6.1
+          image: calico/node:v3.6.1
           env:
             # Use Kubernetes API as the backing datastore.
             - name: DATASTORE_TYPE
@@ -739,8 +713,6 @@ spec:
             # Auto-detect the BGP IP address.
             - name: IP
               value: "autodetect"
-            - name: IP_AUTODETECTION_METHOD
-              value: "can-reach=<%= @apiserver_advertise_address %>"
             # Enable IPIP
             - name: CALICO_IPV4POOL_IPIP
               value: "Always"
@@ -754,7 +726,7 @@ spec:
             # chosen from this range. Changing this value after installation will have
             # no effect. This should fall within `--cluster-cidr`.
             - name: CALICO_IPV4POOL_CIDR
-              value: "<%= @pod_network_cidr %>"
+              value: "192.168.0.0/16"
             # Disable file logging so `kubectl logs` works.
             - name: CALICO_DISABLE_FILE_LOGGING
               value: "true"
@@ -874,7 +846,7 @@ spec:
       serviceAccountName: calico-kube-controllers
       containers:
         - name: calico-kube-controllers
-          image: <%= @quay_registry %>/calico/kube-controllers:v3.6.1
+          image: calico/kube-controllers:v3.6.1
           env:
             # Choose which controllers to run.
             - name: ENABLED_CONTROLLERS

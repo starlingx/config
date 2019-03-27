@@ -24,16 +24,6 @@ class platform::kubernetes::kubeadm {
     $k8s_registry = undef
   }
 
-  # kubelet use --pod-infra-container-image to indentify the specified image
-  # TODO: this is not needed after kubernetes upgraded to 1.13
-  #       because the imageRepository setting will be used
-  if $k8s_registry {
-    file { '/etc/sysconfig/kubelet':
-      ensure  => file,
-      content => template('platform/kubelet.conf.erb'),
-    }
-  }
-
   # Update iptables config. This is required based on:
   # https://kubernetes.io/docs/tasks/tools/install-kubeadm
   # This probably belongs somewhere else - initscripts package?
@@ -117,23 +107,7 @@ class platform::kubernetes::master::init
       mode   => '0644',
       source => "puppet:///modules/${module_name}/kubeconfig.sh"
     }
-
-    # Configure calico networking using the Kubernetes API datastore. This is
-    # beta functionality and has this limitation:
-    #   Note: Calico networking with the Kubernetes API datastore is beta
-    #   because it does not yet support Calico IPAM. It uses host-local IPAM
-    #   with Kubernetes pod CIDR assignments instead.
-    # See https://docs.projectcalico.org/v3.2/getting-started/kubernetes/
-    # installation/calico for more info.
-    -> file { '/etc/kubernetes/rbac-kdd.yaml':
-      ensure  => file,
-      content => template('platform/rbac-kdd.yaml.erb'),
-    }
-    -> exec { 'configure calico RBAC':
-      command   =>
-        'kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/rbac-kdd.yaml',
-      logoutput => true,
-    }
+    # Configure calico networking using the Kubernetes API datastore.
     -> file { '/etc/kubernetes/calico.yaml':
       ensure  => file,
       content => template('platform/calico.yaml.erb'),
@@ -144,7 +118,6 @@ class platform::kubernetes::master::init
       logoutput => true,
     }
 
-    # kubernetes 1.12 uses coredns rather than kube-dns.
     # Restrict the dns pod to master nodes
     -> exec { 'restrict coredns to master nodes':
       command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'', # lint:ignore:140chars
@@ -254,7 +227,6 @@ class platform::kubernetes::master::init
         source => "puppet:///modules/${module_name}/kubeconfig.sh"
       }
 
-      # kubernetes 1.12 uses coredns rather than kube-dns.
       # Restrict the dns pod to master nodes. It seems that each time
       # kubeadm init is run, it undoes any changes to the deployment.
       -> exec { 'restrict coredns to master nodes':
