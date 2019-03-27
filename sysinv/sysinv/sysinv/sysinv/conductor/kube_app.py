@@ -472,11 +472,8 @@ class AppOperator(object):
             # between upload and apply, or between applies. Refresh the
             # saved images list.
             saved_images_list = self._retrieve_images_list(app.imgfile_abs)
-            saved_download_images_list = saved_images_list.get("download_images")
-            combined_images_list = list(saved_download_images_list)
-            combined_images_list.extend(
-                self._get_image_tags_by_charts(app.imgfile_abs, app.charts))
-            images_to_download = list(set(combined_images_list))
+            saved_download_images_list = list(saved_images_list.get("download_images"))
+            images_to_download = self._get_image_tags_by_charts(app.imgfile_abs, app.charts)
             if set(saved_download_images_list) != set(images_to_download):
                 saved_images_list.update({"download_images": images_to_download})
                 with open(app.imgfile_abs, 'wb') as f:
