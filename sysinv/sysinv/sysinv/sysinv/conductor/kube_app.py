@@ -851,7 +851,7 @@ class AppOperator(object):
     def _remove_chart_overrides(self, manifest_file):
         charts = self._get_list_of_charts(manifest_file)
         for chart in charts:
-            if chart.name in constants.SUPPORTED_HELM_CHARTS:
+            if chart.name in self._helm.chart_operators:
                 self._helm.remove_helm_chart_overrides(chart.name,
                                                        chart.namespace)
 
