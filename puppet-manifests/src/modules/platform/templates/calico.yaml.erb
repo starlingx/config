@@ -588,6 +588,12 @@ spec:
         - name: calico-node
           image: <%= @quay_registry %>/calico/node:v3.6.1
           env:
+            # Configure inbound failsafe rules
+            - name: FELIX_FAILSAFEINBOUNDHOSTPORTS
+              value: "tcp:22, udp:68, tcp:179"
+            # Configure output failsafe rules
+            - name: FELIX_FAILSAFEOUTBOUNDHOSTPORTS
+              value: "udp:53, udp:67, tcp:179"
             # Use Kubernetes API as the backing datastore.
             - name: DATASTORE_TYPE
               value: "kubernetes"
