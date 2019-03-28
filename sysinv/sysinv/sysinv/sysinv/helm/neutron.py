@@ -200,6 +200,10 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                             }
                         }
                     }
+                    # if ovs runs on host, auto bridge add is covered by sysinv
+                    if utils.get_vswitch_type(self.dbapi) == constants.VSWITCH_TYPE_NONE:
+                        host_neutron['conf'].update({
+                            'auto_bridge_add': self._get_host_bridges(host)})
                     host_list.append(host_neutron)
 
         return host_list
@@ -216,6 +220,30 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         else:  # if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
             return 2, iface['ifname']
 
+    def _get_datapath_type(self):
+        if (utils.get_vswitch_type(self.dbapi) ==
+                constants.VSWITCH_TYPE_OVS_DPDK):
+            return "netdev"
+        else:
+            return "system"
+
+    def _get_host_bridges(self, host):
+        bridges = {}
+        index = 0
+        for iface in sorted(self.dbapi.iinterface_get_by_ihost(host.id),
+                            key=self._interface_sort_key):
+            if self._is_data_network_type(iface):
+                if any(dn.datanetwork_network_type in
+                       [constants.DATANETWORK_TYPE_FLAT,
+                        constants.DATANETWORK_TYPE_VLAN] for dn in
+                       self._get_interface_datanets(iface)):
+                    # obtain the assigned bridge for interface
+                    brname = 'br-phy%d' % index
+                    port_name = self._get_interface_port_name(iface)
+                    bridges[brname] = port_name
+                    index += 1
+        return bridges
+
     def _get_dynamic_ovs_agent_config(self, host):
         local_ip = None
         tunnel_types = None
@@ -229,21 +257,24 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 if brname:
                     datanets = self._get_interface_datanets(iface)
                     for datanet in datanets:
+                        dn_name = datanet['datanetwork_name'].strip()
                         LOG.debug('_get_dynamic_ovs_agent_config '
-                                  'host=%s datanet=%s', host.hostname, datanet)
-                        address = self._get_interface_primary_address(
-                            self.context, host, iface)
-                        if address:
-                            local_ip = address
+                                  'host=%s datanet=%s', host.hostname, dn_name)
+                        if (datanet.datanetwork_network_type ==
+                                constants.DATANETWORK_TYPE_VXLAN):
+                            local_ip = self._get_interface_primary_address(
+                                self.context, host, iface)
                             tunnel_types = constants.DATANETWORK_TYPE_VXLAN
-                        else:
-                            bridge_mappings += ('%s:%s,' % (datanet, brname))
-                index += 1
+                        elif (datanet.datanetwork_network_type in
+                              [constants.DATANETWORK_TYPE_FLAT,
+                               constants.DATANETWORK_TYPE_VLAN]):
+                            bridge_mappings += ('%s:%s,' % (dn_name, brname))
+                            index += 1
 
         agent = {}
         ovs = {
             'integration_bridge': 'br-int',
-            'datapath_type': 'netdev',
+            'datapath_type': self._get_datapath_type(),
             'vhostuser_socket_dir': '/var/run/openvswitch',
         }
 
@@ -277,7 +308,8 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 datanets = self._get_interface_datanets(iface)
                 port_name = self._get_interface_port_name(iface)
                 for datanet in datanets:
-                    physical_device_mappings += ('%s:%s,' % (datanet, port_name))
+                    dn_name = datanet['datanetwork_name'].strip()
+                    physical_device_mappings += ('%s:%s,' % (dn_name, port_name))
         sriov_nic = {
             'physical_device_mappings': str(physical_device_mappings),
         }
@@ -330,7 +362,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
 
         ifdatanets = self.dbapi.interface_datanetwork_get_by_interface(
             iface.uuid)
-        return [ifdn['datanetwork_name'].strip() for ifdn in ifdatanets]
+        return ifdatanets
 
     def _get_interface_port_name(self, iface):
         """

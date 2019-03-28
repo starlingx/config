@@ -280,6 +280,7 @@ VXLAN_MTU_OVERHEAD = 74
 # Supported worker node vswitch types
 VSWITCH_TYPE_OVS_DPDK = "ovs-dpdk"
 VSWITCH_TYPE_NUAGE_VRS = "nuage_vrs"
+VSWITCH_TYPE_NONE = "none"
 
 # Partition default sizes
 DEFAULT_IMAGE_STOR_SIZE = 10
