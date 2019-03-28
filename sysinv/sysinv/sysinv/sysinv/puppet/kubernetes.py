@@ -10,6 +10,7 @@ import subprocess
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 
 from sysinv.puppet import base
@@ -69,6 +70,13 @@ class KubernetesPuppet(base.BasePuppet):
 
     def get_host_config(self, host):
         config = {}
+
+        # Retrieve labels for this host
+        config.update(self._get_host_label_config(host))
+
+        # Update cgroup resource controller parameters for this host
+        config.update(self._get_host_k8s_cgroup_config(host))
+
         if host.personality != constants.WORKER:
             return config
 
@@ -131,3 +139,55 @@ class KubernetesPuppet(base.BasePuppet):
     def _get_dns_service_ip(self):
         # Setting this to a constant for now. Will be configurable later
         return constants.DEFAULT_DNS_SERVICE_IP
+
+    def _get_host_label_config(self, host):
+        config = {}
+        labels = self.dbapi.label_get_by_host(host.uuid)
+        host_label_keys = []
+        for label in labels:
+            host_label_keys.append(label.label_key)
+        config.update(
+            {'platform::kubernetes::params::host_labels': host_label_keys})
+        return config
+
+    def _get_host_k8s_cgroup_config(self, host):
+        config = {}
+
+        # determine set of all logical cpus and nodes
+        host_cpus = self._get_host_cpu_list(host, threads=True)
+        host_cpuset = set([c.cpu for c in host_cpus])
+        host_nodeset = set([c.numa_node for c in host_cpus])
+
+        # determine set of platform logical cpus and nodes
+        platform_cpus = self._get_host_cpu_list(
+            host, function=constants.PLATFORM_FUNCTION, threads=True)
+        platform_cpuset = set([c.cpu for c in platform_cpus])
+        platform_nodeset = set([c.numa_node for c in platform_cpus])
+
+        # determine set of nonplatform logical cpus and nodes
+        nonplatform_cpuset = host_cpuset - platform_cpuset
+        nonplatform_nodeset = set()
+        for c in host_cpus:
+            if c.cpu not in platform_cpuset:
+                nonplatform_nodeset.update([c.numa_node])
+
+        if constants.WORKER in utils.get_personalities(host):
+            if self.is_openstack_compute(host):
+                k8s_cpuset = utils.format_range_set(platform_cpuset)
+                k8s_nodeset = utils.format_range_set(platform_nodeset)
+            else:
+                k8s_cpuset = utils.format_range_set(nonplatform_cpuset)
+                k8s_nodeset = utils.format_range_set(nonplatform_nodeset)
+        else:
+            k8s_cpuset = utils.format_range_set(host_cpuset)
+            k8s_nodeset = utils.format_range_set(host_nodeset)
+
+        LOG.debug('host:%s, k8s_cpuset:%s, k8s_nodeset:%s',
+                  host.hostname, k8s_cpuset, k8s_nodeset)
+
+        config.update(
+            {'platform::kubernetes::params::k8s_cpuset': k8s_cpuset,
+             'platform::kubernetes::params::k8s_nodeset': k8s_nodeset,
+             })
+
+        return config

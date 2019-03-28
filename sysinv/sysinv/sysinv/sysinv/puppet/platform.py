@@ -4,10 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import copy
-import itertools
 import os
-import operator
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -552,15 +549,8 @@ class PlatformPuppet(base.BasePuppet):
             if not host_cpus:
                 return config
 
-            # Define the full range of CPUs for the compute host
-            max_cpu = max(host_cpus, key=operator.attrgetter('cpu'))
-            worker_cpu_list = "\"0-%d\"" % max_cpu.cpu
-
             platform_cpus_no_threads = self._get_platform_cpu_list(host)
             vswitch_cpus_no_threads = self._get_vswitch_cpu_list(host)
-
-            platform_cpu_list_with_quotes = \
-                "\"%s\"" % ','.join([str(c.cpu) for c in platform_cpus_no_threads])
 
             platform_numa_cpus = utils.get_numa_index_list(platform_cpus_no_threads)
             vswitch_numa_cpus = utils.get_numa_index_list(vswitch_cpus_no_threads)
@@ -582,69 +572,53 @@ class PlatformPuppet(base.BasePuppet):
             reserved_platform_cores = "(%s)" % ' '.join(platform_cores)
             reserved_vswitch_cores = "(%s)" % ' '.join(vswitch_cores)
 
-            host_cpus = sorted(host_cpus, key=lambda c: c.cpu)
-            n_cpus = len(host_cpus)
-            host_cpu_list = [c.cpu for c in host_cpus]
+            # all logical cpus
+            host_cpus = self._get_host_cpu_list(host, threads=True)
+            host_cpuset = set([c.cpu for c in host_cpus])
+            host_ranges = utils.format_range_set(host_cpuset)
+            n_cpus = len(host_cpuset)
 
+            # platform logical cpus
             platform_cpus = self._get_host_cpu_list(
                 host, function=constants.PLATFORM_FUNCTION, threads=True)
-            platform_cpus = sorted(platform_cpus, key=lambda c: c.cpu)
-            platform_cpu_list = \
-                "%s" % ','.join([str(c.cpu) for c in platform_cpus])
+            platform_cpuset = set([c.cpu for c in platform_cpus])
+            platform_ranges = utils.format_range_set(platform_cpuset)
 
+            # vswitch logical cpus
             vswitch_cpus = self._get_host_cpu_list(
                 host, constants.VSWITCH_FUNCTION, threads=True)
-            vswitch_cpus = sorted(vswitch_cpus, key=lambda c: c.cpu)
-            vswitch_cpu_list = \
-                "%s" % ','.join([str(c.cpu) for c in vswitch_cpus])
+            vswitch_cpuset = set([c.cpu for c in vswitch_cpus])
+            vswitch_ranges = utils.format_range_set(vswitch_cpuset)
 
-            # rcu_nocbs = all cores - platform cores
-            rcu_nocbs = copy.deepcopy(host_cpu_list)
-            for i in [int(s) for s in platform_cpu_list.split(',')]:
-                rcu_nocbs.remove(i)
+            # non-platform logical cpus
+            rcu_nocbs_cpuset = host_cpuset - platform_cpuset
+            rcu_nocbs_ranges = utils.format_range_set(rcu_nocbs_cpuset)
 
-            # change the CPU list to ranges
-            rcu_nocbs_ranges = ""
-            for key, group in itertools.groupby(enumerate(rcu_nocbs),
-                                                lambda xy: xy[1] - xy[0]):
-                group = list(group)
-                rcu_nocbs_ranges += "%s-%s," % (group[0][1], group[-1][1])
-            rcu_nocbs_ranges = rcu_nocbs_ranges.rstrip(',')
-
-            # non-vswitch CPUs = all cores - vswitch cores
-            non_vswitch_cpus = host_cpu_list
-            for i in [c.cpu for c in vswitch_cpus]:
-                non_vswitch_cpus.remove(i)
-
-            # change the CPU list to ranges
-            non_vswitch_cpus_ranges = ""
-            for key, group in itertools.groupby(enumerate(non_vswitch_cpus),
-                                                lambda xy: xy[1] - xy[0]):
-                group = list(group)
-                non_vswitch_cpus_ranges += "\"%s-%s\"," % (group[0][1], group[-1][1])
+            # non-vswitch logical cpus
+            non_vswitch_cpuset = host_cpuset - vswitch_cpuset
+            non_vswitch_ranges = utils.format_range_set(non_vswitch_cpuset)
 
             cpu_options = ""
             if constants.LOWLATENCY in host.subfunctions:
-                vswitch_cpu_list_with_quotes = \
-                    "\"%s\"" % ','.join([str(c.cpu) for c in vswitch_cpus])
                 config.update({
                     'platform::compute::pmqos::low_wakeup_cpus':
-                        vswitch_cpu_list_with_quotes,
+                        "\"%s\"" % vswitch_ranges,
                     'platform::compute::pmqos::hight_wakeup_cpus':
-                        non_vswitch_cpus_ranges.rstrip(',')})
-                vswitch_cpu_list = rcu_nocbs_ranges
-                cpu_options += "nohz_full=%s " % vswitch_cpu_list
+                        "\"%s\"" % non_vswitch_ranges,
+                })
+                vswitch_ranges = rcu_nocbs_ranges
+                cpu_options += "nohz_full=%s " % vswitch_ranges
 
             cpu_options += "isolcpus=%s rcu_nocbs=%s kthread_cpus=%s " \
-                "irqaffinity=%s" % (vswitch_cpu_list,
+                "irqaffinity=%s" % (vswitch_ranges,
                                     rcu_nocbs_ranges,
-                                    platform_cpu_list,
-                                    platform_cpu_list)
+                                    platform_ranges,
+                                    platform_ranges)
             config.update({
                 'platform::compute::params::worker_cpu_list':
-                    worker_cpu_list,
+                    "\"%s\"" % host_ranges,
                 'platform::compute::params::platform_cpu_list':
-                    platform_cpu_list_with_quotes,
+                    "\"%s\"" % platform_ranges,
                 'platform::compute::params::reserved_vswitch_cores':
                     reserved_vswitch_cores,
                 'platform::compute::params::reserved_platform_cores':
@@ -660,8 +634,8 @@ class PlatformPuppet(base.BasePuppet):
             host_memory = self.dbapi.imemory_get_by_ihost(host.id)
             memory_numa_list = utils.get_numa_index_list(host_memory)
 
-            platform_cpus = self._get_platform_cpu_list(host)
-            platform_cpu_count = len(platform_cpus)
+            platform_cpus_no_threads = self._get_platform_cpu_list(host)
+            platform_core_count = len(platform_cpus_no_threads)
 
             platform_nodes = []
             vswitch_nodes = []
@@ -684,7 +658,7 @@ class PlatformPuppet(base.BasePuppet):
 
                 platform_size = memory.platform_reserved_mib
                 platform_node = "\"node%d:%dMB:%d\"" % (
-                    node, platform_size, platform_cpu_count)
+                    node, platform_size, platform_core_count)
                 platform_nodes.append(platform_node)
 
                 vswitch_size = memory.vswitch_hugepages_size_mib

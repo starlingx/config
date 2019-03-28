@@ -15,6 +15,16 @@ class platform::compute::config
       replace => true,
       content => template('platform/worker_reserved.conf.erb')
   }
+
+  file { '/etc/systemd/system.conf.d/platform-cpuaffinity.conf':
+      ensure  => 'present',
+      replace => true,
+      content => template('platform/systemd-system-cpuaffinity.conf.erb')
+  }
+}
+
+class platform::compute::config::runtime {
+  include ::platform::compute::config
 }
 
 class platform::compute::grub::params (
@@ -307,6 +317,37 @@ class platform::compute::pmqos (
   }
 }
 
+# Set systemd machine.slice cgroup cpuset to be used with VMs,
+# and configure this cpuset to span all logical cpus and numa nodes.
+# NOTES:
+# - The parent directory cpuset spans all online cpus and numa nodes.
+# - Setting the machine.slice cpuset prevents this from inheriting
+#   kubernetes libvirt pod's cpuset, since machine.slice cgroup will be
+#   created when a VM is launched if it does not already exist.
+# - systemd automatically mounts cgroups and controllers, so don't need
+#   to do that here.
+class platform::compute::machine {
+  $parent_dir = '/sys/fs/cgroup/cpuset'
+  $parent_mems = "${parent_dir}/cpuset.mems"
+  $parent_cpus = "${parent_dir}/cpuset.cpus"
+  $machine_dir = "${parent_dir}/machine.slice"
+  $machine_mems = "${machine_dir}/cpuset.mems"
+  $machine_cpus = "${machine_dir}/cpuset.cpus"
+  notice("Create ${machine_dir}")
+  file { $machine_dir :
+    ensure => directory,
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0700',
+  }
+  -> exec { "Create ${machine_mems}" :
+    command => "/bin/cat ${parent_mems} > ${machine_mems}",
+  }
+  -> exec { "Create ${machine_cpus}" :
+    command => "/bin/cat ${parent_cpus} > ${machine_cpus}",
+  }
+}
+
 class platform::compute {
 
   Class[$name] -> Class['::platform::vswitch']
@@ -316,5 +357,6 @@ class platform::compute {
   require ::platform::compute::allocate
   require ::platform::compute::pmqos
   require ::platform::compute::resctrl
+  require ::platform::compute::machine
   require ::platform::compute::config
 }
