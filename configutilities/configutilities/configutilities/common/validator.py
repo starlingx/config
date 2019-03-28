@@ -816,7 +816,7 @@ class ConfigValidator(object):
                              (cluster_prefix, str(self.cluster_network.cidr)))
 
         if self.cluster_network.logical_interface.lag_interface:
-            supported_lag_mode = [1, 4]
+            supported_lag_mode = [1, 2, 4]
             if (self.cluster_network.logical_interface.lag_mode not in
                     supported_lag_mode):
                 raise ConfigFail(
