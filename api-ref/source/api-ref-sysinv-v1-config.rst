@@ -2407,15 +2407,16 @@ itemNotFound (404)
 
    "iinterfaces (Optional)", "plain", "xsd:list", "The list of L2 interfaces for a specific host."
    "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
-   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
-   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
-   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
+   "networks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : platform``, this attribute provides a list of platform networks that this interface is attached to."
+   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
-   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
    "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
    "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
@@ -2452,8 +2453,9 @@ itemNotFound (404)
          "vlan_id": null,
          "imtu": 1500,
          "aemode": null,
+         "networks": ["1"],
          "datanetworks": [],
-         "networktype": "mgmt",
+         "ifclass": "platform"
          "ifname": "eth1"
        },
        {
@@ -2484,8 +2486,9 @@ itemNotFound (404)
 
          ],
          "aemode": "balanced",
+         "networks": [],
          "datanetworks": ["physnet-0,physnet-1"],
-         "networktype": "data",
+         "ifclass": "data"
          "ifname": "data1"
        }
      ]
@@ -2524,15 +2527,16 @@ itemNotFound (404)
    :widths: 20, 20, 20, 60
 
    "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
-   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
-   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
-   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
+   "networks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : platform``, this attribute provides a list of platform networks that this interface is attached to."
+   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
-   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
    "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
    "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
@@ -2559,9 +2563,9 @@ itemNotFound (404)
          }
       ],
       "datanetworks" : ["physnet-0,physnet-1"],
+      "networks": [],
       "txhashpolicy" : "layer2",
       "schedpolicy" : null,
-      "networktype" : "data",
       "uuid" : "740a5bec-b7a8-4645-93ed-aea0d4cfbf86",
       "ihost_uuid" : "ff453a51-1d3b-437f-a65e-b2d163f79f85",
       "vlan_id": null,
@@ -2581,6 +2585,7 @@ itemNotFound (404)
       "imac" : null,
       "sriov_numvfs": 0,
       "aemode" : "balanced",
+      "ifclass": "data",
       "ifname" : "data1",
       "ports" : null,
       "uses": [
@@ -2602,10 +2607,6 @@ Creates an L2 interface on a specific host
 
 .. rest_method:: POST /v1/ihosts/{host_id}/iinterfaces
 
-Note that ``mgmt`` and ``oam`` can only be added through the REST API if
-their networktype is unassigned to none. ``mgmt`` and ``oam`` are
-automatically added by the system by default.
-
 **Normal response codes**
 
 200
@@ -2622,17 +2623,18 @@ badMediaType (415)
 
    "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
    "ifname (Optional)", "plain", "xsd:string", "The name for the interface."
-   "networktype (Optional)", "plain", "xsd:string", "The type of network that this interface will be attached to; i.e. ``mgmt``, ``infra``, ``oam``, ``data``, ``pci-passthrough``, ``pci-sriov``, ``infra``."
+   "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
    "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ae`` or ``vlan``."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` or ``802.3ad`` across its links. The ``balanced`` and ``active_standby`` are the only modes supported by ``data`` type interface. For ``mgmt`` type interface the ``802.3ad`` option must be selected."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
-   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute specifies a list of data networks that this ``data`` interface is attached to."
+   "networks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : platform``, this attribute provides a list of platform networks that this interface is attached to."
+   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : data``, this attribute specifies a list of data networks that this ``data`` interface is attached to."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
    "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
-   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
 
 **Response parameters**
@@ -2642,15 +2644,16 @@ badMediaType (415)
    :widths: 20, 20, 20, 60
 
    "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
-   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "ifclass (Optional)", "plain", xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
-   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
-   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
+   "networks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : platform``, this attribute provides a list of platform networks that this interface is attached to."
+   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
-   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
    "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
    "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
@@ -2670,8 +2673,9 @@ badMediaType (415)
      "txhashpolicy": "layer2",
      "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
      "imtu": "1500",
+     "networks": [],
      "datanetworks": "physnet-0,physnet1",
-     "networktype": "data",
+     "ifclass": "data",
      "ifname": "data1",
      "uses": ['eth2','eth3'],
      "aemode": "balanced",
@@ -2724,8 +2728,9 @@ badMediaType (415)
      ],
      "aemode": "balanced",
      "sriov_numvfs": 0,
+     'networks": [],
      "datanetworks": ["physnet-0,physnet-1"],
-     "networktype": "data",
+     "ifclass": "data",
      "ifname": "data1",
      "ports": null,
    }
@@ -2753,17 +2758,18 @@ badMediaType (415)
 
    "interface_id", "URI", "csapi:UUID", "The unique identifier of an existing interface."
    "ifname (Optional)", "plain", "xsd:string", "The name for the interface."
-   "networktype (Optional)", "plain", "xsd:string", "The type of network that this interface will be attached to; i.e. ``mgmt``, ``infra``, ``oam``, ``data``, ``pci-passthrough``, ``pci-sriov``, ``infra`` or ``none``."
+   "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
    "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ethernet`` or ``ae`` or ``vlan``."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` across its links. These are the only modes supported by ``data`` type interface."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
-   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute specifies a list of data networks that this ``data`` interface is attached to."
+   "networks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : platform``, this attribute provides a list of platform networks that this interface is attached to."
+   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : data``, this attribute specifies a list of data networks that this ``data`` interface is attached to."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
    "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
-   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
 
 **Response parameters**
 
@@ -2772,15 +2778,16 @@ badMediaType (415)
    :widths: 20, 20, 20, 60
 
    "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
-   "networktype (Optional)", "plain", "xsd:string", "Indicates the type of network that this interface is attached to; ``mgmt``, ``oam``, ``infra``, ``none``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
+   "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
-   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of networktype=data."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
-   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``networktype : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
+   "networks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : platform``, this attribute provides a list of platform networks that this interface is attached to."
+   "datanetworks (Optional)", "plain", "xsd:list", "Only applicable if ``ifclass : data``, this attribute provides a list of data networks that this ``data`` interface is attached to."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
-   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``networktype = pci-sriov`` where only a single port is associated with the interface."
+   "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs configured on the interfaces port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
    "schedpolicy (Optional)", "plain", "xsd:string", "Currently not supported."
    "forihostId (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host of this interface."
@@ -2869,8 +2876,9 @@ badMediaType (415)
 
      ],
      "aemode": "active_standby",
+     "networks": [],
      "datanetworks": ["physnet-0,physnet-1"],
-     "networktype": "data",
+     "ifclass": "data",
      "ifname": "data1",
      "ports": null
    }
@@ -2892,6 +2900,210 @@ Deletes a specific L2 interface
    :widths: 20, 20, 20, 60
 
    "interface_id", "URI", "csapi:UUID", "The unique identifier of an existing interface."
+
+This operation does not accept a request body.
+
+------------------
+Interface Networks
+------------------
+
+These APIs allow the create, display, and delete of the
+Interface Network.
+
+**********************************************
+List the Interface Networks of a specific host
+**********************************************
+
+.. rest_method:: GET /v1/ihosts/{host_id}/interface_networks
+
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_networks", "plain", "xsd:list", "The list of Interface Networks."
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "interface_uuid", "plain", "csapi:UUID", "The universally unique identifier for the interface."
+   "network_uuid", "plain", "csapi:UUID", "The universally unique identifier for the network."
+   "network_name", "plain", "xsd:string", "The name of the network."
+   "ifname", "plain", "xsd:string", "The name of the interface."
+
+::
+
+   {
+      "interface_networks":[
+        {
+            "network_uuid": "783cabc6-6105-4195-b1ff-4453d4e1144e",
+            "uuid": "bef00740-0d2b-48a5-8371-8956c0dbe2d8",
+            "ifname": "enp0s8",
+            "interface_uuid": "b38876cd-a17a-4e60-ba9f-7588531039e0",
+            "network_name": "mgmt",
+            "id": 1
+        },
+        {
+            "network_uuid": "1514793b-8d01-4156-b051-e4aaf85fe106",
+            "uuid": "49827e51-1d9c-4ffb-8ed2-5c82fa044afa",
+            "ifname": "enp0s3",
+            "interface_uuid": "03276210-f585-45c0-8a5c-15408de05594",
+            "network_name": "oam",
+            "id": 2
+        },
+        {
+            "network_uuid": "7b1e43d4-4c5c-4166-940c-5b50ef1e522e",
+            "uuid": "7b6838da-6f0a-4874-92ff-bf1b10bf9102",
+            "ifname": "enp0s8",
+            "interface_uuid": "b38876cd-a17a-4e60-ba9f-7588531039e0",
+            "network_name": "cluster-host",
+            "id": 3
+        }
+      ]
+   }
+
+This operation does not accept a request body.
+
+****************************************************
+Shows information about a specific Interface Network
+****************************************************
+
+.. rest_method:: GET /v1/interface_networks/{interface_network_id}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_network_id", "URI", "csapi:UUID", "The unique identifier of an existing network."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "interface_uuid", "plain", "csapi:UUID", "The universally unique identifier for the interface."
+   "network_uuid", "plain", "csapi:UUID", "The universally unique identifier for the network."
+   "network_name", "plain", "xsd:string", "The name of the network."
+   "ifname", "plain", "xsd:string", "The name of the interface."
+
+::
+
+   {
+      "network_uuid": "1514793b-8d01-4156-b051-e4aaf85fe106",
+      "uuid": "49827e51-1d9c-4ffb-8ed2-5c82fa044afa",
+      "ifname": "enp0s3",
+      "interface_uuid": "03276210-f585-45c0-8a5c-15408de05594",
+      "network_name": "oam",
+      "id": 2
+   }
+
+This operation does not accept a request body.
+
+****************************
+Creates an Interface Network
+****************************
+
+.. rest_method:: POST /v1/interface_networks
+
+This will create an interface network i.e. assign a network to an interface.
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+Conflict (409)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_uuid", "plain", "csapi:UUID", "The universally unique identifier for the interface."
+   "network_uuid", "plain", "csapi:UUID", "The universally unique identifier for the network."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "interface_uuid", "plain", "csapi:UUID", "The universally unique identifier for the interface."
+   "network_uuid", "plain", "csapi:UUID", "The universally unique identifier for the network."
+   "network_name", "plain", "xsd:string", "The name of the network."
+   "ifname", "plain", "xsd:string", "The name of the interface."
+
+::
+
+   {
+      "interface_uuid":"2731d293-8124-4963-9d7c-36bdb220b38c"
+      "network_uuid":"3a0b7357-eb36-42fb-a800-55ff3549cc3c",
+   }
+
+::
+
+   {
+      "network_uuid": "1514793b-8d01-4156-b051-e4aaf85fe106",
+      "uuid": "49827e51-1d9c-4ffb-8ed2-5c82fa044afa",
+      "ifname": "enp0s3",
+      "interface_uuid": "03276210-f585-45c0-8a5c-15408de05594",
+      "network_name": "oam",
+      "id": 2
+   }
+
+************************************
+Deletes a specific Interface Network
+************************************
+
+.. rest_method:: DELETE /v1/interface_networks/{interface_network_id}
+
+This will remove from the interface the network assigned.
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_network_id", "URI", "csapi:UUID", "The unique identifier of an existing interface network."
 
 This operation does not accept a request body.
 
@@ -2934,7 +3146,7 @@ itemNotFound (404)
    "mode (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan``, the mode of the data network; ``dynamic``, ``static``."
    "multicast_group (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan`` and ``network_type : dynamic``, this attribute indicates the multicast group address."
    "port_num (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the port number of the vxlan datanetwork."
-   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``networktype : vxlan``, this attribute indicates the time to live.  A value between 1 and 255 inclusive is allowed."
+   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the time to live.  A value between 1 and 255 inclusive is allowed."
 
 ::
 
@@ -3007,7 +3219,7 @@ itemNotFound (404)
    "mode (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan``, the mode of the data network; ``dynamic``, ``static``."
    "multicast_group (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan`` and ``network_type : dynamic``, this attribute indicates the multicast group address."
    "port_num (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the port number of the vxlan datanetwork."
-   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``networktype : vxlan``, this attribute indicates the time to live."
+   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the time to live."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
 
@@ -3061,7 +3273,7 @@ Conflict (409)
    "mode (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan``, the mode of the data network; ``dynamic``, ``static``."
    "multicast_group (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan`` and ``network_type : dynamic``, this attribute indicates the multicast group address."
    "port_num (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the port number of the vxlan datanetwork."
-   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``networktype : vxlan``, this attribute indicates the time to live."
+   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the time to live."
 
 **Response parameters**
 
@@ -3077,7 +3289,7 @@ Conflict (409)
    "mode (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan``, the mode of the data network; ``dynamic``, ``static``."
    "multicast_group (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan`` and ``network_type : dynamic``, this attribute indicates the multicast group address."
    "port_num (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the port number of the vxlan datanetwork."
-   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``networktype : vxlan``, this attribute indicates the time to live."
+   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the time to live."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
 
@@ -3149,7 +3361,7 @@ badMediaType (415)
    "mode (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan``, the mode of the data network; ``dynamic``, ``static``."
    "multicast_group (Optional)", "plain", "xsd:string", "Only applicable if ``network_type : vxlan`` and ``network_type : dynamic``, this attribute indicates the multicast group address."
    "port_num (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the port number of the vxlan datanetwork."
-   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``networktype : vxlan``, this attribute indicates the time to live."
+   "ttl (Optional)", "plain", "xsd:integer", "Only applicable if ``network_type : vxlan``, this attribute indicates the time to live."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
 
@@ -6831,11 +7043,9 @@ itemNotFound (404)
    :widths: 20, 20, 20, 60
 
    "uuid (Optional)", "plain", "csapi:UUID", "The uuid of the network resource."
+   "name (Optional)", "plain", "xsd:string", "The name of network resource."
    "type (Optional)", "plain", "xsd:string", "The type of network resource."
-   "mtu (Optional)", "plain", "xsd:integer", "The maximum IP packet length that is support on this network."
-   "link_capacity (Optional)", "plain", "xsd:integer", "The transmission speed in megabits per second."
    "dynamic (Optional)", "plain", "xsd:boolean", "A boolean describing whether IP addresses are assigned by the user (``False``) or by the system (``True``)."
-   "vlan_capacity (Optional)", "plain", "xsd:integer", "The VLAN instance number (1-4094) if applicable."
    "pool_uuid (Optional)", "plain", "csapi:UUID", "The uuid of the address pool from which IP addresses are allocated or registered."
 
 ::
@@ -6843,30 +7053,24 @@ itemNotFound (404)
    {
        "networks": [{
            "uuid": "7b322329-8097-4233-a7df-83eafaba8447",
-           "dynamic": true,
-           "mtu": 1500,
-           "link_capacity": 1000,
-           "pool_uuid": "d7187d17-8715-4934-8754-4827e604a468",
+           "name": "mgmt",
            "type": "mgmt",
-           "vlan_id": null
+           "dynamic": true,
+           "pool_uuid": "d7187d17-8715-4934-8754-4827e604a468",
        },
        {
            "uuid": "bf226d1f-39a3-4c3f-abde-8077077835a4",
+           "name": "cluster-host",
+           "type": "cluster-host",
            "dynamic": true,
-           "mtu": 1500,
-           "link_capacity": 1000,
            "pool_uuid": "7b299949-614c-4f1a-85cb-c46a09827f0c",
-           "type": "infra",
-           "vlan_id": 99
        },
        {
            "uuid": "d735fe97-6e10-4534-8720-1ee2d24ec8ae",
-           "dynamic": false,
-           "mtu": 1500,
-           "link_capacity": null,
-           "pool_uuid": "c5fced12-40ad-47fa-ad01-6800d1e418b7",
+           "name": "oam",
            "type": "oam",
-           "vlan_id": null
+           "dynamic": false,
+           "pool_uuid": "c5fced12-40ad-47fa-ad01-6800d1e418b7",
        }]
    }
 
@@ -6903,11 +7107,9 @@ itemNotFound (404)
    :widths: 20, 20, 20, 60
 
    "uuid (Optional)", "plain", "csapi:UUID", "The uuid of the network resource."
+   "name (Optional)", "plain", "xsd:string", "The name of network resource."
    "type (Optional)", "plain", "xsd:string", "The type of network resource."
-   "mtu (Optional)", "plain", "xsd:integer", "The maximum IP packet length that is support on this network."
-   "link_capacity (Optional)", "plain", "xsd:integer", "The transmission speed in megabits per second."
    "dynamic (Optional)", "plain", "xsd:boolean", "A boolean describing whether IP addresses are assigned by the user (``False``) or by the system (``True``)."
-   "vlan_capacity (Optional)", "plain", "xsd:integer", "The VLAN instance number (1-4094) if applicable."
    "pool_uuid (Optional)", "plain", "csapi:UUID", "The uuid of the address pool from which IP addresses are allocated or registered."
 
 ::
@@ -6917,12 +7119,10 @@ itemNotFound (404)
        "created_at": "2016-11-09T14:53:20.185156+00:00",
        "dynamic": true,
        "updated_at": null,
-       "mtu": 1500,
-       "link_capacity": 1000,
        "pool_uuid": "7b299949-614c-4f1a-85cb-c46a09827f0c",
-       "type": "infra",
+       "name": "cluster-host",
+       "type": "cluster-host",
        "id": 2,
-       "vlan_id": 99
    }
 
 This operation does not accept a request body.
@@ -6960,6 +7160,10 @@ itemNotFound (404)
    "prefix (Optional)", "plain", "xsd:integer", "The network address prefix length in bits."
    "order (Optional)", "plain", "xsd:string", "A string representing the IP address allocation scheme; ``random`` to allocate in random order, or ``sequential`` to allocate in sequential order."
    "ranges (Optional)", "plain", "xsd:string", "A python list, formatted as a JSON string, representing a series of start-end pairs which define the allocatable ranges of IP addresses in the pool."
+   "floating_address (Optional)", "plain", "xsd:string", "The floating IP address of the network."
+   "controller0_address (Optional)", "plain", "xsd:string", "The controller-0 IP address of the network."
+   "controller1_address (Optional)", "plain", "xsd:string", "The  controller-1 IP address of the network."
+   "gateway_address (Optional)", "plain", "xsd:string", "The gateway IP address of the network."
    "uuid (Optional)", "plain", "csapi:UUID", "The uuid of the address pool resource."
 
 ::
@@ -6972,15 +7176,23 @@ itemNotFound (404)
            "192.168.204.254"]],
            "prefix": 24,
            "order": "random",
+           "floating_address": "192.168.204.2",
+           "controller0_address": "192.168.204.3",
+           "controller1_address": "192.168.204.4",
+           "gateway_address": null,
            "uuid": "d7187d17-8715-4934-8754-4827e604a468"
        },
        {
-           "network": "192.168.205.0",
-           "name": "infrastructure",
-           "ranges": [["192.168.205.2",
-           "192.168.205.254"]],
+           "network": "192.168.206.0",
+           "name": "cluster-host",
+           "ranges": [["192.168.206.2",
+           "192.168.206.254"]],
            "prefix": 24,
            "order": "random",
+           "floating_address": "192.168.206.2",
+           "controller0_address": "192.168.206.3",
+           "controller1_address": "192.168.206.4",
+           "gateway_address": null,
            "uuid": "7b299949-614c-4f1a-85cb-c46a09827f0c"
        },
        {
@@ -6990,43 +7202,11 @@ itemNotFound (404)
            "10.10.10.254"]],
            "prefix": 24,
            "order": "random",
+           "floating_address": "10.10.10.3",
+           "controller0_address": "10.10.10.4",
+           "controller1_address": "10.10.10.5",
+           "gateway_address": "10.10.10.1",
            "uuid": "c5fced12-40ad-47fa-ad01-6800d1e418b7"
-       },
-       {
-           "network": "192.168.58.0",
-           "name": "group0-data1v4",
-           "ranges": [["192.168.58.2",
-           "192.168.58.10"]],
-           "prefix": 24,
-           "order": "sequential",
-           "uuid": "15a1fa4e-d1c0-49f8-80d9-484640fb95a0"
-       },
-       {
-           "network": "fd00:0:0:2::",
-           "name": "group0-data1v6",
-           "ranges": [["fd00:0:0:2::2",
-           "fd00:0:0:2::a"]],
-           "prefix": 64,
-           "order": "random",
-           "uuid": "04ff8781-9042-4602-a19e-7ed90f0979ad"
-       },
-       {
-           "network": "192.168.57.0",
-           "name": "group0-data0v4",
-           "ranges": [["192.168.57.2",
-           "192.168.57.10"]],
-           "prefix": 24,
-           "order": "random",
-           "uuid": "366e08ac-a5c8-4554-b019-0a0d2d011e6e"
-       },
-       {
-           "network": "fd00:0:0:1::",
-           "name": "group0-data0v6",
-           "ranges": [["fd00:0:0:1::2",
-           "fd00:0:0:1::a"]],
-           "prefix": 64,
-           "order": "sequential",
-           "uuid": "950a4587-2baf-4075-994a-98189de51acc"
        }]
    }
 
@@ -7130,21 +7310,28 @@ itemNotFound (404)
    "prefix (Optional)", "plain", "xsd:integer", "The network address prefix length in bits."
    "order (Optional)", "plain", "xsd:string", "A string representing the IP address allocation scheme; ``random`` to allocate in random order, or ``sequential`` to allocate in sequential order."
    "ranges (Optional)", "plain", "xsd:string", "A python list, formatted as a JSON string, representing a series of start-end pairs which define the allocatable ranges of IP addresses in the pool."
+   "floating_address (Optional)", "plain", "xsd:string", "The floating IP address of the network."
+   "controller0_address (Optional)", "plain", "xsd:string", "The controller-0 IP address of the network."
+   "controller1_address (Optional)", "plain", "xsd:string", "The controller-1 IP address of the network."
+   "gateway_address (Optional)", "plain", "xsd:string", "The gateway IP address of the network."
    "uuid (Optional)", "plain", "csapi:UUID", "The uuid of the address pool resource."
 
 ::
 
    {
-       "network": "192.168.57.0",
+       "network": "192.168.204.0",
        "updated_at": null,
        "created_at": "2016-11-09T15:13:59.652107+00:00",
        "uuid": "366e08ac-a5c8-4554-b019-0a0d2d011e6e",
        "id": 6,
-       "ranges": [["192.168.57.2",
-       "192.168.57.10"]],
+       "ranges": [["192.168.204.2",
+       "192.168.204.254"]],
        "prefix": 24,
+       "floating_address": "192.168.204.2",
+       "controller0_address": "192.168.204.3",
+       "controller1_address": "192.168.204.4",
        "order": "random",
-       "name": "group0-data0v4"
+       "name": "management",
    }
 
 This operation does not accept a request body.
@@ -7451,7 +7638,7 @@ itemNotFound (404)
    :widths: 20, 20, 20, 60
 
    "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
-   "host_id", "URI", "csapi:UUID", "The unique identifier of an address resource."
+   "address_id", "URI", "csapi:UUID", "The unique identifier of an address resource."
 
 **Response parameters**
 
@@ -7502,7 +7689,7 @@ Deletes an address
    :widths: 20, 20, 20, 60
 
    "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
-   "host_id", "URI", "csapi:UUID", "The unique identifier of an address resource."
+   "address_id", "URI", "csapi:UUID", "The unique identifier of an address resource."
 
 This operation does not accept a request body.
 
