@@ -77,7 +77,7 @@ images:
   pull_policy: IfNotPresent
   tags:
     dep_check: 'quay.io/stackanetes/kubernetes-entrypoint:v0.3.1'
-    garbd: 'docker.io/starlingx/stx-mariadb:dev-centos-pike-latest'
+    garbd: 'docker.io/starlingx/stx-mariadb:master-centos-stable-latest'
     image_repo_sync: docker.io/docker:17.07.0
   local_registry:
     active: false
