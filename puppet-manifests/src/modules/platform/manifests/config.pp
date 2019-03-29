@@ -39,7 +39,10 @@ class platform::config::file {
 
   # dependent template variables
   $management_interface = $::platform::network::mgmt::params::interface_name
+  # TODO: infrastructure_interface will be removed when all the services are
+  # converted to use cluster_host_interface
   $infrastructure_interface = $::platform::network::cluster_host::params::interface_name
+  $cluster_host_interface = $::platform::network::cluster_host::params::interface_name
   $oam_interface = $::platform::network::oam::params::interface_name
 
   $platform_conf = '/etc/platform/platform.conf'
@@ -58,11 +61,28 @@ class platform::config::file {
     }
   }
 
+  # TODO: infrastructure_interface will be removed soon
   if $infrastructure_interface {
     file_line { "${platform_conf} infrastructure_interface":
       path  => '/etc/platform/platform.conf',
       line  => "infrastructure_interface=${infrastructure_interface}",
       match => '^infrastructure_interface=',
+    }
+  }
+
+  if $cluster_host_interface {
+    file_line { "${platform_conf} cluster_host_interface":
+      path  => '/etc/platform/platform.conf',
+      line  => "cluster_host_interface=${cluster_host_interface}",
+      match => '^cluster_host_interface=',
+    }
+  }
+  else {
+    file_line { "${platform_conf} cluster_host_interface":
+      ensure            => absent,
+      path              => '/etc/platform/platform.conf',
+      match             => '^cluster_host_interface=',
+      match_for_absence => true,
     }
   }
 
