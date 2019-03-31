@@ -35,16 +35,6 @@ class platform::patching
 }
 
 
-class platform::patching::firewall
-  inherits ::platform::patching::params {
-
-  platform::firewall::rule { 'patching-api':
-    service_name => 'patching',
-    ports        => $public_port,
-  }
-}
-
-
 class platform::patching::haproxy
   inherits ::platform::patching::params {
 
@@ -67,7 +57,6 @@ class platform::patching::api (
     include ::patching::keystone::auth
   }
 
-  include ::platform::patching::firewall
   include ::platform::patching::haproxy
 }
 

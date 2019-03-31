@@ -35,15 +35,6 @@ class platform::fm
   }
 }
 
-class platform::fm::firewall
-  inherits ::platform::fm::params {
-
-  platform::firewall::rule { 'fm-api':
-    service_name => 'fm',
-    ports        => $api_port,
-  }
-}
-
 class platform::fm::haproxy
   inherits ::platform::fm::params {
 
@@ -84,7 +75,6 @@ class platform::fm::api
       sync_db => $::platform::params::init_database,
     }
 
-    include ::platform::fm::firewall
     include ::platform::fm::haproxy
   }
 }

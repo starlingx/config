@@ -120,16 +120,6 @@ class platform::sysinv::conductor {
 }
 
 
-class platform::sysinv::firewall
-  inherits ::platform::sysinv::params {
-
-  platform::firewall::rule { 'sysinv-api':
-    service_name => 'sysinv',
-    ports        => $api_port,
-  }
-}
-
-
 class platform::sysinv::haproxy
   inherits ::platform::sysinv::params {
 
@@ -173,7 +163,6 @@ class platform::sysinv::api
     'DEFAULT/sysinv_api_workers': value => $::platform::params::eng_workers_by_5;
   }
 
-  include ::platform::sysinv::firewall
   include ::platform::sysinv::haproxy
 }
 

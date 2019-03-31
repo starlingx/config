@@ -32,7 +32,6 @@ collection of inventory data for each host.
 import errno
 import filecmp
 import glob
-import hashlib
 import math
 import os
 import re
@@ -513,10 +512,6 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE,
          'value': constants.SERVICE_PARAM_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE_DEFAULT,
          },
-        {'service': constants.SERVICE_TYPE_PLATFORM,
-         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_SYSINV,
-         'name': constants.SERVICE_PARAM_NAME_SYSINV_FIREWALL_RULES_ID,
-         'value': None},
         {'service': constants.SERVICE_TYPE_SWIFT,
          'section': constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED,
@@ -7303,7 +7298,7 @@ class ConductorManager(service.PeriodicService):
                     "personalities": personalities,
                     "classes": ['openstack::lighttpd::runtime',
                                 'platform::helm::runtime',
-                                'openstack::horizon::firewall',
+                                'platform::firewall::runtime',
                                 'platform::patching::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid,
@@ -9962,31 +9957,6 @@ class ConductorManager(service.PeriodicService):
             pass
         return upgrade
 
-    @staticmethod
-    def _validate_firewall_rules(rules_file,
-                                 ip_version=constants.IPV4_FAMILY):
-        """
-        Validate the content of the custom firewall rules
-        :param rules_file: file path of the custom firewall rules
-        :param ip_version: IP version
-        :return:
-        """
-        try:
-            if ip_version == constants.IPV4_FAMILY:
-                cmd = "iptables-restore"
-            else:
-                cmd = "ip6tables-restore"
-
-            with open(os.devnull, "w"):
-                subprocess.check_output(
-                    [cmd, "--test", "--noflush", rules_file],
-                    stderr=subprocess.STDOUT)
-                return True
-        except subprocess.CalledProcessError as e:
-            LOG.error("iptables-restore failed, output: %s" % e.output)
-            LOG.exception(e)
-            return False
-
     def distribute_ceph_external_config(self, context, ceph_conf_filename):
         """Notify agent to distribute Ceph configuration file for external
            cluster.
@@ -10048,57 +10018,6 @@ class ConductorManager(service.PeriodicService):
             msg = _("Failed to write ceph config file in %s " %
                     tsc.PLATFORM_CEPH_CONF_PATH)
             raise exception.SysinvException(msg)
-
-    def update_firewall_config(self, context, ip_version, contents):
-        """Notify agent to configure firewall rules with the supplied data.
-           Apply firewall manifest changes.
-
-        :param context: an admin context.
-        :param ip_version: IPV4_VERSION or IPV6_VERSION
-        :param contents: custom firewall rules contents
-        """
-        firewall_rules_file = os.path.join(tsc.PLATFORM_CONF_PATH,
-                                           constants.FIREWALL_RULES_FILE)
-        temp_firewall_rules_file = firewall_rules_file + '.temp'
-        firewall_sig = hashlib.md5(contents).hexdigest()
-        LOG.info("update_firewall_config firewall_sig=%s" % firewall_sig)
-
-        with open(temp_firewall_rules_file, 'w') as f:
-            f.write(contents)
-            f.close()
-
-        if not self._validate_firewall_rules(
-                temp_firewall_rules_file, ip_version):
-            os.remove(temp_firewall_rules_file)
-            raise exception.SysinvException(_(
-                "Error in custom firewall rule file"))
-
-        # Copy firewall rules file
-        os.rename(temp_firewall_rules_file, firewall_rules_file)
-
-        # Copy the updated file to shared storage
-        shutil.copy(firewall_rules_file,
-                    os.path.join(tsc.CONFIG_PATH,
-                                 constants.FIREWALL_RULES_FILE))
-
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            'personalities': personalities,
-            'file_names': [firewall_rules_file],
-            'file_content': contents,
-        }
-        self._config_update_file(context, config_uuid, config_dict)
-
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::firewall::runtime']
-        }
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid,
-                                            config_dict)
-        return firewall_sig
 
     def install_license_file(self, context, contents):
         """Notify agent to install license file with the supplied data.

@@ -52,16 +52,6 @@ class platform::nfv::runtime {
 }
 
 
-class platform::nfv::firewall
-  inherits ::platform::nfv::params {
-
-  platform::firewall::rule { 'nfv-vim-api':
-    service_name => 'nfv-vim',
-    ports        => $api_port,
-  }
-}
-
-
 class platform::nfv::haproxy
   inherits ::platform::nfv::params {
 
@@ -81,6 +71,5 @@ class platform::nfv::api
     include ::nfv::keystone::auth
   }
 
-  include ::platform::nfv::firewall
   include ::platform::nfv::haproxy
 }

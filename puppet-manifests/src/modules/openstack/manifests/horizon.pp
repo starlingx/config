@@ -174,31 +174,8 @@ class openstack::horizon
       user        => 'root',
     }
 
-    include ::openstack::horizon::firewall
   }
 }
-
-
-class openstack::horizon::firewall
-  inherits ::openstack::horizon::params {
-
-  # horizon is run behind a proxy server, therefore
-  # set the dashboard access based on the configuration
-  # of HTTPS for external protocols.  The horizon
-  # server runs on port 8080 behind the proxy server.
-  if $enable_https {
-    $firewall_port = $https_port
-  } else {
-    $firewall_port = $http_port
-  }
-
-  platform::firewall::rule { 'dashboard':
-    host         => 'ALL',
-    service_name => 'horizon',
-    ports        => $firewall_port,
-  }
-}
-
 
 class openstack::horizon::reload {
 

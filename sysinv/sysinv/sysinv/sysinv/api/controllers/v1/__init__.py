@@ -35,7 +35,6 @@ from sysinv.api.controllers.v1 import dns
 from sysinv.api.controllers.v1 import drbdconfig
 from sysinv.api.controllers.v1 import ethernet_port
 from sysinv.api.controllers.v1 import fernet_repo
-from sysinv.api.controllers.v1 import firewallrules
 from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
@@ -233,9 +232,6 @@ class V1(base.APIBase):
 
     sdn_controller = [link.Link]
     "Links to the SDN controller resource"
-
-    firewallrules = [link.Link]
-    "Links to customer firewall rules"
 
     license = [link.Link]
     "Links to the license resource "
@@ -719,14 +715,6 @@ class V1(base.APIBase):
                                                  bookmark=True)
                              ]
 
-        v1.firewallrules = [link.Link.make_link('self',
-                                                pecan.request.host_url,
-                                                'firewallrules', ''),
-                            link.Link.make_link('bookmark',
-                                                pecan.request.host_url,
-                                                'firewallrules', '',
-                                                bookmark=True)]
-
         v1.license = [link.Link.make_link('self',
                                           pecan.request.host_url,
                                           'license', ''),
@@ -835,7 +823,6 @@ class Controller(rest.RestController):
     health = health.HealthController()
     remotelogging = remotelogging.RemoteLoggingController()
     sdn_controller = sdn_controller.SDNControllerController()
-    firewallrules = firewallrules.FirewallRulesController()
     license = license.LicenseController()
     labels = label.LabelController()
     fernet_repo = fernet_repo.FernetKeyController()

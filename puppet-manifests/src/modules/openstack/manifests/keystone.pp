@@ -133,19 +133,6 @@ class openstack::keystone (
   }
 }
 
-
-class openstack::keystone::firewall
-  inherits ::openstack::keystone::params {
-
-  if !$::platform::params::region_config {
-    platform::firewall::rule { 'keystone-api':
-      service_name => 'keystone',
-      ports        => $api_port,
-    }
-  }
-}
-
-
 class openstack::keystone::haproxy
   inherits ::openstack::keystone::params {
 
@@ -202,7 +189,6 @@ class openstack::keystone::api
     }
   }
 
-  include ::openstack::keystone::firewall
   include ::openstack::keystone::haproxy
 }
 

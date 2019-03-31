@@ -34,7 +34,6 @@ from tsconfig.tsconfig import SW_VERSION
 from tsconfig.tsconfig import PLATFORM_PATH
 from tsconfig.tsconfig import KEYRING_PATH
 from tsconfig.tsconfig import PLATFORM_CONF_FILE
-from tsconfig.tsconfig import PLATFORM_CONF_PATH
 from tsconfig.tsconfig import CGCS_PATH
 from tsconfig.tsconfig import CONFIG_PATH
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_FLAG
@@ -1128,14 +1127,6 @@ def extract_data_from_archive(archive, staging_dir, from_release, to_release):
     # Restore certificate files if they are in the archive
     backup_restore.restore_etc_ssl_dir(archive,
                                        configpath=tmp_config_path)
-
-    # Restore firewall rules file if it is in the archive
-    if backup_restore.file_exists_in_archive(
-            archive, 'config/iptables.rules'):
-        extract_relative_file(archive, 'config/iptables.rules',
-                              tmp_config_path)
-        extract_relative_file(archive, 'etc/platform/iptables.rules',
-                              PLATFORM_CONF_PATH)
 
     # Extract etc files
     archive.extract('etc/hostname', '/')

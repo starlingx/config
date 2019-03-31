@@ -364,19 +364,6 @@ class platform::ceph::osds(
   create_resources('platform_ceph_journal', $journal_config)
 }
 
-
-class platform::ceph::firewall
-  inherits ::platform::ceph::params {
-
-  if $service_enabled {
-    platform::firewall::rule { 'ceph-radosgw':
-      service_name => 'ceph-radosgw',
-      ports        => $rgw_port,
-    }
-  }
-}
-
-
 class platform::ceph::haproxy
   inherits ::platform::ceph::params {
 
@@ -434,7 +421,6 @@ class platform::ceph::rgw
     }
   }
 
-  include ::platform::ceph::firewall
   include ::platform::ceph::haproxy
 }
 

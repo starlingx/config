@@ -88,15 +88,6 @@ class openstack::barbican::service
   }
 }
 
-class openstack::barbican::firewall
-  inherits ::openstack::barbican::params {
-
-  platform::firewall::rule { 'barbican-api':
-    service_name => 'barbican-api',
-    ports        => $api_port,
-  }
-}
-
 class openstack::barbican::haproxy
   inherits ::openstack::barbican::params {
 
@@ -137,7 +128,6 @@ class openstack::barbican::api
 
   if $service_enabled {
     include ::openstack::barbican::service
-    include ::openstack::barbican::firewall
     include ::openstack::barbican::haproxy
   }
 }
