@@ -4,6 +4,8 @@
 #
 # Copyright (C) 2019 Intel Corporation
 #
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
 # lib/stx-config
 # Functions to control the configuration and operation of stx-config
 
@@ -36,7 +38,6 @@ STX_SYSCONFDIR=${STX_SYSCONFDIR:-/etc}
 # Set up GITDIR so setup_lib and setup_dev_lib work properly
 GITDIR["cgts-client"]=$STX_CONFIG_DIR/sysinv/cgts-client/cgts-client
 
-STX_CONF_UTILS_DIR=$STX_CONFIG_DIR/configutilities/configutilities
 STX_CTRL_CONF_DIR=$STX_CONFIG_DIR/controllerconfig/controllerconfig
 
 SYSINV_DIR=$STX_CONFIG_DIR/sysinv/sysinv/sysinv
@@ -88,17 +89,12 @@ function cleanup_cgtsclient {
 function cleanup_config {
     if is_service_enabled sysinv; then
         cleanup_sysinv
-        cleanup_configutilities
         cleanup_controllerconfig
     fi
 
     if is_service_enabled cgtsclient; then
         cleanup_cgtsclient
     fi
-}
-
-function cleanup_configutilities {
-    pip_uninstall configutilities
 }
 
 function cleanup_controllerconfig {
@@ -230,18 +226,12 @@ function install_config {
         install_cgtsclient
     fi
     if is_service_enabled sysinv; then
-        install_configutilities
         install_controllerconfig
         install_sysinv
     fi
     if is_service_enabled sysinv-agent; then
         install_sysinv_agent
     fi
-}
-
-function install_configutilities {
-    # We can't use setup_develop as there is no setup.cfg file present for configutilities
-    setup_package $STX_CONF_UTILS_DIR -e
 }
 
 function install_controllerconfig {

@@ -1,5 +1,5 @@
 """
-Copyright (c) 2015-2018 Wind River Systems, Inc.
+Copyright (c) 2015-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -19,16 +19,15 @@ from controllerconfig.common import constants
 from controllerconfig.common import log
 from controllerconfig.common import rest_api_utils as rutils
 from controllerconfig.common.exceptions import KeystoneFail
-from configutilities.common import utils as cutils
-from configutilities.common.configobjects import REGION_CONFIG
-from configutilities.common.configobjects import SUBCLOUD_CONFIG
-from configutilities import ConfigFail
+from controllerconfig.common.configobjects import REGION_CONFIG
+from controllerconfig.common.configobjects import SUBCLOUD_CONFIG
+from controllerconfig import ConfigFail
 from controllerconfig.configassistant import ConfigAssistant
 from netaddr import IPAddress
 from controllerconfig.systemconfig import parse_system_config
 from controllerconfig.systemconfig import configure_management_interface
 from controllerconfig.systemconfig import create_cgcs_config_file
-from configutilities import DEFAULT_DOMAIN_NAME
+from controllerconfig import DEFAULT_DOMAIN_NAME
 
 # Temporary file for building cgcs_config
 TEMP_CGCS_CONFIG_FILE = "/tmp/cgcs_config"
@@ -290,18 +289,18 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
 
     # Verify that region two endpoints & services match our requirements,
     # optionally creating missing entries
-    public_address = cutils.get_optional(region_config, 'CAN_NETWORK',
-                                         'CAN_IP_START_ADDRESS')
+    public_address = utils.get_optional(region_config, 'CAN_NETWORK',
+                                        'CAN_IP_START_ADDRESS')
     if not public_address:
-        public_address = cutils.get_optional(region_config, 'CAN_NETWORK',
-                                             'CAN_IP_FLOATING_ADDRESS')
+        public_address = utils.get_optional(region_config, 'CAN_NETWORK',
+                                            'CAN_IP_FLOATING_ADDRESS')
     if not public_address:
-        public_address = cutils.get_optional(region_config, 'OAM_NETWORK',
-                                             'IP_START_ADDRESS')
+        public_address = utils.get_optional(region_config, 'OAM_NETWORK',
+                                            'IP_START_ADDRESS')
     if not public_address:
         # AIO-SX configuration
-        public_address = cutils.get_optional(region_config, 'OAM_NETWORK',
-                                             'IP_ADDRESS')
+        public_address = utils.get_optional(region_config, 'OAM_NETWORK',
+                                            'IP_ADDRESS')
     if not public_address:
         public_address = region_config.get('OAM_NETWORK',
                                            'IP_FLOATING_ADDRESS')
@@ -313,17 +312,17 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
         internal_address = region_config.get('MGMT_NETWORK',
                                              'IP_START_ADDRESS')
 
-    internal_infra_address = cutils.get_optional(
+    internal_infra_address = utils.get_optional(
         region_config, 'BLS_NETWORK', 'BLS_IP_START_ADDRESS')
     if not internal_infra_address:
-        internal_infra_address = cutils.get_optional(
+        internal_infra_address = utils.get_optional(
             region_config, 'INFRA_NETWORK', 'IP_START_ADDRESS')
 
     for endpoint in expected_region_2_endpoints:
-        service_name = cutils.get_service(region_config, 'REGION_2_SERVICES',
-                                          endpoint[SERVICE_NAME])
-        service_type = cutils.get_service(region_config, 'REGION_2_SERVICES',
-                                          endpoint[SERVICE_TYPE])
+        service_name = utils.get_service(region_config, 'REGION_2_SERVICES',
+                                         endpoint[SERVICE_NAME])
+        service_type = utils.get_service(region_config, 'REGION_2_SERVICES',
+                                         endpoint[SERVICE_TYPE])
         service_id = services.get_service_id(service_name, service_type)
 
         expected_public_url = endpoint[PUBLIC_URL].format(public_address)

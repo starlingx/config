@@ -10,9 +10,6 @@ workerconfig
 workerconfig-standalone
 workerconfig-subfunction
 
-# configutilities
-configutilities
-
 # controllerconfig
 controllerconfig
 

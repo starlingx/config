@@ -1,5 +1,5 @@
 """
-Copyright (c) 2015-2017 Wind River Systems, Inc.
+Copyright (c) 2015-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -18,16 +18,16 @@ from controllerconfig.common.exceptions import BackupFail
 from controllerconfig.common.exceptions import RestoreFail
 from controllerconfig.common.exceptions import UserQuit
 from controllerconfig.common.exceptions import CloneFail
-from configutilities import lag_mode_to_str
-from configutilities import Network
-from configutilities import validate
-from configutilities import ConfigFail
-from configutilities import DEFAULT_CONFIG
-from configutilities import REGION_CONFIG
-from configutilities import SUBCLOUD_CONFIG
-from configutilities import MGMT_TYPE
-from configutilities import HP_NAMES
-from configutilities import DEFAULT_NAMES
+from controllerconfig import lag_mode_to_str
+from controllerconfig import Network
+from controllerconfig import validate
+from controllerconfig import ConfigFail
+from controllerconfig import DEFAULT_CONFIG
+from controllerconfig import REGION_CONFIG
+from controllerconfig import SUBCLOUD_CONFIG
+from controllerconfig import MGMT_TYPE
+from controllerconfig import HP_NAMES
+from controllerconfig import DEFAULT_NAMES
 from controllerconfig.configassistant import ConfigAssistant
 from controllerconfig import backup_restore
 from controllerconfig import utils

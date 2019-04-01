@@ -1,5 +1,5 @@
 """
-Copyright (c) 2017 Wind River Systems, Inc.
+Copyright (c) 2017-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -13,8 +13,8 @@ import subprocess
 import sys
 import time
 
-import configutilities.common.exceptions as cexeptions
-import configutilities.common.utils as cutils
+import controllerconfig.common.exceptions as exeptions
+import controllerconfig.utils as utils
 from six.moves import input
 
 
@@ -109,9 +109,9 @@ def configure_management():
                 continue
             break
         except (netaddr.AddrFormatError, ValueError):
-            print ("Invalid CIDR - "
-                   "please enter a valid management IP address in "
-                   "CIDR notation.")
+            print("Invalid CIDR - "
+                  "please enter a valid management IP address in "
+                  "CIDR notation.")
 
     while True:
         user_input = input("Enter management gateway IP address [" +
@@ -127,18 +127,18 @@ def configure_management():
             management_gateway_address = ip_input
             break
         except (netaddr.AddrFormatError, ValueError):
-            print ("Invalid address - "
-                   "please enter a valid management gateway IP address")
+            print("Invalid address - "
+                  "please enter a valid management gateway IP address")
 
     min_addresses = 8
     while True:
         user_input = input("Enter System Controller subnet in "
                            "CIDR notation: ")
         try:
-            system_controller_subnet = cutils.validate_network_str(
+            system_controller_subnet = utils.validate_network_str(
                 user_input, min_addresses)
             break
-        except cexeptions.ValidateFail as e:
+        except exeptions.ValidateFail as e:
             print("{}".format(e))
 
     print("Disabling non-management interfaces... ", end=' ')

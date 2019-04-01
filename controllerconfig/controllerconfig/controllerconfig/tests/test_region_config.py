@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014-2017 Wind River Systems, Inc.
+Copyright (c) 2014-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -17,9 +17,9 @@ import pytest
 import shutil
 import sys
 
-import configutilities.common.exceptions as exceptions
-from configutilities import REGION_CONFIG
-from configutilities import validate
+import controllerconfig.common.exceptions as exceptions
+from controllerconfig import REGION_CONFIG
+from controllerconfig import validate
 import controllerconfig.common.keystone as keystone
 from controllerconfig.tests import test_answerfile
 

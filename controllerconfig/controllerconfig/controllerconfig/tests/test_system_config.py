@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014, 2017 Wind River Systems, Inc.
+Copyright (c) 2014-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -11,9 +11,9 @@ import os
 import pytest
 import sys
 
-import configutilities.common.exceptions as exceptions
-from configutilities import validate
-from configutilities import DEFAULT_CONFIG
+import controllerconfig.common.exceptions as exceptions
+from controllerconfig import validate
+from controllerconfig import DEFAULT_CONFIG
 
 sys.modules['fm_core'] = mock.Mock()
 
