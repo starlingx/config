@@ -12,6 +12,11 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
 """
 Routines for URL-safe encrypting/decrypting
@@ -34,20 +39,19 @@ from six.moves import range
 
 
 def urlsafe_encrypt(key, plaintext, blocksize=16):
-    """
-    Encrypts plaintext. Resulting ciphertext will contain URL-safe characters.
+    """Encrypts plaintext.
+
+    Resulting ciphertext will contain URL-safe characters.
     If plaintext is Unicode, encode it to UTF-8 before encryption.
 
     :param key: AES secret key
     :param plaintext: Input text to be encrypted
     :param blocksize: Non-zero integer multiple of AES blocksize in bytes (16)
-
     :returns: Resulting ciphertext
     """
+
     def pad(text):
-        """
-        Pads text to be encrypted
-        """
+        """Pads text to be encrypted"""
         pad_length = (blocksize - len(text) % blocksize)
         # NOTE(rosmaita): I know this looks stupid, but we can't just
         # use os.urandom() to get the bytes because we use char(0) as
@@ -74,8 +78,8 @@ def urlsafe_encrypt(key, plaintext, blocksize=16):
 
 
 def urlsafe_decrypt(key, ciphertext):
-    """
-    Decrypts URL-safe base64 encoded ciphertext.
+    """Decrypts URL-safe base64 encoded ciphertext.
+
     On Python 3, the result is decoded from UTF-8.
 
     :param key: AES secret key

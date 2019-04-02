@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2016-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -21,7 +21,7 @@ import yaml
 from tsconfig.tsconfig import SW_VERSION
 from tsconfig.tsconfig import PLATFORM_PATH
 
-from configutilities import DEFAULT_DOMAIN_NAME
+from controllerconfig import DEFAULT_DOMAIN_NAME
 from controllerconfig import utils as cutils
 from controllerconfig.common import log
 from controllerconfig.common import constants

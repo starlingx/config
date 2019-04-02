@@ -1,34 +1,34 @@
 """
-Copyright (c) 2015-2017 Wind River Systems, Inc.
+Copyright (c) 2015-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
 """
-from configutilities.common.configobjects import DEFAULT_NAMES
-from configutilities.common.configobjects import NETWORK_PREFIX_NAMES
-from configutilities.common.configobjects import OAM_TYPE
-from configutilities.common.configobjects import MGMT_TYPE
-from configutilities.common.configobjects import Network
-from configutilities.common.configobjects import REGION_CONFIG
-from configutilities.common.configobjects import INFRA_TYPE
-from configutilities.common.configobjects import DEFAULT_DOMAIN_NAME
-from configutilities.common.configobjects import HP_NAMES
-from configutilities.common.configobjects import SUBCLOUD_CONFIG
-from configutilities.common.configobjects import CLUSTER_TYPE
+from controllerconfig.common.configobjects import DEFAULT_NAMES
+from controllerconfig.common.configobjects import NETWORK_PREFIX_NAMES
+from controllerconfig.common.configobjects import OAM_TYPE
+from controllerconfig.common.configobjects import MGMT_TYPE
+from controllerconfig.common.configobjects import Network
+from controllerconfig.common.configobjects import REGION_CONFIG
+from controllerconfig.common.configobjects import INFRA_TYPE
+from controllerconfig.common.configobjects import DEFAULT_DOMAIN_NAME
+from controllerconfig.common.configobjects import HP_NAMES
+from controllerconfig.common.configobjects import SUBCLOUD_CONFIG
+from controllerconfig.common.configobjects import CLUSTER_TYPE
 from netaddr import IPRange
-from configutilities.common.utils import lag_mode_to_str
-from configutilities.common.utils import validate_network_str
-from configutilities.common.utils import check_network_overlap
-from configutilities.common.utils import is_mtu_valid
-from configutilities.common.utils import get_service
-from configutilities.common.utils import get_optional
-from configutilities.common.utils import validate_address_str
-from configutilities.common.utils import validate_nameserver_address_str
-from configutilities.common.utils import is_valid_url
-from configutilities.common.utils import is_valid_domain_or_ip
-from configutilities.common.utils import is_valid_bool_str
-from configutilities.common.exceptions import ConfigFail
-from configutilities.common.exceptions import ValidateFail
+from controllerconfig.utils import lag_mode_to_str
+from controllerconfig.utils import validate_network_str
+from controllerconfig.utils import check_network_overlap
+from controllerconfig.utils import is_mtu_valid
+from controllerconfig.utils import get_service
+from controllerconfig.utils import get_optional
+from controllerconfig.utils import validate_address_str
+from controllerconfig.utils import validate_nameserver_address_str
+from controllerconfig.utils import is_valid_url
+from controllerconfig.utils import is_valid_domain_or_ip
+from controllerconfig.utils import is_valid_bool_str
+from controllerconfig.common.exceptions import ConfigFail
+from controllerconfig.common.exceptions import ValidateFail
 
 
 # Constants

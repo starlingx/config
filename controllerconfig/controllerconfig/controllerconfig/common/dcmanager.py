@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,7 +11,7 @@ DC Manager Interactions
 from controllerconfig.common import log
 
 from Crypto.Hash import MD5
-from configutilities.common import crypt
+from controllerconfig.common import crypt
 
 import json
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014 Wind River Systems, Inc.
+# Copyright (c) 2014-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,7 +8,26 @@
 Configuration Errors
 """
 
-from configutilities import ConfigError
+
+class ConfigError(Exception):
+    """Base class for configuration exceptions."""
+
+    def __init__(self, message=None):
+        self.message = message
+        super(ConfigError, self).__init__(message)
+
+    def __str__(self):
+        return self.message or ""
+
+
+class ConfigFail(ConfigError):
+    """General configuration error."""
+    pass
+
+
+class ValidateFail(ConfigError):
+    """Validation of data failed."""
+    pass
 
 
 class BackupFail(ConfigError):

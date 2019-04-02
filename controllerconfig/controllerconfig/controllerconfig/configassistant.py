@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014-2018 Wind River Systems, Inc.
+Copyright (c) 2014-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -20,19 +20,19 @@ import textwrap
 import time
 
 import pyudev
-from configutilities import ConfigFail
-from configutilities import ValidateFail
-from configutilities import is_valid_vlan
-from configutilities import is_mtu_valid
-from configutilities import validate_network_str
-from configutilities import validate_address_str
-from configutilities import validate_address
-from configutilities import ip_version_to_string
-from configutilities import validate_nameserver_address_str
-from configutilities import is_valid_url
-from configutilities import is_valid_domain_or_ip
-from configutilities import validate_openstack_password
-from configutilities import DEFAULT_DOMAIN_NAME
+from controllerconfig import ConfigFail
+from controllerconfig import ValidateFail
+from controllerconfig import is_valid_vlan
+from controllerconfig import is_mtu_valid
+from controllerconfig import validate_network_str
+from controllerconfig import validate_address_str
+from controllerconfig import validate_address
+from controllerconfig import ip_version_to_string
+from controllerconfig import validate_nameserver_address_str
+from controllerconfig import is_valid_url
+from controllerconfig import is_valid_domain_or_ip
+from controllerconfig import validate_openstack_password
+from controllerconfig import DEFAULT_DOMAIN_NAME
 from netaddr import IPNetwork
 from netaddr import IPAddress
 from netaddr import IPRange

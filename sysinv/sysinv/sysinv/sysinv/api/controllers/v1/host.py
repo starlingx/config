@@ -16,8 +16,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
+# SPDX-License-Identifier: Apache-2.0
 
 import ast
 import cgi
@@ -42,7 +43,7 @@ import wsme
 import wsmeext.pecan as wsme_pecan
 
 from wsme import types as wtypes
-from configutilities import HOST_XML_ATTRIBUTES
+from controllerconfig import HOST_XML_ATTRIBUTES
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 from pecan import expose
