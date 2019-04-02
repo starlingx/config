@@ -26,12 +26,6 @@ class platform::ptp (
     $slave_only = true
   }
 
-  if $enabled {
-    $pmon_ensure = 'link'
-  } else {
-    $pmon_ensure = 'absent'
-  }
-
   file { 'ptp4l_config':
     ensure  => file,
     path    => '/etc/ptp4l.conf',
@@ -61,34 +55,6 @@ class platform::ptp (
     path    => '/etc/sysconfig/phc2sys',
     mode    => '0644',
     content => template('platform/phc2sys.erb'),
-  }
-  -> file { 'ptp4l_pmon':
-    ensure  => file,
-    path    => '/etc/ptp4l.pmon.conf',
-    mode    => '0644',
-    content => template('platform/ptp4l.pmon.conf.erb'),
-  }
-  -> file { 'phc2sys_pmon':
-    ensure  => file,
-    path    => '/etc/phc2sys.pmon.conf',
-    mode    => '0644',
-    content => template('platform/phc2sys.pmon.conf.erb'),
-  }
-  -> file { 'ptp4l_pmon_link':
-    ensure => $pmon_ensure,
-    path   => '/etc/pmon.d/ptp4l.conf',
-    target => '/etc/ptp4l.pmon.conf',
-    owner  => 'root',
-    group  => 'root',
-    mode   => '0600',
-  }
-  -> file { 'phc2sys_pmon_link':
-    ensure => $pmon_ensure,
-    path   => '/etc/pmon.d/phc2sys.conf',
-    target => '/etc/phc2sys.pmon.conf',
-    owner  => 'root',
-    group  => 'root',
-    mode   => '0600',
   }
   -> exec { 'systemctl-daemon-reload':
     command     => '/usr/bin/systemctl daemon-reload',
