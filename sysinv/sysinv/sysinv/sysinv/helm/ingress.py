@@ -24,7 +24,6 @@ class IngressHelm(base.BaseHelm):
     ]
 
     def get_overrides(self, namespace=None):
-        # Currently have conflicts with ports 80 and 8080, use 8081 for now
         overrides = {
             common.HELM_NS_KUBE_SYSTEM: {
                 'pod': {
@@ -39,15 +38,6 @@ class IngressHelm(base.BaseHelm):
                 'network': {
                     'host_namespace': 'true'
                 },
-                'endpoints': {
-                    'ingress': {
-                        'port': {
-                            'http': {
-                                'default': 8081
-                            }
-                        }
-                    }
-                }
             },
             common.HELM_NS_OPENSTACK: {
                 'pod': {
