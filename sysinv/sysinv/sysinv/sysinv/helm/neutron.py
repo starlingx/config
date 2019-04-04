@@ -294,9 +294,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         return {
             'agent': agent,
             'ovs': ovs,
-            'securitygroup': {
-                'firewall_driver': 'noop',
-            },
         }
 
     def _get_dynamic_sriov_agent_config(self, host):
