@@ -40,27 +40,6 @@ class BaseHelm(object):
     def context(self):
         return self._operator.context
 
-    @property
-    def docker_repo_source(self):
-        return common.DOCKER_SRC_LOC
-
-    @property
-    def docker_repo_tag(self):
-        return common.DOCKER_SRCS[self.docker_repo_source][common.IMG_TAG_KEY]
-
-    @property
-    def docker_image(self):
-        if self.docker_repo_source == common.DOCKER_SRC_LOC:
-            return "{}:{}/{}/{}{}:{}".format(
-                self._get_management_address(), common.REGISTRY_PORT, common.REPO_LOC,
-                common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
-                self.SERVICE_NAME, self.docker_repo_tag)
-        else:
-            return "{}/{}{}:{}".format(
-                common.DOCKER_SRCS[self.docker_repo_source][common.IMG_BASE_KEY],
-                common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
-                self.SERVICE_NAME, self.docker_repo_tag)
-
     @staticmethod
     def quoted_str(value):
         return quoted_str(value)

@@ -35,7 +35,6 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                         'backup': self._num_controllers()
                     }
                 },
-                'images': self._get_images_overrides(),
                 'conf': {
                     'cinder': self._get_conf_cinder_overrides(),
                     'ceph': self._get_conf_ceph_overrides(),
@@ -179,36 +178,6 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                     self.SERVICE_NAME, self.AUTH_USERS)
             },
 
-        }
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-
-        # TODO: Remove after ceph upgrade
-        # Format the name of the stx specific ceph config helper
-        ceph_config_helper_image = "{}:{}/{}/{}{}:{}".format(
-            self._get_management_address(), common.REGISTRY_PORT, common.REPO_LOC,
-            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
-            'ceph-config-helper', self.docker_repo_tag)
-
-        return {
-            'tags': {
-                'bootstrap': heat_image,
-                'cinder_api': self.docker_image,
-                'cinder_backup': self.docker_image,
-                'cinder_backup_storage_init': ceph_config_helper_image,
-                'cinder_db_sync': self.docker_image,
-                'cinder_scheduler': self.docker_image,
-                'cinder_storage_init': ceph_config_helper_image,
-                'cinder_volume': self.docker_image,
-                'cinder_volume_usage_audit': self.docker_image,
-                'db_drop': heat_image,
-                'db_init': heat_image,
-                'ks_endpoints': heat_image,
-                'ks_service': heat_image,
-                'ks_user': heat_image,
-            }
         }
 
     def _get_primary_ceph_backend(self):

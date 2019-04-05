@@ -73,7 +73,6 @@ class RbdProvisionerHelm(base.BaseHelm):
             common.HELM_NS_OPENSTACK: {
                 "classdefaults": classdefaults,
                 "classes": classes,
-                "images": self._get_images_overrides(),
                 "global": global_settings
             }
         }
@@ -85,18 +84,3 @@ class RbdProvisionerHelm(base.BaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        # TODO: Remove after ceph upgrade
-        # Format the name of the stx specific ceph config helper
-        local_docker_registry_ip = self._get_management_address()
-        ceph_config_helper_image = "{}:{}/{}/{}{}:{}".format(
-            local_docker_registry_ip, common.REGISTRY_PORT, common.REPO_LOC,
-            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
-            'ceph-config-helper', self.docker_repo_tag)
-
-        return {
-            'tags': {
-                'rbd_provisioner_storage_init': ceph_config_helper_image,
-            }
-        }

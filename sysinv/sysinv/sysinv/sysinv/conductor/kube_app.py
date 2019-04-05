@@ -16,11 +16,11 @@ import keyring
 import os
 import pwd
 import re
+import ruamel.yaml as yaml
 import shutil
 import subprocess
 import threading
 import time
-import yaml
 
 from collections import namedtuple
 from eventlet import greenpool
@@ -62,6 +62,7 @@ TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 DOCKER_REGISTRY_USER = 'admin'
 DOCKER_REGISTRY_SERVICE = 'CGCS'
 DOCKER_REGISTRY_SECRET = 'default-registry-key'
+DOCKER_REGISTRY_PORT = '9001'
 
 
 # Helper functions
@@ -311,17 +312,18 @@ class AppOperator(object):
         for r, f in cutils.get_files_matching(path, 'values.yaml'):
             with open(os.path.join(r, f), 'r') as value_f:
                 try:
-                    y = yaml.load(value_f)
+                    y = yaml.safe_load(value_f)
                     ids = y["images"]["tags"].values()
                 except (TypeError, KeyError):
                     pass
             image_tags.extend(ids)
         return list(set(image_tags))
 
-    def _get_image_tags_by_charts(self, app_images_file, charts):
+    def _get_image_tags_by_charts(self, app_images_file, app_manifest_file):
         """ Mine the image tags for charts from the images file. Add the
-            converted image tags to the overrides if the image tags from
-            the charts do not exist. Intended for system app.
+            image tags to the manifest file if the image tags from the charts
+            do not exist in both overrides file and manifest file. Convert
+            the image tags in the manifest file. Intended for system app.
 
             The image tagging conversion(local docker registry address prepended):
             ${LOCAL_DOCKER_REGISTRY_IP}:${REGISTRY_PORT}/<image-name>
@@ -329,64 +331,102 @@ class AppOperator(object):
         """
 
         local_registry_server = self._docker.get_local_docker_registry_server()
+        manifest_image_tags_updated = False
         image_tags = []
+
+        if os.path.exists(app_images_file):
+            with open(app_images_file, 'r') as f:
+                images_file = yaml.safe_load(f)
+
+        if os.path.exists(app_manifest_file):
+            with open(app_manifest_file, 'r') as f:
+                charts = list(yaml.load_all(f, Loader=yaml.RoundTripLoader))
+
         for chart in charts:
             images_charts = {}
             images_overrides = {}
-            overrides = chart.namespace + '-' + chart.name + '.yaml'
-            overrides_file = os.path.join(common.HELM_OVERRIDES_PATH,
-                                          overrides)
+            images_manifest = {}
 
-            # Get the image tags by chart from the images file
-            if os.path.exists(app_images_file):
-                with open(app_images_file, 'r') as f:
+            overrides_image_tags_updated = False
+            chart_image_tags_updated = False
+
+            if "armada/Chart/" in chart['schema']:
+                chart_data = chart['data']
+                chart_name = chart_data['chart_name']
+                chart_namespace = chart_data['namespace']
+
+                # Get the image tags by chart from the images file
+                if chart_name in images_file:
+                    images_charts = images_file[chart_name]
+
+                # Get the image tags from the overrides file
+                overrides = chart_namespace + '-' + chart_name + '.yaml'
+                app_overrides_file = os.path.join(common.HELM_OVERRIDES_PATH, overrides)
+                if os.path.exists(app_overrides_file):
                     try:
-                        doc = yaml.load(f)
-                        images_charts = doc[chart.name]
+                        with open(app_overrides_file, 'r') as f:
+                            overrides_file = yaml.safe_load(f)
+                            images_overrides = overrides_file['data']['values']['images']['tags']
                     except (TypeError, KeyError):
                         pass
 
-            # Get the image tags from the overrides file
-            if os.path.exists(overrides_file):
-                with open(overrides_file, 'r') as f:
-                    try:
-                        y = yaml.load(f)
-                        images_overrides = y["data"]["values"]["images"]["tags"]
-                    except (TypeError, KeyError):
-                        LOG.info("Overrides file %s has no img tags" %
-                                  overrides_file)
-                        pass
+                # Get the image tags from the armada manifest file
+                try:
+                    images_manifest = chart_data['values']['images']['tags']
+                except (TypeError, KeyError):
+                    LOG.info("Armada manifest file has no img tags for "
+                             "chart %s" % chart_name)
+                    pass
 
-            # Add the converted image tags to the overrides if the images from
-            # the chart path do not exist in the overrides
-            tags_updated = False
-            for key, image_tag in images_charts.items():
-                if (key not in images_overrides and
-                        not image_tag.startswith(local_registry_server)):
-                    images_overrides.update(
-                        {key: '{}/{}'.format(local_registry_server, image_tag)})
-                    tags_updated = True
+                # For the image tags from the chart path which do not exist
+                # in the overrides and manifest file, add to manifest file.
+                # Convert the image tags in the overrides and manifest file
+                # with local docker registry address.
+                # Append the required images to the image_tags list.
+                for key in images_charts:
+                    if key not in images_overrides:
+                        if key not in images_manifest:
+                            images_manifest.update({key: images_charts[key]})
+                        if not re.match(r'^.+:.+/', images_manifest[key]):
+                            images_manifest.update(
+                                {key: '{}/{}'.format(local_registry_server, images_manifest[key])})
+                            chart_image_tags_updated = True
+                        image_tags.append(images_manifest[key])
+                    else:
+                        if not re.match(r'^.+:.+/', images_overrides[key]):
+                            images_overrides.update(
+                                {key: '{}/{}'.format(local_registry_server, images_overrides[key])})
+                            overrides_image_tags_updated = True
+                        image_tags.append(images_overrides[key])
 
-            if tags_updated:
-                with open(overrides_file, 'w') as f:
-                    try:
-                        if "images" not in y["data"]["values"]:
-                            f.seek(0)
-                            f.truncate()
-                            y["data"]["values"]["images"] = {"tags": images_overrides}
-                        else:
-                            y["data"]["values"]["images"]["tags"] = images_overrides
+                if overrides_image_tags_updated:
+                    with open(app_overrides_file, 'w') as f:
+                        try:
+                            overrides_file["data"]["values"]["images"] = {"tags": images_overrides}
+                            yaml.safe_dump(overrides_file, f, default_flow_style=False)
+                            LOG.info("Overrides file %s updated with new image tags" %
+                                     app_overrides_file)
+                        except (TypeError, KeyError):
+                            LOG.error("Overrides file %s fails to update" %
+                                      app_overrides_file)
 
-                        yaml.safe_dump(y, f, explicit_start=True,
-                                       default_flow_style=False)
-                        LOG.info("Overrides file %s updated with new image tags" %
-                                  overrides_file)
-                    except (TypeError, KeyError):
-                        LOG.error("Overrides file %s fails to update" %
-                                   overrides_file)
+                if chart_image_tags_updated:
+                    if 'values' in chart_data:
+                        chart_data['values']['images'] = {'tags': images_manifest}
+                    else:
+                        chart_data["values"] = {"images": {"tags": images_manifest}}
+                    manifest_image_tags_updated = True
 
-            if images_overrides:
-                image_tags.extend(images_overrides.values())
+        if manifest_image_tags_updated:
+            with open(app_manifest_file, 'w') as f:
+                try:
+                    yaml.dump_all(charts, f, Dumper=yaml.RoundTripDumper,
+                                  explicit_start=True, default_flow_style=False)
+                    LOG.info("Manifest file %s updated with new image tags" %
+                             app_manifest_file)
+                except Exception as e:
+                    LOG.error("Manifest file %s fails to update with "
+                              "new image tags: %s" % (app_manifest_file, e))
 
         return list(set(image_tags))
 
@@ -418,7 +458,7 @@ class AppOperator(object):
             self._save_images_list_by_charts(app)
             # Get the list of images from the updated images overrides
             images_to_download = self._get_image_tags_by_charts(
-                app.imgfile_abs, app.charts)
+                app.imgfile_abs, app.armada_mfile_abs)
         else:
             # For custom apps, mine image tags from application path
             images_to_download = self._get_image_tags_by_path(app.path)
@@ -447,7 +487,7 @@ class AppOperator(object):
             if os.path.exists(chart_path):
                 with open(chart_path, 'r') as f:
                     try:
-                        y = yaml.load(f)
+                        y = yaml.safe_load(f)
                         images = y["images"]["tags"]
                     except (TypeError, KeyError):
                         LOG.warn("Chart %s has no image tags" % chart_name)
@@ -460,7 +500,7 @@ class AppOperator(object):
 
     def _retrieve_images_list(self, app_images_file):
         with open(app_images_file, 'rb') as f:
-            images_list = yaml.load(f)
+            images_list = yaml.safe_load(f)
         return images_list
 
     def _download_images(self, app):
@@ -473,7 +513,8 @@ class AppOperator(object):
             # saved images list.
             saved_images_list = self._retrieve_images_list(app.imgfile_abs)
             saved_download_images_list = list(saved_images_list.get("download_images"))
-            images_to_download = self._get_image_tags_by_charts(app.imgfile_abs, app.charts)
+            images_to_download = self._get_image_tags_by_charts(
+                app.imgfile_abs, app.armada_mfile_abs)
             if set(saved_download_images_list) != set(images_to_download):
                 saved_images_list.update({"download_images": images_to_download})
                 with open(app.imgfile_abs, 'wb') as f:
@@ -621,7 +662,7 @@ class AppOperator(object):
         if os.path.exists(lfile) and os.path.getsize(lfile) > 0:
             with open(lfile, 'r') as f:
                 try:
-                    y = yaml.load(f)
+                    y = yaml.safe_load(f)
                     labels = y['labels']
                 except KeyError:
                     raise exception.KubeAppUploadFailure(
@@ -795,7 +836,7 @@ class AppOperator(object):
     def _get_list_of_charts(self, manifest_file):
         charts = []
         with open(manifest_file, 'r') as f:
-            docs = yaml.load_all(f)
+            docs = yaml.safe_load_all(f)
             for doc in docs:
                 try:
                     if "armada/Chart/" in doc['schema']:
@@ -1363,7 +1404,7 @@ class DockerHelper(object):
             cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
                                    constants.NETWORK_TYPE_MGMT)
         ).address
-        registry_server = '{}:{}'.format(registry_ip, common.REGISTRY_PORT)
+        registry_server = '{}:{}'.format(registry_ip, DOCKER_REGISTRY_PORT)
         return registry_server
 
     def _get_img_tag_with_registry(self, pub_img_tag):

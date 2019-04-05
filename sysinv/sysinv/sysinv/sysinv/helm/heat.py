@@ -26,7 +26,6 @@ class HeatHelm(openstack.OpenstackBaseHelm):
             common.HELM_NS_OPENSTACK: {
                 'pod': self._get_pod_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
-                'images': self._get_images_overrides(),
             }
         }
 
@@ -37,25 +36,6 @@ class HeatHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        return {
-            'tags': {
-                'bootstrap': self.docker_image,
-                'db_drop': self.docker_image,
-                'db_init': self.docker_image,
-                'heat_api': self.docker_image,
-                'heat_cfn': self.docker_image,
-                'heat_cloudwatch': self.docker_image,
-                'heat_db_sync': self.docker_image,
-                'heat_engine': self.docker_image,
-                'heat_engine_cleaner': self.docker_image,
-                'heat_purge_deleted': self.docker_image,
-                'ks_endpoints': self.docker_image,
-                'ks_service': self.docker_image,
-                'ks_user': self.docker_image,
-            }
-        }
 
     def _get_pod_overrides(self):
         return {

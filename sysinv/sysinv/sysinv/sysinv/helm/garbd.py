@@ -66,7 +66,6 @@ class GarbdHelm(base.BaseHelm):
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {
-                'images': self._get_images_overrides(),
             }
         }
 
@@ -77,11 +76,3 @@ class GarbdHelm(base.BaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-
-        return {
-            'tags': {
-                'garbd': self.docker_image
-            }
-        }

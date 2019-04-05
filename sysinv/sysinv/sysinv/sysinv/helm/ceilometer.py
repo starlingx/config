@@ -25,7 +25,6 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {
-                'images': self._get_images_overrides(),
                 'pod': self._get_pod_overrides(),
                 'conf': self._get_conf_overrides(),
                 'manifests': self._get_manifests_overrides(),
@@ -40,27 +39,6 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        return {
-            'tags': {
-                'ks_service': heat_image,
-                'ks_user': heat_image,
-                'ks_endpoints': heat_image,
-                'db_init': self.docker_image,
-                'db_init_mongodb': self.docker_image,
-                'ceilometer_db_sync': self.docker_image,
-                'ceilometer_central': self.docker_image,
-                'ceilometer_compute': self.docker_image,
-                'ceilometer_ipmi': self.docker_image,
-                'ceilometer_notification': self.docker_image,
-                'ceilometer_collector': self.docker_image,
-                'ceilometer_api': self.docker_image,
-                'test': self.docker_image
-            }
-        }
 
     def _get_pod_overrides(self):
         return {

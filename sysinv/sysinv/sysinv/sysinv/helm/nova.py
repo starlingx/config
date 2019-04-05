@@ -97,7 +97,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     'ssh_public': ssh_publickey,
                 },
                 'endpoints': self._get_endpoints_overrides(),
-                'images': self._get_images_overrides(),
                 'network': {
                     'sshd': {
                         'from_subnet': self._get_ssh_subnet(),
@@ -113,44 +112,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-
-        # TODO: Remove after ceph upgrade
-        # Format the name of the stx specific ceph config helper
-        ceph_config_helper_image = "{}:{}/{}/{}{}:{}".format(
-            self._get_management_address(), common.REGISTRY_PORT,
-            common.REPO_LOC,
-            common.DOCKER_SRCS[self.docker_repo_source][common.IMG_PREFIX_KEY],
-            'ceph-config-helper', self.docker_repo_tag)
-
-        return {
-            'tags': {
-                'bootstrap': heat_image,
-                'db_drop': heat_image,
-                'db_init': heat_image,
-                'ks_user': heat_image,
-                'ks_service': heat_image,
-                'ks_endpoints': heat_image,
-                'nova_api': self.docker_image,
-                'nova_cell_setup': self.docker_image,
-                'nova_cell_setup_init': heat_image,
-                'nova_compute': self.docker_image,
-                'nova_compute_ironic': self.docker_image,
-                'nova_compute_ssh': self.docker_image,
-                'nova_conductor': self.docker_image,
-                'nova_consoleauth': self.docker_image,
-                'nova_db_sync': self.docker_image,
-                'nova_novncproxy': self.docker_image,
-                'nova_placement': self.docker_image,
-                'nova_scheduler': self.docker_image,
-                'nova_spiceproxy': self.docker_image,
-                'nova_spiceproxy_assets': self.docker_image,
-                'nova_storage_init': ceph_config_helper_image,
-            }
-        }
 
     def _get_endpoints_overrides(self):
         overrides = {

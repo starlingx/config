@@ -65,7 +65,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                     },
                 },
                 'endpoints': self._get_endpoints_overrides(),
-                'images': self._get_images_overrides(),
             }
         }
 
@@ -240,7 +239,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                     # obtain the assigned bridge for interface
                     brname = 'br-phy%d' % index
                     port_name = self._get_interface_port_name(iface)
-                    bridges[brname] = port_name
+                    bridges[brname] = port_name.encode('utf8', 'strict')
                     index += 1
         return bridges
 
@@ -380,32 +379,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                 return address.address
 
         return None
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        return {
-            'tags': {
-                'bootstrap': heat_image,
-                'db_init': heat_image,
-                'neutron_db_sync': self.docker_image,
-                'db_drop': heat_image,
-                'ks_user': heat_image,
-                'ks_service': heat_image,
-                'ks_endpoints': heat_image,
-                'neutron_server': self.docker_image,
-                'neutron_dhcp': self.docker_image,
-                'neutron_metadata': self.docker_image,
-                'neutron_l3': self.docker_image,
-                'neutron_openvswitch_agent': self.docker_image,
-                'neutron_linuxbridge_agent': self.docker_image,
-                # TODO (rchurch): Fix this... Suffix tied to a release???
-                # 'neutron_sriov_agent': '{}{}'.format(self.docker_image,'-sriov-1804'),
-                # 'neutron_sriov_agent_init': '{}{}'.format(self.docker_image,'-sriov-1804'),
-                'neutron_sriov_agent': self.docker_image,
-                'neutron_sriov_agent_init': self.docker_image,
-            }
-        }
 
     def _get_endpoints_overrides(self):
         overrides = {

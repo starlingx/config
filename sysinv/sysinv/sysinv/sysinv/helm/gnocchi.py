@@ -24,7 +24,6 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {
-                'images': self._get_images_overrides(),
                 'pod': self._get_pod_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
             }
@@ -37,24 +36,6 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_images_overrides(self):
-        heat_image = self._operator.chart_operators[
-            constants.HELM_CHART_HEAT].docker_image
-        return {
-            'tags': {
-                'db_init': self.docker_image,
-                'db_init_indexer': self.docker_image,
-                'db_sync': self.docker_image,
-                'gnocchi_api': self.docker_image,
-                'gnocchi_metricd': self.docker_image,
-                'gnocchi_resources_cleaner': self.docker_image,
-                'gnocchi_statsd': self.docker_image,
-                'ks_endpoints': heat_image,
-                'ks_service': heat_image,
-                'ks_user': heat_image,
-            }
-        }
 
     def _get_pod_overrides(self):
         return {
