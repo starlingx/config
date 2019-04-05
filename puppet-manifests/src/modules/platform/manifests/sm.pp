@@ -866,6 +866,17 @@ class platform::sm
     command => 'sm-provision service etcd',
   }
 
+  # Configure dbmon for AIO duplex and systemcontroller
+  if ($::platform::params::distributed_cloud_role =='systemcontroller') or
+    ($system_type == 'All-in-one' and 'duplex' in $system_mode) {
+    exec { 'Provision dmon (service-group-member)':
+      command => 'sm-provision service-group-member cloud-services dbmon',
+    }
+    -> exec { 'Provision dbmon (service)':
+      command => 'sm-provision service dbmon',
+    }
+  }
+
   # Configure Docker Distribution
   exec { 'Provision Docker Distribution (service-group-member)':
       command => 'sm-provision service-group-member controller-services docker-distribution',
