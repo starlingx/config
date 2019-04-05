@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
@@ -20,12 +19,7 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
     CHART = constants.HELM_CHART_MARIADB
 
     def _num_server_replicas(self):
-        # For now we want to run with a single mariadb server pod for the
-        # AIO-DX case.
-        if utils.is_aio_duplex_system(self.dbapi):
-            return 1
-        else:
-            return self._num_controllers()
+        return self._num_controllers()
 
     def get_overrides(self, namespace=None):
         overrides = {
