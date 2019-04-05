@@ -65,6 +65,7 @@ class platform::postgresql::server (
   # 1500 connections
   # 80 MB shared buffer
   # work_mem 512 MB since some ceilometer queries entail extensive
+  # TODO: with ceilometer removed, determine if work_mem can be revisited
   # sorting as well as hash joins and hash based aggregation.
   # checkpoint_segments increased to reduce frequency of checkpoints
   if str2bool($::is_worker_subfunction) or str2bool($::is_virtual) {
