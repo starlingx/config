@@ -178,6 +178,19 @@ class BaseHelm(object):
             constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
         return address.address
 
+    def _get_host_cpu_list(self, host, function=None, threads=False):
+        """
+        Retrieve a list of CPUs for the host, filtered by function and thread
+        siblings (if supplied)
+        """
+        cpus = []
+        for c in self.dbapi.icpu_get_by_ihost(host.id):
+            if c.thread != 0 and not threads:
+                continue
+            if c.allocated_function == function or not function:
+                cpus.append(c)
+        return cpus
+
     def get_namespaces(self):
         """
         Return list of namespaces supported by this chart
