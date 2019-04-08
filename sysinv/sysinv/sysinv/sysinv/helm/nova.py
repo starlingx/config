@@ -188,19 +188,6 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         else:
             return 'kvm'
 
-    def _get_host_cpu_list(self, host, function=None, threads=False):
-        """
-        Retreive a list of CPUs for the host, filtered by function and thread
-        siblings (if supplied)
-        """
-        cpus = []
-        for c in self.dbapi.icpu_get_by_ihost(host.id):
-            if c.thread != 0 and not threads:
-                continue
-            if c.allocated_function == function or not function:
-                cpus.append(c)
-        return cpus
-
     def _update_host_cpu_maps(self, host, default_config):
         host_cpus = self._get_host_cpu_list(host, threads=True)
         if host_cpus:
