@@ -72,9 +72,6 @@ class StorageBackendManager(base.Manager):
         # path = '/v1/storage_backend/%s' % storage_backend_id
         return self._delete(self._path(storage_backend_id))
 
-    def usage(self):
-        return self._list(self._path("usage"))
-
 
 def has_backend(cc, target):
     backend_list = cc.storage_backend.list()
