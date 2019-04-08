@@ -398,11 +398,6 @@ class platform::ceph::rgw
     include ::openstack::keystone::params
     $auth_host = $::openstack::keystone::params::host_url
 
-    if ($::platform::params::init_keystone and
-        !$::platform::params::region_config) {
-      include ::platform::ceph::rgw::keystone::auth
-    }
-
     ceph::rgw { $rgw_client_name:
       user          => $rgw_user_name,
       frontend_type => $rgw_frontend_type,
@@ -441,41 +436,6 @@ class platform::ceph::rgw
 
   include ::platform::ceph::firewall
   include ::platform::ceph::haproxy
-}
-
-
-class platform::ceph::rgw::keystone::auth(
-  $password,
-  $auth_name = 'swift',
-  $tenant = 'services',
-  $email = 'swift@localhost',
-  $region = 'RegionOne',
-  $service_name = 'swift',
-  $service_description = 'Openstack Object-Store Service',
-  $configure_endpoint= true,
-  $configure_user = true,
-  $configure_user_role = true,
-  $public_url = 'http://127.0.0.1:8080/swift/v1',
-  $admin_url = 'http://127.0.0.1:8080/swift/v1',
-  $internal_url = 'http://127.0.0.1:8080/swift/v1',
-) {
-  # create a swift compatible endpoint for the object-store service
-  keystone::resource::service_identity { 'swift':
-    configure_endpoint  => $configure_endpoint,
-    configure_user      => $configure_user,
-    configure_user_role => $configure_user_role,
-    service_name        => $service_name,
-    service_type        => 'object-store',
-    service_description => $service_description,
-    region              => $region,
-    auth_name           => $auth_name,
-    password            => $password,
-    email               => $email,
-    tenant              => $tenant,
-    public_url          => $public_url,
-    admin_url           => $admin_url,
-    internal_url        => $internal_url,
-  }
 }
 
 class platform::ceph::worker {

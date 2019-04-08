@@ -352,11 +352,6 @@ class openstack::keystone::endpoint::runtime {
     include ::nfv::keystone::auth
     include ::fm::keystone::auth
 
-    include ::platform::ceph::params
-    if $::platform::ceph::params::service_enabled {
-      include ::platform::ceph::rgw::keystone::auth
-    }
-
     include ::openstack::barbican::params
     if $::openstack::barbican::params::service_enabled {
       include ::barbican::keystone::auth

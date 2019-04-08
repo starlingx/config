@@ -36,8 +36,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
         return {
             'platform::ceph::params::rgw_admin_password': kspass,
-
-            'platform::ceph::rgw::keystone::auth::password': kspass,
         }
 
     def get_system_config(self):
@@ -108,19 +106,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             'platform::ceph::params::rgw_admin_domain':
                 self._get_service_user_domain_name(),
             'platform::ceph::params::rgw_admin_project':
-                self._get_service_tenant_name(),
-
-            'platform::ceph::rgw::keystone::auth::auth_name':
-                ksuser,
-            'platform::ceph::rgw::keystone::auth::public_url':
-                self._get_rgw_public_url(),
-            'platform::ceph::rgw::keystone::auth::internal_url':
-                self._get_rgw_internal_url(),
-            'platform::ceph::rgw::keystone::auth::admin_url':
-                self._get_rgw_admin_url(),
-            'platform::ceph::rgw::keystone::auth::region':
-                self._get_rgw_region_name(),
-            'platform::ceph::rgw::keystone::auth::tenant':
                 self._get_service_tenant_name(),
         }
 
