@@ -643,6 +643,10 @@ data:
   chart_name: libvirt
   release: openstack-libvirt
   namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-libvirt
   install:
     no_hooks: false
   upgrade:
@@ -673,11 +677,10 @@ data:
   release: openstack-openvswitch
   namespace: openstack
   # If we deploy ovs-dpdk on the host, ovs pod will not be created.
-  # We can use "native wait" instead. But it's not supported in current armada version.
-  # Before we upgrade armada to new version, we comment the wait
-  # https://github.com/openstack/airship-armada/blob/master/armada/schemas/armada-chart-schema.yaml#L81-L111
-  #wait:
-  #  timeout: 1800
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-openvswitch
   install:
     no_hooks: false
   upgrade:
@@ -708,6 +711,10 @@ data:
   chart_name: nova
   release: openstack-nova
   namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-nova
   test:
     enabled: false
   install:
@@ -998,6 +1005,10 @@ data:
   chart_name: neutron
   release: openstack-neutron
   namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-neutron
   test:
     enabled: false
   install:
