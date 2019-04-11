@@ -37,6 +37,13 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
                         'namespaces': [],
                         'clear_emulator_capabilities': 0
                     }
+                },
+                'pod': {
+                    'mounts': {
+                        'libvirt': {
+                            'libvirt': self._get_mount_uefi_overrides()
+                        }
+                    }
                 }
             }
         }

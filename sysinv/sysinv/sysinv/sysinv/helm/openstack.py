@@ -396,3 +396,28 @@ class OpenstackBaseHelm(base.BaseHelm):
     def _get_service_default_dns_name(self, service):
         return "{}.{}.svc.{}".format(service, common.HELM_NS_OPENSTACK,
                                      constants.DEFAULT_DNS_SERVICE_DOMAIN)
+
+    def _get_mount_uefi_overrides(self):
+
+        # This path depends on OVMF packages and for starlingx
+        # we don't care about aarch64.
+        # This path will be used by nova-compute and libvirt pods.
+        uefi_loader_path = "/usr/share/OVMF"
+
+        uefi_config = {
+            'volumes': [
+                {
+                    'name': 'ovmf',
+                    'hostPath': {
+                        'path': uefi_loader_path
+                    }
+                }
+            ],
+            'volumeMounts': [
+                {
+                    'name': 'ovmf',
+                    'mountPath': uefi_loader_path
+                },
+            ]
+        }
+        return uefi_config

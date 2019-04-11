@@ -65,6 +65,11 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': {
+                    'mounts': {
+                        'nova_compute': {
+                            'nova_compute': self._get_mount_uefi_overrides()
+                        }
+                    },
                     'replicas': {
                         'api_metadata': self._num_controllers(),
                         'placement': self._num_controllers(),
