@@ -325,7 +325,7 @@ class PlatformPuppet(base.BasePuppet):
         return {
             'platform::sm::params::mgmt_ip_multicast':
                 multicast_address.address,
-            'platform::sm::params::infra_ip_multicast':
+            'platform::sm::params::cluster_host_ip_multicast':
                 multicast_address.address,
         }
 

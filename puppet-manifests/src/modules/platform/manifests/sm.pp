@@ -1,6 +1,6 @@
 class platform::sm::params (
   $mgmt_ip_multicast = undef,
-  $infra_ip_multicast = undef,
+  $cluster_host_ip_multicast = undef,
 ) { }
 
 class platform::sm
@@ -30,11 +30,10 @@ class platform::sm
   $mgmt_ip_param_ip              = $::platform::network::mgmt::params::controller_address
   $mgmt_ip_param_mask            = $::platform::network::mgmt::params::subnet_prefixlen
 
-  # Repurposing the infra interface for cluster-host interface
   include ::platform::network::cluster_host::params
-  $infra_ip_interface          = $::platform::network::cluster_host::params::interface_name
-  $cluster_host_ip_param_ip    = $::platform::network::cluster_host::params::controller_address
-  $cluster_host_ip_param_mask  = $::platform::network::cluster_host::params::subnet_prefixlen
+  $cluster_host_ip_interface     = $::platform::network::cluster_host::params::interface_name
+  $cluster_host_ip_param_ip      = $::platform::network::cluster_host::params::controller_address
+  $cluster_host_ip_param_mask    = $::platform::network::cluster_host::params::subnet_prefixlen
 
   include ::platform::network::oam::params
   $oam_ip_interface              = $::platform::network::oam::params::interface_name
@@ -131,12 +130,6 @@ class platform::sm
   $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
   $cgcs_nfs_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
 
-  # Re-using cinder-ip for cluster-host-ip for now
-  # This will be changed when the cluster-host-ip resource is added to SM
-  $cinder_ip_interface = $::platform::network::cluster_host::params::interface_name
-  $cinder_ip_param_ip = $::platform::network::cluster_host::params::controller_address
-  $cinder_ip_param_mask = $::platform::network::cluster_host::params::subnet_prefixlen
-
   $platform_nfs_subnet_url = "${platform_nfs_ip_network_url}/${platform_nfs_ip_param_mask}"
   $cgcs_nfs_subnet_url = "${cgcs_nfs_ip_network_url}/${cgcs_nfs_ip_param_mask}"
 
@@ -181,8 +174,7 @@ class platform::sm
     $hostunit = '0'
     $management_my_unit_ip   = $::platform::network::mgmt::params::controller0_address
     $oam_my_unit_ip          = $::platform::network::oam::params::controller_address
-    # Repurposing the infra interface for cluster-host interface
-    $infra_my_unit_ip = $::platform::network::cluster_host::params::controller_address
+    $cluster_host_my_unit_ip = $::platform::network::cluster_host::params::controller_address
   } else {
     case $::hostname {
       $controller_0_hostname: {
@@ -191,9 +183,8 @@ class platform::sm
         $management_peer_unit_ip = $::platform::network::mgmt::params::controller1_address
         $oam_my_unit_ip          = $::platform::network::oam::params::controller0_address
         $oam_peer_unit_ip        = $::platform::network::oam::params::controller1_address
-        # Repurposing the infra interface for cluster-host interface
-        $infra_my_unit_ip = $::platform::network::cluster_host::params::controller0_address
-        $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller1_address
+        $cluster_host_my_unit_ip = $::platform::network::cluster_host::params::controller0_address
+        $cluster_host_peer_unit_ip = $::platform::network::cluster_host::params::controller1_address
       }
       $controller_1_hostname: {
         $hostunit = '1'
@@ -201,9 +192,8 @@ class platform::sm
         $management_peer_unit_ip = $::platform::network::mgmt::params::controller0_address
         $oam_my_unit_ip          = $::platform::network::oam::params::controller1_address
         $oam_peer_unit_ip        = $::platform::network::oam::params::controller0_address
-        # Repurposing the infra interface for cluster-host interface
-        $infra_my_unit_ip = $::platform::network::cluster_host::params::controller1_address
-        $infra_peer_unit_ip = $::platform::network::cluster_host::params::controller0_address
+        $cluster_host_my_unit_ip = $::platform::network::cluster_host::params::controller1_address
+        $cluster_host_peer_unit_ip = $::platform::network::cluster_host::params::controller0_address
       }
       default: {
         $hostunit = '2'
@@ -247,8 +237,10 @@ class platform::sm
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
 
-    exec { 'Configure Cluster Host Interface':
-      command => "sm-configure interface controller infrastructure-interface \"\" ${infra_my_unit_ip} 2222 2223 \"\" 2222 2223",
+    if $mgmt_ip_interface != $cluster_host_ip_interface {
+      exec { 'Configure Cluster Host Interface':
+        command => "sm-configure interface controller cluster-host-interface ${cluster_host_ip_multicast} ${cluster_host_my_unit_ip} 2222 2223 \"\" 2222 2223",
+      }
     }
 
   } else {
@@ -258,8 +250,28 @@ class platform::sm
     exec { 'Configure Management Interface':
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 ${management_peer_unit_ip} 2222 2223",
     }
-    exec { 'Configure Infrastructure Interface':
-      command => "sm-configure interface controller infrastructure-interface ${infra_ip_multicast} ${infra_my_unit_ip} 2222 2223 ${infra_peer_unit_ip} 2222 2223",
+
+    if $mgmt_ip_interface != $cluster_host_ip_interface {
+      exec { 'Configure Cluster Host Interface':
+        command =>
+          "sm-configure interface controller cluster-host-interface ${cluster_host_ip_multicast} ${cluster_host_my_unit_ip} 2222 2223 ${cluster_host_peer_unit_ip} 2222 2223",
+      }
+    }
+  }
+
+  if $mgmt_ip_interface == $cluster_host_ip_interface {
+    # Deprovision Cluster Host Interface
+    exec { 'Deprovision Cluster Host Interface':
+      command =>
+        'sm-deprovision service-domain-interface controller cluster-host-interface',
+    }
+    -> exec { 'Deprovision Cluster Host Service Group Member':
+      command =>
+        'sm-deprovision service-group-member controller-services cluster-host-ip',
+    }
+    -> exec { 'Deprovision Cluster Host IP service':
+      command =>
+        'sm-deprovision service cluster-host-ip',
     }
   }
 
@@ -275,6 +287,20 @@ class platform::sm
       exec { 'Configure Management IP':
         command => "sm-configure service_instance management-ip management-ip \"ip=${mgmt_ip_param_ip},cidr_netmask=${mgmt_ip_param_mask},nic=${mgmt_ip_interface},arp_count=7\"",
       }
+  }
+
+  if $mgmt_ip_interface != $cluster_host_ip_interface {
+    if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
+      exec { 'Configure Cluster Host IP service instance':
+        command =>
+          "sm-configure service_instance cluster-host-ip cluster-host-ip \"ip=${cluster_host_ip_param_ip},cidr_netmask=${cluster_host_ip_param_mask},nic=${cluster_host_ip_interface},arp_count=7,dc=yes\"",
+      }
+    } else {
+      exec { 'Configure Cluster Host IP service instance':
+        command =>
+          "sm-configure service_instance cluster-host-ip cluster-host-ip \"ip=${cluster_host_ip_param_ip},cidr_netmask=${cluster_host_ip_param_mask},nic=${cluster_host_ip_interface},arp_count=7\"",
+      }
+    }
   }
 
   exec { 'Configure sm server and client port':
@@ -456,26 +482,6 @@ class platform::sm
 
     exec { 'Configure OpenStack - Barbican Worker':
       command => "sm-configure service_instance barbican-worker barbican-worker \"config=/etc/barbican/barbican.conf\"",
-    }
-  }
-
-  # Re-using cinder-ip for cluster-host-ip for now
-  # This will be changed when the cluster-host-ip resource is added to SM
-  exec { 'Configure Cinder IP in SM (service-group-member cinder-ip)':
-    command =>
-      'sm-provision service-group-member controller-services cinder-ip',
-  }
-  -> exec { 'Configure Cinder IP  in SM (service cinder-ip)':
-    command => 'sm-provision service cinder-ip',
-  }
-
-  if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
-    exec { 'Configure Cinder IP service instance':
-      command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7,dc=yes\"",
-    }
-  } else {
-    exec { 'Configure Cinder IP service instance':
-      command => "sm-configure service_instance cinder-ip cinder-ip \"ip=${cinder_ip_param_ip},cidr_netmask=${cinder_ip_param_mask},nic=${cinder_ip_interface},arp_count=7\"",
     }
   }
 
