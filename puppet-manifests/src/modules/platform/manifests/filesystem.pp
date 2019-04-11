@@ -144,26 +144,6 @@ class platform::filesystem::scratch
   }
 }
 
-class platform::filesystem::gnocchi::params (
-  $lv_size = '5',
-  $lv_name = 'gnocchi-lv',
-  $mountpoint = '/opt/gnocchi',
-  $devmapper = '/dev/mapper/cgts--vg-gnocchi--lv',
-  $fs_type = 'ext4',
-  $fs_options = '-i 8192'
-) { }
-
-class platform::filesystem::gnocchi
-  inherits ::platform::filesystem::gnocchi::params {
-
-  platform::filesystem { $lv_name:
-    lv_name    => $lv_name,
-    lv_size    => $lv_size,
-    mountpoint => $mountpoint,
-    fs_type    => $fs_type,
-    fs_options => $fs_options
-  }
-}
 
 class platform::filesystem::docker::params (
   $lv_size = '1',
@@ -186,27 +166,6 @@ class platform::filesystem::docker
     fs_options => $fs_options,
     fs_use_all => $fs_use_all,
     mode       => '0711',
-  }
-}
-
-class platform::filesystem::img_conversions::params (
-  $lv_size = '8',
-  $lv_name = 'img-conversions-lv',
-  $mountpoint = '/opt/img-conversions',
-  $devmapper = '/dev/mapper/cgts--vg-img--conversions--lv',
-  $fs_type = 'ext4',
-  $fs_options = ' '
-) {}
-
-class platform::filesystem::img_conversions
-  inherits ::platform::filesystem::img_conversions::params {
-
-  platform::filesystem { $lv_name:
-    lv_name    => $lv_name,
-    lv_size    => $lv_size,
-    mountpoint => $mountpoint,
-    fs_type    => $fs_type,
-    fs_options => $fs_options
   }
 }
 
@@ -238,8 +197,6 @@ class platform::filesystem::controller {
   include ::platform::filesystem::backup
   include ::platform::filesystem::scratch
   include ::platform::filesystem::docker
-  include ::platform::filesystem::img_conversions
-  include ::platform::filesystem::gnocchi
 }
 
 
@@ -273,21 +230,6 @@ class platform::filesystem::scratch::runtime {
 }
 
 
-class platform::filesystem::gnocchi::runtime {
-
-  include ::platform::filesystem::gnocchi::params
-  $lv_name = $::platform::filesystem::gnocchi::params::lv_name
-  $lv_size = $::platform::filesystem::gnocchi::params::lv_size
-  $devmapper = $::platform::filesystem::gnocchi::params::devmapper
-
-  platform::filesystem::resize { $lv_name:
-    lv_name   => $lv_name,
-    lv_size   => $lv_size,
-    devmapper => $devmapper,
-  }
-}
-
-
 class platform::filesystem::docker::runtime {
 
   include ::platform::filesystem::docker::params
@@ -303,20 +245,6 @@ class platform::filesystem::docker::runtime {
 }
 
 
-class platform::filesystem::img_conversions::runtime {
-
-  include ::platform::filesystem::img_conversions::params
-  $lv_name = $::platform::filesystem::img_conversions::params::lv_name
-  $lv_size = $::platform::filesystem::img_conversions::params::lv_size
-  $devmapper = $::platform::filesystem::img_conversions::params::devmapper
-
-  platform::filesystem::resize { $lv_name:
-    lv_name   => $lv_name,
-    lv_size   => $lv_size,
-    devmapper => $devmapper,
-  }
-}
-
 class platform::filesystem::docker::params::bootstrap (
   $lv_size = '30',
   $lv_name = 'docker-lv',
@@ -326,6 +254,7 @@ class platform::filesystem::docker::params::bootstrap (
   $fs_options = '-n ftype=1',
   $fs_use_all = false
 ) { }
+
 
 class platform::filesystem::docker::bootstrap
   inherits ::platform::filesystem::docker::params::bootstrap {

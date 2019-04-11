@@ -35,7 +35,6 @@ import wsmeext.pecan as wsme_pecan
 
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
-from sysinv.api.controllers.v1 import controller_fs as controller_fs_api
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
@@ -43,7 +42,6 @@ from sysinv.api.controllers.v1.utils import SBApiHelper as api_helper
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
@@ -514,9 +512,6 @@ def _create(storage_lvm):
     _check_backend_lvm(constants.SB_API_OP_CREATE,
                        storage_lvm,
                        storage_lvm.pop('confirmed', False))
-
-    StorageBackendConfig.set_img_conversions_defaults(pecan.request.dbapi,
-                                                      controller_fs_api)
 
     # We have a valid configuration. create it.
     system = pecan.request.dbapi.isystem_get_one()

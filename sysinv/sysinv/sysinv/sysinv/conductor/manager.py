@@ -5575,8 +5575,6 @@ class ConductorManager(service.PeriodicService):
                 classmap = {
                     constants.FILESYSTEM_NAME_BACKUP:
                         'platform::filesystem::backup::runtime',
-                    constants.FILESYSTEM_NAME_IMG_CONVERSIONS:
-                        'platform::filesystem::img_conversions::runtime',
                     constants.FILESYSTEM_NAME_SCRATCH:
                         'platform::filesystem::scratch::runtime',
                     constants.FILESYSTEM_NAME_DOCKER:
@@ -5593,8 +5591,6 @@ class ConductorManager(service.PeriodicService):
                         'platform::drbd::patch_vault::runtime',
                     constants.FILESYSTEM_NAME_ETCD:
                         'platform::drbd::etcd::runtime',
-                    constants.FILESYSTEM_NAME_GNOCCHI:
-                        'platform::filesystem::gnocchi::runtime',
                 }
 
                 puppet_class = None
@@ -5688,7 +5684,6 @@ class ConductorManager(service.PeriodicService):
         classes = ['platform::partitions::runtime',
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
-                   'platform::filesystem::img_conversions::runtime',
                    'platform::drbd::runtime',
                    'openstack::cinder::runtime',
                    'platform::sm::norestart::runtime']
@@ -5796,7 +5791,6 @@ class ConductorManager(service.PeriodicService):
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
                    'openstack::keystone::endpoint::runtime',
-                   'platform::filesystem::img_conversions::runtime',
                    'platform::ceph::runtime_base',
                    ]
 
@@ -5937,7 +5931,6 @@ class ConductorManager(service.PeriodicService):
                        'platform::lvm::controller::runtime',
                        'platform::haproxy::runtime',
                        'openstack::keystone::endpoint::runtime',
-                       'platform::filesystem::img_conversions::runtime',
                        ]
 
             if constants.SB_SVC_GLANCE in services:
@@ -6811,21 +6804,12 @@ class ConductorManager(service.PeriodicService):
         # Add the extension storage
         extension_lv_size = constants.DEFAULT_EXTENSION_STOR_SIZE
         scratch_lv_size = cutils.get_controller_fs_scratch_size()
-        gnocchi_lv_size = constants.DEFAULT_GNOCCHI_STOR_SIZE
-
-        # Assume Non-region mode where glance is local as default
-        glance_local = True
-        img_conversions_lv_size = 0
 
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
-        region_config = system.capabilities.get('region_config', False)
         kubernetes_config = system.capabilities.get('kubernetes_enabled', False)
 
         LOG.info("Local  Region Name: %s" % system.region_name)
-        # TODO: handle region mode case
-        if region_config:
-            glance_local = False
 
         disk_size = cutils.get_disk_capacity_mib(rootfs_device)
         disk_size = int(disk_size / 1024)
@@ -6837,9 +6821,9 @@ class ConductorManager(service.PeriodicService):
             # Defaults: 500G root disk
             #
             # Min size of the cgts-vg PV is:
-            #   218.0 G - PV for cgts-vg (specified in the kickstart)
+            #   202.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   226.0 G - (for DCSC non-AIO)
+            #   210.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
             #          2 G - cgcs_lv (DRBD bootstrap manifest)
@@ -6854,15 +6838,12 @@ class ConductorManager(service.PeriodicService):
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
-            #         10 G - /opt/cgcs
+            #         20 G - /opt/cgcs
             #         40 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
             #          2 G - /opt/platform
             #          1 G - /opt/extension
-            #         20 G - /opt/img_conversions
             #         50 G - /opt/backup
-            #          5 G - /opt/gnocchi
-            #          1 G - anchor_lv
             #         30 G - /var/lib/docker (--kubernetes)
             #         16 G - /var/lib/docker-distribution (--kubernetes)
             #          5 G - /opt/etcd (--kubernetes)
@@ -6870,17 +6851,17 @@ class ConductorManager(service.PeriodicService):
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for
             #                   Distributed Cloud System Controller non-AIO only)
             #        -----
-            #        226 G (for DCSC non-AIO) or 218 G
+            #        210 G (for DCSC non-AIO) or 202
             #
             #  The absolute minimum disk size for these default settings:
             #      0.5 G - /boot
             #     20.0 G - /
-            #    218.0 G - cgts-vg PV
-            # or 226.0 G - (DCSC non-AIO)
+            #    202.0 G - cgts-vg PV
+            # or 210.0 G - (DCSC non-AIO)
             #   -------
-            #    238.5 G => ~239G min size disk
+            #    222.5 G => ~223G min size disk
             # or
-            #    246.5 G => ~247G min size disk
+            #    230.5 G => ~231G min size disk
             #
             # If required disk is size 500G:
             #   1) Standard controller - will use all free space for the PV
@@ -6891,20 +6872,12 @@ class ConductorManager(service.PeriodicService):
             #   2) AIO - will leave unused space for further partitioning
             #       0.5 G - /boot
             #      20.0 G - /
-            #     218.0 G - cgts-vg PV
-            #     261.5 G - unpartitioned free space
+            #     202.0 G - cgts-vg PV
+            #     277.5 G - unpartitioned free space
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
-            if glance_local:
-                # When glance is local we need to set the
-                # img_conversion-lv size. Conversely in region
-                # mode conversions are done in the other region
-                # so there is no need to create the conversions
-                # volume or set lize.
-                img_conversions_lv_size = \
-                    constants.DEFAULT_IMG_CONVERSION_STOR_SIZE
 
-            cgcs_lv_size = constants.DEFAULT_IMAGE_STOR_SIZE
+            cgcs_lv_size = constants.DEFAULT_CGCS_STOR_SIZE
             backup_lv_size = database_storage + \
                 cgcs_lv_size + constants.BACKUP_OVERHEAD
 
@@ -6915,9 +6888,9 @@ class ConductorManager(service.PeriodicService):
             # Small disk: under 240G root disk
             #
             # Min size of the cgts-vg PV is:
-            #   178.0 G - PV for cgts-vg (specified in the kickstart)
+            #   170.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   186.0 G - (for DCSC non-AIO)
+            #   162.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
             #          2 G - cgcs_lv (DRBD bootstrap manifest)
@@ -6937,28 +6910,25 @@ class ConductorManager(service.PeriodicService):
             #          2 G - /var/lib/rabbitmq
             #          2 G - /opt/platform
             #          1 G - /opt/extension
-            #         10 G - /opt/img_conversions
             #         40 G - /opt/backup
-            #          5 G - /opt/gnocchi
-            #          1 G - anchor_lv
             #         30 G - /var/lib/docker (--kubernetes)
             #         16 G - /var/lib/docker-distribution (--kubernetes)
             #         20 G - /var/lib/ceph/mon (--kubernetes)
             #          5 G - /opt/etcd (--kubernetes)
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
             #        -----
-            #        186 G (for DCSC non-AIO) or 178 G
+            #        170 G (for DCSC non-AIO) or 162 G
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
             #    20.0 G - /
-            #   178.0 G - cgts-vg PV
+            #   162.0 G - cgts-vg PV
             # or
-            #   186.0 G - (for DCSC non-AIO)
+            #   170.0 G - (for DCSC non-AIO)
             #   -------
-            #   198.5 G => ~199G min size disk
+            #   182.5 G => ~183G min size disk
             # or
-            #   206.5 G => ~207G min size disk
+            #   190.5 G => ~191G min size disk
             #
             # If required disk is size 240G:
             #   1) Standard controller - will use all free space for the PV
@@ -6968,16 +6938,13 @@ class ConductorManager(service.PeriodicService):
             #   2) AIO - will leave unused space for further partitioning
             #       0.5 G - /boot
             #      20.0 G - /
-            #     178.0 G - cgts-vg PV
-            #      41.5 G - unpartitioned free space
+            #     162.0 G - cgts-vg PV
+            #      57.5 G - unpartitioned free space
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
-            if glance_local:
-                img_conversions_lv_size = \
-                    constants.DEFAULT_SMALL_IMG_CONVERSION_STOR_SIZE
 
-            cgcs_lv_size = constants.DEFAULT_SMALL_IMAGE_STOR_SIZE
+            cgcs_lv_size = constants.DEFAULT_SMALL_CGCS_STOR_SIZE
             # Due to the small size of the disk we can't provide the
             # proper amount of backup space which is (database + cgcs_lv
             # + BACKUP_OVERHEAD) so we are using a smaller default.
@@ -7029,29 +6996,6 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
-
-        data = {
-            'name': constants.FILESYSTEM_NAME_GNOCCHI,
-            'size': gnocchi_lv_size,
-            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                constants.FILESYSTEM_NAME_GNOCCHI],
-            'replicated': False,
-        }
-        LOG.info("Creating FS:%s:%s %d" % (
-            data['name'], data['logical_volume'], data['size']))
-        self.dbapi.controller_fs_create(data)
-
-        if glance_local:
-            data = {
-                'name': constants.FILESYSTEM_NAME_IMG_CONVERSIONS,
-                'size': img_conversions_lv_size,
-                'logical_volume': constants.FILESYSTEM_LV_DICT[
-                    constants.FILESYSTEM_NAME_IMG_CONVERSIONS],
-                'replicated': False,
-            }
-            LOG.info("Creating FS:%s:%s %d" % (
-                data['name'], data['logical_volume'], data['size']))
-            self.dbapi.controller_fs_create(data)
 
         data = {
             'name': constants.FILESYSTEM_NAME_EXTENSION,
@@ -7115,16 +7059,6 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Creating FS:%s:%s %d" % (
                 data['name'], data['logical_volume'], data['size']))
             self.dbapi.controller_fs_create(data)
-
-        if glance_local:
-            backends = self.dbapi.storage_backend_get_list()
-            for b in backends:
-                if b.backend == constants.SB_TYPE_FILE:
-                    values = {
-                        'services': constants.SB_SVC_GLANCE,
-                        'state': constants.SB_STATE_CONFIGURED
-                    }
-                    self.dbapi.storage_backend_update(b.uuid, values)
 
         else:
             values = {
@@ -9601,21 +9535,16 @@ class ConductorManager(service.PeriodicService):
     def get_controllerfs_lv_sizes(self, context):
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
-        kubernetes_config = system.capabilities.get('kubernetes_enabled', False)
 
         lvdisplay_command = 'lvdisplay --columns --options lv_size,lv_name ' \
                             '--units g --noheading --nosuffix ' \
                             '/dev/cgts-vg/pgsql-lv /dev/cgts-vg/backup-lv ' \
                             '/dev/cgts-vg/cgcs-lv ' \
-                            '/dev/cgts-vg/img-conversions-lv ' \
                             '/dev/cgts-vg/scratch-lv ' \
                             '/dev/cgts-vg/extension-lv ' \
-                            '/dev/cgts-vg/gnocchi-lv '
-
-        if kubernetes_config:
-            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/docker-lv '
-            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/etcd-lv '
-            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/dockerdistribution-lv '
+                            '/dev/cgts-vg/docker-lv ' \
+                            '/dev/cgts-vg/etcd-lv ' \
+                            '/dev/cgts-vg/dockerdistribution-lv '
 
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                 tsc.system_type != constants.TIS_AIO_BUILD):

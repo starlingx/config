@@ -2220,8 +2220,8 @@ class Connection(object):
         :param values: A dict containing several items used to identify
                        and track the controller_fs.
             Example:
-            values = {'name': constants.FILESYSTEM_NAME_IMG_CONVERSIONS,
-                      'size': img_conversions_gib,
+            values = {'name': constants.DEFAULT_DOCKER_STOR_SIZE,
+                      'size': 30,
                       'logical_volume': constants.FILESYSTEM_NAME_LV_DICT,
                       'replicated': False}
         :returns: A controller_fs.
@@ -2271,10 +2271,10 @@ class Connection(object):
         :param controller_fs_id: The id or uuid of a controller_fs.
         :param values: Dict of values to update. May be a partial list.
             Example:
-            values = {'name': constants.FILESYSTEM_NAME_IMG_CONVERSIONS,
-                      'size': img_conversions_gib,
+            values = {'name': constants.DEFAULT_DOCKER_STOR_SIZE,
+                      'size': 30,
                       'logical_volume': constants.FILESYSTEM_LV_DICT[
-                           constants.FILESYSTEM_NAME_IMG_CONVERSIONS],
+                           constants.DEFAULT_DOCKER_STOR_SIZE],
                       'replicated': False}
         :returns: A controller_fs.
         """
