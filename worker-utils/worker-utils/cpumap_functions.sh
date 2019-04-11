@@ -32,8 +32,8 @@ function expand_sequence {
 # Append a string to comma separated list string
 ################################################################################
 function append_list {
-    local PUSH=$1
-    local LIST=$2
+    local PUSH=${1-}
+    local LIST=${2-}
     if [ -z "${LIST}" ]; then
         LIST=${PUSH}
     else
@@ -179,8 +179,8 @@ function invert_cpulist {
 #
 ################################################################################
 function in_list {
-    local item="$1"
-    local list="$2"
+    local item="${1-}"
+    local list="${2-}"
 
     # expand list format 0-3,8-11 to a full sequence {0..3} {8..11}
     local exp_list

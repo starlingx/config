@@ -7625,7 +7625,8 @@ class ConductorManager(service.PeriodicService):
             config_dict = {
                 "personalities": personalities,
                 "host_uuids": [host_uuid],
-                "classes": ['platform::compute::grub::runtime']
+                "classes": ['platform::compute::grub::runtime',
+                            'platform::compute::config::runtime']
             }
             self._config_apply_runtime_manifest(context, config_uuid,
                                                 config_dict,

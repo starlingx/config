@@ -6,11 +6,89 @@ class platform::kubernetes::params (
   $etcd_endpoint = undef,
   $service_domain = undef,
   $dns_service_ip = undef,
+  $host_labels = [],
   $ca_crt = undef,
   $ca_key = undef,
   $sa_key = undef,
   $sa_pub = undef,
+  $k8s_cpuset = undef,
+  $k8s_nodeset = undef,
 ) { }
+
+class platform::kubernetes::cgroup::params (
+  $cgroup_root = '/sys/fs/cgroup',
+  $cgroup_name = 'k8s-infra',
+  $controllers = ['cpuset', 'cpu', 'cpuacct', 'memory', 'systemd'],
+) {}
+
+class platform::kubernetes::cgroup
+  inherits ::platform::kubernetes::cgroup::params {
+  include ::platform::kubernetes::params
+
+  $k8s_cpuset = $::platform::kubernetes::params::k8s_cpuset
+  $k8s_nodeset = $::platform::kubernetes::params::k8s_nodeset
+
+  # Default to float across all cpus and numa nodes
+  if !defined('$k8s_cpuset') {
+    $k8s_cpuset = generate('/bin/cat', '/sys/devices/system/cpu/online')
+    notice("System default cpuset ${k8s_cpuset}.")
+  }
+  if !defined('$k8s_nodeset') {
+    $k8s_nodeset = generate('/bin/cat', '/sys/devices/system/node/online')
+    notice("System default nodeset ${k8s_nodeset}.")
+  }
+
+  # Create kubelet cgroup for the minimal set of required controllers.
+  # NOTE: The kubernetes cgroup_manager_linux func Exists() checks that
+  # specific subsystem cgroup paths actually exist on the system. The
+  # particular cgroup cgroupRoot must exist for the following controllers:
+  # "cpu", "cpuacct", "cpuset", "memory", "systemd".
+  # Reference:
+  #  https://github.com/kubernetes/kubernetes/blob/master/pkg/kubelet/cm/cgroup_manager_linux.go
+  # systemd automatically mounts cgroups and controllers, so don't need
+  # to do that here.
+  notice("Create ${cgroup_root}/${controllers}/${cgroup_name}")
+  $controllers.each |String $controller| {
+    $cgroup_dir = "${cgroup_root}/${controller}/${cgroup_name}"
+    file { $cgroup_dir :
+      ensure => directory,
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0700',
+    }
+
+    # Modify k8s cpuset resources to reflect platform configured cores.
+    # NOTE: Using 'exec' here instead of 'file' resource type with 'content'
+    # tag to update contents under /sys, since puppet tries to create files
+    # with temp names in the same directory, and the kernel only allows
+    # specific filenames to be created in these particular directories.
+    # This causes puppet to fail if we use the 'content' tag.
+    # NOTE: Child cgroups cpuset must be subset of parent. In the case where
+    # child directories already exist and we change the parent's cpuset to
+    # be a subset of what the children have, will cause the command to fail
+    # with "-bash: echo: write error: device or resource busy".
+    if $controller == 'cpuset' {
+      $cgroup_mems = "${cgroup_dir}/cpuset.mems"
+      $cgroup_cpus = "${cgroup_dir}/cpuset.cpus"
+      $cgroup_tasks = "${cgroup_dir}/tasks"
+
+      notice("Set ${cgroup_name} nodeset: ${k8s_nodeset}, cpuset: ${k8s_cpuset}")
+      File[ $cgroup_dir ]
+      -> exec { "Create ${cgroup_mems}" :
+        command => "/bin/echo ${k8s_nodeset} > ${cgroup_mems} || :",
+      }
+      -> exec { "Create ${cgroup_cpus}" :
+        command => "/bin/echo ${k8s_cpuset} > ${cgroup_cpus} || :",
+      }
+      -> file { $cgroup_tasks :
+        ensure => file,
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0644',
+      }
+    }
+  }
+}
 
 class platform::kubernetes::kubeadm {
   include ::platform::docker::params
@@ -292,6 +370,7 @@ class platform::kubernetes::master
   inherits ::platform::kubernetes::params {
 
   contain ::platform::kubernetes::kubeadm
+  contain ::platform::kubernetes::cgroup
   contain ::platform::kubernetes::master::init
   contain ::platform::kubernetes::firewall
 
@@ -301,6 +380,7 @@ class platform::kubernetes::master
   # kubeadm init is run.
   Class['::platform::dns'] -> Class[$name]
   Class['::platform::kubernetes::kubeadm']
+  -> Class['::platform::kubernetes::cgroup']
   -> Class['::platform::kubernetes::master::init']
   -> Class['::platform::kubernetes::firewall']
 }
@@ -354,10 +434,17 @@ class platform::kubernetes::worker
   # will already be configured and includes support for running pods.
   if $::personality != 'controller' {
     contain ::platform::kubernetes::kubeadm
+    contain ::platform::kubernetes::cgroup
     contain ::platform::kubernetes::worker::init
 
     Class['::platform::kubernetes::kubeadm']
+    -> Class['::platform::kubernetes::cgroup']
     -> Class['::platform::kubernetes::worker::init']
+  } else {
+    # Reconfigure cgroups cpusets on AIO
+    contain ::platform::kubernetes::cgroup
+
+    Class['::platform::kubernetes::cgroup']
   }
 
   file { '/var/run/.disable_worker_services':

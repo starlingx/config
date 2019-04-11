@@ -34,12 +34,15 @@ function affine_tasks {
     # Affine non-kernel-thread tasks (excluded [kthreadd] and its children) to all available
     # cores. They will be reaffined to platform cores later on as part of nova-compute
     # launch.
-    log_debug "Affining all tasks to all available CPUs..."
-    affine_tasks_to_all_cores
-    RET=$?
-    if [ $RET -ne 0 ]; then
-        log_error "Some tasks failed to be affined to all cores."
-    fi
+    ##log_debug "Affining all tasks to all available CPUs..."
+    # TODO: Should revisit this since this leaves a few lingering floating
+    # tasks and does not really work with cgroup cpusets.
+    # Comment out for now. Cleanup required.
+    ##affine_tasks_to_all_cores
+    ##RET=$?
+    ##if [ $RET -ne 0 ]; then
+    ##    log_error "Some tasks failed to be affined to all cores."
+    ##fi
 
     # Get number of logical cpus
     N_CPUS=$(cat /proc/cpuinfo 2>/dev/null | \

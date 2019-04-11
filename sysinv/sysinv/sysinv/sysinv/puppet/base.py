@@ -13,6 +13,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.common import exception
+from sysinv.helm import common as helm_common
 
 from sysinv.puppet import quoted_str
 
@@ -268,3 +269,12 @@ class BasePuppet(object):
                 return str(address)
         except netaddr.AddrFormatError:
             return address
+
+    # TODO (jgauld): Refactor to use utility has_openstack_compute(labels)
+    def is_openstack_compute(self, host):
+        if self.dbapi is None:
+            return False
+        for obj in self.dbapi.label_get_by_host(host.id):
+            if helm_common.LABEL_COMPUTE_LABEL == obj.label_key:
+                return True
+        return False
