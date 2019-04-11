@@ -1,0 +1,4 @@
+- name: 'Fail if cgts-vg group is not found'
+  fail: msg='Volume groups not configured.'
+  when: vg_result.rc != 0
+  listen: 'volume group check'

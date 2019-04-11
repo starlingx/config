@@ -123,10 +123,13 @@ def do_addrpool_add(cc, args):
 @utils.arg('--order',
            metavar='<sequential | random>',
            help="The allocation order within the start/end range")
+@utils.arg('--prefix',
+           metavar='<prefix>',
+           help="CIDR prefix, only modifiable during bootstrap phase.")
 def do_addrpool_modify(cc, args):
     """Modify interface attributes."""
 
-    rwfields = ['name', 'ranges', 'order']
+    rwfields = ['name', 'ranges', 'order', 'prefix']
 
     data = dict((k, v) for (k, v) in vars(args).items()
                 if k in rwfields and not (v is None))

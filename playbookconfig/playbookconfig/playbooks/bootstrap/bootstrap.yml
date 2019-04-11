@@ -1,0 +1,30 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+- hosts: bootstrap
+
+  vars_files:
+    - host_vars/default.yml
+
+  pre_tasks:
+    - include_vars: "{{ override_files_dir }}/secret"
+      failed_when: false
+    - include_vars: "{{ override_files_dir }}/{{ inventory_hostname }}.yml"
+      failed_when: false
+
+  # Main play
+  roles:
+    - prepare-env
+    - { role: validate-config, when: not skip_play }
+    - { role: store-passwd, when: not skip_play }
+    - { role: apply-bootstrap-manifest, when: not skip_play and not replayed }
+    - { role: persist-config, when: not skip_play and save_config }
+    - { role: bringup-essential-services, when: not skip_play and save_config }
+
+  vars:
+    change_password: false
+    skip_play: false
+    replayed: false

@@ -56,3 +56,27 @@ class platform::docker
   include ::platform::docker::install
   include ::platform::docker::config
 }
+
+class platform::docker::config::bootstrap
+  inherits ::platform::docker::params {
+
+  require ::platform::filesystem::docker::bootstrap
+
+  Class['::platform::filesystem::docker::bootstrap'] ~> Class[$name]
+
+  service { 'docker':
+    ensure  => 'running',
+    name    => 'docker',
+    enable  => true,
+    require => Package['docker']
+  }
+  -> exec { 'enable-docker':
+    command => '/usr/bin/systemctl enable docker.service',
+  }
+}
+
+class platform::docker::bootstrap
+{
+  include ::platform::docker::install
+  include ::platform::docker::config::bootstrap
+}

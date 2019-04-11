@@ -46,6 +46,14 @@ CONFIG_ADMIN_PROJECT_DOMAIN_NAME: Default
 
 
 # mtce
+platform::mtce::params::auth_host: '127.0.0.1'
+platform::mtce::params::auth_port: 5000
+platform::mtce::params::auth_uri: 'http://127.0.0.1:5000'
+platform::mtce::params::auth_user_domain: 'Default'
+platform::mtce::params::auth_project_domain: 'Default'
+platform::mtce::params::auth_project: 'services'
+platform::mtce::params::auth_region: 'RegionOne'
+platform::mtce::params::mtce_multicast: '239.1.1.2'
 platform::mtce::agent::params::worker_boot_timeout: 720
 platform::mtce::agent::params::controller_boot_timeout: 1200
 platform::mtce::agent::params::heartbeat_period: 100

@@ -2673,7 +2673,10 @@ def _delete(interface, from_profile=False):
         msg = _("Cannot delete an ethernet interface type.")
         raise wsme.exc.ClientSideError(msg)
 
-    if interface['networks']:
+    # Allow the removal of the virtual management interface during bootstrap.
+    # Once the initial configuration is complete, this type of request will be
+    # rejected.
+    if (interface['networks'] and cutils.is_initial_config_complete()):
         for network_id in interface['networks']:
             network = pecan.request.dbapi.network_get_by_id(network_id)
             if interface['iftype'] == constants.INTERFACE_TYPE_VIRTUAL and \

@@ -1,4 +1,4 @@
-ovs-vsctl --timeout 10 -- --may-exist add-<%= @type -%> <%= @bridge -%> <%= @name -%>
+ovs-vsctl --timeout 30 -- --may-exist add-<%= @type -%> <%= @bridge -%> <%= @name -%>
 <%- if @type == 'bond' -%>
 <%- @interfaces.each do |interface| -%>
  <%= interface['name'] -%>

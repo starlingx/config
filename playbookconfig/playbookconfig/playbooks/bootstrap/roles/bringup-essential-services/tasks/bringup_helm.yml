@@ -1,0 +1,204 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Bring up Helm
+#   - Set up needed directories
+#   - Pull Tiller and Armada images
+#   - Create service account and cluster role binding
+#   - Initialize Helm
+#   - Restart lighttpd
+#   - Generate repo index on target
+#   - Add local helm repo
+#   - Stop lighttpd
+#   - Bind mount
+#   - Generate repo index on source
+#
+
+- name: Create www group
+  group:
+    name: www
+    gid: 1877
+    state: present
+
+- name: Create www user in preparation for Helm bringup
+  user:
+    name: www
+    uid: 1877
+    group: www
+    groups: wrs_protected
+    shell: /sbin/nologin
+    state: present
+
+- name: Ensure /www/tmp exists
+  file:
+    path: /www/tmp
+    state: directory
+    recurse: yes
+    owner: www
+    group: root
+    #mode: 1700
+
+- name: Ensure /www/var exists
+  file:
+    path: "{{ item }}"
+    state: directory
+    recurse: yes
+    owner: www
+    group: root
+  with_items:
+    - /www/var
+    - /www/var/log
+
+- name: Set up lighttpd.conf
+  copy:
+    src: "{{ lighttpd_conf_template }}"
+    dest: /etc/lighttpd/lighttpd.conf
+    remote_src: yes
+    mode: 0640
+
+# TODO(tngo): Check if enable_https should be configurable..
+# Resort to sed due to replace/lineinfile module deficiency
+- name: Update lighttpd.conf
+  command: "{{ item }}"
+  args:
+    warn: false
+  with_items:
+    - "sed -i -e 's|<%= @http_port %>|'$PORT_NUM'|g' /etc/lighttpd/lighttpd.conf"
+    - "sed -i '/@enable_https/,/% else/d' /etc/lighttpd/lighttpd.conf"
+    - "sed -i '/@tmp_object/,/%- end/d' /etc/lighttpd/lighttpd.conf"
+    - "sed -i '/<% end/d' /etc/lighttpd/lighttpd.conf"
+    - "sed -i '/@tpm_object/,/%- end/d' /etc/lighttpd/lighttpd.conf"
+  environment:
+    PORT_NUM: 80
+
+- name: Set up lighttpd-inc.conf
+  copy:
+    src: "{{ lighttpd_inc_conf_template }}"
+    dest: /etc/lighttpd/lighttpd-inc.conf
+    remote_src: yes
+    mode: 0640
+
+- name: Update management subnet in lighttpd-inc.conf
+  replace:
+    path: /etc/lighttpd/lighttpd-inc.conf
+    regexp: "var.management_ip_network =.*$"
+    replace: 'var.management_ip_network = "{{ management_subnet }}"'
+
+- name: Update pxe subnet in lighttp-inc.conf
+  replace:
+    path: /etc/lighttpd/lighttpd-inc.conf
+    regexp: "var.pxeboot_ip_network =.*$"
+    replace: 'var.pxeboot_ip_network = "{{ pxeboot_subnet }}"'
+
+- name: Update tiller image tag if using unified registry
+  set_fact:
+    tiller_img: "{{ tiller_img | regex_replace('gcr.io', '{{ docker_registries[0] }}') }}"
+    armada_img: "{{ armada_img | regex_replace('quay.io', '{{ docker_registries[0] }}') }}"
+  when: use_unified_registry
+
+- name: Pull Tiller and Armada images
+  docker_image:
+    name: "{{ item }}"
+  with_items:
+    - "{{ tiller_img }}"
+    - "{{ armada_img }}"
+
+- name: Create source and target helm repos
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: www
+    group: root
+    mode: 0755
+  with_items:
+    - "{{ source_helm_repo }}"
+    - "{{ target_helm_repo }}"
+
+- name: Create service account for Tiller
+  command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf create serviceaccount
+    --namespace kube-system tiller
+
+- name: Create cluster role binding for Tiller service account
+  command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf create clusterrolebinding
+    tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+
+- name: Initialize Helm (local host)
+  command: >-
+    helm init --skip-refresh --service-account tiller --node-selectors
+    "node-role.kubernetes.io/master"="" --tiller-image={{ tiller_img }}
+  become_user: wrsroot
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+    HOME: /home/wrsroot
+  when: inventory_hostname == 'localhost'
+
+# Not sure why Helm init task above cannot be executed successfully as wrsroot on
+# remote host
+- block:
+  - name: Initialize Helm (remote host)
+    command: >-
+      helm init --skip-refresh --service-account tiller --node-selectors
+      "node-role.kubernetes.io/master"="" --tiller-image={{ tiller_img }}
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf
+      HOME: /home/wrsroot
+
+  - name: Change helm directory ownership (remote host)
+    file:
+      dest: /home/wrsroot/.helm
+      owner: wrsroot
+      group: wrs
+      mode: 0755
+      recurse: yes
+  when: inventory_hostname != 'localhost'
+
+- name: Restart lighttpd for Helm
+  systemd:
+    name: lighttpd
+    state: restarted
+
+- name: Generate Helm repo index on target
+  command: helm repo index {{ target_helm_repo }}
+  become_user: www
+
+- name: Add local StarlingX Helm repo (local host)
+  command: helm repo add starlingx http://127.0.0.1/helm_charts
+  become_user: wrsroot
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+    HOME: /home/wrsroot
+  when: inventory_hostname == 'localhost'
+
+# Workaround for helm repo add in remote host
+# TODO(tngo): Fix files ownership
+- name: Add StarlingX Helm repo (remote host)
+  command: helm repo add starlingx http://127.0.0.1/helm_charts
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+    HOME: /home/wrsroot
+  when: inventory_hostname != 'localhost'
+
+- name: Stop lighttpd
+  systemd:
+    name: lighttpd
+    state: stopped
+
+- name: Disable lighttpd
+  # Systemd module does not support disabled state. Resort to command
+  command: systemctl disable lighttpd
+
+- name: Bind mount {{ target_helm_repo }}
+  # Due to deficiency of mount module, resort to command for now
+  command: mount -o bind -t ext4 {{ source_helm_repo }} {{ target_helm_repo }}
+  args:
+    warn: false
+
+- name: Generate Helm repo index on source
+  command: helm repo index {{ source_helm_repo }}
+  become_user: www

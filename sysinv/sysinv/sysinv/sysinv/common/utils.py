@@ -46,6 +46,7 @@ import six
 import socket
 import tempfile
 import time
+import tsconfig.tsconfig as tsc
 import uuid
 import wsme
 import yaml
@@ -1957,3 +1958,7 @@ def has_openstack_compute(labels):
 def get_vswitch_type(dbapi):
     system = dbapi.isystem_get_one()
     return system.capabilities.get('vswitch_type', None)
+
+
+def is_initial_config_complete():
+    return os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)

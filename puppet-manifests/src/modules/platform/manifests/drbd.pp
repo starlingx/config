@@ -342,6 +342,29 @@ class platform::drbd::etcd (
   }
 }
 
+class platform::drbd::etcd::bootstrap (
+) inherits ::platform::drbd::etcd::params {
+
+  $drbd_primary = true
+  $drbd_initial = true
+  $drbd_automount = true
+  $drbd_manage = true
+
+  platform::drbd::filesystem { $resource_name:
+    vg_name                => $vg_name,
+    lv_name                => $lv_name,
+    lv_size                => $lv_size,
+    port                   => $port,
+    device                 => $device,
+    mountpoint             => $mountpoint,
+    resync_after           => undef,
+    manage_override        => $drbd_manage,
+    ha_primary_override    => $drbd_primary,
+    initial_setup_override => $drbd_initial,
+    automount_override     => $drbd_automount,
+  }
+}
+
 class platform::drbd::dockerdistribution::params (
   $device = '/dev/drbd8',
   $lv_name = 'dockerdistribution-lv',
@@ -366,6 +389,29 @@ class platform::drbd::dockerdistribution ()
     $drbd_automount = undef
     $drbd_manage = undef
   }
+
+  platform::drbd::filesystem { $resource_name:
+    vg_name                => $vg_name,
+    lv_name                => $lv_name,
+    lv_size                => $lv_size,
+    port                   => $port,
+    device                 => $device,
+    mountpoint             => $mountpoint,
+    resync_after           => undef,
+    manage_override        => $drbd_manage,
+    ha_primary_override    => $drbd_primary,
+    initial_setup_override => $drbd_initial,
+    automount_override     => $drbd_automount,
+  }
+}
+
+class platform::drbd::dockerdistribution::bootstrap ()
+  inherits ::platform::drbd::dockerdistribution::params {
+
+  $drbd_primary = true
+  $drbd_initial = true
+  $drbd_automount = true
+  $drbd_manage = true
 
   platform::drbd::filesystem { $resource_name:
     vg_name                => $vg_name,

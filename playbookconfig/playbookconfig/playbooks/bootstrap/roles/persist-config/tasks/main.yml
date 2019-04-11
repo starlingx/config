@@ -1,0 +1,201 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ROLE DESCRIPTION:
+#   This role is to persist the bootstrap configurations on filesystem and
+#   system inventory database.
+#
+
+# Keyring config
+- name: Delete the previous python_keyring directory if exists
+  file:
+    path: "{{ keyring_permdir + '/' + keyring_workdir | basename }}"
+    state: absent
+
+- name: Persist keyring data
+  command: "mv {{ keyring_workdir }} {{ keyring_permdir }}"
+
+- name: Ensure replicated config parent directory exists
+  file:
+    path: "{{ config_permdir }}"
+    state: directory
+    recurse: yes
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Get list of new config files
+  find:
+    paths: "{{ config_workdir }}"
+    file_type: any
+  register: config_find
+
+- name: Remove existing config files from permanent location
+  file:
+    path: "{{ config_permdir }}/{{ item.path | basename}}"
+    state: absent
+  with_items: "{{ config_find.files }}"
+
+- name: Move new config files to permanent location
+  # Can't use command module due to wildcard
+  shell: mv {{ config_workdir }}/* {{ config_permdir }}
+
+- name: Delete working config directory
+  file:
+    path: "{{ config_workdir }}"
+    state: absent
+
+# Postgres, PXE, Branding, Grub config tasks and filesystem resizing are
+# moved to a separate file as they don't need to be executed again on replay.
+- include: one_time_config_tasks.yml
+  when: not reconfigured
+
+- block:
+  - name: Set input parameters to populate config script
+    set_fact:
+      script_input: "{{ config_permdir + '/' + bootstrap_config_file|basename }}"
+
+  - name: Update input parameters with reconfigure system flag
+    set_fact:
+      script_input: "{{ script_input + ' --system' }}"
+    when: system_config_update
+
+  - name: Update input parameters with reconfigure network flag
+    set_fact:
+      script_input: "{{ script_input + ' --network' }}"
+    when: network_config_update
+
+  - name: Update input parameters with reconfigure service flag
+    set_fact:
+      script_input: "{{ script_input + ' --service' }}"
+    when: docker_config_update
+
+  - name: Update input parameters if config from previous play is missing
+    set_fact:
+      script_input: "{{ script_input + ' --system --network --service' }}"
+    when: reconfigured and not last_config_file.stat.exists
+
+  - debug: var=script_input
+
+  - name: Shuting down services for reconfiguration
+    include: shutdown_services.yml
+    when: restart_services
+
+  - name: Saving config in sysinv database
+    script: populate_initial_config.py {{ script_input }}
+    register: populate_result
+    failed_when: false
+
+  - debug: var=populate_result
+
+  - name: Fail if populate config script throws an exception
+    fail:
+      msg: "Failed to provision initial system configuration."
+    when: populate_result.rc != 0
+
+  - block:
+    - name: Ensure docker config directory exists
+      file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: Ensure docker proxy config exists
+      copy:
+        content: ""
+        dest: "{{ docker_proxy_conf }}"
+        force: no
+        owner: root
+        group: root
+        mode: 0644
+        remote_src: yes
+
+    - name: Write header to docker proxy conf file
+      lineinfile:
+        path: "{{ docker_proxy_conf }}"
+        line: "[Service]"
+
+    - name: Add http proxy URL to docker proxy conf file
+      lineinfile:
+        path: "{{ docker_proxy_conf }}"
+        line: "Environment='HTTP_PROXY={{ docker_http_proxy }}'"
+      when: docker_http_proxy != 'undef'
+
+    - name: Add https proxy URL to docker proxy conf file
+      lineinfile:
+        path: "{{ docker_proxy_conf }}"
+        line: "Environment='HTTPS_PROXY={{ docker_https_proxy }}'"
+      when: docker_https_proxy != 'undef'
+
+    - name: Add no proxy address list to docker proxy config file
+      lineinfile:
+        path: "{{ docker_proxy_conf }}"
+        line: "Environment='NO_PROXY={{ docker_no_proxy | join(',') }}'"
+
+    - name: Restart Docker
+      systemd:
+        state: restarted
+        daemon_reload: yes
+        name: docker
+
+    when: use_docker_proxy
+
+  when: save_config
+
+# PXE boot files
+- name: Set pxeboot files source if address allocation is dynamic
+  set_fact:
+    pxe_default: pxelinux.cfg.files/default
+    pxe_grub_cfg: pxelinux.cfg.files/grub.cfg
+  when: dynamic_address_allocation
+
+- name: Set pxeboot files source if address allocation is static
+  set_fact:
+    pxe_default: pxelinux.cfg.files/default.static
+    pxe_grub_cfg: pxelinux.cfg.files/grub.cfg.static
+  when: not dynamic_address_allocation
+
+- name: Set pxeboot files symlinks
+  file:
+    src: "/pxeboot/{{ item.src }}"
+    dest: "/pxeboot/{{ item.dest }}"
+    state: link
+    force: yes
+  with_items:
+    - { src: '{{ pxe_default }}', dest: 'pxelinux.cfg/default' }
+    - { src: '{{ pxe_grub_cfg }}', dest: 'pxelinux.cfg/grub.cfg' }
+
+- name: Update the management_interface in platform.conf
+  lineinfile:
+    path: /etc/platform/platform.conf
+    regexp: "management_interface"
+    line: "management_interface=lo"
+
+- name: Add new entries to platform.conf
+  lineinfile:
+    path: /etc/platform/platform.conf
+    line: "{{ item }}"
+  with_items:
+    - region_config=no
+    # Probably don't need this line with Eric's change to mtc
+    - system_mode=simplex
+    - sw_version={{ software_version }}
+    - vswitch_type=none
+
+- name: Update resolv.conf with list of dns servers
+  lineinfile:
+    path: /etc/resolv.conf
+    line: "nameserver {{ item }}"
+  with_items: "{{ dns_servers }}"
+
+- name: Remove localhost address from resolv.conf
+  lineinfile:
+    path: /etc/resolv.conf
+    regex: "nameserver ::1"
+    state: absent
+  when: not ipv6_addressing

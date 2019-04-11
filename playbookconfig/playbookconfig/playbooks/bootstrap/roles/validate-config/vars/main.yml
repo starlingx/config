@@ -1,0 +1,12 @@
+---
+config_workdir: /tmp/config
+bootstrap_config_file: /tmp/config/bootstrap_config
+typical_subnet_prefix: 24
+min_8_addresses: 8
+min_16_addresses: 16
+min_pod_service_num_addresses: 65536
+minimum_ipv6_prefix_length: 64
+
+private_pxeboot_subnet: 169.254.202.0/24
+pxecontroller_floating_hostname: pxecontroller
+use_entire_pxeboot_subnet: True

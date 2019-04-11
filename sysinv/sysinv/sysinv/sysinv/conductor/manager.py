@@ -183,17 +183,25 @@ class ConductorManager(service.PeriodicService):
 
         self._openstack = openstack.OpenStackOperator(self.dbapi)
         self._puppet = puppet.PuppetOperator(self.dbapi)
-        self._app = kube_app.AppOperator(self.dbapi)
-        self._ceph = iceph.CephOperator(self.dbapi)
-        self._helm = helm.HelmOperator(self.dbapi)
-        self._kube = kubernetes.KubeOperator(self.dbapi)
-        self._fernet = fernet.FernetOperator()
 
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
         cutils.check_lock_path()
 
         system = self._create_default_system()
+
+        # Besides OpenStack and Puppet operators, all other operators
+        # should be initialized after the default system is in place.
+        # For instance, CephOperator expects a system to exist to initialize
+        # correctly. With Ansible bootstrap deployment, sysinv conductor is
+        # brought up during bootstrap manifest apply and is not restarted
+        # until host unlock and we need ceph-mon up in order to configure
+        # ceph for the initial unlock.
+        self._app = kube_app.AppOperator(self.dbapi)
+        self._ceph = iceph.CephOperator(self.dbapi)
+        self._helm = helm.HelmOperator(self.dbapi)
+        self._kube = kubernetes.KubeOperator(self.dbapi)
+        self._fernet = fernet.FernetOperator()
 
         # Upgrade start tasks
         self._upgrade_init_actions()
@@ -1414,6 +1422,21 @@ class ConductorManager(service.PeriodicService):
         self._update_pxe_config(host)
         self._ceph_mon_create(host)
 
+        # Apply the manifest to reconfigure the service endpoints right before
+        # the unlock. The Ansible bootstrap flag only exists during the bootstrap
+        # of the initial controller. It's cleared after the controller is unlocked
+        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
+                host.availability == constants.AVAILABILITY_ONLINE):
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "host_uuids": [host.uuid],
+                "classes": ['openstack::keystone::endpoint::runtime']
+            }
+            self._config_apply_runtime_manifest(
+                context, config_uuid, config_dict, force=True)
+
     def _ceph_mon_create(self, host):
         if not StorageBackendConfig.has_backend(
             self.dbapi,
@@ -1659,7 +1682,6 @@ class ConductorManager(service.PeriodicService):
             puppet_common.puppet_apply_manifest(host.mgmt_ip,
                                                        constants.WORKER,
                                                        do_reboot=True)
-
         return host
 
     def unconfigure_ihost(self, context, ihost_obj):
@@ -2713,9 +2735,8 @@ class ConductorManager(service.PeriodicService):
                                         subfunctions=ihost.get('subfunctions'),
                                         reference='current (unchanged)',
                                         sockets=cs, cores=cc, threads=ct)
-                if ihost.administrative == constants.ADMIN_LOCKED and \
-                        force_grub_update:
-                    self.update_cpu_config(context, ihost_uuid)
+                if ihost.administrative == constants.ADMIN_LOCKED:
+                    self.update_cpu_config(context, ihost_uuid, force_grub_update)
                 return
 
             self.print_cpu_topology(hostname=ihost.get('hostname'),
@@ -2772,12 +2793,13 @@ class ConductorManager(service.PeriodicService):
         # if it is the first controller wait for the initial config to
         # be completed
         if ((utils.is_host_simplex_controller(ihost) and
-                os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)) or
+                (os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG) or
+                 os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG))) or
                 (not utils.is_host_simplex_controller(ihost) and
                  ihost.administrative == constants.ADMIN_LOCKED)):
             LOG.info("Update CPU grub config, host_uuid (%s), name (%s)"
                      % (ihost_uuid, ihost.get('hostname')))
-            self.update_cpu_config(context, ihost_uuid)
+            self.update_cpu_config(context, ihost_uuid, force_grub_update)
 
         return
 
@@ -3523,10 +3545,16 @@ class ConductorManager(service.PeriodicService):
             puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_DISK_PARTITON_CONFIG
         }
 
+        # Currently sysinv agent does not create the needed partition during nova-local
+        # configuration without the existence of the initial_config_complete flag.
+        # During Ansible bootstrap, force manifest apply as the generation of this
+        # file is deferred until host unlock where full controller manifest is applied.
+        force_apply = False if cutils.is_initial_config_complete() else True
         self._config_apply_runtime_manifest(context,
                                             config_uuid,
                                             config_dict,
-                                            host_uuids=[host_uuid])
+                                            host_uuids=[host_uuid],
+                                            force=force_apply)
 
     def ipartition_update_by_ihost(self, context,
                                    ihost_uuid, ipart_dict_array):
@@ -4521,9 +4549,10 @@ class ConductorManager(service.PeriodicService):
             if not os.path.isfile(CONFIG_CONTROLLER_ACTIVATE_FLAG):
                 cutils.touch(CONFIG_CONTROLLER_ACTIVATE_FLAG)
                 # apply keystone changes to current active controller
-                config_uuid = active_host.config_target
+                personalities = [constants.CONTROLLER]
+                config_uuid = self._config_update_hosts(context, personalities)
                 config_dict = {
-                    "personalities": [constants.CONTROLLER],
+                    "personalities": personalities,
                     "host_uuids": active_host.uuid,
                     "classes": ['openstack::keystone::endpoint::runtime']
                 }
@@ -4556,6 +4585,19 @@ class ConductorManager(service.PeriodicService):
                         self._update_alarm_status(context, standby_host)
 
         else:
+            # For the first controller, copy sysinv.conf to /opt/platform/sysinv right after the
+            # initial unlock for subsequent host installs.
+            if standby_host is None:
+                personalities = [constants.CONTROLLER]
+                config_uuid = self._config_update_hosts(context, personalities)
+                config_dict = {
+                    "personalities": personalities,
+                    "host_uuids": active_host.uuid,
+                    "classes": ['platform::sysinv::runtime']
+                }
+                self._config_apply_runtime_manifest(
+                    context, config_uuid, config_dict, host_uuids=[active_host.uuid], force=True)
+
             # Ignore the reboot required bit for active controller when doing the comparison
             active_config_target_flipped = None
             if active_host and active_host.config_target:
@@ -4980,7 +5022,8 @@ class ConductorManager(service.PeriodicService):
             self._audit_ihost_action(host)
 
     def _audit_kubernetes_labels(self, hosts):
-        if not utils.is_kubernetes_config(self.dbapi):
+        if (not utils.is_kubernetes_config(self.dbapi) or
+                not cutils.is_initial_config_complete()):
             LOG.debug("_audit_kubernetes_labels skip")
             return
 
@@ -7565,13 +7608,14 @@ class ConductorManager(service.PeriodicService):
             # discard temporary file
             os.remove(hosts_file_temp)
 
-    def update_cpu_config(self, context, host_uuid):
+    def update_cpu_config(self, context, host_uuid, force_grub_update=False):
         """Update the cpu assignment configuration on a host"""
 
         # only apply the manifest on the host that has worker sub function
         host = self.dbapi.ihost_get(host_uuid)
         if constants.WORKER in host.subfunctions:
-            force = (not utils.is_host_simplex_controller(host))
+            force = (not utils.is_host_simplex_controller(host) or
+                     force_grub_update)
             LOG.info("update_cpu_config, host uuid: (%s), force: (%s)",
                      host_uuid, str(force))
             personalities = [constants.CONTROLLER, constants.WORKER]
@@ -8204,7 +8248,8 @@ class ConductorManager(service.PeriodicService):
                         config_uuid = self._config_set_reboot_required(config_uuid)
                 ihost_obj.config_target = config_uuid
                 ihost_obj.save(context)
-            self._update_alarm_status(context, ihost_obj)
+            if cutils.is_initial_config_complete():
+                self._update_alarm_status(context, ihost_obj)
 
         _sync_update_host_config_target(self, context, ihost_obj, config_uuid)
 
@@ -8219,7 +8264,8 @@ class ConductorManager(service.PeriodicService):
             if ihost_obj.config_applied != config_uuid:
                 ihost_obj.config_applied = config_uuid
                 ihost_obj.save(context)
-            self._update_alarm_status(context, ihost_obj)
+            if cutils.is_initial_config_complete():
+                self._update_alarm_status(context, ihost_obj)
 
         _sync_update_host_config_applied(self, context, ihost_obj, config_uuid)
 

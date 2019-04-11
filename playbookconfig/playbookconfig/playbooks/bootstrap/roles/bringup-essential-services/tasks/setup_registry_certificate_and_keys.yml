@@ -1,0 +1,67 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Set up docker registry certificate and keys required for the unlock
+#
+
+- name: Generate cnf file from template
+  copy:
+    src: "{{ cert_cnf_template }}"
+    dest: "{{ cert_cnf_file }}"
+    remote_src: yes
+
+- name: Update cnf file with network info
+  command: "sed -i -e 's|<%= @docker_registry_ip %>|'$DOCKER_REGISTRY_IP'|g' {{ cert_cnf_file }}"
+  args:
+    warn: false
+  environment:
+    DOCKER_REGISTRY_IP: "{{ controller_floating_address }}"
+
+- name: Generate certifcate and key files
+  command: >-
+    openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout {{ registry_cert_key }}
+    -out {{ registry_cert_crt }} -config {{ cert_cnf_file }}
+
+- name: Generate pkcs1 key file
+  command: openssl rsa -in {{ registry_cert_key }} -out {{ registry_cert_pkcs1_key }}
+
+- name: Remove extfile used in certificate generation
+  file:
+    path: "{{ cert_cnf_file }}"
+    state: absent
+
+- name: Set certificate file and key permissions to root read-only
+  file:
+    path: "{{ item }}"
+    mode: 0400
+  with_items:
+    - "{{ registry_cert_key }}"
+    - "{{ registry_cert_crt }}"
+    - "{{ registry_cert_pkcs1_key }}"
+
+- name: Copy certifcate and keys to shared filesystem for mate
+  copy:
+    src: "{{ item }}"
+    dest: "{{ config_permdir }}"
+    remote_src: yes
+  with_items:
+    - "{{ registry_cert_key }}"
+    - "{{ registry_cert_crt }}"
+    - "{{ registry_cert_pkcs1_key }}"
+
+- name: Create docker certificate directory
+  file:
+    path: "{{ docker_cert_dir }}/{{ controller_floating_address }}:9001"
+    state: directory
+    recurse: yes
+    mode: 0700
+
+- name: Copy certificate file to docker certificate directory
+  copy:
+    src: "{{ registry_cert_crt }}"
+    dest: "{{ docker_cert_dir }}/{{ controller_floating_address }}:9001"
+    remote_src: yes

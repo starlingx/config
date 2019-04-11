@@ -1,0 +1,59 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ROLE DESCRIPTION:
+#   This role is to create static configuration and apply the puppet bootstrap
+#   manifest.
+
+- name: Create config workdir
+  file:
+    path: "{{ hieradata_workdir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Generating static config data
+  command: "/usr/bin/sysinv-puppet create-static-config {{ hieradata_workdir }}"
+  failed_when: false
+  register: static_config_result
+
+- name: Fail if static hieradata cannot be generated
+  fail:
+    msg: "Failed to create puppet hiera static config."
+  when: static_config_result.rc != 0
+
+- name: Applying puppet bootstrap manifest
+  #shell: >
+  command: >
+    /usr/local/bin/puppet-manifest-apply.sh
+    {{ hieradata_workdir }}
+    {{ derived_network_params.controller_0_address }}
+    controller ansible_bootstrap > {{ manifest_apply_log }}
+  #async: 1800
+  #poll: 10
+  register: bootstrap_manifest
+  environment:
+    INITIAL_CONFIG_PRIMARY: "true"
+
+- debug: var=bootstrap_manifest
+- fail:
+    msg: >-
+         Failed to apply bootstrap manifest. See /var/log/puppet/latest/puppet.log
+         for details.
+  when: bootstrap_manifest.rc != 0
+
+- name: Ensure Puppet directory exists
+  file:
+    path: "{{ puppet_permdir }}"
+    state: directory
+    recurse: yes
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Persist puppet working files
+  command: "mv {{ hieradata_workdir }} {{ puppet_permdir }}"

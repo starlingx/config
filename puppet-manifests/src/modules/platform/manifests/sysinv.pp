@@ -66,6 +66,7 @@ class platform::sysinv
       'sysinv %(asctime)s.%(msecs)03d %(process)d %(levelname)s %(name)s [-] %(instance)s%(message)s';
   }
 
+  # TODO(tngo): The following block will be removed as part of config_controller cleanup
   if str2bool($::is_initial_config_primary) {
     $software_version = $::platform::params::software_version
 
@@ -86,6 +87,27 @@ class platform::sysinv
       -> file { "/opt/platform/sysinv/${software_version}/sysinv.conf.default":
         source => '/etc/sysinv/sysinv.conf',
       }
+  }
+}
+
+
+class platform::sysinv::runtime {
+
+  include ::platform::params
+  $software_version = $::platform::params::software_version
+
+  file { '/opt/platform/sysinv':
+    ensure => directory,
+    owner  => 'sysinv',
+    mode   => '0755',
+  }
+  -> file { "/opt/platform/sysinv/${software_version}":
+    ensure => directory,
+    owner  => 'sysinv',
+    mode   => '0755',
+  }
+  -> file { "/opt/platform/sysinv/${software_version}/sysinv.conf.default":
+    source => '/etc/sysinv/sysinv.conf',
   }
 }
 

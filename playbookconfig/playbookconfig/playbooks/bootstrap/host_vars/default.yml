@@ -1,0 +1,135 @@
+---
+# SYSTEM PROPERTIES
+# =================
+system_mode: simplex
+timezone: UTC
+
+# At least one DNS server is required and maximum 3 servers are allowed
+dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# NETWORK PROPERTIES
+# ==================
+#
+# Unless specified in the host override file, the start and end addresses of
+# each subnet are derived from the provided CIDR as follows:
+#   For pxebook, management and cluster host subnets:
+#     - start address: index 2 of CIDR
+#     - end address: index -2 of CIDR
+#     e.g. management_subnet (provided/default): 192.168.204.0/28
+#          management_start_address (derived): 192.168.204.2
+#          management_end_address (derived): 192.168.204.14
+#
+#   For cluster pod, cluster service, oam and multicast subnets:
+#     - start address: index 1 of CIDR
+#     - end address: index -2 of CIDR
+#     e.g. multicast_subnet (provided/default): 239.1.1.0/28
+#          multicast_start_address (derived): 239.1.1.1
+#          multicast_end_address (derived): 238.1.1.14
+#
+# Unless specified, the external_oam_node_0_address and external_oam_node_1_address
+# are derived from the external_oam_floating address as follows:
+#   external_oam_node_0_address: next address after external_oam_floating_address
+#   external_oam_node_0_address: next address after external_oam_node_0_address
+#   e.g. external_oam_floating_address (provided/default): 10.10.10.2
+#        external_oam_node_0_address (derived): 10.10.10.3
+#        external_oam_node_1_address (derived): 10.10.10.4
+#
+# These addresses are only applicable to duplex or duplex-direct system mode.
+#
+pxeboot_subnet: 169.254.202.0/24
+# pxeboot_start_address:
+# pxeboot_end_address:
+
+management_subnet: 192.168.204.0/28
+# management_start_address:
+# management_end_address:
+
+cluster_host_subnet: 192.168.206.0/24
+# cluster_host_start_address:
+# cluster_host_end_address:
+
+cluster_pod_subnet: 172.16.0.0/16
+# cluster_pod_start_address:
+# cluster_pod_end_address:
+
+cluster_service_subnet: 10.96.0.0/12
+# cluster_service_start_address:
+# cluster_service_end_address:
+
+external_oam_subnet: 10.10.10.0/24
+external_oam_gateway_address: 10.10.10.1
+external_oam_floating_address: 10.10.10.2
+# external_oam_start_address:
+# external_oam_end_address:
+# external_oam_node_0_address:
+# external_oam_node_1_address:
+
+management_multicast_subnet: 239.1.1.0/28
+# mangement_multicast_start_address:
+# management_multicast_end_address:
+
+# Management network address allocation (True = dynamic, False = static)
+dynamic_address_allocation: True
+
+# DOCKER PROXIES
+# ==============
+#
+# If the host OAM network is behind a proxy, Docker must be configured with
+# the same proxy. When an http and/or https proxy is provided, a no-proxy
+# address list can optionally be provided. This list will be added to the
+# default no-proxy list derived from localhost, loopback, management and oam
+# floating addresses at run time. Each address in the list must neither
+# contain a wildcard nor have subnet format.
+
+# docker_http_proxy: http://proxy.com:1234
+# docker_https_proxy: https://proxy.com:1234
+# docker_no_proxy:
+#   - 1.2.3.4
+#   - 5.6.7.8
+
+# DOCKER REGISTRIES
+# =================
+#
+# The default list of registries can be extended with new entries.
+#
+# The valid formats for a registry value are:
+#   - domain (e.g. example.domain)
+#   - domain with port (e.g. example.domain:5000)
+#   - IPv4 address (e.g. 1.2.3.4)
+#   - IPv4 address with port (e.g. 1.2.3.4:5000)
+#   - IPv6 address (e.g. FD01::0100)
+#   - IPv6 address with port (e.g. [FD01::0100]:5000
+#
+# If the registry list contains only a single item, the specified registry is
+# considered a unified registry and will replace all default registries.
+#
+# Parameter is_secure_registry is only relevant when a unified registry is
+# used.
+
+docker_registries:
+#  - k8s.gcr.io
+#  - gcr.io
+#  - quay.io
+#  - docker.io
+
+#is_secure_registry: True
+
+# ADMIN CREDENTIALS
+# =================
+#
+# WARNING: It is strongly reconmmended to save this info in Ansible vault
+# file named "secret" under override files directory. Configuration parameters
+# stored in vault must start with vault_ prefix (i.e. vault_admin_username,
+# vault_admin_password).
+#
+admin_username: admin
+admin_password: St8rlingX*
+
+# OVERRIDE FILES DIRECTORY
+# ========================
+#
+# Default directory where user override file(s) can be found
+#
+override_files_dir: "/home/{{ lookup('env', 'USER') }}"

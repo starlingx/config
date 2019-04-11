@@ -1,0 +1,43 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Validate the format of docker registry/no-proxy address
+#
+
+- name: Check if the supplied address is a valid domain name or ipv4 address
+  vars:
+    script_content: |
+      # Use this utility to be consistent with the current config_controller
+      # though the underlying regex used is not flexible.
+      from controllerconfig.utils import is_valid_domain
+      if not is_valid_domain( "{{ input_address }}" ):
+        raise Exception("Invalid domain name!")
+  shell: "{{ script_content }}"
+  args:
+    executable: /usr/bin/python
+  failed_when: false
+  register: domain_name_ipv4_check
+
+  # The domain name check above should cover the domain name as well as
+  # IPv4 addressing with/without port. If it fails, check if it's ipv6 format
+- block:
+  - name: Check if the supplied address is of ipv6 with port format
+    set_fact:
+      ipv6_with_port: true
+    when: input_address is search("\[") and input_address is search("\]")
+
+  - name: Fail if the supplied address is not a valid ipv6
+    fail:
+      msg: "{{ input_address }} is an invalid address!."
+    when: (not ipv6_with_port) and (input_address|ipv6 == false)
+
+  - name: Fail if the supplied address is not a valid ipv6 with port
+    fail:
+      msg: "{{ input_address }} is an invalid address!."
+    when: (ipv6_with_port) and
+          ((input_address.split('[')[1]).split(']')[0]|ipv6 == false)
+  when: domain_name_ipv4_check.rc != 0

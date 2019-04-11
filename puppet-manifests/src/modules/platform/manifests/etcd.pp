@@ -92,3 +92,31 @@ class platform::etcd::datadir
     }
   }
 }
+
+class platform::etcd::datadir::bootstrap
+  inherits ::platform::etcd::params {
+
+  require ::platform::drbd::etcd::bootstrap
+  Class['::platform::drbd::etcd::bootstrap'] -> Class[$name]
+
+  if $::platform::params::init_database {
+    file { $etcd_versioned_dir:
+        ensure => 'directory',
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0755',
+    }
+  }
+}
+
+class platform::etcd::bootstrap
+  inherits ::platform::etcd::params {
+
+  include ::platform::etcd::datadir::bootstrap
+  include ::platform::etcd::setup
+  include ::platform::etcd::init
+
+  Class['::platform::etcd::datadir::bootstrap']
+  -> Class['::platform::etcd::setup']
+  -> Class['::platform::etcd::init']
+}

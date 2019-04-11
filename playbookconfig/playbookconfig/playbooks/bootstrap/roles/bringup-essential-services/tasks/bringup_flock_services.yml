@@ -1,0 +1,36 @@
+---
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# SUB-TASKS DESCRIPTION:
+#   Start up FM, Maintenance
+#   - Skip auth middleware for FM as it is not functional at this early
+#     stage
+#   - Restart Maintenance Client to pick the new config which will update
+#     the controller-0 status from offline to online.
+#
+
+- block: # Bring up FM and MTC
+  - name: Apply workaround for fm-api
+    lineinfile:
+      path: /etc/fm/api-paste.ini
+      line: "pipeline=request_id api_v1"
+      regex: "pipeline*"
+
+  - name: Restart FM API and bring up FM Manager
+    command: "{{ item }}"
+    with_items:
+      - /etc/init.d/fm-api restart
+      - /etc/init.d/fminit start
+
+  - name: Bring up Maintenance Agent
+    command: /usr/lib/ocf/resource.d/platform/mtcAgent start
+
+  - name: Restart Maintenance Client
+    command: /etc/init.d/mtcClient restart
+
+  environment: # block environment
+    OCF_ROOT: "/usr/lib/ocf"
+    OCF_RESKEY_state: "active"

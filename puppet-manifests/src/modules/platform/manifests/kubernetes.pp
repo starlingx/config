@@ -158,10 +158,21 @@ class platform::kubernetes::master::init
       command   => 'systemctl daemon-reload',
       logoutput => true,
     }
+
+    # Initial kubernetes config done on node
+    -> file { '/etc/platform/.initial_k8s_config_complete':
+      ensure => present,
+    }
   } else {
-    if str2bool($::is_initial_config) {
-      # For subsequent controller installs, install kubernetes using the
-      # existing certificates.
+    if str2bool($::is_initial_k8s_config) {
+      # This allows subsequent node installs
+      # Notes regarding ::is_initial_k8s_config check:
+      # - Ensures block is only run for new node installs (e.g. controller-1)
+      #  or reinstalls. This part is needed only once;
+      # - Ansible configuration is independently configuring Kubernetes. A retry
+      #   in configuration by puppet leads to failed manifest application.
+      #   This flag is created by Ansible on controller-0;
+      # - Ansible replay is not impacted by flag creation.
 
       # Create necessary certificate files
       file { '/etc/kubernetes/pki':
@@ -267,6 +278,11 @@ class platform::kubernetes::master::init
       -> exec { 'perform systemctl daemon reload for kubelet override':
         command   => 'systemctl daemon-reload',
         logoutput => true,
+      }
+
+      # Initial kubernetes config done on node
+      -> file { '/etc/platform/.initial_k8s_config_complete':
+        ensure => present,
       }
     }
   }

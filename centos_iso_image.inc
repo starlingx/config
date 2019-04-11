@@ -37,3 +37,6 @@ sshpass
 python2-ptyprocess
 python2-pexpect
 ansible
+
+# playbookconfig
+playbookconfig
