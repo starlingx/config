@@ -657,6 +657,9 @@ data:
         libvirt:
           node_selector_key: openstack-compute-node
           node_selector_value: enabled
+    conf:
+      kubernetes:
+        cgroup: "k8s-infra"
     images:
       tags:
         libvirt: docker.io/starlingx/stx-libvirt:master-centos-stable-latest
