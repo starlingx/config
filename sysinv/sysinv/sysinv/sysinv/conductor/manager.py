@@ -7503,8 +7503,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::sysctl::controller::runtime',
-                        'platform::nfv::runtime',
-                        'openstack::neutron::server::runtime']
+                        'platform::nfv::runtime']
         }
         config_uuid = self._config_update_hosts(context, personalities)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
