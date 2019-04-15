@@ -103,9 +103,6 @@ def get_db_credentials(shared_services, from_release):
          'magnum': {'hiera_user_key': 'magnum::db::postgresql::user',
                     'keyring_password_key': 'magnum',
                     },
-         'panko': {'hiera_user_key': 'panko::db::postgresql::user',
-                   'keyring_password_key': 'panko',
-                   },
          'ironic': {'hiera_user_key': 'ironic::db::postgresql::user',
                     'keyring_password_key': 'ironic',
                     },
@@ -567,10 +564,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'magnum'))
 
-    with open("/etc/panko/panko-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'panko'))
-
     with open("/etc/ironic/ironic-dbsync.conf", "w") as f:
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'ironic'))
@@ -627,9 +620,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         ('magnum',
          'magnum-db-manage --config-file /etc/magnum/magnum-dbsync.conf ' +
          'upgrade'),
-        # Migrate panko (new in R5)
-        ('panko',
-         'panko-dbsync --config-file /etc/panko/panko-dbsync.conf'),
         # Migrate ironic (new in R5)
         ('ironic',
          'ironic-dbsync --config-file /etc/ironic/ironic-dbsync.conf ' +
