@@ -64,6 +64,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             self._get_or_generate_ssh_keys(self.SERVICE_NAME, common.HELM_NS_OPENSTACK)
         overrides = {
             common.HELM_NS_OPENSTACK: {
+                'manifests': self._get_compute_ironic_manifests(),
                 'pod': {
                     'mounts': {
                         'nova_compute': {
@@ -131,6 +132,16 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             'mountPath': '/dev/pts'
         })
         return overrides
+
+    def _compute_ironic_manifests(self, is_labeled):
+        manifests = {
+            'statefulset_compute_ironic': is_labeled
+        }
+        return manifests
+
+    def _get_compute_ironic_manifests(self):
+        ironic_label = self._is_labeled(common.LABEL_IRONIC, 'enabled')
+        return self._compute_ironic_manifests(ironic_label)
 
     def _get_endpoints_overrides(self):
         overrides = {

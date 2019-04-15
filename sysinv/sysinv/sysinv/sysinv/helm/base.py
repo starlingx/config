@@ -205,6 +205,19 @@ class BaseHelm(object):
                 cpus.append(c)
         return cpus
 
+    def _is_labeled(self, k, v):
+        """
+        Check whether the label key value pair are set
+        """
+        if self.dbapi is None:
+            return False
+        label_list = self.dbapi.label_get_all()
+        for label in label_list:
+            if label.label_key == k:
+                if label.label_value == v:
+                    return True
+        return False
+
     def get_namespaces(self):
         """
         Return list of namespaces supported by this chart
