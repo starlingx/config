@@ -680,10 +680,11 @@ data:
   release: openstack-openvswitch
   namespace: openstack
   # If we deploy ovs-dpdk on the host, ovs pod will not be created.
-  wait:
-    timeout: 1800
-    labels:
-      release_group: osh-openstack-openvswitch
+  # commenting out the wait block until a solution can be implemented
+  #wait:
+  #  timeout: 1800
+  #  labels:
+  #    release_group: osh-openstack-openvswitch
   install:
     no_hooks: false
   upgrade:
