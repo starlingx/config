@@ -147,23 +147,6 @@ def prepare_upgrade(from_load, to_load, i_system):
         LOG.exception("Failed to export %s" % utils.RABBIT_PATH)
         raise
 
-    if tsc.infrastructure_interface:
-        # The mate controller needs access to the /opt/cgcs directory during
-        # the upgrade. If an infrastructure interface exists, then /opt/cgcs
-        # is exported over the infrastructure network, which the mate does
-        # not have access to during the upgrade. So... export it over the
-        # management network here as well.
-        try:
-            subprocess.check_call(
-                ["exportfs",
-                 "%s:%s" % (utils.CONTROLLER_1_HOSTNAME, tsc.CGCS_PATH),
-                 "-o",
-                 "rw,no_root_squash"],
-                stdout=devnull)
-        except subprocess.CalledProcessError:
-            LOG.exception("Failed to export %s" % utils.POSTGRES_PATH)
-            raise
-
     # Migrate /opt/platform/config so controller-1 can access when it
     # runs controller_config
     try:
@@ -255,8 +238,6 @@ def abort_upgrade(from_load, to_load, upgrade):
 
     # unexport filesystems
     export_list = [utils.POSTGRES_PATH, utils.RABBIT_PATH]
-    if tsc.infrastructure_interface:
-        export_list.append(tsc.CGCS_PATH)
     export_path = None
     try:
         for export_path in export_list:
