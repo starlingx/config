@@ -23,7 +23,7 @@ region_2_name = None
 vswitch_type = None
 management_interface = None
 oam_interface = None
-infrastructure_interface = None
+cluster_host_interface = None
 sdn_enabled = "no"
 host_uuid = None
 install_uuid = None
@@ -111,10 +111,10 @@ def _load():
         if config.has_option('platform_conf', 'oam_interface'):
             oam_interface = str(config.get('platform_conf', 'oam_interface'))
 
-        global infrastructure_interface
-        if config.has_option('platform_conf', 'infrastructure_interface'):
-            infrastructure_interface = str(config.get('platform_conf',
-                                           'infrastructure_interface'))
+        global cluster_host_interface
+        if config.has_option('platform_conf', 'cluster_host_interface'):
+            cluster_host_interface = str(config.get('platform_conf',
+                                                    'cluster_host_interface'))
         global sdn_enabled
         if config.has_option('platform_conf', 'sdn_enabled'):
             sdn_enabled = str(config.get('platform_conf', 'sdn_enabled'))
