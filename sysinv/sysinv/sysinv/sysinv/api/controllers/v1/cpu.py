@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -491,10 +491,7 @@ def _update_vswitch_cpu_counts(host, cpu, counts, capabilities=None):
     first and that all other allocations will be dynamically adjusted based on
     how many cores are remaining.
     """
-    labels = pecan.request.dbapi.label_get_by_host(host.uuid)
-    if not cutils.has_openstack_compute(labels):
-        raise wsme.exc.ClientSideError(_('vSwitch cpus can only be used with '
-                                         'openstack-compute nodes.'))
+    vswitch_type = cutils.get_vswitch_type(pecan.request.dbapi)
     for s in range(0, len(host.nodes)):
         if capabilities:
             count = capabilities.get('num_cores_on_processor%d' % s, None)
@@ -504,6 +501,10 @@ def _update_vswitch_cpu_counts(host, cpu, counts, capabilities=None):
         if count is None:
             continue
         count = int(count)
+        if constants.VSWITCH_TYPE_NONE == vswitch_type and count != 0:
+            raise wsme.exc.ClientSideError(
+                _('vSwitch cpus can only be used with a vswitch_type '
+                  'specified.'))
         if count < 0:
             raise wsme.exc.ClientSideError(_('vSwitch cpus must be non-negative.'))
         if host.hyperthreading:

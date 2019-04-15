@@ -4220,6 +4220,21 @@ class HostController(rest.RestController):
                   "Please refer to system admin guide for more details.") %
                 (ihost['hostname']))
 
+    def _semantic_check_worker_cpu_assignments(self, host):
+        """
+        Perform semantic checks that cpu assignments are valid. Changes in
+        vswitch_type may alter vswitch core requirements.
+        """
+        # If vswitch_type is none, enforce 0 vswitch cpu cores
+        if constants.VSWITCH_TYPE_NONE == cutils.get_vswitch_type(
+                pecan.request.dbapi):
+            host_cpus = pecan.request.dbapi.icpu_get_by_ihost(host['uuid'])
+            for cpu in host_cpus:
+                if cpu.allocated_function == constants.VSWITCH_FUNCTION:
+                    raise wsme.exc.ClientSideError(
+                        _('vSwitch cpus can only be used with a vswitch_type '
+                          'specified.'))
+
     @staticmethod
     def _handle_ttys_dcd_change(ihost, ttys_dcd):
         """
@@ -5185,6 +5200,9 @@ class HostController(rest.RestController):
                                                  force_unlock)
             self._semantic_check_data_addresses(ihost)
             self._semantic_check_data_vrs_attributes(ihost)
+
+        # Check if cpu assignments are valid
+        self._semantic_check_worker_cpu_assignments(ihost)
 
         # check if the platform reserved memory is valid
         ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])

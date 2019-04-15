@@ -2547,6 +2547,8 @@ class ConductorManager(service.PeriodicService):
                                        cpu_count, hyperthreading):
         """Return the initial number of reserved logical cores for vswitch
         use.  This can be overridden later by the end user."""
+        if constants.VSWITCH_TYPE_NONE == cutils.get_vswitch_type(self.dbapi):
+            return 0
         if cutils.host_has_function(ihost, constants.WORKER) and node == 0:
             physical_cores = (cpu_count / 2) if hyperthreading else cpu_count
             system_mode = self.dbapi.isystem_get_one().system_mode
