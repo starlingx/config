@@ -186,8 +186,10 @@ class KubernetesPuppet(base.BasePuppet):
                   host.hostname, k8s_cpuset, k8s_nodeset)
 
         config.update(
-            {'platform::kubernetes::params::k8s_cpuset': k8s_cpuset,
-             'platform::kubernetes::params::k8s_nodeset': k8s_nodeset,
+            {'platform::kubernetes::params::k8s_cpuset':
+             "\"%s\"" % k8s_cpuset,
+             'platform::kubernetes::params::k8s_nodeset':
+             "\"%s\"" % k8s_nodeset,
              })
 
         return config
