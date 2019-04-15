@@ -503,11 +503,6 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT,
          'value': constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_DEFAULT,
          },
-        {'service': constants.SERVICE_TYPE_PANKO,
-         'section': constants.SERVICE_PARAM_SECTION_PANKO_DATABASE,
-         'name': constants.SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE,
-         'value': constants.SERVICE_PARAM_PANKO_DATABASE_EVENT_TIME_TO_LIVE_DEFAULT,
-         },
         {'service': constants.SERVICE_TYPE_AODH,
          'section': constants.SERVICE_PARAM_SECTION_AODH_DATABASE,
          'name': constants.SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE,
@@ -7253,13 +7248,6 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "classes": ['openstack::nova::compute::runtime']
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-            elif service == constants.SERVICE_TYPE_PANKO:
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['openstack::panko::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 

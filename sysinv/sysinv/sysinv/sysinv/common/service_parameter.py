@@ -598,13 +598,6 @@ def _validate_mnfa_timeout(name, value):
                     SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX)
 
 
-# Validate range of Performance Monitoring Event 'time to live" value
-def _validate_event_time_to_live_range(name, value):
-    _validate_range(name, value,
-                    SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE_MIN,
-                    SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE_MAX)
-
-
 # Validate range of Alarm History 'time to live' value
 def _validate_alarm_history_time_to_live_range(name, value):
     _validate_range(name, value,
@@ -1461,25 +1454,6 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT: 'platform::mtce::params::mnfa_timeout',
 }
 
-# Panko Event TTL range from 1 hour to 1 year
-SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE_MIN = 3600
-SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE_MAX = 31536000
-
-# Panko Service Parameters
-PANKO_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE,
-]
-
-PANKO_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE:
-        _validate_event_time_to_live_range,
-}
-
-PANKO_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_PANKO_DATABASE_EVENT_TIME_TO_LIVE:
-        'openstack::panko::params::event_time_to_live',
-}
-
 # AODH Alarm History TTL range from 1 hour to 1 year
 SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE_MIN = 3600
 SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE_MAX = 31536000
@@ -1756,13 +1730,6 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: NOVA_PCI_ALIAS_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: NOVA_PCI_ALIAS_PARAMETER_RESOURCE,
             SERVICE_PARAM_DATA_FORMAT: NOVA_PCI_ALIAS_PARAMETER_DATA_FORMAT,
-        },
-    },
-    constants.SERVICE_TYPE_PANKO: {
-        constants.SERVICE_PARAM_SECTION_PANKO_DATABASE: {
-            SERVICE_PARAM_MANDATORY: PANKO_PARAMETER_MANDATORY,
-            SERVICE_PARAM_VALIDATOR: PANKO_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: PANKO_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_AODH: {
