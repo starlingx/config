@@ -15,6 +15,7 @@ from tsconfig import tsconfig
 from sysinv.puppet import base
 
 HOSTNAME_INFRA_SUFFIX = '-infra'
+HOSTNAME_CLUSTER_HOST_SUFFIX = '-cluster-host'
 
 NOVA_UPGRADE_LEVEL_PIKE = 'pike'
 NOVA_UPGRADE_LEVELS = {'18.03': NOVA_UPGRADE_LEVEL_PIKE}
@@ -168,23 +169,23 @@ class PlatformPuppet(base.BasePuppet):
              constants.NETWORK_TYPE_INFRA),
 
             # cluster network hosts
-            (constants.CONTROLLER_0_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
+            (constants.CONTROLLER_0_HOSTNAME + HOSTNAME_CLUSTER_HOST_SUFFIX,
              constants.CONTROLLER_0_HOSTNAME,
              constants.NETWORK_TYPE_CLUSTER_HOST),
 
-            (constants.CONTROLLER_1_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
+            (constants.CONTROLLER_1_HOSTNAME + HOSTNAME_CLUSTER_HOST_SUFFIX,
              constants.CONTROLLER_1_HOSTNAME,
              constants.NETWORK_TYPE_CLUSTER_HOST),
 
-            (constants.STORAGE_0_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
+            (constants.STORAGE_0_HOSTNAME + HOSTNAME_CLUSTER_HOST_SUFFIX,
              constants.STORAGE_0_HOSTNAME,
              constants.NETWORK_TYPE_CLUSTER_HOST),
 
-            (constants.STORAGE_1_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
+            (constants.STORAGE_1_HOSTNAME + HOSTNAME_CLUSTER_HOST_SUFFIX,
              constants.STORAGE_1_HOSTNAME,
              constants.NETWORK_TYPE_CLUSTER_HOST),
 
-            (host.hostname + HOSTNAME_INFRA_SUFFIX,
+            (host.hostname + HOSTNAME_CLUSTER_HOST_SUFFIX,
              host.hostname,
              constants.NETWORK_TYPE_CLUSTER_HOST),
         ]
