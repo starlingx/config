@@ -136,6 +136,28 @@ class platform::vswitch::ovs(
     Vs_config<||> -> Platform::Vswitch::Ovs::Bridge<||>
   }
 
+  if $::platform::params::vswitch_type == 'ovs-dpdk' {
+    $pmon_ensure = link
+  } else {
+    $pmon_ensure = absent
+  }
+
+  file { '/etc/pmon.d/ovsdb-server.conf':
+    ensure => $pmon_ensure,
+    target => '/etc/openvswitch/ovsdb-server.pmon.conf',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0644',
+  }
+
+  file { '/etc/pmon.d/ovs-vswitchd.conf':
+    ensure => $pmon_ensure,
+    target => '/etc/openvswitch/ovs-vswitchd.pmon.conf',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0644',
+  }
+
   if $::platform::params::vswitch_type =~ '^ovs' {
 
     # clean bridges and ports before applying current configuration
