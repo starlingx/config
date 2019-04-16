@@ -1,0 +1,10 @@
+{{/*
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if .Values.manifests.job_ks_service }}
+{{- $ksServiceJob := dict "envAll" . "serviceName" "fm" "serviceTypes" ( tuple "alarming" ) -}}
+{{ $ksServiceJob | include "helm-toolkit.manifests.job_ks_service" }}
+{{- end }}
