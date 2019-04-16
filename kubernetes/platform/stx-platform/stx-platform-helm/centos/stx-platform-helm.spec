@@ -62,6 +62,7 @@ helm repo add local http://localhost:8879/charts
 # Make the charts. These produce a tgz file
 make rbd-provisioner
 make ceph-pools-audit
+make node-feature-discovery 
 
 # Terminate helm server (the last backgrounded task)
 kill %1
@@ -93,7 +94,10 @@ rm -fr %{app_staging}
 %install
 install -d -m 755 %{buildroot}/%{app_folder}
 install -p -D -m 755 %{_builddir}/%{app_tarball} %{buildroot}/%{app_folder}
+install -d -m 755 ${RPM_BUILD_ROOT}/opt/extracharts
+install -p -D -m 755 node-feature-discovery-*.tgz ${RPM_BUILD_ROOT}/opt/extracharts
 
 %files
 %defattr(-,root,root,-)
 %{app_folder}/*
+/opt/extracharts/*
