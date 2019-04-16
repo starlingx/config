@@ -95,10 +95,10 @@ class fm (
   # Automatically add psycopg2 driver to postgresql (only does this if it is missing)
   $real_connection = regsubst($database_connection,'^postgresql:','postgresql+psycopg2:')
   fm_config {
-    'database/connection':    value => $real_connection, secret => true;
-    'database/idle_timeout':  value => $database_idle_timeout;
-    'database/max_pool_size': value => $database_max_pool_size;
-    'database/max_overflow':  value => $database_max_overflow;
+    'database/connection':               value => $real_connection, secret => true;
+    'database/connection_recycle_time':  value => $database_idle_timeout;
+    'database/max_pool_size':            value => $database_max_pool_size;
+    'database/max_overflow':             value => $database_max_overflow;
   }
 
   fm_config {
