@@ -87,13 +87,6 @@ def check_size(archive_dir):
                             'rel-' + tsconfig.SW_VERSION)
     overhead_bytes += backup_restore.backup_std_dir_size(feed_dir)
 
-    cinder_config = False
-    backend_services = sysinv_api.get_storage_backend_services()
-    for services in backend_services.values():
-        if (services.find(si_const.SB_SVC_CINDER) != -1):
-            cinder_config = True
-            break
-
     clone_size = (
         overhead_bytes +
         backup_restore.backup_etc_size() +
@@ -101,10 +94,7 @@ def check_size(archive_dir):
         backup_restore.backup_puppet_data_size(constants.HIERADATA_PERMDIR) +
         backup_restore.backup_keyring_size(backup_restore.keyring_permdir) +
         backup_restore.backup_ldap_size() +
-        backup_restore.backup_postgres_size(cinder_config) +
-        backup_restore.backup_ceilometer_size(
-            backup_restore.ceilometer_permdir) +
-        backup_restore.backup_std_dir_size(backup_restore.glance_permdir) +
+        backup_restore.backup_postgres_size() +
         backup_restore.backup_std_dir_size(backup_restore.home_permdir) +
         backup_restore.backup_std_dir_size(backup_restore.patching_permdir) +
         backup_restore.backup_std_dir_size(
@@ -112,7 +102,11 @@ def check_size(archive_dir):
         backup_restore.backup_std_dir_size(backup_restore.extension_permdir) +
         backup_restore.backup_std_dir_size(
             backup_restore.patch_vault_permdir) +
-        backup_restore.backup_cinder_size(backup_restore.cinder_permdir))
+        backup_restore.backup_armada_manifest_size(
+            constants.ARMADA_PERMDIR) +
+        backup_restore.backup_std_dir_size(
+            constants.HELM_CHARTS_PERMDIR) +
+        backup_restore.backup_mariadb_size())
 
     archive_dir_free_space = \
         utils.filesystem_get_free_space(archive_dir)

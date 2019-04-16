@@ -15,6 +15,10 @@ CONFIG_PERMDIR = tsconfig.CONFIG_PATH
 HIERADATA_WORKDIR = '/tmp/hieradata'
 HIERADATA_PERMDIR = tsconfig.PUPPET_PATH + 'hieradata'
 
+ARMADA_PERMDIR = tsconfig.ARMADA_PATH
+HELM_CHARTS_PERMDIR = tsconfig.CGCS_PATH + '/helm_charts'
+HELM_OVERRIDES_PERMDIR = tsconfig.HELM_OVERRIDES_PATH
+
 KEYRING_WORKDIR = '/tmp/python_keyring'
 KEYRING_PERMDIR = tsconfig.KEYRING_PATH
 
