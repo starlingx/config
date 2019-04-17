@@ -1163,14 +1163,6 @@ data:
           # Increase from default of 75 seconds to avoid agents being declared
           # down during controller swacts, reboots, etc...
           agent_down_time: 180
-          # Set to false so as to remove conflict with newly introduced
-          # network rebalancing/rescheduling that will move routers off
-          # down l3 agents, rebalance routers to newly up l3 agents.
-          router_auto_schedule: false
-          # Set to false so as to remove conflict with newly introduced
-          # network rebalancing/rescheduling that will move networks off
-          # down DHCP agents, rebalance networks to newly up DHCP agents.
-          network_auto_schedule: false
         agent:
           root_helper: sudo
         vhost:
