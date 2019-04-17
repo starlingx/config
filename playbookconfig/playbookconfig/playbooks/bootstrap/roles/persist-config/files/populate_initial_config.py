@@ -19,8 +19,8 @@ import time
 # constants in controllerconfig. When it is time to remove/deprecate these
 # packages, classes OpenStack, Token and referenced constants need to be moved
 # to this standalone script.
-from controllerconfig import ConfigFail
 from controllerconfig.common import constants
+from controllerconfig import ConfigFail
 from controllerconfig import openstack
 from controllerconfig import sysinv_api as sysinv
 
@@ -711,6 +711,19 @@ def inventory_config_complete_wait(client, controller):
     wait_pv_config(client, controller)
 
 
+def populate_default_storage_backend(client, controller):
+    if not INITIAL_POPULATION:
+        return
+
+    print("Populating ceph-mon config for controller-0...")
+    values = {'ihost_uuid': controller.uuid}
+    client.sysinv.ceph_mon.create(**values)
+
+    print("Populating ceph storage backend config...")
+    values = {'confirmed': True}
+    client.sysinv.storage_ceph.create(**values)
+
+
 def handle_invalid_input():
     raise Exception("Invalid input!\nUsage: <bootstrap-config-file> "
                     "[--system] [--network] [--service]")
@@ -757,6 +770,7 @@ if __name__ == '__main__':
             populate_docker_config(client)
             controller = populate_controller_config(client)
             inventory_config_complete_wait(client, controller)
+            populate_default_storage_backend(client, controller)
             os.remove(config_file)
             if INITIAL_POPULATION:
                 print("Successfully updated the initial system config.")

@@ -5077,6 +5077,15 @@ class ConfigAssistant():
             }
             client.sysinv.route.create(**values)
 
+    def _populate_default_storage_backend(self, client, controller):
+        # Create the Ceph monitor for controller-0
+        values = {'ihost_uuid': controller.uuid}
+        client.sysinv.ceph_mon.create(**values)
+
+        # Create the Ceph default backend
+        values = {'confirmed': True}
+        client.sysinv.storage_ceph.create(**values)
+
     def _populate_infrastructure_interface(self, client, controller):
         """Configure the infrastructure interface(s)"""
         if not self.infrastructure_interface:
@@ -5349,6 +5358,7 @@ class ConfigAssistant():
                 # ceph_mon config requires controller host to be created
                 self._inventory_config_complete_wait(client, controller)
                 self._populate_interface_config(client, controller)
+                self._populate_default_storage_backend(client, controller)
 
         except (KeystoneFail, SysInvFail) as e:
             LOG.exception(e)

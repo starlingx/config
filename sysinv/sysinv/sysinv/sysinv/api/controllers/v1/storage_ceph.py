@@ -339,7 +339,6 @@ class StorageCephController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, storageceph_uuid):
         """Delete a backend."""
-
         return _delete(storageceph_uuid)
 
 
@@ -696,14 +695,8 @@ def _apply_backend_changes(op, sb_obj):
     services = api_helper.getListFromServices(sb_obj.as_dict())
 
     if op == constants.SB_API_OP_CREATE:
-        if sb_obj.name == constants.SB_DEFAULT_NAMES[
+        if sb_obj.name != constants.SB_DEFAULT_NAMES[
                 constants.SB_TYPE_CEPH]:
-            # Apply manifests for primary tier
-            pecan.request.rpcapi.update_ceph_config(pecan.request.context,
-                                                    sb_obj.uuid,
-                                                    services)
-
-        else:
             # Enable the service(s) use of the backend
             if constants.SB_SVC_CINDER in services:
                 pecan.request.rpcapi.update_ceph_services(
@@ -800,10 +793,21 @@ def _set_defaults(storage_ceph):
         'kube_pool_gib': None,
         'object_gateway': False,
     }
+
     sc = api_helper.set_backend_data(storage_ceph,
                                      defaults,
                                      CAPABILITIES,
                                      constants.SB_CEPH_SVCS_SUPPORTED)
+
+    # Ceph is our default storage backend and is added at configuration
+    # set state and task accordingly.
+    if sc['name'] == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
+        sc['state'] = constants.SB_STATE_CONFIGURED
+        if utils.is_aio_simplex_system(pecan.request.dbapi):
+            sc['task'] = None
+        else:
+            sc['task'] = constants.SB_TASK_RECONFIG_CONTROLLER
+
     return sc
 
 

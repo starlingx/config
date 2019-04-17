@@ -124,7 +124,6 @@ class CephOperator(object):
         # cluster UUID value that is valid and consistent for the state of the
         # installation. Also make sure that we have a cluster DB entry
         # established
-        LOG.debug("_init_db_cluster_and_tier: Reteiving cluster record")
         try:
             self._db_cluster = self._db_api.clusters_get_all(
                 type=constants.CINDER_BACKEND_CEPH)[0]
@@ -132,7 +131,7 @@ class CephOperator(object):
                 # Retrieve ceph cluster fsid and update database
                 fsid = self._get_fsid()
                 if uuidutils.is_uuid_like(fsid):
-                    LOG.debug("Update cluster record: fsid=%s." % fsid)
+                    LOG.info("Update cluster record: fsid=%s." % fsid)
                     self._db_cluster.cluster_uuid = fsid
                     self._db_api.cluster_update(
                         self.cluster_db_uuid,
@@ -155,7 +154,7 @@ class CephOperator(object):
 
         # Try to use ceph cluster fsid
         fsid = self._get_fsid()
-        LOG.info("Create new cluster record: fsid=%s." % fsid)
+        LOG.info("Create new ceph cluster record: fsid=%s." % fsid)
         # Create the default primary cluster
         self._db_cluster = self._db_api.cluster_create(
             {'uuid': fsid if uuidutils.is_uuid_like(fsid) else str(uuid.uuid4()),
@@ -165,6 +164,7 @@ class CephOperator(object):
              'system_id': isystem.id})
 
         # Create the default primary ceph storage tier
+        LOG.info("Create primary ceph tier record.")
         self._db_primary_tier = self._db_api.storage_tier_create(
             {'forclusterid': self.cluster_id,
              'name': constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH],
@@ -830,67 +830,6 @@ class CephOperator(object):
                 e = exception.CephPoolRulesetFailure(
                     name=rule_name, reason=body['status'])
                 raise e
-
-    # TODO(CephPoolsDecouple): remove
-    def configure_osd_pools(self, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
-        """Create or resize all of the osd pools as needed
-           ceph backend could be 2nd backend which is in configuring state
-        """
-        # Handle pools for multiple tiers
-        tiers = self._db_api.storage_tier_get_by_cluster(self.cluster_db_uuid)
-        ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
-        ceph_backends = self._db_api.storage_ceph_get_list()
-
-        for t in ceph_tiers:
-            # Get corresponding ceph backend for the tier, if any
-            bk = None
-            for bk in ceph_backends:
-                if t.forbackendid == bk.id:
-                    break
-
-            # Get pool replication parameters
-            pool_size, pool_min_size = StorageBackendConfig.get_ceph_pool_replication(self._db_api, bk)
-            if bk and ceph_backend and bk.name == ceph_backend.name:
-                # Override replication
-                pool_size = new_pool_size if new_pool_size else pool_size
-                pool_min_size = new_pool_min_size if new_pool_min_size else pool_min_size
-
-            # Configure tier OSD pools
-            if t.uuid == self.primary_tier_uuid:
-                # This is primary tier
-                # In case we're updating pool_size to a different value than
-                # default. Just update pool size for ceph's default pool 'rbd'
-                # as well
-                try:
-                    self._configure_primary_tier_pool(
-                        {'pool_name': constants.CEPH_POOL_RBD_NAME,
-                         'pg_num': constants.CEPH_POOL_RBD_PG_NUM,
-                         'pgp_num': constants.CEPH_POOL_RBD_PGP_NUM},
-                        pool_size,
-                        pool_min_size)
-                except exception.CephFailure:
-                    pass
-
-                # Handle primary tier pools (cinder/glance/swift/ephemeral)
-                for pool in CEPH_POOLS:
-                    # TODO(rchurch): The following is added for R3->R4 upgrades. Can we
-                    # remove this for R5? Or is there some R3->R4->R5 need to keep this
-                    # around.
-                    try:
-                        self.update_ceph_object_pool_name(pool)
-                    except exception.CephFailure:
-                        pass
-
-                    self._configure_primary_tier_pool(pool, pool_size,
-                                                      pool_min_size)
-            else:
-                try:
-                    self._configure_secondary_tier_pools(t, pool_size,
-                                                         pool_min_size)
-                except exception.CephPoolRulesetFailure as e:
-                    LOG.info("Cannot add pools: %s" % e)
-                except exception.CephFailure as e:
-                    LOG.info("Cannot add pools: %s" % e)
 
     def _update_db_capabilities(self, bk, new_storceph):
         # Avoid updating DB for all capabilities in new_storceph as we

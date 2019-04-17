@@ -11,8 +11,6 @@ from cgtsclient.common import base
 from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
-from cgtsclient.v1 import ceph_mon as ceph_mon_utils
-from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import storage_ceph  # noqa
 from cgtsclient.v1 import storage_ceph_external  # noqa
 from cgtsclient.v1 import storage_external  # noqa
@@ -137,23 +135,6 @@ def _display_next_steps():
 
 def backend_add(cc, backend, args):
     backend = backend.replace('-', '_')
-
-    # add ceph mons to controllers
-    if backend == constants.SB_TYPE_CEPH:
-        # Controllers should always have monitors.
-        # Not finding a controller means it's not yet configured,
-        # so move forward.
-        try:
-            ihost = ihost_utils._find_ihost(cc, constants.CONTROLLER_0_HOSTNAME)
-            ceph_mon_utils.ceph_mon_add(cc, args, ihost.uuid)
-        except exc.CommandError:
-            pass
-
-        try:
-            ihost = ihost_utils._find_ihost(cc, constants.CONTROLLER_1_HOSTNAME)
-            ceph_mon_utils.ceph_mon_add(cc, args, ihost.uuid)
-        except exc.CommandError:
-            pass
 
     # allowed storage_backend fields
     allowed_fields = ['name', 'services', 'confirmed', 'ceph_conf']

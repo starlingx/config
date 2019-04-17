@@ -47,6 +47,9 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
             self.dbapi)
 
+        if not ceph_mon_ips:
+            return {}  # system configuration is not yet ready
+
         controller_hosts = [constants.CONTROLLER_0_HOSTNAME, constants.CONTROLLER_1_HOSTNAME]
         mon_2_host = [mon['hostname'] for mon in self.dbapi.ceph_mon_get_list() if
                       mon['hostname'] not in controller_hosts]

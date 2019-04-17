@@ -5295,7 +5295,7 @@ class HostController(rest.RestController):
             pass
         elif StorageBackendConfig.has_backend_configured(
                 pecan.request.dbapi,
-                constants.CINDER_BACKEND_CEPH):
+                constants.SB_TYPE_CEPH):
             if utils.is_aio_simplex_system(pecan.request.dbapi):
                 # Check if host has enough OSDs configured for each tier
                 tiers = pecan.request.dbapi.storage_tier_get_all()

@@ -446,9 +446,10 @@ def _create(ceph_mon):
                   "replication is set to: %s'. Please update replication "
                   "before configuring a monitor on a worker node." % supported_replication))
 
-    # host must be locked and online
-    if (chost['availability'] != constants.AVAILABILITY_ONLINE or
-            chost['administrative'] != constants.ADMIN_LOCKED):
+    # host must be locked and online unless this is controller-0
+    if (chost['hostname'] != constants.CONTROLLER_0_HOSTNAME and
+            (chost['availability'] != constants.AVAILABILITY_ONLINE or
+            chost['administrative'] != constants.ADMIN_LOCKED)):
         raise wsme.exc.ClientSideError(
             _("Host %s must be locked and online." % chost['hostname']))
 
