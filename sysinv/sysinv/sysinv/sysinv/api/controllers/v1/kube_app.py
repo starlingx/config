@@ -282,11 +282,12 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: operation is not allowed "
                     "while the current status is {}.".format(db_app.status)))
+            app_not_already_applied = (db_app.status != constants.APP_APPLY_SUCCESS)
             db_app.status = constants.APP_APPLY_IN_PROGRESS
             db_app.progress = None
             db_app.save()
             pecan.request.rpcapi.perform_app_apply(pecan.request.context,
-                                                   db_app)
+                                                   db_app, app_not_already_applied)
             return KubeApp.convert_with_links(db_app)
         else:
             if db_app.status not in [constants.APP_APPLY_SUCCESS,
