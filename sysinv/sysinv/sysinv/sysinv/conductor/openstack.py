@@ -242,47 +242,6 @@ class OpenStackOperator(object):
         client.host_unbind_interface(host_uuid, body=body)
         return True
 
-    def get_neutron_host_id_by_name(self, context, name):
-        """
-        Get a neutron host
-        """
-
-        client = self._get_neutronclient()
-
-        hosts = client.list_hosts()
-
-        if not hosts:
-            return ""
-
-        for host in hosts['hosts']:
-            if host['name'] == name:
-                return host['id']
-
-        return ""
-
-    def create_neutron_host(self, context, host_uuid, name,
-                            availability='down'):
-        """
-        Send a request to neutron to create a host
-        """
-        client = self._get_neutronclient()
-        body = {'host': {'id': host_uuid,
-                         'name': name,
-                         'availability': availability
-                         }}
-        client.create_host(body=body)
-        return True
-
-    def delete_neutron_host(self, context, host_uuid):
-        """
-        Delete a neutron host
-        """
-        client = self._get_neutronclient()
-
-        client.delete_host(host_uuid)
-
-        return True
-
     #################
     # NOVA
     #################
