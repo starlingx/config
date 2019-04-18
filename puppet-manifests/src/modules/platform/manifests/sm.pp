@@ -237,10 +237,8 @@ class platform::sm
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
 
-    if $mgmt_ip_interface != $cluster_host_ip_interface {
-      exec { 'Configure Cluster Host Interface':
-        command => "sm-configure interface controller cluster-host-interface ${cluster_host_ip_multicast} ${cluster_host_my_unit_ip} 2222 2223 \"\" 2222 2223",
-      }
+    exec { 'Configure Cluster Host Interface':
+      command => "sm-configure interface controller cluster-host-interface ${cluster_host_ip_multicast} ${cluster_host_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
 
   } else {
@@ -251,27 +249,8 @@ class platform::sm
       command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 ${management_peer_unit_ip} 2222 2223",
     }
 
-    if $mgmt_ip_interface != $cluster_host_ip_interface {
-      exec { 'Configure Cluster Host Interface':
-        command =>
-          "sm-configure interface controller cluster-host-interface ${cluster_host_ip_multicast} ${cluster_host_my_unit_ip} 2222 2223 ${cluster_host_peer_unit_ip} 2222 2223",
-      }
-    }
-  }
-
-  if $mgmt_ip_interface == $cluster_host_ip_interface {
-    # Deprovision Cluster Host Interface
-    exec { 'Deprovision Cluster Host Interface':
-      command =>
-        'sm-deprovision service-domain-interface controller cluster-host-interface',
-    }
-    -> exec { 'Deprovision Cluster Host Service Group Member':
-      command =>
-        'sm-deprovision service-group-member controller-services cluster-host-ip',
-    }
-    -> exec { 'Deprovision Cluster Host IP service':
-      command =>
-        'sm-deprovision service cluster-host-ip',
+    exec { 'Configure Cluster Host Interface':
+      command => "sm-configure interface controller cluster-host-interface ${cluster_host_ip_multicast} ${cluster_host_my_unit_ip} 2222 2223 ${cluster_host_peer_unit_ip} 2222 2223",
     }
   }
 
@@ -289,17 +268,16 @@ class platform::sm
       }
   }
 
-  if $mgmt_ip_interface != $cluster_host_ip_interface {
-    if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
-      exec { 'Configure Cluster Host IP service instance':
-        command =>
+
+  if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
+    exec { 'Configure Cluster Host IP service instance':
+      command =>
           "sm-configure service_instance cluster-host-ip cluster-host-ip \"ip=${cluster_host_ip_param_ip},cidr_netmask=${cluster_host_ip_param_mask},nic=${cluster_host_ip_interface},arp_count=7,dc=yes\"",
-      }
-    } else {
-      exec { 'Configure Cluster Host IP service instance':
-        command =>
+    }
+  } else {
+    exec { 'Configure Cluster Host IP service instance':
+      command =>
           "sm-configure service_instance cluster-host-ip cluster-host-ip \"ip=${cluster_host_ip_param_ip},cidr_netmask=${cluster_host_ip_param_mask},nic=${cluster_host_ip_interface},arp_count=7\"",
-      }
     }
   }
 
