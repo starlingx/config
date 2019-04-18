@@ -1696,6 +1696,7 @@ class KubeApp(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, nullable=False)
+    app_version = Column(String(255), nullable=False)
     manifest_name = Column(String(255), nullable=False)
     manifest_file = Column(String(255), nullable=False)
     status = Column(String(255), nullable=False)

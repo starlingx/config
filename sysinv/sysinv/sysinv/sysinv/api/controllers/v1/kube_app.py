@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
+from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
@@ -25,6 +26,7 @@ from sysinv.common import utils as cutils
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 
+import cgcs_patch.constants as patch_constants
 
 LOG = log.getLogger(__name__)
 
@@ -49,6 +51,9 @@ class KubeApp(base.APIBase):
 
     name = wtypes.text
     "Represents the name of the application"
+
+    app_version = wtypes.text
+    "Represents the version of the application"
 
     created_at = wtypes.datetime.datetime
     "Represents the time the application was uploaded"
@@ -79,7 +84,7 @@ class KubeApp(base.APIBase):
     def convert_with_links(cls, rpc_app, expand=True):
         app = KubeApp(**rpc_app.as_dict())
         if not expand:
-            app.unset_fields_except(['name', 'manifest_name',
+            app.unset_fields_except(['name', 'app_version', 'manifest_name',
                                      'manifest_file', 'status', 'progress'])
 
         # skip the id
@@ -118,76 +123,45 @@ class KubeAppController(rest.RestController):
         if not utils.is_kubernetes_config():
             raise exception.OperationNotPermitted
 
-    def _check_tarfile(self, app_name, app_tarfile):
-        if app_name and app_tarfile:
+    def _check_tarfile(self, app_tarfile, app_name, app_version):
+        def _handle_upload_failure(reason):
+            raise wsme.exc.ClientSideError(_(
+                "Application-upload rejected: " + reason))
+
+        if app_tarfile:
             if not os.path.isfile(app_tarfile):
-                raise wsme.exc.ClientSideError(_(
-                    "Application-upload rejected: application tar file {} does "
-                    "not exist.".format(app_tarfile)))
+                _handle_upload_failure(
+                    "application tar file {} does not exist.".format(app_tarfile))
             if (not app_tarfile.endswith('.tgz') and
                     not app_tarfile.endswith('.tar.gz')):
-                raise wsme.exc.ClientSideError(_(
-                    "Application-upload rejected: {} has unrecognizable tar file "
-                    "extension. Supported extensions are: .tgz and .tar.gz.".format(
-                        app_tarfile)))
+                _handle_upload_failure(
+                    "{} has unrecognizable tar file extension. Supported "
+                    "extensions are: .tgz and .tar.gz.".format(app_tarfile))
 
             with TempDirectory() as app_path:
                 if not cutils.extract_tarfile(app_path, app_tarfile):
-                    raise wsme.exc.ClientSideError(_(
-                        "Application-upload rejected: failed to extract tar file "
-                        "{}.".format(os.path.basename(app_tarfile))))
+                    _handle_upload_failure(
+                        "failed to extract tar file {}.".format(os.path.basename(app_tarfile)))
 
                 # If checksum file is included in the tarball, verify its contents.
                 if not cutils.verify_checksum(app_path):
-                    raise wsme.exc.ClientSideError(_(
-                        "Application-upload rejected: checksum validation failed."))
+                    _handle_upload_failure("checksum validation failed.")
 
-                mname, mfile = self._find_manifest_file(app_path)
+                app_helper = KubeAppHelper(pecan.request.dbapi)
+                try:
+                    name, version, patches = app_helper._verify_metadata_file(
+                        app_path, app_name, app_version)
+                    mname, mfile = app_helper._find_manifest_file(app_path)
+                    app_helper._extract_helm_charts(app_path)
+                    LOG.info("Tar file of application %s verified." % name)
+                except exception.SysinvException as e:
+                    _handle_upload_failure(str(e))
 
-                charts_dir = os.path.join(app_path, 'charts')
-                if os.path.isdir(charts_dir):
-                    tar_filelist = cutils.get_files_matching(app_path, '.tgz')
-                    if len(os.listdir(charts_dir)) == 0:
-                        raise wsme.exc.ClientSideError(_(
-                            "Application-upload rejected: tar file contains no "
-                            "Helm charts."))
-                    if not tar_filelist:
-                        raise wsme.exc.ClientSideError(_(
-                            "Application-upload rejected: tar file contains no "
-                            "Helm charts of expected file extension (.tgz)."))
-                    for p, f in tar_filelist:
-                        if not cutils.extract_tarfile(p, os.path.join(p, f)):
-                            raise wsme.exc.ClientSideError(_(
-                                "Application-upload rejected: failed to extract tar "
-                                "file {}.".format(os.path.basename(f))))
-                LOG.info("Tar file of application %s verified." % app_name)
-                return mname, mfile
+                return name, version, mname, mfile
 
         else:
             raise ValueError(_(
-                "Application-upload rejected: both application name and tar "
-                "file must be specified."))
-
-    def _find_manifest_file(self, app_path):
-        # It is expected that there is only one manifest file
-        # per application and the file exists at top level of
-        # the application path.
-        mfiles = cutils.find_manifest_file(app_path)
-
-        if mfiles is None:
-            raise wsme.exc.ClientSideError(_(
-                "Application-upload rejected: manifest file is corrupted."))
-
-        if mfiles:
-            if len(mfiles) == 1:
-                return mfiles[0]
-            else:
-                raise wsme.exc.ClientSideError(_(
-                    "Application-upload rejected: tar file contains more "
-                    "than one manifest file."))
-        else:
-            raise wsme.exc.ClientSideError(_(
-                "Application-upload rejected: manifest file is missing."))
+                "Application-upload rejected: tar file must be specified."))
 
     def _get_one(self, app_name):
         # can result in KubeAppNotFound
@@ -213,8 +187,24 @@ class KubeAppController(rest.RestController):
         """Uploading an application to be deployed by Armada"""
 
         self._check_environment()
-        name = body.get('name')
+
         tarfile = body.get('tarfile')
+        name = body.get('name', '')
+        version = body.get('app_version', '')
+
+        if not cutils.is_url(tarfile):
+            name, version, mname, mfile = self._check_tarfile(tarfile, name, version)
+        else:
+            # For tarfile that is downloaded remotely, defer the checksum, manifest
+            # and tarfile content validations to sysinv-conductor as download can
+            # take some time depending on network traffic, target server and file
+            # size.
+            mname = constants.APP_MANIFEST_NAME_PLACEHOLDER
+            mfile = constants.APP_TARFILE_NAME_PLACEHOLDER
+            if not name:
+                name = constants.APP_NAME_PLACEHOLDER
+            if not version:
+                version = constants.APP_VERSION_PLACEHOLDER
 
         try:
             objects.kube_app.get_by_name(pecan.request.context, name)
@@ -224,19 +214,10 @@ class KubeAppController(rest.RestController):
         except exception.KubeAppNotFound:
             pass
 
-        if not cutils.is_url(tarfile):
-            mname, mfile = self._check_tarfile(name, tarfile)
-        else:
-            # For tarfile that is downloaded remotely, defer the checksum, manifest
-            # and tarfile content validations to sysinv-conductor as download can
-            # take some time depending on network traffic, target server and file
-            # size.
-            mname = constants.APP_MANIFEST_NAME_PLACEHOLDER
-            mfile = constants.APP_TARFILE_NAME_PLACEHOLDER
-
         # Create a database entry and make an rpc async request to upload
         # the application
         app_data = {'name': name,
+                    'app_version': version,
                     'manifest_name': mname,
                     'manifest_file': os.path.basename(mfile),
                     'status': constants.APP_UPLOAD_IN_PROGRESS}
@@ -324,3 +305,141 @@ class KubeAppController(rest.RestController):
         if response:
             raise wsme.exc.ClientSideError(_(
                 "%s." % response))
+
+
+class KubeAppHelper(object):
+
+    def __init__(self, dbapi):
+        self._dbapi = dbapi
+
+    def _check_patching_operation(self):
+        try:
+            system = self._dbapi.isystem_get_one()
+            response = patch_api.patch_query(
+                token=None,
+                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
+                region_name=system.region_name
+            )
+            query_patches = response['pd']
+        except Exception as e:
+            LOG.error(_("No response from patch api: %s" % e))
+            return
+
+        for patch in query_patches:
+            patch_state = query_patches[patch].get('patchstate', None)
+            if (patch_state == patch_constants.PARTIAL_APPLY or
+                    patch_state == patch_constants.PARTIAL_REMOVE):
+                raise exception.SysinvException(_(
+                    "Patching operation is in progress."))
+
+    def _check_patch_is_applied(self, patches):
+        try:
+            system = self._dbapi.isystem_get_one()
+            response = patch_api.patch_is_applied(
+                token=None,
+                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
+                region_name=system.region_name,
+                patches=patches
+            )
+        except Exception as e:
+            LOG.error(e)
+            raise exception.SysinvException(_(
+                "Error while querying patch-controller for the "
+                "state of the patch(es)."))
+        return response
+
+    def _patch_report_app_dependencies(self, name, patches=[]):
+        try:
+            system = self._dbapi.isystem_get_one()
+            patch_api.patch_report_app_dependencies(
+                token=None,
+                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
+                region_name=system.region_name,
+                patches=patches,
+                app_name=name
+            )
+        except Exception as e:
+            LOG.error(e)
+            raise exception.SysinvException(
+                "Error while reporting the patch dependencies "
+                "to patch-controller.")
+
+    def _find_manifest_file(self, app_path):
+        # It is expected that there is only one manifest file
+        # per application and the file exists at top level of
+        # the application path.
+        mfiles = cutils.find_manifest_file(app_path)
+
+        if mfiles is None:
+            raise exception.SysinvException(_(
+                "manifest file is corrupted."))
+
+        if mfiles:
+            if len(mfiles) == 1:
+                return mfiles[0]
+            else:
+                raise exception.SysinvException(_(
+                    "Application-upload rejected: tar file contains more "
+                    "than one manifest file."))
+        else:
+            raise exception.SysinvException(_(
+                "Application-upload rejected: manifest file is missing."))
+
+    def _verify_metadata_file(self, app_path, app_name, app_version):
+        try:
+            name, version, patches = cutils.find_metadata_file(
+                app_path, constants.APP_METADATA_FILE)
+        except exception.SysinvException as e:
+            raise exception.SysinvException(_(
+                "metadata validation failed. {}".format(e)))
+
+        if not name:
+            name = app_name
+        if not version:
+            version = app_version
+
+        if (not name or not version or
+                name == constants.APP_VERSION_PLACEHOLDER or
+                version == constants.APP_VERSION_PLACEHOLDER):
+            raise exception.SysinvException(_(
+                "application name or/and version is/are not included "
+                "in the tar file. Please specify the application name "
+                "via --app-name or/and version via --app-version."))
+
+        if patches:
+            try:
+                self._check_patching_operation()
+            except exception.SysinvException as e:
+                raise exception.SysinvException(_(
+                    "{}. Please upload after the patching operation "
+                    "is completed.".format(e)))
+
+            applied = self._check_patch_is_applied(patches)
+            if not applied:
+                raise exception.SysinvException(_(
+                    "the required patch(es) for application {} ({}) "
+                    "must be applied".format(name, version)))
+
+            LOG.info("The required patch(es) for application {} ({}) "
+                     "has/have applied.".format(name, version))
+        else:
+            LOG.info("No patch required for application {} ({}).".format(name, version))
+
+        return name, version, patches
+
+    def _extract_helm_charts(self, app_path, demote_user=False):
+        charts_dir = os.path.join(app_path, 'charts')
+        if os.path.isdir(charts_dir):
+            tar_filelist = cutils.get_files_matching(app_path, '.tgz')
+            if len(os.listdir(charts_dir)) == 0:
+                raise exception.SysinvException(_(
+                    "tar file contains no Helm charts."))
+            if not tar_filelist:
+                raise exception.SysinvException(_(
+                    "tar file contains no Helm charts of "
+                    "expected file extension (.tgz)."))
+            for p, f in tar_filelist:
+                if not cutils.extract_tarfile(
+                        p, os.path.join(p, f), demote_user):
+                    raise exception.SysinvException(_(
+                        "failed to extract tar file {}.".format(os.path.basename(f))))

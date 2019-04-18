@@ -29,6 +29,7 @@ from eventlet import queue
 from eventlet import Timeout
 from oslo_config import cfg
 from oslo_log import log as logging
+from sysinv.api.controllers.v1 import kube_app
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
@@ -125,6 +126,7 @@ class AppOperator(object):
         self._docker = DockerHelper(self._dbapi)
         self._helm = helm.HelmOperator(self._dbapi)
         self._kube = kubernetes.KubeOperator(self._dbapi)
+        self._app = kube_app.KubeAppHelper(self._dbapi)
         self._lock = threading.Lock()
 
     def _cleanup(self, app):
@@ -173,11 +175,12 @@ class AppOperator(object):
         from six.moves.urllib.error import HTTPError
         from six.moves.urllib.error import URLError
         from socket import timeout as socket_timeout
-        from six.moves.urllib.parse import urlparse
+        from six.moves.urllib.parse import urlsplit
 
         def _handle_download_failure(reason):
             raise exception.KubeAppUploadFailure(
                 name=app.name,
+                version=app.version,
                 reason=reason)
 
         try:
@@ -187,7 +190,7 @@ class AppOperator(object):
                 remote_filename = remote_file.info()['Content-Disposition']
             except KeyError:
                 remote_filename = os.path.basename(
-                    urlparse.urlsplit(remote_file.url).path)
+                    urlsplit(remote_file.url).path)
 
             filename_avail = True if (remote_filename is None or
                                       remote_filename == '') else False
@@ -233,22 +236,8 @@ class AppOperator(object):
                 reason='failed to extract tarfile content.'):
             raise exception.KubeAppUploadFailure(
                 name=app.name,
+                version=app.version,
                 reason=reason)
-
-        def _find_manifest_file(app_path):
-            mfiles = cutils.find_manifest_file(app_path)
-
-            if mfiles is None:
-                _handle_extract_failure('manifest file is corrupted.')
-
-            if mfiles:
-                if len(mfiles) == 1:
-                    return mfiles[0]
-                else:
-                    _handle_extract_failure(
-                        'tarfile contains more than one manifest file.')
-            else:
-                _handle_extract_failure('manifest file is missing.')
 
         orig_uid, orig_gid = get_app_install_root_path_ownership()
 
@@ -269,28 +258,28 @@ class AppOperator(object):
                 _handle_extract_failure()
 
             if app.downloaded_tarfile:
+                name, version, patches = self._app._verify_metadata_file(
+                    app.path, app.name, app.version)
+                if (name != app.name or version != app.version):
+                    # Save the official application info. They will be
+                    # persisted in the next status update
+                    app.regenerate_application_info(name, version, patches)
+
                 if not cutils.verify_checksum(app.path):
                     _handle_extract_failure('checksum validation failed.')
-                mname, mfile = _find_manifest_file(app.path)
+                mname, mfile = self._app._find_manifest_file(app.path)
                 # Save the official manifest file info. They will be persisted
                 # in the next status update
                 app.regenerate_manifest_filename(mname, os.path.basename(mfile))
+            else:
+                name, version, patches = cutils.find_metadata_file(
+                    app.path, constants.APP_METADATA_FILE)
+                app.patch_dependencies = patches
 
-            if os.path.isdir(app.charts_dir):
-                if len(os.listdir(app.charts_dir)) == 0:
-                    _handle_extract_failure('tarfile contains no Helm charts.')
+            self._app._extract_helm_charts(app.path)
 
-                tar_filelist = cutils.get_files_matching(app.charts_dir,
-                                                         '.tgz')
-                if not tar_filelist:
-                    reason = 'tarfile contains no Helm charts of expected ' + \
-                             'file extension (.tgz).'
-                    _handle_extract_failure(reason)
-
-                for p, f in tar_filelist:
-                    if not cutils.extract_tarfile(
-                            p, os.path.join(p, f), demote_user=True):
-                        _handle_extract_failure()
+        except exception.SysinvException as e:
+            _handle_extract_failure(str(e))
         except OSError as e:
             LOG.error(e)
             _handle_extract_failure()
@@ -441,6 +430,7 @@ class AppOperator(object):
         """
         raise exception.KubeAppApplyFailure(
             name=app.name,
+            version=app.version,
             reason="embedded images are not yet supported.")
 
     def _save_images_list(self, app):
@@ -466,6 +456,7 @@ class AppOperator(object):
             # an info log and let it advance to the next step.
             raise exception.KubeAppUploadFailure(
                 name=app.name,
+                version=app.version,
                 reason="charts specify no docker images.")
 
         with open(app.imgfile_abs, 'ab') as f:
@@ -536,6 +527,7 @@ class AppOperator(object):
         if failed_count > 0:
             raise exception.KubeAppApplyFailure(
                 name=app.name,
+                version=app.version,
                 reason="failed to download one or more image(s).")
         else:
             LOG.info("All docker images for application %s were successfully "
@@ -557,11 +549,11 @@ class AppOperator(object):
                     failed_charts.append(r)
             except Exception as e:
                 raise exception.KubeAppUploadFailure(
-                    name=app.name, reason=str(e))
+                    name=app.name, version=app.version, reason=str(e))
 
         if len(failed_charts) > 0:
             raise exception.KubeAppUploadFailure(
-                name=app.name, reason="one or more charts failed validation.")
+                name=app.name, version=app.version, reason="one or more charts failed validation.")
 
     def _upload_helm_charts(self, app):
         # Set env path for helm-upload execution
@@ -582,7 +574,7 @@ class AppOperator(object):
                     LOG.info("Helm chart %s uploaded" % os.path.basename(chart))
         except Exception as e:
             raise exception.KubeAppUploadFailure(
-                name=app.name, reason=str(e))
+                name=app.name, version=app.version, reason=str(e))
         finally:
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
@@ -949,6 +941,9 @@ class AppOperator(object):
 
             self._save_images_list(app)
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
+            if app.patch_dependencies:
+                self._app._patch_report_app_dependencies(
+                    app.name, app.patch_dependencies)
             LOG.info("Application (%s) upload completed." % app.name)
         except exception.KubeAppUploadFailure as e:
             LOG.exception(e)
@@ -1080,6 +1075,7 @@ class AppOperator(object):
         try:
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
+            self._app._patch_report_app_dependencies(app.name)
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
             msg = None
@@ -1118,11 +1114,16 @@ class AppOperator(object):
             self.imgfile_abs = generate_images_filename_abs(
                 self._kube_app.get('name'))
 
+            self.patch_dependencies = []
             self.charts = []
 
         @property
         def name(self):
             return self._kube_app.get('name')
+
+        @property
+        def version(self):
+            return self._kube_app.get('app_version')
 
         @property
         def status(self):
@@ -1147,6 +1148,21 @@ class AppOperator(object):
                 self.name, new_mfile)
             self.mfile_abs = generate_manifest_filename_abs(
                 self.name, new_mfile)
+
+        def regenerate_application_info(self, new_name, new_version, new_patch_dependencies):
+            self._kube_app.name = new_name
+            self._kube_app.app_version = new_version
+            self.system_app = \
+                (self.name == constants.HELM_APP_OPENSTACK)
+            self.imgfile_abs = \
+                generate_images_filename_abs(self.name)
+            new_path = os.path.join(
+                constants.APP_INSTALL_PATH, self.name)
+            os.rename(self.path, new_path)
+            self.path = new_path
+            self.charts_dir = os.path.join(self.path, 'charts')
+            self.images_dir = os.path.join(self.path, 'images')
+            self.patch_dependencies = new_patch_dependencies
 
 
 class DockerHelper(object):

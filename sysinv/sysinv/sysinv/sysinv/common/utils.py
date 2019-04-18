@@ -1896,6 +1896,46 @@ def verify_checksum(path):
     return rc
 
 
+def find_metadata_file(path, metadata_file):
+    """ Find and validate the metadata file in a given directory.
+
+    Valid keys for metadata file are defined in the following format:
+
+    app_name: <name>
+    app_version: <version>
+    patch_dependencies:
+      - <patch.1>
+      - <patch.2>
+      ...
+    """
+    app_name = ''
+    app_version = ''
+    patches = []
+    metadata_path = os.path.join(path, metadata_file)
+    if os.path.isfile(metadata_path):
+        with open(metadata_path, 'r') as f:
+            try:
+                doc = yaml.safe_load(f)
+                app_name = doc['app_name']
+                app_version = doc['app_version']
+                patches = doc['patch_dependencies']
+            except KeyError:
+                # metadata file does not have the key(s)
+                pass
+
+        if (app_name is None or
+                app_version is None):
+            raise exception.SysinvException(_(
+                "Invalid %s: app_name or/and app_version "
+                "is/are None." % metadata_file))
+
+        if not isinstance(patches, list):
+            raise exception.SysinvException(_(
+                "Invalid %s: patch_dependencies should "
+                "be a list." % metadata_file))
+    return app_name, app_version, patches
+
+
 def find_manifest_file(path):
     """ Find all manifest files in a given directory. """
     def _is_manifest(yaml_file):

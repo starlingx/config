@@ -33,6 +33,7 @@ def upgrade(migrate_engine):
         Column('updated_at', DateTime),
         Column('id', Integer, primary_key=True),
         Column('name', String(255), unique=True, nullable=False),
+        Column('app_version', String(255), nullable=False),
         Column('manifest_name', String(255), nullable=False),
         Column('manifest_file', String(255), nullable=True),
         Column('status', String(255), nullable=False),

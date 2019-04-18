@@ -7566,14 +7566,14 @@ class Connection(api.Connection):
         return self._kube_app_get(name)
 
     @objects.objectify(objects.kube_app)
-    def kube_app_update(self, name, values):
+    def kube_app_update(self, app_id, values):
         with _session_for_write() as session:
             query = model_query(models.KubeApp, session=session)
-            query = query.filter_by(name=name)
+            query = query.filter_by(id=app_id)
 
             count = query.update(values, synchronize_session='fetch')
             if count == 0:
-                raise exception.KubeAppNotFound(name)
+                raise exception.KubeAppNotFound(id)
             return query.one()
 
     def kube_app_destroy(self, name):
