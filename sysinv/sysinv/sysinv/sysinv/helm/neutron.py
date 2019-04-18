@@ -93,7 +93,7 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
 
     def update_dynamic_options(self, overrides):
         if utils.is_virtual():
-            overrides.update({
+            utils.recur_update(overrides, {
                 'plugins': {
                     'ml2_conf': {
                         'ovs_driver': {
