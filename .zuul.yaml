@@ -34,9 +34,9 @@
     description: |
       Run py27 test for sysinv
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     vars:
       tox_envlist: py27
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
@@ -47,9 +47,9 @@
     description: |
       Run flake8 test for sysinv
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     vars:
       tox_envlist: flake8
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
@@ -59,8 +59,8 @@
     parent: tox
     description: Run flake8 tests for controllerconfig
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
+      - starlingx/update
+      - starlingx/fault
     vars:
       tox_envlist: flake8
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
@@ -70,8 +70,8 @@
     parent: tox
     description: Run py27 tests for controllerconfig
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
+      - starlingx/update
+      - starlingx/fault
     vars:
       tox_envlist: py27
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
@@ -81,8 +81,8 @@
     parent: tox
     description: Run pylint tests for controllerconfig
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
+      - starlingx/update
+      - starlingx/fault
     vars:
       tox_envlist: pylint
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
