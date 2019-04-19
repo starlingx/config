@@ -1,0 +1,35 @@
+{{/*
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if .Values.global.configmap_etc }}
+{{- $envAll := . }}
+
+{{- if empty .Values.endpoints.identity.auth.auth_url -}}
+{{- $_ := tuple "identity" "internal" "api" . | include "helm-toolkit.endpoints.keystone_endpoint_uri_lookup"| set .Values.endpoints.identity.auth "auth_url" -}}
+{{- end -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: 2019-04-18T19:14:38Z
+  name: config-{{- .Values.global.name }}
+data:
+  clouds.yaml: |
+    clouds:
+{{ .Values.global.cloud_name | toYaml | trim | indent 6 }}:
+        region_name: {{ .Values.endpoints.identity.auth.admin.region_name }}
+        identity_api_version: 3
+        endpoint_type: internalURL
+        auth:
+          username: {{ .Values.endpoints.identity.auth.admin.username | quote }}
+          password: {{ .Values.endpoints.identity.auth.admin.password | quote }}
+          project_name: {{ .Values.endpoints.identity.auth.admin.project_name | quote }}
+          project_domain_name: {{ .Values.endpoints.identity.auth.admin.project_domain_name | quote }}
+          user_domain_name: {{ .Values.endpoints.identity.auth.admin.user_domain_name | quote }}
+          auth_url: {{ .Values.endpoints.identity.auth.auth_url | quote }}
+{{- end }}

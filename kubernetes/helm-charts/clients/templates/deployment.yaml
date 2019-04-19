@@ -1,0 +1,59 @@
+{{/*
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if eq .Values.global.deployAs "Deployment" }}
+{{- $mount := "/etc/openstack" }}
+{{- $envAll := . }}
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ .Values.global.name }}
+spec:
+  replicas: {{ .Values.global.replicas }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.global.name }}
+    spec:
+    {{- if .Values.global.rbac }}
+      serviceAccountName: {{ .Values.rbac.serviceAccount }}
+    {{- end }}
+      affinity:
+{{ tuple $envAll "openstack" "clients" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
+      volumes:
+        - name: config-volume-{{- .Values.global.name }}
+          configMap:
+            name: config-{{- .Values.global.name }}
+        {{- if .Values.volume.enabled }}
+        - name: staging-{{ .Values.global.name }}
+          persistentVolumeClaim:
+            claimName: pvc-{{ .Values.global.name }}
+        {{- end }}
+      containers:
+        - name: {{ .Values.global.name }}
+          image: {{ .Values.images.tags.openstackclients | quote }}
+          env:
+          - name: OS_CLOUD
+            value: {{ .Values.global.cloud_name }}
+          {{- if .Values.global.keep_running }}
+          command: ["/bin/bash"]
+          args: ["-c", "trap : TERM INT; sleep infinity & wait"]
+          {{- end }}
+          volumeMounts:
+            - name: config-volume-{{- .Values.global.name }}
+              mountPath: {{ $mount }}
+            {{- if .Values.volume.enabled }}
+            - name: staging-{{ .Values.global.name }}
+              mountPath: {{ .Values.volume.mount_path }}
+            {{- end }}
+      nodeSelector:
+        {{ .Values.labels.node_selector_key }}: {{ .Values.labels.node_selector_value }}
+{{- end }}
