@@ -1,5 +1,5 @@
 [gerrit]
-host=review.openstack.org
+host=review.opendev.org
 port=29418
-project=openstack/stx-config.git
+project=starlingx/config.git
 defaultbranch=m/2018.08
