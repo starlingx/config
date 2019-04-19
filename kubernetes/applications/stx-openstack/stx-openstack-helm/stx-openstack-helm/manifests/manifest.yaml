@@ -653,12 +653,10 @@ data:
   chart_name: openvswitch
   release: openstack-openvswitch
   namespace: openstack
-  # If we deploy ovs-dpdk on the host, ovs pod will not be created.
-  # commenting out the wait block until a solution can be implemented
-  # wait:
-  #   timeout: 1800
-  #   labels:
-  #     release_group: osh-openstack-openvswitch
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-openvswitch
   install:
     no_hooks: false
   upgrade:
@@ -3017,7 +3015,6 @@ data:
   sequenced: false
   chart_group:
     - openstack-libvirt
-    - openstack-openvswitch
     - openstack-nova
     - openstack-nova-api-proxy
     - openstack-neutron
