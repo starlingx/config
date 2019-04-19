@@ -54,9 +54,9 @@
     description: |
       Run py27 test for sysinv
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     files:
       - sysinv/sysinv/*
     vars:
@@ -69,9 +69,9 @@
     description: |
       Run py35 test for sysinv
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     files:
       - sysinv/sysinv/*
     vars:
@@ -95,9 +95,9 @@
     description: |
       Run pylint test for sysinv
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     files:
       - sysinv/sysinv/*
     vars:
@@ -119,8 +119,8 @@
     parent: tox
     description: Run py27 tests for controllerconfig
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
+      - starlingx/update
+      - starlingx/fault
     files:
       - controllerconfig/*
     vars:
@@ -132,8 +132,8 @@
     parent: tox
     description: Run pylint tests for controllerconfig
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
+      - starlingx/update
+      - starlingx/fault
     files:
       - controllerconfig/*
     vars:
@@ -155,7 +155,7 @@
     parent: tox
     description: Run pylint tests for configutilities
     required-projects:
-      - openstack/stx-update
+      - starlingx/update
     files:
       - configutilities/*
     vars:
@@ -167,9 +167,9 @@
     parent: stx-devstack-base
     timeout: 7800
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     vars:
       tox_envlist: functional
       devstack_services:
@@ -202,9 +202,9 @@
     files:
       - sysinv/cgts-client/*
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     vars:
       tox_envlist: py27
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
@@ -228,9 +228,9 @@
     files:
       - sysinv/cgts-client/*
     required-projects:
-      - openstack/stx-update
-      - openstack/stx-fault
-      - openstack/stx-integ
+      - starlingx/update
+      - starlingx/fault
+      - starlingx/integ
     vars:
       tox_envlist: pylint
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
