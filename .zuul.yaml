@@ -157,10 +157,10 @@
         sysinv-cond: true
         tls-proxy: false
       devstack_plugins:
-        stx-config: https://git.starlingx.io/stx-config
-        stx-fault: https://git.starlingx.io/stx-fault
-        stx-integ: https://git.starlingx.io/stx-integ
-        stx-update: https://git.starlingx.io/stx-update
+        config: https://opendev.org/starlingx/config
+        fault: https://opendev.org/starlingx/fault
+        integ: https://opendev.org/starlingx/integ
+        update: https://opendev.org/starlingx/update
 
 - job:
     name: cgtsclient-tox-py27

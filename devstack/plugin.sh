@@ -10,7 +10,7 @@
 echo_summary "sysinv devstack plugin.sh called: $1/$2"
 
 # check for service enabled
-if is_service_enabled stx-config; then
+if is_service_enabled config; then
     if [[ "$1" == "stack" && "$2" == "install" ]]; then
         # Perform installation of source
         echo_summary "Installing stx-config"

@@ -16,16 +16,16 @@
 # Defaults
 # --------
 
-STX_CONFIG_NAME=stx-config
+STX_CONFIG_NAME=config
 
 ######### Plugin Specific ##########
 enable_service $STX_CONFIG_NAME
 
 # This must not use any variables to work properly in OpenStack's DevStack playbook
-define_plugin stx-config
+define_plugin config
 # This works for Zuul jobs using OpenStack's DevStack roles
-plugin_requires stx-config stx-integ
-plugin_requires stx-config stx-update
+plugin_requires config integ
+plugin_requires config update
 
 # Handle STX pre-reqs
 # stx-integ
@@ -47,4 +47,4 @@ if is_service_enabled sysinv-agent; then
 fi
 
 # Initial source of lib script
-source $DEST/stx-config/devstack/lib/stx-config
+source $DEST/config/devstack/lib/config

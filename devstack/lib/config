@@ -6,7 +6,7 @@
 #
 # Copyright (c) 2019 Wind River Systems, Inc.
 #
-# lib/stx-config
+# lib/config
 # Functions to control the configuration and operation of stx-config
 
 # Dependencies:
@@ -14,7 +14,7 @@
 # - ``functions`` file
 # - ``DEST``, ``DATA_DIR``, ``STACK_USER`` must be defined
 
-# - The stx-update and stx-fault plugins must be enabled
+# - The update and fault plugins must be enabled
 
 # ``stack.sh`` calls the entry points in this order:
 #
