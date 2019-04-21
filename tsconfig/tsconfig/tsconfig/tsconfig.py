@@ -171,6 +171,7 @@ PLATFORM_PATH = "/opt/platform"
 CONFIG_PATH = PLATFORM_PATH + "/config/" + SW_VERSION + "/"
 PUPPET_PATH = PLATFORM_PATH + "/puppet/" + SW_VERSION + "/"
 ARMADA_PATH = PLATFORM_PATH + "/armada/" + SW_VERSION
+HELM_OVERRIDES_PATH = PLATFORM_PATH + "/helm/" + SW_VERSION
 CGCS_PATH = "/opt/cgcs"
 KEYRING_PATH = PLATFORM_PATH + "/.keyring/" + SW_VERSION
 EXTENSION_PATH = "/opt/extension"
