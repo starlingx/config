@@ -34,18 +34,6 @@ class platform::dcmanager
   }
 }
 
-
-class platform::dcmanager::firewall
-  inherits ::platform::dcmanager::params {
-  if $::platform::params::distributed_cloud_role =='systemcontroller' {
-    platform::firewall::rule { 'dcmanager-api':
-      service_name => 'dcmanager',
-      ports        => $api_port,
-    }
-  }
-}
-
-
 class platform::dcmanager::haproxy
   inherits ::platform::dcmanager::params {
   if $::platform::params::distributed_cloud_role =='systemcontroller' {
@@ -76,7 +64,6 @@ class platform::dcmanager::api
     }
 
 
-    include ::platform::dcmanager::firewall
     include ::platform::dcmanager::haproxy
   }
 }

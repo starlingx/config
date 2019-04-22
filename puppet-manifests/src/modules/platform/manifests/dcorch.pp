@@ -51,10 +51,6 @@ class platform::dcorch::firewall
       service_name => 'dcorch',
       ports        => $api_port,
     }
-    platform::firewall::rule { 'dcorch-sysinv-api-proxy':
-      service_name => 'dcorch-sysinv-api-proxy',
-      ports        => $sysinv_api_proxy_port,
-    }
     platform::firewall::rule { 'dcorch-nova-api-proxy':
       service_name => 'dcorch-nova-api-proxy',
       ports        => $nova_api_proxy_port,
@@ -66,14 +62,6 @@ class platform::dcorch::firewall
     platform::firewall::rule { 'dcorch-cinder-api-proxy':
       service_name => 'dcorch-cinder-api-proxy',
       ports        => $cinder_api_proxy_port,
-    }
-    platform::firewall::rule { 'dcorch-patch-api-proxy':
-      service_name => 'dcorch-patch-api-proxy',
-      ports        => $patch_api_proxy_port,
-    }
-    platform::firewall::rule { 'dcorch-identity-api-proxy':
-      service_name => 'dcorch-identity-api-proxy',
-      ports        => $identity_api_proxy_port,
     }
   }
 }

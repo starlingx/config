@@ -1569,20 +1569,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_software_upgrade_status'))
 
-    def update_firewall_config(self, context, ip_version, contents):
-        """Synchronously, have the conductor update the firewall config
-        and manifest.
-
-        :param context: request context.
-        :param ip_version: IP version.
-        :param contents: file content of custom firewall rules.
-
-        """
-        return self.call(context,
-                         self.make_msg('update_firewall_config',
-                                       ip_version=ip_version,
-                                       contents=contents))
-
     def distribute_ceph_external_config(self, context, ceph_conf_filename):
         """Synchronously, have the conductor update the Ceph configuration
         file for external cluster.

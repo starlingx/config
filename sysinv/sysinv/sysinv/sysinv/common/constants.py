@@ -1043,7 +1043,6 @@ SERVICE_PARAM_NAME_DEFAULT_DNS_DOMAIN = 'dns_domain'
 # Platform Service Parameters
 SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE = 'maintenance'
 SERVICE_PARAM_SECTION_PLATFORM_SYSINV = 'sysinv'
-SERVICE_PARAM_NAME_SYSINV_FIREWALL_RULES_ID = 'firewall_rules_id'
 
 SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT = 'worker_boot_timeout'
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT = 'controller_boot_timeout'
@@ -1388,10 +1387,6 @@ WARNING_ROOT_PV_CINDER_CEPH_MSG = (
     "Engineering Guidelines for more details on supported worker configurations.")
 PV_WARNINGS = {WARN_CINDER_ON_ROOT_WITH_LVM: WARNING_ROOT_PV_CINDER_LVM_MSG,
                WARN_CINDER_ON_ROOT_WITH_CEPH: WARNING_ROOT_PV_CINDER_CEPH_MSG}
-
-# Custom firewall rule file
-FIREWALL_RULES_FILE = 'iptables.rules'
-FIREWALL_RULES_MAX_FILE_SIZE = 102400
 
 # License file
 LICENSE_FILE = ".license"

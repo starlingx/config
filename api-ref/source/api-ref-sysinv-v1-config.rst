@@ -78,16 +78,6 @@ itemNotFound (404)
 ::
 
    {
-       "firewallrules": [
-           {
-               "href": "http://10.10.10.2:6385/v1/firewallrules/",
-               "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/firewallrules/",
-               "rel": "bookmark"
-           }
-       ],
        "addresses": [
            {
                "href": "http://10.10.10.2:6385/v1/addresses/",
@@ -10751,87 +10741,3 @@ itemNotFound (404)
    }
 
 This operation does not accept a request body.
-
-----------------------
-Custom Firewall Rules
-----------------------
-
-These APIs allow for the installation of custom firewall rules.
-
-*******************************
-Install custom firewall rules
-*******************************
-
-.. rest_method:: POST /v1/firewallrules
-
-Accepts a file containing the custom OAM firewall rules compatible with
-the Linux Netfilter framework.
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-badMediaType (415)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "Content-Type multipart/form-data", "plain", "xsd:string", "The content of a file. e.g. if using curl, this would be specified as: curl -F name=@full_path_of_filename"
-
-*****************************
-Shows custom firewall rules
-*****************************
-
-.. rest_method:: GET /v1/firewallrules
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "firewall_sig (Optional)", "plain", "xsd:string", "The signature of the custom firewall rules."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-     "firewallrules": [
-       {
-         "firewall_sig": "ab9695c4ef143d72317a860c6db7f699",
-         "uuid": "bc276605-7ae2-476a-a8c0-01f097f5177e",
-         "updated_at": "2018-03-02T15:59:14.114812+00:00"
-       }
-     ]
-   }
-
-This operation does not accept a request body.
-
-
-
-
-
-
-
-
-

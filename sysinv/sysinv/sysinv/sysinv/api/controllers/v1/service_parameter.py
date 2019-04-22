@@ -197,12 +197,6 @@ class ServiceParameterController(rest.RestController):
             p.section == constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT and
             p.name == constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE)]
 
-        # filter out firewall_rules_id
-        parms = [p for p in parms if not (
-            p.service == constants.SERVICE_TYPE_PLATFORM and p.section ==
-            constants.SERVICE_PARAM_SECTION_PLATFORM_SYSINV and p.name ==
-            constants.SERVICE_PARAM_NAME_SYSINV_FIREWALL_RULES_ID)]
-
         # Before we can return the service parameter collection,
         # we need to ensure that the list does not contain any
         # "protected" service parameters which may need to be

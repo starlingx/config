@@ -376,13 +376,6 @@ def restore_configuration(archive, staging_dir):
     # Restore certificate files
     restore_etc_ssl_dir(archive)
 
-    # Restore firewall rules file if it is in the archive
-    if file_exists_in_archive(archive, 'config/iptables.rules'):
-        restore_config_file(
-            archive, constants.CONFIG_WORKDIR, 'iptables.rules')
-        restore_etc_file(archive, tsconfig.PLATFORM_CONF_PATH,
-                         'platform/iptables.rules')
-
 
 def filter_pxelinux(archive):
     for tarinfo in archive:

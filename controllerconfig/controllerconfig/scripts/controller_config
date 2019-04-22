@@ -314,15 +314,6 @@ start()
         fi
     fi
 
-    if [ -e $CONFIG_DIR/iptables.rules ]
-    then
-        cp $CONFIG_DIR/iptables.rules /etc/platform/iptables.rules
-        if [ $? -ne 0 ]
-        then
-            fatal_error "Unable to copy $CONFIG_DIR/iptables.rules"
-        fi
-    fi
-
     # Copy over external_ceph config files
     if [ -e $CONFIG_DIR/ceph-config ]
     then

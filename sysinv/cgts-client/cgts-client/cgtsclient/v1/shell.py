@@ -16,7 +16,6 @@ from cgtsclient.v1 import controller_fs_shell
 from cgtsclient.v1 import datanetwork_shell
 from cgtsclient.v1 import drbdconfig_shell
 from cgtsclient.v1 import ethernetport_shell
-from cgtsclient.v1 import firewallrules_shell
 from cgtsclient.v1 import health_shell
 from cgtsclient.v1 import helm_shell
 
@@ -111,7 +110,6 @@ COMMAND_MODULES = [
     health_shell,
     remotelogging_shell,
     sdn_controller_shell,
-    firewallrules_shell,
     partition_shell,
     license_shell,
     certificate_shell,

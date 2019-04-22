@@ -29,7 +29,6 @@ from cgtsclient.v1 import datanetwork
 from cgtsclient.v1 import drbdconfig
 from cgtsclient.v1 import ethernetport
 from cgtsclient.v1 import fernet
-from cgtsclient.v1 import firewallrules
 from cgtsclient.v1 import health
 from cgtsclient.v1 import helm
 from cgtsclient.v1 import icommunity
@@ -148,7 +147,6 @@ class Client(http.HTTPClient):
         self.health = health.HealthManager(self)
         self.remotelogging = remotelogging.RemoteLoggingManager(self)
         self.sdn_controller = sdn_controller.SDNControllerManager(self)
-        self.firewallrules = firewallrules.FirewallRulesManager(self)
         self.partition = partition.partitionManager(self)
         self.license = license.LicenseManager(self)
         self.certificate = certificate.CertificateManager(self)

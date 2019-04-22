@@ -10,15 +10,6 @@ class platform::smapi::params (
   $region = undef,
 ) {}
 
-class platform::smap::firewall
-  inherits ::platform::smapi::params {
-
-  platform::firewall::rule { 'sm-api':
-    service_name => 'sm-api',
-    ports        => $port,
-  }
-}
-
 class platform::smapi::haproxy
   inherits ::platform::smapi::params {
 
@@ -47,7 +38,6 @@ class platform::smapi
   }
 
   include ::platform::params
-  include ::platform::smap::firewall
   include ::platform::smapi::haproxy
   $bind_host_name = $::platform::params::hostname
   file { '/etc/sm-api/sm-api.conf':

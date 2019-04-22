@@ -29,7 +29,6 @@ from sysinv.objects import controller_fs
 from sysinv.objects import cpu
 from sysinv.objects import datanetwork
 from sysinv.objects import disk
-from sysinv.objects import firewallrules
 from sysinv.objects import partition
 from sysinv.objects import dns
 from sysinv.objects import drbdconfig
@@ -135,7 +134,6 @@ port = port.Port
 ethernet_port = port_ethernet.EthernetPort
 disk = disk.Disk
 partition = partition.Partition
-firewallrules = firewallrules.FirewallRules
 storage = storage.Storage
 journal = journal.Journal
 lvg = lvg.LVG
@@ -247,7 +245,6 @@ __all__ = (system,
            tpmconfig,
            tpmdevice,
            certificate,
-           firewallrules,
            objectify,
            storage_file,
            storage_external,
