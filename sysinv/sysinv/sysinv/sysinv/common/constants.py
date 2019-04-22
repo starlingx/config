@@ -1455,7 +1455,7 @@ HELM_CHART_RABBITMQ = 'rabbitmq'
 HELM_CHART_RBD_PROVISIONER = 'rbd-provisioner'
 HELM_CHART_CEPH_POOLS_AUDIT = 'ceph-pools-audit'
 HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
-
+HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
 
 # Helm: Supported application (aka chart bundles)
 HELM_APP_OPENSTACK = 'stx-openstack'

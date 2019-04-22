@@ -28,6 +28,9 @@ class BaseHelm(object):
     DEFAULT_REGION_NAME = 'RegionOne'
     CEPH_MON_SERVICE_PORT = 6789
     SUPPORTED_NAMESPACES = []
+    SYSTEM_CONTROLLER_SERVICES = [
+        constants.HELM_CHART_KEYSTONE_API_PROXY,
+    ]
 
     def __init__(self, operator):
         self._operator = operator

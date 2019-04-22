@@ -428,6 +428,46 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-keystone-api-proxy
+data:
+  chart_name: keystone-api-proxy
+  release: openstack-keystone-api-proxy
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-keystone-api-proxy
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-keystone-api-proxy
+        - type: pod
+          labels:
+            release_group: osh-openstack-keystone-api-proxy
+            component: test
+  values:
+    images:
+      tags:
+        keystone_api_proxy: docker.io/starlingx/stx-keystone-api-proxy:master-centos-stable-latest
+        ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/keystone-api-proxy-0.1.0.tgz
+    subpath: keystone-api-proxy
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-barbican
 data:
   chart_name: barbican
@@ -3004,6 +3044,16 @@ data:
   sequenced: true
   chart_group:
     - openstack-keystone
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-keystone-api-proxy
+data:
+  description: "Deploy keystone api proxy"
+  sequenced: true
+  chart_group:
+    - openstack-keystone-api-proxy
 ---
 schema: armada/ChartGroup/v1
 metadata:

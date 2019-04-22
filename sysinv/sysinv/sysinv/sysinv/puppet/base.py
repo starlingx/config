@@ -29,10 +29,6 @@ class BasePuppet(object):
 
     SYSTEM_CONTROLLER_SERVICES = [
         'keystone',
-        'glance',
-        'nova',
-        'neutron',
-        'cinder',
         'dcorch'
     ]
 
