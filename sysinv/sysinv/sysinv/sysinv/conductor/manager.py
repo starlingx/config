@@ -6139,6 +6139,21 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
+    def _update_pciirqaffinity_config(self, context):
+        """ Update the PciIrqAffinity's configuration. """
+        personalities = [constants.WORKER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::pciirqaffinity::runtime']
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
     def report_lvm_cinder_config_success(self, context, host_uuid):
         """ Callback for Sysinv Agent
 
@@ -10445,10 +10460,11 @@ class ConductorManager(service.PeriodicService):
         """
         app_installed = self._app.perform_app_apply(rpc_app, mode)
         if app_installed and app_not_already_applied:
-            # Update the VIM configuration as it may need to manage the newly
-            # installed application. Only do this if the application
-            # was not already applied.
+            # Update the VIM and pciIrqAffinity configuration as it may need
+            # to manage the newly installed application. Only do this if the
+            # application was not already applied.
             self._update_vim_config(context)
+            self._update_pciirqaffinity_config(context)
 
         return app_installed
 
@@ -10461,9 +10477,9 @@ class ConductorManager(service.PeriodicService):
         """
         app_removed = self._app.perform_app_remove(rpc_app)
         if app_removed:
-            # Update the VIM configuration.
+            # Update the VIM and PciIrqAffinity configuration.
             self._update_vim_config(context)
-
+            self._update_pciirqaffinity_config(context)
         return app_removed
 
     def perform_app_delete(self, context, rpc_app):
