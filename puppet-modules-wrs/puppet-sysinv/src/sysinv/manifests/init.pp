@@ -166,10 +166,10 @@ class sysinv (
   $real_connection = regsubst($database_connection,'^postgresql:','postgresql+psycopg2:')
 
   sysinv_config {
-    'database/connection':    value => $real_connection, secret => true;
-    'database/idle_timeout':  value => $database_idle_timeout;
-    'database/max_pool_size': value => $database_max_pool_size;
-    'database/max_overflow':  value => $database_max_overflow;
+    'database/connection':               value => $real_connection, secret => true;
+    'database/connection_recycle_time':  value => $database_idle_timeout;
+    'database/max_pool_size':            value => $database_max_pool_size;
+    'database/max_overflow':             value => $database_max_overflow;
   }
 
   sysinv_config {

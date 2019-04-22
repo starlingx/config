@@ -19,6 +19,8 @@ Requires: python-iso8601
 Requires: psmisc
 Requires: python-pyudev
 Requires: python-netifaces
+Requires: python2-crypto
+Requires: python2-pysnmp
 
 %description
 Controller node configuration
