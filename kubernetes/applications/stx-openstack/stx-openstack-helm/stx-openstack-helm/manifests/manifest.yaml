@@ -1180,8 +1180,6 @@ data:
           metadata_port: 80
       plugins:
         ml2_conf:
-          ml2_type_flat:
-            flat_networks: public
           ml2:
             mechanism_drivers: openvswitch,sriovnicswitch,l2population
             path_mtu: 0

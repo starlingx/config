@@ -334,11 +334,22 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
 
         return ",".join(ml2_physical_network_mtus)
 
+    def _get_flat_networks(self):
+        flat_nets = []
+        datanetworks = self.dbapi.datanetworks_get_all()
+        for datanetwork in datanetworks:
+            if datanetwork.network_type == constants.DATANETWORK_TYPE_FLAT:
+                flat_nets.append(str(datanetwork.name))
+        return ",".join(flat_nets)
+
     def _get_neutron_ml2_config(self):
         ml2_config = {
             'ml2': {
                 'physical_network_mtus': self._get_ml2_physical_network_mtus()
             },
+            'ml2_type_flat': {
+                'flat_networks': self._get_flat_networks()
+            }
         }
         LOG.info("_get_neutron_ml2_config=%s" % ml2_config)
         return ml2_config
