@@ -598,13 +598,6 @@ def _validate_mnfa_timeout(name, value):
                     SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX)
 
 
-# Validate range of Alarm History 'time to live' value
-def _validate_alarm_history_time_to_live_range(name, value):
-    _validate_range(name, value,
-                    SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE_MIN,
-                    SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE_MAX)
-
-
 def _validate_ipv4(name, value):
     """Check if router_id value is valid"""
     if not netaddr.valid_ipv4(value):
@@ -1454,25 +1447,6 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT: 'platform::mtce::params::mnfa_timeout',
 }
 
-# AODH Alarm History TTL range from 1 hour to 1 year
-SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE_MIN = 3600
-SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE_MAX = 31536000
-
-# AODH Service Parameters
-AODH_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE,
-]
-
-AODH_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE:
-        _validate_alarm_history_time_to_live_range,
-}
-
-AODH_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_AODH_DATABASE_ALARM_HISTORY_TIME_TO_LIVE:
-        'aodh::alarm_history_time_to_live',
-}
-
 SWIFT_CONFIG_PARAMETER_MANDATORY = [
     constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED,
 ]
@@ -1730,13 +1704,6 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: NOVA_PCI_ALIAS_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: NOVA_PCI_ALIAS_PARAMETER_RESOURCE,
             SERVICE_PARAM_DATA_FORMAT: NOVA_PCI_ALIAS_PARAMETER_DATA_FORMAT,
-        },
-    },
-    constants.SERVICE_TYPE_AODH: {
-        constants.SERVICE_PARAM_SECTION_AODH_DATABASE: {
-            SERVICE_PARAM_MANDATORY: AODH_PARAMETER_MANDATORY,
-            SERVICE_PARAM_VALIDATOR: AODH_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: AODH_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_SWIFT: {

@@ -62,8 +62,6 @@ rewrite r_rewrite_set{
   set("<%= @system_name %> user.log ${HOST}", value("HOST") condition(filter(f_user)));
   set("<%= @system_name %> uucp.log ${HOST}", value("HOST") condition(filter(f_uucp)));
   set("<%= @system_name %> snmp-api.log ${HOST}", value("HOST") condition(filter(f_snmpat)));
-  set("<%= @system_name %> api.log ${HOST}", value("HOST") condition(filter(f_gnocchiapi)));
-  set("<%= @system_name %> metricd.log ${HOST}", value("HOST") condition(filter(f_gnocchimetricd)));
   # Most logs write log level to the message field. some writes it to the PRIORITY field
   # The priority field is not sent remotely. This is because tcp/udp destinations don't
   # work well with templates, which we use to write the priority field to log files on the

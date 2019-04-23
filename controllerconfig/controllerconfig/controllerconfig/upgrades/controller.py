@@ -72,10 +72,7 @@ def get_db_credentials(shared_services, from_release):
     Returns the database credentials using the provided shared services.
     """
     db_credential_keys = \
-        {'aodh': {'hiera_user_key': 'aodh::db::postgresql::user',
-                  'keyring_password_key': 'aodh',
-                  },
-         'barbican': {'hiera_user_key': 'barbican::db::postgresql::user',
+        {'barbican': {'hiera_user_key': 'barbican::db::postgresql::user',
                       'keyring_password_key': 'barbican',
                       },
          'ceilometer': {'hiera_user_key': 'ceilometer::db::postgresql::user',
@@ -551,10 +548,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         f.write("[api_database]\n")
         f.write(get_connection_string(db_credentials, 'nova_api'))
 
-    with open("/etc/aodh/aodh-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'aodh'))
-
     with open("/etc/murano/murano-dbsync.conf", "w") as f:
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'murano'))
@@ -587,9 +580,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         f.write(get_connection_string(db_credentials, 'barbican'))
 
     migrate_commands = [
-        # Migrate aodh (new in R3)
-        ('aodh',
-         'aodh-dbsync --config-file /etc/aodh/aodh-dbsync.conf'),
         # Migrate barbican
         ('barbican',
          'barbican-manage --config-file /etc/barbican/barbican-dbsync.conf ' +
