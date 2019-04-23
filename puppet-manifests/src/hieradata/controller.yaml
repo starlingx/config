@@ -198,6 +198,8 @@ keystone::security_compliance::password_regex_description: 'Password must have a
 
 keystone::roles::admin::email: 'admin@localhost'
 keystone::roles::admin::admin_tenant: 'admin'
+keystone::roles::admin::admin_tenant_desc: 'admin project'
+keystone::roles::admin::service_tenant_desc: 'project for the platform services'
 
 platform::client::params::identity_auth_url: 'http://localhost:5000/v3'
 
