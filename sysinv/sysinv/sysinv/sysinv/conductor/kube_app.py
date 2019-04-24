@@ -130,9 +130,6 @@ class AppOperator(object):
     def _cleanup(self, app):
         """" Remove application directories and override files """
         try:
-            if (app.status != constants.APP_UPLOAD_FAILURE and
-                    os.path.exists(os.path.join(app.path, 'metadata.yaml'))):
-                self._process_node_labels(app, op=constants.LABEL_REMOVE_OP)
             if app.system_app and app.status != constants.APP_UPLOAD_FAILURE:
                 self._remove_chart_overrides(app.armada_mfile_abs)
 
@@ -645,89 +642,6 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
-    def _process_node_labels(self, app, op=constants.LABEL_ASSIGN_OP):
-        # Node labels are host personality based and are defined in
-        # metadata.yaml file in the following format:
-        # labels:
-        #   controller: '<label-key1>=<value>, <label-key2>=<value>, ...'
-        #   compute: '<label-key1>=<value>, <label-key2>=<value>, ...'
-
-        lfile = os.path.join(app.path, 'metadata.yaml')
-        controller_labels = []
-        compute_labels = []
-        controller_l = compute_l = None
-        controller_labels_set = set()
-        compute_labels_set = set()
-
-        if os.path.exists(lfile) and os.path.getsize(lfile) > 0:
-            with open(lfile, 'r') as f:
-                try:
-                    y = yaml.safe_load(f)
-                    labels = y['labels']
-                except KeyError:
-                    raise exception.KubeAppUploadFailure(
-                        name=app.name,
-                        reason="labels file contains no labels.")
-            for key, value in labels.items():
-                if key == constants.CONTROLLER:
-                    controller_l = value
-                elif key == constants.WORKER:
-                    compute_l = value
-        else:
-            if not app.system_app:
-                LOG.info("Application %s does not require specific node "
-                         "labeling." % app.name)
-                return
-
-        if controller_l:
-            controller_labels =\
-                controller_l.replace(',', ' ').split()
-            controller_labels_set = set(controller_labels)
-            if not self._validate_labels(controller_labels_set):
-                raise exception.KubeAppUploadFailure(
-                    name=app.name,
-                    reason="controller labels are malformed.")
-
-        if compute_l:
-            compute_labels =\
-                compute_l.replace(',', ' ').split()
-            compute_labels_set = set(compute_labels)
-            if not self._validate_labels(compute_labels_set):
-                raise exception.KubeAppUploadFailure(
-                    name=app.name,
-                    reason="compute labels are malformed.")
-
-        # Add the default labels for system app. They must exist for
-        # the app manifest to be applied successfully. If the nodes have
-        # been assigned these labels manually before, these
-        # reassignments are simply ignored.
-        if app.system_app:
-            controller_labels_set.add(constants.CONTROL_PLANE_LABEL)
-            compute_labels_set.add(constants.COMPUTE_NODE_LABEL)
-            compute_labels_set.add(constants.OPENVSWITCH_LABEL)
-            compute_labels_set.add(constants.SRIOV_LABEL)
-
-        # Get controller host(s)
-        controller_hosts =\
-            self._dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        if constants.WORKER in controller_hosts[0].subfunctions:
-            # AIO system
-            labels = controller_labels_set.union(compute_labels_set)
-            if op == constants.LABEL_ASSIGN_OP:
-                self._assign_host_labels(controller_hosts, labels)
-            elif op == constants.LABEL_REMOVE_OP:
-                self._remove_host_labels(controller_hosts, labels)
-        else:
-            # Standard system
-            compute_hosts =\
-                self._dbapi.ihost_get_by_personality(constants.WORKER)
-            if op == constants.LABEL_ASSIGN_OP:
-                self._assign_host_labels(controller_hosts, controller_labels_set)
-                self._assign_host_labels(compute_hosts, compute_labels_set)
-            elif op == constants.LABEL_REMOVE_OP:
-                self._remove_host_labels(controller_hosts, controller_labels_set)
-                self._remove_host_labels(compute_hosts, compute_labels_set)
-
     def _create_local_registry_secrets(self, app_name):
         # Temporary function to create default registry secret
         # which would be used by kubernetes to pull images from
@@ -1065,8 +979,6 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app)
         LOG.info("Application (%s) apply started." % app.name)
-
-        self._process_node_labels(app)
 
         overrides_str = ''
         ready = True
