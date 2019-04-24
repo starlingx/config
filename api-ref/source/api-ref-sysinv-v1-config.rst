@@ -744,6 +744,7 @@ itemNotFound (404)
    "clusters (Optional)", "plain", "xsd:list", "The list of cluster entities."
    "name (Optional)", "plain", "xsd:string", "A name of the cloud cluster."
    "type (Optional)", "plain", "xsd:string", "An installed cluster type of the cloud system."
+   "deployment_model (Optional)", "plain", "xsd:string", "Ceph storage deployment model."
    "uuid (Optional)", "plain", "csapi:UUID", "A system generated unique identifier for this cluster in the cloud system."
    "cluster_uuid (Optional)", "plain", "csapi:UUID", "The unique identifier of the underlying cluster instance represented by this cluster."
 
@@ -754,6 +755,7 @@ itemNotFound (404)
            {
                "cluster_uuid": null,
                "type": "ceph",
+               "deployment_model": "aio-sx",
                "uuid": "ba42aa45-7094-4bcd-b094-2848816441a3",
                "links": [
                    {
@@ -804,6 +806,7 @@ itemNotFound (404)
 
    "name (Optional)", "plain", "xsd:string", "A name of the cloud cluster."
    "type (Optional)", "plain", "xsd:string", "An installed cluster type of the cloud system."
+   "deployment_model (Optional)", "plain", "xsd:string", "Ceph storage deployment model."
    "uuid (Optional)", "plain", "csapi:UUID", "A system generated unique identifier for this cluster in the cloud system."
    "cluster_uuid (Optional)", "plain", "csapi:UUID", "The unique identifier of the underlying cluster instance represented by this cluster."
    "peers (Optional)", "plain", "xsd:list", "A list of dictionaries for each replication group of storage host peers."
@@ -855,6 +858,7 @@ itemNotFound (404)
        "cluster_uuid": null,
        "type": "ceph",
        "id": 1,
+       "deployment_model": "aio-sx",
        "uuid": "ba42aa45-7094-4bcd-b094-2848816441a3"
    }
 
@@ -2055,7 +2059,7 @@ itemNotFound (404)
 
             },
             "ihost_uuid":"42d72247-e0e3-4a5a-8cb1-40bbee52c8db",
-            "state":null,
+            "state":"configured",
             "osdid":2
          }
       ]
@@ -2131,7 +2135,7 @@ itemNotFound (404)
 
             },
             "ihost_uuid":"42d72247-e0e3-4a5a-8cb1-40bbee52c8db",
-            "state":null,
+            "state":"configured",
             "osdid":2
          }
       ]
@@ -2234,7 +2238,7 @@ badMediaType (415)
       "updated_at":null,
       "idisk_uuid":"4da10410-2959-46df-b571-04e954c0e115",
       "ihost_uuid":"42d72247-e0e3-4a5a-8cb1-40bbee52c8db",
-      "state":null,
+      "state":"configured",
       "capabilities":{
 
       },
@@ -2326,7 +2330,7 @@ badMediaType (415)
       "updated_at":null,
       "idisk_uuid":"4da10410-2959-46df-b571-04e954c0e115",
       "ihost_uuid":"42d72247-e0e3-4a5a-8cb1-40bbee52c8db",
-      "state":null,
+      "state":"configured",
       "capabilities":{
 
       },
@@ -10399,13 +10403,10 @@ itemNotFound (404)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "device_node (Optional)", "plain", "xsd:string", "[Deprecated] The disk device node on the host that cgts-vg will be extended to create ceph-mon-lv."
    "device_path (Optional)", "plain", "xsd:string", "[Deprecated] The disk device path on the host that cgts-vg will be extended to create ceph-mon-lv."
-   "host (Optional)", "plain", "xsd:string", "The name of host this ceph mon belongs to."
-   "ceph_mon_gib (Optional)", "plain", "xsd:integer", "The ceph-mon-lv size in GiB, for Ceph backend only."
-   "ceph_mon_dev (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on both controllers that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl0 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-0 that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl1 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-1 that cgts-vg will be extended to create ceph-mon-lv."
+   "hostname (Optional)", "plain", "xsd:string", "The name of host this ceph mon belongs to."
+   "state (Optional)", "plain", "xsd:string", "The admin state of the Ceph monitor backend."
+   "task (Optional)", "plain", "xsd:string", "The current task of the Ceph monitor when in ""configuring"" state."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -10416,13 +10417,11 @@ itemNotFound (404)
    {
        "ceph_mon": [
            {
-               "ceph_mon_dev_ctrl0": null,
-               "ceph_mon_dev_ctrl1": null,
-               "ceph_mon_gib": 20,
                "created_at": "2016-12-08T17:48:06.623435+00:00",
-               "device_node": null,
                "device_path": null,
                "hostname": "controller-0",
+               "state": "configured",
+               "task": null,
                "links": [
                    {
                        "href": "http://10.10.20.2:6385/v1/ceph_mon/9608cc7f-ace6-4fc7-8eb8-01cfebf6906e",
@@ -10437,13 +10436,11 @@ itemNotFound (404)
                "uuid": "9608cc7f-ace6-4fc7-8eb8-01cfebf6906e"
            },
            {
-               "ceph_mon_dev_ctrl0": null,
-               "ceph_mon_dev_ctrl1": null,
-               "ceph_mon_gib": 20,
                "created_at": "2016-12-08T19:02:02.359114+00:00",
-               "device_node": null,
                "device_path": null,
                "hostname": "controller-1",
+               "state": "configured",
+               "task": null,
                "links": [
                    {
                        "href": "http://10.10.20.2:6385/v1/ceph_mon/9c1d1dce-40aa-4c58-bdf2-9715ec870944",
@@ -10492,16 +10489,11 @@ itemNotFound (404)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "device_node (Optional)", "plain", "xsd:string", "[Deprecated] The disk device node on the host that cgts-vg will be extended to create ceph-mon-lv."
    "device_path (Optional)", "plain", "xsd:string", "[Deprecated] The disk device path on the host that cgts-vg will be extended to create ceph-mon-lv."
-   "host (Optional)", "plain", "xsd:string", "The name of host this ceph mon belongs to."
-   "ceph_mon_gib (Optional)", "plain", "xsd:integer", "The ceph-mon-lv size in GiB, for Ceph backend only."
-   "ceph_mon_dev (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on both controllers that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl0 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-0 that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl1 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-1 that cgts-vg will be extended to create ceph-mon-lv."
+   "hostname (Optional)", "plain", "xsd:string", "The name of host this ceph mon belongs to."
+   "state (Optional)", "plain", "xsd:string", "The admin state of the Ceph monitor backend."
+   "task (Optional)", "plain", "xsd:string", "The current task of the Ceph monitor when in ""configuring"" state."
    "uuid (Optional)", "plain", "csapi:UUID", "The UUID of this ceph monitor."
-   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the storage backend belongs to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
@@ -10509,13 +10501,11 @@ itemNotFound (404)
 ::
 
    {
-       "ceph_mon_dev_ctrl0": null,
-       "ceph_mon_dev_ctrl1": null,
-       "ceph_mon_gib": 20,
        "created_at": "2016-12-08T17:48:06.623435+00:00",
-       "device_node": null,
        "device_path": null,
        "hostname": "controller-0",
+       "state": "configured",
+       "task": null,
        "links": [
            {
                "href": "http://10.10.20.2:6385/v1/ceph_mon/9608cc7f-ace6-4fc7-8eb8-01cfebf6906e",
@@ -10530,21 +10520,17 @@ itemNotFound (404)
        "uuid": "9608cc7f-ace6-4fc7-8eb8-01cfebf6906e"
    }
 
-This operation does not accept a request body.
+***********************************
+Deletes a specific ceph monitor
+***********************************
 
-*************************
-Modifies a Ceph monitor
-*************************
+.. rest_method:: DELETE /v1/ceph_mon/​{ceph_mon_id}​
 
-.. rest_method:: PATCH /v1/ceph_mon/​{ceph_mon_id}​
+Delete a ceph monitor.
 
 **Normal response codes**
 
-200
-
-**Error response codes**
-
-badMediaType (415)
+204
 
 **Request parameters**
 
@@ -10552,73 +10538,9 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "ceph_mon_id", "URI", "csapi:UUID", "The unique identifier of Ceph monitor."
-   "device_node (Optional)", "plain", "xsd:string", "[Deprecated] The disk device node on the host that cgts-vg will be extended to create ceph-mon-lv."
-   "device_path (Optional)", "plain", "xsd:string", "[Deprecated] The disk device path on the host that cgts-vg will be extended to create ceph-mon-lv."
-   "host (Optional)", "plain", "xsd:string", "The name of host this ceph mon belongs to."
-   "ceph_mon_gib (Optional)", "plain", "xsd:integer", "The ceph-mon-lv size in GiB, for Ceph backend only."
-   "ceph_mon_dev (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on both controllers that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl0 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-0 that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl1 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-1 that cgts-vg will be extended to create ceph-mon-lv."
+   "ceph_mon_id", "URI", "csapi:UUID", "The unique identifier of a Ceph monitor."
 
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "device_node (Optional)", "plain", "xsd:string", "[Deprecated] The disk device node on the host that cgts-vg will be extended to create ceph-mon-lv."
-   "device_path (Optional)", "plain", "xsd:string", "[Deprecated] The disk device path on the host that cgts-vg will be extended to create ceph-mon-lv."
-   "host (Optional)", "plain", "xsd:string", "The name of host this ceph mon belongs to."
-   "ceph_mon_gib (Optional)", "plain", "xsd:integer", "The ceph-mon-lv size in GiB, for Ceph backend only."
-   "ceph_mon_dev (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on both controllers that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl0 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-0 that cgts-vg will be extended to create ceph-mon-lv."
-   "ceph_mon_dev_ctrl1 (Optional)", "plain", "xsd:string", "[Deprecated] The disk device on controller-1 that cgts-vg will be extended to create ceph-mon-lv."
-   "uuid (Optional)", "plain", "csapi:UUID", "The UUID of this ceph monitor."
-   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the storage backend belongs to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   [
-           {
-           "path": "/ceph_mon_gib",
-           "value": "35",
-           "op": "replace"
-           },
-           {
-           "path": "/controller",
-           "value": "controller-0",
-           "op": "replace"
-           }
-   ]
-
-::
-
-   {
-     "ceph_mon_dev_ctrl1": null,
-     "uuid": "9608cc7f-ace6-4fc7-8eb8-01cfebf6906e",
-     "links": [
-       {
-         "href": "http://10.10.20.2:6385/v1/ceph_mon/9608cc7f-ace6-4fc7-8eb8-01cfebf6906e",
-         "rel": "self"
-       },
-       {
-         "href": "http://10.10.20.2:6385/ceph_mon/9608cc7f-ace6-4fc7-8eb8-01cfebf6906e",
-         "rel": "bookmark"
-       }
-     ],
-     "ceph_mon_gib": 35,
-     "created_at": "2016-12-08T17:48:06.623435+00:00",
-     "hostname": "controller-0",
-     "updated_at": null,
-     "device_node": null,
-     "device_path": null,
-     "ceph_mon_dev_ctrl0": null
-   }
+This operation does not accept a request body.
 
 ---------------------------------
 System Certificate Configuration
