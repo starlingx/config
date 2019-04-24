@@ -226,6 +226,20 @@ class platform::kubernetes::master::init
       mode   => '0644',
       source => "puppet:///modules/${module_name}/kubeconfig.sh"
     }
+
+    # Deploy Multus as a Daemonset, and Calico is used as the default network
+    # (a network interface that every pod will be created with), each network
+    # attachment is made in addition to this default network.
+    -> file { '/etc/kubernetes/multus.yaml':
+      ensure  => file,
+      content => template('platform/multus.yaml.erb'),
+    }
+    -> exec {'deploy multus daemonset':
+      command   =>
+        'kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/multus.yaml',
+      logoutput => true,
+    }
+
     # Configure calico networking using the Kubernetes API datastore.
     -> file { '/etc/kubernetes/calico.yaml':
       ensure  => file,
@@ -234,6 +248,28 @@ class platform::kubernetes::master::init
     -> exec { 'install calico networking':
       command   =>
         'kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/calico.yaml',
+      logoutput => true,
+    }
+
+    # Deploy sriov-cni as a Daemonset
+    -> file { '/etc/kubernetes/sriov-cni.yaml':
+      ensure  => file,
+      content => template('platform/sriov-cni.yaml.erb'),
+    }
+    -> exec {'deploy sriov-cni daemonset':
+      command   =>
+        'kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriov-cni.yaml',
+      logoutput => true,
+    }
+
+    # Deploy SRIOV network device plugin as a Daemonset
+    -> file { '/etc/kubernetes/sriovdp-daemonset.yaml':
+      ensure  => file,
+      content => template('platform/sriovdp-daemonset.yaml.erb'),
+    }
+    -> exec {'deploy sriov device plugin daemonset':
+      command   =>
+        'kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriovdp-daemonset.yaml',
       logoutput => true,
     }
 
@@ -447,6 +483,28 @@ class platform::kubernetes::worker::init
   }
 }
 
+class platform::kubernetes::worker::pci
+(
+  $pcidp_network_resources = undef,
+) {
+  include ::platform::kubernetes::params
+
+  file { '/etc/pcidp':
+    ensure => 'directory',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0700',
+  }
+  -> file { '/etc/pcidp/config.json':
+    ensure  => present,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => template('platform/pcidp.conf.erb'),
+  }
+}
+
+
 class platform::kubernetes::worker
   inherits ::platform::kubernetes::params {
 
@@ -478,6 +536,8 @@ class platform::kubernetes::worker
     command => "/bin/sed -i 's#mode  = passive#mode  = ignore #' /etc/pmon.d/libvirtd.conf",
     onlyif  => '/usr/bin/test -e /etc/pmon.d/libvirtd.conf'
   }
+
+  contain ::platform::kubernetes::worker::pci
 }
 
 class platform::kubernetes::coredns {

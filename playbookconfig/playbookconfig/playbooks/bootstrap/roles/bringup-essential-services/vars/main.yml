@@ -4,7 +4,10 @@ armada_img: quay.io/airshipit/armada:af8a9ffd0873c2fbc915794e235dbd357f2adab1
 source_helm_repo: /opt/cgcs/helm_charts
 target_helm_repo: /www/pages/helm_charts
 kube_admin_yaml_template: /usr/share/puppet/modules/platform/templates/kubeadm.yaml.erb
+multus_yaml_template: /usr/share/puppet/modules/platform/templates/multus.yaml.erb
 calico_yaml_template: /usr/share/puppet/modules/platform/templates/calico.yaml.erb
+sriov_cni_yaml_template: /usr/share/puppet/modules/platform/templates/sriov-cni.yaml.erb
+sriovdp_daemonset_yaml_template: /usr/share/puppet/modules/platform/templates/sriovdp-daemonset.yaml.erb
 kubelet_override_template: /usr/share/puppet/modules/platform/templates/kube-stx-override.conf.erb
 kubelet_pmond_template: /usr/share/puppet/modules/platform/templates/kubelet-pmond-conf.erb
 lighttpd_conf_template: /usr/share/puppet/modules/openstack/templates/lighttpd.conf.erb
