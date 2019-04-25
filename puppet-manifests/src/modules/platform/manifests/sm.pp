@@ -82,9 +82,9 @@ class platform::sm
   $dockerdistribution_fs_device              = $::platform::drbd::dockerdistribution::params::device
   $dockerdistribution_fs_directory           = $::platform::drbd::dockerdistribution::params::mountpoint
 
-  include ::platform::helm::repository::params
-  $helmrepo_fs_source_dir = $::platform::helm::repository::params::source_helm_repo_dir
-  $helmrepo_fs_target_dir = $::platform::helm::repository::params::target_helm_repo_dir
+  include ::platform::helm::repositories::params
+  $helmrepo_fs_source_dir = $::platform::helm::repositories::params::source_helm_repos_base_dir
+  $helmrepo_fs_target_dir = $::platform::helm::repositories::params::target_helm_repos_base_dir
 
   include ::platform::drbd::cephmon::params
   $cephmon_drbd_resource          = $::platform::drbd::cephmon::params::resource_name

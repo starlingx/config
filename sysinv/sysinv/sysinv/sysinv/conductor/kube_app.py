@@ -115,7 +115,7 @@ def get_local_docker_registry_auth():
                 password=registry_password)
 
 
-Chart = namedtuple('Chart', 'name namespace')
+Chart = namedtuple('Chart', 'name namespace location')
 
 
 class AppOperator(object):
@@ -439,9 +439,10 @@ class AppOperator(object):
         # so it can be sync'ed.
         if app.system_app:
             LOG.info("Generating application overrides...")
-            self._helm.generate_helm_application_overrides(
-                app.name, mode=None, cnamespace=None, armada_format=True, combined=True)
             app.charts = self._get_list_of_charts(app.armada_mfile_abs)
+            self._helm.generate_helm_application_overrides(
+                app.name, mode=None, cnamespace=None, armada_format=True,
+                armada_chart_info=app.charts, combined=True)
             self._save_images_list_by_charts(app)
             # Get the list of images from the updated images overrides
             images_to_download = self._get_image_tags_by_charts(
@@ -555,6 +556,29 @@ class AppOperator(object):
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason="one or more charts failed validation.")
 
+    def _get_helm_repo_from_metadata(self, app):
+        """Get helm repo from application metadata
+
+        This extracts the helm repo from the application metadata where the
+        chart should be loaded.
+
+        :param app: application
+        """
+        repo = common.HELM_REPO_FOR_APPS
+        lfile = os.path.join(app.path, 'metadata.yaml')
+
+        if os.path.exists(lfile) and os.path.getsize(lfile) > 0:
+            with open(lfile, 'r') as f:
+                try:
+                    y = yaml.safe_load(f)
+                    repo = y['helm_repo']
+                except KeyError:
+                    pass
+
+        LOG.info("Application %s will load charts to chart repo %s" % (
+            app.name, repo))
+        return repo
+
     def _upload_helm_charts(self, app):
         # Set env path for helm-upload execution
         env = os.environ.copy()
@@ -563,14 +587,15 @@ class AppOperator(object):
                   for r, f in cutils.get_files_matching(app.charts_dir, '.tgz')]
 
         orig_uid, orig_gid = get_app_install_root_path_ownership()
+        helm_repo = self._get_helm_repo_from_metadata(app)
         try:
             # Temporarily change /scratch group ownership to wrs_protected
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid,
                      grp.getgrnam(constants.SYSINV_WRS_GRPNAME).gr_gid)
             with open(os.devnull, "w") as fnull:
                 for chart in charts:
-                    subprocess.check_call(['helm-upload', chart], env=env,
-                                          stdout=fnull, stderr=fnull)
+                    subprocess.check_call(['helm-upload', helm_repo, chart],
+                                          env=env, stdout=fnull, stderr=fnull)
                     LOG.info("Helm chart %s uploaded" % os.path.basename(chart))
         except Exception as e:
             raise exception.KubeAppUploadFailure(
@@ -748,7 +773,14 @@ class AppOperator(object):
                     if "armada/Chart/" in doc['schema']:
                         charts.append(Chart(
                             name=doc['data']['chart_name'],
-                            namespace=doc['data']['namespace']))
+                            namespace=doc['data']['namespace'],
+                            location=doc['data']['source']['location']))
+                        LOG.debug("Manifest: Chart: {} Namespace: {} "
+                                  "Location: {}".format(
+                                      doc['data']['chart_name'],
+                                      doc['data']['namespace'],
+                                      doc['data']['source']['location']))
+
                 except KeyError:
                     pass
         return charts
@@ -987,7 +1019,7 @@ class AppOperator(object):
                 LOG.info("Generating application overrides...")
                 self._helm.generate_helm_application_overrides(
                     app.name, mode, cnamespace=None, armada_format=True,
-                    combined=True)
+                    armada_chart_info=app.charts, combined=True)
                 overrides_files = self._get_overrides_files(app.charts, app.name, mode)
                 if overrides_files:
                     LOG.info("Application overrides generated.")

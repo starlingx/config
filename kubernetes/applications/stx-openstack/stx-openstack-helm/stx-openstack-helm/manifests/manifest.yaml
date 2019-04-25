@@ -10,7 +10,7 @@ data:
   values: {}
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/helm-toolkit-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/helm-toolkit-0.1.0.tgz
     subpath: helm-toolkit
     reference: master
   dependencies: []
@@ -54,7 +54,7 @@ data:
             default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/ingress-0.1.0.tgz
     subpath: ingress
     reference: master
   dependencies:
@@ -99,7 +99,7 @@ data:
             default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/ingress-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/ingress-0.1.0.tgz
     subpath: ingress
     reference: master
   dependencies:
@@ -128,7 +128,7 @@ data:
             app: rbd-provisioner
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/rbd-provisioner-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/rbd-provisioner-0.1.0.tgz
     subpath: rbd-provisioner
     reference: master
   dependencies:
@@ -157,7 +157,7 @@ data:
             app: osh-openstack-ceph-pools-audit
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/ceph-pools-audit-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/ceph-pools-audit-0.1.0.tgz
     subpath: ceph-pools-audit
     reference: master
   dependencies:
@@ -205,7 +205,7 @@ data:
             default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/mariadb-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/mariadb-0.1.0.tgz
     subpath: mariadb
   dependencies:
     - helm-toolkit
@@ -241,7 +241,7 @@ data:
         garbd: docker.io/starlingx/stx-mariadb:master-centos-stable-latest
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/garbd-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/garbd-0.1.0.tgz
     subpath: garbd
   dependencies:
     - helm-toolkit
@@ -280,7 +280,7 @@ data:
         enabled: false
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/memcached-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/memcached-0.1.0.tgz
     subpath: memcached
     reference: master
   dependencies:
@@ -340,7 +340,7 @@ data:
       size: 1Gi
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/rabbitmq-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/rabbitmq-0.1.0.tgz
     subpath: rabbitmq
     reference: master
   dependencies:
@@ -414,7 +414,7 @@ data:
             runAsUser: 0
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/keystone-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/keystone-0.1.0.tgz
     subpath: keystone
     reference: master
   dependencies:
@@ -515,7 +515,7 @@ data:
             default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/barbican-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/barbican-0.1.0.tgz
     subpath: barbican
     reference: master
   dependencies:
@@ -580,7 +580,7 @@ data:
             default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/glance-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/glance-0.1.0.tgz
     subpath: glance
     reference: master
   dependencies:
@@ -661,7 +661,7 @@ data:
     storage: rbd
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/cinder-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/cinder-0.1.0.tgz
     subpath: cinder
     reference: master
   dependencies:
@@ -697,7 +697,7 @@ data:
         libvirt: docker.io/starlingx/stx-libvirt:master-centos-stable-latest
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/libvirt-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/libvirt-0.1.0.tgz
     subpath: libvirt
     reference: master
   dependencies:
@@ -733,7 +733,7 @@ data:
         node_selector_value: enabled
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/openvswitch-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/openvswitch-0.1.0.tgz
     subpath: openvswitch
     reference: master
   dependencies:
@@ -987,7 +987,7 @@ data:
 
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/nova-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/nova-0.1.0.tgz
     subpath: nova
     reference: master
   dependencies:
@@ -1027,7 +1027,7 @@ data:
         ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/nova-api-proxy-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/nova-api-proxy-0.1.0.tgz
     subpath: nova-api-proxy
     reference: master
   dependencies:
@@ -1233,7 +1233,7 @@ data:
             firewall_driver: openvswitch
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/neutron-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/neutron-0.1.0.tgz
     subpath: neutron
     reference: master
   dependencies:
@@ -1318,7 +1318,7 @@ data:
             default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/heat-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/heat-0.1.0.tgz
     subpath: heat
     reference: master
   dependencies:
@@ -1380,7 +1380,7 @@ data:
         cron: "35 */24 * * *"
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/aodh-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/aodh-0.1.0.tgz
     subpath: aodh
     reference: master
   dependencies:
@@ -1529,7 +1529,7 @@ data:
           default: memcached
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/gnocchi-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/gnocchi-0.1.0.tgz
     subpath: gnocchi
     reference: master
   dependencies:
@@ -1588,7 +1588,7 @@ data:
         cron: "10 * * * *"
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/panko-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/panko-0.1.0.tgz
     subpath: panko
     reference: master
   dependencies:
@@ -2116,7 +2116,7 @@ data:
             default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/ceilometer-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/ceilometer-0.1.0.tgz
     subpath: ceilometer
     reference: master
   dependencies:
@@ -2959,7 +2959,7 @@ data:
             {{- end }}
   source:
     type: tar
-    location: http://172.17.0.1/helm_charts/horizon-0.1.0.tgz
+    location: http://172.17.0.1/helm_charts/starlingx/horizon-0.1.0.tgz
     subpath: horizon
     reference: master
   dependencies:

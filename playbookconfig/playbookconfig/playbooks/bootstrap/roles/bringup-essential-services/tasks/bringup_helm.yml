@@ -107,7 +107,7 @@
     - "{{ tiller_img }}"
     - "{{ armada_img }}"
 
-- name: Create source and target helm repos
+- name: Create source and target helm bind directories
   file:
     path: "{{ item }}"
     state: directory
@@ -115,8 +115,19 @@
     group: root
     mode: 0755
   with_items:
-    - "{{ source_helm_repo }}"
-    - "{{ target_helm_repo }}"
+    - "{{ source_helm_bind_dir }}"
+    - "{{ target_helm_bind_dir }}"
+
+- name: Create helm repository directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: www
+    group: root
+    mode: 0755
+  with_items:
+    - "{{ source_helm_bind_dir }}/{{ helm_repo_name_apps }}"
+    - "{{ source_helm_bind_dir }}/{{ helm_repo_name_platform }}"
 
 - name: Create service account for Tiller
   command: >
@@ -160,39 +171,12 @@
       recurse: yes
   when: inventory_hostname != 'localhost'
 
-- name: Restart lighttpd for Helm
-  systemd:
-    name: lighttpd
-    state: restarted
-
-- name: Generate Helm repo index on target
-  command: helm repo index {{ target_helm_repo }}
+- name: Generate Helm repo indicies
+  command: helm repo index "{{ source_helm_bind_dir }}/{{ item }}"
   become_user: www
-
-- name: Add local StarlingX Helm repo (local host)
-  command: helm repo add starlingx http://127.0.0.1/helm_charts
-  become_user: wrsroot
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-    HOME: /home/wrsroot
-  when: inventory_hostname == 'localhost'
-
-# Workaround for helm repo add remotely
-- block:
-  - name: Add StarlingX Helm repo (remote host)
-    command: helm repo add starlingx http://127.0.0.1/helm_charts
-    environment:
-      KUBECONFIG: /etc/kubernetes/admin.conf
-      HOME: /home/wrsroot
-
-  - name: Change helm directory ownership to pick up newly generated files (remote host)
-    file:
-      dest: /home/wrsroot/.helm
-      owner: wrsroot
-      group: wrs
-      mode: 0755
-      recurse: yes
-  when: inventory_hostname != 'localhost'
+  with_items:
+    - "{{ helm_repo_name_apps }}"
+    - "{{ helm_repo_name_platform }}"
 
 - name: Stop lighttpd
   systemd:
@@ -203,12 +187,71 @@
   # Systemd module does not support disabled state. Resort to command
   command: systemctl disable lighttpd
 
-- name: Bind mount {{ target_helm_repo }}
+- name: Bind mount on {{ target_helm_bind_dir }}
   # Due to deficiency of mount module, resort to command for now
-  command: mount -o bind -t ext4 {{ source_helm_repo }} {{ target_helm_repo }}
+  command: mount -o bind -t ext4 {{ source_helm_bind_dir }} {{ target_helm_bind_dir }}
   args:
     warn: false
 
-- name: Generate Helm repo index on source
-  command: helm repo index {{ source_helm_repo }}
-  become_user: www
+- name: Enable lighttpd
+  command: systemctl enable lighttpd
+
+- name: Restart lighttpd for Helm
+  systemd:
+    name: lighttpd
+    state: restarted
+
+- name: Add Helm repos (local host)
+  command: helm repo add "{{ item }}" "http://127.0.0.1:$PORT/helm_charts/{{ item }}"
+  become_user: wrsroot
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+    HOME: /home/wrsroot
+    PORT: 80
+  with_items:
+    - "{{ helm_repo_name_apps }}"
+    - "{{ helm_repo_name_platform }}"
+  when: inventory_hostname == 'localhost'
+
+# Workaround for helm repo add remotely
+- block:
+  - name: Add Helm repos (remote host)
+    command: helm repo add "{{ item }}" "http://127.0.0.1:$PORT/helm_charts/{{ item }}"
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf
+      HOME: /home/wrsroot
+      PORT: 80
+    with_items:
+      - "{{ helm_repo_name_apps }}"
+      - "{{ helm_repo_name_platform }}"
+
+  - name: Change helm directory ownership to pick up newly generated files (remote host)
+    file:
+      dest: /home/wrsroot/.helm
+      owner: wrsroot
+      group: wrs
+      mode: 0755
+      recurse: yes
+  when: inventory_hostname != 'localhost'
+
+- name: Update info of available charts locally from chart repos
+  command: helm repo update
+  become_user: wrsroot
+  when: inventory_hostname == 'localhost'
+
+# Workaround for helm update remotely. Not sure why the task cannot be executed
+# successfully as wrsroot on remote host.
+- block:
+  - name: Update info of available charts locally from chart repos (remote host)
+    command: helm repo update
+    environment:
+      HOME: /home/wrsroot
+
+  - name: Change helm directory ownership (remote host)
+    file:
+      dest: /home/wrsroot/.helm
+      owner: wrsroot
+      group: wrs
+      mode: 0755
+      recurse: yes
+  when: inventory_hostname != 'localhost'

@@ -10,6 +10,7 @@ from __future__ import absolute_import
 
 import eventlet
 import os
+import re
 import subprocess
 import tempfile
 import yaml
@@ -231,7 +232,7 @@ class HelmOperator(object):
                     LOG.info(e)
         return overrides
 
-    def _get_helm_chart_location(self, chart_name):
+    def _get_helm_chart_location(self, chart_name, repo_name):
         """Get supported chart location.
 
         This method returns the download location for a given chart.
@@ -241,10 +242,11 @@ class HelmOperator(object):
         """
         if chart_name in self.chart_operators:
             return self.chart_operators[chart_name].get_chart_location(
-                chart_name)
+                chart_name, repo_name)
         return None
 
-    def _add_armada_override_header(self, chart_name, namespace, overrides):
+    def _add_armada_override_header(self, chart_name, repo_name, namespace,
+                                    overrides):
         use_chart_name_only = [common.HELM_NS_HELM_TOOLKIT]
         if namespace in use_chart_name_only:
             name = chart_name
@@ -260,7 +262,7 @@ class HelmOperator(object):
                 'values': overrides
             }
         }
-        location = self._get_helm_chart_location(chart_name)
+        location = self._get_helm_chart_location(chart_name, repo_name)
         if location:
             new_overrides['data'].update({
                 'source': {
@@ -268,6 +270,32 @@ class HelmOperator(object):
                 }
             })
         return new_overrides
+
+    def _get_repo_from_armada_chart_info(self, chart_name, chart_info_list):
+        """ Extract the repo from the armada manifest chart location.
+
+        :param chart_name: name of the chart from the (application list)
+        :param chart_info_list: a list of chart objects containing information
+            extracted from the armada manifest
+        :returns: the supported StarlingX repository or None if not present
+        """
+
+        # Could be called without any armada_manifest info. Returning 'None'
+        # will enable helm defaults to point to common.HELM_REPO_FOR_APPS
+        repo = None
+        if chart_info_list is None:
+            return repo
+
+        location = next(
+            (c.location for c in chart_info_list if c.name == chart_name),
+            None)
+
+        if location:
+            match = re.search('/helm_charts/(.*)/', location)
+            if match:
+                repo = match.group(1)
+        LOG.debug("Chart %s can be found in repo: %s" % (chart_name, repo))
+        return repo
 
     def merge_overrides(self, file_overrides=[], set_overrides=[]):
         """ Merge helm overrides together.
@@ -381,6 +409,7 @@ class HelmOperator(object):
     def generate_helm_application_overrides(self, app_name, mode=None,
                                             cnamespace=None,
                                             armada_format=False,
+                                            armada_chart_info=None,
                                             combined=False):
         """Create the system overrides files for a supported application
 
@@ -390,13 +419,16 @@ class HelmOperator(object):
         be written..
 
         :param app_name: name of the bundle of charts required to support an
-                         application
+            application
         :param mode: mode to control how to apply application manifest
         :param cnamespace: (optional) namespace
         :param armada_format: (optional) whether to emit in armada format
-                              instead of helm format (with extra header)
+            instead of helm format (with extra header)
+        :param armada_chart_info: (optional) supporting chart information
+            extracted from the armada manifest which is used to influence
+            overrides
         :param combined: (optional) whether to apply user overrides on top of
-                         system overrides
+            system overrides
         """
 
         if app_name in self.helm_applications:
@@ -404,15 +436,16 @@ class HelmOperator(object):
                                                                  cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
                 if combined:
-                    # The overrides at this point is the system overrides. For charts
-                    # with multiple namespaces, the overrides would contain multiple keys,
-                    # one for each namespace.
+                    # The overrides at this point are the system overrides. For
+                    # charts with multiple namespaces, the overrides would
+                    # contain multiple keys, one for each namespace.
                     #
-                    # Retrieve the user overrides of each namespace from the database
-                    # and merge this list of user overrides if exists with the
-                    # system overrides. Both system and user overrides contents
-                    # are then merged based on the namespace, prepended with required
-                    # header and written to corresponding files (<namespace>-<chart>.yaml).
+                    # Retrieve the user overrides of each namespace from the
+                    # database and merge this list of user overrides, if they
+                    # exist, with the system overrides. Both system and user
+                    # override contents are then merged based on the namespace,
+                    # prepended with required header and written to
+                    # corresponding files (<namespace>-<chart>.yaml).
                     file_overrides = []
                     for chart_namespace in overrides.keys():
                         try:
@@ -438,8 +471,11 @@ class HelmOperator(object):
                 # structure of the yaml file somewhat
                 if armada_format:
                     for key in overrides:
+                        armada_chart_repo_name = self._get_repo_from_armada_chart_info(
+                            chart_name, armada_chart_info)
                         new_overrides = self._add_armada_override_header(
-                            chart_name, key, overrides[key])
+                            chart_name, armada_chart_repo_name,
+                            key, overrides[key])
                         overrides[key] = new_overrides
                 self._write_chart_overrides(chart_name, cnamespace, overrides)
 

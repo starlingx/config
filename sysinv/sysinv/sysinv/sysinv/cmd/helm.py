@@ -30,7 +30,9 @@ def create_armada_app_overrides_action(path, app_name=None, namespace=None):
     dbapi = api.get_instance()
     operator = helm.HelmOperator(dbapi=dbapi, path=path)
     operator.generate_helm_application_overrides(app_name, mode=None, cnamespace=namespace,
-                                                 armada_format=True)
+                                                 armada_format=True,
+                                                 armada_chart_info=None,
+                                                 combined=False)
 
 
 def create_chart_override_action(path, chart_name=None, namespace=None):
