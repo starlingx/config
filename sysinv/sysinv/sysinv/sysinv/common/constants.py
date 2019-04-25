@@ -1480,6 +1480,12 @@ HELM_APP_APPLY_MODES = {
     HELM_APP_OPENSTACK: OPENSTACK_APP_APPLY_MODES
 }
 
+HELM_APPS_PLATFORM_MANAGED = [
+    HELM_APP_PLATFORM,
+]
+
+HELM_APP_ISO_INSTALL_PATH = '/usr/local/share/applications/helm'
+
 # RBD Provisioner Ceph backend capabilities fields
 K8S_RBD_PROV_STORAGECLASS_NAME = 'rbd_storageclass_name'             # Customer
 K8S_RBD_PROV_NAMESPACES = 'rbd_provisioner_namespaces'               # Customer
@@ -1501,6 +1507,7 @@ APP_SYNCED_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
 APP_METADATA_FILE = 'metadata.yaml'
 
 # State constants
+APP_NOT_PRESENT = 'missing'
 APP_UPLOAD_IN_PROGRESS = 'uploading'
 APP_UPLOAD_SUCCESS = 'uploaded'
 APP_UPLOAD_FAILURE = 'upload-failed'

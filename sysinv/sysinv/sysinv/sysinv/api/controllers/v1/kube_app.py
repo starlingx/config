@@ -339,8 +339,9 @@ class KubeAppHelper(object):
             )
             query_patches = response['pd']
         except Exception as e:
+            # Assume that a patching operation is underway, raise an exception.
             LOG.error(_("No response from patch api: %s" % e))
-            return
+            raise
 
         for patch in query_patches:
             patch_state = query_patches[patch].get('patchstate', None)
@@ -430,6 +431,10 @@ class KubeAppHelper(object):
                 raise exception.SysinvException(_(
                     "{}. Please upload after the patching operation "
                     "is completed.".format(e)))
+            except Exception as e:
+                raise exception.SysinvException(_(
+                    "{}. Communication Error with patching subsytem. "
+                    "Preventing application upload.".format(e)))
 
             applied = self._check_patch_is_applied(patches)
             if not applied:

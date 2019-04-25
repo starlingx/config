@@ -32,7 +32,6 @@ import tsconfig.tsconfig as tsc
 from oslo_config import cfg
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common.utils import memoized
 from sysinv.helm import common as helm_common
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
@@ -338,7 +337,6 @@ class SystemHelper(object):
 
 class HostHelper(object):
     @staticmethod
-    @memoized
     def get_active_controller(dbapi=None):
         """Returns host object for active controller."""
         if not dbapi:
