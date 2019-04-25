@@ -19,6 +19,7 @@ BuildArch: noarch
 BuildRequires: helm
 BuildRequires: openstack-helm-infra
 Requires: openstack-helm-infra
+Requires: openstack-helm
 
 %description
 StarlingX Openstack Application Helm charts
