@@ -3603,6 +3603,11 @@ class ConductorManager(service.PeriodicService):
         # Go through the partitions reported by the agent and make needed
         # modifications.
         for ipart in ipart_dict_array:
+            # Not to add ceph osd related partitions
+            if (ipart['type_guid'] == constants.CEPH_DATA_PARTITION or
+                   ipart['type_guid'] == constants.CEPH_JOURNAL_PARTITION):
+                continue
+
             part_dict = {
                 'forihostid': forihostid,
                 'status': constants.PARTITION_IN_USE_STATUS,  # Be conservative here

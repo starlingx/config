@@ -4590,21 +4590,38 @@ class HostController(rest.RestController):
                 constants.STORAGE
             )
 
-            storage_enabled = 0
-            for ihost in ihosts:
-                if ihost.operational == constants.OPERATIONAL_ENABLED:
-                    storage_enabled = storage_enabled + 1
+            if ihosts:
+                # For storage setup, no change is required.
+                LOG.info("This is a storage setup. No change.")
+                storage_enabled = 0
+                for ihost in ihosts:
+                    if ihost.operational == constants.OPERATIONAL_ENABLED:
+                        storage_enabled = storage_enabled + 1
 
-            if storage_enabled and storage_enabled == len(ihosts):
-                LOG.info("All storage hosts are %s. Restore crushmap..." %
-                         constants.OPERATIONAL_ENABLED)
+                if storage_enabled and storage_enabled == len(ihosts):
+                    LOG.info("All storage hosts are %s. Restore crushmap..." %
+                             constants.OPERATIONAL_ENABLED)
+                    try:
+                        if not pecan.request.rpcapi.restore_ceph_config(
+                                pecan.request.context, after_storage_enabled=True):
+                            raise Exception("restore_ceph_config returned false")
+                    except Exception as e:
+                        raise wsme.exc.ClientSideError(
+                            _("Restore Ceph config failed: %s" % e))
+            elif utils.is_aio_system(pecan.request.dbapi):
+                # TODO(wz): Need more work to restore ceph for AIO
+                LOG.info("For an AIO system, Restore crushmap...")
                 try:
                     if not pecan.request.rpcapi.restore_ceph_config(
-                            pecan.request.context, after_storage_enabled=True):
+                                pecan.request.context, after_storage_enabled=True):
                         raise Exception("restore_ceph_config returned false")
                 except Exception as e:
                     raise wsme.exc.ClientSideError(
                         _("Restore Ceph config failed: %s" % e))
+
+            else:
+                # TODO(wz): Need more work to restore ceph for 2+2
+                pass
 
     @staticmethod
     def update_ihost_action(action, hostupdate):

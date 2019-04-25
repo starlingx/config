@@ -37,6 +37,7 @@ import tsconfig.tsconfig as tsconfig
 from controllerconfig import utils
 from controllerconfig import sysinv_api as sysinv
 from six.moves import input
+from os import environ
 
 LOG = log.get_logger(__name__)
 
@@ -47,42 +48,44 @@ RESTORE_RERUN_REQUIRED = "restore-rerun-required"
 # Backup/restore related constants
 backup_in_progress = tsconfig.BACKUP_IN_PROGRESS_FLAG
 restore_in_progress = tsconfig.RESTORE_IN_PROGRESS_FLAG
-restore_system_ready = tsconfig.RESTORE_SYSTEM_FLAG
 restore_patching_complete = '/etc/platform/.restore_patching_complete'
 node_is_patched = '/var/run/node_is_patched'
 keyring_permdir = os.path.join('/opt/platform/.keyring', tsconfig.SW_VERSION)
 ceph_permdir = os.path.join(tsconfig.CONFIG_PATH, 'ceph-config')
 ldap_permdir = '/var/lib/openldap-data'
-ceilometer_permdir = '/opt/cgcs/ceilometer/' + tsconfig.SW_VERSION
-glance_permdir = '/opt/cgcs/glance'
 patching_permdir = '/opt/patching'
 patching_repo_permdir = '/www/pages/updates'
 home_permdir = '/home'
-cinder_permdir = '/opt/cgcs/cinder'
 extension_permdir = '/opt/extension'
 patch_vault_permdir = '/opt/patch-vault'
+mariadb_pod = 'mariadb-server-0'
+
+kube_config = environ.get('KUBECONFIG')
+if kube_config is None:
+    kube_config = '/etc/kubernetes/admin.conf'
 
 
-def get_backup_databases(cinder_config=False):
+kube_cmd_prefix = 'kubectl --kubeconfig=%s ' % kube_config
+kube_cmd_prefix += 'exec -i %s -n openstack -- bash -c ' % mariadb_pod
+
+mysql_prefix = '\'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" '
+mysqldump_prefix = '\'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" '
+
+
+def get_backup_databases():
     """
     Retrieve database lists for backup.
     :return: backup_databases and backup_database_skip_tables
     """
 
     # Databases common to all configurations
-    REGION_LOCAL_DATABASES = ('postgres', 'template1', 'nova', 'sysinv',
-                              'neutron', 'heat', 'nova_api',
-                              'aodh', 'murano', 'magnum', 'ironic',
-                              'nova_cell0', 'gnocchi', 'fm', 'barbican')
-    REGION_SHARED_DATABASES = ('glance', 'keystone')
-
-    if cinder_config:
-        REGION_SHARED_DATABASES += ('cinder', )
+    REGION_LOCAL_DATABASES = ('postgres', 'template1', 'sysinv',
+                              'fm', 'barbican')
+    REGION_SHARED_DATABASES = ('keystone',)
 
     # Indicates which tables have to be dropped for a certain database.
     DB_TABLE_SKIP_MAPPING = {
         'fm': ('alarm',),
-        'gnocchi': ('metric', 'resource'),
         'dcorch': ('orch_job',
                    'orch_request',
                    'resource',
@@ -90,13 +93,6 @@ def get_backup_databases(cinder_config=False):
 
     if tsconfig.region_config == 'yes':
         BACKUP_DATABASES = REGION_LOCAL_DATABASES
-        # Add databases which are optional in secondary regions(and subclouds)
-        shared_services = sysinv.get_shared_services()
-        for service_type in ["image", "volume"]:
-            if service_type not in shared_services:
-                service = 'glance' if service_type == "image" else 'cinder'
-                BACKUP_DATABASES += (service, )
-
     else:
         # Add additional databases for non-region configuration and for the
         # primary region in region deployments.
@@ -114,6 +110,32 @@ def get_backup_databases(cinder_config=False):
         [[x, DB_TABLE_SKIP_MAPPING.get(x, ())] for x in BACKUP_DATABASES])
 
     return BACKUP_DATABASES, BACKUP_DB_SKIP_TABLES
+
+
+def get_os_backup_databases():
+    """
+    Retrieve openstack database lists from MariaDB for backup.
+    :return: os_backup_databases
+    """
+
+    skip_dbs = ("Database", "information_schema", "performance_schema",
+                "mysql", "horizon", "panko", "aodh", "gnocchi")
+
+    try:
+        db_cmd = kube_cmd_prefix + mysql_prefix + '-e"show databases" \''
+
+        proc = subprocess.Popen([db_cmd], shell=True,
+                                stdout=subprocess.PIPE, stderr=DEVNULL)
+
+        os_backup_dbs = set(line[:-1] for line in proc.stdout
+                            if line[:-1] not in skip_dbs)
+
+        proc.communicate()
+
+        return os_backup_dbs
+
+    except subprocess.CalledProcessError:
+        raise BackupFail("Failed to get openstack databases from MariaDB.")
 
 
 def check_load_versions(archive, staging_dir):
@@ -459,13 +481,19 @@ def restore_static_puppet_data(archive, puppet_workdir):
         pass
 
 
-def restore_puppet_data(archive, puppet_workdir):
+def restore_puppet_data(archive, puppet_workdir, controller_0_address):
     """ Restore puppet data """
     try:
-        archive.extractall(
-            path=os.path.dirname(puppet_workdir),
-            members=filter_directory(archive,
-                                     os.path.basename(puppet_workdir)))
+        member = archive.getmember('hieradata/system.yaml')
+        archive.extract(member, path=os.path.dirname(puppet_workdir))
+
+        member = archive.getmember('hieradata/secure_system.yaml')
+        archive.extract(member, path=os.path.dirname(puppet_workdir))
+
+        # Only restore controller-0 hieradata
+        controller_0_hieradata = 'hieradata/%s.yaml' % controller_0_address
+        member = archive.getmember(controller_0_hieradata)
+        archive.extract(member, path=os.path.dirname(puppet_workdir))
 
     except tarfile.TarError:
         LOG.error("Failed to restore puppet data.")
@@ -475,61 +503,46 @@ def restore_puppet_data(archive, puppet_workdir):
         pass
 
 
-def backup_cinder_config(archive):
-    """ Backup cinder configuration """
-
-    # If the iscsi target config file exists, add it to the archive
-    # On setups without LVM backends this file is absent
-    if os.path.exists(cinder_permdir + '/iscsi-target/saveconfig.json'):
-        archive.add(
-            cinder_permdir + '/iscsi-target/saveconfig.json',
-            arcname='cinder/saveconfig.json')
-
-
-def restore_cinder_file(archive, dest_dir, cinder_file):
-    """ Restore cinder file """
+def backup_armada_manifest_size(armada_permdir):
+    """ Backup armada manifest size estimate """
     try:
-        # Change the name of this file to remove the leading path
-        member = archive.getmember('cinder/' + cinder_file)
-        # Copy the member to avoid changing the name for future operations on
-        # this member.
-        temp_member = copy.copy(member)
-        temp_member.name = os.path.basename(temp_member.name)
-        archive.extract(temp_member, path=dest_dir)
-
-    except tarfile.TarError:
-        LOG.error("Failed to restore cinder file %s." % cinder_file)
-        raise RestoreFail("Failed to restore configuration")
-
-
-def restore_cinder_config(archive):
-    """Restore cinder config files"""
-    # If the iscsi target config file is present in the archive,
-    # restore it.
-    if file_exists_in_archive(archive, 'cinder/saveconfig.json'):
-        restore_cinder_file(
-            archive, cinder_permdir + '/iscsi-target',
-            'saveconfig.json')
-        # Also create a copy of the original file as the volume
-        # restore procedure changes this file and breaks the
-        # valid nova settings.
-        shutil.copyfile(
-            cinder_permdir + '/iscsi-target/saveconfig.json',
-            cinder_permdir + '/iscsi-target/saveconfig.json.bck')
-
-
-def backup_cinder_size(cinder_permdir):
-    """ Backup cinder size estimate """
-    try:
-        if not os.path.exists(
-                cinder_permdir + '/iscsi-target/saveconfig.json'):
-            return 0
-        statinfo = os.stat(cinder_permdir + '/iscsi-target/saveconfig.json')
-        return statinfo.st_size
+        return(utils.directory_get_size(armada_permdir))
 
     except OSError:
-        LOG.error("Failed to estimate backup cinder size.")
-        raise BackupFail("Failed to estimate backup cinder size")
+        LOG.error("Failed to estimate backup armada manifest size.")
+        raise BackupFail("Failed to estimate backup armada manifest size")
+
+
+def backup_armada_manifest_data(archive, armada_permdir):
+    """ Backup armada manifest data """
+    try:
+        archive.add(armada_permdir, arcname='armada')
+
+    except tarfile.TarError:
+        LOG.error("Failed to backup armada manifest data.")
+        raise BackupFail("Failed to backup armada manifest data")
+
+
+def restore_armada_manifest_data(archive, armada_permdir):
+    """ Restore armada manifest data  """
+    try:
+        shutil.rmtree(armada_permdir, ignore_errors=True)
+        members = filter_directory(archive, 'armada')
+        temp_members = list()
+        # remove armada and armada/ from the member path since they are
+        # extracted to armada_permdir: /opt/platform/armada/release
+        for m in members:
+            temp_member = copy.copy(m)
+            lst = temp_member.name.split('armada/')
+            if len(lst) > 1:
+                temp_member.name = lst[1]
+                temp_members.append(temp_member)
+        archive.extractall(path=armada_permdir, members=temp_members)
+
+    except (tarfile.TarError, OSError):
+        LOG.error("Failed to restore armada manifest.")
+        shutil.rmtree(armada_permdir, ignore_errors=True)
+        raise RestoreFail("Failed to restore armada manifest")
 
 
 def backup_keyring_size(keyring_permdir):
@@ -671,7 +684,114 @@ def restore_ldap(archive, ldap_permdir, staging_dir):
         utils.start_lsb_service('openldap')
 
 
-def backup_postgres_size(cinder_config=False):
+def backup_mariadb_size():
+    """ Backup MariaDB size estimate """
+    try:
+        total_size = 0
+
+        os_backup_dbs = get_os_backup_databases()
+
+        # Backup data for databases.
+        for db_elem in os_backup_dbs:
+
+            db_cmd = kube_cmd_prefix + mysqldump_prefix
+            db_cmd += ' %s\' | wc -c' % db_elem
+
+            proc = subprocess.Popen([db_cmd], shell=True,
+                                    stdout=subprocess.PIPE, stderr=DEVNULL)
+
+            total_size += int(proc.stdout.readline())
+            proc.communicate()
+
+        return total_size
+
+    except subprocess.CalledProcessError:
+        LOG.error("Failed to estimate MariaDB database size.")
+        raise BackupFail("Failed to estimate MariaDB database size")
+
+
+def backup_mariadb(archive, staging_dir):
+    """ Backup MariaDB data """
+    try:
+        mariadb_staging_dir = staging_dir + '/mariadb'
+        os.mkdir(mariadb_staging_dir, 0o655)
+
+        os_backup_dbs = get_os_backup_databases()
+
+        # Backup data for databases.
+        for db_elem in os_backup_dbs:
+            db_cmd = kube_cmd_prefix + mysqldump_prefix
+            db_cmd += ' %s\' > %s/%s.sql.data' % (db_elem,
+                                                  mariadb_staging_dir, db_elem)
+
+            subprocess.check_call([db_cmd], shell=True, stderr=DEVNULL)
+
+        archive.add(mariadb_staging_dir, arcname='mariadb')
+
+    except (OSError, subprocess.CalledProcessError, tarfile.TarError):
+        LOG.error("Failed to backup MariaDB databases.")
+        raise BackupFail("Failed to backup MariaDB database.")
+
+
+def extract_mariadb_data(archive):
+    """ Extract and store MariaDB data """
+    try:
+        # We store MariaDB data in /opt/backups/mariadb for now.
+        # After MariaDB service is up, we will populate the
+        # database using these data.
+        archive.extractall(path=constants.BACKUPS_PATH,
+                           members=filter_directory(archive, 'mariadb'))
+    except (OSError, tarfile.TarError) as e:
+        LOG.error("Failed to extract and store MariaDB data. Error: %s", e)
+        raise RestoreFail("Failed to extract and store MariaDB data.")
+
+
+def create_helm_overrides_directory():
+    """
+    Create helm overrides directory
+    During restore, application-apply will be done without
+    first running application-upload where the helm overrides
+    directory is created. So we need to create the helm overrides
+    directory before running application-apply.
+    """
+    try:
+        os.mkdir(constants.HELM_OVERRIDES_PERMDIR, 0o755)
+    except OSError:
+        LOG.error("Failed to create helm overrides directory")
+        raise BackupFail("Failed to create helm overrides directory")
+
+
+def restore_mariadb():
+    """
+    Restore MariaDB
+
+    This function is called after MariaDB service is up
+    """
+    try:
+        mariadb_staging_dir = constants.BACKUPS_PATH + '/mariadb'
+        # Restore data for databases.
+        for data in glob.glob(mariadb_staging_dir + '/*.sql.data'):
+            db_elem = data.split('/')[-1].split('.')[0]
+            create_db = "create database %s" % db_elem
+
+            # Create the database
+            db_cmd = kube_cmd_prefix + mysql_prefix + '-e"%s" \'' % create_db
+            subprocess.check_call([db_cmd], shell=True, stderr=DEVNULL)
+
+            # Populate data
+            db_cmd = 'cat %s | ' % data
+            db_cmd = db_cmd + kube_cmd_prefix + mysql_prefix
+            db_cmd += '%s\' ' % db_elem
+            subprocess.check_call([db_cmd], shell=True, stderr=DEVNULL)
+
+        shutil.rmtree(mariadb_staging_dir, ignore_errors=True)
+
+    except (OSError, subprocess.CalledProcessError) as e:
+        LOG.error("Failed to restore MariaDB data. Error: %s", e)
+        raise RestoreFail("Failed to restore MariaDB data.")
+
+
+def backup_postgres_size():
     """ Backup postgres size estimate """
     try:
         total_size = 0
@@ -688,8 +808,7 @@ def backup_postgres_size(cinder_config=False):
         proc.communicate()
 
         # get backup database
-        backup_databases, backup_db_skip_tables = get_backup_databases(
-            cinder_config)
+        backup_databases, backup_db_skip_tables = get_backup_databases()
 
         # Backup data for databases.
         for _, db_elem in enumerate(backup_databases):
@@ -718,7 +837,7 @@ def backup_postgres_size(cinder_config=False):
         raise BackupFail("Failed to estimate backup database size")
 
 
-def backup_postgres(archive, staging_dir, cinder_config=False):
+def backup_postgres(archive, staging_dir):
     """ Backup postgres configuration """
     try:
         postgres_staging_dir = staging_dir + '/postgres'
@@ -732,8 +851,7 @@ def backup_postgres(archive, staging_dir, cinder_config=False):
                               shell=True, stderr=DEVNULL)
 
         # get backup database
-        backup_databases, backup_db_skip_tables = get_backup_databases(
-            cinder_config)
+        backup_databases, backup_db_skip_tables = get_backup_databases()
 
         # Backup data for databases.
         for _, db_elem in enumerate(backup_databases):
@@ -783,38 +901,6 @@ def restore_postgres(archive, staging_dir):
 
     finally:
         utils.stop_service('postgresql')
-
-
-def backup_ceilometer_size(ceilometer_permdir):
-    """ Backup ceilometer size estimate """
-    try:
-        statinfo = os.stat(ceilometer_permdir + '/pipeline.yaml')
-        return statinfo.st_size
-
-    except OSError:
-        LOG.error("Failed to estimate backup ceilometer size.")
-        raise BackupFail("Failed to estimate backup ceilometer size")
-
-
-def backup_ceilometer(archive, ceilometer_permdir):
-    """ Backup ceilometer """
-    try:
-        archive.add(ceilometer_permdir + '/pipeline.yaml',
-                    arcname='pipeline.yaml')
-
-    except tarfile.TarError:
-        LOG.error("Failed to backup ceilometer.")
-        raise BackupFail("Failed to backup ceilometer")
-
-
-def restore_ceilometer(archive, ceilometer_permdir):
-    """ Restore ceilometer """
-    try:
-        archive.extract('pipeline.yaml', path=ceilometer_permdir)
-
-    except tarfile.TarError:
-        LOG.error("Failed to restore ceilometer")
-        raise RestoreFail("Failed to restore ceilometer")
 
 
 def filter_config_dir(archive, directory):
@@ -933,27 +1019,25 @@ def restore_ceph_crush_map(archive):
         raise RestoreFail('Failed to restore crush map file')
 
 
-def check_size(archive_dir, cinder_config):
+def check_size(archive_dir):
     """Check if there is enough space to create backup."""
     backup_overhead_bytes = 1024 ** 3  # extra GB for staging directory
 
-    # backup_cinder_size() will return 0 if cinder/lvm is not configured,
-    # So no need to add extra check here.
     backup_size = (backup_overhead_bytes +
                    backup_etc_size() +
                    backup_config_size(tsconfig.CONFIG_PATH) +
                    backup_puppet_data_size(constants.HIERADATA_PERMDIR) +
                    backup_keyring_size(keyring_permdir) +
                    backup_ldap_size() +
-                   backup_postgres_size(cinder_config) +
-                   backup_ceilometer_size(ceilometer_permdir) +
-                   backup_std_dir_size(glance_permdir) +
+                   backup_postgres_size() +
                    backup_std_dir_size(home_permdir) +
                    backup_std_dir_size(patching_permdir) +
                    backup_std_dir_size(patching_repo_permdir) +
                    backup_std_dir_size(extension_permdir) +
                    backup_std_dir_size(patch_vault_permdir) +
-                   backup_cinder_size(cinder_permdir)
+                   backup_armada_manifest_size(constants.ARMADA_PERMDIR) +
+                   backup_std_dir_size(constants.HELM_CHARTS_PERMDIR) +
+                   backup_mariadb_size()
                    )
 
     archive_dir_free_space = \
@@ -1001,23 +1085,14 @@ def backup(backup_name, archive_dir, clone=False):
 
     fmApi.set_fault(fault)
 
-    cinder_config = False
-    backend_services = sysinv.get_storage_backend_services()
-    for services in backend_services.values():
-        if (services is not None and
-                services.find(sysinv_constants.SB_SVC_CINDER) != -1):
-            cinder_config = True
-            break
-
     staging_dir = None
     system_tar_path = None
-    images_tar_path = None
     warnings = ''
     try:
         os.chdir('/')
 
         if not clone:
-            check_size(archive_dir, cinder_config)
+            check_size(archive_dir)
 
         print ("\nPerforming backup (this might take several minutes):")
         staging_dir = tempfile.mkdtemp(dir=archive_dir)
@@ -1025,18 +1100,9 @@ def backup(backup_name, archive_dir, clone=False):
         system_tar_path = os.path.join(archive_dir,
                                        backup_name + '_system.tgz')
         system_archive = tarfile.open(system_tar_path, "w:gz")
-        images_tar_path = os.path.join(archive_dir,
-                                       backup_name + '_images.tgz')
 
         step = 1
-        total_steps = 15
-
-        if sysinv_constants.SB_TYPE_CEPH in backend_services.keys():
-            total_steps += 1
-
-        if tsconfig.region_config == "yes":
-            # We don't run the glance backup step
-            total_steps -= 1
+        total_steps = 16
 
         # Step 1: Backup etc
         backup_etc(system_archive)
@@ -1053,77 +1119,70 @@ def backup(backup_name, archive_dir, clone=False):
         utils.progress(total_steps, step, 'backup puppet data', 'DONE')
         step += 1
 
-        # Step 4: Backup keyring
+        # Step 4: Backup armada data
+        backup_armada_manifest_data(system_archive, constants.ARMADA_PERMDIR)
+        utils.progress(total_steps, step, 'backup armada data', 'DONE')
+        step += 1
+
+        # Step 5: Backup helm charts data
+        backup_std_dir(system_archive, constants.HELM_CHARTS_PERMDIR)
+        utils.progress(total_steps, step, 'backup helm charts', 'DONE')
+        step += 1
+
+        # Step 6: Backup keyring
         backup_keyring(system_archive, keyring_permdir)
         utils.progress(total_steps, step, 'backup keyring', 'DONE')
         step += 1
 
-        # Step 5: Backup ldap
+        # Step 7: Backup ldap
         backup_ldap(system_archive, staging_dir)
         utils.progress(total_steps, step, 'backup ldap', 'DONE')
         step += 1
 
-        # Step 6: Backup postgres
-        backup_postgres(system_archive, staging_dir, cinder_config)
+        # Step 8: Backup postgres
+        backup_postgres(system_archive, staging_dir)
         utils.progress(total_steps, step, 'backup postgres', 'DONE')
         step += 1
 
-        # Step 7: Backup ceilometer
-        backup_ceilometer(system_archive, ceilometer_permdir)
-        utils.progress(total_steps, step, 'backup ceilometer', 'DONE')
+        # Step 9: Backup mariadb
+        backup_mariadb(system_archive, staging_dir)
+        utils.progress(total_steps, step, 'backup mariadb', 'DONE')
         step += 1
 
-        if tsconfig.region_config != "yes":
-            # Step 8: Backup glance
-            images_archive = tarfile.open(images_tar_path, "w:gz")
-            backup_std_dir(images_archive, glance_permdir)
-            images_archive.close()
-            utils.progress(total_steps, step, 'backup glance', 'DONE')
-            step += 1
-
-        # Step 9: Backup home
+        # Step 10: Backup home
         backup_std_dir(system_archive, home_permdir)
         utils.progress(total_steps, step, 'backup home directory', 'DONE')
         step += 1
 
-        # Step 10: Backup patching
+        # Step 11: Backup patching
         if not clone:
             backup_std_dir(system_archive, patching_permdir)
             utils.progress(total_steps, step, 'backup patching', 'DONE')
         step += 1
 
-        # Step 11: Backup patching repo
+        # Step 12: Backup patching repo
         if not clone:
             backup_std_dir(system_archive, patching_repo_permdir)
             utils.progress(total_steps, step, 'backup patching repo', 'DONE')
         step += 1
 
-        # Step 12: Backup extension filesystem
+        # Step 13: Backup extension filesystem
         backup_std_dir(system_archive, extension_permdir)
         utils.progress(total_steps, step, 'backup extension filesystem '
                                           'directory', 'DONE')
         step += 1
 
-        # Step 13: Backup patch-vault filesystem
+        # Step 14: Backup patch-vault filesystem
         if os.path.exists(patch_vault_permdir):
             backup_std_dir(system_archive, patch_vault_permdir)
             utils.progress(total_steps, step, 'backup patch-vault filesystem '
                                               'directory', 'DONE')
         step += 1
 
-        # Step 14: Backup cinder config/LVM config
-        # No need to add extra check here as if cinder/LVM is not configured,
-        # ../iscsi-target/saveconfig.json will be absent, so this function will
-        # do nothing.
-        backup_cinder_config(system_archive)
-        utils.progress(total_steps, step, 'backup cinder/LVM config', 'DONE')
-        step += 1
-
         # Step 15: Backup ceph crush map
-        if sysinv_constants.SB_TYPE_CEPH in backend_services.keys():
-            backup_ceph_crush_map(system_archive, staging_dir)
-            utils.progress(total_steps, step, 'backup ceph crush map', 'DONE')
-            step += 1
+        backup_ceph_crush_map(system_archive, staging_dir)
+        utils.progress(total_steps, step, 'backup ceph crush map', 'DONE')
+        step += 1
 
         # Step 16: Create archive
         system_archive.close()
@@ -1133,8 +1192,6 @@ def backup(backup_name, archive_dir, clone=False):
     except Exception:
         if system_tar_path and os.path.isfile(system_tar_path):
             os.remove(system_tar_path)
-        if images_tar_path and os.path.isfile(images_tar_path):
-            os.remove(images_tar_path)
 
         raise
     finally:
@@ -1145,14 +1202,10 @@ def backup(backup_name, archive_dir, clone=False):
             shutil.rmtree(staging_dir, ignore_errors=True)
 
     system_msg = "System backup file created"
-    images_msg = "Images backup file created"
     if not clone:
         system_msg += ": " + system_tar_path
-        images_msg += ": " + images_tar_path
 
     print(system_msg)
-    if tsconfig.region_config != "yes":
-        print(images_msg)
     if warnings != '':
         print("WARNING: The following problems occurred:")
         print(textwrap.fill(warnings, 80))
@@ -1166,85 +1219,6 @@ def create_restore_runtime_config(filename):
     # were applying during a Restore
     config['classes'] = ['keystone::security_compliance']
     utils.create_manifest_runtime_config(filename, config)
-
-
-def overwrite_iscsi_target_config():
-    """
-    Overwrite the current iscsi target config file with the one
-    from the backup archive.
-    """
-
-    if not os.path.exists(
-            cinder_permdir + '/iscsi-target/saveconfig.json'):
-        LOG.info("Restore: Missing current saveconfig.json file")
-        return
-
-    if not os.path.exists(
-            cinder_permdir + '/iscsi-target/saveconfig.json.bck'):
-        LOG.info("Restore: Missing backup saveconfig.json file")
-        return
-
-    os.remove(cinder_permdir + '/iscsi-target/saveconfig.json')
-    shutil.copyfile(
-        cinder_permdir + '/iscsi-target/saveconfig.json.bck',
-        cinder_permdir + '/iscsi-target/saveconfig.json')
-
-    os.remove(cinder_permdir + '/iscsi-target/saveconfig.json.bck')
-    subprocess.call(["targetctl", "restore"], stdout=DEVNULL, stderr=DEVNULL)
-
-
-def restore_complete():
-    """
-    Restore proper ISCSI configuration file after cinder restore.
-    Enable worker functionality for AIO system.
-    :return: True if worker-config-complete is executed
-    """
-    if utils.get_system_type() == sysinv_constants.TIS_AIO_BUILD:
-        if not os.path.isfile(restore_system_ready):
-            print(textwrap.fill(
-                "--restore-complete can only be run "
-                "after restore-system has completed "
-                "successfully", 80
-            ))
-            return False
-
-        # The iscsi target config file must be overwritten with the
-        # original file from the backup archive.
-        # This is due to the cinder restore process actually changing
-        # this file. These changes cause VMs that were present at
-        # backup time to not boot up properly anymore.
-        # The original icsci config file has the proper settings so
-        # we use use that.
-        overwrite_iscsi_target_config()
-
-        print("\nApplying worker manifests for %s. " %
-              (utils.get_controller_hostname()))
-        print("Node will reboot on completion.")
-
-        sysinv.do_worker_config_complete(utils.get_controller_hostname())
-
-        # show in-progress log on console every 30 seconds
-        # until self reboot or timeout
-        os.remove(restore_system_ready)
-        time.sleep(30)
-        for i in range(1, 10):
-            print("worker manifest apply in progress ... ")
-            time.sleep(30)
-
-        raise RestoreFail("Timeout running worker manifests, "
-                          "reboot did not occur")
-
-    else:
-        if not os.path.isfile(restore_system_ready):
-            print(textwrap.fill(
-                "--restore-complete can only be run "
-                "after restore-system has completed "
-                "successfully", 80
-            ))
-            return False
-        overwrite_iscsi_target_config()
-        os.remove(restore_system_ready)
-        return True
 
 
 def restore_system(backup_file, include_storage_reinstall=False, clone=False):
@@ -1292,7 +1266,7 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
         os.chdir('/')
 
         step = 1
-        total_steps = 24
+        total_steps = 26
 
         # Step 1: Open archive and verify installed load matches backup
         try:
@@ -1432,7 +1406,8 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
         step += 1
 
         # Step 7: Restore puppet data
-        restore_puppet_data(archive, constants.HIERADATA_WORKDIR)
+        restore_puppet_data(archive, constants.HIERADATA_WORKDIR,
+                            controller_0_address)
         utils.progress(total_steps, step, 'restore puppet data', 'DONE',
                        newline)
         step += 1
@@ -1483,63 +1458,56 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
         # Permission change required or postgres restore fails
         subprocess.call(['chmod', 'a+rx', staging_dir], stdout=DEVNULL)
 
-        # Step 11: Restore cinder config file
-        restore_cinder_config(archive)
-        utils.progress(total_steps, step, 'restore cinder config', 'DONE',
-                       newline)
-        step += 1
-
-        # Step 12: Apply banner customization
+        # Step 11: Apply banner customization
         utils.apply_banner_customization()
         utils.progress(total_steps, step, 'apply banner customization', 'DONE',
                        newline)
         step += 1
 
-        # Step 13: Restore dnsmasq and pxeboot config
+        # Step 12: Restore dnsmasq and pxeboot config
         restore_dnsmasq(archive, tsconfig.CONFIG_PATH)
         utils.progress(total_steps, step, 'restore dnsmasq', 'DONE', newline)
         step += 1
 
-        # Step 14: Restore keyring
+        # Step 13: Restore keyring
         restore_keyring(archive, keyring_permdir)
         utils.progress(total_steps, step, 'restore keyring', 'DONE', newline)
         step += 1
 
-        # Step 15: Restore ldap
+        # Step 14: Restore ldap
         restore_ldap(archive, ldap_permdir, staging_dir)
         utils.progress(total_steps, step, 'restore ldap', 'DONE', newline)
         step += 1
 
-        # Step 16: Restore postgres
+        # Step 15: Restore postgres
         restore_postgres(archive, staging_dir)
         utils.progress(total_steps, step, 'restore postgres', 'DONE', newline)
         step += 1
 
-        # Step 17: Restore ceilometer
-        restore_ceilometer(archive, ceilometer_permdir)
-        utils.progress(total_steps, step, 'restore ceilometer', 'DONE',
-                       newline)
+        # Step 16: Extract and store mariadb data
+        extract_mariadb_data(archive)
+        utils.progress(total_steps, step, 'extract mariadb', 'DONE', newline)
         step += 1
 
-        # Step 18: Restore ceph crush map
+        # Step 17: Restore ceph crush map
         restore_ceph_crush_map(archive)
         utils.progress(total_steps, step, 'restore ceph crush map', 'DONE',
                        newline)
         step += 1
 
-        # Step 19: Restore home
+        # Step 18: Restore home
         restore_std_dir(archive, home_permdir)
         utils.progress(total_steps, step, 'restore home directory', 'DONE',
                        newline)
         step += 1
 
-        # Step 20: Restore extension filesystem
+        # Step 19: Restore extension filesystem
         restore_std_dir(archive, extension_permdir)
         utils.progress(total_steps, step, 'restore extension filesystem '
                                           'directory', 'DONE', newline)
         step += 1
 
-        # Step 21: Restore patch-vault filesystem
+        # Step 20: Restore patch-vault filesystem
         if file_exists_in_archive(archive,
                                   os.path.basename(patch_vault_permdir)):
             restore_std_dir(archive, patch_vault_permdir)
@@ -1548,13 +1516,31 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
 
         step += 1
 
-        # Step 22: Restore external ceph configuration files.
+        # Step 21: Restore external ceph configuration files.
         restore_ceph_external_config_files(archive, staging_dir)
         utils.progress(total_steps, step, 'restore CEPH external config',
                        'DONE', newline)
         step += 1
 
-        # Step 23: Shutdown file systems
+        # Step 22: Restore Armada manifest
+        restore_armada_manifest_data(archive, constants.ARMADA_PERMDIR)
+        utils.progress(total_steps, step, 'restore armada manifest',
+                       'DONE', newline)
+        step += 1
+
+        # Step 23: Restore Helm charts
+        restore_std_dir(archive, constants.HELM_CHARTS_PERMDIR)
+        utils.progress(total_steps, step, 'restore helm charts',
+                       'DONE', newline)
+        step += 1
+
+        # Step 24: Create Helm overrides directory
+        create_helm_overrides_directory()
+        utils.progress(total_steps, step, 'create helm overrides directory',
+                       'DONE', newline)
+        step += 1
+
+        # Step 25: Shutdown file systems
         archive.close()
         shutil.rmtree(staging_dir, ignore_errors=True)
         utils.shutdown_file_systems()
@@ -1562,7 +1548,7 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
                        newline)
         step += 1
 
-        # Step 24: Recover services
+        # Step 26: Recover services
         utils.mtce_restart()
         utils.mark_config_complete()
         time.sleep(120)
@@ -1578,23 +1564,20 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
 
             print("\nRestoring node states (this will take several minutes):")
 
-            backend_services = sysinv.get_storage_backend_services()
-
             with openstack.OpenStack() as client:
                 # On ceph setups storage nodes take about 90 seconds
                 # to become locked. Setting the timeout to 120 seconds
                 # for such setups
                 lock_timeout = 60
-                if sysinv_constants.SB_TYPE_CEPH in backend_services.keys():
+                storage_hosts = sysinv.get_hosts(client.admin_token,
+                                                 client.conf['region_name'],
+                                                 personality='storage')
+                if storage_hosts:
                     lock_timeout = 120
 
                 failed_lock_host = False
                 skip_hosts = ['controller-0']
                 if not include_storage_reinstall:
-                    storage_hosts = \
-                        sysinv.get_hosts(client.admin_token,
-                                         client.conf['region_name'],
-                                         personality='storage')
                     if storage_hosts:
                         install_uuid = utils.get_install_uuid()
                         for h in storage_hosts:
@@ -1686,62 +1669,22 @@ def restore_system(backup_file, include_storage_reinstall=False, clone=False):
 
     fmApi.set_fault(fault)
 
-    # Mark system restore as complete
-    if (utils.get_controller_hostname() ==
-            sysinv_constants.CONTROLLER_0_HOSTNAME):
-        # Create the flag file that permits the
-        # restore_complete command option.
-        utils.touch(restore_system_ready)
+    if utils.get_system_type() == sysinv_constants.TIS_AIO_BUILD:
+        print("\nApplying worker manifests for %s. " %
+              (utils.get_controller_hostname()))
+        print("Node will reboot on completion.")
+
+        sysinv.do_worker_config_complete(utils.get_controller_hostname())
+
+        # show in-progress log on console every 30 seconds
+        # until self reboot or timeout
+
+        time.sleep(30)
+        for i in range(1, 10):
+            print("worker manifest apply in progress ... ")
+            time.sleep(30)
+
+        raise RestoreFail("Timeout running worker manifests, "
+                          "reboot did not occur")
 
     return RESTORE_COMPLETE
-
-
-def restore_images(backup_file, clone=False):
-    """Restoring images."""
-
-    if not os.path.exists(constants.INITIAL_CONFIG_COMPLETE_FILE):
-        print(textwrap.fill(
-            "System restore has not been done. "
-            "An image restore operation can only be done after "
-            "the system restore has been completed.", 80))
-        print('')
-        raise RestoreFail("System restore required")
-
-    if not os.path.isabs(backup_file):
-        raise RestoreFail("Backup file (%s) not found. Full path is "
-                          "required." % backup_file)
-
-    if os.path.isfile(restore_in_progress):
-        raise RestoreFail("Restore already in progress.")
-    else:
-        open(restore_in_progress, 'w')
-
-    # Add newline to console log for install-clone scenario
-    newline = clone
-
-    try:
-        print("\nRestoring images (this will take several minutes):")
-        os.chdir('/')
-
-        step = 1
-        total_steps = 2
-
-        # Step 1: Open archive
-        try:
-            archive = tarfile.open(backup_file)
-        except tarfile.TarError as e:
-            LOG.exception(e)
-            raise RestoreFail("Error opening backup file. Invalid backup "
-                              "file.")
-        utils.progress(total_steps, step, 'open archive', 'DONE', newline)
-        step += 1
-
-        # Step 2: Restore glance
-        restore_std_dir(archive, glance_permdir)
-        utils.progress(total_steps, step, 'restore glance', 'DONE',
-                       newline)
-        step += 1
-        archive.close()
-
-    finally:
-        os.remove(restore_in_progress)

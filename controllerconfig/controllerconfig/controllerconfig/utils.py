@@ -701,6 +701,7 @@ def shutdown_file_systems():
     umount("/opt/platform")
     drbd_stop("drbd-platform")
 
+    stop_service("www-pages-helm_charts.mount")
     umount("/opt/cgcs")
     drbd_stop("drbd-cgcs")
 
@@ -710,6 +711,16 @@ def shutdown_file_systems():
     if os.path.exists("/opt/patch-vault"):
         umount("/opt/patch-vault")
         drbd_stop("drbd-patch-vault")
+
+    umount("/var/lib/rabbitmq")
+    drbd_stop("drbd-rabbit")
+
+    stop_service("etcd.service")
+    stop_service("opt-etcd.mount")
+    drbd_stop("drbd-etcd")
+
+    umount("/var/lib/docker-distribution")
+    drbd_stop("drbd-dockerdistribution")
 
 
 def persist_config():

@@ -1471,15 +1471,10 @@ def upgrade_controller_simplex(backup_file):
 
     cutils.persist_config()
 
-    backup_restore.restore_cinder_config(archive)
-
     cutils.apply_banner_customization()
 
     backup_restore.restore_ldap(archive, backup_restore.ldap_permdir,
                                 staging_dir)
-
-    backup_restore.restore_ceilometer(archive,
-                                      backup_restore.ceilometer_permdir)
 
     backup_restore.restore_std_dir(archive, backup_restore.home_permdir)
 

@@ -268,10 +268,6 @@ def show_help():
           "                         Restore system configuration from backup "
           "file with\n"
           "                         the given name, full path required\n"
-          "--restore-images <name>  Restore images from backup file with the "
-          "given name,\n"
-          "                         full path required\n"
-          "--restore-complete       Complete restore of controller-0\n"
           "--allow-ssh              Allow configuration to be executed in "
           "ssh\n"
           % sys.argv[0])
@@ -307,8 +303,6 @@ def main():
     do_backup = False
     do_system_restore = False
     include_storage_reinstall = False
-    do_images_restore = False
-    do_complete_restore = False
     do_clone = False
     do_non_interactive = False
     do_provision = False
@@ -365,16 +359,6 @@ def main():
                     "of the backup", 80))
                 exit(1)
             do_system_restore = True
-        elif sys.argv[arg] == "--restore-images":
-            arg += 1
-            if arg < len(sys.argv):
-                backup_name = sys.argv[arg]
-            else:
-                print("--restore-images requires the filename of the backup")
-                exit(1)
-            do_images_restore = True
-        elif sys.argv[arg] == "--restore-complete":
-            do_complete_restore = True
         elif sys.argv[arg] == "--archive-dir":
             arg += 1
             if arg < len(sys.argv):
@@ -424,8 +408,6 @@ def main():
 
     if [do_backup,
             do_system_restore,
-            do_images_restore,
-            do_complete_restore,
             do_clone,
             do_default_config,
             do_non_interactive].count(True) > 1:
@@ -434,8 +416,6 @@ def main():
 
     if answerfile and [do_backup,
                        do_system_restore,
-                       do_images_restore,
-                       do_complete_restore,
                        do_clone,
                        do_default_config,
                        do_non_interactive].count(True) > 0:
@@ -472,11 +452,6 @@ def main():
             backup_restore.restore_system(backup_name,
                                           include_storage_reinstall)
             print("\nSystem restore complete")
-        elif do_images_restore:
-            backup_restore.restore_images(backup_name)
-            print("\nImages restore complete")
-        elif do_complete_restore:
-            backup_restore.restore_complete()
         elif do_clone:
             clone.clone(backup_name, archive_dir)
             print("\nCloning complete")
