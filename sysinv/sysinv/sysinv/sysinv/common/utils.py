@@ -2022,3 +2022,24 @@ def is_default_huge_pages_required(host):
     if is_virtual() or is_virtual_worker(host):
         return False
     return True
+
+
+def refresh_helm_repo_information():
+    """Refresh the helm chart repository information.
+
+    Ensure that the local repository information maintained in key user home
+    directories are updated. Run this when the conductor is initialized and
+    after application uploads.
+
+    This handles scenarios where an upload occurs on the active controller
+    followed by a swact. The newly actvated controller needs to make sure that
+    the local repository cache reflect any changes.
+    """
+    with open(os.devnull, "w") as fnull:
+        try:
+            subprocess.check_call(['sudo', '-u', 'wrsroot',
+                                   'helm', 'repo', 'update'],
+                                  stdout=fnull, stderr=fnull)
+        except subprocess.CalledProcessError:
+            # Just log an error. Don't stop any callers from further execution.
+            LOG.error("Failed to update helm repo data for user wrsroot.")

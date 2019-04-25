@@ -597,6 +597,10 @@ class AppOperator(object):
                     subprocess.check_call(['helm-upload', helm_repo, chart],
                                           env=env, stdout=fnull, stderr=fnull)
                     LOG.info("Helm chart %s uploaded" % os.path.basename(chart))
+
+            # Make sure any helm repo changes are reflected for the users
+            cutils.refresh_helm_repo_information()
+
         except Exception as e:
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason=str(e))

@@ -213,6 +213,8 @@ class ConductorManager(service.PeriodicService):
 
         self._handle_restore_in_progress()
 
+        cutils.refresh_helm_repo_information()
+
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
 
