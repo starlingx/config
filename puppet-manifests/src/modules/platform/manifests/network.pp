@@ -40,28 +40,6 @@ class platform::network::mgmt::params(
   $cgcs_nfs_address = undef,
 ) { }
 
-
-class platform::network::infra::params(
-  # shared parametes with base class - required for auto hiera parameter lookup
-  $interface_name = undef,
-  $interface_address = undef,
-  $subnet_version = undef,
-  $subnet_network = undef,
-  $subnet_network_url = undef,
-  $subnet_prefixlen = undef,
-  $subnet_netmask = undef,
-  $subnet_start = undef,
-  $subnet_end = undef,
-  $gateway_address = undef,
-  $controller_address = undef,  # controller floating
-  $controller_address_url = undef,  # controller floating url address
-  $controller0_address = undef, # controller unit0
-  $controller1_address = undef, # controller unit1
-  $mtu = 1500,
-  # network type specific parameters
-  $cgcs_nfs_address = undef,
-) { }
-
 class platform::network::oam::params(
   # shared parametes with base class - required for auto hiera parameter lookup
   $interface_name = undef,
@@ -165,13 +143,11 @@ class platform::network (
 ) {
   include ::platform::params
   include ::platform::network::mgmt::params
-  include ::platform::network::infra::params
   include ::platform::network::cluster_host::params
 
   include ::platform::network::apply
 
   $management_interface = $::platform::network::mgmt::params::interface_name
-  $infrastructure_interface = $::platform::network::infra::params::interface_name
 
   $testcmd = '/usr/local/bin/connectivity_test'
 
@@ -179,14 +155,6 @@ class platform::network (
     if $management_interface {
       exec { 'connectivity-test-management':
         command => "${testcmd} -t 70 -i ${management_interface} controller-platform-nfs; /bin/true",
-        require => Anchor['platform::networking'],
-        onlyif  => 'test ! -f /etc/platform/simplex',
-      }
-    }
-
-    if $infrastructure_interface {
-      exec { 'connectivity-test-infrastructure':
-        command => "${testcmd} -t 120 -i ${infrastructure_interface} controller-nfs; /bin/true",
         require => Anchor['platform::networking'],
         onlyif  => 'test ! -f /etc/platform/simplex',
       }

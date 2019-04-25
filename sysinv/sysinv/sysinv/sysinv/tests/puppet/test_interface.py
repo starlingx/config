@@ -22,10 +22,10 @@ from sysinv.tests.db import utils as dbutils
 
 NETWORKTYPES_WITH_V4_ADDRESSES = [constants.NETWORK_TYPE_MGMT,
                                   constants.NETWORK_TYPE_OAM,
+                                  constants.NETWORK_TYPE_CLUSTER_HOST,
                                   constants.NETWORK_TYPE_PXEBOOT]
 
-NETWORKTYPES_WITH_V6_ADDRESSES = [constants.NETWORK_TYPE_INFRA,
-                                  constants.NETWORK_TYPE_DATA]
+NETWORKTYPES_WITH_V6_ADDRESSES = [constants.NETWORK_TYPE_DATA]
 
 NETWORKTYPES_WITH_V4_ROUTES = [constants.NETWORK_TYPE_DATA]
 
@@ -268,12 +268,12 @@ class BaseTestCase(dbbase.DbTestCase):
             prefix=24)
         self.address_pools.append(pxeboot_pool)
 
-        infra_pool = dbutils.create_test_address_pool(
-            network='192.168.205.0',
-            name='infrastructure',
-            ranges=[['192.168.205.2', '192.168.205.254']],
+        cluster_host_pool = dbutils.create_test_address_pool(
+            network='192.168.206.0',
+            name='cluster-host',
+            ranges=[['192.168.206.2', '192.168.206.254']],
             prefix=24)
-        self.address_pools.append(infra_pool)
+        self.address_pools.append(cluster_host_pool)
 
         oam_pool = dbutils.create_test_address_pool(
             network='10.10.10.0',
@@ -295,10 +295,10 @@ class BaseTestCase(dbbase.DbTestCase):
             address_pool_id=pxeboot_pool.id))
 
         self.networks.append(dbutils.create_test_network(
-            type=constants.NETWORK_TYPE_INFRA,
+            type=constants.NETWORK_TYPE_CLUSTER_HOST,
             link_capacity=constants.LINK_SPEED_10G,
             vlan_id=3,
-            address_pool_id=infra_pool.id))
+            address_pool_id=cluster_host_pool.id))
 
         self.networks.append(dbutils.create_test_network(
             type=constants.NETWORK_TYPE_OAM,
@@ -559,8 +559,8 @@ class InterfaceTestCase(BaseTestCase):
 
     def test_get_lower_interface(self):
         vlan = self._create_vlan_test(
-            "infra", constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_INFRA, 1, self.iface)
+            "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
         self._update_context()
         value = interface.get_lower_interface(self.context, vlan)
         self.assertEqual(value, self.iface)
@@ -576,8 +576,8 @@ class InterfaceTestCase(BaseTestCase):
 
     def test_get_interface_os_ifname_vlan_over_ethernet(self):
         vlan = self._create_vlan_test(
-            "infra", constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_INFRA, 1, self.iface)
+            "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
         self._update_context()
         value = interface.get_interface_os_ifname(self.context, vlan)
         self.assertEqual(value, self.port['name'] + ".1")
@@ -585,8 +585,8 @@ class InterfaceTestCase(BaseTestCase):
     def test_get_interface_os_ifname_vlan_over_bond(self):
         bond = self._create_bond_test("none")
         vlan = self._create_vlan_test(
-            "infra", constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_INFRA, 1, bond)
+            "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_CLUSTER_HOST, 1, bond)
         self._update_context()
         value = interface.get_interface_os_ifname(self.context, vlan)
         self.assertEqual(value, bond['ifname'] + ".1")
@@ -766,43 +766,43 @@ class InterfaceTestCase(BaseTestCase):
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
 
-    def test_get_interface_address_method_for_infra_worker(self):
+    def test_get_interface_address_method_for_cluster_host_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
         self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         self.host['personality'] = constants.WORKER
         self._update_context()
         network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
+        self.assertEqual(method, 'static')
 
-    def test_get_interface_address_method_for_infra_storage(self):
+    def test_get_interface_address_method_for_cluster_host_storage(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
         self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         self.host['personality'] = constants.STORAGE
         self._update_context()
         self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_INFRA)
+            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
         network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
+        self.assertEqual(method, 'static')
 
-    def test_get_interface_address_method_for_infra_controller(self):
+    def test_get_interface_address_method_for_cluster_host_controller(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
         self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
         network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
@@ -837,20 +837,17 @@ class InterfaceTestCase(BaseTestCase):
                      constants.LINK_SPEED_10G))
         self.assertEqual(classifier, expected)
 
-    def test_get_interface_traffic_classifier_for_infra(self):
-        self.iface['ifname'] = 'infra0'
+    def test_get_interface_traffic_classifier_for_cluster_host(self):
+        self.iface['ifname'] = 'cluster_host0'
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
         self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface, network.id)
-        expected = ('/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
-                    (self.port['name'], constants.NETWORK_TYPE_INFRA,
-                     constants.LINK_SPEED_10G))
-        self.assertEqual(classifier, expected)
+        self.assertIsNone(classifier)
 
     def test_get_interface_traffic_classifier_for_oam(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -902,11 +899,11 @@ class InterfaceTestCase(BaseTestCase):
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
-    def test_needs_interface_config_kernel_infra(self):
+    def test_needs_interface_config_kernel_cluster_host(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
         self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         self.host['personality'] = constants.CONTROLLER
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
@@ -1161,22 +1158,19 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_controller_ethernet_config_infra(self):
+    def test_get_controller_ethernet_config_cluster_host(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
         self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         self._update_context()
         self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_INFRA)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_INFRA)
+            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
+        network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
-        options = {'LINKDELAY': '20',
-                   'post_up':
-                       '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
-                       (self.port['name'], constants.NETWORK_TYPE_INFRA,
-                        constants.LINK_SPEED_10G)}
+        options = {'LINKDELAY': '20'}
         expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500,
             options=options)
@@ -1286,24 +1280,21 @@ class InterfaceTestCase(BaseTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
-    def test_get_worker_ethernet_config_infra(self):
+    def test_get_worker_ethernet_config_cluster_host(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_INFRA
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
         self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_INFRA)
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         self.host['personality'] = constants.WORKER
         self._update_context()
         self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_INFRA)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_INFRA)
+            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
+        network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
-        options = {'LINKDELAY': '20',
-                   'post_up':
-                       '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
-                       (self.port['name'], constants.NETWORK_TYPE_INFRA,
-                        constants.LINK_SPEED_10G)}
-        expected = self._get_network_config(
+        options = {'LINKDELAY': '20'}
+        expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500, options=options)
         print(expected)
         self.assertEqual(expected, config)
@@ -1609,14 +1600,14 @@ class InterfaceControllerEthernet(InterfaceHostTestCase):
                                    constants.NETWORK_TYPE_OAM)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_ethernet_test('none')
 
     def setUp(self):
         super(InterfaceControllerEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['oam', 'mgmt', 'infra']
+        self.expected_platform_interfaces = ['oam', 'mgmt', 'cluster-host']
 
 
 class InterfaceControllerBond(InterfaceHostTestCase):
@@ -1629,15 +1620,15 @@ class InterfaceControllerBond(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST)
 
     def setUp(self):
         super(InterfaceControllerBond, self).setUp()
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'oam',
                                              'eth3', 'eth4', 'mgmt',
-                                             'eth6', 'eth7', 'infra']
+                                             'eth6', 'eth7', 'cluster-host']
         self.expected_slave_interfaces = ['eth0', 'eth1',
                                           'eth3', 'eth4',
                                           'eth6', 'eth7']
@@ -1656,8 +1647,8 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM, 1, bond)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3,
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3,
                                bond)
         self._create_ethernet_test('none')
 
@@ -1665,7 +1656,7 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
         super(InterfaceControllerVlanOverBond, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'infra']
+                                             'oam', 'mgmt', 'cluster-host']
         self.expected_slave_interfaces = ['eth0', 'eth1']
 
 
@@ -1682,15 +1673,15 @@ class InterfaceControllerVlanOverEthernet(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM, 1, iface)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, iface)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3, iface)
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3, iface)
         self._create_ethernet_test('none')
 
     def setUp(self):
         super(InterfaceControllerVlanOverEthernet, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['eth0', 'pxeboot', 'oam',
-                                             'mgmt', 'infra']
+                                             'mgmt', 'cluster-host']
 
 
 class InterfaceComputeEthernet(InterfaceHostTestCase):
@@ -1701,8 +1692,8 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         self._create_test_host(constants.WORKER)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
                                    constants.NETWORK_TYPE_PCI_SRIOV)
@@ -1725,7 +1716,7 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
     def setUp(self):
         super(InterfaceComputeEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['mgmt', 'infra']
+        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
         self.expected_data_interfaces = ['slow', 'data', 'mlx4', 'mlx5']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slow_interfaces = ['slow']
@@ -1746,8 +1737,8 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
             constants.NETWORK_TYPE_PXEBOOT)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, iface)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3)
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3)
         self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA, 5)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -1759,7 +1750,7 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
         super(InterfaceComputeVlanOverEthernet, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['pxeboot', 'mgmt',
-                                             'eth2', 'infra']
+                                             'eth2', 'cluster-host']
         self.expected_data_interfaces = ['eth4', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
@@ -1772,8 +1763,8 @@ class InterfaceComputeBond(InterfaceHostTestCase):
         self._create_test_host(constants.WORKER)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA)
         self._create_ethernet_test('sriov',
@@ -1787,7 +1778,7 @@ class InterfaceComputeBond(InterfaceHostTestCase):
         super(InterfaceComputeBond, self).setUp()
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'mgmt',
-                                             'eth3', 'eth4', 'infra']
+                                             'eth3', 'eth4', 'cluster-host']
         self.expected_data_interfaces = ['eth6', 'eth7', 'data',
                                          'eth12', 'eth13', 'ex']
         self.expected_pci_interfaces = ['sriov', 'pthru']
@@ -1810,8 +1801,8 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM, 1, bond)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3, bond)
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3, bond)
         bond2 = self._create_bond_test('bond2')
         self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA, 5, bond2)
@@ -1825,7 +1816,7 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
     def setUp(self):
         super(InterfaceComputeVlanOverBond, self).setUp()
         self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'infra']
+                                             'oam', 'mgmt', 'cluster-host']
         self.expected_data_interfaces = ['eth6', 'eth7', 'bond2', 'data',
                                          'eth14', 'eth15']
         self.expected_slave_interfaces = ['eth0', 'eth1',
@@ -1845,8 +1836,8 @@ class InterfaceCpeEthernet(InterfaceHostTestCase):
                                    constants.NETWORK_TYPE_OAM)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
                                    constants.NETWORK_TYPE_DATA)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -1870,7 +1861,7 @@ class InterfaceCpeEthernet(InterfaceHostTestCase):
     def setUp(self):
         super(InterfaceCpeEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['oam', 'mgmt', 'infra']
+        self.expected_platform_interfaces = ['oam', 'mgmt', 'cluster-host']
         self.expected_data_interfaces = ['slow', 'data', 'mlx4', 'mlx5']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slow_interfaces = ['slow']
@@ -1893,8 +1884,8 @@ class InterfaceCpeVlanOverEthernet(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM, 1, iface)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, iface)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3)
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3)
         self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA, 5)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -1906,7 +1897,7 @@ class InterfaceCpeVlanOverEthernet(InterfaceHostTestCase):
         super(InterfaceCpeVlanOverEthernet, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['pxeboot', 'mgmt', 'oam',
-                                             'eth3', 'infra']
+                                             'eth3', 'cluster-host']
         self.expected_data_interfaces = ['eth5', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
@@ -1922,8 +1913,8 @@ class InterfaceCpeBond(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -1936,7 +1927,7 @@ class InterfaceCpeBond(InterfaceHostTestCase):
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'oam',
                                              'eth3', 'eth4', 'mgmt',
-                                             'eth6', 'eth7', 'infra']
+                                             'eth6', 'eth7', 'cluster-host']
         self.expected_data_interfaces = ['eth9', 'eth10', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slave_interfaces = ['eth0', 'eth1', 'eth3', 'eth4',
@@ -1957,8 +1948,8 @@ class InterfaceCpeVlanOverBond(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM, 1, bond)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3, bond)
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3, bond)
         bond2 = self._create_bond_test('bond4')
         self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA, 5,
@@ -1971,7 +1962,7 @@ class InterfaceCpeVlanOverBond(InterfaceHostTestCase):
     def setUp(self):
         super(InterfaceCpeVlanOverBond, self).setUp()
         self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'infra']
+                                             'oam', 'mgmt', 'cluster-host']
         self.expected_data_interfaces = ['eth6', 'eth7', 'bond4', 'data']
         self.expected_slave_interfaces = ['eth0', 'eth1',
                                           'eth6', 'eth7']
@@ -1995,8 +1986,8 @@ class InterfaceCpeComputeEthernet(InterfaceHostTestCase):
                                    constants.NETWORK_TYPE_OAM)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_CLUSTER_HOST)
         port, iface = (
             self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
@@ -2014,7 +2005,7 @@ class InterfaceCpeComputeEthernet(InterfaceHostTestCase):
     def setUp(self):
         super(InterfaceCpeComputeEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['oam', 'mgmt', 'infra']
+        self.expected_platform_interfaces = ['oam', 'mgmt', 'cluster-host']
         self.expected_data_interfaces = ['slow', 'data', 'mlx4', 'mlx5']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slow_interfaces = ['slow']
@@ -2037,8 +2028,8 @@ class InterfaceCpeComputeVlanOverEthernet(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM, 1, iface)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, iface)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3)
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3)
         self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA, 5)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -2050,7 +2041,7 @@ class InterfaceCpeComputeVlanOverEthernet(InterfaceHostTestCase):
         super(InterfaceCpeComputeVlanOverEthernet, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['pxeboot', 'oam', 'mgmt',
-                                             'eth3', 'infra']
+                                             'eth3', 'cluster-host']
         self.expected_data_interfaces = ['eth5', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
@@ -2066,8 +2057,8 @@ class InterfaceCpeComputeBond(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA)
+        self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -2080,7 +2071,7 @@ class InterfaceCpeComputeBond(InterfaceHostTestCase):
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['eth0', 'eth1', 'oam',
                                              'eth3', 'eth4', 'mgmt',
-                                             'eth6', 'eth7', 'infra']
+                                             'eth6', 'eth7', 'cluster-host']
         self.expected_data_interfaces = ['eth9', 'eth10', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
         self.expected_slave_interfaces = ['eth0', 'eth1', 'eth3', 'eth4',
@@ -2102,8 +2093,8 @@ class InterfaceCpeComputeVlanOverBond(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_OAM, 1, bond)
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('infra', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_INFRA, 3, bond)
+        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3, bond)
         bond2 = self._create_bond_test('bond2')
         self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA, 5,
@@ -2116,7 +2107,7 @@ class InterfaceCpeComputeVlanOverBond(InterfaceHostTestCase):
     def setUp(self):
         super(InterfaceCpeComputeVlanOverBond, self).setUp()
         self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'infra']
+                                             'oam', 'mgmt', 'cluster-host']
         self.expected_data_interfaces = ['eth6', 'eth7', 'bond2', 'data']
         self.expected_slave_interfaces = ['eth0', 'eth1',
                                           'eth6', 'eth7']

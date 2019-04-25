@@ -45,7 +45,6 @@ LOG = log.getLogger(__name__)
 
 ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_PXEBOOT,
-                         constants.NETWORK_TYPE_INFRA,
                          constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_MULTICAST,
                          constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
@@ -175,9 +174,6 @@ class NetworkController(rest.RestController):
             addresses = self._create_mgmt_network_address(pool)
         elif network['type'] == constants.NETWORK_TYPE_PXEBOOT:
             addresses = self._create_pxeboot_network_address()
-        elif network['type'] == constants.NETWORK_TYPE_INFRA:
-            addresses = self._create_infra_network_address()
-            self._remove_mgmt_cinder_address()
         elif network['type'] == constants.NETWORK_TYPE_CLUSTER_HOST:
             addresses = self._create_cluster_host_network_address()
         elif network['type'] == constants.NETWORK_TYPE_OAM:
@@ -218,29 +214,12 @@ class NetworkController(rest.RestController):
         addresses[constants.CONTROLLER_1_HOSTNAME] = None
         return addresses
 
-    def _create_infra_network_address(self):
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
-        addresses[constants.CONTROLLER_CGCS_NFS] = None
-        addresses[constants.CONTROLLER_CINDER] = None
-        return addresses
-
     def _create_cluster_host_network_address(self):
         addresses = collections.OrderedDict()
         addresses[constants.CONTROLLER_HOSTNAME] = None
         addresses[constants.CONTROLLER_0_HOSTNAME] = None
         addresses[constants.CONTROLLER_1_HOSTNAME] = None
         return addresses
-
-    def _remove_mgmt_cinder_address(self):
-        # Remove old cinder's IP from the management network
-        try:
-            addr = pecan.request.dbapi.address_get_by_name(
-                constants.CONTROLLER_CINDER + '-' + constants.NETWORK_TYPE_MGMT)
-            pecan.request.dbapi.address_destroy(addr.uuid)
-        except exception.NotFound:
-            LOG.error("Cinder's Management IP %s not found!")
 
     def _create_oam_network_address(self, pool):
         addresses = {}

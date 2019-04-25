@@ -1200,19 +1200,15 @@ def get_interface_os_ifname(interface, interfaces, ports):
 def get_dhcp_cid(hostname, network_type, mac):
     """Create the CID for use with dnsmasq. We use a unique identifier for a
     client since different networks can operate over the same device (and hence
-    same MAC addr) when VLAN interfaces are concerned.  The format is different
-    based on network type because the mgmt network uses a default because it
-    needs to exist before the board is handled by sysinv (i.e., the CID needs
-    to exist in the dhclient.conf file at build time) while the infra network
-    is built dynamically to avoid colliding with the mgmt CID.
+    same MAC addr) when VLAN interfaces are concerned.  The mgmt network uses
+    a default because it needs to exist before the board is handled by sysinv
+    (i.e., the CID needs to exist in the dhclient.conf file at build time).
 
     Example:
     Format = 'id:' + colon-separated-hex(hostname:network_type) + ":" + mac
     """
-    if network_type == constants.NETWORK_TYPE_INFRA:
-        prefix = '{}:{}'.format(hostname, network_type)
-        prefix = ':'.join(x.encode('hex') for x in prefix)
-    elif network_type == constants.NETWORK_TYPE_MGMT:
+
+    if network_type == constants.NETWORK_TYPE_MGMT:
         # Our default dhclient.conf files requests a prefix of '00:03:00' to
         # which dhclient adds a hardware address type of 01 to make final
         # prefix of '00:03:00:01'.

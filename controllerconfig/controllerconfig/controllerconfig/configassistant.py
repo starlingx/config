@@ -397,31 +397,6 @@ class ConfigAssistant():
         self.management_multicast_subnet = \
             IPNetwork(constants.DEFAULT_MULTICAST_SUBNET_IPV4)
 
-        # Infrastructure network config
-        self.infrastructure_interface_configured = False
-        self.infrastructure_interface_name = ""
-        self.infrastructure_interface = ""
-        self.infrastructure_vlan = ""
-        self.infrastructure_mtu = constants.LINK_MTU_DEFAULT
-        self.lag_infrastructure_interface = False
-        self.lag_infrastructure_interface_member0 = ""
-        self.lag_infrastructure_interface_member1 = ""
-        self.lag_infrastructure_interface_policy = \
-            constants.LAG_MODE_ACTIVE_BACKUP
-        self.lag_infrastructure_interface_txhash = ""
-        self.lag_infrastructure_interface_miimon = \
-            constants.LAG_MIIMON_FREQUENCY
-        self.infrastructure_subnet = IPNetwork("192.168.205.0/24")
-        self.controller_infrastructure_address_0 = IPAddress("192.168.205.3")
-        self.controller_infrastructure_address_1 = IPAddress("192.168.205.4")
-        self.nfs_infrastructure_address_1 = IPAddress("192.168.205.5")
-        self.storage_infrastructure_address_0 = ""
-        self.storage_infrastructure_address_1 = ""
-        self.controller_infrastructure_hostname_suffix = "-infra"
-        self.use_entire_infra_subnet = True
-        self.infrastructure_start_address = IPAddress("192.168.205.2")
-        self.infrastructure_end_address = IPAddress("192.168.205.254")
-
         # External OAM Network config
         self.external_oam_interface_configured = False
         self.external_oam_interface_name = self.net_devices[0]
@@ -671,7 +646,7 @@ class ConfigAssistant():
         print("System mode. Available options are:\n")
         print(textwrap.fill(
               "1) duplex-direct - two node redundant configuration. "
-              "Management and infrastructure networks "
+              "Management and cluster-host networks "
               "are directly connected to peer ports", 80))
         print(textwrap.fill(
               "2) duplex - two node redundant configuration. ", 80))
@@ -735,11 +710,6 @@ class ConfigAssistant():
              (interface_name == self.lag_management_interface_member0 or
               interface_name == self.lag_management_interface_member1))
             or
-            (self.infrastructure_interface_configured and
-             self.lag_infrastructure_interface and
-             (interface_name == self.lag_infrastructure_interface_member0 or
-              interface_name == self.lag_infrastructure_interface_member1))
-            or
             (self.external_oam_interface_configured and
              self.lag_external_oam_interface and
              (interface_name == self.lag_external_oam_interface_member0 or
@@ -762,8 +732,6 @@ class ConfigAssistant():
         """
         if ((self.management_interface_configured and
              interface_name == self.management_interface) or
-            (self.infrastructure_interface_configured and
-             interface_name == self.infrastructure_interface) or
             (self.external_oam_interface_configured and
              interface_name == self.external_oam_interface) or
             (self.cluster_host_interface_configured and
@@ -1314,8 +1282,7 @@ class ConfigAssistant():
                 print(textwrap.fill(
                     "IP addresses can be assigned to hosts dynamically or "
                     "a static IP address can be specified for each host. "
-                    "This choice applies to both the management network "
-                    "and infrastructure network (if configured). ", 80))
+                    "This choice applies to the management network ", 80))
             print(textwrap.fill(
                 "Warning: Selecting 'N', or static IP address allocation, "
                 "disables automatic provisioning of new hosts in System "
@@ -1463,439 +1430,6 @@ class ConfigAssistant():
         """ Management interface configuration complete"""
         self.management_interface_configured = True
 
-    def is_valid_infrastructure_address(self, ip_address):
-        """Determine whether an infrastructure address is valid."""
-        if ip_address == self.infrastructure_subnet.network:
-            print("Cannot use network address")
-            return False
-        elif ip_address == self.infrastructure_subnet.broadcast:
-            print("Cannot use broadcast address")
-            return False
-        elif ip_address.is_multicast():
-            print("Invalid network address - multicast address not allowed")
-            return False
-        elif ip_address.is_loopback():
-            print("Invalid network address - loopback address not allowed")
-            return False
-        elif ip_address not in self.infrastructure_subnet:
-            print("Address must be in the infrastructure subnet")
-            return False
-        else:
-            return True
-
-    def input_infrastructure_config(self):
-        """Allow user to input infrastructure config and perform validation."""
-
-        print("\nInfrastructure Network:")
-        print("-----------------------\n")
-
-        print(textwrap.fill(
-            "The infrastructure network is used for internal communication "
-            "between platform components to offload the management network "
-            "of high bandwidth services. "
-            "IP addresses on this network are reachable only within the data "
-            "center.", 80))
-        print('')
-        print(textwrap.fill(
-            "If a separate infrastructure interface is not configured the "
-            "management network will be used.", 80))
-        print('')
-
-        if self.system_mode == sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT:
-            print(textwrap.fill(
-                "It is NOT recommended to configure infrastructure network "
-                "for All-in-one duplex-direct."
-            ))
-
-        infra_vlan_required = False
-
-        while True:
-            user_input = input(
-                "Configure an infrastructure interface [y/N]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input.lower() == 'y':
-                break
-            elif user_input.lower() in ('n', ''):
-                self.infrastructure_interface = ""
-                return
-            else:
-                print("Invalid choice")
-                continue
-
-        while True:
-            print('')
-            print(textwrap.fill(
-                "An infrastructure bond interface provides redundant "
-                "connections for the infrastructure network.", 80))
-            print('')
-            user_input = input(
-                "Infrastructure interface link aggregation [y/N]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input.lower() == 'y':
-                self.lag_infrastructure_interface = True
-                break
-            elif user_input.lower() in ('n', ''):
-                self.lag_infrastructure_interface = False
-                break
-            else:
-                print("Invalid choice")
-                continue
-
-        while True:
-            if self.lag_infrastructure_interface:
-                self.infrastructure_interface = self.get_next_lag_name()
-
-            user_input = input("Infrastructure interface [" +
-                               str(self.infrastructure_interface) + "]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input == '':
-                user_input = self.infrastructure_interface
-                if user_input == '':
-                    print("Invalid interface")
-                    continue
-            elif self.lag_infrastructure_interface:
-                print(textwrap.fill(
-                    "Warning: The default name for the infrastructure bond "
-                    "interface (%s) cannot be changed." %
-                    self.infrastructure_interface, 80))
-                print('')
-                user_input = self.infrastructure_interface
-
-            if self.is_interface_in_bond(user_input):
-                print(textwrap.fill(
-                    "Interface is already configured as part of an "
-                    "aggregated interface.", 80))
-                continue
-            elif self.lag_infrastructure_interface:
-                self.infrastructure_interface = user_input
-                self.infrastructure_interface_name = user_input
-                break
-            elif (interface_exists(user_input) or
-                  user_input == self.management_interface or
-                  user_input == self.external_oam_interface):
-                self.infrastructure_interface = user_input
-                self.infrastructure_interface_name = user_input
-                if (self.external_oam_interface_configured and
-                    user_input == self.external_oam_interface and
-                        not self.external_oam_vlan):
-                    infra_vlan_required = True
-                break
-            else:
-                print("Interface does not exist")
-                continue
-
-        while True:
-            user_input = input(
-                "Configure an infrastructure VLAN [y/N]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input.lower() == 'y':
-                while True:
-                    user_input = input(
-                        "Infrastructure VLAN Identifier [" +
-                        str(self.infrastructure_vlan) + "]: ")
-                    if user_input.lower() == 'q':
-                        raise UserQuit
-                    elif is_valid_vlan(user_input):
-                        if user_input == self.management_vlan:
-                            print(textwrap.fill(
-                                "Invalid VLAN Identifier. Configured VLAN "
-                                "Identifier is already in use by another "
-                                "network.", 80))
-                            continue
-                        self.infrastructure_vlan = user_input
-                        self.infrastructure_interface_name = \
-                            self.infrastructure_interface + '.' + \
-                            self.infrastructure_vlan
-                        break
-                    else:
-                        print("VLAN is invalid/unsupported")
-                        continue
-                break
-            elif user_input.lower() in ('n', ''):
-                if infra_vlan_required:
-                    print(textwrap.fill(
-                        "An infrastructure VLAN is required since the "
-                        "configured infrastructure interface is the "
-                        "same as the configured management or external "
-                        "OAM interface.", 80))
-                    continue
-                self.infrastructure_vlan = ""
-                break
-            else:
-                print("Invalid choice")
-                continue
-
-        while True:
-            user_input = input("Infrastructure interface MTU [" +
-                               str(self.infrastructure_mtu) + "]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input == "":
-                user_input = self.infrastructure_mtu
-
-            if (self.management_interface_configured and
-                    self.infrastructure_interface ==
-                    self.management_interface and
-                    self.infrastructure_vlan and
-                    user_input > self.management_mtu):
-                print("Infrastructure VLAN MTU must not be larger than "
-                      "underlying management interface MTU")
-                continue
-            elif is_mtu_valid(user_input):
-                self.infrastructure_mtu = user_input
-                break
-            else:
-                print("MTU is invalid/unsupported")
-                continue
-
-        while True:
-            if not self.lag_infrastructure_interface:
-                break
-            print('')
-            print("Specify one of the bonding policies. Possible values are:")
-            print("  1) Active-backup policy")
-            print("  2) Balanced XOR policy")
-            print("  3) 802.3ad (LACP) policy")
-
-            user_input = input(
-                "\nInfrastructure interface bonding policy [" +
-                str(self.lag_infrastructure_interface_policy) + "]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input == '1':
-                self.lag_infrastructure_interface_policy = \
-                    constants.LAG_MODE_ACTIVE_BACKUP
-                self.lag_infrastructure_interface_txhash = None
-                break
-            elif user_input == '2':
-                self.lag_infrastructure_interface_policy = \
-                    constants.LAG_MODE_BALANCE_XOR
-                self.lag_infrastructure_interface_txhash = \
-                    constants.LAG_TXHASH_LAYER2
-                break
-            elif user_input == '3':
-                self.lag_infrastructure_interface_policy = \
-                    constants.LAG_MODE_8023AD
-                self.lag_infrastructure_interface_txhash = \
-                    constants.LAG_TXHASH_LAYER2
-                break
-            elif user_input == "":
-                break
-            else:
-                print("Invalid choice")
-                continue
-
-        while True:
-            if not self.lag_infrastructure_interface:
-                break
-
-            print(textwrap.fill(
-                "A maximum of 2 physical interfaces can be attached to the "
-                "infrastructure interface.", 80))
-            print('')
-
-            user_input = input(
-                "First infrastructure interface member [" +
-                str(self.lag_infrastructure_interface_member0) + "]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input == "":
-                user_input = self.lag_infrastructure_interface_member0
-
-            if self.is_interface_in_bond(user_input):
-                print(textwrap.fill(
-                    "Interface is already configured as part of an "
-                    "aggregated interface.", 80))
-                continue
-            elif self.is_interface_in_use(user_input):
-                print("Interface is already in use")
-                continue
-            elif interface_exists(user_input):
-                self.lag_infrastructure_interface_member0 = user_input
-            else:
-                print("Interface does not exist")
-                self.lag_infrastructure_interface_member0 = ""
-                continue
-
-            user_input = input(
-                "Second infrastructure interface member [" +
-                str(self.lag_infrastructure_interface_member1) + "]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input == "":
-                user_input = self.lag_infrastructure_interface_member1
-
-            if self.is_interface_in_bond(user_input):
-                print(textwrap.fill(
-                    "Interface is already configured as part of an "
-                    "aggregated interface.", 80))
-                continue
-            elif self.is_interface_in_use(user_input):
-                print("Interface is already in use")
-                continue
-            elif interface_exists(user_input):
-                if user_input == self.lag_infrastructure_interface_member0:
-                    print("Cannot use member 0 as member 1")
-                    continue
-                else:
-                    self.lag_infrastructure_interface_member1 = user_input
-                    break
-            else:
-                print("Interface does not exist")
-                self.lag_infrastructure_interface_member1 = ""
-                user_input = input(
-                    "Do you want a single physical member in the bond "
-                    "interface [y/n]: ")
-                if user_input.lower() == 'q':
-                    raise UserQuit
-                elif user_input.lower() == 'y':
-                    break
-                elif user_input.lower() in ('n', ''):
-                    continue
-                else:
-                    print("Invalid choice")
-                    continue
-
-        min_addresses = 8
-        while True:
-            user_input = input("Infrastructure subnet [" +
-                               str(self.infrastructure_subnet) + "]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input == "":
-                user_input = self.infrastructure_subnet
-
-            try:
-                ip_input = IPNetwork(user_input)
-                if ip_input.ip != ip_input.network:
-                    print("Invalid network address")
-                    continue
-                elif ip_input.version != self.management_subnet.version:
-                    print("IP version must match management network")
-                    continue
-                elif ip_input.size < min_addresses:
-                    print("Infrastructure subnet too small - "
-                          "must have at least 16 addresses")
-                    continue
-                elif ip_input.version == 6 and ip_input.prefixlen < 64:
-                    print("IPv6 minimum prefix length is 64")
-                    continue
-                elif ((self.separate_pxeboot_network and
-                       ip_input.ip in self.pxeboot_subnet) or
-                      ip_input.ip in self.management_subnet):
-                    print("Infrastructure subnet overlaps with an already "
-                          "configured subnet")
-                    continue
-
-                if ip_input.size < 255:
-                    print("WARNING: Subnet allows only %d addresses."
-                          % ip_input.size)
-
-                self.infrastructure_subnet = ip_input
-                break
-            except AddrFormatError:
-                print("Invalid subnet - please enter a valid IPv4 subnet")
-
-        self.infrastructure_start_address = \
-            self.infrastructure_subnet[2]
-        self.infrastructure_end_address = \
-            self.infrastructure_subnet[-2]
-        while True:
-            user_input = input(
-                "Use entire infrastructure subnet [Y/n]: ")
-            if user_input.lower() == 'q':
-                raise UserQuit
-            elif user_input.lower() == 'y':
-                self.use_entire_infra_subnet = True
-                break
-            elif user_input.lower() == 'n':
-                self.use_entire_infra_subnet = False
-                break
-            elif user_input == "":
-                break
-            else:
-                print("Invalid choice")
-                continue
-
-        if not self.use_entire_infra_subnet:
-            while True:
-                while True:
-                    user_input = input(
-                        "Infrastructure network start address [" +
-                        str(self.infrastructure_start_address) + "]: ")
-                    if user_input.lower() == 'q':
-                        raise UserQuit
-                    elif user_input == "":
-                        user_input = self.infrastructure_start_address
-
-                    try:
-                        self.infrastructure_start_address = \
-                            validate_address_str(
-                                user_input, self.infrastructure_subnet)
-                        break
-                    except ValidateFail as e:
-                        print("Invalid start address. \n Reason: %s" % e)
-
-                while True:
-                    user_input = input(
-                        "Infrastructure network end address [" +
-                        str(self.infrastructure_end_address) + "]: ")
-                    if user_input.lower() == 'q':
-                        raise UserQuit
-                    elif user_input == "":
-                        user_input = self.infrastructure_end_address
-
-                    try:
-                        self.infrastructure_end_address = validate_address_str(
-                            user_input, self.infrastructure_subnet)
-                        break
-                    except ValidateFail as e:
-                        print("Invalid infrastructure end address. \n"
-                              "Reason: %s" % e)
-
-                if not self.infrastructure_start_address < \
-                        self.infrastructure_end_address:
-                    print("Start address not less than end address. ")
-                    print('')
-                    continue
-
-                address_range = IPRange(str(self.infrastructure_start_address),
-                                        str(self.infrastructure_end_address))
-                if not address_range.size >= min_addresses:
-                    print(
-                        "Address range must contain at least %d addresses. " %
-                        min_addresses)
-                    continue
-                break
-
-        default_controller0_infra_ip = self.infrastructure_start_address + 1
-        ip_input = IPAddress(default_controller0_infra_ip)
-        if not self.is_valid_infrastructure_address(ip_input):
-            raise ConfigFail("Unable to create controller-0 Infrastructure "
-                             "address")
-        self.controller_infrastructure_address_0 = ip_input
-        default_controller1_infra_ip = \
-            self.controller_infrastructure_address_0 + 1
-        ip_input = IPAddress(default_controller1_infra_ip)
-        if not self.is_valid_infrastructure_address(ip_input):
-            raise ConfigFail("Unable to create controller-1 Infrastructure "
-                             "address")
-        self.controller_infrastructure_address_1 = ip_input
-        first_nfs_ip = self.controller_infrastructure_address_1 + 1
-
-        """ create default Infrastructure NFS address """
-        default_nfs_ip = IPAddress(first_nfs_ip)
-        if not self.is_valid_infrastructure_address(default_nfs_ip):
-            raise ConfigFail("Unable to create NFS Infrastructure address 1")
-        self.nfs_infrastructure_address_1 = default_nfs_ip
-
-        """ Infrastructure interface configuration complete"""
-        self.infrastructure_interface_configured = True
-
     def is_valid_external_oam_subnet(self, ip_subnet):
         """Determine whether an OAM subnet is valid."""
         if ip_subnet.size < 8:
@@ -1916,8 +1450,8 @@ class ConfigAssistant():
         elif ((self.separate_pxeboot_network and
                 ip_subnet.ip in self.pxeboot_subnet) or
                 (ip_subnet.ip in self.management_subnet) or
-                (self.infrastructure_interface and
-                 ip_subnet.ip in self.infrastructure_subnet)):
+                (self.cluster_host_interface and
+                 ip_subnet.ip in self.cluster_host_subnet)):
             print("External OAM subnet overlaps with an already "
                   "configured subnet")
             return False
@@ -2099,15 +1633,11 @@ class ConfigAssistant():
                 self.external_oam_interface_name = user_input
                 break
             elif (interface_exists(user_input) or
-                  user_input == self.management_interface or
-                  user_input == self.infrastructure_interface):
+                  user_input == self.management_interface):
                 self.external_oam_interface = user_input
                 self.external_oam_interface_name = user_input
                 if ((self.management_interface_configured and
-                     user_input == self.management_interface) or
-                    (self.infrastructure_interface_configured and
-                     user_input == self.infrastructure_interface and
-                     not self.infrastructure_vlan)):
+                     user_input == self.management_interface)):
                     ext_oam_vlan_required = True
                 break
             else:
@@ -2128,7 +1658,7 @@ class ConfigAssistant():
                         raise UserQuit
                     elif is_valid_vlan(user_input):
                         if ((user_input == self.management_vlan) or
-                                (user_input == self.infrastructure_vlan)):
+                                (user_input == self.cluster_host_vlan)):
                             print(textwrap.fill(
                                 "Invalid VLAN Identifier. Configured VLAN "
                                 "Identifier is already in use by another "
@@ -2149,7 +1679,7 @@ class ConfigAssistant():
                         "An external oam VLAN is required since the "
                         "configured external oam interface is the "
                         "same as either the configured management "
-                        "or infrastructure interface.", 80))
+                        "or cluster-host interface.", 80))
                     continue
                 self.external_oam_vlan = ""
                 break
@@ -2172,23 +1702,6 @@ class ConfigAssistant():
                     user_input > self.management_mtu):
                 print("External OAM VLAN MTU must not be larger than "
                       "underlying management interface MTU")
-                continue
-            elif (self.infrastructure_interface_configured and
-                    self.external_oam_interface ==
-                    self.infrastructure_interface and
-                    self.external_oam_vlan and
-                    user_input > self.infrastructure_mtu):
-                print("External OAM VLAN MTU must not be larger than "
-                      "underlying infrastructure interface MTU")
-                continue
-            elif (self.infrastructure_interface_configured and
-                    self.external_oam_interface ==
-                    self.infrastructure_interface and
-                    self.infrastructure_vlan and
-                    not self.external_oam_vlan and
-                    user_input < self.infrastructure_mtu):
-                print("External OAM interface MTU must not be smaller than "
-                      "infrastructure VLAN interface MTU")
                 continue
             elif is_mtu_valid(user_input):
                 self.external_oam_mtu = user_input
@@ -3030,14 +2543,6 @@ class ConfigAssistant():
                 self.input_dc_selection()
             self.input_pxeboot_config()
             self.input_management_config()
-            if self.system_dc_role != \
-                    sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER \
-                    and not self.kubernetes:
-                # Disallow infrastructure network on systemcontroller,
-                # as services located on infrastructure network will not
-                # be reachable by subclouds.
-                # Disallow infrastructure network on Kubernetes configs also.
-                self.input_infrastructure_config()
         if self.kubernetes:
             self.input_cluster_host_config()
         self.input_external_oam_config()
@@ -3250,59 +2755,6 @@ class ConfigAssistant():
                     self.management_start_address = self.management_subnet[2]
                     self.management_end_address = self.management_subnet[-2]
                     self.use_entire_mgmt_subnet = True
-
-            # Infrastructure network configuration
-            self.infrastructure_interface = ''
-            if config.has_option('cINFRA', 'INFRASTRUCTURE_INTERFACE'):
-                cvalue = config.get('cINFRA', 'INFRASTRUCTURE_INTERFACE')
-                if cvalue != 'NC':
-                    self.infrastructure_interface = cvalue
-            if self.infrastructure_interface:
-                self.infrastructure_mtu = config.get(
-                    'cINFRA', 'INFRASTRUCTURE_MTU')
-                self.infrastructure_vlan = ''
-                if config.has_option('cINFRA',
-                                     'INFRASTRUCTURE_INTERFACE_NAME'):
-                    cvalue = config.get('cINFRA',
-                                        'INFRASTRUCTURE_INTERFACE_NAME')
-                    if cvalue != 'NC':
-                        self.infrastructure_interface_name = cvalue
-                if config.has_option('cINFRA', 'INFRASTRUCTURE_VLAN'):
-                    cvalue = config.get('cINFRA', 'INFRASTRUCTURE_VLAN')
-                    if cvalue != 'NC':
-                        self.infrastructure_vlan = cvalue
-                self.lag_infrastructure_interface = config.getboolean(
-                    'cINFRA', 'LAG_INFRASTRUCTURE_INTERFACE')
-                if self.lag_infrastructure_interface:
-                    self.lag_infrastructure_interface_member0 = config.get(
-                        'cINFRA', 'INFRASTRUCTURE_BOND_MEMBER_0')
-                    self.lag_infrastructure_interface_member1 = config.get(
-                        'cINFRA', 'INFRASTRUCTURE_BOND_MEMBER_1')
-                    self.lag_infrastructure_interface_policy = config.get(
-                        'cINFRA', 'INFRASTRUCTURE_BOND_POLICY')
-                self.infrastructure_subnet = IPNetwork(config.get(
-                    'cINFRA', 'INFRASTRUCTURE_SUBNET'))
-                self.controller_infrastructure_address_0 = IPAddress(
-                    config.get('cINFRA',
-                               'CONTROLLER_0_INFRASTRUCTURE_ADDRESS'))
-                self.controller_infrastructure_address_1 = IPAddress(
-                    config.get('cINFRA',
-                               'CONTROLLER_1_INFRASTRUCTURE_ADDRESS'))
-                if config.has_option('cINFRA', 'NFS_INFRASTRUCTURE_ADDRESS_1'):
-                    self.nfs_infrastructure_address_1 = IPAddress(config.get(
-                        'cINFRA', 'NFS_INFRASTRUCTURE_ADDRESS_1'))
-                self.infrastructure_interface_configured = True
-                if config.has_option('cINFRA', 'INFRASTRUCTURE_START_ADDRESS'):
-                    self.infrastructure_start_address = IPAddress(
-                        config.get('cINFRA',
-                                   'INFRASTRUCTURE_START_ADDRESS'))
-                if config.has_option('cINFRA', 'INFRASTRUCTURE_END_ADDRESS'):
-                    self.infrastructure_end_address = IPAddress(
-                        config.get('cINFRA',
-                                   'INFRASTRUCTURE_END_ADDRESS'))
-                if not self.infrastructure_start_address and \
-                        not self.infrastructure_end_address:
-                    self.use_entire_infra_subnet = True
 
             # Cluster network configuration
             if self.kubernetes:
@@ -3648,9 +3100,8 @@ class ConfigAssistant():
         print("Controller 1 address: " + str(self.controller_address_1))
         print("NFS Management Address 1: " +
               str(self.nfs_management_address_1))
-        if not self.infrastructure_interface:
-            print("NFS Management Address 2: " +
-                  str(self.nfs_management_address_2))
+        print("NFS Management Address 2: " +
+              str(self.nfs_management_address_2))
         print("Controller floating hostname: " +
               str(self.controller_floating_hostname))
         print("Controller hostname prefix: " + self.controller_hostname_prefix)
@@ -3666,40 +3117,6 @@ class ConfigAssistant():
         print("Management multicast subnet: " +
               str(self.management_multicast_subnet))
 
-        print("\nInfrastructure Network Configuration")
-        print("------------------------------------")
-        if not self.infrastructure_interface:
-            print("Infrastructure interface not configured")
-        else:
-            print("Infrastructure interface name: " +
-                  self.infrastructure_interface_name)
-            print("Infrastructure interface: " + self.infrastructure_interface)
-            if self.infrastructure_vlan:
-                print("Infrastructure vlan: " + self.infrastructure_vlan)
-            print("Infrastructure interface MTU: " + self.infrastructure_mtu)
-            if self.lag_infrastructure_interface:
-                print("Infrastructure ae member 0: " +
-                      self.lag_infrastructure_interface_member0)
-                print("Infrastructure ae member 1: " +
-                      self.lag_infrastructure_interface_member1)
-                print("Infrastructure ae policy : " +
-                      self.lag_infrastructure_interface_policy)
-            print("Infrastructure subnet: " +
-                  str(self.infrastructure_subnet.cidr))
-            print("Controller 0 infrastructure address: " +
-                  str(self.controller_infrastructure_address_0))
-            print("Controller 1 infrastructure address: " +
-                  str(self.controller_infrastructure_address_1))
-            print("NFS Infrastructure Address 1: " +
-                  str(self.nfs_infrastructure_address_1))
-            print("Controller infrastructure hostname suffix: " +
-                  self.controller_infrastructure_hostname_suffix)
-            if not self.use_entire_infra_subnet:
-                print("Infrastructure start address: " +
-                      str(self.infrastructure_start_address))
-                print("Infrastructure end address: " +
-                      str(self.infrastructure_end_address))
-
         if self.kubernetes:
             print("\nKubernetes Cluster Network Configuration")
             print("----------------------------------------")
@@ -3710,7 +3127,7 @@ class ConfigAssistant():
             print("Cluster host interface name: " +
                   self.cluster_host_interface_name)
             print("Cluster host interface: " + self.cluster_host_interface)
-            if self.infrastructure_vlan:
+            if self.cluster_host_vlan:
                 print("Cluster host vlan: " + self.cluster_host_vlan)
             print("Cluster host interface MTU: " + self.cluster_host_mtu)
             if self.lag_cluster_host_interface:
@@ -3900,9 +3317,8 @@ class ConfigAssistant():
                         str(self.controller_address_1) + "\n")
                 f.write("NFS_MANAGEMENT_ADDRESS_1=" +
                         str(self.nfs_management_address_1) + "\n")
-                if not self.infrastructure_interface:
-                    f.write("NFS_MANAGEMENT_ADDRESS_2=" +
-                            str(self.nfs_management_address_2) + "\n")
+                f.write("NFS_MANAGEMENT_ADDRESS_2=" +
+                        str(self.nfs_management_address_2) + "\n")
                 f.write("CONTROLLER_FLOATING_HOSTNAME=" +
                         str(self.controller_floating_hostname) + "\n")
                 f.write("CONTROLLER_HOSTNAME_PREFIX=" +
@@ -3920,67 +3336,6 @@ class ConfigAssistant():
                             str(self.management_end_address) + "\n")
                 f.write("MANAGEMENT_MULTICAST_SUBNET=" +
                         str(self.management_multicast_subnet) + "\n")
-
-                # Infrastructure network configuration
-                f.write("\n[cINFRA]")
-                f.write("\n# Infrastructure Network Configuration\n")
-                if self.infrastructure_interface:
-                    f.write("INFRASTRUCTURE_INTERFACE_NAME="
-                            + self.infrastructure_interface_name + "\n")
-                    f.write("INFRASTRUCTURE_INTERFACE="
-                            + self.infrastructure_interface + "\n")
-                    f.write("INFRASTRUCTURE_VLAN="
-                            + self.infrastructure_vlan + "\n")
-                    f.write("INFRASTRUCTURE_MTU="
-                            + self.infrastructure_mtu + "\n")
-                    f.write("INFRASTRUCTURE_SUBNET=" +
-                            str(self.infrastructure_subnet.cidr) + "\n")
-                    if self.lag_infrastructure_interface:
-                        f.write("LAG_INFRASTRUCTURE_INTERFACE=yes\n")
-                        f.write("INFRASTRUCTURE_BOND_MEMBER_0=" +
-                                str(self.lag_infrastructure_interface_member0)
-                                + "\n")
-                        f.write("INFRASTRUCTURE_BOND_MEMBER_1=" +
-                                str(self.lag_infrastructure_interface_member1)
-                                + "\n")
-                        f.write("INFRASTRUCTURE_BOND_POLICY=" +
-                                str(self.lag_infrastructure_interface_policy)
-                                + "\n")
-                    else:
-                        f.write("LAG_INFRASTRUCTURE_INTERFACE=no\n")
-                    f.write("CONTROLLER_0_INFRASTRUCTURE_ADDRESS=" +
-                            str(self.controller_infrastructure_address_0)
-                            + "\n")
-                    f.write("CONTROLLER_1_INFRASTRUCTURE_ADDRESS=" +
-                            str(self.controller_infrastructure_address_1)
-                            + "\n")
-                    f.write("NFS_INFRASTRUCTURE_ADDRESS_1=" +
-                            str(self.nfs_infrastructure_address_1) + "\n")
-                    f.write("CONTROLLER_INFRASTRUCTURE_HOSTNAME_SUFFIX=" +
-                            self.controller_infrastructure_hostname_suffix
-                            + "\n")
-                    f.write("INFRASTRUCTURE_START_ADDRESS=" +
-                            str(self.infrastructure_start_address) + "\n")
-                    f.write("INFRASTRUCTURE_END_ADDRESS=" +
-                            str(self.infrastructure_end_address) + "\n")
-                else:
-                    f.write("INFRASTRUCTURE_INTERFACE_NAME=NC\n")
-                    f.write("INFRASTRUCTURE_INTERFACE=NC\n")
-                    f.write("INFRASTRUCTURE_VLAN=NC\n")
-                    f.write("INFRASTRUCTURE_MTU=NC\n")
-                    f.write("INFRASTRUCTURE_SUBNET=NC\n")
-                    f.write("LAG_INFRASTRUCTURE_INTERFACE=no\n")
-                    f.write("INFRASTRUCTURE_BOND_MEMBER_0=NC\n")
-                    f.write("INFRASTRUCTURE_BOND_MEMBER_1=NC\n")
-                    f.write("INFRASTRUCTURE_BOND_POLICY=NC\n")
-                    f.write("CONTROLLER_0_INFRASTRUCTURE_ADDRESS=NC\n")
-                    f.write("CONTROLLER_1_INFRASTRUCTURE_ADDRESS=NC\n")
-                    f.write("NFS_INFRASTRUCTURE_ADDRESS_1=NC\n")
-                    f.write("STORAGE_0_INFRASTRUCTURE_ADDRESS=NC\n")
-                    f.write("STORAGE_1_INFRASTRUCTURE_ADDRESS=NC\n")
-                    f.write("CONTROLLER_INFRASTRUCTURE_HOSTNAME_SUFFIX=NC\n")
-                    f.write("INFRASTRUCTURE_START_ADDRESS=NC\n")
-                    f.write("INFRASTRUCTURE_END_ADDRESS=NC\n")
 
                 # Cluster host network configuration
                 if self.kubernetes:
@@ -4611,7 +3966,6 @@ class ConfigAssistant():
     def _populate_network_config(self, client):
         self._populate_mgmt_network(client)
         self._populate_pxeboot_network(client)
-        self._populate_infra_network(client)
         self._populate_oam_network(client)
         self._populate_multicast_network(client)
         if self.kubernetes:
@@ -4663,30 +4017,6 @@ class ConfigAssistant():
             'dynamic': True,
             'pool_uuid': pool.uuid,
         }
-        client.sysinv.network.create(**values)
-
-    def _populate_infra_network(self, client):
-        if not self.infrastructure_interface:
-            return  # infrastructure network not configured
-
-        # create the address pool
-        values = {
-            'name': 'infrastructure',
-            'network': str(self.infrastructure_subnet.network),
-            'prefix': self.infrastructure_subnet.prefixlen,
-            'ranges': [(str(self.infrastructure_start_address),
-                        str(self.infrastructure_end_address))],
-        }
-        pool = client.sysinv.address_pool.create(**values)
-
-        # create the network for the pool
-        values = {
-            'type': sysinv_constants.NETWORK_TYPE_INFRA,
-            'name': sysinv_constants.NETWORK_TYPE_INFRA,
-            'dynamic': self.dynamic_address_allocation,
-            'pool_uuid': pool.uuid,
-        }
-
         client.sysinv.network.create(**values)
 
     def _populate_oam_network(self, client):
@@ -4902,7 +4232,6 @@ class ConfigAssistant():
         self._wait_ethernet_port_config(client, controller)
 
         self._populate_management_interface(client, controller)
-        self._populate_infrastructure_interface(client, controller)
         self._populate_oam_interface(client, controller)
         if self.kubernetes:
             self._populate_cluster_host_interface(client, controller)
@@ -4964,10 +4293,10 @@ class ConfigAssistant():
         types are sharing the same interfaces in which case the lowest
         interface must have an interface equal to or greater than any of the
         VLAN interfaces above it.  The input semantic checks enforce specific
-        precedence rules (e.g., infra must be less than or equal to the mgmt
-        mtu if infra is a vlan over mgmt), but this function allows for any
-        permutation to avoid issues if the semantic checks are loosened or if
-        the ini input method allows different possibities.
+        precedence rules (e.g., cluster-host must be less than or equal to the
+        mgmt mtu if cluster-host is a vlan over mgmt), but this function allows
+        for any permutation to avoid issues if the semantic checks are loosened
+        or if the ini input method allows different possibities.
 
         This function must not be used for VLAN interfaces.  VLAN interfaces
         have no requirement to be large enough to accomodate another VLAN above
@@ -4978,9 +4307,6 @@ class ConfigAssistant():
         if self.management_interface_configured:
             if ifname == self.management_interface:
                 value = max(value, self.management_mtu)
-        if self.infrastructure_interface_configured:
-            if ifname == self.infrastructure_interface:
-                value = max(value, self.infrastructure_mtu)
         if self.cluster_host_interface_configured:
             if ifname == self.cluster_host_interface:
                 value = max(value, self.cluster_host_mtu)
@@ -5085,69 +4411,6 @@ class ConfigAssistant():
         # Create the Ceph default backend
         values = {'confirmed': True}
         client.sysinv.storage_ceph.create(**values)
-
-    def _populate_infrastructure_interface(self, client, controller):
-        """Configure the infrastructure interface(s)"""
-        if not self.infrastructure_interface:
-            return  # No infrastructure interface configured
-
-        interface_class = sysinv_constants.INTERFACE_CLASS_PLATFORM
-        network = self._get_network(client,
-                                    sysinv_constants.NETWORK_TYPE_INFRA)
-
-        if self.lag_infrastructure_interface:
-            members = [self.lag_infrastructure_interface_member0]
-            if self.lag_infrastructure_interface_member1:
-                members.append(self.lag_infrastructure_interface_member1)
-
-            aemode = self._get_interface_aemode(
-                self.lag_infrastructure_interface_policy)
-
-            txhashpolicy = self._get_interface_txhashpolicy(
-                self.lag_infrastructure_interface_policy)
-
-            values = {
-                'ihost_uuid': controller.uuid,
-                'ifname': self.infrastructure_interface,
-                'imtu': self._get_interface_mtu(self.infrastructure_interface),
-                'iftype': sysinv_constants.INTERFACE_TYPE_AE,
-                'aemode': aemode,
-                'txhashpolicy': txhashpolicy,
-                'ifclass': interface_class,
-                'networks': [str(network.id)],
-                'uses': members,
-            }
-
-            client.sysinv.iinterface.create(**values)
-        else:
-            # update MTU or network type of interface
-            values = {
-                'ihost_uuid': controller.uuid,
-                'ifname': self.infrastructure_interface,
-            }
-            values.update({
-                'imtu': self._get_interface_mtu(self.infrastructure_interface)
-            })
-            if not self.infrastructure_vlan:
-                values.update({
-                    'ifclass': interface_class,
-                    'networks': str(network.id)
-                })
-
-            self._update_interface_config(client, values)
-
-        if self.infrastructure_vlan:
-            values = {
-                'ihost_uuid': controller.uuid,
-                'ifname': self.infrastructure_interface_name,
-                'imtu': self.infrastructure_mtu,
-                'iftype': sysinv_constants.INTERFACE_TYPE_VLAN,
-                'ifclass': interface_class,
-                'networks': [str(network.id)],
-                'uses': [self.infrastructure_interface],
-                'vlan_id': self.infrastructure_vlan,
-            }
-            client.sysinv.iinterface.create(**values)
 
     def _populate_cluster_host_interface(self, client, controller):
         """Configure the cluster host interface(s)"""
@@ -5468,8 +4731,8 @@ class ConfigAssistant():
                         "Bring up the interface to enable the required "
                         "services." % self.management_interface, 80))
 
-        if self.infrastructure_interface_configured:
-            if not is_interface_up(self.infrastructure_interface):
+        if self.cluster_host_interface_configured:
+            if not is_interface_up(self.cluster_host_interface):
                 if self.system_mode != \
                         sysinv_constants.SYSTEM_MODE_DUPLEX_DIRECT:
                     print('')
@@ -5477,7 +4740,7 @@ class ConfigAssistant():
                         "Warning: The interface (%s) is not operational "
                         "and some platform services will not start properly. "
                         "Bring up the interface to enable the required "
-                        "services." % self.infrastructure_interface, 80))
+                        "services." % self.cluster_host_interface, 80))
 
         if self.external_oam_interface_configured:
             if not is_interface_up(self.external_oam_interface):

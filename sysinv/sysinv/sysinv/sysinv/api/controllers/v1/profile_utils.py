@@ -166,9 +166,6 @@ class Interface(object):
                 self.ipv4Mode = network.ipv4Mode
                 self.ipv6Mode = network.ipv6Mode
                 self.routes = network.routes
-            elif network.networkType == constants.NETWORK_TYPE_INFRA:
-                self.ipv4Mode = {'mode': constants.IPV4_STATIC, 'pool': None}
-                self.ipv6Mode = {'mode': constants.IPV6_DISABLED, 'pool': None}
             elif network.networkType == constants.NETWORK_TYPE_PCI_SRIOV:
                 self.virtualFunctions = network.virtualFunctions
 
@@ -186,8 +183,8 @@ class Interface(object):
             raise InvalidProfileData(_('Too many network types selected for the interface.'))
 
         # when change, make sure modify the displayText as well
-        combineTypes = [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_INFRA, constants.NETWORK_TYPE_DATA]
-        displayText = _('Only mgmt, infra, data network types can be combined on a single interface')
+        combineTypes = [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST]
+        displayText = _('Only mgmt and cluster-host network types can be combined on a single interface')
         if numberOfNetworks == 2:
             if self.networks[0].networkType not in combineTypes or \
                     self.networks[1].networkType not in combineTypes:
@@ -195,9 +192,6 @@ class Interface(object):
 
             if self.networks[0].networkType == self.networks[1].networkType:
                 raise InvalidProfileData(_('Interface can not combine with 2 networks with the same type.'))
-
-            # if self.networks[0].networkType == constants.NETWORK_TYPE_INFRA or self.networks[1].networkType == constants.NETWORK_TYPE_INFRA and \
-            #     self.ipv6Mode != None and self.ipv4Mode != 'dhcp':
 
         try:
             for network in self.networks:
@@ -289,7 +283,7 @@ class EthInterface(Interface):
     def getNetworkMap(self):
         return {
                     'dataclassNetwork': lambda node: DataclassNetwork(node),
-                    'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
+                    'clusterhostNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_CLUSTER_HOST),
                     'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
                     'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT),
                     'pciPassthrough': lambda node: PciPassthrough(node),
@@ -331,7 +325,7 @@ class AeInterface(Interface):
     def getNetworkMap(self):
         return {
                     'dataclassNetwork': lambda node: DataclassNetwork(node),
-                    'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
+                    'clusterhostNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_CLUSTER_HOST),
                     'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
                     'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)
                  }
@@ -366,7 +360,7 @@ class VlanInterface(Interface):
     def getNetworkMap(self):
         return {
                 'dataclassNetwork': lambda node: DataclassNetwork(node),
-                'infraNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_INFRA),
+                'clusterhostNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_CLUSTER_HOST),
                 'oamNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_OAM),
                 'mgmtNetwork': lambda node: ExternalNetwork(node, constants.NETWORK_TYPE_MGMT)
         }

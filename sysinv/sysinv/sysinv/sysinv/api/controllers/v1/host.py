@@ -112,15 +112,6 @@ def _get_storage_address(hostname):
                                           constants.NETWORK_TYPE_MGMT)
 
 
-def _infrastructure_configured():
-    """Check if an infrastructure network has been configured"""
-    try:
-        pecan.request.dbapi.iinfra_get_one()
-        return True
-    except exception.NetworkTypeNotFound:
-        return False
-
-
 class HostProvisionState(state.State):
     @classmethod
     def convert_with_links(cls, rpc_ihost, expand=True):
@@ -365,9 +356,6 @@ class Host(base.APIBase):
     mgmt_ip = wtypes.text
     "Represent the provisioned Boot mgmt IP address of the ihost."
 
-    infra_ip = wtypes.text
-    "Represent the provisioned infrastructure IP address of the ihost."
-
     bm_ip = wtypes.text
     "Discovered board management IP address of the ihost."
 
@@ -561,7 +549,7 @@ class Host(base.APIBase):
                           'invprovision',
                           'task', 'mtce_info', 'action', 'uptime', 'reserved',
                           'ihost_action', 'vim_progress_status',
-                          'mgmt_mac', 'mgmt_ip', 'infra_ip', 'location',
+                          'mgmt_mac', 'mgmt_ip', 'location',
                           'bm_ip', 'bm_type', 'bm_username',
                           'isystem_uuid', 'capabilities', 'serialid',
                           'config_status', 'config_applied', 'config_target',
@@ -1476,8 +1464,6 @@ class HostController(rest.RestController):
         new_ihost_mtc = ihost_obj.as_dict()
         new_ihost_mtc.update({'operation': 'add'})
         new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
-        new_ihost_mtc.update(
-            {'infra_ip': self._get_infra_ip_by_ihost(ihost_obj['uuid'])})
 
         mtc_response = mtce_api.host_add(
             self._api_token, self._mtc_address, self._mtc_port, new_ihost_mtc,
@@ -1839,7 +1825,7 @@ class HostController(rest.RestController):
         ihost_dict_orig = dict(ihost_obj.as_dict())
         for key in defaults:
             # Internal values that shouldn't be part of the patch
-            if key in ['id', 'updated_at', 'created_at', 'infra_ip']:
+            if key in ['id', 'updated_at', 'created_at']:
                 continue
 
             # In case of a remove operation, add the missing fields back
@@ -2049,10 +2035,6 @@ class HostController(rest.RestController):
                     new_ihost_mtc['action'] = constants.FORCE_LOCK_ACTION
                 elif myaction == constants.FORCE_UNLOCK_ACTION:
                     new_ihost_mtc['action'] = constants.UNLOCK_ACTION
-
-                new_ihost_mtc.update({
-                    'infra_ip': self._get_infra_ip_by_ihost(ihost_obj['uuid'])
-                                    })
 
                 if new_ihost_mtc['operation'] == 'add':
                     mtc_response = mtce_api.host_add(
@@ -2818,9 +2800,6 @@ class HostController(rest.RestController):
             new_ihost_mtc.update({'action': constants.REINSTALL_ACTION})
             new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
 
-            new_ihost_mtc.update(
-                {'infra_ip': self._get_infra_ip_by_ihost(uuid)})
-
             mtc_response = mtce_api.host_modify(
                 self._api_token, self._mtc_address, self._mtc_port,
                 new_ihost_mtc, constants.MTC_ADD_TIMEOUT_IN_SECS)
@@ -2837,25 +2816,6 @@ class HostController(rest.RestController):
                                                mtc_response.get('status'),
                                                mtc_response.get('reason'),
                                                mtc_response.get('action')))
-
-    @staticmethod
-    def _get_infra_ip_by_ihost(ihost_uuid):
-        try:
-            # Get the list of interfaces for this ihost
-            iinterfaces = pecan.request.dbapi.iinterface_get_by_ihost(
-                ihost_uuid)
-            # Make a list of only the infra interfaces
-            infra_interfaces = [i for i in iinterfaces if
-                                i['networktype'] == constants.NETWORK_TYPE_INFRA]
-            # Get the UUID of the infra interface (there is only one)
-            infra_interface_uuid = infra_interfaces[0]['uuid']
-            # Return the first address for this interface (there is only one)
-            return pecan.request.dbapi.addresses_get_by_interface(
-                infra_interface_uuid)[0]['address']
-        except Exception as ex:
-            LOG.debug("Could not find infra ip for host %s: %s" % (
-                ihost_uuid, ex))
-            return None
 
     @staticmethod
     def _validate_ip_in_mgmt_network(ip):
@@ -2910,7 +2870,7 @@ class HostController(rest.RestController):
     def _validate_delta(delta):
         restricted_updates = ['uuid', 'id', 'created_at', 'updated_at',
                               'cstatus',
-                              'mgmt_mac', 'mgmt_ip', 'infra_ip',
+                              'mgmt_mac', 'mgmt_ip',
                               'invprovision', 'recordtype',
                               'ihost_action',
                               'action_state',
@@ -5009,7 +4969,7 @@ class HostController(rest.RestController):
             self.check_unlock_storage(hostupdate)
 
         self.check_unlock_interfaces(hostupdate)
-        self.unlock_update_mgmt_infra_interface(hostupdate.ihost_patch)
+        self.unlock_update_mgmt_interface(hostupdate.ihost_patch)
         self.check_unlock_partitions(hostupdate)
         self.check_unlock_patching(hostupdate, force_unlock)
 
@@ -5910,46 +5870,6 @@ class HostController(rest.RestController):
         ihost = hostupdate.ihost_patch
         if ihost['personality'] in [constants.CONTROLLER, constants.WORKER,
                                     constants.STORAGE]:
-            # Check if there is an infra interface on
-            # controller/worker/storage
-            ihost_iinterfaces = \
-                pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid'])
-
-            infra_interface = None
-            # Checks if infrastructure network is configured
-            if _infrastructure_configured():
-                infra_network = pecan.request.dbapi.network_get_by_type(
-                    constants.NETWORK_TYPE_INFRA)
-
-                for iif in ihost_iinterfaces:
-                    if iif.networks and str(infra_network.id) in iif.networks:
-                        infra_interface = iif
-
-                if not infra_interface:
-                    msg = _("Cannot unlock host %s without an infrastructure "
-                            "interface configured." % hostupdate.displayid)
-                    raise wsme.exc.ClientSideError(msg)
-
-                addr_mode = constants.IPV4_STATIC
-                if infra_interface.ipv4_mode != addr_mode:
-                    if infra_interface.ipv6_mode != addr_mode:
-                        msg = _("Cannot unlock host %s "
-                                "without the address mode of the "
-                                "infrastructure interface being %s, "
-                                "as specified by the system configured "
-                                "value." % (hostupdate.displayid, addr_mode))
-                        raise wsme.exc.ClientSideError(msg)
-
-                # infra interface must have an IP address
-                if not infra_network.dynamic and not \
-                   self._get_infra_ip_by_ihost(ihost['uuid']) and not \
-                   ihost['personality'] in [constants.CONTROLLER,
-                                            constants.STORAGE]:
-                    msg = _("Cannot unlock host %s "
-                            "without first assigning it an IP "
-                            "address via the system host-addr-add "
-                            "command. " % hostupdate.displayid)
-                    raise wsme.exc.ClientSideError(msg)
 
             # Check if there is an management interface on
             # controller/worker/storage
@@ -6005,11 +5925,10 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
-    def unlock_update_mgmt_infra_interface(ihost):
+    def unlock_update_mgmt_interface(ihost):
         # MTU Update: Compute and storage nodes get MTU values for
-        # management and infrastrucutre interfaces via DHCP. This
-        # 'check' updates the 'imtu' value based on what will be served
-        # via DHCP.
+        # management via DHCP. This 'check' updates the 'imtu' value based on
+        # what will be served via DHCP.
         if ihost['personality'] in [constants.WORKER, constants.STORAGE]:
             host_list = pecan.request.dbapi.ihost_get_by_personality(
                 personality=constants.CONTROLLER)
@@ -6023,13 +5942,13 @@ class HostController(rest.RestController):
             ihost_iinterfaces = \
                 pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid'])
 
-            # updated management and infra interfaces
+            # updated management interfaces
             idata = {}
             for iif in ihost_iinterfaces:
                 iif_networktype = []
                 if iif.networktype:
                     iif_networktype = [network.strip() for network in iif.networktype.split(",")]
-                if any(network in [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_INFRA] for network in iif_networktype):
+                if any(network in [constants.NETWORK_TYPE_MGMT] for network in iif_networktype):
                     for ila in interface_list_active:
                         ila_networktype = []
                         if ila.networktype:

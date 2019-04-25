@@ -20,7 +20,6 @@ class NetworkingPuppet(base.BasePuppet):
         config = {}
         config.update(self._get_pxeboot_network_config())
         config.update(self._get_mgmt_network_config())
-        config.update(self._get_infra_network_config())
         config.update(self._get_oam_network_config())
         config.update(self._get_cluster_network_config())
         return config
@@ -29,7 +28,6 @@ class NetworkingPuppet(base.BasePuppet):
         config = {}
         config.update(self._get_pxeboot_interface_config())
         config.update(self._get_mgmt_interface_config())
-        config.update(self._get_infra_interface_config())
         config.update(self._get_cluster_interface_config())
         if host.personality == constants.CONTROLLER:
             config.update(self._get_oam_interface_config())
@@ -63,27 +61,6 @@ class NetworkingPuppet(base.BasePuppet):
                 gateway_address,
             'platform::network::%s::params::platform_nfs_address' % networktype:
                 platform_nfs_address,
-            'platform::network::%s::params::cgcs_nfs_address' % networktype:
-                cgcs_nfs_address,
-        })
-
-        return config
-
-    def _get_infra_network_config(self):
-        networktype = constants.NETWORK_TYPE_INFRA
-
-        config = self._get_network_config(networktype)
-        if not config:
-            # network not configured
-            return config
-
-        try:
-            cgcs_nfs_address = self._get_address_by_name(
-                constants.CONTROLLER_CGCS_NFS, networktype).address
-        except exception.AddressNotFoundByName:
-            cgcs_nfs_address = None
-
-        config.update({
             'platform::network::%s::params::cgcs_nfs_address' % networktype:
                 cgcs_nfs_address,
         })
@@ -188,9 +165,6 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_mgmt_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_MGMT)
-
-    def _get_infra_interface_config(self):
-        return self._get_interface_config(constants.NETWORK_TYPE_INFRA)
 
     def _get_oam_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_OAM)

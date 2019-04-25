@@ -37,7 +37,6 @@ from sysinv.objects import helm_overrides
 from sysinv.objects import host
 from sysinv.objects import host_upgrade
 from sysinv.objects import kube_app
-from sysinv.objects import network_infra
 from sysinv.objects import interface
 from sysinv.objects import interface_ae
 from sysinv.objects import interface_ethernet
@@ -151,7 +150,6 @@ storage_lvm = storage_lvm.StorageLVM
 ceph_mon = ceph_mon.CephMon
 controller_fs = controller_fs.ControllerFS
 drbdconfig = drbdconfig.DRBDConfig
-infra_network = network_infra.InfraNetwork
 address = address.Address
 address_pool = address_pool.AddressPool
 route = route.Route
@@ -218,7 +216,6 @@ __all__ = (system,
            storage_lvm,
            ceph_mon,
            drbdconfig,
-           infra_network,
            address,
            address_mode,
            route,

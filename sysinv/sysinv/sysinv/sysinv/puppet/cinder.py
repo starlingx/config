@@ -6,7 +6,6 @@
 import os
 
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 
@@ -720,16 +719,10 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
         return self._operator.neutron.get_internal_url()
 
     def _get_cinder_address(self):
-        # obtain infrastructure address if configured, otherwise fallback to
-        # management network NFS address
-        try:
-            return self._get_address_by_name(
-                constants.CONTROLLER_CINDER,
-                constants.NETWORK_TYPE_INFRA).address
-        except exception.AddressNotFoundByName:
-            return self._get_address_by_name(
-                constants.CONTROLLER_CINDER,
-                constants.NETWORK_TYPE_MGMT).address
+        # obtain management network NFS address
+        return self._get_address_by_name(
+            constants.CONTROLLER_CINDER,
+            constants.NETWORK_TYPE_MGMT).address
 
     def get_service_name(self):
         return self._get_configured_service_name(self.SERVICE_NAME)

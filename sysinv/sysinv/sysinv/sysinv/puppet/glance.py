@@ -9,7 +9,6 @@ import os
 from oslo_utils import strutils
 from six.moves.urllib.parse import urlparse
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.puppet import openstack
 
@@ -284,14 +283,7 @@ class GlancePuppet(openstack.OpenstackBasePuppet):
                                              address=address)
 
     def _get_glance_address(self):
-        # Obtain NFS infrastructure address if configured, otherwise fallback
-        # to the management controller address
-        try:
-            return self._get_address_by_name(
-                constants.CONTROLLER_CGCS_NFS,
-                constants.NETWORK_TYPE_INFRA).address
-        except exception.AddressNotFoundByName:
-            return self._get_management_address()
+        return self._get_management_address()
 
     def get_region_name(self):
         return self._get_service_region_name(self.SERVICE_NAME)

@@ -14,15 +14,8 @@ class platform::drbd::params (
   $host2 = $::platform::params::controller_1_hostname
 
   include ::platform::network::mgmt::params
-  include ::platform::network::infra::params
-
-  if $::platform::network::infra::params::interface_name {
-    $ip1 = $::platform::network::infra::params::controller0_address
-    $ip2 = $::platform::network::infra::params::controller1_address
-  } else {
-    $ip1 = $::platform::network::mgmt::params::controller0_address
-    $ip2 = $::platform::network::mgmt::params::controller1_address
-  }
+  $ip1 = $::platform::network::mgmt::params::controller0_address
+  $ip2 = $::platform::network::mgmt::params::controller1_address
 
   $manage = str2bool($::is_initial_config)
 }

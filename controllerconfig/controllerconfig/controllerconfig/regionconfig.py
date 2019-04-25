@@ -23,7 +23,6 @@ from controllerconfig.common.configobjects import REGION_CONFIG
 from controllerconfig.common.configobjects import SUBCLOUD_CONFIG
 from controllerconfig import ConfigFail
 from controllerconfig.configassistant import ConfigAssistant
-from netaddr import IPAddress
 from controllerconfig.systemconfig import parse_system_config
 from controllerconfig.systemconfig import configure_management_interface
 from controllerconfig.systemconfig import create_cgcs_config_file
@@ -312,12 +311,6 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
         internal_address = region_config.get('MGMT_NETWORK',
                                              'IP_START_ADDRESS')
 
-    internal_infra_address = utils.get_optional(
-        region_config, 'BLS_NETWORK', 'BLS_IP_START_ADDRESS')
-    if not internal_infra_address:
-        internal_infra_address = utils.get_optional(
-            region_config, 'INFRA_NETWORK', 'IP_START_ADDRESS')
-
     for endpoint in expected_region_2_endpoints:
         service_name = utils.get_service(region_config, 'REGION_2_SERVICES',
                                          endpoint[SERVICE_NAME])
@@ -327,14 +320,8 @@ def validate_region_one_keystone_config(region_config, token, api_url, users,
 
         expected_public_url = endpoint[PUBLIC_URL].format(public_address)
 
-        if internal_infra_address and service_type == 'image':
-            nfs_address = IPAddress(internal_infra_address) + 3
-            expected_internal_url = endpoint[INTERNAL_URL].format(nfs_address)
-            expected_admin_url = endpoint[ADMIN_URL].format(nfs_address)
-        else:
-            expected_internal_url = endpoint[INTERNAL_URL].format(
-                internal_address)
-            expected_admin_url = endpoint[ADMIN_URL].format(internal_address)
+        expected_internal_url = endpoint[INTERNAL_URL].format(internal_address)
+        expected_admin_url = endpoint[ADMIN_URL].format(internal_address)
 
         try:
             public_url = endpoints.get_service_url(region_2_name, service_id,

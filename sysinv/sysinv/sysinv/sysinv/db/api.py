@@ -847,7 +847,7 @@ class Connection(object):
 
         :param iinterface_id: The id or uuid of an iinterface.
         :param ihost: The id or uuid of an ihost.
-        :param network: The network type ('mgmt', 'infra', 'oam')
+        :param network: The network type ('mgmt', 'cluster-host', 'oam')
         :returns: An iinterface.
         """
 
@@ -2820,26 +2820,6 @@ class Connection(object):
         """Destroy an service.
 
         :param name: The name of an service
-        """
-
-    @abc.abstractmethod
-    def iinfra_get_one(self):
-        """Return exactly one iinfra.
-
-        :returns: A iinfra.
-        """
-
-    @abc.abstractmethod
-    def iinfra_get_list(self, limit=None, marker=None,
-                         sort_key=None, sort_dir=None):
-        """Return a list of iinfra.
-
-        :param limit: Maximum number of iinfra to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
         """
 
     # SENSORS

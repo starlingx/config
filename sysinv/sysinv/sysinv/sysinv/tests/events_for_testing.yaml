@@ -138,7 +138,7 @@
     Description: No access to remote VM volumes.
     Entity_Instance_ID: host=<hostname>
     Severity: major
-    Proposed_Repair_Action: Check Management and Infrastructure Networks and Controller or Storage Nodes.
+    Proposed_Repair_Action: Check Management and Cluster-host Networks and Controller or Storage Nodes.
     Maintenance_Action: degrade
     Inhibit_Alarms:
     Alarm_Type: operational-violation
@@ -210,7 +210,7 @@
 
 100.110:
     Type: Alarm
-    Description: "'INFRA' Port failed."
+    Description: "'CLUSTER-HOST' Port failed."
     Entity_Instance_ID: host=<hostname>.port=<port-name>
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
@@ -224,9 +224,9 @@
 100.111:
     Type: Alarm
     Description: |-
-        'INFRA' Interface degraded.
+        'CLUSTER-HOST' Interface degraded.
         OR
-        'INFRA' Interface failed.
+        'CLUSTER-HOST' Interface failed.
     Entity_Instance_ID: host=<hostname>.interface=<if-name>
     Severity: [critical, major]
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
@@ -443,14 +443,14 @@
     Type: Alarm
     Description: |-
         Degrade:
-        <hostname> is experiencing an intermittent 'Infrastructure Network'  communication failures that have exceeded its lower alarming threshold.
+        <hostname> is experiencing an intermittent 'Cluster-host Network'  communication failures that have exceeded its lower alarming threshold.
 
         Failure:
-        <hostname> is experiencing a persistent critical 'Infrastructure Network' communication failure."
+        <hostname> is experiencing a persistent critical 'Cluster-host Network' communication failure."
     Entity_Instance_ID: host=<hostname>
     Severity: [critical, major]
     Proposed_Repair_Action: |-
-        "Check 'Infrastructure Network' connectivity and support for multicast messaging.
+        "Check 'Cluster-host Network' connectivity and support for multicast messaging.
         If problem consistently occurs after that and Host is reset, then contact next level of support or lock and replace failing host."
     Maintenance_Action: auto recover
     Inhibit_Alarms: false
@@ -888,7 +888,7 @@
         Communication failure detected with peer over port <linux-ifname>.
         OR
         Communication failure detected with peer over port <linux-ifname> within the last 30 seconds.
-    Entity_Instance_ID: host=<hostname>.network=<mgmt | oam | infra>
+    Entity_Instance_ID: host=<hostname>.network=<mgmt | oam | cluster-host>
     Severity: major
     Proposed_Repair_Action: Check cabling and far-end port configuration and status on adjacent equipment.
     Maintenance_Action:

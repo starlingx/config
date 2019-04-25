@@ -896,7 +896,7 @@ class AgentManager(service.PeriodicService):
 
         if constants.WORKER in self.subfunctions_list_get():
             platform_interfaces = []
-            # retrieve the mgmt and infra interfaces and associated numa nodes
+            # retrieve the mgmt interfaces and associated numa nodes
             try:
                 platform_interfaces = rpcapi.get_platform_interfaces(icontext,
                                                                      ihost['id'])
