@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import copy
+
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
@@ -19,8 +21,15 @@ class RbdProvisionerHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the rbd-provisioner chart"""
 
     CHART = constants.HELM_CHART_RBD_PROVISIONER
-    SUPPORTED_NAMESPACES = \
-        base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + \
+        [common.HELM_NS_OPENSTACK,
+         common.HELM_NS_KUBE_SYSTEM]
+    SUPPORTED_APP_NAMESPACES = {
+        constants.HELM_APP_OPENSTACK:
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK],
+        constants.HELM_APP_PLATFORM:
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_KUBE_SYSTEM],
+    }
 
     SERVICE_NAME = 'rbd-provisioner'
     SERVICE_PORT_MON = 6789
@@ -69,13 +78,34 @@ class RbdProvisionerHelm(base.BaseHelm):
             "replicas": self._num_controllers()
         }
 
-        overrides = {
+        overrides = {}
+        # TODO(rchurch): Multiple rbd-provsioners can be run in the k8s cluster.
+        # This will be the case for the near term until an update is provided to
+        # the stx-openstack application to support using the default system
+        # provisioner which will be installed in the kube-system namespace.
+        overrides.update({
             common.HELM_NS_OPENSTACK: {
+                "classdefaults": copy.deepcopy(classdefaults),
+                "classes": copy.deepcopy(classes),
+                "global": global_settings
+            }
+        })
+
+        # TODO(rchurch): For the near term ensure, provisioner isolation
+        classdefaults["adminId"] += '-platform'
+        classdefaults["adminSecretName"] += '-platform'
+        for c in classes:
+            c["name"] += '-platform'
+            c["pool_name"] += '-platform'
+            c["userId"] += '-platform'
+            c["userSecretName"] += '-platform'
+        overrides.update({
+            common.HELM_NS_KUBE_SYSTEM: {
                 "classdefaults": classdefaults,
                 "classes": classes,
                 "global": global_settings
             }
-        }
+        })
 
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]

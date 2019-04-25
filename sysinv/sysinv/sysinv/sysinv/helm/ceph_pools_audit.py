@@ -18,9 +18,15 @@ class CephPoolsAuditHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the ceph-pools-audit chart"""
 
     CHART = constants.HELM_CHART_CEPH_POOLS_AUDIT
-    SUPPORTED_NAMESPACES = [
-        common.HELM_NS_OPENSTACK
-    ]
+    SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + \
+                           [common.HELM_NS_OPENSTACK,
+                            common.HELM_NS_KUBE_SYSTEM]
+    SUPPORTED_APP_NAMESPACES = {
+        constants.HELM_APP_OPENSTACK:
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK],
+        constants.HELM_APP_PLATFORM:
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_KUBE_SYSTEM],
+    }
 
     SERVICE_NAME = 'ceph-pools'
 
@@ -63,7 +69,18 @@ class CephPoolsAuditHelm(base.BaseHelm):
             tiers_cfg.append(tier_cfg)
 
         overrides = {
+            # TODO (rchurch): Support running in both namespaces for the near
+            # term. A future commit will remove this from the stx-openstack
+            # application
             common.HELM_NS_OPENSTACK: {
+                'conf': {
+                    'ceph': {
+                        'monitors': monitors,
+                        'storage_tiers': tiers_cfg
+                    }
+                }
+            },
+            common.HELM_NS_KUBE_SYSTEM: {
                 'conf': {
                     'ceph': {
                         'monitors': monitors,

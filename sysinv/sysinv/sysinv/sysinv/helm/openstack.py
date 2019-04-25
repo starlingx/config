@@ -26,6 +26,10 @@ class OpenstackBaseHelm(base.BaseHelm):
 
     SUPPORTED_NAMESPACES = \
         base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    SUPPORTED_APP_NAMESPACES = {
+        constants.HELM_APP_OPENSTACK:
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    }
 
     def _get_service_config(self, service):
         configs = self.context.setdefault('_service_configs', {})

@@ -9,9 +9,13 @@
 # Defaults should be fine in most cases.
 global:
   #
-  # Defines the name of a Provisioner.
+  # Defines the application name of the provisioner.
   #
   name: "rbd-provisioner"
+  #
+  # Defines the name of the provisioner associated with a set of storage classes
+  #
+  provisioner_name: "ceph.com/rbd"
   #
   # Execute initialization job to verify external Ceph cluster access
   # and setup additional dependencies assumed by dependent helm charts

@@ -28,6 +28,7 @@ class BaseHelm(object):
     DEFAULT_REGION_NAME = 'RegionOne'
     CEPH_MON_SERVICE_PORT = 6789
     SUPPORTED_NAMESPACES = []
+    SUPPORTED_APP_NAMESPACES = {}
     SYSTEM_CONTROLLER_SERVICES = [
         constants.HELM_CHART_KEYSTONE_API_PROXY,
     ]
@@ -204,6 +205,15 @@ class BaseHelm(object):
         then it can override self.SUPPORTED_NAMESPACES as desired.
         """
         return self.SUPPORTED_NAMESPACES
+
+    def get_namespaces_by_app(self, app_name):
+        """
+        Return list of namespaces supported by an applcation
+        """
+        if app_name in self.SUPPORTED_APP_NAMESPACES:
+            return self.SUPPORTED_APP_NAMESPACES[app_name]
+        else:
+            return []
 
     def get_overrides(self, namespace=None):
         """

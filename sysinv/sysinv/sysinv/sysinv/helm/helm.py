@@ -86,6 +86,23 @@ class HelmOperator(object):
         thread_context = eventlet.greenthread.getcurrent()
         return getattr(thread_context, '_helm_context')
 
+    def get_helm_chart_namespaces_by_app(self, chart_name, app_name):
+        """Get supported chart namespaces for a given application.
+
+        This method retrieves the namespace supported by a given chart.
+
+        :param chart_name: name of the chart
+        :param app_name: name of the application
+        :returns: list of supported namespaces that associated overrides may be
+                  provided.
+        """
+
+        namespaces = []
+        if chart_name in self.chart_operators:
+            namespaces = self.chart_operators[chart_name].get_namespaces_by_app(
+                app_name)
+        return namespaces
+
     def get_helm_chart_namespaces(self, chart_name):
         """Get supported chart namespaces.
 
@@ -167,9 +184,10 @@ class HelmOperator(object):
         if app_name in self.helm_applications:
             for chart_name in self.helm_applications[app_name]:
                 try:
-                    app_namespaces.update({chart_name:
-                                           self.get_helm_chart_namespaces(
-                                               chart_name)})
+                    app_namespaces.update(
+                        {chart_name:
+                         self.get_helm_chart_namespaces_by_app(
+                             chart_name, app_name)})
                 except exception.InvalidHelmNamespace as e:
                     LOG.info(e)
         return app_namespaces

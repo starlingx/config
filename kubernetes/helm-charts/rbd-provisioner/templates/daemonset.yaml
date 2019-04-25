@@ -43,6 +43,5 @@ spec:
 {{- end }}
           env:
           - name: PROVISIONER_NAME
-            value: ceph.com/rbd
+            value: {{ .Values.global.provisioner_name }}
 {{- end}}
-

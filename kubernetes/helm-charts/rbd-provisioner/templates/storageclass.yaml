@@ -9,12 +9,13 @@
 {{- if .Values.global.provisionStorageClass }}
 {{ $namespace := .Release.Namespace }}
 {{ $defaults := .Values.classdefaults}}
+{{ $provisioner := .Values.global.provisioner_name }}
 {{- range $classConfig := .Values.classes }}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
     name: {{ $classConfig.name }}
-provisioner: ceph.com/rbd
+provisioner: {{ $provisioner }}
 parameters:
     monitors: {{ $monitors := or $classConfig.monitors $defaults.monitors }}{{ join "," $monitors}}
     adminId: {{ or $classConfig.adminId $defaults.adminId}}

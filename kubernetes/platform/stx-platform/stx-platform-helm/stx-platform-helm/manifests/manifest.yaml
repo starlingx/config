@@ -37,10 +37,10 @@ data:
           labels:
             app: rbd-provisioner
   values:
-    images:
-      tags:
-        # TODO: Remove after ceph upgrade
-        rbd_provisioner_storage_init: docker.io/starlingx/stx-ceph-config-helper:master-centos-stable-latest
+    global:
+      # TODO (rchurch): Remove after enabling the stx-openstack application to
+      # use the default system provisioner.
+      provisioner_name: "ceph.com/rbd-platform"
     rbac:
       clusterRole: stx-rbd-provisioner
       clusterRoleBinding: stx-rbd-provisioner

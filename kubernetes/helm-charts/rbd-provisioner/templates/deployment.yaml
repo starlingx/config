@@ -39,7 +39,7 @@ spec:
         image: {{ .Values.images.tags.rbd_provisioner | quote }}
         env:
         - name: PROVISIONER_NAME
-          value: ceph.com/rbd
+          value: {{ .Values.global.provisioner_name }}
 {{- if .Values.global.nodeSelector }}
       nodeSelector:
 {{ .Values.global.nodeSelector | toYaml | trim | indent 8 }}

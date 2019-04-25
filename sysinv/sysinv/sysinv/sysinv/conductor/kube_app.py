@@ -933,7 +933,8 @@ class AppOperator(object):
         :param tarfile: location of application tarfile
         """
 
-        app = AppOperator.Application(rpc_app)
+        app = AppOperator.Application(rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
         LOG.info("Application (%s) upload started." % app.name)
 
         try:
@@ -1005,7 +1006,8 @@ class AppOperator(object):
         :return boolean: whether application apply was successful
         """
 
-        app = AppOperator.Application(rpc_app)
+        app = AppOperator.Application(rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
         LOG.info("Application (%s) apply started." % app.name)
 
         overrides_str = ''
@@ -1067,7 +1069,8 @@ class AppOperator(object):
         :return boolean: whether application remove was successful
         """
 
-        app = AppOperator.Application(rpc_app)
+        app = AppOperator.Application(rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
         LOG.info("Application (%s) remove started." % app.name)
 
         app.charts = self._get_list_of_charts(app.armada_mfile_abs)
@@ -1079,8 +1082,11 @@ class AppOperator(object):
 
                 try:
                     self._delete_local_registry_secrets(app.name)
-                    self._delete_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-                    self._delete_namespace(common.HELM_NS_OPENSTACK)
+                    # TODO (rchurch): Clean up needs to be conditional based on
+                    # the application. For now only clean up the stx-openstack.
+                    if app.name == constants.HELM_APP_OPENSTACK:
+                        self._delete_persistent_volume_claim(common.HELM_NS_OPENSTACK)
+                        self._delete_namespace(common.HELM_NS_OPENSTACK)
                 except Exception as e:
                     self._abort_operation(app, constants.APP_REMOVE_OP)
                     LOG.exception(e)
@@ -1104,7 +1110,8 @@ class AppOperator(object):
         :param rpc_app: application object in the RPC request
         """
 
-        app = AppOperator.Application(rpc_app)
+        app = AppOperator.Application(rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
         try:
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
@@ -1124,7 +1131,7 @@ class AppOperator(object):
             support application related operations.
         """
 
-        def __init__(self, rpc_app):
+        def __init__(self, rpc_app, is_system_app):
             self._kube_app = rpc_app
             self.path = os.path.join(constants.APP_INSTALL_PATH,
                                      self._kube_app.get('name'))
@@ -1132,9 +1139,7 @@ class AppOperator(object):
             self.images_dir = os.path.join(self.path, 'images')
             self.tarfile = None
             self.downloaded_tarfile = False
-            self.system_app =\
-                (self._kube_app.get('name') == constants.HELM_APP_OPENSTACK)
-
+            self.system_app = is_system_app
             self.armada_mfile = generate_armada_manifest_filename(
                 self._kube_app.get('name'),
                 self._kube_app.get('manifest_file'))

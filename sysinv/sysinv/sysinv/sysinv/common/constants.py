@@ -1457,9 +1457,11 @@ HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
 
 # Helm: Supported application (aka chart bundles)
 HELM_APP_OPENSTACK = 'stx-openstack'
+HELM_APP_PLATFORM = 'platform-integ-apps'
 
-SUPPORTED_HELM_APP_NAMES = [
-    HELM_APP_OPENSTACK
+HELM_APPS_SUPPORTED = [
+    HELM_APP_OPENSTACK,
+    HELM_APP_PLATFORM,
 ]
 
 # Apply mode for openstack app
