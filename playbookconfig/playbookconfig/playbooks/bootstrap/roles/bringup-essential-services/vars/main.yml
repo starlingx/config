@@ -15,3 +15,5 @@ registry_cert_key: /etc/ssl/private/registry-cert.key
 registry_cert_crt: /etc/ssl/private/registry-cert.crt
 registry_cert_pkcs1_key: /etc/ssl/private/registry-cert-pkcs1.key
 docker_cert_dir: /etc/docker/certs.d
+cgroup_root: /sys/fs/cgroup
+k8s_cgroup_name: k8s-infra

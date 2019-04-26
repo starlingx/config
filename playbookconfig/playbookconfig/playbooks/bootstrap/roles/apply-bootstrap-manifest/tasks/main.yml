@@ -27,14 +27,11 @@
   when: static_config_result.rc != 0
 
 - name: Applying puppet bootstrap manifest
-  #shell: >
   command: >
     /usr/local/bin/puppet-manifest-apply.sh
     {{ hieradata_workdir }}
     {{ derived_network_params.controller_0_address }}
     controller ansible_bootstrap > {{ manifest_apply_log }}
-  #async: 1800
-  #poll: 10
   register: bootstrap_manifest
   environment:
     INITIAL_CONFIG_PRIMARY: "true"

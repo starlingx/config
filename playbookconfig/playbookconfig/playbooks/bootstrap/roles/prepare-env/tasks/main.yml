@@ -134,7 +134,7 @@
       management_multicast_end_address: "{{ management_multicast_end_address | default('derived') }}"
       external_oam_node_0_address: "{{ external_oam_node_0_address | default('derived') }}"
       external_oam_node_1_address: "{{ external_oam_node_1_address | default('derived') }}"
-      
+
   - name: Set docker registries to default values if not specified
     set_fact:
       docker_registries:
@@ -150,7 +150,7 @@
       system_config_update: false
       network_config_update: false
       docker_config_update: false
-      admin_config_update: false
+      save_password: true
       save_config: true
       use_docker_proxy: false
       use_unified_registry: false
@@ -162,6 +162,7 @@
         'system_mode': "{{ system_mode }}"
         'timezone': "{{ timezone }}"
       root_disk_size: "{{ standard_root_disk_size }}"
+      root_disk_idx: 0
       localhost_name_ip_mapping: "127.0.0.1\tlocalhost\tlocalhost.localdomain localhost4 localhost4.localdomain4"
       network_params:
         'pxeboot_subnet': "{{ pxeboot_subnet }}"
@@ -176,6 +177,7 @@
       # Set this placeholder here to workaround an Ansible quirk
       derived_network_params:
         place_holder: place_holder
+      last_bootstrap_config_file: "{{ last_bootstrap_config_file }}"
 
   - name: Turn on use_docker_proxy flag
     set_fact:
@@ -248,13 +250,21 @@
 
       - name: Find previous config file for this host
         stat:
-          path: /tmp/last_bootstrap_config.yml
+          path: "{{ last_bootstrap_config_file }}"
         register: last_config_file
 
       - block:
+        # Currently Ansible include_vars only works with local file
+        - name: Fetch previous config file from this host
+          fetch:
+            src: "{{ last_bootstrap_config_file }}"
+            dest: /tmp/
+            flat: yes
+          when: inventory_hostname != 'localhost'
+
         - name: Read in last config values
           include_vars:
-            file: /tmp/last_bootstrap_config.yml
+            file: "{{ last_bootstrap_config_file }}"
 
         - name: Turn on system attributes reconfiguration flag
           set_fact:
@@ -280,7 +290,7 @@
                 (prev_cluster_pod_subnet != cluster_pod_subnet) or
                 (prev_cluster_service_subnet != cluster_service_subnet) or
                 docker_config_update
-                 
+
         - name: Turn on network reconfiguration flag if any of the network related settings is changed
           set_fact:
             network_config_update: true
@@ -311,37 +321,34 @@
                 (prev_external_oam_node_0_address != external_oam_node_0_address) or
                 (prev_external_oam_node_1_address != external_oam_node_1_address)
 
-        - name: Turn on admin info reconfiguration flag
+        # Re-evaluate the condition to generate the python keyring
+        - name: Turn off save_password flag if admin password has not changed
           set_fact:
-            admin_config_update: true
-          when: (prev_admin_username != admin_username|hash('sha1')) or
-                (prev_admin_password != admin_password|hash('sha1'))
+            save_password: false
+            username: "{{ prev_admin_username }}"
+            password: "{{ prev_admin_password }}"
+          when: prev_admin_password == admin_password|hash('sha1')
 
-        - block:
-          # Re-evaluate condition to save configuration to sysinv database
-          - name: Turn off save_config flag
-            set_fact:
-              save_config: false
-
-          # Re-evaluate condition to continue playing
-          - block:
-            - block:
-              - name: Stop playing if this is the only target host
-                debug:
-                  msg: "Configurations are unchanged. There's nothing to play!"
-              - meta: end_play
-              when: play_hosts | length == 1
-
-            # This is not the only target host, turn on skip_play flag for this host
-            - name: Turn on skip_play flag
-              set_fact:
-                skip_play: true
-
-            when: not admin_config_update
-
+        # Re-evaluate condition to persist config data to sysinv database
+        - name: Turn off save_config flag if system, network, and docker configurations have not changed
+          set_fact:
+            save_config: false
           when: not system_config_update and
                 not network_config_update and
                 not docker_config_update
+
+        - block:
+          - debug:
+              msg: "Configurations are unchanged. There's nothing to play!"
+
+          - name: Stop playing if this is the only target host
+            meta: end_play
+            when: play_hosts|length == 1
+
+          - name: Turn on skip_play flag
+            set_fact:
+              skip_play: true
+          when: not save_password and not save_config
 
         when: last_config_file.stat.exists
       when: host_check.rc == 0
@@ -361,16 +368,23 @@
     register: disk_size_check_result
     failed_when: false
 
-  - name: Update root disk size
+
+  # Workaround an Ansible quirk
+  - name: Update root disk index for remote play
     set_fact:
-      root_disk_size: "{{ disk_size_check_result.stdout_lines[1] }}"
+      root_disk_idx: "{{ root_disk_idx + 1 }}"
+    when: ansible_connection != "local"
+
+  - name: Set root disk and root disk size facts
+    set_fact:
+      root_disk: "{{ disk_size_check_result.stdout_lines[root_disk_idx|int] }}"
+      root_disk_size: "{{ disk_size_check_result.stdout_lines[root_disk_idx|int + 1] }}"
 
   - debug:
       msg: >-
-         [WARNING]: Root disk {{ disk_size_check_result.stdout_lines[0] }} size is
-         {{ root_disk_size }}GB which is less than the standard size of
-         {{ standard_root_disk_size }}GB. Please consult the Software Installation
-         Guide for details.
+         [WARNING]: Root disk {{ root_disk }} size is {{ root_disk_size }}GB which is
+         less than the standard size of {{ standard_root_disk_size }}GB. Please consult
+         the Software Installation Guide for details.
     when: disk_size_check_result.rc != 0
 
   - name: Look for branding tar file
@@ -409,8 +423,8 @@
         system_config_update flag: {{ system_config_update }},
         network_config_update flag: {{ network_config_update }},
         docker_config_update flag: {{ docker_config_update }},
-        admin_config_update flag: {{ admin_config_update }},
         restart_services flag:  {{ restart_services }},
+        save_password flag: {{ save_password }},
         save_config flag: {{ save_config }},
         skip_play flag: {{ skip_play }}
 

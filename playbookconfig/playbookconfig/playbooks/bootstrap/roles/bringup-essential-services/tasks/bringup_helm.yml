@@ -138,8 +138,8 @@
     HOME: /home/wrsroot
   when: inventory_hostname == 'localhost'
 
-# Not sure why Helm init task above cannot be executed successfully as wrsroot on
-# remote host
+# Workaround for helm init remotely. Not sure why the task cannot be executed
+# successfully as wrsroot on remote host.
 - block:
   - name: Initialize Helm (remote host)
     command: >-
@@ -175,13 +175,21 @@
     HOME: /home/wrsroot
   when: inventory_hostname == 'localhost'
 
-# Workaround for helm repo add in remote host
-# TODO(tngo): Fix files ownership
-- name: Add StarlingX Helm repo (remote host)
-  command: helm repo add starlingx http://127.0.0.1/helm_charts
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
-    HOME: /home/wrsroot
+# Workaround for helm repo add remotely
+- block:
+  - name: Add StarlingX Helm repo (remote host)
+    command: helm repo add starlingx http://127.0.0.1/helm_charts
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf
+      HOME: /home/wrsroot
+
+  - name: Change helm directory ownership to pick up newly generated files (remote host)
+    file:
+      dest: /home/wrsroot/.helm
+      owner: wrsroot
+      group: wrs
+      mode: 0755
+      recurse: yes
   when: inventory_hostname != 'localhost'
 
 - name: Stop lighttpd

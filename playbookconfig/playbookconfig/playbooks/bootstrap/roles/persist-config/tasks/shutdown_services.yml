@@ -61,7 +61,7 @@
       prev_cluster_floating_virtual: "{{ prev_cluster_floating_address }}/{{ prev_cluster_subnet_prefix }}"
       prev_pxe_virtual: "{{ prev_controller_pxeboot_floating_address }}/{{ prev_pxe_subnet_prefix }}"
       prev_mgmt_virtual: "{{ prev_controller_0_address }}/{{ prev_management_subnet_prefix }}"
-      prev_cluster_virtual: "{{ prev_controller_0_cluster_host }}/{{ prev_cluster_subnet_prefix }}" 
+      prev_cluster_virtual: "{{ prev_controller_0_cluster_host }}/{{ prev_cluster_subnet_prefix }}"
 
   - name: Remove loopback interface
     shell: "{{ item }}"

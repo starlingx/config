@@ -21,7 +21,7 @@
       mgmt_nfs_2_virtual: "{{ derived_network_params.nfs_management_address_2 }}/{{ management_subnet_prefix }}"
 
   - name: Add loopback interface
-   # Had to resort to shell module as source is an internal shell command
+    # Had to resort to shell module as source is an internal shell command
     shell: "{{ item }}"
     with_items:
       - source /etc/platform/openrc; system host-if-add controller-0 lo virtual none lo -c platform --networks mgmt -m 1500
@@ -73,13 +73,13 @@
 - block:
   - name: Remove config file from previous play
     file:
-      path: /tmp/last_bootstrap_config.yml
+      path: "{{ last_bootstrap_config_file }}"
       state: absent
 
   - name: Save the current system and network config for reference in subsequent replays
     lineinfile:
       # This file should be cleared upon host reboot
-      path: /tmp/last_bootstrap_config.yml
+      path: "{{ last_bootstrap_config_file }}"
       line: "{{ item }}"
       create: yes
     with_items:

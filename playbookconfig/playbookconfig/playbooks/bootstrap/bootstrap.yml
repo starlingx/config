@@ -5,6 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 - hosts: bootstrap
+  # If gathering facts is really necessary, run setup task AFTER host connectivity
+  # check block in prepare-env role.
+  gather_facts: no
 
   vars_files:
     - host_vars/default.yml
@@ -19,7 +22,7 @@
   roles:
     - prepare-env
     - { role: validate-config, when: not skip_play }
-    - { role: store-passwd, when: not skip_play }
+    - { role: store-passwd, when: not skip_play and save_password }
     - { role: apply-bootstrap-manifest, when: not skip_play and not replayed }
     - { role: persist-config, when: not skip_play and save_config }
     - { role: bringup-essential-services, when: not skip_play and save_config }

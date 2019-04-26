@@ -10,13 +10,15 @@
 #
 
 # Keyring config
-- name: Delete the previous python_keyring directory if exists
-  file:
-    path: "{{ keyring_permdir + '/' + keyring_workdir | basename }}"
-    state: absent
+- block:
+  - name: Delete the previous python_keyring directory if exists
+    file:
+      path: "{{ keyring_permdir + '/' + keyring_workdir | basename }}"
+      state: absent
 
-- name: Persist keyring data
-  command: "mv {{ keyring_workdir }} {{ keyring_permdir }}"
+  - name: Persist keyring data
+    command: "mv {{ keyring_workdir }} {{ keyring_permdir }}"
+  when: save_password
 
 - name: Ensure replicated config parent directory exists
   file:
