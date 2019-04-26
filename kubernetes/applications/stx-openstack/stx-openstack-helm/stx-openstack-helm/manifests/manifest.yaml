@@ -938,6 +938,7 @@ data:
           soft_affinity_weight_multiplier: 0.0
           soft_anti_affinity_weight_multiplier: 0.0
         scheduler:
+          workers: 1
           discover_hosts_in_cells_interval: 30
           periodic_task_interval: -1
         upgrade_levels: None
