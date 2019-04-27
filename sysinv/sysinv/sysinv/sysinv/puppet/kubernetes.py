@@ -171,7 +171,8 @@ class KubernetesPuppet(base.BasePuppet):
             if c.cpu not in platform_cpuset:
                 nonplatform_nodeset.update([c.numa_node])
 
-        if constants.WORKER in utils.get_personalities(host):
+        if constants.WORKER in utils.get_personalities(host) \
+                and constants.CONTROLLER not in utils.get_personalities(host):
             if self.is_openstack_compute(host):
                 k8s_cpuset = utils.format_range_set(platform_cpuset)
                 k8s_nodeset = utils.format_range_set(platform_nodeset)
