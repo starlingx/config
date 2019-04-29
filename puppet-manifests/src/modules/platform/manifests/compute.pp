@@ -52,7 +52,7 @@ class platform::compute::grub::params (
     $eptad = ''
   }
 
-  if $::is_gb_page_supported {
+  if $::is_gb_page_supported and $::platform::params::vswitch_type != 'none' {
     if $g_hugepages != undef {
       $gb_hugepages = $g_hugepages
     } else {

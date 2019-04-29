@@ -208,6 +208,9 @@ MIB_1G = 1024
 Ki = 1024
 NUM_4K_PER_MiB = 256
 
+# Defines per-socket vswitch memory requirements (in MB)
+VSWITCH_MEMORY_MB = 1024
+
 # Dynamic IO Resident Set Size(RSS) in MiB per socket
 DISK_IO_RESIDENT_SET_SIZE_MIB = 2000
 DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX = 500
