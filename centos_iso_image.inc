@@ -40,3 +40,6 @@ ansible
 
 # playbookconfig
 playbookconfig
+
+# Platform helm charts
+stx-platform-helm

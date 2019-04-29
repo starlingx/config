@@ -1,4 +1,5 @@
 kubernetes/applications/stx-openstack/stx-openstack-helm
+kubernetes/platform/stx-platform/stx-platform-helm
 worker-utils
 workerconfig
 controllerconfig

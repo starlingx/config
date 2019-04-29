@@ -1,0 +1,103 @@
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: helm-toolkit
+data:
+  chart_name: helm-toolkit
+  release: helm-toolkit
+  namespace: helm-toolkit
+  values: {}
+  source:
+    type: tar
+    location: http://172.17.0.1:8080/helm_charts/stx-platform/helm-toolkit-0.1.0.tgz
+    subpath: helm-toolkit
+    reference: master
+  dependencies: []
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: kube-system-rbd-provisioner
+data:
+  chart_name: rbd-provisioner
+  release: rbd-provisioner
+  namespace: kube-system
+  wait:
+    timeout: 1800
+    labels:
+      app: rbd-provisioner
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            app: rbd-provisioner
+  values:
+    images:
+      tags:
+        # TODO: Remove after ceph upgrade
+        rbd_provisioner_storage_init: docker.io/starlingx/stx-ceph-config-helper:master-centos-stable-latest
+    rbac:
+      clusterRole: stx-rbd-provisioner
+      clusterRoleBinding: stx-rbd-provisioner
+      serviceAccount: stx-rbd-provisioner
+  source:
+    type: tar
+    location: http://172.17.0.1:8080/helm_charts/stx-platform/rbd-provisioner-0.1.0.tgz
+    subpath: rbd-provisioner
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: kube-system-ceph-pools-audit
+data:
+  chart_name: ceph-pools-audit
+  release: ceph-pools-audit
+  namespace: kube-system
+  wait:
+    timeout: 1800
+    labels:
+      app: rbd-provisioner
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            app: ceph-pools-audit
+  source:
+    type: tar
+    location: http://172.17.0.1:8080/helm_charts/stx-platform/ceph-pools-audit-0.1.0.tgz
+    subpath: ceph-pools-audit
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
+  name: starlingx-ceph-charts
+data:
+  description: StarlingX Ceph Charts
+  sequenced: true
+  chart_group:
+  - kube-system-rbd-provisioner
+  - kube-system-ceph-pools-audit
+---
+schema: armada/Manifest/v1
+metadata:
+  schema: metadata/Document/v1
+  name: platform-integration-manifest
+data:
+  release_prefix: stx
+  chart_groups:
+  - starlingx-ceph-charts
