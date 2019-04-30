@@ -49,7 +49,7 @@ def _get_endpoint(client, **kwargs):
 
 
 def get_client(api_version, **kwargs):
-    """Get an authtenticated client, based on the credentials
+    """Get an authenticated client, based on the credentials
        in the keyword args.
 
     :param api_version: the API version to use ('1' or '2')
@@ -74,8 +74,6 @@ def get_client(api_version, **kwargs):
         token = kwargs.get('os_auth_token')
         endpoint = kwargs.get('system_url')
         auth_ref = None
-
-        ceilometer_endpoint = None
     elif (kwargs.get('os_username') and
           kwargs.get('os_password') and
           kwargs.get('os_auth_url') and

@@ -75,9 +75,6 @@ def get_db_credentials(shared_services, from_release):
         {'barbican': {'hiera_user_key': 'barbican::db::postgresql::user',
                       'keyring_password_key': 'barbican',
                       },
-         'ceilometer': {'hiera_user_key': 'ceilometer::db::postgresql::user',
-                        'keyring_password_key': 'ceilometer',
-                        },
          'heat': {'hiera_user_key': 'heat::db::postgresql::user',
                   'keyring_password_key': 'heat',
                   },
@@ -527,10 +524,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
 
     # Create minimal config files for each OpenStack service so they can
     # run their database migration.
-    with open("/etc/ceilometer/ceilometer-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'ceilometer'))
-
     with open("/etc/heat/heat-dbsync.conf", "w") as f:
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'heat'))
@@ -577,10 +570,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         ('barbican',
          'barbican-manage --config-file /etc/barbican/barbican-dbsync.conf ' +
          'db upgrade'),
-        # Migrate ceilometer
-        ('ceilometer',
-         'ceilometer-upgrade --skip-gnocchi-resource-types --config-file ' +
-         '/etc/ceilometer/ceilometer-dbsync.conf'),
         # Migrate heat
         ('heat',
          'heat-manage --config-file /etc/heat/heat-dbsync.conf db_sync'),
