@@ -4265,14 +4265,24 @@ class HostController(rest.RestController):
         vswitch_type may alter vswitch core requirements.
         """
         # If vswitch_type is none, enforce 0 vswitch cpu cores
-        if constants.VSWITCH_TYPE_NONE == cutils.get_vswitch_type(
-                pecan.request.dbapi):
-            host_cpus = pecan.request.dbapi.icpu_get_by_ihost(host['uuid'])
+        vswitch_type = cutils.get_vswitch_type(pecan.request.dbapi)
+        host_cpus = pecan.request.dbapi.icpu_get_by_ihost(host['uuid'])
+        if vswitch_type == constants.VSWITCH_TYPE_NONE:
             for cpu in host_cpus:
                 if cpu.allocated_function == constants.VSWITCH_FUNCTION:
                     raise wsme.exc.ClientSideError(
                         _('vSwitch cpus can only be used with a vswitch_type '
                           'specified.'))
+        elif vswitch_type == constants.VSWITCH_TYPE_OVS_DPDK:
+            has_vswitch_cpus = False
+            for cpu in host_cpus:
+                if cpu.allocated_function == constants.VSWITCH_FUNCTION:
+                    has_vswitch_cpus = True
+                    break
+            if not has_vswitch_cpus:
+                raise wsme.exc.ClientSideError(
+                    _('vSwitch cpus must be enabled on this host for ovs-dpdk '
+                      'to function.'))
 
     @staticmethod
     def _handle_ttys_dcd_change(ihost, ttys_dcd):
