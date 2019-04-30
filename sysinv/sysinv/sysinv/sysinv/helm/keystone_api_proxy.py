@@ -21,7 +21,7 @@ class KeystoneApiProxyHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = constants.HELM_CHART_KEYSTONE_API_PROXY
     DCORCH_SERVICE_NAME = 'dcorch'
 
-    def get_meta_overrides(self, namespace):
+    def get_meta_overrides(self, namespace, app_name=None, mode=None):
 
         def _meta_overrides():
             if (self._distributed_cloud_role() ==

@@ -26,7 +26,7 @@ class GarbdHelm(base.BaseHelm):
     SUPPORTED_NAMESPACES = \
         base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
 
-    def get_meta_overrides(self, namespace):
+    def get_meta_overrides(self, namespace, app_name=None, mode=None):
 
         def _meta_overrides():
             if (self._num_controllers() < 2 or

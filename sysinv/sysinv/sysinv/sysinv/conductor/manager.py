@@ -10664,15 +10664,16 @@ class ConductorManager(service.PeriodicService):
         """
         self._app.perform_app_upload(rpc_app, tarfile)
 
-    def perform_app_apply(self, context, rpc_app, app_not_already_applied):
+    def perform_app_apply(self, context, rpc_app, app_not_already_applied,
+                          mode):
         """Handling of application install request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param app_not_already_applied: app not yet successfully applied
-
+        :param mode: mode to control how to apply application manifest
         """
-        app_installed = self._app.perform_app_apply(rpc_app)
+        app_installed = self._app.perform_app_apply(rpc_app, mode)
         if app_installed and app_not_already_applied:
             # Update the VIM configuration as it may need to manage the newly
             # installed application. Only do this if the application

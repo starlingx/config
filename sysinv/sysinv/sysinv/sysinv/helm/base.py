@@ -214,7 +214,7 @@ class BaseHelm(object):
         """
         return {}
 
-    def get_meta_overrides(self, namespace):
+    def get_meta_overrides(self, namespace, app_name=None, mode=None):
         """
         Return Armada-formatted chart-specific meta-overrides
 

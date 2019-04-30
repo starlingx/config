@@ -365,19 +365,21 @@ class HelmOperator(object):
             LOG.exception("chart name is required")
 
     @helm_context
-    def generate_meta_overrides(self, chart_name, chart_namespace):
+    def generate_meta_overrides(self, chart_name, chart_namespace,
+                                app_name=None, mode=None):
         overrides = {}
         if chart_name in self.chart_operators:
             try:
                 overrides.update(
                     self.chart_operators[chart_name].get_meta_overrides(
-                        chart_namespace))
+                        chart_namespace, app_name, mode))
             except exception.InvalidHelmNamespace:
                 raise
         return overrides
 
     @helm_context
-    def generate_helm_application_overrides(self, app_name, cnamespace=None,
+    def generate_helm_application_overrides(self, app_name, mode=None,
+                                            cnamespace=None,
                                             armada_format=False,
                                             combined=False):
         """Create the system overrides files for a supported application
@@ -389,6 +391,7 @@ class HelmOperator(object):
 
         :param app_name: name of the bundle of charts required to support an
                          application
+        :param mode: mode to control how to apply application manifest
         :param cnamespace: (optional) namespace
         :param armada_format: (optional) whether to emit in armada format
                               instead of helm format (with extra header)
@@ -444,7 +447,9 @@ class HelmOperator(object):
                 # armada format already.
                 if armada_format:
                     overrides = self.generate_meta_overrides(chart_name,
-                                                             cnamespace)
+                                                             cnamespace,
+                                                             app_name,
+                                                             mode)
                     if overrides:
                         chart_meta_name = chart_name + '-meta'
                         self._write_chart_overrides(

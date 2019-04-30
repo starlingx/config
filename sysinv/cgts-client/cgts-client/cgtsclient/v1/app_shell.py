@@ -98,10 +98,20 @@ def do_application_upload(cc, args):
 
 @utils.arg('name', metavar='<app name>',
            help='Name of the application')
+@utils.arg('-m', '--mode',
+           metavar='<mode>',
+           default=None,
+           help=('The mode is application specific. It controls how applicaton'
+                 ' manifest is applied.'))
 def do_application_apply(cc, args):
     """Apply/reapply the application manifest"""
     try:
-        response = cc.app.apply(args.name)
+        fields = ['mode']
+
+        data = dict((k, v) for (k, v) in vars(args).items()
+                    if k in fields and not (v is None))
+
+        response = cc.app.apply(args.name, data)
         _print_application_show(response)
         _print_reminder_msg(args.name)
     except exc.HTTPNotFound:

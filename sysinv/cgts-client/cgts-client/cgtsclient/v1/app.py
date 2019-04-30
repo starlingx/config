@@ -43,13 +43,14 @@ class AppManager(base.Manager):
         """
         return self._create(self._path(), data)
 
-    def apply(self, app_name):
+    def apply(self, app_name, data):
         """Install/upgrade the specified application.
 
         :param app_name: name of the application
+        :param data: extra arguments
         """
         return self._update(self._path(app_name) + '?directive=apply',
-                            {'values': {}})
+                            {'values': data})
 
     def remove(self, app_name):
         """Uninstall the specified application

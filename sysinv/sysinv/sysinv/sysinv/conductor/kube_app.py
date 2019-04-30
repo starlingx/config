@@ -440,7 +440,7 @@ class AppOperator(object):
         if app.system_app:
             LOG.info("Generating application overrides...")
             self._helm.generate_helm_application_overrides(
-                app.name, cnamespace=None, armada_format=True, combined=True)
+                app.name, mode=None, cnamespace=None, armada_format=True, combined=True)
             app.charts = self._get_list_of_charts(app.armada_mfile_abs)
             self._save_images_list_by_charts(app)
             # Get the list of images from the updated images overrides
@@ -753,7 +753,7 @@ class AppOperator(object):
                     pass
         return charts
 
-    def _get_overrides_files(self, charts):
+    def _get_overrides_files(self, charts, app_name, mode):
         """Returns list of override files or None, used in
            application-install and application-delete."""
 
@@ -773,7 +773,7 @@ class AppOperator(object):
                 # sections of the chart schema other than "values, and can
                 # affect the chartgroup or even the manifest.
                 if self._helm.generate_meta_overrides(
-                        chart.name, chart.namespace):
+                        chart.name, chart.namespace, app_name, mode):
                     overrides = chart.namespace + '-' + chart.name + \
                                 '-meta' + '.yaml'
                     overrides_file = os.path.join(common.HELM_OVERRIDES_PATH,
@@ -952,7 +952,7 @@ class AppOperator(object):
             LOG.exception(e)
             self._abort_operation(app, constants.APP_UPLOAD_OP)
 
-    def perform_app_apply(self, rpc_app):
+    def perform_app_apply(self, rpc_app, mode):
         """Process application install request
 
         This method processes node labels per configuration and invokes
@@ -969,6 +969,7 @@ class AppOperator(object):
                correct/update a previous manifest apply.
 
         :param rpc_app: application object in the RPC request
+        :param mode: mode to control how to apply application manifest
         :return boolean: whether application apply was successful
         """
 
@@ -985,9 +986,9 @@ class AppOperator(object):
                     app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
                 LOG.info("Generating application overrides...")
                 self._helm.generate_helm_application_overrides(
-                    app.name, cnamespace=None, armada_format=True,
+                    app.name, mode, cnamespace=None, armada_format=True,
                     combined=True)
-                overrides_files = self._get_overrides_files(app.charts)
+                overrides_files = self._get_overrides_files(app.charts, app.name, mode)
                 if overrides_files:
                     LOG.info("Application overrides generated.")
                     # Ensure all chart overrides are readable by Armada
