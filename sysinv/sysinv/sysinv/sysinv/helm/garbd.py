@@ -30,8 +30,11 @@ class GarbdHelm(base.BaseHelm):
 
         def _meta_overrides():
             if (self._num_controllers() < 2 or
-                    utils.is_aio_duplex_system(self.dbapi)):
+                    utils.is_aio_duplex_system(self.dbapi) or
+                    (self._distributed_cloud_role() ==
+                        constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)):
                 # If there are fewer than 2 controllers or we're on AIO-DX
+                # or we are on distributed cloud system controller
                 # we'll use a single mariadb server and so we don't want to
                 # run garbd.  This will remove "openstack-garbd" from the
                 # charts in the openstack-mariadb chartgroup.

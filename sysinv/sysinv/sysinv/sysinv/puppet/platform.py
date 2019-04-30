@@ -1,8 +1,10 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+
+import keyring
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -74,9 +76,10 @@ class PlatformPuppet(base.BasePuppet):
         }
 
     def _get_secure_amqp_config(self):
+        password = self._generate_random_password()
+        keyring.set_password('amqp', 'rabbit', password)
         return {
-            'platform::amqp::params::auth_password':
-                self._generate_random_password(),
+            'platform::amqp::params::auth_password': password,
         }
 
     def _get_system_config(self):
