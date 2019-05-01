@@ -62,3 +62,45 @@ def patch_drop_host(token, timeout, hostname, region_name):
 
     response = rest_api_request(token, "POST", api_cmd, timeout=timeout)
     return response
+
+
+def patch_is_applied(token, timeout, region_name, patches):
+    """
+    Query the applied state for a list of patches
+    """
+    api_cmd = None
+
+    if not token:
+        token = get_token(region_name)
+    if token:
+        api_cmd = token.get_service_url("patching", "patching")
+
+    patch_dependencies = ""
+    for patch in patches:
+        patch_dependencies += "/%s" % patch
+
+    api_cmd += "/v1/is_applied%s" % patch_dependencies
+
+    response = rest_api_request(token, "GET", api_cmd, timeout=timeout)
+    return response
+
+
+def patch_report_app_dependencies(token, timeout, region_name, patches, app_name):
+    """
+    Report the application patch dependencies
+    """
+    api_cmd = None
+
+    if not token:
+        token = get_token(region_name)
+    if token:
+        api_cmd = token.get_service_url("patching", "patching")
+
+    patch_dependencies = ""
+    for patch in patches:
+        patch_dependencies += "/%s" % patch
+
+    api_cmd += "/v1/report_app_dependencies%s?app=%s" % (patch_dependencies, app_name)
+
+    response = rest_api_request(token, "POST", api_cmd, timeout=timeout)
+    return response

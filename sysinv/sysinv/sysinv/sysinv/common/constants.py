@@ -1481,6 +1481,7 @@ K8S_RBD_PROV_STOR_CLASS_NAME = 'general'
 APP_INSTALL_ROOT_PATH = '/scratch'
 APP_INSTALL_PATH = APP_INSTALL_ROOT_PATH + '/apps'
 APP_SYNCED_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
+APP_METADATA_FILE = 'metadata.yaml'
 
 # State constants
 APP_UPLOAD_IN_PROGRESS = 'uploading'
@@ -1514,6 +1515,8 @@ LABEL_ASSIGN_OP = 'assign'
 LABEL_REMOVE_OP = 'remove'
 
 # Placeholder constants
+APP_NAME_PLACEHOLDER = 'app-name-placeholder'
+APP_VERSION_PLACEHOLDER = 'app-version-placeholder'
 APP_MANIFEST_NAME_PLACEHOLDER = 'manifest-placeholder'
 APP_TARFILE_NAME_PLACEHOLDER = 'tarfile-placeholder'
 

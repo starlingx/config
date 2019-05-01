@@ -45,8 +45,8 @@ def _is_url(url_str):
 def do_application_list(cc, args):
     """List all containerized applications"""
     apps = cc.app.list()
-    labels = ['application', 'manifest name', 'manifest file', 'status', 'progress']
-    fields = ['name', 'manifest_name', 'manifest_file', 'status', 'progress']
+    labels = ['application', 'version', 'manifest name', 'manifest file', 'status', 'progress']
+    fields = ['name', 'app_version', 'manifest_name', 'manifest_file', 'status', 'progress']
     utils.print_list(apps, fields, labels, sortby=0)
 
 
@@ -61,11 +61,15 @@ def do_application_show(cc, args):
         raise exc.CommandError('application not found: %s' % args.name)
 
 
-@utils.arg('name', metavar='<app name>',
-           help='Name of the application')
 @utils.arg('tarfile', metavar='<tar file>',
            help='Tarball containing application manifest, helm charts and'
                 ' config file')
+@utils.arg('-n', '--app-name',
+           metavar='<app name>',
+           help='Name of the application')
+@utils.arg('-v', '--app-version',
+           metavar='<app version>',
+           help='Version of the application')
 def do_application_upload(cc, args):
     """Upload application Helm chart(s) and manifest"""
     tarfile = args.tarfile
@@ -81,11 +85,15 @@ def do_application_upload(cc, args):
                                    "extension. Supported extensions are: .tgz "
                                    "and .tar.gz" % tarfile)
 
-    data = {'name': args.name,
-            'tarfile': tarfile}
+    data = {'tarfile': tarfile}
+    if args.app_name:
+        data.update({'name': args.app_name})
+    if args.app_version:
+        data.update({'app_version': args.app_version})
+
     response = cc.app.upload(data)
     _print_application_show(response)
-    _print_reminder_msg(args.name)
+    _print_reminder_msg(response.name)
 
 
 @utils.arg('name', metavar='<app name>',

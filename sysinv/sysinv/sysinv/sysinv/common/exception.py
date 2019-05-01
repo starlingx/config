@@ -225,15 +225,15 @@ class CephPoolSetParamFailure(CephFailure):
 
 
 class KubeAppUploadFailure(SysinvException):
-    message = _("Upload of application %(name)s failed: %(reason)s")
+    message = _("Upload of application %(name)s (%(version)s) failed: %(reason)s")
 
 
 class KubeAppApplyFailure(SysinvException):
-    message = _("Deployment of application %(name)s failed: %(reason)s")
+    message = _("Deployment of application %(name)s (%(version)s) failed: %(reason)s")
 
 
 class KubeAppDeleteFailure(SysinvException):
-    message = _("Delete of application %(name)s failed: %(reason)s")
+    message = _("Delete of application %(name)s (%(version)s) failed: %(reason)s")
 
 
 class InvalidCPUInfo(Invalid):

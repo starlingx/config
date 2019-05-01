@@ -17,7 +17,9 @@ class KubeApp(base.SysinvObject):
 
     dbapi = db_api.get_instance()
 
-    fields = {'name': utils.str_or_none,
+    fields = {'id': int,
+              'name': utils.str_or_none,
+              'app_version': utils.str_or_none,
               'manifest_name': utils.str_or_none,
               'manifest_file': utils.str_or_none,
               'status': utils.str_or_none,
@@ -29,4 +31,4 @@ class KubeApp(base.SysinvObject):
         return cls.dbapi.kube_app_get(name)
 
     def save_changes(self, context, updates):
-        self.dbapi.kube_app_update(self.name, updates)
+        self.dbapi.kube_app_update(self.id, updates)
