@@ -27,7 +27,7 @@
 #   server functionality of fm-api.
 #
 # [*sync_db*]
-#   (optional) Run gnocchi-upgrade db sync on api nodes after installing the package.
+#   (optional) Run fm-dbsync on api nodes after installing the package.
 #   Defaults to false
 #
 # [*auth_strategy*]
