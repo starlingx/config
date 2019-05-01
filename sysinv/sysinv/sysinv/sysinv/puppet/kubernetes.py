@@ -80,33 +80,18 @@ class KubernetesPuppet(base.BasePuppet):
         if host.personality != constants.WORKER:
             return config
 
-        if self._kubernetes_enabled():
-            create_node = False
-            try:
-                # Check if this host has already been configured as a
-                # kubernetes node.
-                cmd = ['kubectl',
-                       '--kubeconfig=/etc/kubernetes/admin.conf',
-                       'get', 'node', host.hostname]
-                subprocess.check_call(cmd)
-            except subprocess.CalledProcessError:
-                # The node does not exist
-                create_node = True
-
-            if create_node:
-                try:
-                    # Generate the token and join command for this host.
-                    cmd = ['kubeadm', 'token', 'create',
-                           '--print-join-command', '--description',
-                           'Bootstrap token for %s' % host.hostname]
-                    join_cmd = subprocess.check_output(cmd)
-                    config.update(
-                        {'platform::kubernetes::worker::params::join_cmd':
-                            join_cmd,
-                         })
-                except subprocess.CalledProcessError:
-                    raise exception.SysinvException(
-                        'Failed to generate bootstrap token')
+        # Generate the token and join command for this host.
+        # The token expires after 24 hours and is needed for a reinstall.
+        # The puppet manifest handles the case where the node already exists.
+        try:
+            cmd = ['kubeadm', 'token', 'create', '--print-join-command',
+                   '--description', 'Bootstrap token for %s' % host.hostname]
+            join_cmd = subprocess.check_output(cmd)
+            config.update(
+                {'platform::kubernetes::worker::params::join_cmd': join_cmd, })
+        except subprocess.CalledProcessError:
+            raise exception.SysinvException(
+                'Failed to generate bootstrap token')
 
         return config
 
