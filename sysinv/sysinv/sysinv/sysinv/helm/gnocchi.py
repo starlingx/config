@@ -26,6 +26,7 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
             common.HELM_NS_OPENSTACK: {
                 'pod': self._get_pod_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
+                'ceph_client': self._get_ceph_client_overrides(),
             }
         }
 

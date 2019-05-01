@@ -41,6 +41,7 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                     'backends': self._get_conf_backends_overrides(),
                 },
                 'endpoints': self._get_endpoints_overrides(),
+                'ceph_client': self._get_ceph_client_overrides()
             }
         }
 

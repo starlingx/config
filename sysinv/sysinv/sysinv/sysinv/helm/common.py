@@ -29,6 +29,9 @@ HELM_NS_NFS = 'nfs'
 HELM_NS_OPENSTACK = 'openstack'
 HELM_NS_HELM_TOOLKIT = 'helm-toolkit'
 
+# Namespaces: for system functions
+HELM_NS_STORAGE_PROVISIONER = HELM_NS_KUBE_SYSTEM
+
 # Services
 # Matches configassistant.py value => Should change to STARLINGX
 SERVICE_ADMIN = 'CGCS'

@@ -34,6 +34,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
+from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.helm import common
 from sysinv.helm import helm
 
@@ -120,6 +121,8 @@ Chart = namedtuple('Chart', 'name namespace location')
 
 class AppOperator(object):
     """Class to encapsulate Kubernetes App operations for System Inventory"""
+
+    APP_OPENSTACK_RESOURCE_CONFIG_MAP = 'ceph-etc'
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
@@ -663,6 +666,73 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
+    def _create_storage_provisioner_secrets(self, app_name):
+        """ Provide access to the system persistent storage provisioner.
+
+        The rbd-provsioner is installed as part of system provisioning and has
+        created secrets for all common default namespaces. Copy the secret to
+        this application's namespace(s) to provide resolution for PVCs
+
+        :param app_name: Name of the application
+        """
+
+        # Only set up a secret for the default storage pool (i.e. ignore
+        # additional storage tiers)
+        pool_secret = K8RbdProvisioner.get_user_secret_name({
+            'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
+        app_ns = self._helm.get_helm_application_namespaces(app_name)
+        namespaces = \
+            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
+        for ns in namespaces:
+            if (ns in [common.HELM_NS_HELM_TOOLKIT,
+                       common.HELM_NS_STORAGE_PROVISIONER] or
+                    self._kube.kube_get_secret(pool_secret, ns)):
+                # Secret already exist
+                continue
+
+            try:
+                if not self._kube.kube_get_namespace(ns):
+                    self._kube.kube_create_namespace(ns)
+                self._kube.kube_copy_secret(
+                    pool_secret, common.HELM_NS_STORAGE_PROVISIONER, ns)
+            except Exception as e:
+                LOG.error(e)
+                raise
+
+    def _delete_storage_provisioner_secrets(self, app_name):
+        """ Remove access to the system persistent storage provisioner.
+
+        As part of launching a supported application, secrets were created to
+        allow access to the provisioner from the application namespaces. This
+        will remove those created secrets.
+
+        :param app_name: Name of the application
+        """
+
+        # Only set up a secret for the default storage pool (i.e. ignore
+        # additional storage tiers)
+        pool_secret = K8RbdProvisioner.get_user_secret_name({
+            'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
+        app_ns = self._helm.get_helm_application_namespaces(app_name)
+        namespaces = \
+            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
+
+        for ns in namespaces:
+            if (ns == common.HELM_NS_HELM_TOOLKIT or
+                    ns == common.HELM_NS_STORAGE_PROVISIONER):
+                continue
+
+            try:
+                LOG.info("Deleting Secret %s under Namespace "
+                         "%s ..." % (pool_secret, ns))
+                self._kube.kube_delete_secret(
+                    pool_secret, ns, grace_period_seconds=0)
+                LOG.info("Secret %s under Namespace %s delete "
+                         "completed." % (pool_secret, ns))
+            except Exception as e:
+                LOG.error(e)
+                raise
+
     def _create_local_registry_secrets(self, app_name):
         # Temporary function to create default registry secret
         # which would be used by kubernetes to pull images from
@@ -925,6 +995,63 @@ class AppOperator(object):
         monitor.kill()
         return rc
 
+    def _create_app_specific_resources(self, app_name):
+        """Add application specific k8s resources.
+
+        Some applications may need resources created outside of the existing
+        charts to properly integrate with the current capabilities of the
+        system. Create these resources here.
+
+        :param app_name: Name of the application.
+        """
+
+        if app_name == constants.HELM_APP_OPENSTACK:
+            try:
+                # Copy the latest configmap with the ceph monitor information
+                # required by the application into the application namespace
+                if self._kube.kube_get_config_map(
+                        self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
+                        common.HELM_NS_OPENSTACK):
+
+                    # Already have one. Delete it, in case it changed
+                    self._kube.kube_delete_config_map(
+                        self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
+                        common.HELM_NS_OPENSTACK)
+
+                # Copy the latest config map
+                self._kube.kube_copy_config_map(
+                    self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
+                    common.HELM_NS_STORAGE_PROVISIONER,
+                    common.HELM_NS_OPENSTACK)
+            except Exception as e:
+                LOG.error(e)
+                raise
+
+    def _delete_app_specific_resources(self, app_name):
+        """Remove application specific k8s resources.
+
+        Some applications may need resources created outside of the existing
+        charts to properly integrate with the current capabilities of the
+        system. Remove these resources here.
+
+        :param app_name: Name of the application.
+        """
+
+        if app_name == constants.HELM_APP_OPENSTACK:
+            self._delete_persistent_volume_claim(common.HELM_NS_OPENSTACK)
+
+            try:
+                # Remove the configmap with the ceph monitor information
+                # required by the application into the application namespace
+                self._kube.kube_delete_config_map(
+                    self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
+                    common.HELM_NS_OPENSTACK)
+            except Exception as e:
+                LOG.error(e)
+                raise
+
+            self._delete_namespace(common.HELM_NS_OPENSTACK)
+
     def perform_app_upload(self, rpc_app, tarfile):
         """Process application upload request
 
@@ -1020,6 +1147,8 @@ class AppOperator(object):
             app.charts = self._get_list_of_charts(app.armada_mfile_abs)
             if app.system_app:
                 self._create_local_registry_secrets(app.name)
+                self._create_storage_provisioner_secrets(app.name)
+                self._create_app_specific_resources(app.name)
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
                 LOG.info("Generating application overrides...")
@@ -1086,11 +1215,8 @@ class AppOperator(object):
 
                 try:
                     self._delete_local_registry_secrets(app.name)
-                    # TODO (rchurch): Clean up needs to be conditional based on
-                    # the application. For now only clean up the stx-openstack.
-                    if app.name == constants.HELM_APP_OPENSTACK:
-                        self._delete_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-                        self._delete_namespace(common.HELM_NS_OPENSTACK)
+                    self._delete_storage_provisioner_secrets(app.name)
+                    self._delete_app_specific_resources(app.name)
                 except Exception as e:
                     self._abort_operation(app, constants.APP_REMOVE_OP)
                     LOG.exception(e)

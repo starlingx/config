@@ -108,64 +108,6 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
-  name: openstack-rbd-provisioner
-data:
-  chart_name: rbd-provisioner
-  release: openstack-rbd-provisioner
-  namespace: openstack
-  wait:
-    timeout: 1800
-    labels:
-      app: rbd-provisioner
-  install:
-    no_hooks: false
-  upgrade:
-    no_hooks: false
-    pre:
-      delete:
-        - type: job
-          labels:
-            app: rbd-provisioner
-  source:
-    type: tar
-    location: http://172.17.0.1/helm_charts/starlingx/rbd-provisioner-0.1.0.tgz
-    subpath: rbd-provisioner
-    reference: master
-  dependencies:
-    - helm-toolkit
----
-schema: armada/Chart/v1
-metadata:
-  schema: metadata/Document/v1
-  name: openstack-ceph-pools-audit
-data:
-  chart_name: ceph-pools-audit
-  release: openstack-ceph-pools-audit
-  namespace: openstack
-  wait:
-    timeout: 1800
-    labels:
-      app: rbd-provisioner
-  install:
-    no_hooks: false
-  upgrade:
-    no_hooks: false
-    pre:
-      delete:
-        - type: job
-          labels:
-            app: osh-openstack-ceph-pools-audit
-  source:
-    type: tar
-    location: http://172.17.0.1/helm_charts/starlingx/ceph-pools-audit-0.1.0.tgz
-    subpath: ceph-pools-audit
-    reference: master
-  dependencies:
-    - helm-toolkit
----
-schema: armada/Chart/v1
-metadata:
-  schema: metadata/Document/v1
   name: openstack-mariadb
 data:
   chart_name: mariadb
@@ -713,10 +655,10 @@ data:
   namespace: openstack
   # If we deploy ovs-dpdk on the host, ovs pod will not be created.
   # commenting out the wait block until a solution can be implemented
-  #wait:
-  #  timeout: 1800
-  #  labels:
-  #    release_group: osh-openstack-openvswitch
+  # wait:
+  #   timeout: 1800
+  #   labels:
+  #     release_group: osh-openstack-openvswitch
   install:
     no_hooks: false
   upgrade:
@@ -976,7 +918,7 @@ data:
         metrics:
           required: false
         workarounds:
-          enable_numa_live_migration: True
+          enable_numa_live_migration: true
       hypervisor:
         address_search_enabled: false
     network:
@@ -2988,17 +2930,6 @@ data:
 schema: armada/ChartGroup/v1
 metadata:
   schema: metadata/Document/v1
-  name: provisioner
-data:
-  description: "Provisioner"
-  sequenced: true
-  chart_group:
-    - openstack-rbd-provisioner
-    - openstack-ceph-pools-audit
----
-schema: armada/ChartGroup/v1
-metadata:
-  schema: metadata/Document/v1
   name: openstack-mariadb
 data:
   description: "Mariadb"
@@ -3133,7 +3064,6 @@ data:
   chart_groups:
     - kube-system-ingress
     - openstack-ingress
-    - provisioner
     - openstack-mariadb
     - openstack-memcached
     - openstack-rabbitmq

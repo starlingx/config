@@ -16,6 +16,7 @@ from oslo_log import log
 from oslo_serialization import jsonutils
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sqlalchemy.orm.exc import NoResultFound
 
 LOG = log.getLogger(__name__)
@@ -425,3 +426,12 @@ class OpenstackBaseHelm(base.BaseHelm):
             ]
         }
         return uefi_config
+
+    def _get_ceph_client_overrides(self):
+        # A secret is required by the chart for ceph client access. Use the
+        # secret for the kube-rbd pool associated with the primary ceph tier
+        return {
+            'user_secret_name':
+            K8RbdProvisioner.get_user_secret_name({
+                'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
+        }

@@ -35,7 +35,8 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
                 'endpoints': self._get_endpoints_overrides(),
                 'storage': self._get_storage_overrides(),
                 'conf': self._get_conf_overrides(),
-                'bootstrap': self._get_bootstrap_overrides()
+                'bootstrap': self._get_bootstrap_overrides(),
+                'ceph_client': self._get_ceph_client_overrides(),
             }
         }
 

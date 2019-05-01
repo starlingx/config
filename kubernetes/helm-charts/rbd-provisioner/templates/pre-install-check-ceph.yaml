@@ -30,19 +30,15 @@ data:
     # Copy from read only mount to Ceph config folder
     cp {{ $mount -}}/ceph.conf /etc/ceph/
 
-    if [ ! -z $CEPH_ADMIN_SECRET ]; then
-      kubectl get secret -n $NAMESPACE | grep $CEPH_ADMIN_SECRET
-      ret=$?
-      if [ $ret -ne 0 ]; then
-          msg="Create $CEPH_ADMIN_SECRET secret"
-          echo "$msg"
-          kubectl create secret generic $CEPH_ADMIN_SECRET --type="kubernetes.io/rbd" --from-literal=key= --namespace=$NAMESPACE
-          ret=$?
-          if [ $ret -ne 0 ]; then
-            msg="Error creating secret $CEPH_ADMIN_SECRET, exit"
-            echo "$msg"
-            exit $ret
-          fi
+    if [ -n "${CEPH_ADMIN_SECRET}" ]; then
+      kubectl get secret -n ${NAMESPACE} | grep ${CEPH_ADMIN_SECRET}
+      if [ $? -ne 0 ]; then
+        echo "Create ${CEPH_ADMIN_SECRET} secret"
+        kubectl create secret generic ${CEPH_ADMIN_SECRET} --type="kubernetes.io/rbd" --from-literal=key= --namespace=${NAMESPACE}
+        if [ $? -ne 0 ]; then
+          echo "Error creating secret ${CEPH_ADMIN_SECRET}, exit"
+          exit 1
+        fi
       fi
     fi
 
@@ -51,49 +47,80 @@ data:
     # Check if ceph is accessible
     echo "===================================="
     ceph -s
-    ret=$?
-    if [ $ret -ne 0 ]; then
-      msg="Error: Ceph cluster is not accessible, check Pod logs for details."
-      echo "$msg"
-      exit $ret
+    if [ $? -ne 0 ]; then
+      echo "Error: Ceph cluster is not accessible, check Pod logs for details."
+      exit 1
     fi
 
     set -ex
-
     # Make sure the pool exists.
-    ceph osd pool stats $POOL_NAME || ceph osd pool create $POOL_NAME $POOL_CHUNK_SIZE
+    ceph osd pool stats ${POOL_NAME} || ceph osd pool create ${POOL_NAME} ${POOL_CHUNK_SIZE}
     # Set pool configuration.
     ceph osd pool application enable $POOL_NAME rbd
-    ceph osd pool set $POOL_NAME size $POOL_REPLICATION
-    ceph osd pool set $POOL_NAME crush_rule $POOL_CRUSH_RULE_NAME
+    ceph osd pool set ${POOL_NAME} size ${POOL_REPLICATION}
+    ceph osd pool set ${POOL_NAME} crush_rule ${POOL_CRUSH_RULE_NAME}
+    set +ex
 
-    if [[ -z $USER_ID && -z $CEPH_USER_SECRET ]]; then
-      msg="No need to create secrets for pool $POOL_NAME"
-      echo "$msg"
+    if [[ -z "${USER_ID}" && -z "${CEPH_USER_SECRET}" ]]; then
+      echo "No need to create secrets for pool ${POOL_NAME}"
       exit 0
     fi
 
-    KEYRING=$(ceph auth get-or-create client.$USER_ID mon "allow r" osd "allow rwx pool=${POOL_NAME}" | sed -n 's/^[[:blank:]]*key[[:blank:]]\+=[[:blank:]]\(.*\)/\1/p')
+    set -ex
+    KEYRING=$(ceph auth get-or-create client.${USER_ID} mon "allow r" osd "allow rwx pool=${POOL_NAME}" | sed -n 's/^[[:blank:]]*key[[:blank:]]\+=[[:blank:]]\(.*\)/\1/p')
     # Set up pool key in Ceph format
-    CEPH_USER_KEYRING=/etc/ceph/ceph.client.$USER_ID.keyring
+    CEPH_USER_KEYRING=/etc/ceph/ceph.client.${USER_ID}.keyring
     echo $KEYRING > $CEPH_USER_KEYRING
-
-    kubectl create secret generic $CEPH_USER_SECRET --type="kubernetes.io/rbd" --from-literal=key=$KEYRING --namespace=$NAMESPACE
-
     set +ex
+
+    if [ -n "${CEPH_USER_SECRET}" ]; then
+      kubectl get secret -n ${NAMESPACE} ${CEPH_USER_SECRET} 2>/dev/null
+      if [ $? -ne 0 ]; then
+        echo "Create ${CEPH_USER_SECRET} secret"
+        kubectl create secret generic -n ${NAMESPACE} ${CEPH_USER_SECRET} --type="kubernetes.io/rbd" --from-literal=key=$KEYRING
+        if [ $? -ne 0 ]; then
+          echo"Error creating secret ${CEPH_USER_SECRET} in ${NAMESPACE}, exit"
+          exit 1
+        fi
+      fi
+
+      # Support creating namespaces and Ceph user secrets for additional
+      # namespaces other than that which the provisioner is installed. This
+      # allows the provisioner to set up and provide PVs for multiple
+      # applications across many namespaces.
+      if [ -n "${ADDITIONAL_NAMESPACES}" ]; then
+        for ns in $(IFS=,; echo ${ADDITIONAL_NAMESPACES}); do
+          kubectl get namespace $ns  2>/dev/null
+          if [ $? -ne 0 ]; then
+            kubectl create namespace $ns
+            if [ $? -ne 0 ]; then
+              echo "Error creating namespace $ns, exit"
+              continue
+            fi
+          fi
+
+          kubectl get secret -n $ns ${CEPH_USER_SECRET} 2>/dev/null
+          if [ $? -ne 0 ]; then
+            echo "Creating secret ${CEPH_USER_SECRET} for namespace $ns"
+            kubectl create secret generic -n $ns ${CEPH_USER_SECRET} --type="kubernetes.io/rbd" --from-literal=key=$KEYRING
+            if [ $? -ne 0 ]; then
+              echo "Error creating secret ${CEPH_USER_SECRET} in $ns, exit"
+            fi
+          else
+            echo "Secret ${CEPH_USER_SECRET} for namespace $ns already exists"
+          fi
+        done
+      fi
+    fi
 
     # Check if pool is accessible using provided credentials
     echo "====================================="
-    rbd -p $POOL_NAME --user $USER_ID ls -K $CEPH_USER_KEYRING
-    ret=$?
-    if [ $ret -ne 0 ]; then
-      msg="Error: Ceph pool $POOL_NAME is not accessible using \
-    credentials for user $USER_ID, check Pod logs for details."
-      echo "$msg"
-      exit $ret
+    rbd -p ${POOL_NAME} --user ${USER_ID} ls -K $CEPH_USER_KEYRING
+    if [ $? -ne 0 ]; then
+      echo "Error: Ceph pool ${POOL_NAME} is not accessible using credentials for user ${USER_ID}, check Pod logs for details."
+      exit 1
     else
-      msg="Pool $POOL_NAME accessible"
-      echo "$msg"
+      echo "Pool ${POOL_NAME} accessible"
     fi
 
     ceph -s
@@ -102,7 +129,7 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: rbd-provisioner-storage-init
+  name: storage-init-{{- $root.Values.global.name }}
   namespace: {{ $root.Release.Namespace }}
   labels:
     heritage: {{$root.Release.Service | quote }}
@@ -134,6 +161,8 @@ spec:
           env:
             - name: NAMESPACE
               value: {{ $root.Release.Namespace }}
+            - name: ADDITIONAL_NAMESPACES
+              value: {{ include "helm-toolkit.utils.joinListWithComma" $classConfig.additionalNamespaces | quote }}
             - name: CEPH_ADMIN_SECRET
               value: {{ $defaults.adminSecretName }}
             - name: CEPH_USER_SECRET
@@ -168,13 +197,4 @@ data:
     [mon.{{- $index }}]
     mon_addr = {{ $element }}
     {{- end }}
----
-# Create the pvc-ceph-client-key. We need this here as we're not launching
-# Ceph using the Helm chart.
-apiVersion: v1
-kind: Secret
-type: kubernetes.io/rbd
-metadata:
-  name: pvc-ceph-client-key
-  namespace: {{ $root.Release.Namespace }}
 {{- end }}

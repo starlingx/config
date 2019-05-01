@@ -141,6 +141,11 @@ classes:
   crush_rule_name: storage_tier_ruleset
   # Pool chunk size / PG_NUM
   chunk_size: 8
+  # Additional namespace to allow storage class access (other than where
+  # installed)
+  additionalNamespaces:
+  - default
+  - kube-public
 # Configuration data for the ephemeral pool(s)
 ephemeral_pools:
 - chunk_size: 8

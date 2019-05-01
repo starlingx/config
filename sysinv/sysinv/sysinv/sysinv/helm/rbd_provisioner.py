@@ -4,8 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import copy
-
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
@@ -22,13 +20,10 @@ class RbdProvisionerHelm(base.BaseHelm):
 
     CHART = constants.HELM_CHART_RBD_PROVISIONER
     SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + \
-        [common.HELM_NS_OPENSTACK,
-         common.HELM_NS_KUBE_SYSTEM]
+        [common.HELM_NS_STORAGE_PROVISIONER]
     SUPPORTED_APP_NAMESPACES = {
-        constants.HELM_APP_OPENSTACK:
-            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK],
         constants.HELM_APP_PLATFORM:
-            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_KUBE_SYSTEM],
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_STORAGE_PROVISIONER],
     }
 
     SERVICE_NAME = 'rbd-provisioner'
@@ -64,48 +59,28 @@ class RbdProvisionerHelm(base.BaseHelm):
                 "-ruleset").replace('-', '_')
 
             cls = {
-                    "name": K8RbdProvisioner.get_storage_class_name(bk),
-                    "pool_name": K8RbdProvisioner.get_pool(bk),
-                    "replication": int(bk.capabilities.get("replication")),
-                    "crush_rule_name": rule_name,
-                    "chunk_size": 64,
-                    "userId": K8RbdProvisioner.get_user_id(bk),
-                    "userSecretName": K8RbdProvisioner.get_user_secret_name(bk)
-                  }
+                "name": K8RbdProvisioner.get_storage_class_name(bk),
+                "pool_name": K8RbdProvisioner.get_pool(bk),
+                "replication": int(bk.capabilities.get("replication")),
+                "crush_rule_name": rule_name,
+                "chunk_size": 64,
+                "userId": K8RbdProvisioner.get_user_id(bk),
+                "userSecretName": K8RbdProvisioner.get_user_secret_name(bk),
+                "additionalNamespaces": ['default', 'kube-public'],
+            }
             classes.append(cls)
 
         global_settings = {
             "replicas": self._num_controllers()
         }
 
-        overrides = {}
-        # TODO(rchurch): Multiple rbd-provsioners can be run in the k8s cluster.
-        # This will be the case for the near term until an update is provided to
-        # the stx-openstack application to support using the default system
-        # provisioner which will be installed in the kube-system namespace.
-        overrides.update({
-            common.HELM_NS_OPENSTACK: {
-                "classdefaults": copy.deepcopy(classdefaults),
-                "classes": copy.deepcopy(classes),
-                "global": global_settings
-            }
-        })
-
-        # TODO(rchurch): For the near term ensure, provisioner isolation
-        classdefaults["adminId"] += '-platform'
-        classdefaults["adminSecretName"] += '-platform'
-        for c in classes:
-            c["name"] += '-platform'
-            c["pool_name"] += '-platform'
-            c["userId"] += '-platform'
-            c["userSecretName"] += '-platform'
-        overrides.update({
-            common.HELM_NS_KUBE_SYSTEM: {
+        overrides = {
+            common.HELM_NS_STORAGE_PROVISIONER: {
                 "classdefaults": classdefaults,
                 "classes": classes,
                 "global": global_settings
             }
-        })
+        }
 
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]

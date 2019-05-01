@@ -36,15 +36,6 @@ data:
         - type: job
           labels:
             app: rbd-provisioner
-  values:
-    global:
-      # TODO (rchurch): Remove after enabling the stx-openstack application to
-      # use the default system provisioner.
-      provisioner_name: "ceph.com/rbd-platform"
-    rbac:
-      clusterRole: stx-rbd-provisioner
-      clusterRoleBinding: stx-rbd-provisioner
-      serviceAccount: stx-rbd-provisioner
   source:
     type: tar
     location: http://172.17.0.1:8080/helm_charts/stx-platform/rbd-provisioner-0.1.0.tgz

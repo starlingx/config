@@ -127,6 +127,17 @@ class KubeOperator(object):
                       "%s" % (body['metadata']['name'], namespace, e))
             raise
 
+    def kube_copy_secret(self, name, src_namespace, dst_namespace):
+        c = self._get_kubernetesclient()
+        try:
+            body = c.read_namespaced_secret(name, src_namespace, export=True)
+            body.metadata.namespace = dst_namespace
+            c.create_namespaced_secret(dst_namespace, body)
+        except Exception as e:
+            LOG.error("Failed to copy Secret %s from Namespace %s to Namespace "
+                      "%s: %s" % (name, src_namespace, dst_namespace, e))
+            raise
+
     def kube_delete_persistent_volume_claim(self, namespace, **kwargs):
         c = self._get_kubernetesclient()
         try:
@@ -176,4 +187,61 @@ class KubeOperator(object):
                 raise
         except Exception as e:
             LOG.error("Kubernetes exception in kube_delete_namespace: %s" % e)
+            raise
+
+    def kube_get_config_map(self, name, namespace):
+        c = self._get_kubernetesclient()
+        try:
+            c.read_namespaced_config_map(name, namespace)
+            return True
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return False
+            else:
+                LOG.error("Failed to get ConfigMap %s under "
+                          "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_get_config_map: %s" % e)
+            raise
+
+    def kube_create_config_map(self, namespace, body):
+        c = self._get_kubernetesclient()
+        try:
+            c.create_namespaced_config_map(namespace, body)
+        except Exception as e:
+            LOG.error("Failed to create ConfigMap %s under Namespace %s: "
+                      "%s" % (body['metadata']['name'], namespace, e))
+            raise
+
+    def kube_copy_config_map(self, name, src_namespace, dst_namespace):
+        c = self._get_kubernetesclient()
+        try:
+            body = c.read_namespaced_config_map(name, src_namespace, export=True)
+            body.metadata.namespace = dst_namespace
+            c.create_namespaced_config_map(dst_namespace, body)
+        except Exception as e:
+            LOG.error("Failed to copy ConfigMap %s from Namespace %s to Namespace "
+                      "%s: %s" % (name, src_namespace, dst_namespace, e))
+            raise
+
+    def kube_delete_config_map(self, name, namespace, **kwargs):
+        body = {}
+
+        if kwargs:
+            body.update(kwargs)
+
+        c = self._get_kubernetesclient()
+        try:
+            c.delete_namespaced_config_map(name, namespace, body)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("ConfigMap %s under Namespace %s "
+                         "not found." % (name, namespace))
+            else:
+                LOG.error("Failed to clean up ConfigMap %s under "
+                          "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_delete_config_map: %s" % e)
             raise

@@ -106,7 +106,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     'sshd': {
                         'from_subnet': self._get_ssh_subnet(),
                     }
-                }
+                },
+                'ceph_client': self._get_ceph_client_overrides(),
             }
         }
 

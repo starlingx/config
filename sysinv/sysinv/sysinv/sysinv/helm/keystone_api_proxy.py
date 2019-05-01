@@ -40,7 +40,6 @@ class KeystoneApiProxyHelm(openstack.OpenstackBaseHelm):
                         'chart_groups': [
                             'kube-system-ingress',
                             'openstack-ingress',
-                            'provisioner',
                             'openstack-mariadb',
                             'openstack-memcached',
                             'openstack-rabbitmq',
