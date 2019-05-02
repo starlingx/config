@@ -4511,7 +4511,8 @@ class ConductorManager(service.PeriodicService):
                 cutils.touch(CONFIG_CONTROLLER_ACTIVATE_FLAG)
                 # apply keystone changes to current active controller
                 personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities)
+                config_uuid = self._config_update_hosts(context, personalities,
+                                                        host_uuids=[active_host.uuid])
                 config_dict = {
                     "personalities": personalities,
                     "host_uuids": active_host.uuid,
@@ -4551,7 +4552,8 @@ class ConductorManager(service.PeriodicService):
             # initial unlock for subsequent host installs.
             if standby_host is None:
                 personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities)
+                config_uuid = self._config_update_hosts(context, personalities,
+                                                        host_uuids=[active_host.uuid])
                 config_dict = {
                     "personalities": personalities,
                     "host_uuids": active_host.uuid,
@@ -8021,8 +8023,8 @@ class ConductorManager(service.PeriodicService):
 
         else:
             # better to clear since a GET may block
-            LOG.info("SYS_I Clear system config alarm: %s" %
-                     ihost_obj.hostname)
+            LOG.info("SYS_I Clear system config alarm: %s target config %s" %
+                     (ihost_obj.hostname, ihost_obj.config_target))
 
             self.fm_api.clear_fault(
                 fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
@@ -8252,6 +8254,11 @@ class ConductorManager(service.PeriodicService):
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuid is set, only update hiera data for that host
         """
+        if "classes" in config_dict:
+            LOG.info("applying runtime manifest config_uuid=%s, classes: %s" % (
+                config_uuid, config_dict["classes"]))
+        else:
+            LOG.info("applying runtime manifest config_uuid=%s" % config_uuid)
 
         # Update hiera data for all hosts prior to runtime apply if host_uuid
         # is not set. If host_uuid is set only update hiera data for that host
