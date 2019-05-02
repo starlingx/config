@@ -60,13 +60,12 @@ data:
 
     set -ex
 
-    # Get the ruleset from the rule name.
-    ruleset=$(ceph osd crush rule dump $POOL_CRUSH_RULE_NAME | grep "\"ruleset\":" | grep -Eo '[0-9]*')
     # Make sure the pool exists.
     ceph osd pool stats $POOL_NAME || ceph osd pool create $POOL_NAME $POOL_CHUNK_SIZE
     # Set pool configuration.
+    ceph osd pool application enable $POOL_NAME rbd
     ceph osd pool set $POOL_NAME size $POOL_REPLICATION
-    ceph osd pool set $POOL_NAME crush_rule $ruleset
+    ceph osd pool set $POOL_NAME crush_rule $POOL_CRUSH_RULE_NAME
 
     if [[ -z $USER_ID && -z $CEPH_USER_SECRET ]]; then
       msg="No need to create secrets for pool $POOL_NAME"

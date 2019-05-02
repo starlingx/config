@@ -744,18 +744,18 @@ class platform::sm
       }
     }
 
-    # Ceph-Rest-Api
-    exec { 'Provision Ceph-Rest-Api (service-domain-member storage-services)':
+    # Ceph mgr RESTful plugin
+    exec { 'Provision mgr-restful-plugin (service-domain-member storage-services)':
       command => 'sm-provision service-domain-member controller storage-services',
     }
-    -> exec { 'Provision Ceph-Rest-Api (service-group storage-services)':
+    -> exec { 'Provision mgr-restful-plugin (service-group storage-services)':
       command => 'sm-provision service-group storage-services',
     }
-    -> exec { 'Provision Ceph-Rest-Api (service-group-member ceph-rest-api)':
-      command => 'sm-provision service-group-member storage-services ceph-rest-api',
+    -> exec { 'Provision mgr-restful-plugin (service-group-member mgr-restful-plugin)':
+      command => 'sm-provision service-group-member storage-services mgr-restful-plugin',
     }
-    -> exec { 'Provision Ceph-Rest-Api (service ceph-rest-api)':
-      command => 'sm-provision service ceph-rest-api',
+    -> exec { 'Provision mgr-restful-plugin (service mgr-restful-plugin)':
+      command => 'sm-provision service mgr-restful-plugin',
     }
 
     # Ceph-Manager

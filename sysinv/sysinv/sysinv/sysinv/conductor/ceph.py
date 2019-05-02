@@ -53,7 +53,7 @@ class CephOperator(object):
         self._fm_api = fm_api.FaultAPIs()
         self._db_api = db_api
         self._ceph_api = ceph.CephWrapper(
-            endpoint='http://localhost:5001/api/v0.1/')
+            endpoint='http://localhost:5001')
         self._db_cluster = None
         self._db_primary_tier = None
         self._cluster_name = 'ceph_cluster'
@@ -99,7 +99,7 @@ class CephOperator(object):
         try:
             response, body = self._ceph_api.status(body='json',
                                                    timeout=timeout)
-            if (body['output']['health']['overall_status'] !=
+            if (body['output']['health']['status'] !=
                     constants.CEPH_HEALTH_OK):
                 rc = False
         except Exception as e:
@@ -1313,11 +1313,11 @@ class CephOperator(object):
                          "upgrade checks.")
 
             # Grab the current values
-            cinder_pool_gib = storage_ceph.cinder_pool_gib
-            kube_pool_gib = storage_ceph.kube_pool_gib
-            glance_pool_gib = storage_ceph.glance_pool_gib
-            ephemeral_pool_gib = storage_ceph.ephemeral_pool_gib
-            object_pool_gib = storage_ceph.object_pool_gib
+            cinder_pool_gib = storage_ceph.cinder_pool_gib or 0
+            kube_pool_gib = storage_ceph.kube_pool_gib or 0
+            glance_pool_gib = storage_ceph.glance_pool_gib or 0
+            ephemeral_pool_gib = storage_ceph.ephemeral_pool_gib or 0
+            object_pool_gib = storage_ceph.object_pool_gib or 0
 
             # Initial cluster provisioning after cluster is up
             # glance_pool_gib = 20 GiB
@@ -1403,8 +1403,8 @@ class CephOperator(object):
 
         else:
             # Grab the current values
-            cinder_pool_gib = storage_ceph.cinder_pool_gib
-            kube_pool_gib = storage_ceph.kube_pool_gib
+            cinder_pool_gib = storage_ceph.cinder_pool_gib or 0
+            kube_pool_gib = storage_ceph.kube_pool_gib or 0
 
             # Secondary tiers: only cinder and kube pool supported.
             tiers_size = self.get_ceph_tiers_size()

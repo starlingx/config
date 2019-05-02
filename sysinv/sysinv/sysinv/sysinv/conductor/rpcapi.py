@@ -927,15 +927,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_external_cinder_config'))
 
-    def update_ceph_services(self, context, sb_uuid):
-        """Synchronously, have the conductor update Ceph tier services
-
-        :param context: request context
-        :param sb_uuid: uuid of the storage backed to apply the service update.
-        """
-        return self.call(context,
-                         self.make_msg('update_ceph_services', sb_uuid=sb_uuid))
-
     def get_k8s_namespaces(self, context):
         """Synchronously, get Kubernetes namespaces
 

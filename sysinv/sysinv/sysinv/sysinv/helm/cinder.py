@@ -60,9 +60,11 @@ class CinderHelm(openstack.OpenstackBaseHelm):
         replication, min_replication =\
             StorageBackendConfig.get_ceph_pool_replication(self.dbapi)
 
-        # We don't use the chart to configure the cinder-volumes
-        # pool, so these values don't have any impact right now.
-        ruleset = 0
+        rule_name = "{0}{1}{2}".format(
+            constants.SB_TIER_DEFAULT_NAMES[
+                constants.SB_TIER_TYPE_CEPH],
+            constants.CEPH_CRUSH_TIER_SUFFIX,
+            "-ruleset").replace('-', '_')
 
         conf_ceph = {
             'monitors': self._get_formatted_ceph_monitor_ips(),
@@ -73,13 +75,13 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                     # it's safe to use the same replication as for the primary
                     # tier pools.
                     'replication': replication,
-                    'crush_rule': ruleset,
+                    'crush_rule': rule_name,
                 },
                 'volume': {
                     # The cinder chart doesn't currently support specifying
                     # the config for multiple volume/backup pools.
                     'replication': replication,
-                    'crush_rule': ruleset,
+                    'crush_rule': rule_name,
                 }
             }
         }

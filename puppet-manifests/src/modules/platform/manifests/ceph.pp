@@ -35,7 +35,6 @@ class platform::ceph::params(
   $rgw_gc_obj_min_wait = '600',
   $rgw_gc_processor_max_time = '300',
   $rgw_gc_processor_period = '300',
-  $restapi_public_addr = undef,
   $configure_ceph_mon_info = false,
   $ceph_config_file = '/etc/ceph/ceph.conf',
   $ceph_config_ready_path = '/var/run/.ceph_started',
@@ -70,7 +69,6 @@ class platform::ceph
     }
     -> ceph_config {
       'mon/mon clock drift allowed': value => '.1';
-      'client.restapi/public_addr':  value => $restapi_public_addr;
     }
     if $system_type == 'All-in-one' {
       # 1 and 2 node configurations have a single monitor
@@ -305,6 +303,9 @@ define osd_crush_location(
   $journal_path,
   $tier_name,
 ) {
+  ceph_config{
+    "osd.${$osd_id}/devs": value => $data_path;
+  }
   # Only set the crush location for additional tiers
   if $tier_name != 'storage' {
     ceph_config {
@@ -335,7 +336,8 @@ define platform_ceph_osd(
     command   => template('platform/ceph.osd.create.erb'),
   }
   -> ceph::osd { $disk_path:
-    uuid => $osd_uuid,
+    uuid  => $osd_uuid,
+    osdid => $osd_id,
   }
   -> exec { "configure journal location ${name}":
     logoutput => true,
@@ -414,6 +416,7 @@ class platform::ceph::rgw
       rgw_frontends => "${rgw_frontend_type} port=${auth_host}:${rgw_port}",
       # service is managed by SM
       rgw_enable    => false,
+      rgw_ensure    => false,
       # The location of the log file shoule be the same as what's specified in
       # /etc/logrotate.d/radosgw in order for log rotation to work properly
       log_file      => $rgw_log_file,
@@ -476,12 +479,13 @@ class platform::ceph::runtime_base {
   include ::platform::ceph::monitor
   include ::platform::ceph
 
-  # Make sure ceph-rest-api is running as it is needed by sysinv config
+  # Make sure mgr-restful-plugin is running as it is needed by sysinv config
   # TODO(oponcea): Remove when sm supports in-service config reload
   if str2bool($::is_controller_active) {
     Ceph::Mon <| |>
-    -> exec { '/etc/init.d/ceph-rest-api start':
-      command => '/etc/init.d/ceph-rest-api start'
+    -> exec { '/etc/init.d/mgr-restful-plugin start':
+      command   => '/etc/init.d/mgr-restful-plugin start',
+      logoutput => true,
     }
   }
 }

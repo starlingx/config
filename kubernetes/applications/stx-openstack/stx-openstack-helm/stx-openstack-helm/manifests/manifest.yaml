@@ -126,11 +126,6 @@ data:
         - type: job
           labels:
             app: rbd-provisioner
-  values:
-    images:
-      tags:
-        # TODO: Remove after ceph upgrade
-        rbd_provisioner_storage_init: docker.io/starlingx/stx-ceph-config-helper:master-centos-stable-latest
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/rbd-provisioner-0.1.0.tgz
@@ -569,7 +564,6 @@ data:
         bootstrap: docker.io/starlingx/stx-heat:master-centos-stable-latest
         db_drop: docker.io/starlingx/stx-heat:master-centos-stable-latest
         db_init: docker.io/starlingx/stx-heat:master-centos-stable-latest
-        glance_storage_init: docker.io/starlingx/stx-ceph-config-helper:master-centos-stable-latest
         glance_api: docker.io/starlingx/stx-glance:master-centos-stable-latest
         glance_db_sync: docker.io/starlingx/stx-glance:master-centos-stable-latest
         glance_registry: docker.io/starlingx/stx-glance:master-centos-stable-latest
@@ -641,10 +635,8 @@ data:
         bootstrap: docker.io/starlingx/stx-heat:master-centos-stable-latest
         cinder_api: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         cinder_backup: docker.io/starlingx/stx-cinder:master-centos-stable-latest
-        cinder_backup_storage_init: docker.io/starlingx/stx-ceph-config-helper:master-centos-stable-latest
         cinder_db_sync: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         cinder_scheduler: docker.io/starlingx/stx-cinder:master-centos-stable-latest
-        cinder_storage_init: docker.io/starlingx/stx-ceph-config-helper:master-centos-stable-latest
         cinder_volume: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         cinder_volume_usage_audit: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         db_drop: docker.io/starlingx/stx-heat:master-centos-stable-latest
@@ -866,7 +858,6 @@ data:
         nova_scheduler: docker.io/starlingx/stx-nova:master-centos-stable-latest
         nova_spiceproxy: docker.io/starlingx/stx-nova:master-centos-stable-latest
         nova_spiceproxy_assets: docker.io/starlingx/stx-nova:master-centos-stable-latest
-        nova_storage_init: docker.io/starlingx/stx-ceph-config-helper:master-centos-stable-latest
     pod:
       # TODO(rchurch):
       # Change-Id: I5a60efd133c156ce2ecac31d22e94b25e4e837bf broke armada apply

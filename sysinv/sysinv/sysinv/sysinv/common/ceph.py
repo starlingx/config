@@ -12,17 +12,18 @@
 
 from __future__ import absolute_import
 
-from sysinv.api.controllers.v1 import utils
+import subprocess
+import os
+import pecan
+import requests
 
 from cephclient import wrapper as ceph
+
+from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.openstack.common import log as logging
-import subprocess
-import pecan
-import os
-import requests
 
 from sysinv.api.controllers.v1.utils import is_aio_system
 
@@ -36,7 +37,7 @@ class CephApiOperator(object):
 
     def __init__(self):
         self._ceph_api = ceph.CephWrapper(
-            endpoint='http://localhost:5001/api/v0.1/')
+                endpoint='http://localhost:5001')
         self._default_tier = constants.SB_TIER_DEFAULT_NAMES[
             constants.SB_TIER_TYPE_CEPH]
 
@@ -140,7 +141,8 @@ class CephApiOperator(object):
                                                       depth=depth + 1,
                                                       rollback=rollback)
 
-            LOG.error("bucket_name = %s, depth = %d, ret_code = %s" % (bucket_name, depth, ret_code))
+            LOG.error("bucket_name = %s, depth = %d, ret_code = %s" % (
+                bucket_name, depth, ret_code))
             self._crush_bucket_remove(bucket_name)
 
         if ret_code != 0 and depth == 0:
@@ -172,9 +174,7 @@ class CephApiOperator(object):
             # Scan for the destination root, should not be present
             dest_root = [r for r in body['output'] if r['name'] == dest_root_name]
             if dest_root:
-                reason = "Tier '%s' already exists." % dest_root_name
-                raise exception.CephCrushInvalidTierUse(tier=dest_root_name,
-                                                        reason=reason)
+                raise exception.CephCrushTierAlreadyExists(tier=dest_root_name)
 
             src_root = [r for r in body['output'] if r['name'] == src_root_name]
             if not src_root:
@@ -244,7 +244,7 @@ class CephApiOperator(object):
         for l in reversed(rule):
             file_contents.insert(insertion_index, l)
 
-    def _crushmap_rule_add(self, name, replicate_by):
+    def _crushmap_rule_add(self, tier, replicate_by):
         """Add a tier crushmap rule."""
 
         crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
@@ -254,20 +254,16 @@ class CephApiOperator(object):
             raise exception.CephCrushMapNotApplied(reason=reason)
 
         default_root_name = self._format_root_name(self._default_tier)
-        root_name = self._format_root_name(name)
+        root_name = self._format_root_name(tier)
         if root_name == default_root_name:
-            reason = ("Rule for the default storage tier '%s' already exists." %
-                      default_root_name)
-            raise exception.CephCrushInvalidTierUse(tier=name, reason=reason)
+            raise exception.CephCrushRuleAlreadyExists(
+                tier=tier, rule='default')
 
         # get the current rule count
         rule_is_present, rule_name, rule_count = self._crush_rule_status(root_name)
-
         if rule_is_present:
-            reason = (("Rule '%s' is already present in the crushmap. No action "
-                       "taken.") % rule_name)
-            raise exception.CephCrushInvalidRuleOperation(rule=rule_name,
-                                                          reason=reason)
+            raise exception.CephCrushRuleAlreadyExists(
+                tier=tier, rule=rule_name)
 
         # NOTE: The Ceph API only supports simple single step rule creation.
         # Because of this we need to update the crushmap the hard way.
@@ -369,40 +365,39 @@ class CephApiOperator(object):
         except exception.CephCrushMaxRecursion as e:
             raise e
 
+    def _crushmap_add_tier(self, tier):
+        # create crush map tree for tier mirroring default root
+        try:
+            self._crushmap_root_mirror(self._default_tier, tier.name)
+        except exception.CephCrushTierAlreadyExists:
+            pass
+        if utils.is_aio_simplex_system(pecan.request.dbapi):
+            # Since we have a single host replication is done on OSDs
+            # to ensure disk based redundancy.
+            replicate_by = 'osd'
+        else:
+            # Replication is done on different nodes of the same peer
+            # group ensuring host based redundancy.
+            replicate_by = 'host'
+        try:
+            self._crushmap_rule_add(tier.name, replicate_by=replicate_by)
+        except exception.CephCrushRuleAlreadyExists:
+            pass
+
     def crushmap_tiers_add(self):
         """Add all custom storage tiers to the crushmap. """
 
-        ceph_cluster_name = constants.CLUSTER_CEPH_DEFAULT_NAME
-        cluster = pecan.request.dbapi.clusters_get_all(name=ceph_cluster_name)
-
-        # get the list of tiers
+        cluster = pecan.request.dbapi.clusters_get_all(
+            name=constants.CLUSTER_CEPH_DEFAULT_NAME)
         tiers = pecan.request.dbapi.storage_tier_get_by_cluster(
             cluster[0].uuid)
+
         for t in tiers:
-            if (t.type == constants.SB_TIER_TYPE_CEPH and
-                    t.name != self._default_tier and
-                    t.status == constants.SB_TIER_STATUS_DEFINED):
-
-                try:
-                    # First: Mirror the default hierarchy
-                    self._crushmap_root_mirror(self._default_tier, t.name)
-
-                    # Second: Add ruleset
-                    # PG replication can be done per OSD or per host, hence replicate_by
-                    # is set to either 'osd' or 'host'.
-                    if utils.is_aio_simplex_system(pecan.request.dbapi):
-                        # Since we have a single host replication is done on OSDs
-                        # to ensure disk based redundancy.
-                        self._crushmap_rule_add(t.name, replicate_by='osd')
-                    else:
-                        # Replication is done on different nodes of the same peer
-                        # group ensuring host based redundancy.
-                        self._crushmap_rule_add(t.name, replicate_by='host')
-                except exception.CephCrushInvalidTierUse as e:
-                    if 'already exists' in e:
-                        continue
-                except exception.CephCrushMaxRecursion as e:
-                    raise e
+            if t.type != constants.SB_TIER_TYPE_CEPH:
+                continue
+            if t.name == self._default_tier:
+                continue
+            self._crushmap_add_tier(t)
 
     def _crushmap_tiers_bucket_add(self, bucket_name, bucket_type):
         """Add a new bucket to all the tiers in the crushmap. """
@@ -473,7 +468,7 @@ class CephApiOperator(object):
         try:
             response, body = self._ceph_api.status(body='json',
                                                    timeout=timeout)
-            ceph_status = body['output']['health']['overall_status']
+            ceph_status = body['output']['health']['status']
             if ceph_status != constants.CEPH_HEALTH_OK:
                 LOG.warn("ceph status=%s " % ceph_status)
                 rc = False
@@ -506,7 +501,7 @@ class CephApiOperator(object):
 
     def osd_host_lookup(self, osd_id):
         response, body = self._ceph_api.osd_crush_tree(body='json')
-        for i in range(0, len(body)):
+        for i in range(0, len(body['output'])):
             # there are 2 chassis lists - cache-tier and root-tier
             # that can be seen in the output of 'ceph osd crush tree':
             # [{"id": -2,"name": "cache-tier", "type": "root",
@@ -710,7 +705,7 @@ def fix_crushmap(dbapi=None):
         try:
             open(crushmap_flag_file, "w").close()
         except IOError as e:
-            LOG.warn(_('Failed to create flag file: {}. '
+            LOG.warn(('Failed to create flag file: {}. '
                        'Reason: {}').format(crushmap_flag_file, e))
 
     if not dbapi:

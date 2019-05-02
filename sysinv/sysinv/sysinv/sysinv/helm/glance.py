@@ -119,9 +119,12 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
             replication, min_replication = \
                 StorageBackendConfig.get_ceph_pool_replication(self.dbapi)
 
-        # Only the primary Ceph tier is used for the glance images pool, so
-        # the crush ruleset is 0.
-        ruleset = 0
+        # Only the primary Ceph tier is used for the glance images pool
+        rule_name = "{0}{1}{2}".format(
+            constants.SB_TIER_DEFAULT_NAMES[
+                constants.SB_TIER_TYPE_CEPH],
+            constants.CEPH_CRUSH_TIER_SUFFIX,
+            "-ruleset").replace('-', '_')
 
         conf = {
             'glance': {
@@ -134,7 +137,7 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
                     'rbd_store_pool': rbd_store_pool,
                     'rbd_store_user': rbd_store_user,
                     'rbd_store_replication': replication,
-                    'rbd_store_crush_rule': ruleset,
+                    'rbd_store_crush_rule': rule_name,
                 }
             }
         }

@@ -47,7 +47,7 @@ class CephPoolsAuditHelm(base.BaseHelm):
             if not tier:
                 raise Exception("No tier present for backend %s" % bk.name)
 
-            # Get the ruleset name.
+            # Get the tier rule name.
             rule_name = "{0}{1}{2}".format(
                 tier.name,
                 constants.CEPH_CRUSH_TIER_SUFFIX,
