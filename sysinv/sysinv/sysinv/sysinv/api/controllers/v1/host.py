@@ -3690,7 +3690,8 @@ class HostController(rest.RestController):
                     # allocated and the compute label is set
                     if cutils.has_openstack_compute(labels) and \
                                     vm_hugepages_nr_2M == 0 and \
-                                    vm_hugepages_nr_1G == 0:
+                                    vm_hugepages_nr_1G == 0 and \
+                            cutils.is_default_huge_pages_required(ihost):
                         vm_hugepages_nr_2M = m.vm_hugepages_possible_2M * 0.9
                         value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
 
