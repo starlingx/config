@@ -25,7 +25,7 @@ Requires: python-six
 Requires: python2-crypto
 Requires: python2-oslo-utils
 Requires: python2-pysnmp
-Requires: python2-ruamal-yaml
+Requires: python2-ruamel-yaml
 
 %description
 Controller node configuration
