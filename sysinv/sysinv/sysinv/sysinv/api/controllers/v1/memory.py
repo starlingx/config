@@ -600,6 +600,7 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
             mem_alloc += int(rpc_port['vm_hugepages_nr_1G']) * 1000
         LOG.debug("vm total=%s" % (mem_alloc))
 
+        vs_hp_nr = 0
         vs_hp_size = rpc_port['vswitch_hugepages_size_mib']
         if vswitch_hugepages_reqd:
             vs_hp_nr = int(vswitch_hugepages_reqd)
