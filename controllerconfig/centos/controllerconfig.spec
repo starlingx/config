@@ -11,16 +11,21 @@ Source0: %{name}-%{version}.tar.gz
 BuildRequires: python-setuptools
 BuildRequires: python2-pip
 BuildRequires: python2-wheel
-Requires: systemd
-Requires: python-netaddr
-Requires: python-keyring
-Requires: python-six
-Requires: python-iso8601
+Requires: fm-api
 Requires: psmisc
-Requires: python-pyudev
+Requires: sysinv
+Requires: systemd
+Requires: tsconfig
+Requires: python-iso8601
+Requires: python-keyring
+Requires: python-netaddr
 Requires: python-netifaces
+Requires: python-pyudev
+Requires: python-six
 Requires: python2-crypto
+Requires: python2-oslo-utils
 Requires: python2-pysnmp
+Requires: python2-ruamal-yaml
 
 %description
 Controller node configuration
