@@ -960,8 +960,12 @@ def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
         required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX
         if host_has_function(ihost, constants.WORKER):
             if numa_node == 0:
-                required_reserved += \
-                    constants.PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX
+                if ihost['personality'] == constants.WORKER:
+                    required_reserved += \
+                        constants.PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX_WORKER
+                else:
+                    required_reserved += \
+                        constants.PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX
                 if host_has_function(ihost, constants.CONTROLLER):
                     required_reserved += \
                         constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_VBOX
@@ -2014,3 +2018,11 @@ def recur_update(orig_dict, new_dict):
         else:
             orig_dict[key] = new_dict[key]
     return orig_dict
+
+
+def is_default_huge_pages_required(host):
+    if not host_has_function(host, constants.WORKER):
+        return False
+    if is_virtual() or is_virtual_worker(host):
+        return False
+    return True
