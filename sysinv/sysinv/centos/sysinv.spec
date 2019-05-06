@@ -12,18 +12,27 @@ BuildRequires: python-setuptools
 BuildRequires: python-pbr
 BuildRequires: python2-pip
 BuildRequires: python2-wheel
-Requires: python-pyudev
-Requires: pyparted
-Requires: python-ipaddr
-Requires: python-pbr
-# Requires: oslo.config
-
 BuildRequires: systemd
-# Needed for python2 and python3 compatible
-Requires: python-six
-
+Requires: pyparted
 Requires: python-docker
+Requires: python-eventlet
+Requires: python-ipaddr
+Requires: python-keyring
 Requires: python-kubernetes
+Requires: python-netaddr
+Requires: python-pyudev
+Requires: python-pbr
+Requires: python-webtest
+Requires: python-wsme
+Requires: python-six
+Requires: python2-mox3
+Requires: python2-oslo-config
+Requires: python2-oslo-concurrency
+Requires: python2-oslo-db
+Requires: python2-oslo-log
+Requires: python2-oslo-utils
+Requires: python2-pecan
+Requires: tsconfig
 
 %description
 System Inventory
