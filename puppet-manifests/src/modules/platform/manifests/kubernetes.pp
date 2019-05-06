@@ -214,17 +214,6 @@ class platform::kubernetes::master::init
       logoutput => true,
     }
 
-    # Restrict the dns pod to master nodes
-    -> exec { 'restrict coredns to master nodes':
-      command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'', # lint:ignore:140chars
-      logoutput => true,
-    }
-
-    -> exec { 'Use anti-affinity for coredns pods':
-      command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}\'', # lint:ignore:140chars
-      logoutput => true,
-    }
-
     # Remove the taint from the master node
     -> exec { 'remove taint from master node':
       command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master- || true", # lint:ignore:140chars
@@ -334,18 +323,6 @@ class platform::kubernetes::master::init
         source => "puppet:///modules/${module_name}/kubeconfig.sh"
       }
 
-      # Restrict the dns pod to master nodes. It seems that each time
-      # kubeadm init is run, it undoes any changes to the deployment.
-      -> exec { 'restrict coredns to master nodes':
-        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'', # lint:ignore:140chars
-        logoutput => true,
-      }
-
-      -> exec { 'Use anti-affinity for coredns pods':
-        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}\'', # lint:ignore:140chars
-        logoutput => true,
-      }
-
       # Remove the taint from the master node
       -> exec { 'remove taint from master node':
         command   => "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node ${::platform::params::hostname} node-role.kubernetes.io/master- || true", # lint:ignore:140chars
@@ -390,6 +367,7 @@ class platform::kubernetes::master
   contain ::platform::kubernetes::kubeadm
   contain ::platform::kubernetes::cgroup
   contain ::platform::kubernetes::master::init
+  contain ::platform::kubernetes::coredns
   contain ::platform::kubernetes::firewall
 
   Class['::platform::etcd'] -> Class[$name]
@@ -400,6 +378,7 @@ class platform::kubernetes::master
   Class['::platform::kubernetes::kubeadm']
   -> Class['::platform::kubernetes::cgroup']
   -> Class['::platform::kubernetes::master::init']
+  -> Class['::platform::kubernetes::coredns']
   -> Class['::platform::kubernetes::firewall']
 }
 
@@ -475,6 +454,32 @@ class platform::kubernetes::worker
   exec { 'Update PMON libvirtd.conf':
     command => "/bin/sed -i 's#mode  = passive#mode  = ignore #' /etc/pmon.d/libvirtd.conf",
     onlyif  => '/usr/bin/test -e /etc/pmon.d/libvirtd.conf'
+  }
+}
+
+class platform::kubernetes::coredns {
+
+  include ::platform::params
+
+  if str2bool($::is_initial_config_primary) or str2bool($::is_initial_k8s_config) {
+    if $::platform::params::system_mode != 'simplex' {
+      # For duplex and multi-node system, restrict the dns pod to master nodes
+      exec { 'restrict coredns to master nodes':
+        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}\'', # lint:ignore:140chars
+        logoutput => true,
+      }
+
+      -> exec { 'Use anti-affinity for coredns pods':
+        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p \'{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}\'', # lint:ignore:140chars
+        logoutput => true,
+      }
+    } else {
+      # For simplex system, 1 coredns is enough
+      exec { '1 coredns for simplex mode':
+        command   => 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system scale --replicas=1 deployment coredns', # lint:ignore:140chars
+        logoutput => true,
+      }
+    }
   }
 }
 
