@@ -149,12 +149,19 @@ class KubernetesPuppet(base.BasePuppet):
         platform_cpuset = set([c.cpu for c in platform_cpus])
         platform_nodeset = set([c.numa_node for c in platform_cpus])
 
-        # determine set of nonplatform logical cpus and nodes
-        nonplatform_cpuset = host_cpuset - platform_cpuset
-        nonplatform_nodeset = set()
-        for c in host_cpus:
-            if c.cpu not in platform_cpuset:
-                nonplatform_nodeset.update([c.numa_node])
+        # determine platform reserved number of logical cpus
+        k8s_reserved_cpus = len(platform_cpuset)
+
+        # determine platform reserved memory
+        k8s_reserved_mem = 0
+        host_memory = self.dbapi.imemory_get_by_ihost(host.id)
+        numa_memory = utils.get_numa_index_list(host_memory)
+        for node, memory in numa_memory.items():
+            k8s_reserved_mem += memory[0].platform_reserved_mib
+
+        # determine set of nonplatform logical cpus
+        # TODO(jgauld): Commented out for now, using host_cpuset instead.
+        # nonplatform_cpuset = host_cpuset - platform_cpuset
 
         if constants.WORKER in utils.get_personalities(host) \
                 and constants.CONTROLLER not in utils.get_personalities(host):
@@ -162,8 +169,18 @@ class KubernetesPuppet(base.BasePuppet):
                 k8s_cpuset = utils.format_range_set(platform_cpuset)
                 k8s_nodeset = utils.format_range_set(platform_nodeset)
             else:
-                k8s_cpuset = utils.format_range_set(nonplatform_cpuset)
-                k8s_nodeset = utils.format_range_set(nonplatform_nodeset)
+                # kubelet cpumanager is configured with static policy.
+                # The resulting DefaultCPUSet excludes reserved cpus
+                # based on topology, and that also happens to correspond
+                # to the platform_cpuset. kubepods are allowed to
+                # span all host numa nodes.
+                # TODO(jgauld): Temporary workaround until we have a version
+                # of kubelet that excludes reserved cpus from DefaultCPUSet.
+                # The intent is to base k8s_cpuset on nonplatform_cpuset.
+                # Commented out for now, using host_cpuset instead.
+                # k8s_cpuset = utils.format_range_set(nonplatform_cpuset)
+                k8s_cpuset = utils.format_range_set(host_cpuset)
+                k8s_nodeset = utils.format_range_set(host_nodeset)
         else:
             k8s_cpuset = utils.format_range_set(host_cpuset)
             k8s_nodeset = utils.format_range_set(host_nodeset)
@@ -176,6 +193,10 @@ class KubernetesPuppet(base.BasePuppet):
              "\"%s\"" % k8s_cpuset,
              'platform::kubernetes::params::k8s_nodeset':
              "\"%s\"" % k8s_nodeset,
+             'platform::kubernetes::params::k8s_reserved_cpus':
+             k8s_reserved_cpus,
+             'platform::kubernetes::params::k8s_reserved_mem':
+             k8s_reserved_mem,
              })
 
         return config
