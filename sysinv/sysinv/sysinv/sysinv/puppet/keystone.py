@@ -7,6 +7,7 @@
 from six.moves import configparser
 import os
 
+from sysinv.common import utils
 from sysinv.common import constants
 
 from tsconfig import tsconfig
@@ -30,6 +31,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
     ADMIN_USER = 'admin'
 
     DEFAULT_DOMAIN_NAME = 'Default'
+    SWIFT_DOMAIN_NAME = 'service'
 
     def _region_config(self):
         # A wrapper over the Base region_config check.
@@ -124,6 +126,10 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
             'CONFIG_KEYSTONE_ADMIN_USERNAME': self.get_admin_user_name(),
         }
+
+        if utils.is_openstack_installed(self.dbapi):
+            config['openstack::keystone::params::openstack_auth_uri'] = \
+                self.get_openstack_auth_uri()
 
         config.update(self._get_service_parameter_config())
         config.update(self._get_password_rule())
@@ -298,6 +304,14 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             return "http://%s:5000" % self._format_url_address(
                 self._get_management_address())
 
+    def get_openstack_auth_uri(self):
+        location = self._get_service_default_dns_name(
+            self.SERVICE_NAME)
+
+        url = "%s://%s:80" % (self._get_public_protocol(),
+                              location)
+        return url
+
     def get_identity_uri(self):
         if self._region_config():
             service_config = self._get_service_config(self.SERVICE_NAME)
@@ -348,6 +362,9 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             if service_config is not None:
                 return service_config.capabilities.get('admin_project_domain')
         return self.DEFAULT_DOMAIN_NAME
+
+    def get_swift_service_user_domain(self):
+        return self.SWIFT_DOMAIN_NAME
 
     def get_service_user_domain(self):
         if self._region_config():

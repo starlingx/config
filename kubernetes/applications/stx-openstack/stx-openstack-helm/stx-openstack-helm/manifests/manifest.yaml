@@ -472,6 +472,81 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-ceph-rgw
+data:
+  chart_name: ceph-rgw
+  release: openstack-ceph-rgw
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-ceph-rgw
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-ceph-rgw
+        - type: pod
+          labels:
+            release_group: osh-openstack-ceph-rgw
+            component: test
+  values:
+    conf:
+      ceph:
+        global:
+          cephx: false
+      rgw_ks:
+        enabled: true
+    endpoints:
+      object_store:
+        path:
+          default: '/swift/v1'
+        port:
+          api:
+            default: null
+            admin: 7480
+            internal: 7480
+            public: 7480
+    images:
+      tags:
+        ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ks_user: docker.io/starlingx/stx-heat:master-centos-stable-latest
+    labels:
+      api:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      registry:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    pod:
+      replicas:
+        api: 2
+        registry: 2
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/starlingx/ceph-rgw-0.1.0.tgz
+    subpath: ceph-rgw
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-glance
 data:
   chart_name: glance
@@ -2970,6 +3045,16 @@ data:
 schema: armada/ChartGroup/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-ceph-rgw
+data:
+  description: "Deploy swift"
+  sequenced: true
+  chart_group:
+    - openstack-ceph-rgw
+---
+schema: armada/ChartGroup/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-cinder
 data:
   description: "Deploy cinder"
@@ -3039,6 +3124,7 @@ data:
     - openstack-keystone
     - openstack-barbican
     - openstack-glance
+    - openstack-ceph-rgw
     - openstack-compute-kit
     - openstack-heat
     - openstack-horizon

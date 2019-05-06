@@ -11,6 +11,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.helm import common
 
 from sysinv.puppet import openstack
 
@@ -82,7 +83,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
         ksuser = self._get_service_user_name(self.SERVICE_NAME_RGW)
 
-        return {
+        config = {
             'ceph::ms_bind_ipv6': ms_bind_ipv6,
 
             'platform::ceph::params::service_enabled': True,
@@ -112,6 +113,23 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             'platform::ceph::params::rgw_admin_project':
                 self._get_service_tenant_name(),
         }
+
+        if utils.is_openstack_installed(self.dbapi):
+            override = self.dbapi.helm_override_get(
+                        self.SERVICE_NAME_RGW, common.HELM_NS_OPENSTACK)
+            password = override.system_overrides.get(
+                        self.SERVICE_NAME_RGW, None)
+            if password:
+                swift_auth_password = password.encode('utf8', 'strict')
+                config['platform::ceph::params::rgw_service_password'] = \
+                    swift_auth_password
+
+            config['platform::ceph::params::rgw_service_domain'] = \
+                self._get_swift_service_user_domain_name()
+            config['platform::ceph::params::rgw_service_project'] = \
+                self._get_swift_service_tenant_name()
+
+        return config
 
     def _is_ceph_mon_required(self, host, operator):
         # Two conditions that we need to check for:

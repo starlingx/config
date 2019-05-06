@@ -10,6 +10,7 @@ import keyring
 from sysinv.common import constants
 
 from sysinv.puppet import base
+from sysinv.helm import common
 
 
 class OpenstackBasePuppet(base.BasePuppet):
@@ -108,6 +109,10 @@ class OpenstackBasePuppet(base.BasePuppet):
     def _get_public_protocol(self):
         return 'https' if self._https_enabled() else 'http'
 
+    def _get_service_default_dns_name(self, service):
+        return "{}.{}.svc.{}".format(service, common.HELM_NS_OPENSTACK,
+                                     constants.DEFAULT_DNS_SERVICE_DOMAIN)
+
     def _get_private_protocol(self):
         return 'http'
 
@@ -155,6 +160,9 @@ class OpenstackBasePuppet(base.BasePuppet):
 
         return self._region_name()
 
+    def _get_swift_service_tenant_name(self):
+        return self._get_swift_service_project_name()
+
     def _get_service_tenant_name(self):
         return self._get_service_project_name()
 
@@ -182,6 +190,9 @@ class OpenstackBasePuppet(base.BasePuppet):
                     stype = version + '_' + stype
                 return service_config.capabilities.get(stype)
         return None
+
+    def _get_swift_service_user_domain_name(self):
+        return self._operator.keystone.get_swift_service_user_domain()
 
     def _get_service_user_domain_name(self):
         return self._operator.keystone.get_service_user_domain()
