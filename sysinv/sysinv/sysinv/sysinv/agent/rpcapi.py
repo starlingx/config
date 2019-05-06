@@ -132,7 +132,7 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
            manifest based upon the config_dict (including personalities).
         """
 
-        LOG.debug("config_apply_runtime_manifest: fanout_cast: sending"
+        LOG.info("config_apply_runtime_manifest: fanout_cast: sending"
                   " config %s %s to agent" % (config_uuid, config_dict))
 
         # fanout / broadcast message to all inventory agents
