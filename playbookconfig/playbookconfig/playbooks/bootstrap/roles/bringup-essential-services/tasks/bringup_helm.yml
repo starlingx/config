@@ -132,6 +132,7 @@
   command: >-
     helm init --skip-refresh --service-account tiller --node-selectors
     "node-role.kubernetes.io/master"="" --tiller-image={{ tiller_img }}
+    --override spec.template.spec.hostNetwork=true
   become_user: wrsroot
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
@@ -145,6 +146,7 @@
     command: >-
       helm init --skip-refresh --service-account tiller --node-selectors
       "node-role.kubernetes.io/master"="" --tiller-image={{ tiller_img }}
+      --override spec.template.spec.hostNetwork=true
     environment:
       KUBECONFIG: /etc/kubernetes/admin.conf
       HOME: /home/wrsroot
