@@ -1012,12 +1012,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
     def mgmt_ip_set_by_ihost(self,
                              context,
                              ihost_uuid,
+                             interface_id,
                              mgmt_ip):
         """Call sysinv to update host mgmt_ip (removes previous entry if
            necessary)
 
         :param context: an admin context
         :param ihost_uuid: ihost uuid
+        :param interface_id: interface id value
         :param mgmt_ip: mgmt_ip
         :returns: Address
         """
@@ -1025,6 +1027,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('mgmt_ip_set_by_ihost',
                                        ihost_uuid=ihost_uuid,
+                                       interface_id=interface_id,
                                        mgmt_ip=mgmt_ip))
 
     def infra_ip_set_by_ihost(self,

@@ -637,6 +637,7 @@ class InterfaceController(rest.RestController):
                     pecan.request.rpcapi.mgmt_ip_set_by_ihost(
                         pecan.request.context,
                         ihost['uuid'],
+                        interface['id'],
                         None)
                 elif network.type == constants.NETWORK_TYPE_INFRA:
                     # Remove infra address associated with this interface
@@ -1995,7 +1996,7 @@ def _update_host_mgmt_address(host, interface):
 
     if mgmt_ip:
         pecan.request.rpcapi.mgmt_ip_set_by_ihost(
-            pecan.request.context, host.uuid, mgmt_ip)
+            pecan.request.context, host.uuid, interface['id'], mgmt_ip)
     elif _dynamic_address_allocation():
         mgmt_pool_uuid = pecan.request.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_MGMT
