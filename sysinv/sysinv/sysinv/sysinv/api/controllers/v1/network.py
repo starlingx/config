@@ -25,6 +25,7 @@ import uuid
 import pecan
 from pecan import rest
 
+import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
@@ -362,4 +363,15 @@ class NetworkController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, network_uuid):
         """Delete a network."""
+        network = pecan.request.dbapi.network_get(network_uuid)
+        if cutils.is_initial_config_complete() and \
+            network['type'] in [constants.NETWORK_TYPE_MGMT,
+                                constants.NETWORK_TYPE_OAM,
+                                constants.NETWORK_TYPE_CLUSTER_HOST,
+                                constants.NETWORK_TYPE_CLUSTER_POD,
+                                constants.NETWORK_TYPE_CLUSTER_SERVICE]:
+            msg = _("Cannot delete type {} network {} after initial "
+                    "configuration completion"
+                    .format(network['type'], network_uuid))
+            raise wsme.exc.ClientSideError(msg)
         pecan.request.dbapi.network_destroy(network_uuid)
