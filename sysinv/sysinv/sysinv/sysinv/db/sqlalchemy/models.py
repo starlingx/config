@@ -1149,7 +1149,9 @@ class InterfaceNetworks(Base):
     interface_id = Column(Integer, ForeignKey('interfaces.id', ondelete='CASCADE'))
     network_id = Column(Integer, ForeignKey('networks.id', ondelete='CASCADE'))
 
-    interface = relationship("Interfaces", lazy="joined", backref="interface_networks")
+    interface = relationship("Interfaces", lazy="joined",
+                             backref=backref("interface_networks",
+                                             lazy="joined"))
     network = relationship("Networks", lazy="joined", backref="interface_networks")
     UniqueConstraint('interface_id', 'network_id', name='u_interface_id@network_id')
 
