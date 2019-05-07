@@ -66,7 +66,6 @@ VALID_NETWORK_TYPES = [constants.NETWORK_TYPE_NONE,
                        constants.NETWORK_TYPE_PXEBOOT,
                        constants.NETWORK_TYPE_OAM,
                        constants.NETWORK_TYPE_MGMT,
-                       constants.NETWORK_TYPE_INFRA,
                        constants.NETWORK_TYPE_CLUSTER_HOST,
                        constants.NETWORK_TYPE_DATA,
                        constants.NETWORK_TYPE_PCI_PASSTHROUGH,
@@ -88,12 +87,6 @@ NEUTRON_INTERFACE_CLASS = [constants.INTERFACE_CLASS_DATA,
 
 # Interface network types that are PCI based
 PCI_NETWORK_TYPES = [constants.NETWORK_TYPE_PCI_PASSTHROUGH, constants.NETWORK_TYPE_PCI_SRIOV]
-
-# These combinations of network types are not supported on an interface
-INCOMPATIBLE_NETWORK_TYPES = [[constants.NETWORK_TYPE_PXEBOOT, constants.NETWORK_TYPE_DATA],
-                              [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_DATA],
-                              [constants.NETWORK_TYPE_INFRA, constants.NETWORK_TYPE_DATA],
-                              [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_DATA]]
 
 VALID_AEMODE_LIST = ['active_standby', 'balanced', '802.3ad']
 
@@ -638,12 +631,6 @@ class InterfaceController(rest.RestController):
                         pecan.request.context,
                         ihost['uuid'],
                         None)
-                elif network.type == constants.NETWORK_TYPE_INFRA:
-                    # Remove infra address associated with this interface
-                    pecan.request.rpcapi.infra_ip_set_by_ihost(
-                        pecan.request.context,
-                        ihost['uuid'],
-                        None)
 
         if delete_addressing:
             for family in constants.IP_FAMILIES:
@@ -762,8 +749,6 @@ class InterfaceController(rest.RestController):
             # Update address (if required)
             if constants.NETWORK_TYPE_MGMT in networktypelist:
                 _update_host_mgmt_address(ihost, interface)
-            if constants.NETWORK_TYPE_INFRA in networktypelist:
-                _update_host_infra_address(ihost, interface)
             if constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist:
                 _update_host_cluster_address(ihost, interface)
             if ihost['personality'] == constants.CONTROLLER:
@@ -930,8 +915,7 @@ def _set_defaults(interface):
 
     family_defaults = [constants.NETWORK_TYPE_MGMT,
                        constants.NETWORK_TYPE_OAM,
-                       constants.NETWORK_TYPE_CLUSTER_HOST,
-                       constants.NETWORK_TYPE_INFRA]
+                       constants.NETWORK_TYPE_CLUSTER_HOST]
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
         defaults['ipv6_mode'] = constants.IPV6_DISABLED
@@ -1094,19 +1078,10 @@ def _check_host(ihost):
             raise wsme.exc.ClientSideError(_("Host must be locked."))
 
 
-def _valid_network_types():
-    valid_types = set(VALID_NETWORK_TYPES)
-    system_mode = utils.get_system_mode()
-
-    if system_mode == constants.SYSTEM_MODE_SIMPLEX:
-        valid_types -= set([constants.NETWORK_TYPE_INFRA])
-    return list(valid_types)
-
-
 def _check_network_type_validity(networktypelist):
-    if any(nt not in _valid_network_types() for nt in networktypelist):
+    if any(nt not in VALID_NETWORK_TYPES for nt in networktypelist):
         msg = (_("Network type list may only contain one or more of these "
-                 "values: {}").format(', '.join(_valid_network_types())))
+                 "values: {}").format(', '.join(VALID_NETWORK_TYPES)))
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -1122,12 +1097,6 @@ def _check_network_type_and_host_type(ihost, networktypelist):
             ihost['personality'] != constants.CONTROLLER):
         msg = _("The '%s' network type is only supported on controller nodes." %
                 constants.NETWORK_TYPE_OAM)
-        raise wsme.exc.ClientSideError(msg)
-
-    if (constants.NETWORK_TYPE_INFRA in networktypelist and
-            utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX):
-        msg = _("The '%s' network type is not supported on simplex nodes." %
-                constants.NETWORK_TYPE_INFRA)
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -1300,13 +1269,6 @@ def _check_address_mode(op, interface, ihost, existing_interface):
             raise exception.AddressModeOnlyOnSupportedTypes(
                 types=", ".join(address.ALLOWED_NETWORK_TYPES))
 
-    # Check for infrastructure specific requirements
-    if any(network_type == constants.NETWORK_TYPE_INFRA
-           for network_type in networktypelist):
-        if ipv4_mode != constants.IPV4_STATIC:
-            if ipv6_mode != constants.IPV6_STATIC:
-                raise exception.AddressModeMustBeStaticOnInfra()
-
     # Check for valid combinations of mode+pool
     ipv4_pool = interface.get('ipv4_pool')
     ipv6_pool = interface.get('ipv6_pool')
@@ -1364,7 +1326,7 @@ def _check_address_mode(op, interface, ihost, existing_interface):
 def _check_networks(interface):
     NONASSIGNABLE_WITH_OAM = [constants.NETWORK_TYPE_MGMT,
                               constants.NETWORK_TYPE_PXEBOOT,
-                              constants.NETWORK_TYPE_INFRA]
+                              constants.NETWORK_TYPE_CLUSTER_HOST]
     ifclass = interface['ifclass']
     networks = interface['networks']
     if ifclass == constants.INTERFACE_CLASS_PLATFORM and len(networks) > 1:
@@ -1422,7 +1384,7 @@ def _check_datanetworks(ihost,
 
     # Ensure a valid datanetwork is specified
     # Ensure at least one datanetwork is selected for 'data',
-    #    and none for 'oam', 'mgmt' and 'infra'
+    #    and none for 'oam', 'mgmt' and 'cluster-host'
     # Ensure uniqueness of the datanetworks
 
     datanetworks_list = []
@@ -1457,7 +1419,7 @@ def _check_datanetworks(ihost,
                             "assigned to a VLAN interface" % pn)
                     raise wsme.exc.ClientSideError(msg)
 
-            # If pxeboot, Mgmt, Infra network types are consolidated
+            # If pxeboot, Mgmt network types are consolidated
             # with a data network type on the same interface,
             # in which case, they would be the primary network
             # type. Ensure that the only data type that
@@ -1678,9 +1640,9 @@ def _check_interface_data(op, interface, ihost, existing_interface,
             (str(networktypelist)), ', '.join(valid_mgmt_aemode))
         raise wsme.exc.ClientSideError(msg)
 
-    # Make sure network type 'oam' or 'infra', with if type 'ae',
-    # can only be in ae mode 'active_standby' or 'balanced'
-    if (any(network in [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_INFRA] for network in networktypelist) and
+    # Make sure network type 'oam' or 'cluster-host', with if type 'ae',
+    # can only be in ae mode 'active_standby' or 'balanced' or '802.3ad'
+    if (any(network in [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_CLUSTER_HOST] for network in networktypelist) and
             iftype == 'ae' and (aemode not in VALID_AEMODE_LIST)):
         msg = _("Device interface with network type '%s', and interface "
                 "type 'aggregated ethernet' must be in mode 'active_standby' "
@@ -1730,14 +1692,14 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                         (interface['imtu'], mtu))
                 raise wsme.exc.ClientSideError(msg)
 
-    # Check if infra exists on controller, if it doesn't then fail
+    # Check if cluster-host exists on controller, if it doesn't then fail
     if (ihost['personality'] != constants.CONTROLLER and
-            constants.NETWORK_TYPE_INFRA in networktypelist):
+            constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist):
         host_list = pecan.request.dbapi.ihost_get_by_personality(
             personality=constants.CONTROLLER)
-        infra_on_controller = False
+        cluster_host_on_controller = False
         for h in host_list:
-            # find any interface in controller host that is of type infra
+            # find any interface in controller host that is of type cluster-host
             interfaces = pecan.request.dbapi.iinterface_get_by_ihost(ihost=h['uuid'])
             for host_interface in interfaces:
                 if host_interface['ifclass']:
@@ -1748,14 +1710,14 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                             hi_networktypelist.append(network.type)
                     else:
                         hi_networktypelist.append(host_interface['ifclass'])
-                    if constants.NETWORK_TYPE_INFRA in hi_networktypelist:
-                        infra_on_controller = True
+                    if constants.NETWORK_TYPE_CLUSTER_HOST in hi_networktypelist:
+                        cluster_host_on_controller = True
                         break
-            if infra_on_controller is True:
+            if cluster_host_on_controller is True:
                 break
-        if not infra_on_controller:
+        if not cluster_host_on_controller:
             msg = _("Interface %s does not have associated"
-                    " infra interface on controller." % interface['ifname'])
+                    " cluster-host interface on controller." % interface['ifname'])
             raise wsme.exc.ClientSideError(msg)
 
     return interface
@@ -1881,8 +1843,7 @@ def _delete_addressing(interface, family, existing_interface):
                 interface['id']
             )
         elif ((orig_networktype != constants.NETWORK_TYPE_MGMT) and
-              (orig_networktype != constants.NETWORK_TYPE_CLUSTER_HOST) and
-              (orig_networktype != constants.NETWORK_TYPE_INFRA)):
+              (orig_networktype != constants.NETWORK_TYPE_CLUSTER_HOST)):
             pecan.request.dbapi.addresses_destroy_by_interface(
                 interface_id, family)
     pecan.request.dbapi.address_modes_destroy_by_interface(
@@ -2003,25 +1964,6 @@ def _update_host_mgmt_address(host, interface):
         address_name = cutils.format_address_name(host.hostname,
                                                   constants.NETWORK_TYPE_MGMT)
         _allocate_pool_address(interface['id'], mgmt_pool_uuid, address_name)
-
-
-def _update_host_infra_address(host, interface):
-    """Check if the host has a static infrastructure IP address assigned
-    and ensure the address is populated against the interface.  Otherwise,
-    if using dynamic address allocation, then allocate an address
-    """
-    infra_ip = utils.lookup_static_ip_address(
-        host.hostname, constants.NETWORK_TYPE_INFRA)
-    if infra_ip:
-        pecan.request.rpcapi.infra_ip_set_by_ihost(
-            pecan.request.context, host.uuid, infra_ip)
-    elif _dynamic_address_allocation():
-        infra_pool_uuid = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_INFRA
-        ).pool_uuid
-        address_name = cutils.format_address_name(host.hostname,
-                                                  constants.NETWORK_TYPE_INFRA)
-        _allocate_pool_address(interface['id'], infra_pool_uuid, address_name)
 
 
 def _update_host_oam_address(host, interface):
@@ -2541,8 +2483,6 @@ def _create(interface, from_profile=False):
                     network = pecan.request.dbapi.network_get_by_id(network_id)
                     if network.type == constants.NETWORK_TYPE_MGMT:
                         _update_host_mgmt_address(ihost, new_interface.as_dict())
-                    elif network.type == constants.NETWORK_TYPE_INFRA:
-                        _update_host_infra_address(ihost, new_interface.as_dict())
                     elif network.type == constants.NETWORK_TYPE_CLUSTER_HOST:
                         _update_host_cluster_address(ihost,
                                                      new_interface.as_dict())
@@ -2554,7 +2494,7 @@ def _create(interface, from_profile=False):
 
         except Exception as e:
             LOG.exception(
-                "Failed to add static infrastructure interface address: "
+                "Failed to add static interface address: "
                 "interface={}".format(new_interface.as_dict()))
             pecan.request.dbapi.iinterface_destroy(
                 new_interface.as_dict()['uuid'])
@@ -2725,7 +2665,6 @@ def _delete(interface, from_profile=False):
                 network = pecan.request.dbapi.network_get_by_id(network_id)
                 if ((network.type == constants.NETWORK_TYPE_MGMT) or
                         (network.type == constants.NETWORK_TYPE_CLUSTER_HOST) or
-                        (network.type == constants.NETWORK_TYPE_INFRA) or
                         (network.type == constants.NETWORK_TYPE_PXEBOOT) or
                         (network.type == constants.NETWORK_TYPE_OAM)):
                     pecan.request.dbapi.addresses_remove_interface_by_interface(

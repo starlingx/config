@@ -124,7 +124,7 @@ class platform::sm
   $platform_nfs_ip_param_mask  = $::platform::network::mgmt::params::subnet_prefixlen
   $platform_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
 
-  # CGCS NFS network is over the infrastructure network if configured
+  # CGCS NFS network is over the management network
   $cgcs_nfs_ip_interface = $::platform::network::mgmt::params::interface_name
   $cgcs_nfs_ip_param_ip = $::platform::network::mgmt::params::cgcs_nfs_address
   $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
@@ -201,8 +201,8 @@ class platform::sm
         $management_peer_unit_ip = undef
         $oam_my_unit_ip = undef
         $oam_peer_unit_ip = undef
-        $infra_my_unit_ip = undef
-        $infra_peer_unit_ip = undef
+        $cluster_host_my_unit_ip = undef
+        $cluster_host_peer_unit_ip = undef
       }
     }
   }

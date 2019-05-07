@@ -14,7 +14,6 @@ from tsconfig import tsconfig
 
 from sysinv.puppet import base
 
-HOSTNAME_INFRA_SUFFIX = '-infra'
 HOSTNAME_CLUSTER_HOST_SUFFIX = '-cluster-host'
 
 NOVA_UPGRADE_LEVEL_PIKE = 'pike'
@@ -134,10 +133,6 @@ class PlatformPuppet(base.BasePuppet):
              constants.CONTROLLER_CINDER,
              constants.NETWORK_TYPE_MGMT),
 
-            (constants.CONTROLLER_CINDER,
-             constants.CONTROLLER_CINDER,
-             constants.NETWORK_TYPE_INFRA),
-
             # ceph storage hosts
             (constants.STORAGE_0_HOSTNAME,
              constants.STORAGE_0_HOSTNAME,
@@ -146,27 +141,6 @@ class PlatformPuppet(base.BasePuppet):
             (constants.STORAGE_1_HOSTNAME,
              constants.STORAGE_1_HOSTNAME,
              constants.NETWORK_TYPE_MGMT),
-
-            # infrastructure network hosts
-            (constants.CONTROLLER_0_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
-             constants.CONTROLLER_0_HOSTNAME,
-             constants.NETWORK_TYPE_INFRA),
-
-            (constants.CONTROLLER_1_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
-             constants.CONTROLLER_1_HOSTNAME,
-             constants.NETWORK_TYPE_INFRA),
-
-            (constants.STORAGE_0_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
-             constants.STORAGE_0_HOSTNAME,
-             constants.NETWORK_TYPE_INFRA),
-
-            (constants.STORAGE_1_HOSTNAME + HOSTNAME_INFRA_SUFFIX,
-             constants.STORAGE_1_HOSTNAME,
-             constants.NETWORK_TYPE_INFRA),
-
-            (constants.CONTROLLER_CGCS_NFS,
-             constants.CONTROLLER_CGCS_NFS,
-             constants.NETWORK_TYPE_INFRA),
 
             # cluster network hosts
             (constants.CONTROLLER_0_HOSTNAME + HOSTNAME_CLUSTER_HOST_SUFFIX,
@@ -759,14 +733,9 @@ class PlatformPuppet(base.BasePuppet):
         # Calculate the optimal NFS r/w size based on the network mtu based
         # on the configured network(s)
         mtu = constants.DEFAULT_MTU
-        try:
-            infra_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_INFRA)
-            network_id = infra_network.id
-        except exception.NetworkTypeNotFound:
-            mgmt_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT)
-            network_id = mgmt_network.id
+        mgmt_network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_MGMT)
+        network_id = mgmt_network.id
         interfaces = self.dbapi.iinterface_get_by_ihost(host.uuid)
         for interface in interfaces:
             if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:

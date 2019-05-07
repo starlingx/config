@@ -256,10 +256,6 @@ class IpAddressOutOfRange(Invalid):
     message = _("%(address)s is not in the range: %(low)s to %(high)s")
 
 
-class InfrastructureNetworkNotConfigured(Invalid):
-    message = _("An infrastructure network has not been configured")
-
-
 class InvalidDiskFormat(Invalid):
     message = _("Disk format %(disk_format)s is not acceptable")
 
@@ -325,12 +321,6 @@ class AddressNetworkInvalid(Conflict):
 class UnsupportedInterfaceNetworkType(Conflict):
     message = _("Interface with network type '%(networktype)s' does not "
                 "support static addresses.")
-
-
-class IncorrectPrefix(Invalid):
-    message = _("A prefix length of %(length)s must be used for "
-                "addresses on the infrastructure network, as is specified in "
-                "the system configuration.")
 
 
 class InterfaceNameAlreadyExists(Conflict):
@@ -725,35 +715,9 @@ class StaticAddressNotConfigured(Invalid):
                 "dynamically as specified during system configuration.")
 
 
-class AddressModeOnUnsupportedNetwork(NotFound):
-    message = _("Address mode attributes only supported on data and infra "
-                "interfaces")
-
-
-class AddressModeIsManaged(Invalid):
-    message = _("Address modes for infrastructure interfaces are "
-                "assigned automatically as specified during system "
-                "configuration")
-
-
 class AddressModeOnlyOnSupportedTypes(NotFound):
     message = _("Address mode attributes only supported on "
                 "'%(types)s' interfaces")
-
-
-class AddressModeMustBeDhcpOnInfra(Conflict):
-    message = _("Infrastructure dynamic addressing is configured; "
-                "IPv4 address mode must be 'dhcp'")
-
-
-class AddressModeMustBeStaticOnInfra(Conflict):
-    message = _("Infrastructure static addressing is configured; "
-                "IPv4 address mode must be 'static'")
-
-
-class AddressModeIPv6NotSupportedOnInfra(Conflict):
-    message = _("Infrastructure network interfaces do not support "
-                "IPv6 addressing")
 
 
 class AddressAllocatedFromPool(Conflict):

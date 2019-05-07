@@ -50,7 +50,6 @@ from sysinv.api.controllers.v1 import lvg
 from sysinv.api.controllers.v1 import license
 from sysinv.api.controllers.v1 import memory
 from sysinv.api.controllers.v1 import network
-from sysinv.api.controllers.v1 import network_infra
 from sysinv.api.controllers.v1 import network_oam
 from sysinv.api.controllers.v1 import node
 from sysinv.api.controllers.v1 import ntp
@@ -178,9 +177,6 @@ class V1(base.APIBase):
 
     drbdconfig = [link.Link]
     "Links to the drbdconfig resource"
-
-    iinfra = [link.Link]
-    "Links to the iinfra resource"
 
     addresses = [link.Link]
     "Links to the addresses resource"
@@ -531,13 +527,6 @@ class V1(base.APIBase):
                                            bookmark=True)
                          ]
 
-        v1.iinfra = [link.Link.make_link('self', pecan.request.host_url,
-                                          'iinfra', ''),
-                      link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'iinfra', '',
-                                           bookmark=True)
-                     ]
         v1.addresses = [link.Link.make_link('self', pecan.request.host_url,
                                             'addresses', ''),
                         link.Link.make_link('bookmark',
@@ -801,7 +790,6 @@ class Controller(rest.RestController):
         storage_ceph_external.StorageCephExternalController()
     ceph_mon = ceph_mon.CephMonController()
     drbdconfig = drbdconfig.drbdconfigsController()
-    iinfra = network_infra.InfraNetworkController()
     addresses = address.AddressController()
     addrpools = address_pool.AddressPoolController()
     routes = route.RouteController()

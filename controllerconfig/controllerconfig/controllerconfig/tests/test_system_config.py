@@ -347,46 +347,6 @@ def test_system_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
 
-    # Test overlap of INFRA_NETWORK CIDR
-    system_config = cr.parse_system_config(lag_vlan_systemfile)
-    system_config.set('INFRA_NETWORK', 'CIDR', '192.168.203.0/26')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(system_config, DEFAULT_CONFIG, None, False)
-
-    system_config.set('INFRA_NETWORK', 'CIDR', '192.168.204.0/26')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(system_config, DEFAULT_CONFIG, None, False)
-
-    # Test invalid INFRA_NETWORK LAG_MODE
-    system_config = cr.parse_system_config(lag_vlan_systemfile)
-    system_config.add_section('LOGICAL_INTERFACE_2')
-    system_config.set('LOGICAL_INTERFACE_2', 'LAG_INTERFACE', 'Y')
-    system_config.set('LOGICAL_INTERFACE_2', 'LAG_MODE', '3')
-    system_config.set('LOGICAL_INTERFACE_2', 'INTERFACE_MTU', '1500')
-    system_config.set('LOGICAL_INTERFACE_2', 'INTERFACE_PORTS', 'eth3,eth4')
-    system_config.set('INFRA_NETWORK', 'LOGICAL_INTERFACE',
-                      'LOGICAL_INTERFACE_2')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(system_config, DEFAULT_CONFIG, None, False)
-
-    # Test INFRA_NETWORK VLAN overlap
-    system_config = cr.parse_system_config(lag_vlan_systemfile)
-    system_config.set('INFRA_NETWORK', 'VLAN', '123')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(system_config, DEFAULT_CONFIG, None, False)
-
     # Test overlap of CLUSTER_NETWORK CIDR
     system_config = cr.parse_system_config(lag_vlan_systemfile)
     system_config.set('CLUSTER_NETWORK', 'CIDR', '192.168.203.0/26')
@@ -474,7 +434,7 @@ def test_system_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
 
-    system_config.set('OAM_NETWORK', 'VLAN', '124')
+    system_config.set('OAM_NETWORK', 'VLAN', '126')
     with pytest.raises(exceptions.ConfigFail):
         cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
                                    validate_only=True)
@@ -525,20 +485,6 @@ def test_system_config_validation():
         cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
                                    validate_only=True)
 
-    with pytest.raises(exceptions.ConfigFail):
-        validate(system_config, DEFAULT_CONFIG, None, False)
-
-    # Test detection of overspecification of INFRA network addresses
-    system_config = cr.parse_system_config(ceph_systemfile)
-    system_config.set('INFRA_NETWORK', 'IP_FLOATING_ADDRESS',
-                      '192.168.205.103')
-    system_config.set('INFRA_NETWORK', 'IP_IP_UNIT_0_ADDRESS',
-                      '192.168.205.106')
-    system_config.set('INFRA_NETWORK', 'IP_IP_UNIT_1_ADDRESS',
-                      '192.168.205.109')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
     with pytest.raises(exceptions.ConfigFail):
         validate(system_config, DEFAULT_CONFIG, None, False)
 

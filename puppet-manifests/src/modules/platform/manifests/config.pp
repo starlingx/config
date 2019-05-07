@@ -32,16 +32,12 @@ class platform::config::file {
 
   include ::platform::params
   include ::platform::network::mgmt::params
-  include ::platform::network::infra::params
   include ::platform::network::oam::params
   include ::platform::network::cluster_host::params
   include ::openstack::horizon::params
 
   # dependent template variables
   $management_interface = $::platform::network::mgmt::params::interface_name
-  # TODO: infrastructure_interface will be removed when all the services are
-  # converted to use cluster_host_interface
-  $infrastructure_interface = $::platform::network::cluster_host::params::interface_name
   $cluster_host_interface = $::platform::network::cluster_host::params::interface_name
   $oam_interface = $::platform::network::oam::params::interface_name
 
@@ -58,15 +54,6 @@ class platform::config::file {
       path  => $platform_conf,
       line  => "management_interface=${management_interface}",
       match => '^management_interface=',
-    }
-  }
-
-  # TODO: infrastructure_interface will be removed soon
-  if $infrastructure_interface {
-    file_line { "${platform_conf} infrastructure_interface":
-      path  => '/etc/platform/platform.conf',
-      line  => "infrastructure_interface=${infrastructure_interface}",
-      match => '^infrastructure_interface=',
     }
   }
 

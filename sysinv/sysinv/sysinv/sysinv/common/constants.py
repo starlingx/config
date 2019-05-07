@@ -610,7 +610,6 @@ CONTROLLER_AUDIT_REQUESTS = [DISK_AUDIT_REQUEST,
 
 # Interface definitions
 NETWORK_TYPE_NONE = 'none'
-NETWORK_TYPE_INFRA = 'infra'
 NETWORK_TYPE_MGMT = 'mgmt'
 NETWORK_TYPE_OAM = 'oam'
 NETWORK_TYPE_BM = 'bm'
@@ -627,7 +626,6 @@ NETWORK_TYPE_PXEBOOT = 'pxeboot'
 
 PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_MGMT,
-                          NETWORK_TYPE_INFRA,
                           NETWORK_TYPE_OAM,
                           NETWORK_TYPE_CLUSTER_HOST]
 

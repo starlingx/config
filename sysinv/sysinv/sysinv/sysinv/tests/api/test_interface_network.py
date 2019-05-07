@@ -52,19 +52,19 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             link_capacity=1000,
             vlan_id=2,
             address_pool_id=self.address_pool_mgmt.id)
-        self.address_pool_infra = dbutils.create_test_address_pool(
+        self.address_pool_cluster_host = dbutils.create_test_address_pool(
             id=2,
-            network='192.168.205.0',
-            name='infrastructure',
-            ranges=[['192.168.205.2', '192.168.205.254']],
+            network='192.168.206.0',
+            name='cluster-host',
+            ranges=[['192.168.206.2', '192.168.206.254']],
             prefix=24)
-        self.infra_network = dbutils.create_test_network(
+        self.cluster_host_network = dbutils.create_test_network(
             id=2,
-            name='infra',
-            type=constants.NETWORK_TYPE_INFRA,
+            name='cluster-host',
+            type=constants.NETWORK_TYPE_CLUSTER_HOST,
             link_capacity=10000,
             vlan_id=3,
-            address_pool_id=self.address_pool_infra.id)
+            address_pool_id=self.address_pool_cluster_host.id)
         self.address_pool_oam = dbutils.create_test_address_pool(
             id=3,
             network='128.224.150.0',
@@ -128,7 +128,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.mgmt_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
 
-    def test_create_infra_interface_network(self):
+    def test_create_cluster_host_interface_network(self):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
@@ -138,12 +138,12 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
 
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
-            network_uuid=self.infra_network.uuid)
+            network_uuid=self.cluster_host_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
-            network_uuid=self.infra_network.uuid)
+            network_uuid=self.cluster_host_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
 
     def test_create_oam_interface_network(self):
@@ -182,7 +182,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.pxeboot_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
 
-    def test_create_mgmt_infra_interface_network(self):
+    def test_create_mgmt_cluster_host_interface_network(self):
         controller_interface = dbutils.create_test_interface(
             ifname='enp0s8',
             forihostid=self.controller.id)
@@ -199,12 +199,12 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
 
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
-            network_uuid=self.infra_network.uuid)
+            network_uuid=self.cluster_host_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
-            network_uuid=self.infra_network.uuid)
+            network_uuid=self.cluster_host_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
 
     # Expected error:

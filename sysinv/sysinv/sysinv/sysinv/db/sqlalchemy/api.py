@@ -4578,21 +4578,6 @@ class Connection(api.Connection):
                 raise exception.ServiceNotFound(service=service)
             query.delete()
 
-    # NOTE: method is deprecated and provided for API compatibility.
-
-    # object class will convert Network entity to an iextoam object
-    @objects.objectify(objects.infra_network)
-    def iinfra_get_one(self):
-        return self._network_get_by_type(constants.NETWORK_TYPE_INFRA)
-
-    # NOTE: method is deprecated and provided for API compatibility.
-    # object class will convert Network entity to an iextoam object
-    @objects.objectify(objects.infra_network)
-    def iinfra_get_list(self, limit=None, marker=None,
-                        sort_key=None, sort_dir=None):
-        return self._networks_get_by_type(constants.NETWORK_TYPE_INFRA,
-                                          limit, marker, sort_key, sort_dir)
-
     def _network_get(self, network_uuid):
         query = model_query(models.Networks)
         query = add_identity_filter(query, network_uuid)

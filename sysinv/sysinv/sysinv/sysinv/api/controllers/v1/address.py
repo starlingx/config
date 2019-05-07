@@ -44,7 +44,6 @@ LOG = log.getLogger(__name__)
 
 # Defines the list of interface network types that support addresses
 ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
-                         constants.NETWORK_TYPE_INFRA,
                          constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_CLUSTER_HOST,
                          constants.NETWORK_TYPE_DATA]
@@ -253,29 +252,6 @@ class AddressController(rest.RestController):
                 networktype=interface.networktype)
         return
 
-    def _check_infra_address(self, interface_id, address):
-
-        # Check that infra network is configured
-        try:
-            infra = pecan.request.dbapi.iinfra_get_one()
-        except exception.NetworkTypeNotFound:
-            raise exception.InfrastructureNetworkNotConfigured()
-
-        subnet = netaddr.IPNetwork(infra.infra_subnet)
-
-        # Check that the correct prefix was entered
-        prefix = subnet.prefixlen
-        if address['prefix'] != prefix:
-            raise exception.IncorrectPrefix(length=prefix)
-        # Check for existing on the infra subnet and between low/high
-        low = infra.infra_start
-        high = infra.infra_end
-        if netaddr.IPAddress(address['address']) not in \
-                netaddr.IPRange(low, high):
-            raise exception.IpAddressOutOfRange(address=address['address'],
-                                                low=low, high=high)
-        return
-
     def _check_address_mode(self, interface_id, family):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
         if family == constants.IPV4_FAMILY:
@@ -382,20 +358,9 @@ class AddressController(rest.RestController):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
         networktype = interface['networktype']
         if networktype not in [constants.NETWORK_TYPE_MGMT,
-                               constants.NETWORK_TYPE_INFRA,
                                constants.NETWORK_TYPE_OAM]:
             return
         network = pecan.request.dbapi.network_get_by_type(networktype)
-        if network.dynamic:
-            raise exception.StaticAddressNotConfigured()
-        host = pecan.request.dbapi.ihost_get(host_id)
-        if host['personality'] in [constants.STORAGE]:
-            raise exception.ManagedIPAddress()
-
-    def _check_managed_infra_addr(self, host_id):
-        # Check that static address alloc is enabled
-        network = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_INFRA)
         if network.dynamic:
             raise exception.StaticAddressNotConfigured()
         host = pecan.request.dbapi.ihost_get(host_id)
@@ -423,16 +388,6 @@ class AddressController(rest.RestController):
             family = address['family']
             address['enable_dad'] = constants.IP_DAD_STATES[family]
 
-    def _create_infra_addr(self, address_dict, host_id, interface_id):
-        self._check_duplicate_address(address_dict)
-        self._check_managed_addr(host_id, interface_id)
-        self._check_infra_address(interface_id, address_dict)
-        # Inform conductor of the change
-        LOG.info("calling rpc with addr %s ihostid %s " % (
-            address_dict['address'], host_id))
-        return pecan.request.rpcapi.infra_ip_set_by_ihost(
-            pecan.request.context, host_id, address_dict['address'])
-
     def _create_interface_addr(self, address_dict, host_id, interface_id):
         self._check_address_conflicts(host_id, interface_id, address_dict)
         self._check_dad_state(address_dict)
@@ -456,18 +411,13 @@ class AddressController(rest.RestController):
         if interface_uuid is not None:
             # Query parent object references
             host_id, interface_id = self._get_parent_id(interface_uuid)
-            interface = pecan.request.dbapi.iinterface_get(interface_id)
 
             # Check for semantic conflicts
             self._check_interface_type(interface_id)
             self._check_host_state(host_id)
             self._check_address_mode(interface_id, address_dict['family'])
-            if (interface['networktype'] == constants.NETWORK_TYPE_INFRA):
-                result = self._create_infra_addr(
-                    address_dict, host_id, interface_id)
-            else:
-                result = self._create_interface_addr(
-                    address_dict, host_id, interface_id)
+            result = self._create_interface_addr(
+                address_dict, host_id, interface_id)
         elif pool_uuid is not None:
             pool = pecan.request.dbapi.address_pool_get(pool_uuid)
             self._check_subnet_valid(pool, address_dict)
@@ -501,16 +451,6 @@ class AddressController(rest.RestController):
         """Create a new IP address."""
         return self._create_address(addr)
 
-    def _delete_infra_addr(self, address):
-        # Check if it's a config-managed infra ip address
-        self._check_managed_infra_addr(getattr(address, 'forihostid'))
-
-        # Inform conductor of removal (handles dnsmasq + address object)
-        pecan.request.rpcapi.infra_ip_set_by_ihost(
-            pecan.request.context,
-            getattr(address, 'forihostid'),
-            None)
-
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, address_uuid):
@@ -520,8 +460,4 @@ class AddressController(rest.RestController):
         self._check_orphaned_routes(interface_uuid, address.as_dict())
         self._check_host_state(getattr(address, 'forihostid'))
         self._check_from_pool(getattr(address, 'pool_uuid'))
-        interface = pecan.request.dbapi.iinterface_get(interface_uuid)
-        if (interface['networktype'] == constants.NETWORK_TYPE_INFRA):
-            self._delete_infra_addr(address)
-        else:
-            pecan.request.dbapi.address_destroy(address_uuid)
+        pecan.request.dbapi.address_destroy(address_uuid)

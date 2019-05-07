@@ -202,7 +202,7 @@
               <xs:choice minOccurs="1" maxOccurs="2">
                 <xs:element name="dataclassNetwork" type="dataclassNetwork" maxOccurs="1">
                 </xs:element>
-                <xs:element name="infraNetwork" type="externalNetwork" maxOccurs="1">
+                <xs:element name="clusterhostNetwork" type="externalNetwork" maxOccurs="1">
                 </xs:element>
                 <xs:element name="mgmtNetwork" type="externalNetwork" maxOccurs="1">
                 </xs:element>
@@ -239,7 +239,7 @@
                 </xs:element>
                 <xs:element name="dataclassNetwork" type="dataclassNetwork" maxOccurs="1">
                 </xs:element>
-                <xs:element name="infraNetwork" type="externalNetwork" maxOccurs="1">
+                <xs:element name="clusterhostNetwork" type="externalNetwork" maxOccurs="1">
                 </xs:element>
               </xs:choice>
             </xs:sequence>
@@ -264,7 +264,7 @@
                 </xs:element>
                 <xs:element name="dataclassNetwork" type="dataclassNetwork" maxOccurs="1">
                 </xs:element>
-                <xs:element name="infraNetwork" type="externalNetwork" maxOccurs="1">
+                <xs:element name="clusterhostNetwork" type="externalNetwork" maxOccurs="1">
                 </xs:element>
               </xs:choice>
           </xs:sequence>

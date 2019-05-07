@@ -10,7 +10,6 @@ from controllerconfig.common.configobjects import OAM_TYPE
 from controllerconfig.common.configobjects import MGMT_TYPE
 from controllerconfig.common.configobjects import Network
 from controllerconfig.common.configobjects import REGION_CONFIG
-from controllerconfig.common.configobjects import INFRA_TYPE
 from controllerconfig.common.configobjects import DEFAULT_DOMAIN_NAME
 from controllerconfig.common.configobjects import HP_NAMES
 from controllerconfig.common.configobjects import SUBCLOUD_CONFIG
@@ -77,10 +76,8 @@ class ConfigValidator(object):
         self.pxeboot_network_configured = False
         self.pxeboot_section_name = None
         self.management_interface = None
-        self.infrastructure_interface = None
         self.cluster_interface = None
         self.mgmt_network = None
-        self.infra_network = None
         self.cluster_network = None
         self.oam_network = None
         self.vswitch_type = None
@@ -233,9 +230,6 @@ class ConfigValidator(object):
                                  "supported.")
             if self.conf.has_section('MGMT_NETWORK'):
                 self.validate_aio_simplex_mgmt()
-        if self.conf.has_section('INFRA_NETWORK'):
-            raise ConfigFail("Infrastructure Network configuration is not "
-                             "supported.")
         if self.conf.has_section('BOARD_MANAGEMENT_NETWORK'):
             raise ConfigFail("Board Management Network configuration is not "
                              "supported.")
@@ -648,144 +642,6 @@ class ConfigValidator(object):
                 self.cgcs_conf.set('cMGMT', 'MANAGEMENT_MULTICAST_SUBNET',
                                    self.mgmt_network.multicast_cidr)
 
-    def validate_infra(self):
-        # Infrastructure network configuration
-        infra_prefix = NETWORK_PREFIX_NAMES[self.naming_type][INFRA_TYPE]
-        mgmt_prefix = NETWORK_PREFIX_NAMES[self.naming_type][MGMT_TYPE]
-        if self.conf.has_section(infra_prefix + '_NETWORK'):
-            if (self.system_dc_role ==
-                    DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-                # Disallow infrastructure network on systemcontroller,
-                # as services located on infrastructure network will not
-                # be reachable by subclouds.
-                raise ConfigFail("%s network not "
-                                 "supported on Distributed Cloud "
-                                 "SystemController." % infra_prefix)
-
-            self.infra_network = Network()
-            try:
-                self.infra_network.parse_config(self.conf, self.config_type,
-                                                INFRA_TYPE, min_addresses=8,
-                                                naming_type=self.naming_type)
-            except ConfigFail:
-                raise
-            except Exception as e:
-                raise ConfigFail("Error parsing configuration file: %s" % e)
-
-            if self.infra_network.cidr.version != \
-                    self.mgmt_network.cidr.version:
-                raise ValidateFail("Invalid %s_CIDR IP version - "
-                                   "must use same IP version as used by "
-                                   "%s_CIDR" % (infra_prefix, mgmt_prefix))
-
-            if self.infra_network.floating_address:
-                raise ConfigFail("%s network cannot specify individual unit "
-                                 "addresses" % infra_prefix)
-
-            try:
-                check_network_overlap(self.infra_network.cidr,
-                                      self.configured_networks)
-                self.configured_networks.append(self.infra_network.cidr)
-            except ValidateFail:
-                raise ConfigFail(
-                    "%s CIDR %s overlaps with another configured network" %
-                    (infra_prefix, str(self.infra_network.cidr)))
-
-            lag_infra = False
-            if (self.infra_network.logical_interface.name ==
-                    self.mgmt_network.logical_interface.name):
-                # BLS sharing CLM interface
-                self.infrastructure_interface = self.management_interface
-                infrastructure_interface_name = self.infrastructure_interface
-            elif self.infra_network.logical_interface.lag_interface:
-                # BLS on its own LAG interface
-                if self.infra_network.logical_interface.lag_mode not in (1, 2,
-                                                                         4):
-                    raise ConfigFail(
-                        "Unsupported LAG mode (%d) for %s interface"
-                        " - use LAG mode 1, 2, or 4 instead" %
-                        (self.infra_network.logical_interface.lag_mode,
-                         infra_prefix))
-                lag_infra = True
-                self.infrastructure_interface = 'bond' + (
-                                                str(self.next_lag_index))
-                infrastructure_interface_name = self.infrastructure_interface
-                self.next_lag_index += 1
-            else:
-                # BLS on its own non-LAG interface
-                self.infrastructure_interface = (
-                    self.infra_network.logical_interface.ports[0])
-                infrastructure_interface_name = self.infrastructure_interface
-
-            if self.infra_network.vlan:
-                if any(self.infra_network.vlan == vlan for vlan in
-                       self.configured_vlans):
-                    raise ConfigFail(
-                        "%s_NETWORK VLAN conflicts with another configured "
-                        "VLAN" % infra_prefix)
-                self.configured_vlans.append(self.infra_network.vlan)
-                infrastructure_interface_name += '.' + (
-                                                 str(self.infra_network.vlan))
-
-            mtu = self.infra_network.logical_interface.mtu
-            if not is_mtu_valid(mtu):
-                raise ConfigFail(
-                    "Invalid MTU value of %s for %s. "
-                    "Valid values: 576 - 9216"
-                    % (mtu, self.infra_network.logical_interface.name))
-
-            if self.cgcs_conf is not None:
-                self.cgcs_conf.add_section('cINFRA')
-                self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_MTU',
-                                   self.infra_network.logical_interface.mtu)
-                self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_SUBNET',
-                                   self.infra_network.cidr)
-
-                if lag_infra:
-                    self.cgcs_conf.set('cINFRA',
-                                       'LAG_INFRASTRUCTURE_INTERFACE', 'yes')
-                    self.cgcs_conf.set('cINFRA',
-                                       'INFRASTRUCTURE_BOND_MEMBER_0',
-                                       self.infra_network.logical_interface.
-                                       ports[0])
-                    self.cgcs_conf.set('cINFRA',
-                                       'INFRASTRUCTURE_BOND_MEMBER_1',
-                                       self.infra_network.logical_interface.
-                                       ports[1])
-                    self.cgcs_conf.set(
-                        'cINFRA', 'INFRASTRUCTURE_BOND_POLICY',
-                        lag_mode_to_str(self.infra_network.logical_interface.
-                                        lag_mode))
-                else:
-                    self.cgcs_conf.set('cINFRA',
-                                       'LAG_INFRASTRUCTURE_INTERFACE', 'no')
-                self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_INTERFACE',
-                                   self.infrastructure_interface)
-
-                if self.infra_network.vlan:
-                    self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_VLAN',
-                                       str(self.infra_network.vlan))
-
-                self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_INTERFACE_NAME',
-                                   infrastructure_interface_name)
-                self.cgcs_conf.set('cINFRA',
-                                   'CONTROLLER_0_INFRASTRUCTURE_ADDRESS',
-                                   str(self.infra_network.start_address + 1))
-                self.cgcs_conf.set('cINFRA',
-                                   'CONTROLLER_1_INFRASTRUCTURE_ADDRESS',
-                                   str(self.infra_network.start_address + 2))
-                self.cgcs_conf.set('cINFRA', 'NFS_INFRASTRUCTURE_ADDRESS_1',
-                                   str(self.infra_network.start_address + 3))
-                self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_START_ADDRESS',
-                                   self.infra_network.start_address)
-                self.cgcs_conf.set('cINFRA', 'INFRASTRUCTURE_END_ADDRESS',
-                                   self.infra_network.end_address)
-                # Remove second NFS address from management network
-                self.cgcs_conf.remove_option('cMGMT',
-                                             'NFS_MANAGEMENT_ADDRESS_2')
-        else:
-            self.infrastructure_interface = ""
-
     def validate_cluster(self):
         # Kubernetes cluster network configuration
         cluster_prefix = NETWORK_PREFIX_NAMES[self.naming_type][CLUSTER_TYPE]
@@ -904,11 +760,11 @@ class ConfigValidator(object):
                 self.mgmt_network.logical_interface.name):
             # CAN sharing CLM interface
             external_oam_interface = self.management_interface
-        elif (self.infra_network and
+        elif (self.cluster_network and
               (self.oam_network.logical_interface.name ==
-               self.infra_network.logical_interface.name)):
+               self.cluster_network.logical_interface.name)):
             # CAN sharing BLS interface
-            external_oam_interface = self.infrastructure_interface
+            external_oam_interface = self.cluster_interface
         else:
             (use_lag, external_oam_interface) = (
                 self.process_oam_on_its_own_interface())
@@ -922,7 +778,7 @@ class ConfigValidator(object):
                     oam_prefix)
             self.configured_vlans.append(self.oam_network.vlan)
         elif external_oam_interface in (self.management_interface,
-                                        self.infrastructure_interface):
+                                        self.cluster_interface):
             raise ConfigFail(
                 "VLAN required for %s_NETWORK since it uses the same interface"
                 " as another network" % oam_prefix)
@@ -1309,8 +1165,6 @@ def validate(system_config, config_type=REGION_CONFIG, cgcs_config=None,
         validator.validate_pxeboot()
         # Management network configuration
         validator.validate_mgmt()
-        # Infrastructure network configuration
-        validator.validate_infra()
         # OAM network configuration
         validator.validate_oam()
     # Kubernetes Cluster network configuration

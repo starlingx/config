@@ -197,18 +197,8 @@ class StorageBackendConfig(object):
 
     @staticmethod
     def get_ceph_mon_ip_addresses(dbapi):
-        try:
-            dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_INFRA
-            )
-            # TODO (sdinescu): create a new floating address for ceph-mon
-            # Using controller-nfs network name until a new one is created
-            # for ceph.
-            floating_network_name = "controller-nfs"
-            network_type = constants.NETWORK_TYPE_INFRA
-        except exception.NetworkTypeNotFound:
-            network_type = constants.NETWORK_TYPE_MGMT
-            floating_network_name = constants.CONTROLLER_HOSTNAME
+        network_type = constants.NETWORK_TYPE_MGMT
+        floating_network_name = constants.CONTROLLER_HOSTNAME
 
         targets = {
             '%s-%s' % (floating_network_name,

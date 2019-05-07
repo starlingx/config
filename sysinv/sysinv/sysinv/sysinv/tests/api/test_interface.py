@@ -187,9 +187,9 @@ class InterfaceTestCase(base.FunctionalTest):
                 prefix=24)
             self.address_pool2 = dbutils.create_test_address_pool(
                 id=2,
-                network='192.168.205.0',
-                name='infrastructure',
-                ranges=[['192.168.205.2', '192.168.205.254']],
+                network='192.168.206.0',
+                name='cluster-host',
+                ranges=[['192.168.206.2', '192.168.206.254']],
                 prefix=24)
             self.address_pool_oam = dbutils.create_test_address_pool(
                 id=3,
@@ -216,10 +216,10 @@ class InterfaceTestCase(base.FunctionalTest):
                 link_capacity=1000,
                 vlan_id=2,
                 address_pool_id=self.address_pool1.id)
-            self.infra_network = dbutils.create_test_network(
+            self.cluster_host_network = dbutils.create_test_network(
                 id=2,
-                name='infra',
-                type=constants.NETWORK_TYPE_INFRA,
+                name='cluster-host',
+                type=constants.NETWORK_TYPE_CLUSTER_HOST,
                 link_capacity=10000,
                 vlan_id=3,
                 address_pool_id=self.address_pool2.id)
@@ -525,7 +525,7 @@ class InterfaceControllerEthernet(InterfaceTestCase):
         self._create_host(constants.CONTROLLER, admin=constants.ADMIN_LOCKED)
         self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
         self.get_json('/ihosts/%s/iinterfaces' % self.controller.uuid)
 
     def setUp(self):
@@ -543,7 +543,7 @@ class InterfaceControllerBond(InterfaceTestCase):
         self._create_host(constants.CONTROLLER, admin=constants.ADMIN_LOCKED)
         self._create_bond('oam', constants.NETWORK_TYPE_OAM)
         self._create_bond('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_bond('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
     def setUp(self):
         super(InterfaceControllerBond, self).setUp()
@@ -563,7 +563,7 @@ class InterfaceControllerVlanOverBond(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 1, bond)
         self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM, 2, bond)
-        self._create_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, bond)
         # self._create_ethernet('none')
 
@@ -586,7 +586,7 @@ class InterfaceControllerVlanOverEthernet(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 1, iface)
         self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM, 2, iface)
-        self._create_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, iface)
         # self._create_ethernet_profile('none')
 
@@ -606,7 +606,7 @@ class InterfaceComputeEthernet(InterfaceTestCase):
         self._create_datanetworks()
         self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
         self._create_host(constants.WORKER, constants.WORKER,
                           mgmt_mac='01:02.03.04.05.C0',
@@ -614,7 +614,7 @@ class InterfaceComputeEthernet(InterfaceTestCase):
                           admin=constants.ADMIN_LOCKED)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
                               host=self.worker)
-        self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                               host=self.worker)
         self._create_ethernet('data',
                               constants.NETWORK_TYPE_DATA,
@@ -668,7 +668,7 @@ class InterfaceComputeVlanOverEthernet(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 1, iface)
         self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM, 2, iface)
-        self._create_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, iface)
 
         # Setup a sample configuration where the personality is set to a
@@ -679,7 +679,7 @@ class InterfaceComputeVlanOverEthernet(InterfaceTestCase):
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT, host=self.worker)
         self._create_worker_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                                   constants.INTERFACE_CLASS_PLATFORM, 2, iface)
-        self._create_worker_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_worker_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                                   constants.INTERFACE_CLASS_PLATFORM, 3)
         self._create_worker_vlan('data', constants.INTERFACE_CLASS_DATA,
                                   constants.NETWORK_TYPE_DATA, 5,
@@ -709,13 +709,13 @@ class InterfaceComputeBond(InterfaceTestCase):
         self._create_datanetworks()
         self._create_bond('oam', constants.NETWORK_TYPE_OAM)
         self._create_bond('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_bond('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are aggregated ethernet interfaces.
         self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
         self._create_worker_bond('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_worker_bond('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_worker_bond('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_worker_bond('data',
                                   constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA,
@@ -747,7 +747,7 @@ class InterfaceComputeVlanOverBond(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 1, bond)
         self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM, 2, bond)
-        self._create_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, bond)
 
         # Setup a sample configuration where the personality is set to a
@@ -759,7 +759,7 @@ class InterfaceComputeVlanOverBond(InterfaceTestCase):
                                          constants.INTERFACE_CLASS_PLATFORM)
         self._create_worker_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                                   constants.INTERFACE_CLASS_PLATFORM, 2, bond)
-        self._create_worker_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_worker_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                                   constants.INTERFACE_CLASS_PLATFORM, 3,
                                   bond)
         bond2 = self._create_worker_bond('bond2', constants.NETWORK_TYPE_NONE)
@@ -796,7 +796,7 @@ class InterfaceComputeVlanOverDataEthernet(InterfaceTestCase):
         self._create_vlan('oam', constants.NETWORK_TYPE_OAM,
                           constants.INTERFACE_CLASS_PLATFORM, 1, bond)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are vlan interfaces over data ethernet
@@ -809,7 +809,7 @@ class InterfaceComputeVlanOverDataEthernet(InterfaceTestCase):
                                   'group0-data0', host=self.worker))
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
                               host=self.worker)
-        self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                               host=self.worker)
         self._create_worker_vlan('data2', constants.NETWORK_TYPE_DATA,
                                   constants.INTERFACE_CLASS_DATA, 5,
@@ -841,7 +841,7 @@ class InterfaceCpeEthernet(InterfaceTestCase):
         self._create_datanetworks()
         self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_ethernet('data', constants.NETWORK_TYPE_DATA,
                               constants.INTERFACE_CLASS_DATA,
                               'group0-data0')
@@ -888,7 +888,7 @@ class InterfaceCpeVlanOverEthernet(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 1, iface)
         self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM, 2, iface)
-        self._create_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3)
         self._create_ethernet('data', constants.NETWORK_TYPE_DATA,
                               constants.INTERFACE_CLASS_DATA,
@@ -919,7 +919,7 @@ class InterfaceCpeBond(InterfaceTestCase):
         self._create_datanetworks()
         self._create_bond('oam', constants.NETWORK_TYPE_OAM)
         self._create_bond('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond('infra', constants.NETWORK_TYPE_INFRA)
+        self._create_bond('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_bond('data', constants.NETWORK_TYPE_DATA,
                           constants.INTERFACE_CLASS_DATA,
                           datanetworks='group0-data0')
@@ -951,7 +951,7 @@ class InterfaceCpeVlanOverBond(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 1, bond)
         self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM, 2, bond)
-        self._create_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, bond)
         bond2 = self._create_bond('bond4', constants.NETWORK_TYPE_NONE)
         self._create_vlan('data', constants.NETWORK_TYPE_DATA,
@@ -993,7 +993,7 @@ class InterfaceCpeVlanOverDataEthernet(InterfaceTestCase):
         self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM, 2, iface,
                           expect_errors=True)
-        self._create_vlan('infra', constants.NETWORK_TYPE_INFRA,
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, iface,
                           expect_errors=True)
         self._create_vlan('data2', constants.NETWORK_TYPE_DATA,
@@ -1214,7 +1214,7 @@ class TestPost(InterfaceTestCase):
         self._post_and_check_success(ndict)
 
     # Expected error: Address mode attributes only supported on
-    # mgmt, infra, data, data-vrs interfaces
+    # mgmt, oam, cluster-host, data interfaces
     def test_ipv4_mode_networktype_invalid(self):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
@@ -1228,13 +1228,13 @@ class TestPost(InterfaceTestCase):
             ipv6_pool=self.address_pool2.uuid)
         self._post_and_check_failure(ndict)
 
-    # Expected error: Infrastructure static addressing is configured; IPv4
-    # address mode must be static
-    def test_ipv4_mode_infra_invalid(self):
+    # Expected error: Specifying an IPv4 address pool requires setting the
+    # address mode to 'pool'
+    def test_ipv4_mode_cluster_host_invalid(self):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.controller.uuid,
             ifname='name',
-            networktype=constants.NETWORK_TYPE_INFRA,
+            networktype=constants.NETWORK_TYPE_CLUSTER_HOST,
             networks=['2'],
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
@@ -1436,11 +1436,11 @@ class TestPost(InterfaceTestCase):
             txhashpolicy='layer2')
         self._post_and_check_failure(ndict)
 
-    def test_aemode_invalid_infra(self):
+    def test_aemode_invalid_cluster_host(self):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
-            networktype=constants.NETWORK_TYPE_INFRA,
+            networktype=constants.NETWORK_TYPE_CLUSTER_HOST,
             networks=['2'],
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_AE,
@@ -1448,13 +1448,13 @@ class TestPost(InterfaceTestCase):
             txhashpolicy='layer2')
         self._post_and_check_failure(ndict)
 
-    # Expected error: Interface ___ does not have associated infra interface
-    # on controller.
-    def test_no_infra_on_controller(self):
+    # Expected error: Interface ___ does not have associated cluster-host
+    # interface on controller.
+    def test_no_cluster_host_on_controller(self):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
-            networktype=constants.NETWORK_TYPE_INFRA,
+            networktype=constants.NETWORK_TYPE_CLUSTER_HOST,
             networks=['2'],
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
@@ -1473,11 +1473,11 @@ class TestPost(InterfaceTestCase):
             imtu=1600)
         self._post_and_check_success(ndict)
 
-    def test_setting_infra_mtu_allowed(self):
+    def test_setting_cluster_host_mtu_allowed(self):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.controller.uuid,
-            ifname='infra0',
-            networktype=constants.NETWORK_TYPE_INFRA,
+            ifname='cluster0',
+            networktype=constants.NETWORK_TYPE_CLUSTER_HOST,
             networks=['2'],
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
@@ -1622,32 +1622,19 @@ class TestPost(InterfaceTestCase):
                           expect_errors=True)
 
     # Expected message:
-    # Only pxeboot,mgmt,infra network types can be combined on a single
-    # interface
+    # The data network type is only supported on nodes supporting worker functions
     def test_create_invalid_oam_data_ethernet(self):
         self._create_ethernet('shared',
-                              networktype=[constants.NETWORK_TYPE_OAM,
-                                           constants.NETWORK_TYPE_DATA],
+                              networktype=constants.NETWORK_TYPE_DATA,
+                              ifclass=constants.INTERFACE_CLASS_PLATFORM,
                               expect_errors=True)
 
     # Expected message:
-    # Only pxeboot,mgmt,infra network types can be combined on a single
-    # interface
+    # Data network(s) not supported for non-data interfaces
     def test_create_invalid_mgmt_data_ethernet(self):
         self._create_ethernet('shared',
-                              networktype=[constants.NETWORK_TYPE_MGMT,
-                                           constants.NETWORK_TYPE_DATA],
-                              datanetworks='group0-data0',
-                              host=self.worker,
-                              expect_errors=True)
-
-    # Expected message:
-    # Only pxeboot,mgmt,infra network types can be combined on a single
-    # interface
-    def test_create_invalid_pxeboot_data_ethernet(self):
-        self._create_ethernet('shared',
-                              networktype=[constants.NETWORK_TYPE_DATA,
-                                           constants.NETWORK_TYPE_PXEBOOT],
+                              networktype=constants.NETWORK_TYPE_MGMT,
+                              ifclass=constants.INTERFACE_CLASS_PLATFORM,
                               datanetworks='group0-data0',
                               host=self.worker,
                               expect_errors=True)
@@ -1659,23 +1646,6 @@ class TestCpePost(InterfaceTestCase):
         self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
-
-    # Expected message:
-    # Network type list may only contain at most one type
-    def test_create_ae_with_networktypes(self):
-        self._create_bond('bond0',
-                          networktype=[constants.NETWORK_TYPE_DATA,
-                                       constants.NETWORK_TYPE_PXEBOOT],
-                          datanetworks='group0-data0', expect_errors=True)
-
-    # Expected message:
-    # Network type list may only contain at most one type
-    def test_create_invalid_infra_data_ae(self):
-        self._create_bond('shared',
-                          networktype=[constants.NETWORK_TYPE_INFRA,
-                                       constants.NETWORK_TYPE_DATA],
-                          datanetworks='group0-data0',
-                          expect_errors=True)
 
     # Expected message: oam VLAN cannot be created over an interface with
     # network type data
@@ -1689,20 +1659,20 @@ class TestCpePost(InterfaceTestCase):
             lower_iface=bond_iface, datanetworks='group0-ext1',
             expect_errors=True)
 
-    # Expected message: infra VLAN cannot be created over an interface with
-    # network type data
-    def test_create_infra_vlan_over_data_lag(self):
+    # Expected message: Platform VLAN interface cannot be created over a
+    # data interface
+    def test_create_cluster_host_vlan_over_data_lag(self):
         bond_iface = self._create_bond(
             'data', constants.NETWORK_TYPE_DATA,
             constants.INTERFACE_CLASS_DATA, datanetworks='group0-ext1')
         self._create_vlan(
-            'infra', constants.NETWORK_TYPE_INFRA,
+            'cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
             constants.INTERFACE_CLASS_PLATFORM, 2,
             lower_iface=bond_iface, datanetworks='group0-ext1',
             expect_errors=True)
 
-    # Expected message: mgmt VLAN cannot be created over an interface with
-    # network type data
+    # Expected message: Platform VLAN interface cannot be created over a
+    # data interface
     def test_create_mgmt_vlan_over_data_ethernet(self):
         port, iface = self._create_ethernet(
             'data', constants.NETWORK_TYPE_DATA,
@@ -1731,16 +1701,7 @@ class TestCpePost(InterfaceTestCase):
                           lower_iface=iface, datanetworks='group0-ext1',
                           expect_errors=True)
 
-    # Expected message: Network type list may only contain at most one type
-    def test_create_invalid_vlan_multiple_networktype(self):
-        port, lower = self._create_ethernet('eth1', constants.NETWORK_TYPE_NONE)
-        self._create_vlan('vlan2',
-                          networktype=[constants.NETWORK_TYPE_MGMT,
-                                       constants.NETWORK_TYPE_DATA],
-                          ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                          vlan_id=2, lower_iface=lower, expect_errors=True)
-
-    # Expected message: VLAN interfaces cannot have a network type of 'none'
+    # Expected message: VLAN interfaces cannot have an interface class of none
     def test_create_invalid_vlan_networktype_none(self):
         port, lower = self._create_ethernet('eth1', constants.NETWORK_TYPE_NONE)
         self._create_vlan('vlan2', networktype='none',
@@ -1826,9 +1787,9 @@ class TestCpePatch(InterfaceTestCase):
                           admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
 
-    def test_create_invalid_infra_data_ethernet(self):
+    def test_create_invalid_cluster_host_data_ethernet(self):
         self._create_ethernet('shared',
-                              networktype=[constants.NETWORK_TYPE_INFRA,
+                              networktype=[constants.NETWORK_TYPE_CLUSTER_HOST,
                                            constants.NETWORK_TYPE_DATA],
                               datanetworks='group0-data0',
                               expect_errors=True)

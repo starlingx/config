@@ -695,46 +695,6 @@ def test_region_config_validation():
     with pytest.raises(exceptions.ConfigFail):
         validate(region_config, REGION_CONFIG, None, False)
 
-    # Test overlap of BLS_CIDR
-    region_config = cr.parse_system_config(lag_vlan_regionfile)
-    region_config.set('BLS_NETWORK', 'BLS_CIDR', '192.168.203.0/26')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    region_config.set('BLS_NETWORK', 'BLS_CIDR', '192.168.204.0/26')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    # Test invalid BLS LAG_MODE
-    region_config = cr.parse_system_config(lag_vlan_regionfile)
-    region_config.add_section('LOGICAL_INTERFACE_2')
-    region_config.set('LOGICAL_INTERFACE_2', 'LAG_INTERFACE', 'Y')
-    region_config.set('LOGICAL_INTERFACE_2', 'LAG_MODE', '3')
-    region_config.set('LOGICAL_INTERFACE_2', 'INTERFACE_MTU', '1500')
-    region_config.set('LOGICAL_INTERFACE_2', 'INTERFACE_PORTS', 'eth3,eth4')
-    region_config.set('BLS_NETWORK', 'BLS_LOGICAL_INTERFACE',
-                      'LOGICAL_INTERFACE_2')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    # Test BLS_VLAN overlap
-    region_config = cr.parse_system_config(lag_vlan_regionfile)
-    region_config.set('BLS_NETWORK', 'BLS_VLAN', '123')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
     # Test overlap of CAN_CIDR
     region_config = cr.parse_system_config(lag_vlan_regionfile)
     region_config.set('CAN_NETWORK', 'CAN_CIDR', '192.168.203.0/26')
@@ -776,13 +736,6 @@ def test_region_config_validation():
     # Test CAN_VLAN overlap
     region_config = cr.parse_system_config(lag_vlan_regionfile)
     region_config.set('CAN_NETWORK', 'CAN_VLAN', '123')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    region_config.set('CAN_NETWORK', 'CAN_VLAN', '124')
     with pytest.raises(exceptions.ConfigFail):
         cr.create_cgcs_config_file(None, region_config, None, None, None,
                                    validate_only=True)

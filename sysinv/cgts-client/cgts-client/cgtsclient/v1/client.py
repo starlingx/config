@@ -37,7 +37,6 @@ from cgtsclient.v1 import idisk
 from cgtsclient.v1 import idns
 from cgtsclient.v1 import iextoam
 from cgtsclient.v1 import ihost
-from cgtsclient.v1 import iinfra
 from cgtsclient.v1 import iinterface
 from cgtsclient.v1 import ilvg
 from cgtsclient.v1 import imemory
@@ -121,7 +120,6 @@ class Client(http.HTTPClient):
         self.iprofile = iprofile.iprofileManager(self)
         self.icommunity = icommunity.iCommunityManager(self)
         self.itrapdest = itrapdest.iTrapdestManager(self)
-        self.iinfra = iinfra.iinfraManager(self)
         self.port = port.PortManager(self)
         self.ethernet_port = ethernetport.EthernetPortManager(self)
         self.address = address.AddressManager(self)

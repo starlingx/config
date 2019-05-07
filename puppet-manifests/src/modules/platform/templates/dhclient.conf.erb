@@ -15,13 +15,3 @@ retry 5;
 # are not using the same client-id value.
 send dhcp6.client-id = concat(00:03:00, hardware);
 send dhcp-client-identifier = concat(00:03:00, hardware);
-
-<%- if @infra_client_id != nil -%>
-interface "<%= @infra_interface %>" {
-<%- if @infra_subnet_version == 4 -%>
-    send dhcp-client-identifier <%= @infra_client_id %>;
-<%- else -%>
-    send dhcp6.client-id <%= @infra_client_id %>;
-<%- end -%>
-}
-<%- end -%>

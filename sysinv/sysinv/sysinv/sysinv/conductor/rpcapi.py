@@ -58,10 +58,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         Handling depends on the interface:
         - management interface: creates an ihost
-        - infrastructure interface: just updated the dnsmasq config
 
         :param context: request context.
-        :param tags: specifies the interface type (mgmt or infra)
+        :param tags: specifies the interface type (mgmt)
         :param mac: MAC for the lease
         :param ip_address: IP address for the lease
         :param cid: Client ID for the lease
@@ -853,14 +852,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_magnum_cluster_count'))
 
-    def update_infra_config(self, context):
-        """Synchronously, have the conductor update the infrastructure network
-        configuration.
-
-        :param context: request context.
-        """
-        return self.call(context, self.make_msg('update_infra_config'))
-
     def update_lvm_cinder_config(self, context):
         """Synchronously, have the conductor update Cinder LVM on a controller.
 
@@ -1027,24 +1018,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_uuid=ihost_uuid,
                                        mgmt_ip=mgmt_ip))
 
-    def infra_ip_set_by_ihost(self,
-                              context,
-                              ihost_uuid,
-                              infra_ip):
-        """Call sysinv to update host infra_ip (removes previous entry if
-           necessary)
-
-        :param context: an admin context
-        :param ihost_uuid: ihost uuid
-        :param infra_ip: infra_ip
-        :returns: Address
-        """
-
-        return self.call(context,
-                         self.make_msg('infra_ip_set_by_ihost',
-                                       ihost_uuid=ihost_uuid,
-                                       infra_ip=infra_ip))
-
     def neutron_extension_list(self, context):
         """
         Send a request to neutron to query the supported extension list.
@@ -1141,7 +1114,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """Synchronously, have a agent collect platform interfaces for this
            ihost.
 
-        Gets the mgmt, infra interface names and numa node
+        Gets the mgmt interface names and numa node
 
         :param context: request context.
         :param ihost_id: id of this host

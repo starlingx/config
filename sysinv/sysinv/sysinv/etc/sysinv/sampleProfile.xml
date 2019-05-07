@@ -207,9 +207,9 @@
 		</ethernetInterface>
 		<ethernetInterface ifName="data0"  mtu="1500" >
 			<port name="eth1" pciAddress="0000:03:00.1" class="Ethernet controller" device="NetXtreme BCM5719 Gigabit Ethernet PCIe" />
-			<!--An ethInterface can be used as data, infra, oam, mgmt, pci-passthrough or pci-sriov networks. Network
+			<!--An ethInterface can be used as data, cluster-host, oam, mgmt, pci-passthrough or pci-sriov networks. Network
 			    type can be specified by adding the network type in the networks section.
-			An ethInterface can also be setup as combination of 2 network types. Only mgmt/data, infra/data network can
+			An ethInterface can also be setup as combination of 2 network types. Only mgmt and cluster-host network can
 			be combined.
 			-->
 			<networks>
@@ -286,11 +286,11 @@
 			interface, name of an Ethernet or an aggregrated Ethernet interface on which to run the vlan
 			vlanId, vlan id, valid value between 1 and 4094
 			mtu, mtu of the vlan interface-->
-		<vlanInterface ifName="infra0" interface="eth4" vlanId="303" mtu="1500">
-			<!--A vlanInterface can be defined as data, infra, oam, or mgmt networks by adding
+		<vlanInterface ifName="cluster0" interface="eth4" vlanId="303" mtu="1500">
+			<!--A vlanInterface can be defined as data, cluster-host, oam, or mgmt networks by adding
 				the network type in the networks section.-->
 		  <networks>
-			  <infraNetwork/>
+			  <clusterhostNetwork/>
 		  </networks>
 		</vlanInterface>
 

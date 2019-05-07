@@ -363,7 +363,7 @@ def restore_configuration(archive, staging_dir):
             print("INSTALL_UUID=%s" % install_uuid)
         elif line.startswith("management_interface=") or \
                 line.startswith("oam_interface=") or \
-                line.startswith("infrastructure_interface=") or \
+                line.startswith("cluster_host_interface=") or \
                 line.startswith("UUID="):
             # Strip out any entries that are host specific as the backup can
             # be done on either controller. The application of the

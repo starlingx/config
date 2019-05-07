@@ -596,11 +596,10 @@ class ConductorManager(service.PeriodicService):
 
         Handling depends on the interface:
         - management interface: do nothing
-        - infrastructure interface: do nothing
         - pxeboot interface: create i_host
 
         :param context: request context.
-        :param tags: specifies the interface type (mgmt or infra)
+        :param tags: specifies the interface type (mgmt)
         :param mac: MAC for the lease
         :param ip_address: IP address for the lease
         """
@@ -808,12 +807,6 @@ class ConductorManager(service.PeriodicService):
         mgmt_network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_MGMT
         )
-        try:
-            infra_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_INFRA
-            )
-        except exception.NetworkTypeNotFound:
-            infra_network = None
 
         with open(temp_dnsmasq_hosts_file, 'w') as f_out,\
                 open(temp_dnsmasq_addn_hosts_file, 'w') as f_out_addn:
@@ -873,51 +866,6 @@ class ConductorManager(service.PeriodicService):
                                                           hostname,
                                                           mac_address)
                 f_out.write(line)
-
-                # Write mgmt address to addn_hosts with infra address_name
-                # as alias if there is no infra address.
-                try:
-                    # Don't add static addresses to database
-                    if hostname != str(address.name):
-                        self.dbapi.address_get_by_name(
-                            cutils.format_address_name(
-                                hostname, constants.NETWORK_TYPE_INFRA
-                            )
-                        )
-                    aliases = []
-                except exception.AddressNotFoundByName:
-                    address_name = cutils.format_address_name(
-                        hostname, constants.NETWORK_TYPE_INFRA
-                    )
-                    aliases = [address_name]
-                addn_line = self._dnsmasq_addn_host_entry_to_string(
-                    address.address, hostname, aliases
-                )
-                f_out_addn.write(addn_line)
-
-            # Loop through infra addresses to write to file
-            if infra_network:
-                for address in self.dbapi._addresses_get_by_pool_uuid(
-                        infra_network.pool_uuid):
-                    hostname = re.sub("-%s$" % constants.NETWORK_TYPE_INFRA,
-                                      '', str(address.name))
-                    if address.interface:
-                        mac_address = address.interface.imac
-                        cid = cutils.get_dhcp_cid(
-                            hostname, constants.NETWORK_TYPE_INFRA, mac_address
-                        )
-                    else:
-                        cid = None
-                    line = self._dnsmasq_host_entry_to_string(address.address,
-                                                              address.name,
-                                                              cid=cid)
-                    f_out.write(line)
-
-                    # Write infra address to addn_hosts
-                    addn_line = self._dnsmasq_addn_host_entry_to_string(
-                        address.address, address.name
-                    )
-                    f_out_addn.write(addn_line)
 
         # Update host files atomically and reload dnsmasq
         if (not os.path.isfile(dnsmasq_hosts_file) or
@@ -1095,17 +1043,6 @@ class ConductorManager(service.PeriodicService):
                 os.remove("/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
             except OSError:
                 pass
-
-    def _update_static_infra_address(self, context, host):
-        """Check if the host has a static infrastructure IP address assigned
-        and ensure the address is populated if an infrastructure interface
-        is also configured.
-        """
-        infra_ip = self._lookup_static_ip_address(
-            host.hostname, constants.NETWORK_TYPE_INFRA)
-        if infra_ip:
-            self.infra_ip_set_by_ihost(context, host.uuid, infra_ip)
-        self._generate_dnsmasq_hosts_file()
 
     def _create_or_update_address(self, context, hostname, ip_address,
                                   iface_type, iface_id=None):
@@ -1298,7 +1235,6 @@ class ConductorManager(service.PeriodicService):
         try:
             interface_name = self._find_local_interface_name(network_type)
             if not interface_name:
-                # Should get hit if called for infra when none exists
                 return
 
             address = self.dbapi.address_get_by_name(address_name)
@@ -1323,8 +1259,7 @@ class ConductorManager(service.PeriodicService):
     def _unallocate_address(self, hostname, network_type):
         """Unallocate address if it exists"""
         address_name = cutils.format_address_name(hostname, network_type)
-        if (network_type == constants.NETWORK_TYPE_INFRA or
-                network_type == constants.NETWORK_TYPE_MGMT):
+        if network_type == constants.NETWORK_TYPE_MGMT:
             self._remove_lease_for_address(hostname, network_type)
         try:
             address_uuid = self.dbapi.address_get_by_name(address_name).uuid
@@ -1345,12 +1280,11 @@ class ConductorManager(service.PeriodicService):
             pass
 
     def _unallocate_addresses_for_host(self, host):
-        """Unallocates management and infra addresses for a given host.
+        """Unallocates management addresses for a given host.
 
         :param host: host object
         """
         hostname = host.hostname
-        self._unallocate_address(hostname, constants.NETWORK_TYPE_INFRA)
         self._unallocate_address(hostname, constants.NETWORK_TYPE_MGMT)
         if host.personality == constants.CONTROLLER:
             self._unallocate_address(hostname, constants.NETWORK_TYPE_OAM)
@@ -1359,12 +1293,11 @@ class ConductorManager(service.PeriodicService):
         self._generate_dnsmasq_hosts_file(deleted_host=host)
 
     def _remove_addresses_for_host(self, host):
-        """Removes management and infra addresses for a given host.
+        """Removes management addresses for a given host.
 
         :param host: host object
         """
         hostname = host.hostname
-        self._remove_address(hostname, constants.NETWORK_TYPE_INFRA)
         self._remove_address(hostname, constants.NETWORK_TYPE_MGMT)
         self._remove_leases_by_mac_address(host.mgmt_mac)
         self._generate_dnsmasq_hosts_file(deleted_host=host)
@@ -6965,59 +6898,6 @@ class ConductorManager(service.PeriodicService):
             }
             self.dbapi.storage_external_create(values)
 
-    def update_infra_config(self, context):
-        """Update the infrastructure network configuration"""
-        LOG.info("update_infra_config")
-
-        personalities = [constants.CONTROLLER,
-                         constants.WORKER,
-                         constants.STORAGE]
-
-        config_uuid = self._config_update_hosts(context, personalities,
-                                                reboot=True)
-
-        try:
-            hostname = socket.gethostname()
-            host = self.dbapi.ihost_get(hostname)
-        except Exception as e:
-            raise exception.SysinvException(_(
-                "Failed to get the local host object: %s") % str(e))
-
-        # Controller nodes have static IP addresses for their infrastructure
-        # interfaces. Check if an infrastructure address exists and update
-        # the dnsmasq hosts file and interface address if it does.
-        self._update_static_infra_address(context, host)
-
-        # Apply configuration to the active controller
-        config_dict = {
-            'personalities': [constants.CONTROLLER],
-            'host_uuids': host.uuid,
-            'classes': ['platform::network::runtime',
-                        'platform::dhclient::runtime',
-                        'platform::dns::runtime',
-                        'platform::drbd::runtime',
-                        'platform::sm::runtime',
-                        'platform::haproxy::runtime',
-                        'platform::mtce::runtime',
-                        'platform::partitions::runtime',
-                        'platform::lvm::controller::runtime',
-                        'openstack::keystone::endpoint::runtime',
-                        'openstack::nova::controller::runtime',
-                        'openstack::glance::api::runtime',
-                        'openstack::cinder::runtime']
-        }
-
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-        if constants.WORKER in host.subfunctions:
-            config_dict = {
-                'personalities': [constants.WORKER],
-                'host_uuids': host.uuid,
-                'classes': ['openstack::nova::compute::runtime']
-            }
-            self._config_apply_runtime_manifest(context, config_uuid,
-                                                config_dict)
-
     def update_service_config(self, context, service=None, do_apply=False):
         """Update the service parameter configuration"""
 
@@ -8334,77 +8214,6 @@ class ConductorManager(service.PeriodicService):
                                                  mgmt_if['id'])
         return address
 
-    def infra_ip_set_by_ihost(self,
-                              context,
-                              ihost_uuid,
-                              infra_ip):
-        """Call sysinv to update host infra_ip
-           (removes previous entry if necessary)
-
-        :param context: an admin context
-        :param ihost_uuid: ihost uuid
-        :param infra_ip: infra_ip to set, None for removal
-        :returns: Address
-        """
-
-        LOG.debug("Calling infra ip set for ihost %s, ip %s" % (ihost_uuid,
-            infra_ip))
-
-        # Check for and remove existing addrs on infra subnet & host
-        ihost = self.dbapi.ihost_get(ihost_uuid)
-
-        try:
-            infra = self.dbapi.iinfra_get_one()
-            prefix = IPNetwork(infra.infra_subnet).prefixlen
-        except exception.NetworkTypeNotFound:
-            # infrastructure network not configured, no addresses allocated
-            return
-
-        interfaces = self.iinterfaces_get_by_ihost_nettype(
-            context, ihost_uuid, constants.NETWORK_TYPE_INFRA)
-        if not interfaces:
-            LOG.warning("No infra interface configured for ihost %s while "
-                        "updating infrastructure IP address" %
-                        ihost.get('hostname'))
-            return
-
-        # Only 1 infrastructure interface per host
-        infra_if = interfaces[0]
-
-        for address in self.dbapi.addresses_get_by_interface(infra_if['id']):
-            if address['address'] == infra_ip and \
-                    address['prefix'] == prefix:
-                # Address already exists, can return early
-                return address
-            if not address['name']:
-                self.dbapi.address_destroy(address['uuid'])
-
-        try:
-            if ihost.get('hostname'):
-                self._generate_dnsmasq_hosts_file()
-        except Exception:
-            LOG.warning("Failed to remove infra ip from dnsmasq.hosts")
-
-        if infra_ip is None:
-            # Remove DHCP lease when removing infra interface
-            self._unallocate_address(ihost.hostname,
-                                     constants.NETWORK_TYPE_INFRA)
-            self._generate_dnsmasq_hosts_file()
-            # Just doing a remove, return early
-            return
-
-        # Check for IPv4 or IPv6
-        if not cutils.is_valid_ipv4(infra_ip):
-            if not cutils.is_valid_ipv6(infra_ip):
-                LOG.error("Invalid infra_ip=%s" % infra_ip)
-                return False
-
-        address = self._create_or_update_address(context, ihost.hostname,
-                                                 infra_ip,
-                                                 constants.NETWORK_TYPE_INFRA,
-                                                 infra_if['id'])
-        return address
-
     def neutron_extension_list(self, context):
         """
         Send a request to neutron to query the supported extension list.
@@ -8523,7 +8332,7 @@ class ConductorManager(service.PeriodicService):
         interface_list = self.dbapi.iinterface_get_all(ihost_id, expunge=True)
         for interface in interface_list:
             ntype = interface['networktype']
-            if (ntype == constants.NETWORK_TYPE_INFRA or
+            if (ntype == constants.NETWORK_TYPE_CLUSTER_HOST or
                     ntype == constants.NETWORK_TYPE_MGMT):
                 if interface['iftype'] == 'vlan' or \
                                 interface['iftype'] == 'ae':
@@ -9303,19 +9112,9 @@ class ConductorManager(service.PeriodicService):
 
         :param context: request context.
         """
-        try:
-            network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_INFRA
-            )
-            network_type = constants.NETWORK_TYPE_INFRA
-        except exception.NetworkTypeNotFound:
-            network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT
-            )
-            network_type = constants.NETWORK_TYPE_MGMT
-
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         address_name = cutils.format_address_name(
-            constants.STORAGE_0_HOSTNAME, network_type)
+            constants.STORAGE_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
 
         try:
             self.dbapi.address_get_by_name(address_name)
@@ -9340,18 +9139,8 @@ class ConductorManager(service.PeriodicService):
             # Cinder's IP address is only valid if LVM backend exists
             return
 
-        try:
-            network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_INFRA
-            )
-            network_type = constants.NETWORK_TYPE_INFRA
-            old_address = self._get_cinder_address_name(constants.NETWORK_TYPE_MGMT)
-        except exception.NetworkTypeNotFound:
-            network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT
-            )
-            network_type = constants.NETWORK_TYPE_MGMT
-            old_address = self._get_cinder_address_name(constants.NETWORK_TYPE_INFRA)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        network_type = constants.NETWORK_TYPE_MGMT
 
         # Reserve new ip address, if not present
         try:
@@ -9361,15 +9150,6 @@ class ConductorManager(service.PeriodicService):
         except exception.NotFound:
             self._allocate_pool_address(None, network.pool_uuid,
                                         self._get_cinder_address_name(network_type))
-
-        # Release old ip address, if present
-        try:
-            addr = self.dbapi.address_get_by_name(old_address)
-            LOG.debug("Releasing old ip address: %(ip)s. Details: %(details)s" %
-                      {'ip': addr.address, 'details': addr.as_dict()})
-            self.dbapi.address_destroy(addr.uuid)
-        except exception.NotFound:
-            pass
 
         self._generate_dnsmasq_hosts_file()
 

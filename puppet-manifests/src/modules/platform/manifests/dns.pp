@@ -35,19 +35,6 @@ class platform::dns::dnsmasq {
     $mgmt_subnet_netmask = $::platform::network::mgmt::params::subnet_prefixlen
   }
 
-  include ::platform::network::infra::params
-  $infra_interface = $::platform::network::infra::params::interface_name
-  $infra_subnet_version = $::platform::network::infra::params::subnet_version
-  $infra_subnet_start = $::platform::network::infra::params::subnet_start
-  $infra_subnet_end = $::platform::network::infra::params::subnet_end
-  $infra_network_mtu = $::platform::network::infra::params::mtu
-
-  if $infra_subnet_version == 4 {
-    $infra_subnet_netmask = $::platform::network::infra::params::subnet_netmask
-  } else {
-    $infra_subnet_netmask = $::platform::network::infra::params::subnet_prefixlen
-  }
-
   include ::platform::kubernetes::params
   $service_domain = $::platform::kubernetes::params::service_domain
   $dns_service_ip = $::platform::kubernetes::params::dns_service_ip

@@ -3,9 +3,6 @@
 interface=<%= @pxeboot_interface %>
 <%- end -%>
 interface=<%= @mgmt_interface %>
-<%- if @infra_interface != nil -%>
-interface=<%= @infra_interface %>
-<%- end -%>
 bind-interfaces
 
 # Serve addresses from the pxeboot subnet
@@ -32,20 +29,6 @@ dhcp-option=tag:mgmt,option:dns-server,<%= @mgmt_controller_address %>
 dhcp-option=tag:mgmt,option:mtu,<%= @mgmt_network_mtu %>
 <%- else -%>
 dhcp-option=tag:mgmt,option6:dns-server,[<%= @mgmt_controller_address %>]
-<%- end -%>
-
-<%- if @infra_interface != nil -%>
-# Serve addresses from the infrastructure subnet
-dhcp-range=set:infra,<%= @infra_subnet_start %>,static,<%= @infra_subnet_netmask %>,1d
-
-# Provide DNS services on the floating infrastructure address
-<%- if @infra_subnet_version == 4 -%>
-dhcp-option=tag:infra,option:dns-server
-dhcp-option=tag:infra,option:router
-dhcp-option=tag:infra,option:mtu,<%= @infra_network_mtu %>
-<%- else -%>
-dhcp-option=tag:infra,option6:dns-server
-<%- end -%>
 <%- end -%>
 
 # Provide private option 224 as install_uuid

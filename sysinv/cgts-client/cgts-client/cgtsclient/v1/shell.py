@@ -25,7 +25,6 @@ from cgtsclient.v1 import idisk_shell
 from cgtsclient.v1 import idns_shell
 from cgtsclient.v1 import iextoam_shell
 from cgtsclient.v1 import iHost_shell
-from cgtsclient.v1 import iinfra_shell
 from cgtsclient.v1 import iinterface_shell
 from cgtsclient.v1 import ilvg_shell
 from cgtsclient.v1 import imemory_shell
@@ -88,7 +87,6 @@ COMMAND_MODULES = [
     sm_service_shell,
     icommunity_shell,
     itrapdest_shell,
-    iinfra_shell,
     ethernetport_shell,
     port_shell,
     address_shell,

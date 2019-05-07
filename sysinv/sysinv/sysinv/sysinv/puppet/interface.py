@@ -25,7 +25,6 @@ LOG = log.getLogger(__name__)
 
 PLATFORM_NETWORK_TYPES = [constants.NETWORK_TYPE_PXEBOOT,
                           constants.NETWORK_TYPE_MGMT,
-                          constants.NETWORK_TYPE_INFRA,
                           constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.NETWORK_TYPE_OAM]
 
@@ -108,9 +107,6 @@ class InterfacePuppet(base.BasePuppet):
 
         # Generate driver specific configuration
         generate_driver_config(context, config)
-
-        # Generate the dhcp client configuration
-        generate_dhcp_config(context, config)
 
         # Update the global context with generated interface context
         self.context.update(context)
@@ -328,7 +324,7 @@ def is_platform_interface(context, iface):
     interfaces that are themselves platform interfaces or interfaces that have
     platform interfaces above them.  Both of these groups of interfaces require
     a linux interface that will be used for platform purposes (i.e., pxeboot,
-    mgmt, infra, oam).
+    mgmt, cluster-host, oam).
     """
     if '_kernel' in iface:  # check cached result
         return iface['_kernel']
@@ -629,8 +625,7 @@ def get_interface_traffic_classifier(context, iface, network_id=None):
     """
     networktype = find_networktype_by_network_id(context, network_id)
     if (networktype and
-            networktype in [constants.NETWORK_TYPE_MGMT,
-                            constants.NETWORK_TYPE_INFRA]):
+            networktype == constants.NETWORK_TYPE_MGMT):
         networkspeed = constants.LINK_SPEED_10G
         ifname = get_interface_os_ifname(context, iface)
         return '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' \
@@ -996,7 +991,7 @@ def find_interface_by_type(context, networktype):
     """
     Lookup an interface based on networktype.  This is only intended for
     platform interfaces that have only 1 such interface per node (i.e., oam,
-    mgmt, infra, pxeboot, bmc).
+    mgmt, cluster-host, pxeboot, bmc).
     """
     for ifname, iface in six.iteritems(context['interfaces']):
         for net_id in iface.networks:
@@ -1171,17 +1166,3 @@ def format_network_config(config):
     network_config = copy.copy(config)
     del network_config['ifname']
     return network_config
-
-
-def generate_dhcp_config(context, config):
-    """
-    Generate the DHCP client configuration.
-    """
-    if not is_controller(context):
-        infra_interface = find_interface_by_type(
-            context, constants.NETWORK_TYPE_INFRA)
-        if infra_interface:
-            infra_cid = utils.get_dhcp_cid(context['hostname'],
-                                           constants.NETWORK_TYPE_INFRA,
-                                           infra_interface['imac'])
-            config['platform::dhclient::params::infra_client_id'] = infra_cid

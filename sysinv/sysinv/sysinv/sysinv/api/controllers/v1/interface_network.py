@@ -48,7 +48,7 @@ NONASSIGNABLE_NETWORK_TYPES = (constants.NETWORK_TYPE_DATA,
 # Each of these networks may only be provisioned once per node
 NONDUPLICATE_NETWORK_TYPES = (constants.NETWORK_TYPE_MGMT,
                               constants.NETWORK_TYPE_OAM,
-                              constants.NETWORK_TYPE_INFRA,
+                              constants.NETWORK_TYPE_CLUSTER_HOST,
                               constants.NETWORK_TYPE_PXEBOOT)
 
 
@@ -257,7 +257,7 @@ class InterfaceNetworkController(rest.RestController):
     def _check_oam_network(self, interface_id, network_type):
         NONASSIGNABLE_WITH_OAM = [constants.NETWORK_TYPE_MGMT,
                                   constants.NETWORK_TYPE_PXEBOOT,
-                                  constants.NETWORK_TYPE_INFRA]
+                                  constants.NETWORK_TYPE_CLUSTER_HOST]
         interface_networks = pecan.request.dbapi.interface_network_get_all()
         for i in interface_networks:
             if i.interface_id == interface_id and \
