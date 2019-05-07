@@ -79,17 +79,13 @@ class platform::worker::storage (
       line  => "    global_filter = ${lvm_update_filter}",
       match => '^[ ]*global_filter =',
   }
-  -> file { '/var/lib/nova':
-    ensure => 'directory',
-    owner  => 'root',
-    group  => 'root',
-    mode   => '0755',
-  }
   -> exec { 'umount /var/lib/nova/instances':
     command => 'umount /var/lib/nova/instances; true',
+    onlyif  => 'test -e /var/lib/nova/instances',
   }
   -> exec { 'umount /dev/nova-local/instances_lv':
     command => 'umount /dev/nova-local/instances_lv; true',
+    onlyif  => 'test -e /dev/nova-local/instances_lv',
   }
   -> exec { 'remove udev leftovers':
     unless  => 'vgs nova-local',
@@ -97,38 +93,48 @@ class platform::worker::storage (
   }
   -> exec { 'remove device mapper mapping':
     command => 'dmsetup remove /dev/mapper/nova--local-instances_lv || true',
+    onlyif  => 'test -e /dev/mapper/nova--local-instances_lv',
   }
   -> file_line { 'disable_old_lvg_disks':
       path  => '/etc/lvm/lvm.conf',
       line  => "    global_filter = ${lvm_global_filter}",
       match => '^[ ]*global_filter =',
   }
-  -> exec { 'add device mapper mapping':
-    command => 'lvchange -ay /dev/nova-local/instances_lv || true',
-  }
-  -> lvm::volume { 'instances_lv':
-    ensure                    => 'present',
-    vg                        => 'nova-local',
-    pv                        => $final_pvs,
-    size                      => 'max',
-    round_to_extent           => $round_to_extent,
-    allow_reduce              => true,
-    nuke_fs_on_resize_failure => true,
-  }
-  -> filesystem { '/dev/nova-local/instances_lv':
-    ensure  => present,
-    fs_type => 'ext4',
-    options => '-F -F',
-    require => Logical_volume['instances_lv']
-  }
-  -> file { '/var/lib/nova/instances':
-    ensure => 'directory',
-    owner  => 'root',
-    group  => 'root',
-    mode   => '0755',
-  }
-  -> exec { 'mount /dev/nova-local/instances_lv':
-    unless  => 'mount | grep -q /var/lib/nova/instances',
-    command => 'mount -t ext4 /dev/nova-local/instances_lv /var/lib/nova/instances',
+  if ! empty($::platform::lvm::vg::nova_local::physical_volumes) {
+    File_line['disable_old_lvg_disks']
+    -> file { '/var/lib/nova':
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0755',
+    }
+    -> exec { 'add device mapper mapping':
+      command => 'lvchange -ay /dev/nova-local/instances_lv || true',
+    }
+    -> lvm::volume { 'instances_lv':
+      ensure                    => 'present',
+      vg                        => 'nova-local',
+      pv                        => $final_pvs,
+      size                      => 'max',
+      round_to_extent           => $round_to_extent,
+      allow_reduce              => true,
+      nuke_fs_on_resize_failure => true,
+    }
+    -> filesystem { '/dev/nova-local/instances_lv':
+      ensure  => present,
+      fs_type => 'ext4',
+      options => '-F -F',
+      require => Logical_volume['instances_lv']
+    }
+    -> file { '/var/lib/nova/instances':
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0755',
+    }
+    -> exec { 'mount /dev/nova-local/instances_lv':
+      unless  => 'mount | grep -q /var/lib/nova/instances',
+      command => 'mount -t ext4 /dev/nova-local/instances_lv /var/lib/nova/instances',
+    }
   }
 }
