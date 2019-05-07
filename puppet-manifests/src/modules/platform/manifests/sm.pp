@@ -421,6 +421,22 @@ class platform::sm
     if $::platform::params::distributed_cloud_role =='subcloud' {
       $configure_keystone = true
 
+      # Provision and configure dcorch dbsync when running as a subcloud
+      exec { 'Provision distributed-cloud-services (service-domain-member distributed-cloud-services)':
+        command => 'sm-provision service-domain-member controller distributed-cloud-services',
+      }
+      -> exec { 'Provision distributed-cloud-services (service-group distributed-cloud-services)':
+        command => 'sm-provision service-group distributed-cloud-services',
+      }
+      -> exec { 'Provision DCDBsync-RestApi (service-group-member dcdbsync-api)':
+        command => 'sm-provision service-group-member distributed-cloud-services dcdbsync-api',
+      }
+      -> exec { 'Provision DCDBsync-RestApi in SM (service dcdbsync-api)':
+        command => 'sm-provision service dcdbsync-api',
+      }
+      -> exec { 'Configure OpenStack - DCDBsync-API':
+        command => "sm-configure service_instance dcdbsync-api dcdbsync-api \"\"",
+      }
       # Deprovision Horizon when running as a subcloud
       exec { 'Deprovision OpenStack - Horizon (service-group-member)':
         command => 'sm-deprovision service-group-member web-services horizon',
@@ -842,6 +858,12 @@ class platform::sm
     -> exec { 'Provision DCOrch-Patch-Api-Proxy in SM (service dcorch-patch-api-proxy)':
       command => 'sm-provision service dcorch-patch-api-proxy',
     }
+    -> exec { 'Provision DCDBsync-RestApi (service-group-member dcdbsync-api)':
+      command => 'sm-provision service-group-member distributed-cloud-services dcdbsync-api',
+    }
+    -> exec { 'Provision DCDBsync-RestApi in SM (service dcdbsync-api)':
+      command => 'sm-provision service dcdbsync-api',
+    }
     -> exec { 'Configure Platform - DCManager-Manager':
       command => "sm-configure service_instance dcmanager-manager dcmanager-manager \"\"",
     }
@@ -862,6 +884,9 @@ class platform::sm
     }
     -> exec { 'Configure OpenStack - DCOrch-patch-api-proxy':
       command => "sm-configure service_instance dcorch-patch-api-proxy dcorch-patch-api-proxy \"\"",
+    }
+    -> exec { 'Configure OpenStack - DCDBsync-API':
+      command => "sm-configure service_instance dcdbsync-api dcdbsync-api \"\"",
     }
   }
 

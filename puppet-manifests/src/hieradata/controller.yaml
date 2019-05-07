@@ -210,6 +210,11 @@ dcmanager::use_syslog: true
 dcmanager::log_facility: 'local2'
 dcmanager::debug: false
 
+# Dcdbsync
+dbsync::use_syslog: true
+dbsync::log_facility: 'local2'
+dbsync::debug: false
+
 # FM
 fm::use_syslog: true
 fm::log_facility: 'local2'
