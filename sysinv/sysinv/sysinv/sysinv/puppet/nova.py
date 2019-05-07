@@ -57,8 +57,7 @@ DEFAULT_NOVA_PCI_ALIAS = [
      "product_id": constants.NOVA_PCI_ALIAS_QAT_C62X_VF_DEVICE,
      "name": constants.NOVA_PCI_ALIAS_QAT_C62X_VF_NAME},
 
-    {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS,
-     "name": constants.NOVA_PCI_ALIAS_GPU_NAME}
+    {"name": constants.NOVA_PCI_ALIAS_GPU_NAME}
 ]
 
 SERVICE_PARAM_NOVA_PCI_ALIAS = [
@@ -582,7 +581,6 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             if pci_device.enabled:
                 device = {
                     'address': pci_device.pciaddr,
-                    'class_id': pci_device.pclass_id
                 }
                 devices.append(device)
 
