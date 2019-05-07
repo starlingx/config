@@ -553,6 +553,8 @@ class CephApiOperator(object):
 
     def update_crushmap(self, hostupdate):
         self.set_crushmap()
+        if hostupdate.ihost_patch.get('personality') != constants.STORAGE:
+            return
         storage_num = int(hostupdate.ihost_orig['hostname'][8:])
         if (storage_num >= 2 and
                 hostupdate.ihost_orig['invprovision'] !=
