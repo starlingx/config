@@ -306,6 +306,7 @@ def main():
     do_clone = False
     do_non_interactive = False
     do_provision = False
+    force_config = False
     system_config_file = "/home/wrsroot/system_config"
     allow_ssh = False
 
@@ -401,6 +402,8 @@ def main():
             # This is a temporary flag for use during development. Once things
             # are stable, we will remove it and make kubernetes the default.
             options['kubernetes'] = True
+        elif sys.argv[arg] == "--force":
+            force_config = True
         else:
             print("Invalid option. Use --help for more information.")
             exit(1)
@@ -459,6 +462,12 @@ def main():
             assistant = ConfigAssistant(**options)
             assistant.provision(answerfile)
         else:
+            if not force_config:
+                print(textwrap.fill(
+                    "Please use bootstrap playbook to configure the "
+                    "first controller.", 80))
+                exit(1)
+
             if do_non_interactive:
                 if not os.path.isfile(system_config_file):
                     raise ConfigFail("Config file %s does not exist." %
