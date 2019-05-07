@@ -5425,7 +5425,8 @@ class ConductorManager(service.PeriodicService):
             "personalities": personalities,
             "classes": ['platform::haproxy::runtime',
                         'openstack::keystone::endpoint::runtime',
-                        'openstack::horizon::runtime']
+                        'openstack::horizon::runtime',
+                        'platform::firewall::runtime']
         }
 
         config_uuid = self._config_update_hosts(context, personalities)
