@@ -21,7 +21,7 @@
   environment:
     DOCKER_REGISTRY_IP: "{{ controller_floating_address }}"
 
-- name: Generate certifcate and key files
+- name: Generate certificate and key files
   command: >-
     openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout {{ registry_cert_key }}
     -out {{ registry_cert_crt }} -config {{ cert_cnf_file }}
@@ -43,7 +43,7 @@
     - "{{ registry_cert_crt }}"
     - "{{ registry_cert_pkcs1_key }}"
 
-- name: Copy certifcate and keys to shared filesystem for mate
+- name: Copy certificate and keys to shared filesystem for mate
   copy:
     src: "{{ item }}"
     dest: "{{ config_permdir }}"

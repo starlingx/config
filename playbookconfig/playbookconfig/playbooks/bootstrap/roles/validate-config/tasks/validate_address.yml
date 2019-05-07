@@ -13,8 +13,8 @@
     script_content: |
       # Use this utility to be consistent with the current config_controller
       # though the underlying regex used is not flexible.
-      from controllerconfig.utils import is_valid_domain
-      if not is_valid_domain( "{{ input_address }}" ):
+      from controllerconfig.utils import is_valid_domain_or_ip
+      if not is_valid_domain_or_ip( "{{ input_address }}" ):
         raise Exception("Invalid domain name!")
   shell: "{{ script_content }}"
   args:

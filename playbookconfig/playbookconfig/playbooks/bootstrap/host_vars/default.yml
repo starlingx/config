@@ -132,4 +132,4 @@ admin_password: St8rlingX*
 #
 # Default directory where user override file(s) can be found
 #
-override_files_dir: "/home/{{ lookup('env', 'USER') }}"
+override_files_dir: "{{ lookup('env', 'HOME') }}"

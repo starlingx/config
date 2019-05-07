@@ -32,11 +32,34 @@
     - net.bridge.bridge-nf-call-ip6tables = 1
     - net.bridge.bridge-nf-call-iptables = 1
 
-- name: Set image repository to unified registry for kubelet
-  lineinfile:
-    path: /etc/sysconfig/kubelet
-    line: KUBELET_EXTRA_ARGS=--pod-infra-container-image={{ docker_registries[0] }}/pause:3.1
-    create: yes
+- block:
+  - name: Set image repository to unified registry for kubelet
+    lineinfile:
+      path: /etc/sysconfig/kubelet
+      line: KUBELET_EXTRA_ARGS=--pod-infra-container-image=$DOCKER_REGISTRY_IP/pause:3.1
+      create: yes
+
+  - block:
+    - name: Create daemon.json file for insecure registry
+      copy:
+        src: "{{ insecure_docker_registry_template }}"
+        dest: /etc/docker/daemon.json
+        remote_src: yes
+        mode: 0644
+
+    - name: Update daemon.json with registry IP
+      command: "sed -i -e 's|<%= @insecure_registries %>|'$DOCKER_REGISTRY_IP'|g' /etc/docker/daemon.json"
+      args:
+        warn: false
+
+    - name: Restart docker
+      systemd:
+        name: docker
+        state: restarted
+    when: not is_secure_registry
+
+  environment:
+    DOCKER_REGISTRY_IP: "{{ docker_registries[0] }}"
   when: use_unified_registry
 
 - name: Update kernel parameters for iptables

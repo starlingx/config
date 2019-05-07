@@ -334,9 +334,7 @@ class AgentManager(service.PeriodicService):
         """
         if (not self._first_grub_update and
                 # config_controller case
-                (os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG) or
-                # ansible bootstrap case
-                 os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG))):
+                os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)):
             self._first_grub_update = True
             return True
         return False
@@ -1547,8 +1545,26 @@ class AgentManager(service.PeriodicService):
             applied_classes = config.get('classes')
             LOG.info('Runtime manifest apply completed for classes %s.' %
                      applied_classes)
+
+            # Following an Ansible bootstrap, keystone endpoint manifest needs
+            # to be applied to reconfigure service endpoints from loopback IP
+            # to management/oam floating IPs right before the initial unlock.
+            #
+            # For AIO, grub update manifests must also be applied to account
+            # for any cpu reconfigurations that might have occurred during
+            # initial host bootstrap or configurations.
+            #
+            # NOTE: Don't create and add new puppet manifests to this list.
+            # If there are configurations that must be applied
+            #    a) during bootstrap, implement in Ansible playbook
+            #    b) during initial host configurations, implement in sysinv
             if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
-                    applied_classes == ['openstack::keystone::endpoint::runtime']):
+                    (applied_classes ==
+                         ['openstack::keystone::endpoint::runtime'] or
+                     applied_classes ==
+                         ['openstack::keystone::endpoint::runtime',
+                          'platform::compute::grub::runtime',
+                          'platform::compute::config::runtime'])):
                 # Set ready flag for maintenance to proceed with the unlock of
                 # the initial controller.
                 utils.touch(UNLOCK_READY_FLAG)

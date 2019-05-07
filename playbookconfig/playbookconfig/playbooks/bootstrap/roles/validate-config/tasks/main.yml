@@ -140,7 +140,7 @@
   - name: Fail if address allocation is misconfigured
     fail:
       msg: "dynamic_address_allocation is misconfigured. Valid value is either 'True' or 'False'."
-    when: not dynamic_address_allocation | bool
+    when: not dynamic_address_allocation | type_debug == 'bool'
 
   # The provided subnets have passed validation, set the default addresses
   # based on the subnet values
@@ -217,7 +217,7 @@
       controller_pxeboot_floating_address: "{{ (pxeboot_subnet | ipaddr(2)).split('/')[0] if pxeboot_start_address == 'derived' else  pxeboot_start_address }}"
       cluster_floating_address: "{{ (cluster_host_subnet | ipaddr(2)).split('/')[0] if cluster_host_start_address == 'derived' else cluster_host_start_address }}"
 
-  - name: Set derived facts for subsequent roles
+  - name: Set derived facts for subsequent tasks/roles
     set_fact:
       derived_network_params:
         'management_interface': lo
@@ -242,6 +242,7 @@
       cluster_broadcast: "{{ cluster_host_subnet | ipaddr('broadcast') }}"
       controller_0_cluster_host: "{{ cluster_floating_address|ipmath(1) }}"
       controller_1_cluster_host: "{{ cluster_floating_address|ipmath(2) }}"
+
 
 # Docker config validation
 - block:
@@ -301,7 +302,7 @@
       fail:
         msg: "is_secure_registry is misconfigured. Valid value is either 'True' or 'False'."
       when: (is_secure_registry is defined) and
-            (not is_secure_registry | bool)
+            (not is_secure_registry |type_debug == 'bool')
 
     - name: Default the unified registry to secure if not specified
       set_fact:
