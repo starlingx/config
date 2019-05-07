@@ -8155,12 +8155,14 @@ class ConductorManager(service.PeriodicService):
     def mgmt_ip_set_by_ihost(self,
                              context,
                              ihost_uuid,
+                             interface_id,
                              mgmt_ip):
         """Call sysinv to update host mgmt_ip
            (removes previous entry if necessary)
 
         :param context: an admin context
         :param ihost_uuid: ihost uuid
+        :param interface_id: interface id value
         :param mgmt_ip: mgmt_ip to set, None for removal
         :returns: Address
         """
@@ -8171,18 +8173,7 @@ class ConductorManager(service.PeriodicService):
         # Check for and remove existing addrs on mgmt subnet & host
         ihost = self.dbapi.ihost_get(ihost_uuid)
 
-        interfaces = self.iinterfaces_get_by_ihost_nettype(
-            context, ihost_uuid, constants.NETWORK_TYPE_MGMT)
-        if not interfaces:
-            LOG.warning("No mgmt interface configured for ihost %s while "
-                        "updating mgmt IP address" %
-                        ihost.get('hostname'))
-            return
-
-        # Only 1 management interface per host
-        mgmt_if = interfaces[0]
-
-        for address in self.dbapi.addresses_get_by_interface(mgmt_if['id']):
+        for address in self.dbapi.addresses_get_by_interface(interface_id):
             if address['address'] == mgmt_ip:
                 # Address already exists, can return early
                 return address
@@ -8211,7 +8202,7 @@ class ConductorManager(service.PeriodicService):
         address = self._create_or_update_address(context, ihost.hostname,
                                                  mgmt_ip,
                                                  constants.NETWORK_TYPE_MGMT,
-                                                 mgmt_if['id'])
+                                                 interface_id)
         return address
 
     def neutron_extension_list(self, context):
