@@ -31,3 +31,5 @@ spec:
   - action: Allow
     ipVersion: <%= @t_ip_version %>
     protocol: UDP
+  - action: Allow
+    protocol: <%= @t_icmp_proto %>
