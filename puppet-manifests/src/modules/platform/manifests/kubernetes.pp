@@ -13,6 +13,9 @@ class platform::kubernetes::params (
   $sa_pub = undef,
   $k8s_cpuset = undef,
   $k8s_nodeset = undef,
+  $k8s_reserved_cpus = undef,
+  $k8s_reserved_mem = undef,
+
 ) { }
 
 class platform::kubernetes::cgroup::params (
@@ -96,6 +99,9 @@ class platform::kubernetes::kubeadm {
   include ::platform::kubernetes::params
 
   $host_labels = $::platform::kubernetes::params::host_labels
+  $k8s_reserved_cpus = $::platform::kubernetes::params::k8s_reserved_cpus
+  $k8s_reserved_mem = $::platform::kubernetes::params::k8s_reserved_mem
+
   $iptables_file = "net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1"
 
@@ -105,19 +111,36 @@ class platform::kubernetes::kubeadm {
     $k8s_registry = undef
   }
 
-  #only set k8s_hugepage true when subfunction is worker and openstack-compute-node is not in host_labels
+  # Configure kubelet hugepage and cpumanager options
   if str2bool($::is_worker_subfunction)
     and !('openstack-compute-node'
           in $host_labels) {
     $k8s_hugepage = true
+    $k8s_cpu_manager_opts = join([
+      '--cpu-manager-policy=static',
+      '--system-reserved-cgroup=/system.slice',
+      join([
+        '--system-reserved=',
+        "cpu=${k8s_reserved_cpus},",
+        "memory=${k8s_reserved_mem}Mi"])
+      ], ' ')
   } else {
     $k8s_hugepage = false
+    $k8s_cpu_manager_opts = '--cpu-manager-policy=none'
   }
 
-  # enable extra parameters such as hugepage
+  # Enable kubelet extra parameters that are node specific such as
+  # hugepages and cpumanager
   file { '/etc/sysconfig/kubelet':
     ensure  => file,
     content => template('platform/kubelet.conf.erb'),
+  }
+  # The cpu_manager_state file is regenerated when cpumanager starts or
+  # changes allocations so it is safe to remove before kubelet starts.
+  # This file persists so cpumanager's DefaultCPUSet becomes inconsistent
+  # when we offline/online CPUs or change the number of reserved cpus.
+  -> exec { 'remove cpu_manager_state':
+    command => 'rm -f /var/lib/kubelet/cpu_manager_state || true',
   }
 
   # Update iptables config. This is required based on:

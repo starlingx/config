@@ -1,3 +1,2 @@
 # Overrides config file for kubelet
-KUBELET_EXTRA_ARGS=--feature-gates=HugePages=<%= @k8s_hugepage %>
-
+KUBELET_EXTRA_ARGS=--feature-gates=HugePages=<%= @k8s_hugepage %> <%= @k8s_cpu_manager_opts %>
