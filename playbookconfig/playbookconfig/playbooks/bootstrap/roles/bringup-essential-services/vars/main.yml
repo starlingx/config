@@ -10,6 +10,7 @@ kubelet_pmond_template: /usr/share/puppet/modules/platform/templates/kubelet-pmo
 lighttpd_conf_template: /usr/share/puppet/modules/openstack/templates/lighttpd.conf.erb
 lighttpd_inc_conf_template: /usr/share/puppet/modules/openstack/templates/lighttpd-inc.conf.erb
 cert_cnf_template: /usr/share/puppet/modules/platform/templates/registry-cert-extfile.erb
+insecure_docker_registry_template: /usr/share/puppet/modules/platform/templates/insecuredockerregistry.conf.erb
 cert_cnf_file: /etc/ssl/private/registry-cert-extfile.cnf
 registry_cert_key: /etc/ssl/private/registry-cert.key
 registry_cert_crt: /etc/ssl/private/registry-cert.crt

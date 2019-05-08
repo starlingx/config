@@ -37,7 +37,9 @@
     INITIAL_CONFIG_PRIMARY: "true"
 
 - debug: var=bootstrap_manifest
-- fail:
+
+- name: Fail if puppet manifest apply script returns an error
+  fail:
     msg: >-
          Failed to apply bootstrap manifest. See /var/log/puppet/latest/puppet.log
          for details.

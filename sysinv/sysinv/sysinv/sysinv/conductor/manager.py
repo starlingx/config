@@ -1331,17 +1331,25 @@ class ConductorManager(service.PeriodicService):
         self._update_pxe_config(host)
         self._ceph_mon_create(host)
 
-        # Apply the manifest to reconfigure the service endpoints right before
-        # the unlock. The Ansible bootstrap flag only exists during the bootstrap
-        # of the initial controller. It's cleared after the controller is unlocked
+        # Apply the manifest to reconfigure the service endpoints and update grub
+        # right before the unlock. The Ansible bootstrap flag only exists during
+        # the bootstrap of the initial controller. It's cleared after the controller
+        # is unlocked.
+        #
+        # The manifest set created here will trigger the unlock after they have
+        # been applied by sysinv agent.
         if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
                 host.availability == constants.AVAILABILITY_ONLINE):
             personalities = [constants.CONTROLLER]
             config_uuid = self._config_update_hosts(context, personalities)
+            classes = ['openstack::keystone::endpoint::runtime']
+            if utils.is_aio_system(self.dbapi):
+                classes.extend(['platform::compute::grub::runtime',
+                                'platform::compute::config::runtime'])
             config_dict = {
                 "personalities": personalities,
                 "host_uuids": [host.uuid],
-                "classes": ['openstack::keystone::endpoint::runtime']
+                "classes": classes
             }
             self._config_apply_runtime_manifest(
                 context, config_uuid, config_dict, force=True)
@@ -4445,7 +4453,8 @@ class ConductorManager(service.PeriodicService):
                     "personalities": personalities,
                     "host_uuids": active_host.uuid,
                     "classes": ['openstack::keystone::endpoint::runtime',
-                                'platform::firewall::runtime']
+                                'platform::firewall::runtime',
+                                'platform::sysinv::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict, host_uuids=[active_host.uuid])
@@ -4476,20 +4485,6 @@ class ConductorManager(service.PeriodicService):
                         self._update_alarm_status(context, standby_host)
 
         else:
-            # For the first controller, copy sysinv.conf to /opt/platform/sysinv right after the
-            # initial unlock for subsequent host installs.
-            if standby_host is None:
-                personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities,
-                                                        host_uuids=[active_host.uuid])
-                config_dict = {
-                    "personalities": personalities,
-                    "host_uuids": active_host.uuid,
-                    "classes": ['platform::sysinv::runtime']
-                }
-                self._config_apply_runtime_manifest(
-                    context, config_uuid, config_dict, host_uuids=[active_host.uuid], force=True)
-
             # Ignore the reboot required bit for active controller when doing the comparison
             active_config_target_flipped = None
             if active_host and active_host.config_target:
