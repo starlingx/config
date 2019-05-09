@@ -1462,6 +1462,22 @@ SUPPORTED_HELM_APP_NAMES = [
     HELM_APP_OPENSTACK
 ]
 
+# Apply mode for openstack app
+OPENSTACK_RESTORE_DB = 'restore_db'
+OPENSTACK_RESTORE_STORAGE = 'restore_storage'
+OPENSTACK_NORMAL = 'normal'
+
+OPENSTACK_APP_APPLY_MODES = [
+    OPENSTACK_RESTORE_DB,
+    OPENSTACK_RESTORE_STORAGE,
+    OPENSTACK_NORMAL
+]
+
+# Appliction Apply Modes
+HELM_APP_APPLY_MODES = {
+    HELM_APP_OPENSTACK: OPENSTACK_APP_APPLY_MODES
+}
+
 # RBD Provisioner Ceph backend capabilities fields
 K8S_RBD_PROV_STORAGECLASS_NAME = 'rbd_storageclass_name'             # Customer
 K8S_RBD_PROV_NAMESPACES = 'rbd_provisioner_namespaces'               # Customer

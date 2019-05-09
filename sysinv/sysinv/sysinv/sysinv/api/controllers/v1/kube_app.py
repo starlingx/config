@@ -253,6 +253,22 @@ class KubeAppController(rest.RestController):
                 "Application-{} rejected: application not found.".format(directive)))
 
         if directive == 'apply':
+            if not values:
+                mode = None
+            elif name not in constants.HELM_APP_APPLY_MODES.keys():
+                raise wsme.exc.ClientSideError(_(
+                    "Application-apply rejected: Mode is not supported "
+                    "for app {}.".format(name)))
+            elif (values['mode'] and
+                    values['mode'] not in constants.HELM_APP_APPLY_MODES[name]):
+                raise wsme.exc.ClientSideError(_(
+                    "Application-apply rejected: Mode {} for app {} is not "
+                    "valid. Valid modes are {}.".format(
+                        values['mode'], name,
+                        constants.HELM_APP_APPLY_MODES[name])))
+            else:
+                mode = values['mode']
+
             if db_app.status == constants.APP_APPLY_IN_PROGRESS:
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: install/update is already "
@@ -268,7 +284,8 @@ class KubeAppController(rest.RestController):
             db_app.progress = None
             db_app.save()
             pecan.request.rpcapi.perform_app_apply(pecan.request.context,
-                                                   db_app, app_not_already_applied)
+                                                   db_app, app_not_already_applied,
+                                                   mode=mode)
             return KubeApp.convert_with_links(db_app)
         else:
             if db_app.status not in [constants.APP_APPLY_SUCCESS,
