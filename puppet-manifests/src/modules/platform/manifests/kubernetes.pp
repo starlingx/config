@@ -227,7 +227,7 @@ class platform::kubernetes::master::init
     }
 
     # Update ownership/permissions for file created by "kubeadm init".
-    # We want it readable by sysinv and wrsroot.
+    # We want it readable by sysinv and sysadmin.
     -> file { '/etc/kubernetes/admin.conf':
       ensure => file,
       owner  => 'root',
@@ -382,7 +382,7 @@ class platform::kubernetes::master::init
       }
 
       # Update ownership/permissions for file created by "kubeadm init".
-      # We want it readable by sysinv and wrsroot.
+      # We want it readable by sysinv and sysadmin.
       -> file { '/etc/kubernetes/admin.conf':
         ensure => file,
         owner  => 'root',

@@ -137,10 +137,10 @@ class platform::ldap::bootstrap
   -> exec { 'create ldap protected group':
     command => "ldapaddgroup ${::platform::params::protected_group_name} ${::platform::params::protected_group_id}"
   }
-  -> exec { 'add admin to wrs protected group' :
+  -> exec { 'add admin to sys_protected protected group' :
     command => "ldapaddusertogroup admin ${::platform::params::protected_group_name}",
   }
-  -> exec { 'add operator to wrs protected group' :
+  -> exec { 'add operator to sys_protected protected group' :
     command => "ldapaddusertogroup operator ${::platform::params::protected_group_name}",
   }
 

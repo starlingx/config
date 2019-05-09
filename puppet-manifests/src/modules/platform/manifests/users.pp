@@ -1,6 +1,6 @@
 class platform::users::params (
-  $wrsroot_password = undef,
-  $wrsroot_password_max_age = undef,
+  $sysadmin_password = undef,
+  $sysadmin_password_max_age = undef,
 ) {}
 
 
@@ -9,27 +9,23 @@ class platform::users
 
   include ::platform::params
 
-  group { 'wrs':
+  # Create a 'sys_protected' group for sysadmin and all openstack services
+  # (including StarlingX services: sysinv, etc.).
+  group { $::platform::params::protected_group_name:
     ensure => 'present',
+    gid    => $::platform::params::protected_group_id,
   }
 
-  # WRS: Create a 'wrs_protected' group for wrsroot and all openstack services
-  # (including TiS services: sysinv, etc.).
-  -> group { $::platform::params::protected_group_name:
-    ensure => 'present',
-    gid    =>  $::platform::params::protected_group_id,
-  }
-
-  -> user { 'wrsroot':
+  -> user { 'sysadmin':
     ensure           => 'present',
-    groups           => ['wrs', 'root', $::platform::params::protected_group_name],
-    home             => '/home/wrsroot',
-    password         => $wrsroot_password,
-    password_max_age => $wrsroot_password_max_age,
+    groups           => ['root', $::platform::params::protected_group_name],
+    home             => '/home/sysadmin',
+    password         => $sysadmin_password,
+    password_max_age => $sysadmin_password_max_age,
     shell            => '/bin/sh',
   }
 
-  # WRS: Keyring should only be executable by 'wrs_protected'.
+  # Keyring should only be executable by 'sys_protected'.
   -> file { '/usr/bin/keyring':
     owner => 'root',
     group =>  $::platform::params::protected_group_name,
@@ -43,20 +39,16 @@ class platform::users::bootstrap
 
   include ::platform::params
 
-  group { 'wrs':
-    ensure => 'present',
-  }
-
-  -> group { $::platform::params::protected_group_name:
+  group { $::platform::params::protected_group_name:
     ensure => 'present',
     gid    => $::platform::params::protected_group_id,
   }
 
-  -> user { 'wrsroot':
+  -> user { 'sysadmin':
     ensure           => 'present',
-    groups           => ['wrs', 'root', $::platform::params::protected_group_name],
-    home             => '/home/wrsroot',
-    password_max_age => $wrsroot_password_max_age,
+    groups           => ['root', $::platform::params::protected_group_name],
+    home             => '/home/sysadmin',
+    password_max_age => $sysadmin_password_max_age,
     shell            => '/bin/sh',
   }
 }

@@ -1,4 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
+# sim: tabstop=4 shiftwidth=4 softtabstop=4
 #
 # Copyright (c) 2019 Wind River Systems, Inc.
 #
@@ -32,12 +32,12 @@ def refresh_helm_repo_information():
     """
     with open(os.devnull, "w") as fnull:
         try:
-            subprocess.check_call(['sudo', '-u', 'wrsroot',
+            subprocess.check_call(['sudo', '-u', 'sysadmin',
                                    'helm', 'repo', 'update'],
                                   stdout=fnull, stderr=fnull)
         except subprocess.CalledProcessError:
             # Just log an error. Don't stop any callers from further execution.
-            LOG.error("Failed to update helm repo data for user wrsroot.")
+            LOG.error("Failed to update helm repo data for user sysadmin.")
 
 
 def retrieve_helm_releases():

@@ -47,7 +47,7 @@ class openstack::horizon
   user { 'www':
     ensure => 'present',
     shell  => '/sbin/nologin',
-    groups => ['wrs_protected'],
+    groups => ['sys_protected'],
   }
 
   file { '/www/tmp':

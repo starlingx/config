@@ -621,14 +621,14 @@ class ConfigAssistant():
         self.next_lag_index += 1
         return name
 
-    def get_wrsroot_sig(self):
-        """ Get signature for wrsroot user. """
+    def get_sysadmin_sig(self):
+        """ Get signature for sysadmin user. """
 
         # NOTE (knasim): only compute the signature for the entries we're
         # tracking and propagating {password, aging}. This is prevent
         # config-outdated alarms for shadow fields that get modified
         # and we don't track and propagate
-        re_line = re.compile(r'(wrsroot:.*?)\s')
+        re_line = re.compile(r'(sysadmin:.*?)\s')
         with open('/etc/shadow') as shadow_file:
             for line in shadow_file:
                 match = re_line.search(line)
@@ -636,7 +636,7 @@ class ConfigAssistant():
                     # Isolate password(2nd field) and aging(5th field)
                     entry = match.group(1).split(':')
                     entrystr = entry[1] + ":" + entry[4]
-                    self.wrsroot_sig = hashlib.md5(entrystr).hexdigest()
+                    self.sysadmin_sig = hashlib.md5(entrystr).hexdigest()
                     self.passwd_hash = entry[1]
 
     def input_system_mode_config(self):
@@ -2904,8 +2904,8 @@ class ConfigAssistant():
             self.add_password_for_validation('ADMIN_PASSWORD',
                                              self.admin_password)
 
-            if config.has_option('cUSERS', 'WRSROOT_SIG'):
-                raise ConfigFail("The option WRSROOT_SIG is "
+            if config.has_option('cUSERS', 'SYSADMIN_SIG'):
+                raise ConfigFail("The option SYSADMIN_SIG is "
                                  "no longer supported.")
 
             # Licensing configuration
@@ -2914,8 +2914,8 @@ class ConfigAssistant():
                                  "no longer supported")
 
             # Security configuration
-            if config.has_option('cSECURITY', 'CONFIG_WRSROOT_PW_AGE'):
-                raise ConfigFail("The option CONFIG_WRSROOT_PW_AGE is "
+            if config.has_option('cSECURITY', 'CONFIG_SYSADMIN_PW_AGE'):
+                raise ConfigFail("The option CONFIG_SYSADMIN_PW_AGE is "
                                  "no longer supported.")
             if config.has_option('cSECURITY', 'ENABLE_HTTPS'):
                 raise ConfigFail("The option ENABLE_HTTPS is  "

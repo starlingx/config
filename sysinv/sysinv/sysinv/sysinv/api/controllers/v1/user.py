@@ -37,7 +37,7 @@ from wsme import types as wtypes
 
 LOG = log.getLogger(__name__)
 
-IUSERS_ROOT_USERNAME = 'wrsroot'
+IUSERS_ROOT_USERNAME = 'sysadmin'
 
 
 class UserPatchType(types.JsonPatchType):
@@ -300,11 +300,11 @@ class UserController(rest.RestController):
             return User.convert_with_links(rpc_user)
 
         except exception.HTTPNotFound:
-            msg = _("User wrsroot update failed: system %s user %s : patch %s"
+            msg = _("User sysadmin update failed: system %s user %s : patch %s"
                     % (isystem['systemname'], user, patch))
             raise wsme.exc.ClientSideError(msg)
         except exception.KeyError:
-            msg = _("Cannot retrieve shadow entry for wrsroot: system %s : patch %s"
+            msg = _("Cannot retrieve shadow entry for sysadmin: system %s : patch %s"
                     % (isystem['systemname'], patch))
             raise wsme.exc.ClientSideError(msg)
 

@@ -451,12 +451,12 @@ def _replace_in_file(filename, old, new):
     fileinput.close()
 
 
-@patch('controllerconfig.configassistant.ConfigAssistant.get_wrsroot_sig')
+@patch('controllerconfig.configassistant.ConfigAssistant.get_sysadmin_sig')
 def _test_region_config(tmpdir, inputfile, resultfile,
-                        mock_get_wrsroot_sig):
+                        mock_get_sysadmin_sig):
     """ Test import and generation of answerfile """
 
-    mock_get_wrsroot_sig.return_value = None
+    mock_get_sysadmin_sig.return_value = None
 
     # Create the path to the output file
     outputfile = os.path.join(str(tmpdir), 'output')
