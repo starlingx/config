@@ -1317,7 +1317,7 @@ class ConductorManager(service.PeriodicService):
         - Update the puppet hiera data configuration for host
         - Allocates management address if none exists
         - Set up PXE configuration to run installer
-        - Update keystone endpoint on initial controller config
+        - Update grub for AIO before initial unlock
 
         :param context: request context
         :param host: host object
@@ -1340,30 +1340,29 @@ class ConductorManager(service.PeriodicService):
         self._update_pxe_config(host)
         self._ceph_mon_create(host)
 
-        # Apply the manifest to reconfigure the service endpoints and update grub
-        # right before the unlock. The Ansible bootstrap flag only exists during
-        # the bootstrap of the initial controller. It's cleared after the controller
-        # is unlocked.
-        #
-        # The manifest set created here will trigger the unlock after they have
-        # been applied by sysinv agent.
         if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
                 host.availability == constants.AVAILABILITY_ONLINE):
+            # This must be the initial controller host unlock request.
             personalities = [constants.CONTROLLER]
-            config_uuid = self._config_update_hosts(context, personalities)
-            if self._config_is_reboot_required(host.config_target):
-                config_uuid = self._config_set_reboot_required(config_uuid)
-            classes = ['openstack::keystone::endpoint::runtime']
-            if utils.is_aio_system(self.dbapi):
-                classes.extend(['platform::compute::grub::runtime',
-                                'platform::compute::config::runtime'])
-            config_dict = {
-                "personalities": personalities,
-                "host_uuids": [host.uuid],
-                "classes": classes
-            }
-            self._config_apply_runtime_manifest(
-                context, config_uuid, config_dict, force=True)
+            if not utils.is_aio_system(self.dbapi):
+                # Standard system, touch the unlock ready flag
+                cutils.touch(constants.UNLOCK_READY_FLAG)
+            else:
+                # AIO, must update grub before the unlock. Sysinv agent expects
+                # this exact set of manifests in order to touch the unlock ready
+                # flag after they have been applied.
+                config_uuid = self._config_update_hosts(context, personalities)
+                if self._config_is_reboot_required(host.config_target):
+                    config_uuid = self._config_set_reboot_required(config_uuid)
+
+                config_dict = {
+                    "personalities": personalities,
+                    "host_uuids": [host.uuid],
+                    "classes": ['platform::compute::grub::runtime',
+                                'platform::compute::config::runtime']
+                }
+                self._config_apply_runtime_manifest(
+                    context, config_uuid, config_dict, force=True)
 
             # Regenerate config target uuid, node is going for reboot!
             config_uuid = self._config_update_hosts(context, personalities)
@@ -10702,3 +10701,34 @@ class ConductorManager(service.PeriodicService):
 
         """
         return self._app.perform_app_delete(rpc_app)
+
+    def reconfigure_service_endpoints(self, context, host):
+        """Reconfigure the service endpoints upon the creation of initial
+        controller host and management/oam network change during bootstrap
+        playbook play and replay.
+
+        :param contex: request context.
+        :param host: an ihost object
+
+        """
+        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
+                host.hostname == constants.CONTROLLER_0_HOSTNAME):
+
+            controller_0_address = self.dbapi.address_get_by_name(
+                constants.CONTROLLER_0_MGMT)
+            if controller_0_address.address != host.mgmt_ip:
+                self.dbapi.ihost_update(host.uuid,
+                                        {'mgmt_ip': controller_0_address.address})
+
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "host_uuids": [host.uuid],
+                "classes": ['openstack::keystone::endpoint::runtime']
+            }
+            self._config_apply_runtime_manifest(
+                context, config_uuid, config_dict, force=True)
+        else:
+            LOG.error("Received a request to reconfigure service endpoints "
+                      "for host %s under the wrong condition." % host.hostname)

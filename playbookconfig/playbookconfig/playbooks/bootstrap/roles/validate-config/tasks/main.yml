@@ -243,6 +243,15 @@
       controller_0_cluster_host: "{{ cluster_floating_address|ipmath(1) }}"
       controller_1_cluster_host: "{{ cluster_floating_address|ipmath(2) }}"
 
+  - name: Set facts for IP address provisioning against loopback interface
+    set_fact:
+      mgmt_virtual: "{{ derived_network_params.controller_0_address }}/{{ management_subnet_prefix }}"
+      cluster_virtual: "{{ controller_0_cluster_host }}/{{ cluster_subnet_prefix }}"
+      pxe_virtual: "{{ controller_pxeboot_floating_address }}/{{ pxe_subnet_prefix }}"
+      cluster_floating_virtual: "{{ cluster_floating_address }}/{{ cluster_subnet_prefix }}"
+      mgmt_floating_virtual: "{{ controller_floating_address }}/{{ management_subnet_prefix }}"
+      mgmt_nfs_1_virtual: "{{ derived_network_params.nfs_management_address_1 }}/{{ management_subnet_prefix }}"
+      mgmt_nfs_2_virtual: "{{ derived_network_params.nfs_management_address_2 }}/{{ management_subnet_prefix }}"
 
 # Docker config validation
 - block:
@@ -418,6 +427,7 @@
       - "DOCKER_REGISTRIES={{ docker_registries | join(',') }}"
       - "USE_DEFAULT_REGISTRIES={{ use_default_registries }}"
       - "IS_SECURE_REGISTRY={{ is_secure_registry | default(True) }}"
+      - "RECONFIGURE_ENDPOINTS={{ reconfigure_endpoints }}"
 
   - name: Write simplex flag
     file:

@@ -108,7 +108,6 @@ FIRST_BOOT_FLAG = os.path.join(
 PUPPET_HIERADATA_PATH = os.path.join(tsc.PUPPET_PATH, 'hieradata')
 
 LOCK_AGENT_ACTION = 'agent-exclusive-action'
-UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
 
 
 class FakeGlobalSectionHead(object):
@@ -1546,28 +1545,20 @@ class AgentManager(service.PeriodicService):
             LOG.info('Runtime manifest apply completed for classes %s.' %
                      applied_classes)
 
-            # Following an Ansible bootstrap, keystone endpoint manifest needs
-            # to be applied to reconfigure service endpoints from loopback IP
-            # to management/oam floating IPs right before the initial unlock.
-            #
-            # For AIO, grub update manifests must also be applied to account
-            # for any cpu reconfigurations that might have occurred during
-            # initial host bootstrap or configurations.
+            # Following Ansible bootstrap in AIO, grub update manifests must
+            # be applied to account for any cpu reconfigurations that might
+            # have occurred during initial host bootstrap or configurations.
             #
             # NOTE: Don't create and add new puppet manifests to this list.
             # If there are configurations that must be applied
             #    a) during bootstrap, implement in Ansible playbook
             #    b) during initial host configurations, implement in sysinv
             if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
-                    (applied_classes ==
-                         ['openstack::keystone::endpoint::runtime'] or
-                     applied_classes ==
-                         ['openstack::keystone::endpoint::runtime',
-                          'platform::compute::grub::runtime',
-                          'platform::compute::config::runtime'])):
+                    applied_classes == ['platform::compute::grub::runtime',
+                                        'platform::compute::config::runtime']):
                 # Set ready flag for maintenance to proceed with the unlock of
                 # the initial controller.
-                utils.touch(UNLOCK_READY_FLAG)
+                utils.touch(constants.UNLOCK_READY_FLAG)
         except Exception:
             LOG.exception("failed to apply runtime manifest")
             raise

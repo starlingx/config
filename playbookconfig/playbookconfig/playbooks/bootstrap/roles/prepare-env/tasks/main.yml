@@ -155,6 +155,7 @@
       use_docker_proxy: false
       use_unified_registry: false
       restart_services: false
+      reconfigure_endpoints: false
 
   - name: Set initial facts
     set_fact:
@@ -273,7 +274,7 @@
                 (prev_timezone != timezone) or
                 (prev_dns_servers.split(',') | sort != dns_servers | sort)
 
-        - name: Turn on docker reconfiguration flag
+        - name: Turn on docker reconfiguration flag if docker config is changed
           set_fact:
             docker_config_update: true
           when: (prev_docker_registries.split(',') | sort != docker_registries | sort) or
@@ -282,44 +283,49 @@
                   prev_docker_https_proxy != docker_https_proxy or
                   prev_docker_no_proxy != docker_no_proxy))
 
-        - name: Turn on restart services flag if any of the management, cluster and docker settings is changed
+        - name: Turn on service endpoints reconfiguration flag if management and/or oam network config is changed
           set_fact:
-            restart_services: true
+            reconfigure_endpoints: true
           when: (prev_management_subnet != management_subnet) or
-                (prev_cluster_host_subnet != cluster_host_subnet) or
-                (prev_cluster_pod_subnet != cluster_pod_subnet) or
-                (prev_cluster_service_subnet != cluster_service_subnet) or
-                docker_config_update
-
-        - name: Turn on network reconfiguration flag if any of the network related settings is changed
-          set_fact:
-            network_config_update: true
-          when: (prev_pxeboot_subnet != pxeboot_subnet) or
-                (prev_management_subnet != management_subnet) or
-                (prev_cluster_host_subnet != cluster_host_subnet) or
-                (prev_cluster_pod_subnet != cluster_pod_subnet) or
-                (prev_cluster_service_subnet != cluster_service_subnet) or
+                (prev_management_start_address != management_start_address) or
                 (prev_external_oam_subnet != external_oam_subnet) or
                 (prev_external_oam_gateway_address != external_oam_gateway_address) or
                 (prev_external_oam_floating_address != external_oam_floating_address) or
-                (prev_management_multicast_subnet != management_multicast_subnet) or
-                (prev_dynamic_address_allocation != dynamic_address_allocation) or
-                (prev_pxeboot_start_address != pxeboot_start_address) or
-                (prev_pxeboot_end_address != pxeboot_end_address) or
-                (prev_management_start_address != management_start_address) or
-                (prev_management_end_address != management_end_address) or
-                (prev_cluster_host_start_address != cluster_host_start_address) or
-                (prev_cluster_host_end_address != cluster_host_end_address) or
-                (prev_cluster_pod_start_address != cluster_pod_start_address) or
-                (prev_cluster_pod_end_address != cluster_pod_end_address) or
-                (prev_cluster_service_start_address != cluster_service_start_address) or
-                (prev_cluster_service_end_address != cluster_service_end_address) or
                 (prev_external_oam_start_address != external_oam_start_address) or
                 (prev_external_oam_end_address != external_oam_end_address) or
-                (prev_management_multicast_start_address != management_multicast_start_address) or
-                (prev_management_multicast_end_address != management_multicast_end_address) or
                 (prev_external_oam_node_0_address != external_oam_node_0_address) or
                 (prev_external_oam_node_1_address != external_oam_node_1_address)
+
+        - name: Turn on network reconfiguration flag if any of the network related config is changed
+          set_fact:
+            network_config_update: true
+          when: reconfigure_endpoints or
+                (prev_dynamic_address_allocation != dynamic_address_allocation) or
+                (prev_management_end_address != management_end_address) or
+                (prev_pxeboot_subnet != pxeboot_subnet) or
+                (prev_pxeboot_start_address != pxeboot_start_address) or
+                (prev_pxeboot_end_address != pxeboot_end_address) or
+                (prev_management_multicast_subnet != management_multicast_subnet) or
+                (prev_management_multicast_start_address != management_multicast_start_address) or
+                (prev_management_multicast_end_address != management_multicast_end_address) or
+                (prev_cluster_host_subnet != cluster_host_subnet) or
+                (prev_cluster_host_start_address != cluster_host_start_address) or
+                (prev_cluster_host_end_address != cluster_host_end_address) or
+                (prev_cluster_pod_subnet != cluster_pod_subnet) or
+                (prev_cluster_pod_start_address != cluster_pod_start_address) or
+                (prev_cluster_pod_end_address != cluster_pod_end_address) or
+                (prev_cluster_service_subnet != cluster_service_subnet) or
+                (prev_cluster_service_start_address != cluster_service_start_address) or
+                (prev_cluster_service_end_address != cluster_service_end_address)
+
+        - name: Turn on restart services flag if management/oam/cluster network or docker config is changed
+          set_fact:
+            restart_services: true
+          when: reconfigure_endpoints or
+                docker_config_update or
+                (prev_cluster_host_subnet != cluster_host_subnet) or
+                (prev_cluster_pod_subnet != cluster_pod_subnet) or
+                (prev_cluster_service_subnet != cluster_service_subnet)
 
         # Re-evaluate the condition to generate the python keyring
         - name: Turn off save_password flag if admin password has not changed
@@ -327,7 +333,11 @@
             save_password: false
             username: "{{ prev_admin_username }}"
             password: "{{ prev_admin_password }}"
+          # TODO(tngo): there seems to be a puppet/sysinv limitation that prevents password
+          # reconfiguration to work without an extra boot. Temporarily disable
+          # it for replay for now.
           when: prev_admin_password == admin_password|hash('sha1')
+                or replayed
 
         # Re-evaluate condition to persist config data to sysinv database
         - name: Turn off save_config flag if system, network, and docker configurations have not changed
@@ -424,6 +434,7 @@
         network_config_update flag: {{ network_config_update }},
         docker_config_update flag: {{ docker_config_update }},
         restart_services flag:  {{ restart_services }},
+        endpoints_reconfiguration_flag: {{ reconfigure_endpoints }},
         save_password flag: {{ save_password }},
         save_config flag: {{ save_config }},
         skip_play flag: {{ skip_play }}

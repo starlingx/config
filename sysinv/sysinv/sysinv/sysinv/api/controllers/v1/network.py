@@ -316,6 +316,18 @@ class NetworkController(rest.RestController):
 
         self._create_network_addresses(pool, network)
 
+        # If the host has already been created, make an RPC request
+        # reconfigure the service endpoints. As oam network is processed
+        # after management network, check only for NETWORK_TYPE_OAM to
+        # avoid potentially making two reconfigure_service_endpoints
+        # rpc requests in succession.
+        chosts = pecan.request.dbapi.ihost_get_by_personality(
+            constants.CONTROLLER)
+        if (len(chosts) == 1 and
+                network['type'] == constants.NETWORK_TYPE_OAM):
+            pecan.request.rpcapi.reconfigure_service_endpoints(
+                pecan.request.context, chosts[0])
+
         return Network.convert_with_links(result)
 
     @wsme_pecan.wsexpose(NetworkCollection,

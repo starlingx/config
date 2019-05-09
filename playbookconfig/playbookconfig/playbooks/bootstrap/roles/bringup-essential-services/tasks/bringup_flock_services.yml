@@ -5,19 +5,64 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # SUB-TASKS DESCRIPTION:
-#   Start up FM, Maintenance
-#   - Skip auth middleware for FM as it is not functional at this early
-#     stage
+#   - Restart Sysinv agent and api when applicable
+#   - Restart Barbican
+#   - Start up FM, skip auth middleware as it is not functional at this
+#     early stage
+#   - Start up Maintenance Agent
 #   - Restart Maintenance Client to pick the new config which will update
 #     the controller-0 status from offline to online.
 #
 
-- block: # Bring up FM and MTC
+# If this is the initial play, wait for service endpoints reconfiguration to complete
+# and restart sysinv-api and agent to pick up the managment floating IP.
+- block:
+  - name: Wait for service endpoints reconfiguration to complete
+    wait_for:
+      path: /etc/platform/.config_applied
+      state: present
+      timeout: 180
+      msg: Timeout waiting for service endpoints reconfiguration to complete
+
+  - name: Update sysinv API bind host with management floating IP
+    replace:
+      path: /etc/sysinv/sysinv.conf
+      regexp: "sysinv_api_bind_ip=.*$"
+      replace: "sysinv_api_bind_ip={{ controller_floating_address }}"
+
+  - name: Restart sysinv-agent and sysinv-api
+    command: "{{ item }}"
+    with_items:
+      - /etc/init.d/sysinv-agent restart
+      - /usr/lib/ocf/resource.d/platform/sysinv-api reload
+    environment:
+      OCF_ROOT: "/usr/lib/ocf"
+
+  when: not replayed
+
+- block:
+  - name: Update barbican bind host with management floating IP
+    replace:
+      path: /etc/barbican/barbican.conf
+      regexp: "bind_host=.*$"
+      replace: "bind_host={{ controller_floating_address }}"
+
+  - name: Restart barbican
+    systemd:
+      state: restarted
+      name: openstack-barbican-api
+
   - name: Apply workaround for fm-api
     lineinfile:
       path: /etc/fm/api-paste.ini
       line: "pipeline=request_id api_v1"
       regex: "pipeline*"
+
+  - name: Update bind_host config parameter in fm config file
+    replace:
+      path: /etc/fm/fm.conf
+      regexp: "bind_host=.*$"
+      replace: "bind_host={{ controller_floating_address }}"
 
   - name: Restart FM API and bring up FM Manager
     command: "{{ item }}"

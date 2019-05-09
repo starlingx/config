@@ -38,7 +38,8 @@
       name: etcd
       state: restarted
 
-- block: # Revert configurations to loopback interface
+# Revert configuration to loopback interface
+- block:
   - name: Set facts derived from previous network configurations
     set_fact:
       prev_management_subnet_prefix: "{{ prev_management_subnet | ipaddr('prefix') }}"
@@ -63,14 +64,30 @@
       prev_mgmt_virtual: "{{ prev_controller_0_address }}/{{ prev_management_subnet_prefix }}"
       prev_cluster_virtual: "{{ prev_controller_0_cluster_host }}/{{ prev_cluster_subnet_prefix }}"
 
-  - name: Remove loopback interface
+  # Remove previous addresses associated with lo interface except the previous mgmt floating address
+  # as we still need sysinv-api to be reachable at the previous address until the service endpoints
+  # are reconfigured.
+  - name: Remove loopback interface in sysinv db and associated addresses
     shell: "{{ item }}"
     with_items:
       - source /etc/platform/openrc; system host-if-delete controller-0 lo
       - "ip addr delete {{ prev_mgmt_nfs_2_virtual }} dev lo scope host"
       - "ip addr delete {{ prev_mgmt_nfs_1_virtual }} dev lo scope host"
-      - "ip addr delete {{ prev_mgmt_floating_virtual }} dev lo scope host"
       - "ip addr delete {{ prev_cluster_floating_virtual }} dev lo scope host"
       - "ip addr delete {{ prev_pxe_virtual }} dev lo scope host"
       - "ip addr delete {{ prev_mgmt_virtual }} brd {{ management_broadcast }} dev lo:1 scope host"
       - "ip addr delete {{ prev_cluster_virtual }}  brd {{ cluster_broadcast }} dev lo:5 scope host"
+
+- block:
+  - name: Remove the .config_applied flag from previous run before reconfiguring service endpoints
+    file:
+      path: /etc/platform/.config_applied
+      state: absent
+
+  # Enable the new management floating address so that sysinv-api is reachable at this IP when
+  # service endpoints have been reconfigured and sysinv-api restarted.
+  - name: Add the new management address for service endpoints reconfiguration
+    command: ip addr add {{ mgmt_floating_virtual }} dev lo scope host
+    when: mgmt_floating_virtual != prev_mgmt_floating_virtual
+
+  when: reconfigure_endpoints

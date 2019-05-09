@@ -1405,6 +1405,13 @@ class HostController(rest.RestController):
                     pecan.request.rpcapi.configure_ihost(
                         pecan.request.context,
                         controller_ihost)
+                # As part of the initial controller host creation during
+                # Ansible bootstrap, reconfigure the service endpoints to use
+                # the management floating IP instead of the loopback IP.
+                if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
+                    pecan.request.rpcapi.reconfigure_service_endpoints(
+                        pecan.request.context, controller_ihost)
+
                 return Host.convert_with_links(controller_ihost)
 
         if ihost_dict['personality'] in (constants.CONTROLLER, constants.STORAGE):
@@ -4955,7 +4962,8 @@ class HostController(rest.RestController):
 
         hostupdate.configure_required = True
         if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
-                hostupdate.ihost_patch['hostname'] == 'controller-0'):
+                hostupdate.ihost_patch['hostname'] ==
+                    constants.CONTROLLER_0_HOSTNAME):
             # For the first unlock of the initial controller bootstrapped by
             # Ansible, don't notify vim.
             hostupdate.notify_vim = False

@@ -1758,3 +1758,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('perform_app_delete',
                                        rpc_app=rpc_app))
+
+    def reconfigure_service_endpoints(self, context, host):
+        """Synchronously, reconfigure service endpoints upon the creation of
+        initial controller host and management/oam network change during
+        bootstrap playbook play and replay.
+
+        :param context: request context.
+        :param host: an ihost object
+        """
+        return self.call(context,
+                         self.make_msg('reconfigure_service_endpoints',
+                                       host=host))
