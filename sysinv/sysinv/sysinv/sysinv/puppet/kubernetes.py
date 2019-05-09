@@ -157,7 +157,9 @@ class KubernetesPuppet(base.BasePuppet):
         host_memory = self.dbapi.imemory_get_by_ihost(host.id)
         numa_memory = utils.get_numa_index_list(host_memory)
         for node, memory in numa_memory.items():
-            k8s_reserved_mem += memory[0].platform_reserved_mib
+            reserved_mib = memory[0].platform_reserved_mib
+            if reserved_mib is not None:
+                k8s_reserved_mem += reserved_mib
 
         # determine set of nonplatform logical cpus
         # TODO(jgauld): Commented out for now, using host_cpuset instead.
