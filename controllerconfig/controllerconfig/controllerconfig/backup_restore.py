@@ -119,7 +119,7 @@ def get_os_backup_databases():
     """
 
     skip_dbs = ("Database", "information_schema", "performance_schema",
-                "mysql", "horizon", "panko", "aodh", "gnocchi")
+                "mysql", "horizon", "panko", "gnocchi")
 
     try:
         db_cmd = kube_cmd_prefix + mysql_prefix + '-e"show databases" \''
