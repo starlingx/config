@@ -10741,3 +10741,137 @@ itemNotFound (404)
    }
 
 This operation does not accept a request body.
+
+---------------
+Docker Registry
+---------------
+
+These APIs allow the display and delete of images in the local Docker registry
+
+*****************************************
+List images in the local Docker registry
+*****************************************
+
+.. rest_method:: GET /v1/registry_image
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+      :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "registry_images (Optional)", "plain", "xsd:list", "The list of images in the local Docker registry."
+   "tag (Optional)", "plain", "xsd:string", "The image tag for the image"
+   "name (Optional)", "plain", "xsd:string", "The name of the image, including full repo"
+
+::
+
+   {
+      "registry_images": [
+         {
+            "tag": null,
+            "name": "docker.io/port/ceph-config-helper"
+         },
+         {
+            "tag": null,
+            "name": "quay.io/external_storage/rbd-provisioner"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+********************************************************
+List tags of a given image in the local Docker registry
+********************************************************
+
+.. rest_method:: GET /v1/registry_image
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+      :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "image_name", "plain", "csapi:string", "The name of the image, including full repo"
+
+**Response parameters**
+
+.. csv-table::
+      :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "registry_images (Optional)", "plain", "xsd:list", "The list of images in the local Docker registry."
+   "tag (Optional)", "plain", "xsd:string", "The image tag for the image"
+   "name (Optional)", "plain", "xsd:string", "The name of the image, including full repo"
+
+::
+
+   {
+      "registry_images": [
+         {
+            "tag": "v1.10.3",
+            "name": "docker.io/port/ceph-config-helper"
+         }
+      ]
+   }
+
+**********************************************
+Deletes an image in the local Docker registry
+**********************************************
+
+.. rest_method:: DELETE /v1/registry_image
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+      :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "image_name_and_tag", "plain", "csapi:string", "The image name and tag of the form name:tag"
+
+This operation does not accept a request body.
+
+******************************************
+Run the Docker registry garbage collector
+******************************************
+
+.. rest_method:: POST /v1/registry_image
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+      :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "garbage_collect", "plain", "csapi:bool", "run the garbage collect?"
+
+This operation does not accept a request body.

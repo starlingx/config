@@ -64,7 +64,6 @@ TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 DOCKER_REGISTRY_USER = 'admin'
 DOCKER_REGISTRY_SERVICE = 'CGCS'
 DOCKER_REGISTRY_SECRET = 'default-registry-key'
-DOCKER_REGISTRY_PORT = '9001'
 
 
 # Helper functions
@@ -1500,7 +1499,7 @@ class DockerHelper(object):
             cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
                                    constants.NETWORK_TYPE_MGMT)
         ).address
-        registry_server = '{}:{}'.format(registry_ip, DOCKER_REGISTRY_PORT)
+        registry_server = '{}:{}'.format(registry_ip, constants.DOCKER_REGISTRY_PORT)
         return registry_server
 
     def _get_img_tag_with_registry(self, pub_img_tag):

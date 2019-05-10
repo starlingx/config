@@ -85,6 +85,7 @@ from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
 from sysinv.conductor import kube_app
 from sysinv.conductor import openstack
+from sysinv.conductor import docker_registry
 from sysinv.db import api as dbapi
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
@@ -1418,6 +1419,104 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": [constants.WORKER, constants.STORAGE],
             "classes": ['platform::remotelogging::runtime'],
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def _get_docker_registry_addr(self):
+        registry_ip = self.dbapi.address_get_by_name(
+            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                   constants.NETWORK_TYPE_MGMT)
+        ).address
+        registry_server = 'https://{}:{}/v2/'.format(
+            registry_ip, constants.DOCKER_REGISTRY_PORT)
+        return registry_server
+
+    def docker_registry_image_list(self, context):
+        image_list_response = docker_registry.docker_registry_get(
+            "_catalog", self._get_docker_registry_addr())
+
+        if image_list_response.status_code != 200:
+            LOG.error("Bad response from docker registry: %s"
+                % image_list_response.status_code)
+            return []
+
+        image_list_response = image_list_response.json()
+        images = []
+        # responses from the registry looks like this
+        # {u'repositories': [u'meliodas/satesatesate', ...]}
+        # we need to turn that into what we want to return:
+        # [{'name': u'meliodas/satesatesate'}]
+        if 'repositories' not in image_list_response:
+            return images
+
+        image_list_response = image_list_response['repositories']
+        for image in image_list_response:
+            images.append({'name': image})
+
+        return images
+
+    def docker_registry_image_tags(self, context, image_name):
+        image_tags_response = docker_registry.docker_registry_get(
+            "%s/tags/list" % image_name, self._get_docker_registry_addr())
+
+        if image_tags_response.status_code != 200:
+            LOG.error("Bad response from docker registry: %s"
+                % image_tags_response.status_code)
+            return []
+
+        image_tags_response = image_tags_response.json()
+        tags = []
+
+        if 'tags' not in image_tags_response:
+            return tags
+
+        image_tags_response = image_tags_response['tags']
+        # in the case where all tags of an image is deleted but not
+        # garbage collected
+        # the response will contain "tags:null"
+        if image_tags_response is not None:
+            for tag in image_tags_response:
+                tags.append({'name': image_name, 'tag': tag})
+
+        return tags
+
+    # assumes image_name_and_tag is already error checked to contain "name:tag"
+    def docker_registry_image_delete(self, context, image_name_and_tag):
+        image_name_and_tag = image_name_and_tag.split(":")
+
+        # first get the image digest for the image name and tag provided
+        digest_resp = docker_registry.docker_registry_get("%s/manifests/%s"
+            % (image_name_and_tag[0], image_name_and_tag[1]),
+            self._get_docker_registry_addr())
+
+        if digest_resp.status_code != 200:
+            LOG.error("Bad response from docker registry: %s"
+                % digest_resp.status_code)
+            return
+
+        image_digest = digest_resp.headers['Docker-Content-Digest']
+
+        # now delete the image
+        image_delete_response = docker_registry.docker_registry_delete(
+            "%s/manifests/%s" % (image_name_and_tag[0], image_digest),
+            self._get_docker_registry_addr())
+
+        if image_delete_response.status_code != 202:
+            LOG.error("Bad response from docker registry: %s"
+                % digest_resp.status_code)
+            return
+
+    def docker_registry_garbage_collect(self, context):
+        """Run garbage collector"""
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities,
+            [active_controller.uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": [active_controller.uuid],
+            "classes": ['platform::dockerdistribution::garbagecollect']
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 

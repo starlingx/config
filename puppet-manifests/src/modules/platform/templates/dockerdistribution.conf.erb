@@ -7,6 +7,9 @@ storage:
     blobdescriptor: inmemory
   filesystem:
     rootdirectory: /var/lib/docker-distribution
+  maintenance:
+    readonly:
+      enabled: <%= @registry_readonly %>
 http:
   addr: <%= @docker_registry_ip %>:9001
   tls:
