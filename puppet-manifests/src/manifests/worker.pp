@@ -37,6 +37,7 @@ include ::platform::multipath
 include ::platform::client
 include ::platform::ceph::worker
 include ::platform::worker::storage
+include ::platform::pciirqaffinity
 
 class { '::platform::config::worker::post':
   stage => post,
