@@ -13,8 +13,14 @@
 #   - Run kubeadm init
 #   - Prepare admin.conf
 #   - Set k8s environment variable for new shell
+#   - Generate conf files for Multus
+#   - Bring up Multus networking
 #   - Generate conf files for Calico
 #   - Bring up Calico networking
+#   - Generate conf files for SRIOV networking
+#   - Bring up SRIOV networking
+#   - Generate conf files for SRIOV device plugin
+#   - Bring up SRIOV device plugin
 #   - Restrict coredns to master node
 #   - Use anti-affinity for coredns pods
 #   - Remove taint from master node
@@ -160,6 +166,15 @@
     dest: /etc/profile.d/kubeconfig.sh
     remote_src: yes
 
+- name: Create Multus config file
+  copy:
+    src: "{{ multus_yaml_template }}"
+    dest: /etc/kubernetes/multus.yaml
+    remote_src: yes
+
+- name: Activate Multus Networking
+  command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/multus.yaml"
+
 # Configure calico networking using the Kubernetes API datastore.
 - name: Create Calico config file
   copy:
@@ -190,6 +205,24 @@
 
 - name: Activate Calico Networking
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/calico.yaml"
+
+- name: Create SRIOV Networking config file
+  copy:
+    src: "{{ sriov_cni_yaml_template }}"
+    dest: /etc/kubernetes/sriov-cni.yaml
+    remote_src: yes
+
+- name: Activate SRIOV Networking
+  command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriov-cni.yaml"
+
+- name: Create SRIOV device plugin config file
+  copy:
+    src: "{{ sriovdp_daemonset_yaml_template }}"
+    dest: /etc/kubernetes/sriovdp-daemonset.yaml
+    remote_src: yes
+
+- name: Activate SRIOV device plugin
+  command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriovdp-daemonset.yaml"
 
 - name: Restrict coredns to master node
   command: >-

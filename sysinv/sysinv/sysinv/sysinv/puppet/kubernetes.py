@@ -6,6 +6,7 @@
 
 from __future__ import absolute_import
 import os
+import json
 import subprocess
 
 from sysinv.common import constants
@@ -14,6 +15,7 @@ from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 
 from sysinv.puppet import base
+from sysinv.puppet import interface
 
 LOG = logging.getLogger(__name__)
 
@@ -76,6 +78,9 @@ class KubernetesPuppet(base.BasePuppet):
 
         # Update cgroup resource controller parameters for this host
         config.update(self._get_host_k8s_cgroup_config(host))
+
+        # Update PCI device plugin parameters for this host
+        config.update(self._get_host_pcidp_config(host))
 
         if host.personality != constants.WORKER:
             return config
@@ -202,3 +207,66 @@ class KubernetesPuppet(base.BasePuppet):
              })
 
         return config
+
+    def _get_host_pcidp_config(self, host):
+        config = {}
+        if constants.WORKER not in utils.get_personalities(host):
+            return config
+
+        labels = self.dbapi.label_get_by_host(host.uuid)
+        sriovdp_worker = False
+        for l in labels:
+            if (constants.SRIOVDP_LABEL ==
+                    str(l.label_key) + '=' + str(l.label_value)):
+                sriovdp_worker = True
+                break
+
+        if (sriovdp_worker is True):
+            config.update({
+                'platform::kubernetes::worker::pci::pcidp_network_resources':
+                    self._get_pcidp_network_resources(),
+            })
+        return config
+
+    def _get_network_interfaces_by_class(self, ifclass):
+        # Construct a list of all configured interfaces of a particular class
+        interfaces = []
+        for iface in self.context['interfaces'].values():
+            if iface['ifclass'] == ifclass:
+                interfaces.append(iface)
+        return interfaces
+
+    def _get_pcidp_network_resources_by_ifclass(self, ifclass):
+        resources = {}
+
+        interfaces = self._get_network_interfaces_by_class(ifclass)
+        for iface in interfaces:
+            port = interface.get_interface_port(self.context, iface)
+            datanets = interface.get_interface_datanets(self.context, iface)
+            for datanet in datanets:
+                dn_name = datanet['name'].strip()
+                resource = resources.get(dn_name, None)
+                if resource:
+                    # Add to the list of pci addreses for this data network
+                    resource['rootDevices'].append(port['pciaddr'])
+                else:
+                    # PCI addresses don't exist for this data network yet
+                    resource = {dn_name: {
+                        "resourceName": "{}_net_{}".format(
+                            ifclass, dn_name).replace("-", "_"),
+                        "deviceType": "netdevice",
+                        "rootDevices": [port['pciaddr']],
+                        "sriovMode":
+                            ifclass == constants.INTERFACE_CLASS_PCI_SRIOV
+                    }}
+                    resources.update(resource)
+        return list(resources.values())
+
+    def _get_pcidp_network_resources(self):
+        # Construct a list of all PCI passthrough and SRIOV resources
+        # for use with the SRIOV device plugin
+        sriov_resources = self._get_pcidp_network_resources_by_ifclass(
+            constants.INTERFACE_CLASS_PCI_SRIOV)
+        pcipt_resources = self._get_pcidp_network_resources_by_ifclass(
+            constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
+        return json.dumps({'resourceList': sriov_resources + pcipt_resources})
