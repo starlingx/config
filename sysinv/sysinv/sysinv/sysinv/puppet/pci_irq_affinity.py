@@ -20,7 +20,7 @@ class PciIrqAffinityPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         config = {}
 
-        if utils.is_openstack_installed(self.dbapi):
+        if utils.is_openstack_applied(self.dbapi):
             helm_data = helm.HelmOperatorData(self.dbapi)
 
             # The openstack services are authenticated with pod based

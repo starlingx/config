@@ -1183,6 +1183,7 @@ class AppOperator(object):
                                                           overrides_str):
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS)
+                    app.update_active(True)
                     LOG.info("Application (%s) apply completed." % app.name)
                     return True
         except Exception as e:
@@ -1207,6 +1208,7 @@ class AppOperator(object):
         LOG.info("Application (%s) remove started." % app.name)
 
         app.charts = self._get_list_of_charts(app.armada_mfile_abs)
+        app.update_active(False)
         self._update_app_status(
             app, new_progress=constants.APP_PROGRESS_DELETE_MANIFEST)
 
@@ -1229,6 +1231,32 @@ class AppOperator(object):
             self._abort_operation(app, constants.APP_REMOVE_OP)
 
         return False
+
+    def activate(self, rpc_app):
+        app = AppOperator.Application(
+            rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
+        with self._lock:
+            return app.update_active(True)
+
+    def deactivate(self, rpc_app):
+        app = AppOperator.Application(
+            rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
+        with self._lock:
+            return app.update_active(False)
+
+    def get_appname(self, rpc_app):
+        app = AppOperator.Application(
+            rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
+        return app.name
+
+    def is_app_active(self, rpc_app):
+        app = AppOperator.Application(
+            rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
+        return app.active
 
     def perform_app_delete(self, rpc_app):
         """Process application remove request
@@ -1301,11 +1329,22 @@ class AppOperator(object):
         def progress(self):
             return self._kube_app.get('progress')
 
+        @property
+        def active(self):
+            return self._kube_app.get('active')
+
         def update_status(self, new_status, new_progress):
             self._kube_app.status = new_status
             if new_progress:
                 self._kube_app.progress = new_progress
             self._kube_app.save()
+
+        def update_active(self, active):
+            was_active = self.active
+            if active != self.active:
+                self._kube_app.active = active
+                self._kube_app.save()
+            return was_active
 
         def regenerate_manifest_filename(self, new_mname, new_mfile):
             self._kube_app.manifest_name = new_mname

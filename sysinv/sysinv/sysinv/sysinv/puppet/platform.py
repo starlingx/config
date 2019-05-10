@@ -83,6 +83,7 @@ class PlatformPuppet(base.BasePuppet):
 
     def _get_system_config(self):
         system = self._get_system()
+        application_applied = utils.is_openstack_applied(self.dbapi)
 
         return {
             'platform::params::controller_upgrade': False,
@@ -91,6 +92,7 @@ class PlatformPuppet(base.BasePuppet):
             'platform::params::security_feature': system.security_feature,
             'platform::config::params::timezone': system.timezone,
             'platform::params::vswitch_type': self._vswitch_type(),
+            'platform::params::stx_openstack_applied': application_applied,
         }
 
     def _get_hosts_config(self, host):

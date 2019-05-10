@@ -23,6 +23,7 @@ class platform::params (
   $vswitch_type = undef,
   $security_profile = undef,
   $security_feature = undef,
+  $stx_openstack_applied = false,
 ) {
   $ipv4 = 4
   $ipv6 = 6

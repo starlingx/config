@@ -2479,8 +2479,7 @@ class HostController(rest.RestController):
                 db_app.progress = None
                 db_app.save()
                 pecan.request.rpcapi.perform_app_apply(
-                    pecan.request.context, db_app,
-                    app_not_already_applied=False, mode=None)
+                    pecan.request.context, db_app, mode=None)
             else:
                 LOG.info("%s system app is present but not applied, "
                          "skipping re-apply" % constants.HELM_APP_OPENSTACK)
