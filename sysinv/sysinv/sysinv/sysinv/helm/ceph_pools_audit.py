@@ -58,11 +58,11 @@ class CephPoolsAuditHelm(base.BaseHelm):
 
             # Tier config needed for the overrides.
             tier_cfg = {
-                    "name": bk.name.encode('utf8', 'strict'),
-                    "replication": int(bk.capabilities.get("replication")),
-                    "min_replication": int(bk.capabilities.get("min_replication")),
-                    "crush_ruleset": rule_name.encode('utf8', 'strict'),
-                  }
+                "name": bk.name.encode('utf8', 'strict'),
+                "replication": int(bk.capabilities.get("replication")),
+                "min_replication": int(bk.capabilities.get("min_replication")),
+                "crush_rule_name": rule_name.encode('utf8', 'strict'),
+            }
             tiers_cfg.append(tier_cfg)
 
         overrides = {
