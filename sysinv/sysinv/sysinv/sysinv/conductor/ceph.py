@@ -108,9 +108,9 @@ class CephOperator(object):
 
         return rc
 
-    def _get_fsid(self):
+    def _get_fsid(self, timeout=10):
         try:
-            response, fsid = self._ceph_api.fsid(body='text', timeout=10)
+            response, fsid = self._ceph_api.fsid(body='text', timeout=timeout)
         except Exception as e:
             LOG.warn("ceph_api.fsid failed: " + str(e))
             return None
@@ -964,6 +964,40 @@ class CephOperator(object):
             raise e
         else:
             return body["output"]
+
+    def have_ceph_monitor_access(self, timeout=5):
+        """ Verify that ceph monitor access will not timeout.
+
+        :param timeout: Time in seconds to wait for the REST API request to
+            respond.
+        """
+        available_mons = 0
+        monitors = self._db_api.ceph_mon_get_list()
+        for m in monitors:
+            try:
+                ihost = self._db_api.ihost_get_by_hostname(m.hostname)
+            except exception.NodeNotFound:
+                LOG.error("Monitor host %s not found" % m.hostname)
+                continue
+
+            if (ihost['administrative'] == constants.ADMIN_UNLOCKED and
+                    ihost['operational'] == constants.OPERATIONAL_ENABLED):
+                available_mons += 1
+
+        # Avoid calling the ceph rest_api until we have a minimum configuration
+        check_access = False
+        if utils.is_aio_system(self._db_api) and available_mons > 0:
+            # one monitor: need it available
+            check_access = True
+        elif available_mons > 1:
+            # three monitors: need two available
+            check_access = True
+
+        LOG.debug("Checking ceph monitors. Available: %s. Check cluster: "
+                 "access %s" % (available_mons, check_access))
+        if check_access:
+            return True if self._get_fsid(timeout) else False
+        return False
 
     def get_ceph_cluster_info_availability(self):
         # TODO(CephPoolsDecouple): rework
