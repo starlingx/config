@@ -89,7 +89,6 @@ from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.helm import common as helm_common
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
 from sysinv.openstack.common.gettextutils import _
@@ -3339,26 +3338,6 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
-    def _semantic_check_vswitch_type_attributes(ihost):
-        """
-        Perform semantic checks host label openstack-compute-node if ovs or ovs-dpdk
-        vswitch type is enabled since allocating 2M hugepage is needed
-        validity of the node configuration prior to unlocking it.
-        """
-        vswitch_type = utils.get_vswitch_type()
-        if vswitch_type == constants.VSWITCH_TYPE_NONE:
-            return
-
-        # Check whether compute_label has been assigned
-        if utils.is_openstack_compute(ihost) is not True:
-            raise wsme.exc.ClientSideError(
-                _("Can not unlock worker host %s without "
-                  " %s label if config %s. Action: assign "
-                  "%s label for this host prior to unlock."
-                  % (ihost['hostname'], helm_common.LABEL_COMPUTE_LABEL,
-                    vswitch_type, helm_common.LABEL_COMPUTE_LABEL)))
-
-    @staticmethod
     def _semantic_check_data_vrs_attributes(ihost):
         """
         Perform semantic checks against data-vrs specific attributes to ensure
@@ -5214,7 +5193,6 @@ class HostController(rest.RestController):
             self._semantic_check_data_interfaces(ihost,
                                                  kubernetes_config,
                                                  force_unlock)
-            self._semantic_check_vswitch_type_attributes(ihost)
         else:
             # sdn configuration check
             self._semantic_check_sdn_attributes(ihost)
