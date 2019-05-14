@@ -35,6 +35,8 @@ class platform::nfv {
   include ::nfv
   include ::nfv::vim
   include ::nfv::nfvi
+  include ::nfv::alarm
+  include ::nfv::event_log
 }
 
 
