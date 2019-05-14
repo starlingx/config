@@ -1405,6 +1405,7 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Deleting ceph monitor for host %s"
                      % str(host.hostname))
             self.dbapi.ceph_mon_destroy(mon[0].uuid)
+            self._ceph.remove_ceph_monitor(host.hostname)
         else:
             LOG.info("No ceph monitor present for host %s. "
                      "Skipping deleting ceph monitor."

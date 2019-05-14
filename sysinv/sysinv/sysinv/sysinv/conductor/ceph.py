@@ -1543,3 +1543,13 @@ class CephOperator(object):
                                            'Reason: %(reason)s') % {
                                                'pool_name': pool['pool_name'],
                                                'reason': str(e.message)})
+
+    def remove_ceph_monitor(self, hostname, timeout=None):
+        try:
+            response, body = self._ceph_api.mon_remove(hostname, body='json',
+                timeout=timeout)
+            if not response.ok:
+                LOG.error("Remove monitor error reponse: {} {}"
+                    .format(response, body))
+        except Exception as e:
+            LOG.error("Exception in removing monitor: {}".format(e))
