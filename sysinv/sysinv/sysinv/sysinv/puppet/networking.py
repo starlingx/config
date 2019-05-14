@@ -181,6 +181,8 @@ class NetworkingPuppet(base.BasePuppet):
         if network_interface:
             interface_name = interface.get_interface_os_ifname(
                 self.context, network_interface)
+            interface_devices = interface.get_interface_devices(
+                self.context, network_interface)
             network_id = interface.find_network_id_by_networktype(
                 self.context, networktype)
             # Convert the dash to underscore because puppet parameters cannot
@@ -189,6 +191,8 @@ class NetworkingPuppet(base.BasePuppet):
             config.update({
                 'platform::network::%s::params::interface_name' % networktype:
                     interface_name,
+                'platform::network::%s::params::interface_devices' % networktype:
+                    interface_devices,
                 'platform::network::%s::params::mtu' % networktype:
                     network_interface.imtu
             })

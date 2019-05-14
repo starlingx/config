@@ -6,12 +6,10 @@ class platform::ptp (
 ) {
   if $::platform::params::personality == 'controller' {
     include ::platform::network::oam::params
-    $oam_interface      = $::platform::network::oam::params::interface_name
-    $slave_interface    = split($oam_interface, '[.]')[0]
+    $slave_interfaces   = $::platform::network::oam::params::interface_devices
     $slave_subnet       = $::platform::network::oam::params::subnet_version
     include ::platform::network::mgmt::params
-    $mgmt_interface     = $::platform::network::mgmt::params::interface_name
-    $master_interface   = split($mgmt_interface, '[.]')[0]
+    $master_interfaces  = $::platform::network::mgmt::params::interface_devices
     $master_subnet      = $::platform::network::mgmt::params::subnet_version
     if $::platform::params::system_type == 'All-in-one' {
       $slave_only = true
@@ -20,8 +18,7 @@ class platform::ptp (
     }
   } else {
     include ::platform::network::mgmt::params
-    $mgmt_interface     = $::platform::network::mgmt::params::interface_name
-    $slave_interface    = split($mgmt_interface, '[.]')[0]
+    $slave_interfaces   = $::platform::network::mgmt::params::interface_devices
     $slave_subnet       = $::platform::network::mgmt::params::subnet_version
     $slave_only = true
   }
