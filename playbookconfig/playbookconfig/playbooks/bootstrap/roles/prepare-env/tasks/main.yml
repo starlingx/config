@@ -397,20 +397,20 @@
     fail:
       msg: >-
            Only one branding tarball is permitted in /opt/branding. Refer to
-           the branding readme in the SDK.
+           the branding section of the documentation.
     when: find_tar_result.matched > 1
 
   - name: Look for other branding files
     find:
       paths: /opt/branding
-      excludes: '*.tgz,applied,horizon-region-exclusions.csv'
+      excludes: '*.tgz,applied'
     register: find_result
 
   - name: Fail if the branding filename is not valid
     fail:
       msg: >
         {{ find_result.files[0].path }} is not a valid branding
-        filename. Refer to the branding readme in the SDK.
+        filename. Refer to the branding section of the documentation.
     when: find_result.matched > 0
 
   - name: Mark environment as Ansible bootstrap

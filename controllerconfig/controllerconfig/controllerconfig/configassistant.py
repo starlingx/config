@@ -3574,17 +3574,18 @@ class ConfigAssistant():
         """ Verify the constraints for custom branding procedure """
         found = False
         for f in os.listdir('/opt/branding'):
-            if f in ['applied', 'horizon-region-exclusions.csv']:
+            if f == 'applied':
                 continue
             if not f.endswith('.tgz'):
                 raise ConfigFail('/opt/branding/%s is not a valid branding '
-                                 'file name, refer '
-                                 'to the branding readme in the SDK' % f)
+                                 'file name, refer to the branding section '
+                                 'of the documentation' % f)
             else:
                 if found:
                     raise ConfigFail(
                         'Only one branding tarball is permitted in /opt/'
-                        'branding, refer to the branding readme in the SDK')
+                        'branding, refer to the branding section of the '
+                        'documentation')
                 found = True
 
     def persist_local_config(self):
