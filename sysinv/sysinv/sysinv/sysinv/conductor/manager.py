@@ -5079,6 +5079,19 @@ class ConductorManager(service.PeriodicService):
                           "Preventing managed application actions.".format(e))
             return True
 
+        def _met_app_apply_prerequisites(app_name):
+            prereqs_met = False
+            if app_name == constants.HELM_APP_PLATFORM:
+                # make sure for the ceph related apps that we have ceph access
+                # and the crushmap is applied to correctly set up related k8s
+                # resources.
+                crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
+                    constants.CEPH_CRUSH_MAP_APPLIED)
+                if (os.path.isfile(crushmap_flag_file) and
+                        self._ceph.have_ceph_monitor_access()):
+                    prereqs_met = True
+            return prereqs_met
+
         LOG.debug("Periodic Task: _k8s_application_audit: Starting")
         # Make sure that the active controller is unlocked/enabled. Only
         # install an application if the controller has been provisioned.
@@ -5149,6 +5162,11 @@ class ConductorManager(service.PeriodicService):
                 # Action: Raise alarm?
                 pass
             elif status == constants.APP_UPLOAD_SUCCESS:
+                if not _met_app_apply_prerequisites(app_name):
+                    LOG.info("Platform managed application %s: Prerequisites "
+                             "not met." % app_name)
+                    continue
+
                 if _patching_operation_is_occurring():
                     continue
 
