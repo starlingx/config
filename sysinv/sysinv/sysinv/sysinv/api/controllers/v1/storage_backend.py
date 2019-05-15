@@ -22,9 +22,7 @@
 
 import jsonpatch
 import pecan
-import subprocess
 
-from pecan import expose
 from pecan import rest
 
 import wsme
@@ -183,144 +181,12 @@ class StorageBackendController(rest.RestController):
 
     _custom_actions = {
         'detail': ['GET'],
-        'summary': ['GET'],
-        'usage': ['GET']
+        'summary': ['GET']
     }
 
     def __init__(self, from_isystems=False):
         self._from_isystems = from_isystems
         self._tier_lookup = {}
-
-    def _get_service_name(self, name):
-        """map the pool name to known service name."""
-
-        if constants.CEPH_POOL_VOLUMES_NAME in name:
-            return constants.SB_SVC_CINDER
-        elif constants.CEPH_POOL_IMAGES_NAME in name:
-            return constants.SB_SVC_GLANCE
-        elif constants.CEPH_POOL_EPHEMERAL_NAME in name:
-            return constants.SB_SVC_NOVA
-        elif constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL in name:
-            return constants.SB_SVC_SWIFT
-        elif constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER in name:
-            return constants.SB_SVC_SWIFT
-
-        return None
-
-    def _build_fs_entry_for_glance(self):
-
-        command = '/usr/bin/df'
-        # always display multiple of kilo-bytes (powers of 1024)
-        opts = '-hBK'
-        # GLANCE_IMAGE_PATH is '/opt/cgcs/glance/images'
-        args = constants.GLANCE_IMAGE_PATH
-        glance_fs_command = "{0} {1} {2}".format(command, opts, args)
-
-        try:
-            process = subprocess.Popen(glance_fs_command,
-                                       stdout=subprocess.PIPE,
-                                       shell=True)
-        except Exception as e:
-            LOG.error("Could not retrieve df information: %s" % e)
-            return ""
-
-        output = process.stdout.read()
-        fs_list = [_f for _f in output.split('\n') if _f]
-        output = fs_list[1].split()
-        mib = float(1024 * 1024)
-        total = round(float(output[1].strip('K')) / mib, 2)
-        free = round(float(output[3].strip('K')) / mib, 2)
-        dt = dict(service_name=constants.SB_SVC_GLANCE,
-                  name=constants.SB_DEFAULT_NAMES[constants.SB_TYPE_FILE],
-                  backend=constants.SB_TYPE_FILE,
-                  total_capacity=total,
-                  free_capacity=free)
-
-        return dt
-
-    def _build_lvm_entry(self, lvm_pool):
-        """Create a lvm usage summary"""
-        if lvm_pool:
-            # total and free are in Gib already
-            # even though the attribute name has _gb suffix.
-            total = float(lvm_pool['capabilities']['total_capacity_gb'])
-            free = float(lvm_pool['capabilities']['free_capacity_gb'])
-            dt = dict(service_name=constants.SB_SVC_CINDER,
-                      name=constants.SB_DEFAULT_NAMES[constants.SB_TYPE_LVM],
-                      backend=constants.SB_TYPE_LVM,
-                      total_capacity=round(total, 2),
-                      free_capacity=round(free, 2))
-
-            return dt
-
-        return {}
-
-    def _build_ceph_entry(self, backend_name, tier_name, ceph_pool):
-        """Create a ceph usage summary"""
-
-        if ceph_pool:
-            name = ceph_pool['name']
-
-            # No need to build entry for rbd pool
-            if name == 'rbd':
-                return {}
-
-            # Skip secondary tier names display pools for the primary tier
-            if api_helper.is_primary_ceph_backend(backend_name):
-                if name not in [constants.CEPH_POOL_VOLUMES_NAME,
-                                constants.CEPH_POOL_IMAGES_NAME,
-                                constants.CEPH_POOL_EPHEMERAL_NAME,
-                                constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER,
-                                constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL]:
-                    return {}
-            else:
-                # Only show the pools for this specific secondary tier
-                if not name.endswith(tier_name):
-                    return {}
-
-            # get quota from pool name
-            osd_pool_quota = \
-                pecan.request.rpcapi.get_osd_pool_quota(pecan.request.context, name)
-
-            quota = osd_pool_quota['max_bytes']
-            stats = ceph_pool['stats']
-            usage = stats['bytes_used']
-
-            # A quota of 0 means that the service using the pool can use any
-            # unused space in the cluster effectively eating into
-            # quota assigned to other pools.
-            free = 0
-            total = 0
-            gib = 1024 * 1024 * 1024
-            if quota > 0:
-                free = quota - usage
-                total = free + usage
-                total = int(round(total / gib, 2))
-                free = int(round(free / gib, 2))
-                quota = int(round(quota / gib, 2))
-                usage = int(round(usage / gib, 2))
-            else:
-                try:
-                    max_avail = ceph_pool['stats']['max_avail']
-
-                    # calculate cluster total and usage
-                    total = max_avail + usage
-                    usage = int(round(usage / gib, 2))
-                    total = int(round(total / gib, 2))
-                    free = int(round(max_avail / gib, 2))
-
-                except Exception as e:
-                    LOG.error("Error: : %s" % e)
-            service = self._get_service_name(ceph_pool['name'])
-            if service:
-                dt = dict(service_name=service,
-                          name=backend_name,
-                          backend=constants.SB_TYPE_CEPH,
-                          total_capacity=total,
-                          free_capacity=free)
-                return dt
-
-        return {}
 
     def _get_storage_backend_collection(self, isystem_uuid, marker, limit,
                                         sort_key, sort_dir, expand=False,
@@ -430,44 +296,6 @@ class StorageBackendController(rest.RestController):
     def detail(self):
         """Retrieve a list of storage_backends with detail."""
         raise wsme.exc.ClientSideError(_("detail not implemented."))
-
-    @expose('json')
-    def usage(self):
-        """Retrieve usage summary"""
-        storage_backends = pecan.request.dbapi.storage_backend_get_list()
-
-        res = []
-        pools_usage = None
-        for s_b in storage_backends:
-            if s_b.backend == constants.SB_TYPE_CEPH:
-                # Get the ceph object
-                tier_name = self._tier_lookup.get(s_b.id, None)
-                if not tier_name:
-                    ceph_obj = pecan.request.dbapi.storage_ceph_get(s_b.id)
-                    tier_name = self._tier_lookup[s_b.id] = ceph_obj.tier_name
-
-                # Get ceph usage if needed
-                if not pools_usage:
-                    pools_usage = pecan.request.rpcapi.get_ceph_pools_df_stats(
-                        pecan.request.context)
-
-                if pools_usage:
-                    for p in pools_usage:
-                        entry = self._build_ceph_entry(s_b.name, tier_name, p)
-                        if entry:
-                            res.append(entry)
-            elif s_b.backend == constants.SB_TYPE_LVM:
-                cinder_lvm_pool = \
-                    pecan.request.rpcapi.get_cinder_lvm_usage(pecan.request.context)
-
-                if cinder_lvm_pool:
-                    entry = self._build_lvm_entry(cinder_lvm_pool)
-                    if entry:
-                        res.append(entry)
-            elif s_b.backend == constants.SB_TYPE_FILE:
-                if s_b.services and constants.SB_SVC_GLANCE in s_b.services:
-                    res.append(self._build_fs_entry_for_glance())
-        return res
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(types.uuid, [StorageBackendPatchType])

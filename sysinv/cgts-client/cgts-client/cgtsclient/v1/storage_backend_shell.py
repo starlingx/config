@@ -24,18 +24,6 @@ def _list_formatter(values):
         return None
 
 
-def do_storage_usage_list(cc, args):
-
-    """List storage backends and their use."""
-
-    usage = cc.storage_backend.usage()
-    field_labels = ['backend type', 'backend name', 'service',
-                    'free capacity (GiB)', 'total capacity (GiB)']
-    fields = ['backend', 'name', 'service_name', 'free_capacity',
-              'total_capacity']
-    utils.print_list(usage, fields, field_labels, sortby=0)
-
-
 @utils.arg('--asdict',
            action='store_true',
            default=False,
