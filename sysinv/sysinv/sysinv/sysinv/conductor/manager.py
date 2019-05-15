@@ -1317,6 +1317,7 @@ class ConductorManager(service.PeriodicService):
         - Update the puppet hiera data configuration for host
         - Allocates management address if none exists
         - Set up PXE configuration to run installer
+        - Update keystone endpoint on initial controller config
 
         :param context: request context
         :param host: host object
@@ -1350,6 +1351,8 @@ class ConductorManager(service.PeriodicService):
                 host.availability == constants.AVAILABILITY_ONLINE):
             personalities = [constants.CONTROLLER]
             config_uuid = self._config_update_hosts(context, personalities)
+            if self._config_is_reboot_required(host.config_target):
+                config_uuid = self._config_set_reboot_required(config_uuid)
             classes = ['openstack::keystone::endpoint::runtime']
             if utils.is_aio_system(self.dbapi):
                 classes.extend(['platform::compute::grub::runtime',
@@ -1361,6 +1364,12 @@ class ConductorManager(service.PeriodicService):
             }
             self._config_apply_runtime_manifest(
                 context, config_uuid, config_dict, force=True)
+
+            # Regenerate config target uuid, node is going for reboot!
+            config_uuid = self._config_update_hosts(context, personalities)
+            if self._config_is_reboot_required(host.config_target):
+                config_uuid = self._config_set_reboot_required(config_uuid)
+            self._puppet.update_host_config(host, config_uuid)
 
     def _ceph_mon_create(self, host):
         if not StorageBackendConfig.has_backend(
