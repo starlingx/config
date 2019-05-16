@@ -65,6 +65,9 @@ class FunctionalTest(base.TestCase):
         # Determine where we are so we can set up paths in the config
         root_dir = self.path_get()
 
+        # pecan warns: `static_root` is only used when `debug` is True
+        # which is set by CONF.debug
+        cfg.CONF.set_override("debug", True)
         self.config = {
             'app': {
                 'root': 'sysinv.api.controllers.root.RootController',
