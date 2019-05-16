@@ -39,7 +39,7 @@ spec:
       serviceAccountName: sriov-device-plugin
       containers:
       - name: kube-sriovdp
-        image: nfvpe/sriov-device-plugin:latest
+        image: <%= @docker_registry %>/nfvpe/sriov-device-plugin:latest
         args:
         - --log-level=10
         securityContext:

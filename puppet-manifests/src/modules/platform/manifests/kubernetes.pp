@@ -195,6 +195,14 @@ class platform::kubernetes::master::init
     $quay_registry = 'quay.io'
   }
 
+  # This is used for device plugin images in template multus.yaml.erb,
+  # sriov-cni.yaml.erb and sriovdp-daemonset.yaml.erb
+  if $::platform::docker::params::docker_registry {
+    $docker_registry = $::platform::docker::params::docker_registry
+  } else {
+    $docker_registry = 'docker.io'
+  }
+
   if str2bool($::is_initial_config_primary) {
     # For initial controller install, configure kubernetes from scratch.
     $resolv_conf = '/etc/resolv.conf'

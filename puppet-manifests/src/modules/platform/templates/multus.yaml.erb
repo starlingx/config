@@ -131,7 +131,7 @@ spec:
       serviceAccountName: multus
       containers:
       - name: kube-multus
-        image: nfvpe/multus:v3.2
+        image: <%= @docker_registry %>/nfvpe/multus:v3.2
         env:
           - name: KUBERNETES_NODE_NAME
             valueFrom:

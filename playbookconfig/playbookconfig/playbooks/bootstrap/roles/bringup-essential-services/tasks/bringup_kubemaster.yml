@@ -39,12 +39,6 @@
     - net.bridge.bridge-nf-call-iptables = 1
 
 - block:
-  - name: Set image repository to unified registry for kubelet
-    lineinfile:
-      path: /etc/sysconfig/kubelet
-      line: KUBELET_EXTRA_ARGS=--pod-infra-container-image=$DOCKER_REGISTRY_IP/pause:3.1
-      create: yes
-
   - block:
     - name: Create daemon.json file for insecure registry
       copy:
@@ -54,7 +48,7 @@
         mode: 0644
 
     - name: Update daemon.json with registry IP
-      command: "sed -i -e 's|<%= @insecure_registries %>|'$DOCKER_REGISTRY_IP'|g' /etc/docker/daemon.json"
+      command: "sed -i -e 's|<%= @insecure_registries %>|\"$DOCKER_REGISTRY_IP\"|g' /etc/docker/daemon.json"
       args:
         warn: false
 
@@ -172,6 +166,23 @@
     dest: /etc/kubernetes/multus.yaml
     remote_src: yes
 
+- name: Update Multus config file
+  command: "{{ item }}"
+  args:
+    warn: false
+  with_items:
+    - "sed -i -e 's|<%= @docker_registry %>|'$DOCKER_REGISTRY'|g' /etc/kubernetes/multus.yaml"
+  environment:
+    DOCKER_REGISTRY: "{{ default_docker_registry }}"
+
+- name: Update Multus yaml file with new registry info if unified registry is used
+  command: "sed -i -e 's|{{ default_docker_registry }}|'$DOCKER_REGISTRY'|g' /etc/kubernetes/multus.yaml"
+  args:
+    warn: false
+  environment:
+    DOCKER_REGISTRY: "{{ docker_registries[0] }}"
+  when: use_unified_registry
+
 - name: Activate Multus Networking
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/multus.yaml"
 
@@ -212,6 +223,23 @@
     dest: /etc/kubernetes/sriov-cni.yaml
     remote_src: yes
 
+- name: Update SRIOV Networking config file
+  command: "{{ item }}"
+  args:
+    warn: false
+  with_items:
+    - "sed -i -e 's|<%= @docker_registry %>|'$DOCKER_REGISTRY'|g' /etc/kubernetes/sriov-cni.yaml"
+  environment:
+    DOCKER_REGISTRY: "{{ default_docker_registry }}"
+
+- name: Update SRIOV Networking yaml file with new registry info if unified registry is used
+  command: "sed -i -e 's|{{ default_docker_registry }}|'$DOCKER_REGISTRY'|g' /etc/kubernetes/sriov-cni.yaml"
+  args:
+    warn: false
+  environment:
+    DOCKER_REGISTRY: "{{ docker_registries[0] }}"
+  when: use_unified_registry
+
 - name: Activate SRIOV Networking
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriov-cni.yaml"
 
@@ -220,6 +248,23 @@
     src: "{{ sriovdp_daemonset_yaml_template }}"
     dest: /etc/kubernetes/sriovdp-daemonset.yaml
     remote_src: yes
+
+- name: Update SRIOV device plugin config file
+  command: "{{ item }}"
+  args:
+    warn: false
+  with_items:
+    - "sed -i -e 's|<%= @docker_registry %>|'$DOCKER_REGISTRY'|g' /etc/kubernetes/sriovdp-daemonset.yaml"
+  environment:
+    DOCKER_REGISTRY: "{{ default_docker_registry }}"
+
+- name: Update SRIOV device plugin yaml file with new registry info if unified registry is used
+  command: "sed -i -e 's|{{ default_docker_registry }}|'$DOCKER_REGISTRY'|g' /etc/kubernetes/sriovdp-daemonset.yaml"
+  args:
+    warn: false
+  environment:
+    DOCKER_REGISTRY: "{{ docker_registries[0] }}"
+  when: use_unified_registry
 
 - name: Activate SRIOV device plugin
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriovdp-daemonset.yaml"
