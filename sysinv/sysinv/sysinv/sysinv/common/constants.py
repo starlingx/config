@@ -623,11 +623,13 @@ NETWORK_TYPE_CLUSTER_SERVICE = 'cluster-service'
 NETWORK_TYPE_PCI_PASSTHROUGH = 'pci-passthrough'
 NETWORK_TYPE_PCI_SRIOV = 'pci-sriov'
 NETWORK_TYPE_PXEBOOT = 'pxeboot'
+NETWORK_TYPE_IRONIC = 'ironic'
 
 PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_MGMT,
                           NETWORK_TYPE_OAM,
-                          NETWORK_TYPE_CLUSTER_HOST]
+                          NETWORK_TYPE_CLUSTER_HOST,
+                          NETWORK_TYPE_IRONIC]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]

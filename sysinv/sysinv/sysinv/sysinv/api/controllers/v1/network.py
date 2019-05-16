@@ -51,6 +51,7 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_CLUSTER_HOST,
                          constants.NETWORK_TYPE_CLUSTER_POD,
                          constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                         constants.NETWORK_TYPE_IRONIC,
                          ]
 
 
@@ -180,6 +181,8 @@ class NetworkController(rest.RestController):
             addresses = self._create_oam_network_address(pool)
         elif network['type'] == constants.NETWORK_TYPE_MULTICAST:
             addresses = self._create_multicast_network_address()
+        elif network['type'] == constants.NETWORK_TYPE_IRONIC:
+            addresses = self._create_ironic_network_address()
         elif network['type'] == constants.NETWORK_TYPE_SYSTEM_CONTROLLER:
             addresses = self._create_system_controller_network_address(pool)
 
@@ -251,6 +254,13 @@ class NetworkController(rest.RestController):
 
     def _create_system_controller_network_address(self, pool):
         addresses = {}
+        return addresses
+
+    def _create_ironic_network_address(self):
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
         return addresses
 
     def _populate_network_addresses(self, pool, network, addresses):
