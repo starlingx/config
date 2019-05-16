@@ -4867,10 +4867,13 @@ class HostController(rest.RestController):
                 _("Can not 'Reinstall' an 'unlocked' host %s; "
                   "Please 'Lock' first" % hostupdate.displayid))
         elif ((ihost['administrative'] == constants.ADMIN_LOCKED) and
-           (ihost['availability'] != "online")):
+                (ihost['availability'] != "online") and
+                (ihost['bm_type'] is None)):
             raise wsme.exc.ClientSideError(
-                _("Can not 'Reinstall' %s while it is 'offline'. "
-                  "Please wait for this host's availability state "
+                _("Can not 'Reinstall' %s while it is 'offline' "
+                  "and a board management controller is not provisioned. "
+                  "Please provision a board management controller "
+                  "or wait for this host's availability state "
                   "to be 'online' and then re-issue the reinstall "
                   "command." % hostupdate.displayid))
         hostupdate.configure_required = True
