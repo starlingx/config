@@ -13,7 +13,6 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from sysinv import objects
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
@@ -28,11 +27,20 @@ class HelmChartsController(rest.RestController):
     def get_all(self):
         """Provides information about the available charts to override."""
 
-        namespaces = pecan.request.rpcapi.get_helm_application_namespaces(
-            pecan.request.context, constants.HELM_APP_OPENSTACK)
-        charts = [{'name': chart, 'namespaces': namespaces[chart]}
-                  for chart in namespaces]
+        supported_apps = pecan.request.rpcapi.get_helm_applications(
+            pecan.request.context)
+        all_charts = {}
+        for app in supported_apps:
+            namespaces = pecan.request.rpcapi.get_helm_application_namespaces(
+                pecan.request.context, app)
+            for chart in namespaces:
+                if chart not in all_charts:
+                    all_charts[chart] = namespaces[chart]
+                else:
+                    all_charts[chart] = list(set().union(all_charts[chart],
+                                                         namespaces[chart]))
 
+        charts = [{'name': c, 'namespaces': ns} for c, ns in all_charts.items()]
         return {'charts': charts}
 
     @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text)

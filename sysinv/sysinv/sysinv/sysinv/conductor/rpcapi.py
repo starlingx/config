@@ -1627,6 +1627,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        chart_name=chart_name,
                                        cnamespace=cnamespace))
 
+    def get_helm_applications(self, context):
+
+        """Get supported applications.
+
+        :returns: a list of suppotred applications that associated overrides may
+            be provided.
+        """
+        return self.call(context,
+                         self.make_msg('get_helm_applications'))
+
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.
 

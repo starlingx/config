@@ -82,6 +82,8 @@ data:
           echo"Error creating secret ${CEPH_USER_SECRET} in ${NAMESPACE}, exit"
           exit 1
         fi
+      else
+        echo "Secret ${CEPH_USER_SECRET} already exists"
       fi
 
       # Support creating namespaces and Ceph user secrets for additional
@@ -135,9 +137,12 @@ metadata:
     heritage: {{$root.Release.Service | quote }}
     release: {{$root.Release.Name | quote }}
     chart: "{{$root.Chart.Name}}-{{$root.Chart.Version}}"
+  annotations:
+    "helm.sh/hook": "post-install, pre-upgrade, pre-rollback"
+    "helm.sh/hook-delete-policy": "before-hook-creation"
 spec:
-  backoffLimit: 3  # Limit the number of job restart in case of failure
-  activeDeadlineSeconds: 180
+  backoffLimit: 5  # Limit the number of job restart in case of failure: ~5 minutes.
+  activeDeadlineSeconds: 360
   template:
     metadata:
       name: "{{$root.Release.Name}}"
