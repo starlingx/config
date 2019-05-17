@@ -23,30 +23,28 @@ LOG = log.getLogger(__name__)
 
 class HelmChartsController(rest.RestController):
 
-    @wsme_pecan.wsexpose(wtypes.text)
-    def get_all(self):
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text)
+    def get_all(self, app_name):
         """Provides information about the available charts to override."""
 
-        supported_apps = pecan.request.rpcapi.get_helm_applications(
-            pecan.request.context)
-        all_charts = {}
-        for app in supported_apps:
-            namespaces = pecan.request.rpcapi.get_helm_application_namespaces(
-                pecan.request.context, app)
-            for chart in namespaces:
-                if chart not in all_charts:
-                    all_charts[chart] = namespaces[chart]
-                else:
-                    all_charts[chart] = list(set().union(all_charts[chart],
-                                                         namespaces[chart]))
+        try:
+            objects.kube_app.get_by_name(
+                pecan.request.context, app_name)
+        except exception.KubeAppNotFound:
+            raise wsme.exc.ClientSideError(_("Application %s not found." % app_name))
 
-        charts = [{'name': c, 'namespaces': ns} for c, ns in all_charts.items()]
+        namespaces = pecan.request.rpcapi.get_helm_application_namespaces(
+            pecan.request.context, app_name)
+        charts = [{'name': chart, 'namespaces': namespaces[chart]}
+                  for chart in namespaces]
+
         return {'charts': charts}
 
-    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text)
-    def get_one(self, name, namespace):
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text)
+    def get_one(self, app_name, name, namespace):
         """Retrieve information about the given chart.
 
+        :param app_name: name of application
         :param name: name of helm chart
         :param namespace: namespace of chart overrides
         """
@@ -54,9 +52,13 @@ class HelmChartsController(rest.RestController):
 
         # Get any user-specified overrides.
         try:
-            db_chart = objects.helm_overrides.get_by_name(
-                pecan.request.context, name, namespace)
+            app = objects.kube_app.get_by_name(
+                pecan.request.context, app_name)
+            db_chart = objects.helm_overrides.get_by_appid_name(
+                pecan.request.context, app.id, name, namespace)
             user_overrides = db_chart.user_overrides
+        except exception.KubeAppNotFound:
+            raise wsme.exc.ClientSideError(_("Application %s not found." % app_name))
         except exception.HelmOverrideNotFound:
             user_overrides = ''
 
@@ -92,10 +94,12 @@ class HelmChartsController(rest.RestController):
         if not namespace:
             raise wsme.exc.ClientSideError(_("Namespace must be specified."))
 
-    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text, wtypes.text)
-    def patch(self, name, namespace, flag, values):
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text,
+                         wtypes.text, wtypes.text, wtypes.text)
+    def patch(self, app_name, name, namespace, flag, values):
         """ Update user overrides.
 
+        :param app_name: name of application
         :param name: chart name
         :param namespace: namespace of chart overrides
         :param flag: one of "reuse" or "reset", describes how to handle
@@ -110,15 +114,20 @@ class HelmChartsController(rest.RestController):
         # Get any stored user overrides for this chart.  We'll need this
         # object later either way.
         try:
-            db_chart = objects.helm_overrides.get_by_name(
-                pecan.request.context, name, namespace)
+            app = objects.kube_app.get_by_name(
+                pecan.request.context, app_name)
+            db_chart = objects.helm_overrides.get_by_appid_name(
+                pecan.request.context, app.id, name, namespace)
+        except exception.KubeAppNotFound:
+            raise wsme.exc.ClientSideError(_("Application %s not found." % app_name))
         except exception.HelmOverrideNotFound:
             pecan.request.dbapi.helm_override_create({
                 'name': name,
                 'namespace': namespace,
-                'user_overrides': ''})
-            db_chart = objects.helm_overrides.get_by_name(
-                pecan.request.context, name, namespace)
+                'user_overrides': '',
+                'app_id': app.id})
+            db_chart = objects.helm_overrides.get_by_appid_name(
+                pecan.request.context, app.id, name, namespace)
 
         if flag == 'reuse':
             if db_chart.user_overrides is not None:
@@ -150,16 +159,21 @@ class HelmChartsController(rest.RestController):
 
         return chart
 
-    @wsme_pecan.wsexpose(None, wtypes.text, wtypes.text, status_code=204)
-    def delete(self, name, namespace):
+    @wsme_pecan.wsexpose(None, wtypes.text, wtypes.text,
+                         wtypes.text, status_code=204)
+    def delete(self, app_name, name, namespace):
         """Delete user overrides for a chart
 
+        :param app_name: name of application
         :param name: chart name.
         :param namespace: namespace of chart overrides
         """
         self.validate_name_and_namespace(name, namespace)
         try:
-            pecan.request.dbapi.helm_override_update(name, namespace,
+            app = objects.kube_app.get_by_name(pecan.request.context, app_name)
+            pecan.request.dbapi.helm_override_update(app.id, name, namespace,
                                                      {'user_overrides': None})
+        except exception.KubeAppNotFound:
+            raise wsme.exc.ClientSideError(_("Application %s not found." % app_name))
         except exception.HelmOverrideNotFound:
             pass

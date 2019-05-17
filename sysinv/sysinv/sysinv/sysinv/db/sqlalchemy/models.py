@@ -1677,7 +1677,9 @@ class HelmOverrides(Base):
     namespace = Column(String(255), nullable=False)
     user_overrides = Column(Text, nullable=True)
     system_overrides = Column(JSONEncodedDict, nullable=True)
-    UniqueConstraint('name', 'namespace', name='u_name_namespace')
+    app_id = Column(Integer, ForeignKey('kube_app.id', ondelete='CASCADE'))
+    kube_app = relationship("KubeApp", lazy="joined", join_depth=1)
+    UniqueConstraint('name', 'namespace', 'app_id', name='u_app_name_namespace')
 
 
 class Label(Base):

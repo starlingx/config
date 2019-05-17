@@ -67,23 +67,30 @@ DOCKER_REGISTRY_SECRET = 'default-registry-key'
 
 
 # Helper functions
-def generate_armada_manifest_filename(app_name, manifest_filename):
-    return os.path.join('/manifests', app_name + '-' + manifest_filename)
-
-
-def generate_armada_manifest_filename_abs(app_name, manifest_filename):
-    return os.path.join(constants.APP_SYNCED_DATA_PATH,
+def generate_armada_manifest_filename(app_name, app_version, manifest_filename):
+    return os.path.join('/manifests', app_name, app_version,
                         app_name + '-' + manifest_filename)
 
 
-def generate_manifest_filename_abs(app_name, manifest_filename):
+def generate_armada_manifest_dir(app_name, app_version):
+    return os.path.join(constants.APP_SYNCED_DATA_PATH, app_name, app_version)
+
+
+def generate_armada_manifest_filename_abs(armada_mfile_dir, app_name, manifest_filename):
+    return os.path.join(armada_mfile_dir, app_name + '-' + manifest_filename)
+
+
+def generate_manifest_filename_abs(app_name, app_version, manifest_filename):
     return os.path.join(constants.APP_INSTALL_PATH,
-                        app_name, manifest_filename)
+                        app_name, app_version, manifest_filename)
 
 
-def generate_images_filename_abs(app_name):
-    return os.path.join(constants.APP_SYNCED_DATA_PATH,
-                        app_name + '-images.yaml')
+def generate_images_filename_abs(armada_mfile_dir, app_name):
+    return os.path.join(armada_mfile_dir, app_name + '-images.yaml')
+
+
+def generate_overrides_dir(app_name, app_version):
+    return os.path.join(common.HELM_OVERRIDES_PATH, app_name, app_version)
 
 
 def create_app_path(path):
@@ -134,18 +141,20 @@ class AppOperator(object):
     def _cleanup(self, app):
         """" Remove application directories and override files """
         try:
-            if app.system_app and app.status != constants.APP_UPLOAD_FAILURE:
-                self._remove_chart_overrides(app.armada_mfile_abs)
+            if os.path.exists(app.overrides_dir):
+                shutil.rmtree(os.path.dirname(
+                    app.overrides_dir))
 
-            if os.path.exists(app.armada_mfile_abs):
-                os.unlink(app.armada_mfile_abs)
-            if os.path.exists(app.imgfile_abs):
-                os.unlink(app.imgfile_abs)
+            if os.path.exists(app.armada_mfile_dir):
+                shutil.rmtree(os.path.dirname(
+                    app.armada_mfile_dir))
 
             if os.path.exists(app.path):
-                shutil.rmtree(app.path)
+                shutil.rmtree(os.path.dirname(
+                    app.path))
         except OSError as e:
             LOG.error(e)
+            raise
 
     def _update_app_status(self, app, new_status=None, new_progress=None):
         """ Persist new app status """
@@ -244,9 +253,12 @@ class AppOperator(object):
         orig_uid, orig_gid = get_app_install_root_path_ownership()
 
         try:
-            # One time set up of Armada manifest path for the system
+            # One time set up of base armada manifest path for the system
             if not os.path.isdir(constants.APP_SYNCED_DATA_PATH):
                 os.makedirs(constants.APP_SYNCED_DATA_PATH)
+
+            if not os.path.isdir(app.armada_mfile_dir):
+                os.makedirs(app.armada_mfile_dir)
 
             if not os.path.isdir(app.path):
                 create_app_path(app.path)
@@ -307,7 +319,7 @@ class AppOperator(object):
             image_tags.extend(ids)
         return list(set(image_tags))
 
-    def _get_image_tags_by_charts(self, app_images_file, app_manifest_file):
+    def _get_image_tags_by_charts(self, app_images_file, app_manifest_file, overrides_dir):
         """ Mine the image tags for charts from the images file. Add the
             image tags to the manifest file if the image tags from the charts
             do not exist in both overrides file and manifest file. Convert
@@ -349,7 +361,7 @@ class AppOperator(object):
 
                 # Get the image tags from the overrides file
                 overrides = chart_namespace + '-' + chart_name + '.yaml'
-                app_overrides_file = os.path.join(common.HELM_OVERRIDES_PATH, overrides)
+                app_overrides_file = os.path.join(overrides_dir, overrides)
                 if os.path.exists(app_overrides_file):
                     try:
                         with open(app_overrides_file, 'r') as f:
@@ -443,12 +455,12 @@ class AppOperator(object):
             LOG.info("Generating application overrides...")
             app.charts = self._get_list_of_charts(app.armada_mfile_abs)
             self._helm.generate_helm_application_overrides(
-                app.name, mode=None, cnamespace=None, armada_format=True,
-                armada_chart_info=app.charts, combined=True)
+                app.overrides_dir, app.name, mode=None, cnamespace=None,
+                armada_format=True, armada_chart_info=app.charts, combined=True)
             self._save_images_list_by_charts(app)
             # Get the list of images from the updated images overrides
             images_to_download = self._get_image_tags_by_charts(
-                app.imgfile_abs, app.armada_mfile_abs)
+                app.imgfile_abs, app.armada_mfile_abs, app.overrides_dir)
         else:
             # For custom apps, mine image tags from application path
             images_to_download = self._get_image_tags_by_path(app.path)
@@ -505,7 +517,7 @@ class AppOperator(object):
             saved_images_list = self._retrieve_images_list(app.imgfile_abs)
             saved_download_images_list = list(saved_images_list.get("download_images"))
             images_to_download = self._get_image_tags_by_charts(
-                app.imgfile_abs, app.armada_mfile_abs)
+                app.imgfile_abs, app.armada_mfile_abs, app.overrides_dir)
             if set(saved_download_images_list) != set(images_to_download):
                 saved_images_list.update({"download_images": images_to_download})
                 with open(app.imgfile_abs, 'wb') as f:
@@ -858,7 +870,7 @@ class AppOperator(object):
                     pass
         return charts
 
-    def _get_overrides_files(self, charts, app_name, mode):
+    def _get_overrides_files(self, overrides_dir, charts, app_name, mode):
         """Returns list of override files or None, used in
            application-install and application-delete."""
 
@@ -867,8 +879,7 @@ class AppOperator(object):
 
         for chart in charts:
             overrides = chart.namespace + '-' + chart.name + '.yaml'
-            overrides_file = os.path.join(common.HELM_OVERRIDES_PATH,
-                                          overrides)
+            overrides_file = os.path.join(overrides_dir, overrides)
             if not os.path.exists(overrides_file):
                 missing_overrides.append(overrides_file)
             else:
@@ -881,8 +892,7 @@ class AppOperator(object):
                         chart.name, chart.namespace, app_name, mode):
                     overrides = chart.namespace + '-' + chart.name + \
                                 '-meta' + '.yaml'
-                    overrides_file = os.path.join(common.HELM_OVERRIDES_PATH,
-                                                  overrides)
+                    overrides_file = os.path.join(overrides_dir, overrides)
                     if not os.path.exists(overrides_file):
                         missing_overrides.append(overrides_file)
                     else:
@@ -893,15 +903,17 @@ class AppOperator(object):
             return None
         return available_overrides
 
-    def _generate_armada_overrides_str(self, overrides_files):
-        return " ".join([' --values /overrides/{0}'.format(os.path.basename(i))
+    def _generate_armada_overrides_str(self, app_name, app_version, overrides_files):
+        return " ".join([' --values /overrides/{0}/{1}/{2}'.format(app_name, app_version,
+                                                                   os.path.basename(i))
                         for i in overrides_files])
 
-    def _remove_chart_overrides(self, manifest_file):
+    def _remove_chart_overrides(self, overrides_dir, manifest_file):
         charts = self._get_list_of_charts(manifest_file)
         for chart in charts:
             if chart.name in self._helm.chart_operators:
-                self._helm.remove_helm_chart_overrides(chart.name,
+                self._helm.remove_helm_chart_overrides(overrides_dir,
+                                                       chart.name,
                                                        chart.namespace)
 
     def _make_armada_request_with_monitor(self, app, request, overrides_str=None):
@@ -1129,10 +1141,10 @@ class AppOperator(object):
                     self._upload_helm_charts(app)
 
             self._save_images_list(app)
-            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
             if app.patch_dependencies:
                 self._app._patch_report_app_dependencies(
                     app.name, app.patch_dependencies)
+            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
             LOG.info("Application (%s) upload completed." % app.name)
         except exception.KubeAppUploadFailure as e:
             LOG.exception(e)
@@ -1182,16 +1194,19 @@ class AppOperator(object):
                     app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
                 LOG.info("Generating application overrides...")
                 self._helm.generate_helm_application_overrides(
-                    app.name, mode, cnamespace=None, armada_format=True,
-                    armada_chart_info=app.charts, combined=True)
-                overrides_files = self._get_overrides_files(app.charts, app.name, mode)
+                    app.overrides_dir, app.name, mode, cnamespace=None,
+                    armada_format=True, armada_chart_info=app.charts, combined=True)
+                overrides_files = self._get_overrides_files(app.overrides_dir,
+                                                            app.charts,
+                                                            app.name, mode)
                 if overrides_files:
                     LOG.info("Application overrides generated.")
                     # Ensure all chart overrides are readable by Armada
                     for file in overrides_files:
                         os.chmod(file, 0o644)
                     overrides_str =\
-                        self._generate_armada_overrides_str(overrides_files)
+                        self._generate_armada_overrides_str(app.name, app.version,
+                                                            overrides_files)
                     self._update_app_status(
                         app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
                     self._download_images(app)
@@ -1321,22 +1336,33 @@ class AppOperator(object):
         def __init__(self, rpc_app, is_system_app):
             self._kube_app = rpc_app
             self.path = os.path.join(constants.APP_INSTALL_PATH,
-                                     self._kube_app.get('name'))
+                                     self._kube_app.get('name'),
+                                     self._kube_app.get('app_version'))
             self.charts_dir = os.path.join(self.path, 'charts')
             self.images_dir = os.path.join(self.path, 'images')
             self.tarfile = None
             self.downloaded_tarfile = False
             self.system_app = is_system_app
+            self.overrides_dir = generate_overrides_dir(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
+            self.armada_mfile_dir = generate_armada_manifest_dir(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
             self.armada_mfile = generate_armada_manifest_filename(
                 self._kube_app.get('name'),
+                self._kube_app.get('app_version'),
                 self._kube_app.get('manifest_file'))
             self.armada_mfile_abs = generate_armada_manifest_filename_abs(
+                self.armada_mfile_dir,
                 self._kube_app.get('name'),
                 self._kube_app.get('manifest_file'))
             self.mfile_abs = generate_manifest_filename_abs(
                 self._kube_app.get('name'),
+                self._kube_app.get('app_version'),
                 self._kube_app.get('manifest_file'))
             self.imgfile_abs = generate_images_filename_abs(
+                self.armada_mfile_dir,
                 self._kube_app.get('name'))
 
             self.patch_dependencies = []
@@ -1379,25 +1405,35 @@ class AppOperator(object):
             self._kube_app.manifest_name = new_mname
             self._kube_app.manifest_file = new_mfile
             self.armada_mfile = generate_armada_manifest_filename(
-                self.name, new_mfile)
+                self.name, self.version, new_mfile)
             self.armada_mfile_abs = generate_armada_manifest_filename_abs(
-                self.name, new_mfile)
+                self.armada_mfile_dir, self.name, new_mfile)
             self.mfile_abs = generate_manifest_filename_abs(
-                self.name, new_mfile)
+                self.name, self.version, new_mfile)
 
         def regenerate_application_info(self, new_name, new_version, new_patch_dependencies):
             self._kube_app.name = new_name
             self._kube_app.app_version = new_version
             self.system_app = \
                 (self.name == constants.HELM_APP_OPENSTACK)
-            self.imgfile_abs = \
-                generate_images_filename_abs(self.name)
+
+            new_armada_dir = generate_armada_manifest_dir(
+                self.name, self.version)
+            shutil.move(self.armada_mfile_dir, new_armada_dir)
+            shutil.rmtree(os.path.dirname(self.armada_mfile_dir))
+            self.armada_mfile_dir = new_armada_dir
+
             new_path = os.path.join(
-                constants.APP_INSTALL_PATH, self.name)
-            os.rename(self.path, new_path)
+                constants.APP_INSTALL_PATH, self.name, self.version)
+            shutil.move(self.path, new_path)
+            shutil.rmtree(os.path.dirname(self.path))
             self.path = new_path
+
             self.charts_dir = os.path.join(self.path, 'charts')
             self.images_dir = os.path.join(self.path, 'images')
+            self.imgfile_abs = \
+                generate_images_filename_abs(self.armada_mfile_dir, self.name)
+            self.overrides_dir = generate_overrides_dir(self.name, self.version)
             self.patch_dependencies = new_patch_dependencies
 
 

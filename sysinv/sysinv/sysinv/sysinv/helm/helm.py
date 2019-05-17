@@ -45,12 +45,8 @@ def helm_context(func):
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
-    def __init__(self, dbapi=None, path=None):
-        if path is None:
-            path = common.HELM_OVERRIDES_PATH
-
+    def __init__(self, dbapi=None):
         self.dbapi = dbapi
-        self.path = path
 
         # register chart operators for lookup
         self.chart_operators = {}
@@ -377,7 +373,7 @@ class HelmOperator(object):
         return values
 
     @helm_context
-    def generate_helm_chart_overrides(self, chart_name, cnamespace=None):
+    def generate_helm_chart_overrides(self, path, chart_name, cnamespace=None):
         """Generate system helm chart overrides
 
         This method will generate system helm chart override an write them to a
@@ -399,7 +395,8 @@ class HelmOperator(object):
                 overrides = self._get_helm_chart_overrides(
                     chart_name,
                     cnamespace)
-                self._write_chart_overrides(chart_name,
+                self._write_chart_overrides(path,
+                                            chart_name,
                                             cnamespace,
                                             overrides)
             except Exception as e:
@@ -424,7 +421,8 @@ class HelmOperator(object):
         return overrides
 
     @helm_context
-    def generate_helm_application_overrides(self, app_name, mode=None,
+    def generate_helm_application_overrides(self, path, app_name,
+                                            mode=None,
                                             cnamespace=None,
                                             armada_format=False,
                                             armada_chart_info=None,
@@ -450,6 +448,11 @@ class HelmOperator(object):
         """
 
         if app_name in self.helm_applications:
+            try:
+                app = self.dbapi.kube_app_get(app_name)
+            except exception.KubeAppNotFound:
+                LOG.exception("Application %s not found." % app_name)
+
             app_overrides = self._get_helm_application_overrides(app_name,
                                                                  cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
@@ -468,7 +471,7 @@ class HelmOperator(object):
                     for chart_namespace in overrides.keys():
                         try:
                             db_chart = self.dbapi.helm_override_get(
-                                chart_name, chart_namespace)
+                                app.id, chart_name, chart_namespace)
                             db_user_overrides = db_chart.user_overrides
                             if db_user_overrides:
                                 file_overrides.append(yaml.dump(
@@ -495,7 +498,7 @@ class HelmOperator(object):
                             chart_name, armada_chart_repo_name,
                             key, overrides[key])
                         overrides[key] = new_overrides
-                self._write_chart_overrides(chart_name, cnamespace, overrides)
+                self._write_chart_overrides(path, chart_name, cnamespace, overrides)
 
                 # Write any meta-overrides for this chart.  These will be in
                 # armada format already.
@@ -507,14 +510,14 @@ class HelmOperator(object):
                     if overrides:
                         chart_meta_name = chart_name + '-meta'
                         self._write_chart_overrides(
-                            chart_meta_name, cnamespace, overrides)
+                            path, chart_meta_name, cnamespace, overrides)
 
         elif app_name:
             LOG.exception("%s application is not supported" % app_name)
         else:
             LOG.exception("application name is required")
 
-    def remove_helm_chart_overrides(self, chart_name, cnamespace=None):
+    def remove_helm_chart_overrides(self, path, chart_name, cnamespace=None):
         """Remove the overrides files for a chart"""
 
         if chart_name in self.chart_operators:
@@ -529,7 +532,7 @@ class HelmOperator(object):
 
             for f in filenames:
                 try:
-                    self._remove_overrides(f)
+                    self._remove_overrides(path, f)
                 except Exception as e:
                     LOG.exception("failed to remove %s overrides: %s: %s" % (
                         chart_name, f, e))
@@ -537,12 +540,12 @@ class HelmOperator(object):
             LOG.exception("chart %s not supported for system overrides" %
                           chart_name)
 
-    def _write_chart_overrides(self, chart_name, cnamespace, overrides):
+    def _write_chart_overrides(self, path, chart_name, cnamespace, overrides):
         """Write a one or more overrides files for a chart. """
 
         def _write_file(filename, values):
             try:
-                self._write_overrides(filename, values)
+                self._write_overrides(path, filename, values)
             except Exception as e:
                 LOG.exception("failed to write %s overrides: %s: %s" % (
                     chart_name, filename, e))
@@ -553,12 +556,15 @@ class HelmOperator(object):
             for ns in overrides.keys():
                 _write_file("%s-%s.yaml" % (ns, chart_name), overrides[ns])
 
-    def _write_overrides(self, filename, overrides):
+    def _write_overrides(self, path, filename, overrides):
         """Write a single overrides file. """
 
-        filepath = os.path.join(self.path, filename)
+        if not os.path.isdir(path):
+            os.makedirs(path)
+
+        filepath = os.path.join(path, filename)
         try:
-            fd, tmppath = tempfile.mkstemp(dir=self.path, prefix=filename,
+            fd, tmppath = tempfile.mkstemp(dir=path, prefix=filename,
                                            text=True)
 
             with open(tmppath, 'w') as f:
@@ -569,10 +575,10 @@ class HelmOperator(object):
             LOG.exception("failed to write overrides file: %s" % filepath)
             raise
 
-    def _remove_overrides(self, filename):
+    def _remove_overrides(self, path, filename):
         """Remove a single overrides file. """
 
-        filepath = os.path.join(self.path, filename)
+        filepath = os.path.join(path, filename)
         try:
             if os.path.exists(filepath):
                 os.unlink(filepath)

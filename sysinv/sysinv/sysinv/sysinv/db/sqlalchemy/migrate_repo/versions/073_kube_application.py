@@ -25,7 +25,7 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
-    # Define and create the helm_overrides table.
+    # Define and create the kube_app table.
     kube_app = Table(
         'kube_app',
         meta,

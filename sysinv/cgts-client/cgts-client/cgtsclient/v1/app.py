@@ -7,6 +7,7 @@
 #
 
 from cgtsclient.common import base
+from cgtsclient import exc
 
 
 class App(base.Resource):
@@ -66,3 +67,12 @@ class AppManager(base.Manager):
         :param name: app_name
         """
         return self._delete(self._path(app_name))
+
+
+def _find_app(cc, app_name):
+    try:
+        app = cc.app.get(app_name)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Application not found: %s' % app_name)
+    else:
+        return app
