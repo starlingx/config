@@ -57,6 +57,14 @@ HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
 HELM_CHART_SWIFT = 'ceph-rgw'
 HELM_CHART_NGINX_PORTS_CONTROL = "nginx-ports-control"
 
+HELM_CHART_ELASTICSEARCH = 'elasticsearch'
+HELM_CHART_KIBANA = 'kibana'
+HELM_CHART_FILEBEAT = 'filebeat'
+HELM_CHART_METRICBEAT = 'metricbeat'
+HELM_CHART_KUBESTATEMETRICS = 'kube-state-metrics'
+HELM_CHART_NGINX_INGRESS = 'nginx-ingress'
+HELM_CHART_LOGSTASH = 'logstash'
+
 # Namespaces
 HELM_NS_CEPH = 'ceph'
 HELM_NS_DEFAULT = 'default'
@@ -64,6 +72,7 @@ HELM_NS_KUBE_SYSTEM = 'kube-system'
 HELM_NS_NFS = 'nfs'
 HELM_NS_OPENSTACK = 'openstack'
 HELM_NS_HELM_TOOLKIT = 'helm-toolkit'
+HELM_NS_MONITOR = 'monitor'
 
 # Namespaces: for system functions
 HELM_NS_STORAGE_PROVISIONER = HELM_NS_KUBE_SYSTEM
@@ -86,6 +95,10 @@ LABEL_CONTROLLER = 'openstack-control-plane'
 LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
+
+LABEL_MONITOR_CONTROLLER = 'elastic-controller'
+LABEL_MONITOR_DATA = 'elastic-data'
+LABEL_MONITOR_CLIENT = 'elastic-client'
 
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'

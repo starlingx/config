@@ -126,7 +126,7 @@ class BaseHelm(object):
     def _count_hosts_by_label(self, label):
         return int(self.dbapi.count_hosts_by_label(label))
 
-    def _num_controllers(self):
+    def _num_controllers(self, label=None):
         return self._count_hosts_by_label(common.LABEL_CONTROLLER)
 
     def _num_computes(self):

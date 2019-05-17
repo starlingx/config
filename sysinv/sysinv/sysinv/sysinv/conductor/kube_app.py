@@ -506,16 +506,30 @@ class AppOperator(object):
             TODO(awang): Support custom apps to pull images from local registry
         """
 
-        image_tags = []
-        ids = []
-        for r, f in cutils.get_files_matching(path, 'values.yaml'):
-            with open(os.path.join(r, f), 'r') as value_f:
-                try:
+        def _parse_charts():
+            ids = []
+            image_tags = []
+            for r, f in cutils.get_files_matching(path, 'values.yaml'):
+                with open(os.path.join(r, f), 'r') as value_f:
+                    try_image_tag_repo_format = False
                     y = yaml.safe_load(value_f)
-                    ids = y["images"]["tags"].values()
-                except (TypeError, KeyError):
-                    pass
-            image_tags.extend(ids)
+                    try:
+                        ids = y["images"]["tags"].values()
+                    except (AttributeError, TypeError, KeyError):
+                        try_image_tag_repo_format = True
+
+                    if try_image_tag_repo_format:
+                        try:
+                            y_image = y["image"]
+                            y_image_tag = y_image['repository'] + ":" + y_image['tag']
+                            ids = [y_image_tag]
+                        except (AttributeError, TypeError, KeyError):
+                            pass
+                image_tags.extend(ids)
+            return image_tags
+
+        image_tags = _parse_charts()
+
         return list(set(image_tags))
 
     def _get_image_tags_by_charts(self, app_images_file, app_manifest_file, overrides_dir):
@@ -569,12 +583,23 @@ class AppOperator(object):
                         pass
 
                 # Get the image tags from the armada manifest file
+                try_image_tag_repo_format = False
                 try:
                     images_manifest = chart_data['values']['images']['tags']
-                except (TypeError, KeyError):
+                except (TypeError, KeyError, AttributeError):
+                    try_image_tag_repo_format = True
                     LOG.info("Armada manifest file has no img tags for "
                              "chart %s" % chart_name)
                     pass
+
+                if try_image_tag_repo_format:
+                    try:
+                        y_image = chart_data['values']['image']
+                        y_image_tag = \
+                            y_image['repository'] + ":" + y_image['tag']
+                        images_manifest = {chart_name: y_image_tag}
+                    except (AttributeError, TypeError, KeyError):
+                        pass
 
                 # For the image tags from the chart path which do not exist
                 # in the overrides and manifest file, add to manifest file.
@@ -687,13 +712,26 @@ class AppOperator(object):
             chart_name = os.path.join(app.charts_dir, chart.name)
             chart_path = os.path.join(chart_name, 'values.yaml')
 
+            try_image_tag_repo_format = False
             if os.path.exists(chart_path):
                 with open(chart_path, 'r') as f:
+                    y = yaml.safe_load(f)
                     try:
-                        y = yaml.safe_load(f)
                         images = y["images"]["tags"]
-                    except (TypeError, KeyError):
-                        LOG.warn("Chart %s has no image tags" % chart_name)
+                    except (TypeError, KeyError, AttributeError):
+                        LOG.info("Chart %s has no images tags" % chart_name)
+                        try_image_tag_repo_format = True
+
+                    if try_image_tag_repo_format:
+                        try:
+                            y_image = y["image"]
+                            y_image_tag = \
+                                y_image['repository'] + ":" + y_image['tag']
+                            images = {chart.name: y_image_tag}
+                        except (AttributeError, TypeError, KeyError):
+                            LOG.info("Chart %s has no image tags" % chart_name)
+                            pass
+
             if images:
                 images_by_charts.update({chart.name: images})
 
@@ -1375,6 +1413,16 @@ class AppOperator(object):
         def _check_progress(monitor_flag, app, pattern, logfile):
             """ Progress monitoring task, to be run in a separate thread """
             LOG.info("Starting progress monitoring thread for app %s" % app.name)
+
+            def _progress_adjust(app):
+                # helm-toolkit doesn't count; it is not in stx-monitor
+                non_helm_toolkit_apps = [constants.HELM_APP_MONITOR]
+                if app.name in non_helm_toolkit_apps:
+                    adjust = 0
+                else:
+                    adjust = 1
+                return adjust
+
             try:
                 with Timeout(INSTALLATION_TIMEOUT,
                              exception.KubeAppProgressMonitorTimeout()):
@@ -1388,9 +1436,10 @@ class AppOperator(object):
                             last, num = _get_armada_log_stats(pattern, logfile)
                             if last:
                                 if app.system_app:
-                                    # helm-toolkit doesn't count
+                                    adjust = _progress_adjust(app)
                                     percent = \
-                                        round(float(num) / (len(app.charts) - 1) * 100)
+                                        round(float(num) /
+                                              (len(app.charts) - adjust) * 100)
                                 else:
                                     percent = round(float(num) / len(app.charts) * 100)
                                 progress_str = 'processing chart: ' + last +\
@@ -1467,20 +1516,24 @@ class AppOperator(object):
         :param app_name: Name of the application.
         """
 
-        if app_name == constants.HELM_APP_OPENSTACK:
-            self._delete_persistent_volume_claim(common.HELM_NS_OPENSTACK)
+        def _delete_ceph_persistent_volume_claim(namespace):
+            self._delete_persistent_volume_claim(namespace)
 
             try:
                 # Remove the configmap with the ceph monitor information
                 # required by the application into the application namespace
                 self._kube.kube_delete_config_map(
                     self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                    common.HELM_NS_OPENSTACK)
+                    namespace)
             except Exception as e:
                 LOG.error(e)
                 raise
+            self._delete_namespace(namespace)
 
-            self._delete_namespace(common.HELM_NS_OPENSTACK)
+        if app_name == constants.HELM_APP_OPENSTACK:
+            _delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
+        elif app_name == constants.HELM_APP_MONITOR:
+            _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
 
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
         """Perform application recover
@@ -1655,6 +1708,11 @@ class AppOperator(object):
         LOG.error("Application rollback aborted!")
         return False
 
+    def _is_system_app(self, name):
+        if name in self._helm.get_helm_applications():
+            return True
+        return False
+
     def perform_app_upload(self, rpc_app, tarfile):
         """Process application upload request
 
@@ -1668,8 +1726,7 @@ class AppOperator(object):
         """
 
         app = AppOperator.Application(rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
-
+                                      self._is_system_app(rpc_app.get('name')))
         LOG.info("Application %s (%s) upload started." % (app.name, app.version))
 
         try:
@@ -1767,7 +1824,7 @@ class AppOperator(object):
         """
 
         app = AppOperator.Application(rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+                                      self._is_system_app(rpc_app.get('name')))
 
         # If apply is called from update method, the app's abort status has
         # already been registered.
@@ -2265,7 +2322,8 @@ class AppOperator(object):
             self._kube_app.name = new_name
             self._kube_app.app_version = new_version
             self.system_app = \
-                (self.name == constants.HELM_APP_OPENSTACK)
+                (self.name == constants.HELM_APP_OPENSTACK or
+                 self.name == constants.HELM_APP_MONITOR)
 
             new_armada_dir = cutils.generate_armada_manifest_dir(
                 self.name, self.version)

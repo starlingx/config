@@ -14,6 +14,7 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from contextlib import contextmanager
+from oslo_log import log
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -22,7 +23,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log
+from sysinv.helm import common as helm_common
 from sysinv.openstack.common.gettextutils import _
 
 import cgcs_patch.constants as patch_constants
@@ -192,6 +193,74 @@ class KubeAppController(rest.RestController):
         """Retrieve a single application."""
         return self._get_one(app_name)
 
+    @staticmethod
+    def _check_controller_labels(chosts):
+        def _check_monitor_controller_labels(host_uuid, hostname):
+            labels = pecan.request.dbapi.label_get_by_host(host_uuid)
+
+            required_labels = {
+                helm_common.LABEL_MONITOR_CONTROLLER:
+                    helm_common.LABEL_VALUE_ENABLED,
+                helm_common.LABEL_MONITOR_DATA:
+                    helm_common.LABEL_VALUE_ENABLED,
+                helm_common.LABEL_MONITOR_CLIENT:
+                    helm_common.LABEL_VALUE_ENABLED}
+
+            assigned_labels = {}
+            for label in labels:
+                if label.label_key in required_labels:
+                    if label.label_value == required_labels[label.label_key]:
+                        assigned_labels.update(
+                            {label.label_key: label.label_value})
+
+            missing_labels = {k: required_labels[k] for k in
+                              set(required_labels) - set(assigned_labels)}
+
+            msg = ""
+            if missing_labels:
+                for k, v in missing_labels.items():
+                    msg += "%s=%s " % (k, v)
+            if msg:
+                msg = " 'system host-label-assign {} {}'".format(
+                    hostname, msg)
+            return msg
+
+        client_msg = ""
+        for chost in chosts:
+            msg = _check_monitor_controller_labels(
+                chost.uuid, chost.hostname)
+            if msg:
+                client_msg += msg
+
+        if client_msg:
+            raise wsme.exc.ClientSideError(
+                _("Operation rejected: application stx-monitor "
+                  "requires labels on controllers. {}".format(client_msg)))
+
+    def _semantic_check(self, db_app):
+        """Semantic check for application deployment
+        """
+
+        if db_app.name == constants.HELM_APP_MONITOR:
+            chosts = pecan.request.dbapi.ihost_get_by_personality(
+                constants.CONTROLLER)
+
+            if not cutils.is_aio_simplex_system(pecan.request.dbapi):
+                if chosts and len(chosts) < 2:
+                    raise wsme.exc.ClientSideError(_(
+                        "Operation rejected: application {} requires 2 "
+                        "controllers".format(db_app.name)))
+
+            self._check_controller_labels(chosts)
+
+            for chost in chosts:
+                if (chost.administrative != constants.ADMIN_UNLOCKED or
+                        chost.operational != constants.OPERATIONAL_ENABLED):
+                    raise wsme.exc.ClientSideError(_(
+                        "Operation rejected: application {} requires {} to be "
+                        "unlocked-enabled".format(
+                            db_app.name, chost.hostname)))
+
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
     def post(self, body):
@@ -262,6 +331,8 @@ class KubeAppController(rest.RestController):
                         constants.HELM_APP_APPLY_MODES[name])))
             else:
                 mode = values['mode']
+
+            self._semantic_check(db_app)
 
             if db_app.status == constants.APP_APPLY_IN_PROGRESS:
                 raise wsme.exc.ClientSideError(_(

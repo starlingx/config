@@ -104,7 +104,8 @@ class HelmOperator(object):
         supported_helm_applications = {}
         for name, namespace in helm_application_dict.items():
             supported_helm_applications[name] = []
-            helm_plugins = extension.ExtensionManager(namespace=namespace, invoke_on_load=True, invoke_args=(self,))
+            helm_plugins = extension.ExtensionManager(
+                namespace=namespace, invoke_on_load=True, invoke_args=(self,))
             sorted_helm_plugins = sorted(helm_plugins.extensions, key=lambda x: x.name)
             for plugin in sorted_helm_plugins:
                 plugin_name = plugin.name[HELM_PLUGIN_PREFIX_LENGTH:]
