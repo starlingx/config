@@ -23,6 +23,7 @@
 
 
 import jsonpatch
+import os
 import six
 import uuid
 
@@ -447,6 +448,7 @@ class InterfaceController(rest.RestController):
 
         uses = None
         ports = None
+        ethernet_port_mac = None
         networks = []
         networks_to_add = []
         interface_networks_to_remove = []
@@ -540,6 +542,7 @@ class InterfaceController(rest.RestController):
         for p in interface_ports:
             if p is not None:
                 ports = p.name
+                ethernet_port_mac = p.mac
                 break
 
         # Process updates
@@ -747,9 +750,11 @@ class InterfaceController(rest.RestController):
             else:
                 networktypelist = [constants.NETWORK_TYPE_NONE]
 
-            # Update address (if required)
+            # Update mgmt_ip and mgmt_mac (if required)
             if constants.NETWORK_TYPE_MGMT in networktypelist:
                 _update_host_mgmt_address(ihost, interface)
+                _update_host_mgmt_mac(ihost, ethernet_port_mac)
+
             if constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist:
                 _update_host_cluster_address(ihost, interface)
             if ihost['personality'] == constants.CONTROLLER:
@@ -1965,6 +1970,19 @@ def _update_host_mgmt_address(host, interface):
         address_name = cutils.format_address_name(host.hostname,
                                                   constants.NETWORK_TYPE_MGMT)
         _allocate_pool_address(interface['id'], mgmt_pool_uuid, address_name)
+
+
+def _update_host_mgmt_mac(host, mgmt_mac):
+    """Update host mgmt mac to reflect interface change.
+    """
+
+    if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
+            mgmt_mac is not None):
+        # This must be called during management interface provisioning
+        # following controller-0 bootstrap.
+        if host['mgmt_mac'] != mgmt_mac:
+            pecan.request.rpcapi.mgmt_mac_set_by_ihost(
+                pecan.request.context, host, mgmt_mac)
 
 
 def _update_host_oam_address(host, interface):

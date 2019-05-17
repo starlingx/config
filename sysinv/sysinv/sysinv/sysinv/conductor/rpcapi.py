@@ -1770,3 +1770,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('reconfigure_service_endpoints',
                                        host=host))
+
+    def mgmt_mac_set_by_ihost(self, context, host, mgmt_mac):
+        """Update the management mac address upon management interface
+        during bootstrap.
+
+        :param context: request context
+        :param host: an ihost object
+        :param mgmt_mac: mac address of management interface
+        """
+        return self.call(context,
+                         self.make_msg('mgmt_mac_set_by_ihost',
+                                       host=host,
+                                       mgmt_mac=mgmt_mac))

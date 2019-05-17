@@ -10707,7 +10707,7 @@ class ConductorManager(service.PeriodicService):
         controller host and management/oam network change during bootstrap
         playbook play and replay.
 
-        :param contex: request context.
+        :param context: request context.
         :param host: an ihost object
 
         """
@@ -10732,3 +10732,20 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.error("Received a request to reconfigure service endpoints "
                       "for host %s under the wrong condition." % host.hostname)
+
+    def mgmt_mac_set_by_ihost(self, context, host, mgmt_mac):
+        """Update the management mac address upon management interface
+        during bootstrap.
+
+        :param context: request context
+        :param host: an ihost object
+        :param mgmt_mac: mac address of management interface
+        """
+        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
+                host.hostname == constants.CONTROLLER_0_HOSTNAME):
+
+            self.dbapi.ihost_update(host.uuid,
+                                    {'mgmt_mac': mgmt_mac})
+        else:
+            LOG.error("Received a request to update management mac for host "
+                      "%s under the wrong condition." % host.hostname)
