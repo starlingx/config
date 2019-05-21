@@ -1351,7 +1351,8 @@ class ConductorManager(service.PeriodicService):
                 # AIO, must update grub before the unlock. Sysinv agent expects
                 # this exact set of manifests in order to touch the unlock ready
                 # flag after they have been applied.
-                config_uuid = self._config_update_hosts(context, personalities)
+                config_uuid = self._config_update_hosts(context, personalities,
+                                                        host_uuids=[host.uuid])
                 if self._config_is_reboot_required(host.config_target):
                     config_uuid = self._config_set_reboot_required(config_uuid)
 
@@ -5754,10 +5755,11 @@ class ConductorManager(service.PeriodicService):
                    'openstack::cinder::runtime',
                    'platform::sm::norestart::runtime']
 
+        host_ids = [ctrl.uuid for ctrl in valid_ctrls]
         config_dict = {
             "personalities": personalities,
             "classes": classes,
-            "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
+            "host_uuids": host_ids,
             puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_LVM_BACKEND_CONFIG
         }
 
@@ -5770,7 +5772,8 @@ class ConductorManager(service.PeriodicService):
             reboot = True
 
         # Set config out-of-date for controllers
-        self._config_update_hosts(context, personalities, reboot=reboot)
+        self._config_update_hosts(context, personalities,
+                                  host_uuids=host_ids, reboot=reboot)
 
         # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
         # Once sm supports in-service config reload set config_uuid=config_uuid.
@@ -5870,9 +5873,10 @@ class ConductorManager(service.PeriodicService):
         if constants.SB_SVC_CINDER in services:
             classes.append('openstack::cinder::runtime')
         classes.append('platform::sm::norestart::runtime')
+        host_ids = [ctrl.uuid for ctrl in valid_ctrls]
         config_dict = {"personalities": personalities,
                        # "host_uuids": host.uuid,
-                       "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
+                       "host_uuids": host_ids,
                        "classes": classes,
                        puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
                        }
@@ -5888,6 +5892,7 @@ class ConductorManager(service.PeriodicService):
         # Set config out-of-date for controllers
         config_uuid = self._config_update_hosts(context,
                                                 personalities,
+                                                host_uuids=host_ids,
                                                 reboot=reboot)
 
         # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
@@ -5914,8 +5919,6 @@ class ConductorManager(service.PeriodicService):
 
     def update_ceph_base_config(self, context, personalities):
         """ Update Ceph configuration, monitors and ceph.conf only"""
-        config_uuid = self._config_update_hosts(context, personalities)
-
         valid_nodes = []
         for personality in personalities:
             nodes = self.dbapi.ihost_get_by_personality(personality)
@@ -5924,9 +5927,13 @@ class ConductorManager(service.PeriodicService):
                 (node.administrative == constants.ADMIN_UNLOCKED and
                  node.operational == constants.OPERATIONAL_ENABLED)]
 
+        host_ids = [node.uuid for node in valid_nodes]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=host_ids)
+
         config_dict = {
             "personalities": personalities,
-            "host_uuids": [node.uuid for node in valid_nodes],
+            "host_uuids": host_ids,
             "classes": ['platform::ceph::runtime_base'],
             puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_MONITOR_CONFIG
         }
@@ -6007,8 +6014,9 @@ class ConductorManager(service.PeriodicService):
 
             report_config = puppet_common.REPORT_CEPH_EXTERNAL_BACKEND_CONFIG
 
+            host_ids = [ctrl.uuid for ctrl in valid_ctrls]
             config_dict = {"personalities": personalities,
-                           "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
+                           "host_uuids": host_ids,
                            "classes": classes,
                            puppet_common.REPORT_STATUS_CFG: report_config, }
 
@@ -6035,6 +6043,7 @@ class ConductorManager(service.PeriodicService):
             # Set config out-of-date for controllers
             config_uuid = self._config_update_hosts(context,
                                                     personalities,
+                                                    host_uuids=host_ids,
                                                     reboot=reboot)
 
             tasks = {}
