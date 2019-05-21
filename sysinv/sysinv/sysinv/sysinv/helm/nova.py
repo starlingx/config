@@ -67,7 +67,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 'pod': {
                     'mounts': {
                         'nova_compute': {
-                            'nova_compute': self._get_mount_uefi_overrides()
+                            'nova_compute': self._get_mount_overrides()
                         }
                     },
                     'replicas': {
@@ -118,6 +118,19 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_mount_overrides(self):
+        overrides = self._get_mount_uefi_overrides()
+        # mount /dev/pts in order to get console log
+        overrides['volumes'].append({
+            'name': 'dev-pts',
+            'hostPath': {'path': '/dev/pts'}
+        })
+        overrides['volumeMounts'].append({
+            'name': 'dev-pts',
+            'mountPath': '/dev/pts'
+        })
+        return overrides
 
     def _get_endpoints_overrides(self):
         overrides = {
