@@ -5123,6 +5123,9 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("Platform managed application %s: %s" % (app_name, status))
             if status == constants.APP_NOT_PRESENT:
 
+                if _patching_operation_is_occurring():
+                    continue
+
                 LOG.info("Platform managed application %s: Creating..." % app_name)
                 app_data = {'name': app_name,
                             'app_version': constants.APP_VERSION_PLACEHOLDER,
@@ -5152,9 +5155,6 @@ class ConductorManager(service.PeriodicService):
                 app.manifest_file = os.path.basename(tarball.manifest_file)
                 app.save()
 
-                if _patching_operation_is_occurring():
-                    continue
-
                 # Action: Upload.
                 # Do not block this audit task or any other periodic task. This
                 # could be long running. The next audit cycle will pick up the
@@ -5180,10 +5180,12 @@ class ConductorManager(service.PeriodicService):
 
                 try:
                     app = kubeapp_obj.get_by_name(context, app_name)
-                    app.status = constants.APP_APPLY_IN_PROGRESS
                 except exception.KubeAppNotFound as e:
                     LOG.exception(e)
                     continue
+
+                app.status = constants.APP_APPLY_IN_PROGRESS
+                app.save()
 
                 # Action: Apply the application
                 # Do not block this audit task or any other periodic task. This
