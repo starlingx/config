@@ -76,7 +76,7 @@ class OVSPuppet(base.BasePuppet):
                     ovs_flows.update({port['name']: flow})
 
                 if iface['iftype'] == constants.INTERFACE_TYPE_AE:
-                    slaves = interface.get_bond_interface_slaves(
+                    slaves = interface.get_interface_slaves(
                         self.context, iface)
                     for member, slave in enumerate(slaves):
                         ovs_ifname = port['interfaces'][member]['name']

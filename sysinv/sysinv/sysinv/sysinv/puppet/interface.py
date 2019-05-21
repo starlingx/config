@@ -505,8 +505,8 @@ def get_lower_interface_os_ifname(context, iface):
 def get_interface_os_ifname(context, iface):
     """
     Determine the interface name used in the linux kernel for the given
-    interface.  Ethernet interfaces uses the original linux device name while
-    AE devices can use the user-defined named.  VLAN interface must derive
+    interface. Ethernet interfaces uses the original linux device name while
+    AE devices can use the user-defined named. VLAN interface must derive
     their names based on their lower interface name.
     """
     if '_os_ifname' in iface:  # check cached result
@@ -522,6 +522,28 @@ def get_interface_os_ifname(context, iface):
             os_ifname = iface['ifname']
         iface['_os_ifname'] = os_ifname  # cache the result
         return iface['_os_ifname']
+
+
+def get_interface_devices(context, iface, devices=None):
+    """
+    Determine all the interface devices used in the linux kernel for the given
+    interface name. Ethernet interfaces uses the original linux device while AE
+    and VLAN interfaces use all the slave devices. Virtual interfaces use a name.
+    """
+    if devices is None:
+        devices = []
+
+    if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+        devices.append(get_interface_port_name(context, iface))
+    elif iface['iftype'] == constants.INTERFACE_TYPE_VIRTUAL:
+        devices.append(iface['ifname'])
+    elif iface['iftype'] == constants.INTERFACE_TYPE_VLAN \
+            or iface['iftype'] == constants.INTERFACE_TYPE_AE:
+        slaves = get_interface_slaves(context, iface)
+        for slave in slaves:
+            get_interface_devices(context, slave, devices)
+
+    return devices
 
 
 def get_interface_routes(context, iface):
@@ -781,16 +803,16 @@ def get_primary_bond_interface(context, iface):
     """
     Return the slave interface with the lowest MAC address
     """
-    slaves = get_bond_interface_slaves(context, iface)
+    slaves = get_interface_slaves(context, iface)
     sorted_slaves = sorted(slaves, key=slave_sort_key)
     primary_iface = sorted_slaves[0]
     return primary_iface
 
 
-def get_bond_interface_slaves(context, iface):
+def get_interface_slaves(context, iface):
     """
     Return the slave interface objects for the corresponding
-    bond interface
+    bond or vlan interface.
     """
     slaves = iface['uses']
     ifaces = []

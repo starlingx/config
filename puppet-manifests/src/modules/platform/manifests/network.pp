@@ -2,6 +2,7 @@ class platform::network::pxeboot::params(
   # shared parametes with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
+  $interface_devices = [],
   $subnet_version = undef,
   $subnet_network = undef,
   $subnet_network_url = undef,
@@ -22,6 +23,7 @@ class platform::network::mgmt::params(
   # shared parametes with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
+  $interface_devices = [],
   $subnet_version = undef,
   $subnet_network = undef,
   $subnet_network_url = undef,
@@ -44,6 +46,7 @@ class platform::network::oam::params(
   # shared parametes with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
+  $interface_devices = [],
   $subnet_version = undef,
   $subnet_network = undef,
   $subnet_network_url = undef,
@@ -63,6 +66,7 @@ class platform::network::cluster_host::params(
   # shared parametes with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
+  $interface_devices = [],
   $subnet_version = undef,
   $subnet_network = undef,
   $subnet_network_url = undef,
