@@ -5195,7 +5195,8 @@ class ConductorManager(service.PeriodicService):
                 crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
                     constants.CEPH_CRUSH_MAP_APPLIED)
                 if (os.path.isfile(crushmap_flag_file) and
-                        self._ceph.have_ceph_monitor_access()):
+                        self._ceph.have_ceph_monitor_access() and
+                        self._ceph.ceph_status_ok()):
                     prereqs_met = True
             return prereqs_met
 
