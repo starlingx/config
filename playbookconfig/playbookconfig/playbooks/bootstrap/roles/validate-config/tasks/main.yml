@@ -267,21 +267,14 @@
         - 127.0.0.1
         - "{{ controller_floating_address }}"
         - "{{ derived_network_params.controller_0_address }}"
-        - "{{ derived_network_params.controller_1_address }}"
-      sx_proxy_addons:
-        - "{{ address_pairs['oam']['start'] }}"
+        - "{{ external_oam_floating_address }}"
+        - "{{ address_pairs['oam_node']['start'] }}"
       non_sx_proxy_addons:
-        - "{{ external_oam_floating_address }},"
-        - "{{ address_pairs['oam_node']['start'] }},"
+        - "{{ derived_network_params.controller_1_address }}"
         - "{{ address_pairs['oam_node']['end'] }}"
       docker_no_proxy_combined: []
 
   - block:
-    - name: Set default no-proxy address list (simplex)
-      set_fact:
-        default_no_proxy: "{{ default_no_proxy + sx_proxy_addons }}"
-      when: system_mode == 'simplex'
-
     - name: Set default no-proxy address list (non simplex)
       set_fact:
         default_no_proxy: "{{ default_no_proxy + non_sx_proxy_addons }}"
@@ -302,7 +295,7 @@
 
     - name: Add user defined no-proxy address list to default
       set_fact:
-        docker_no_proxy_combined: "{{ default_no_proxy + docker_no_proxy }}"
+        docker_no_proxy_combined: "{{ default_no_proxy | union(docker_no_proxy) | unique }}"
 
     when: use_docker_proxy
 
