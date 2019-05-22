@@ -10622,6 +10622,14 @@ class ConductorManager(service.PeriodicService):
         return self._helm.get_helm_chart_overrides(chart_name,
                                                    cnamespace)
 
+    def get_helm_applications(self, context):
+        """Get supported applications.
+
+        :returns: a list of suppotred applications that associated overrides may
+            be provided.
+        """
+        return self._helm.get_helm_applications()
+
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.
 
