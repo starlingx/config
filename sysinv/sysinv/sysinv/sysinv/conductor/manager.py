@@ -6466,6 +6466,39 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
+    def _config_sm_stx_openstack(self, context):
+        """ provision dbmon """
+        personalities = [constants.CONTROLLER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::sm::stx_openstack::runtime']
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
+    def _update_config_for_stx_openstack(self, context):
+        """ Update the runtime configurations that are required
+            for stx-openstack application
+        """
+        personalities = [constants.CONTROLLER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::nfv::runtime',
+                        'platform::sm::stx_openstack::runtime']
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
     def report_lvm_cinder_config_success(self, context, host_uuid):
         """ Callback for Sysinv Agent
 
@@ -10769,24 +10802,24 @@ class ConductorManager(service.PeriodicService):
         """
         self._app.perform_app_upload(rpc_app, tarfile)
 
-    def perform_app_apply(self, context, rpc_app, app_not_already_applied,
-                          mode):
+    def perform_app_apply(self, context, rpc_app, mode):
         """Handling of application install request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
-        :param app_not_already_applied: app not yet successfully applied
         :param mode: mode to control how to apply application manifest
         """
-        app_installed = self._app.perform_app_apply(rpc_app, mode)
-        if app_installed and app_not_already_applied:
-            # Update the VIM and pciIrqAffinity configuration as it may need
-            # to manage the newly installed application. Only do this if the
-            # application was not already applied.
-            self._update_vim_config(context)
+        was_applied = self._app.is_app_active(rpc_app)
+        app_applied = self._app.perform_app_apply(rpc_app, mode)
+        appname = self._app.get_appname(rpc_app)
+        if constants.HELM_APP_OPENSTACK == appname and app_applied \
+                and not was_applied:
+            # apply any runtime configurations that are needed for
+            # stx_openstack application
+            self._update_config_for_stx_openstack(context)
             self._update_pciirqaffinity_config(context)
 
-        return app_installed
+        return app_applied
 
     def perform_app_remove(self, context, rpc_app):
         """Handling of application removal request (via AppOperator)
@@ -10795,8 +10828,17 @@ class ConductorManager(service.PeriodicService):
         :param rpc_app: data object provided in the rpc request
 
         """
+        # deactivate the app
+        self._app.deactivate(rpc_app)
+        appname = self._app.get_appname(rpc_app)
+        # need to update sm stx_openstack runtime manifest first
+        # to deprovision dbmon service prior to removing the
+        # stx-openstack application
+        if constants.HELM_APP_OPENSTACK == appname:
+            self._config_sm_stx_openstack(context)
+
         app_removed = self._app.perform_app_remove(rpc_app)
-        if app_removed:
+        if constants.HELM_APP_OPENSTACK == appname and app_removed:
             # Update the VIM and PciIrqAffinity configuration.
             self._update_vim_config(context)
             self._update_pciirqaffinity_config(context)

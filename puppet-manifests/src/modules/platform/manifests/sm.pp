@@ -14,6 +14,7 @@ class platform::sm
   $region_2_name                 = $::platform::params::region_2_name
   $system_mode                   = $::platform::params::system_mode
   $system_type                   = $::platform::params::system_type
+  $stx_openstack_applied         = $::platform::params::stx_openstack_applied
 
   include ::platform::network::pxeboot::params
   if $::platform::network::pxeboot::params::interface_name {
@@ -644,14 +645,17 @@ class platform::sm
     command => 'sm-provision service etcd',
   }
 
-  # Configure dbmon for AIO duplex and systemcontroller
-  if ($::platform::params::distributed_cloud_role =='systemcontroller') or
-    ($system_type == 'All-in-one' and 'duplex' in $system_mode) {
-    exec { 'Provision dmon (service-group-member)':
-      command => 'sm-provision service-group-member cloud-services dbmon',
+  if $stx_openstack_applied {
+    # Configure dbmon for AIO duplex and systemcontroller
+    if ($::platform::params::distributed_cloud_role =='systemcontroller') or
+      ($system_type == 'All-in-one' and 'duplex' in $system_mode) {
+        exec { 'provision service group member':
+            command => 'sm-provision service-group-member cloud-services dbmon --apply'
+        }
     }
-    -> exec { 'Provision dbmon (service)':
-      command => 'sm-provision service dbmon',
+  } else {
+    exec { 'deprovision service group member':
+        command => 'sm-deprovision service-group-member cloud-services dbmon --apply'
     }
   }
 
@@ -933,5 +937,25 @@ class platform::sm::runtime {
 
   class { 'platform::sm::reload':
     stage => post,
+  }
+}
+
+class platform::sm::stx_openstack::runtime {
+  $system_type                   = $::platform::params::system_type
+  $system_mode                   = $::platform::params::system_mode
+  $stx_openstack_applied         = $::platform::params::stx_openstack_applied
+
+  if $stx_openstack_applied {
+    # Configure dbmon for AIO duplex and systemcontroller
+    if ($::platform::params::distributed_cloud_role =='systemcontroller') or
+      ($system_type == 'All-in-one' and 'duplex' in $system_mode) {
+        exec { 'provision service group member':
+            command => 'sm-provision service-group-member cloud-services dbmon --apply'
+        }
+    }
+  } else {
+    exec { 'deprovision service group member':
+        command => 'sm-deprovision service-group-member cloud-services dbmon --apply'
+    }
   }
 }

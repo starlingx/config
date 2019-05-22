@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sqlalchemy import DateTime, String, Integer
+from sqlalchemy import DateTime, String, Integer, Boolean
 from sqlalchemy import Column, MetaData, Table
 
 from sysinv.openstack.common import log
@@ -38,6 +38,7 @@ def upgrade(migrate_engine):
         Column('manifest_file', String(255), nullable=True),
         Column('status', String(255), nullable=False),
         Column('progress', String(255), nullable=True),
+        Column('active', Boolean, nullable=False, default=False),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,

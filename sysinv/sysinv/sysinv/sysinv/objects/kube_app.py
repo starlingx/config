@@ -24,6 +24,7 @@ class KubeApp(base.SysinvObject):
               'manifest_file': utils.str_or_none,
               'status': utils.str_or_none,
               'progress': utils.str_or_none,
+              'active': utils.bool_or_none,
               }
 
     @base.remotable_classmethod
