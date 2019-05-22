@@ -115,12 +115,16 @@ data:
 
     # Check if pool is accessible using provided credentials
     echo "====================================="
-    rbd -p ${POOL_NAME} --user ${USER_ID} ls -K $CEPH_USER_KEYRING
-    if [ $? -ne 0 ]; then
-      echo "Error: Ceph pool ${POOL_NAME} is not accessible using credentials for user ${USER_ID}, check Pod logs for details."
-      exit 1
+    timeout --preserve-status 10  rbd -p ${POOL_NAME} --user ${USER_ID} ls -K $CEPH_USER_KEYRING
+    if [ $? -ne 143 ]; then
+      if [ $? -ne 0 ]; then
+        echo "Error: Ceph pool ${POOL_NAME} is not accessible using credentials for user ${USER_ID}, check Pod logs for details."
+        exit 1
+      else
+        echo "Pool ${POOL_NAME} accessible"
+      fi
     else
-      echo "Pool ${POOL_NAME} accessible"
+      echo "rbd command timed out and was sent a SIGTERM.  Make sure OSDs have been provisioned."
     fi
 
     ceph -s

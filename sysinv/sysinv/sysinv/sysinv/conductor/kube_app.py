@@ -1052,6 +1052,32 @@ class AppOperator(object):
 
             self._delete_namespace(common.HELM_NS_OPENSTACK)
 
+    def _inter_app_dependencies_are_met(self, app):
+        """Verify that any required applications are applied.
+
+        Some applications may require that another application is already
+        uploaded and applied in order to correctly function. Verify those
+        dependencies here.
+
+        :param app: application object with which to verify dependencies.
+        """
+
+        if app.name == constants.HELM_APP_OPENSTACK:
+            try:
+                dep_app = self._dbapi.kube_app_get(constants.HELM_APP_PLATFORM)
+                status = dep_app.status
+            except exception.KubeAppNotFound:
+                status = constants.APP_NOT_PRESENT
+
+            if status != constants.APP_APPLY_SUCCESS:
+                self._update_app_status(app,
+                    new_status=constants.APP_APPLY_FAILURE,
+                    new_progress=constants.APP_PROGRESS_DEPS_PLATFORM_APP)
+                LOG.error("Cannot apply %s until %s is applied." % (
+                    constants.HELM_APP_OPENSTACK, constants.HELM_APP_PLATFORM))
+                return False
+        return True
+
     def perform_app_upload(self, rpc_app, tarfile):
         """Process application upload request
 
@@ -1139,6 +1165,10 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
+
+        if not self._inter_app_dependencies_are_met(app):
+            return False
+
         LOG.info("Application (%s) apply started." % app.name)
 
         overrides_str = ''

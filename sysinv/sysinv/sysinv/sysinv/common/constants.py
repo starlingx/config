@@ -1534,6 +1534,7 @@ APP_PROGRESS_EXTRACT_TARFILE = 'extracting application tar file'
 APP_PROGRESS_GENERATE_OVERRIDES = 'generating application overrides'
 APP_PROGRESS_TARFILE_DOWNLOAD = 'downloading tarfile'
 APP_PROGRESS_VALIDATE_UPLOAD_CHARTS = 'validating and uploading charts'
+APP_PROGRESS_DEPS_PLATFORM_APP = "%s is required and is not applied" % HELM_APP_PLATFORM
 
 # Node label operation constants
 LABEL_ASSIGN_OP = 'assign'
