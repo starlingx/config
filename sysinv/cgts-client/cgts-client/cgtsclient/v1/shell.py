@@ -50,6 +50,7 @@ from cgtsclient.v1 import partition_shell
 from cgtsclient.v1 import pci_device_shell
 from cgtsclient.v1 import port_shell
 from cgtsclient.v1 import ptp_shell
+from cgtsclient.v1 import registry_image_shell
 from cgtsclient.v1 import remotelogging_shell
 from cgtsclient.v1 import route_shell
 from cgtsclient.v1 import sdn_controller_shell
@@ -106,6 +107,7 @@ COMMAND_MODULES = [
     lldp_agent_shell,
     lldp_neighbour_shell,
     health_shell,
+    registry_image_shell,
     remotelogging_shell,
     sdn_controller_shell,
     partition_shell,

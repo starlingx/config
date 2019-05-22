@@ -62,6 +62,7 @@ from cgtsclient.v1 import partition
 from cgtsclient.v1 import pci_device
 from cgtsclient.v1 import port
 from cgtsclient.v1 import ptp
+from cgtsclient.v1 import registry_image
 from cgtsclient.v1 import remotelogging
 from cgtsclient.v1 import route
 from cgtsclient.v1 import sdn_controller
@@ -143,6 +144,7 @@ class Client(http.HTTPClient):
         self.sm_service = sm_service.SmServiceManager(self)
         self.sm_servicegroup = sm_servicegroup.SmServiceGroupManager(self)
         self.health = health.HealthManager(self)
+        self.registry_image = registry_image.RegistryImageManager(self)
         self.remotelogging = remotelogging.RemoteLoggingManager(self)
         self.sdn_controller = sdn_controller.SDNControllerManager(self)
         self.partition = partition.partitionManager(self)

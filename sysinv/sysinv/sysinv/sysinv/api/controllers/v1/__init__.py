@@ -59,6 +59,7 @@ from sysinv.api.controllers.v1 import port
 from sysinv.api.controllers.v1 import profile
 from sysinv.api.controllers.v1 import ptp
 from sysinv.api.controllers.v1 import pv
+from sysinv.api.controllers.v1 import registry_image
 from sysinv.api.controllers.v1 import remotelogging
 from sysinv.api.controllers.v1 import route
 from sysinv.api.controllers.v1 import sdn_controller
@@ -222,6 +223,9 @@ class V1(base.APIBase):
 
     health = [link.Link]
     "Links to the system health resource"
+
+    registry_image = [link.Link]
+    "Links to the Docker registry image resource"
 
     remotelogging = [link.Link]
     "Links to the remotelogging resource"
@@ -686,6 +690,15 @@ class V1(base.APIBase):
                                          'health', '', bookmark=True)
                      ]
 
+        v1.registry_image = [link.Link.make_link('self',
+                                                pecan.request.host_url,
+                                                'registry_image', ''),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'registry_image', '',
+                                                bookmark=True)
+                             ]
+
         v1.remotelogging = [link.Link.make_link('self',
                                                 pecan.request.host_url,
                                                 'remotelogging', ''),
@@ -809,6 +822,7 @@ class Controller(rest.RestController):
     servicenodes = servicenode.SMServiceNodeController()
     servicegroup = servicegroup.SMServiceGroupController()
     health = health.HealthController()
+    registry_image = registry_image.RegistryImageController()
     remotelogging = remotelogging.RemoteLoggingController()
     sdn_controller = sdn_controller.SDNControllerController()
     license = license.LicenseController()

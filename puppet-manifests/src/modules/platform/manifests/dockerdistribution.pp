@@ -2,6 +2,20 @@ class platform::dockerdistribution::params (
     $registry_ks_endpoint = undef,
 ) {}
 
+define platform::dockerdistribution::write_config (
+  $registry_readonly = false,
+  $file_path = '/etc/docker-distribution/registry/runtime_config.yml',
+  $docker_registry_ip = undef,
+){
+  file { $file_path:
+    ensure  => present,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => template('platform/dockerdistribution.conf.erb'),
+  }
+}
+
 class platform::dockerdistribution::config
   inherits ::platform::dockerdistribution::params {
   include ::platform::params
@@ -11,6 +25,8 @@ class platform::dockerdistribution::config
   include ::platform::docker::params
 
   $docker_registry_ip = $::platform::network::mgmt::params::controller_address
+  $runtime_config = '/etc/docker-distribution/registry/runtime_config.yml'
+  $used_config = '/etc/docker-distribution/registry/config.yml'
 
   # check insecure registries
   if $::platform::docker::params::insecure_registry {
@@ -35,12 +51,18 @@ class platform::dockerdistribution::config
     content => template('platform/insecuredockerregistry.conf.erb'),
   }
 
-  file { '/etc/docker-distribution/registry/config.yml':
-    ensure  => present,
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0644',
-    content => template('platform/dockerdistribution.conf.erb'),
+  platform::dockerdistribution::write_config { 'runtime_config':
+    docker_registry_ip => $docker_registry_ip
+  }
+
+  -> exec { 'use runtime config file':
+    command => "ln -fs ${runtime_config} ${used_config}",
+  }
+
+  platform::dockerdistribution::write_config { 'readonly_config':
+    registry_readonly  => true,
+    file_path          => '/etc/docker-distribution/registry/readonly_config.yml',
+    docker_registry_ip => $docker_registry_ip,
   }
 
   file { '/etc/docker-distribution/registry/token_server.conf':
@@ -234,6 +256,32 @@ class platform::dockerdistribution::runtime {
   class {'::platform::dockerdistribution::reload':
     stage => post
   }
+}
+
+class platform::dockerdistribution::garbagecollect {
+  $runtime_config = '/etc/docker-distribution/registry/runtime_config.yml'
+  $readonly_config = '/etc/docker-distribution/registry/readonly_config.yml'
+  $used_config = '/etc/docker-distribution/registry/config.yml'
+
+  exec { 'turn registry read only':
+    command => "ln -fs ${readonly_config} ${used_config}",
+  }
+
+  # it doesn't like 2 platform::sm::restart with the same name
+  # so we have to do 1 as a command
+  -> exec { 'restart docker-distribution in read only':
+    command => 'sm-restart-safe service docker-distribution',
+  }
+
+  -> exec { 'run garbage collect':
+    command => "/usr/bin/registry garbage-collect ${used_config}",
+  }
+
+  -> exec { 'turn registry back to read write':
+    command => "ln -fs ${runtime_config} ${used_config}",
+  }
+
+  -> platform::sm::restart {'docker-distribution': }
 }
 
 class platform::dockerdistribution::bootstrap

@@ -843,6 +843,39 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_remotelogging_config'), timeout=timeout)
 
+    def docker_registry_image_list(self, context):
+        """Synchronously, request a list of images from Docker Registry API
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('docker_registry_image_list'))
+
+    def docker_registry_image_tags(self, context, image_name):
+        """Synchronously, request a list of tags from Docker Registry API for a given image
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('docker_registry_image_tags', image_name=image_name))
+
+    def docker_registry_image_delete(self, context, image_name_and_tag):
+        """Synchronously, delete the given image tag from the local docker registry
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('docker_registry_image_delete',
+                                       image_name_and_tag=image_name_and_tag))
+
+    def docker_registry_garbage_collect(self, context):
+        """Asynchronously, run the docker registry garbage collector
+
+        :param context: request context.
+        """
+        return self.cast(context,
+                         self.make_msg('docker_registry_garbage_collect'))
+
     def get_magnum_cluster_count(self, context):
         """Synchronously, have the conductor get magnum cluster count
         configuration.
