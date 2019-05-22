@@ -227,4 +227,4 @@
     path: /etc/resolv.conf
     regex: "nameserver ::1"
     state: absent
-  when: not ipv6_addressing
+  when: ipv6_addressing == False
