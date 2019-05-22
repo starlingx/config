@@ -44,6 +44,7 @@ import testtools
 import eventlet
 eventlet.monkey_patch(os=False)
 
+import sysinv.common.utils
 
 CONF = cfg.CONF
 _DB_CACHE = None
@@ -120,9 +121,13 @@ class TestingException(Exception):
 class TestCase(testtools.TestCase):
     """Test case base class for all unit tests."""
 
+    helm_refresh_patcher = mock.patch.object(sysinv.common.utils, 'refresh_helm_repo_information')
+
     def setUp(self):
         """Run before each test method to initialize test environment."""
         super(TestCase, self).setUp()
+        self.mock_helm_refresh = self.helm_refresh_patcher.start()
+
         self.dbapi = dbapi.get_instance()
 
         test_timeout = os.environ.get('OS_TEST_TIMEOUT', 0)
@@ -172,6 +177,10 @@ class TestCase(testtools.TestCase):
         self.useFixture(fixtures.EnvironmentVariable('http_proxy'))
         self.policy = self.useFixture(policy_fixture.PolicyFixture())
         CONF.set_override('fatal_exception_format_errors', True)
+
+    def tearDown(self):
+        super(TestCase, self).tearDown()
+        self.helm_refresh_patcher.stop()
 
     def _restore_obj_registry(self):
         objects_base.SysinvObject._obj_classes = self._base_test_obj_backup
