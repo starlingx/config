@@ -29,23 +29,32 @@ class KubeOperator(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
-        self._kube_client = None
+        self._kube_client_batch = None
+        self._kube_client_core = None
 
-    def _get_kubernetesclient(self):
-        if not self._kube_client:
-            config.load_kube_config('/etc/kubernetes/admin.conf')
+    def _load_kube_config(self):
+        config.load_kube_config('/etc/kubernetes/admin.conf')
 
-            # Workaround: Turn off SSL/TLS verification
-            c = Configuration()
-            c.verify_ssl = False
-            Configuration.set_default(c)
+        # Workaround: Turn off SSL/TLS verification
+        c = Configuration()
+        c.verify_ssl = False
+        Configuration.set_default(c)
 
-            self._kube_client = client.CoreV1Api()
-        return self._kube_client
+    def _get_kubernetesclient_batch(self):
+        if not self._kube_client_batch:
+            self._load_kube_config()
+            self._kube_client_batch = client.BatchV1Api()
+        return self._kube_client_batch
+
+    def _get_kubernetesclient_core(self):
+        if not self._kube_client_core:
+            self._load_kube_config()
+            self._kube_client_core = client.CoreV1Api()
+        return self._kube_client_core
 
     def kube_patch_node(self, name, body):
         try:
-            api_response = self._get_kubernetesclient().patch_node(name, body)
+            api_response = self._get_kubernetesclient_core().patch_node(name, body)
             LOG.debug("Response: %s" % api_response)
         except ApiException as e:
             if e.status == httplib.UNPROCESSABLE_ENTITY:
@@ -61,7 +70,7 @@ class KubeOperator(object):
 
     def kube_get_nodes(self):
         try:
-            api_response = self._get_kubernetesclient().list_node()
+            api_response = self._get_kubernetesclient_core().list_node()
             LOG.debug("Response: %s" % api_response)
             return api_response.items
         except Exception as e:
@@ -71,7 +80,7 @@ class KubeOperator(object):
     def kube_create_namespace(self, namespace):
         body = {'metadata': {'name': namespace}}
 
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.create_namespace(body)
         except ApiException as e:
@@ -87,7 +96,7 @@ class KubeOperator(object):
             raise
 
     def kube_get_namespace(self, namespace):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.read_namespace(namespace)
             return True
@@ -103,7 +112,7 @@ class KubeOperator(object):
             raise
 
     def kube_get_secret(self, name, namespace):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.read_namespaced_secret(name, namespace)
             return True
@@ -119,7 +128,7 @@ class KubeOperator(object):
             raise
 
     def kube_create_secret(self, namespace, body):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.create_namespaced_secret(namespace, body)
         except Exception as e:
@@ -128,7 +137,7 @@ class KubeOperator(object):
             raise
 
     def kube_copy_secret(self, name, src_namespace, dst_namespace):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             body = c.read_namespaced_secret(name, src_namespace, export=True)
             body.metadata.namespace = dst_namespace
@@ -139,7 +148,7 @@ class KubeOperator(object):
             raise
 
     def kube_delete_persistent_volume_claim(self, namespace, **kwargs):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.delete_collection_namespaced_persistent_volume_claim(
                 namespace, **kwargs)
@@ -154,7 +163,7 @@ class KubeOperator(object):
         if kwargs:
             body.update(kwargs)
 
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.delete_namespaced_secret(name, namespace, body)
         except ApiException as e:
@@ -175,7 +184,7 @@ class KubeOperator(object):
         if kwargs:
             body.update(kwargs)
 
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.delete_namespace(namespace, body)
         except ApiException as e:
@@ -190,7 +199,7 @@ class KubeOperator(object):
             raise
 
     def kube_get_config_map(self, name, namespace):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.read_namespaced_config_map(name, namespace)
             return True
@@ -206,7 +215,7 @@ class KubeOperator(object):
             raise
 
     def kube_create_config_map(self, namespace, body):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.create_namespaced_config_map(namespace, body)
         except Exception as e:
@@ -215,7 +224,7 @@ class KubeOperator(object):
             raise
 
     def kube_copy_config_map(self, name, src_namespace, dst_namespace):
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             body = c.read_namespaced_config_map(name, src_namespace, export=True)
             body.metadata.namespace = dst_namespace
@@ -231,7 +240,7 @@ class KubeOperator(object):
         if kwargs:
             body.update(kwargs)
 
-        c = self._get_kubernetesclient()
+        c = self._get_kubernetesclient_core()
         try:
             c.delete_namespaced_config_map(name, namespace, body)
         except ApiException as e:
@@ -244,4 +253,14 @@ class KubeOperator(object):
                 raise
         except Exception as e:
             LOG.error("Kubernetes exception in kube_delete_config_map: %s" % e)
+            raise
+
+    def kube_delete_collection_namespaced_job(self, namespace, label):
+        c = self._get_kubernetesclient_batch()
+
+        try:
+            c.delete_collection_namespaced_job(namespace, label_selector=label)
+        except Exception as e:
+            LOG.error("Failed to delete Jobs with label %s under "
+                      "Namespace %s: %s" % (label, namespace, e))
             raise

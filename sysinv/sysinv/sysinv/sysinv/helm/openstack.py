@@ -170,9 +170,21 @@ class OpenstackBaseHelm(base.BaseHelm):
         if password:
             return password.encode('utf8', 'strict')
 
-        # The password is not present, so generate one and store it to
-        # the override
-        password = self._generate_random_password()
+        # The password is not present, dump from inactive app if available,
+        # otherwise generate one and store it to the override
+        try:
+            inactive_apps = self.dbapi.kube_app_get_inactive(
+                constants.HELM_APP_OPENSTACK)
+            app_override = self.dbapi.helm_override_get(app_id=inactive_apps[0].id,
+                                                        name=chart,
+                                                        namespace=namespace)
+            password = app_override.system_overrides.get(field, None)
+        except (IndexError, exception.HelmOverrideNotFound):
+            # No inactive app or no overrides for the inactive app
+            pass
+
+        if not password:
+            password = self._generate_random_password()
         values = {'system_overrides': override.system_overrides}
         values['system_overrides'].update({
             field: password,
@@ -359,11 +371,27 @@ class OpenstackBaseHelm(base.BaseHelm):
         if privatekey and publickey:
             return str(privatekey), str(publickey)
 
-        # ssh keys are not set so generate them and store in overrides
-        key = RSA.generate(2048)
-        pubkey = key.publickey()
-        newprivatekey = key.exportKey('PEM')
-        newpublickey = pubkey.exportKey('OpenSSH')
+        # ssh keys are not set, dump from inactive app if available,
+        # otherwise generate them and store in overrides
+        newprivatekey = None
+        newpublickey = None
+        try:
+            inactive_apps = self.dbapi.kube_app_get_inactive(
+                constants.HELM_APP_OPENSTACK)
+            app_override = self.dbapi.helm_override_get(app_id=inactive_apps[0].id,
+                                                        name=chart,
+                                                        namespace=namespace)
+            newprivatekey = str(app_override.system_overrides.get('privatekey', None))
+            newpublickey = str(app_override.system_overrides.get('publickey', None))
+        except (IndexError, exception.HelmOverrideNotFound):
+            # No inactive app or no overrides for the inactive app
+            pass
+
+        if not newprivatekey or not newprivatekey:
+            key = RSA.generate(2048)
+            pubkey = key.publickey()
+            newprivatekey = key.exportKey('PEM')
+            newpublickey = pubkey.exportKey('OpenSSH')
         values = {'system_overrides': override.system_overrides}
         values['system_overrides'].update({'privatekey': newprivatekey,
                                            'publickey': newpublickey})

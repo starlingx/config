@@ -7528,11 +7528,38 @@ class Connection(api.Connection):
 
     def _kube_app_get(self, name):
         query = model_query(models.KubeApp)
-        query = query.filter_by(name=name)
+        query = query.filter(
+            models.KubeApp.name == name,
+            models.KubeApp.status != constants.APP_INACTIVE_STATE)
         try:
             result = query.one()
         except NoResultFound:
             raise exception.KubeAppNotFound(name=name)
+        return result
+
+    @objects.objectify(objects.kube_app)
+    def kube_app_get_inactive(self, name, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+        query = model_query(models.KubeApp)
+        query = query.filter(
+            models.KubeApp.name == name,
+            models.KubeApp.status == constants.APP_INACTIVE_STATE)
+        return _paginate_query(models.KubeApp, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.kube_app)
+    def kube_app_get_inactive_by_name_version(self, name, version):
+        query = model_query(models.KubeApp)
+        query = query.filter(
+            models.KubeApp.name == name,
+            models.KubeApp.app_version == version,
+            models.KubeApp.status == constants.APP_INACTIVE_STATE)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.KubeAppInactiveNotFound(name=name,
+                                                    version=version)
         return result
 
     @objects.objectify(objects.kube_app)
@@ -7545,15 +7572,18 @@ class Connection(api.Connection):
                 session.flush()
             except db_exc.DBDuplicateEntry:
                 LOG.error("Failed to add application %s. "
-                          "Already exists with this name" %
-                          (values['name']))
+                          "Already exists with this name"
+                          "and version" % (values['name']))
                 raise exception.KubeAppAlreadyExists(
-                    name=values['name'])
+                    name=values['name'],
+                    version=values['app_version'])
             return self.kube_app_get(values['name'])
 
     @objects.objectify(objects.kube_app)
     def kube_app_get_all(self):
         query = model_query(models.KubeApp)
+        query = query.filter(
+            models.KubeApp.status != constants.APP_INACTIVE_STATE)
         return query.all()
 
     @objects.objectify(objects.kube_app)
@@ -7568,26 +7598,81 @@ class Connection(api.Connection):
 
             count = query.update(values, synchronize_session='fetch')
             if count == 0:
-                raise exception.KubeAppNotFound(id)
+                raise exception.KubeAppNotFound(values['name'])
             return query.one()
 
-    def kube_app_destroy(self, name):
+    def kube_app_destroy(self, name, version=None, inactive=False):
         with _session_for_write() as session:
             query = model_query(models.KubeApp, session=session)
             query = query.filter_by(name=name)
+            if version:
+                query = query.filter_by(app_version=version)
+            if inactive:
+                query = query.filter_by(
+                    status=constants.APP_INACTIVE_STATE)
+
+            if query.all():
+                query.delete()
+
+    @objects.objectify(objects.kube_app_releases)
+    def kube_app_chart_release_get(self, app_id, release, namespace):
+        query = model_query(models.KubeAppReleases)
+        query = query.filter(models.KubeAppReleases.app_id == app_id,
+                             models.KubeAppReleases.release == release,
+                             models.KubeAppReleases.namespace == namespace)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.KubeAppChartReleaseNotFound(
+                name=release,
+                namespace=namespace,
+                app_id=app_id)
+        return result
+
+    @objects.objectify(objects.kube_app_releases)
+    def kube_app_chart_release_update(self, app_id, release, namespace, values):
+        with _session_for_write() as session:
+            query = model_query(models.KubeAppReleases, session=session)
+            query = query.filter(models.KubeAppReleases.app_id == app_id,
+                                 models.KubeAppReleases.release == release,
+                                 models.KubeAppReleases.namespace == namespace)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count == 0:
+                raise exception.KubeAppChartReleaseNotFound(
+                    name=release,
+                    namespace=namespace,
+                    app_id=app_id)
+            return query.one()
+
+    @objects.objectify(objects.kube_app_releases)
+    def kube_app_chart_release_create(self, values):
+        app_release = models.KubeAppReleases()
+        app_release.update(values)
+        with _session_for_write() as session:
             try:
-                app = query.one()
-                if app.status not in [constants.APP_UPLOAD_SUCCESS,
-                                      constants.APP_UPLOAD_FAILURE]:
-                    failure_reason =\
-                        "operation is not allowed while status is " + app.status
-                    raise exception.KubeAppDeleteFailure(
-                        name=name,
-                        version=app.app_version,
-                        reason=failure_reason)
-            except NoResultFound:
-                raise exception.KubeAppNotFound(name)
-            query.delete()
+                session.add(app_release)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add chart release %s for application %s. "
+                          "Already exists with this name %s and namespace %s" %
+                          (values['release'], values['app_id'],
+                           values['release'], values['namespace']))
+                raise exception.KubeAppChartReleaseAlreadyExists(
+                    name=values['release'], namespace=values['namespace'],
+                    app_id=values['app_id'])
+
+            return self.kube_app_chart_release_get(
+                values['app_id'], values['release'], values['namespace'])
+
+    @objects.objectify(objects.kube_app_releases)
+    def kube_app_chart_release_get_all(self, app_id, limit=None, marker=None,
+                                       sort_key=None, sort_dir=None):
+        query = model_query(models.KubeAppReleases)
+        query = query.filter(
+            models.KubeAppReleases.app_id == app_id)
+        return _paginate_query(models.KubeAppReleases, limit, marker,
+                               sort_key, sort_dir, query)
 
     def _datanetwork_get(self, model_class, datanetwork_id, obj=None):
         session = None

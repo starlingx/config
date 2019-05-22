@@ -53,6 +53,14 @@ class AppManager(base.Manager):
         return self._update(self._path(app_name) + '?directive=apply',
                             {'values': data})
 
+    def update(self, data):
+        """Upgrade/rollback the deployed application to a different version.
+
+        :param data: location of tarfile, optional application name and version
+        """
+        resp, body = self.api.json_request('POST', self._path() + "/update", body=data)
+        return self.resource_class(self, body)
+
     def remove(self, app_name):
         """Uninstall the specified application
 

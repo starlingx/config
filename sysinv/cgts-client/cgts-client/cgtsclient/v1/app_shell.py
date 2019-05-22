@@ -42,6 +42,28 @@ def _is_url(url_str):
         return False
 
 
+def _application_check(args):
+    tarfile = args.tarfile
+
+    if not _is_url(tarfile):
+        if not os.path.isabs(tarfile):
+            tarfile = os.path.join(os.getcwd(), tarfile)
+
+        if not os.path.isfile(tarfile):
+            raise exc.CommandError("Error: Tar file %s does not exist" % tarfile)
+        if not tarfile.endswith('.tgz') and not tarfile.endswith('.tar.gz'):
+            raise exc.CommandError("Error: File %s has unrecognizable tar file "
+                                   "extension. Supported extensions are: .tgz "
+                                   "and .tar.gz" % tarfile)
+
+    data = {'tarfile': tarfile}
+    if args.app_name:
+        data.update({'name': args.app_name})
+    if args.app_version:
+        data.update({'app_version': args.app_version})
+    return data
+
+
 def do_application_list(cc, args):
     """List all containerized applications"""
     apps = cc.app.list()
@@ -62,7 +84,7 @@ def do_application_show(cc, args):
 
 
 @utils.arg('tarfile', metavar='<tar file>',
-           help='Tarball containing application manifest, helm charts and'
+           help='Tarball containing application manifest, Helm charts and'
                 ' config file')
 @utils.arg('-n', '--app-name',
            metavar='<app name>',
@@ -72,26 +94,25 @@ def do_application_show(cc, args):
            help='Version of the application')
 def do_application_upload(cc, args):
     """Upload application Helm chart(s) and manifest"""
-    tarfile = args.tarfile
-
-    if not _is_url(tarfile):
-        if not os.path.isabs(tarfile):
-            tarfile = os.path.join(os.getcwd(), tarfile)
-
-        if not os.path.isfile(tarfile):
-            raise exc.CommandError("Error: Tar file %s does not exist" % tarfile)
-        if not tarfile.endswith('.tgz') and not tarfile.endswith('.tar.gz'):
-            raise exc.CommandError("Error: File %s has unrecognizable tar file "
-                                   "extension. Supported extensions are: .tgz "
-                                   "and .tar.gz" % tarfile)
-
-    data = {'tarfile': tarfile}
-    if args.app_name:
-        data.update({'name': args.app_name})
-    if args.app_version:
-        data.update({'app_version': args.app_version})
-
+    data = _application_check(args)
     response = cc.app.upload(data)
+    _print_application_show(response)
+    _print_reminder_msg(response.name)
+
+
+@utils.arg('tarfile', metavar='<tar file>',
+           help='Tarball containing application manifest, Helm charts and'
+                ' config file')
+@utils.arg('-n', '--app-name',
+           metavar='<app name>',
+           help='Name of the application')
+@utils.arg('-v', '--app-version',
+           metavar='<app version>',
+           help='Version of the application')
+def do_application_update(cc, args):
+    """Update the deployed application to a different version"""
+    data = _application_check(args)
+    response = cc.app.update(data)
     _print_application_show(response)
     _print_reminder_msg(response.name)
 

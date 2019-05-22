@@ -100,6 +100,7 @@ from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import helm
 from sysinv.helm import common as helm_common
+from sysinv.helm import utils as helm_utils
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -214,7 +215,7 @@ class ConductorManager(service.PeriodicService):
 
         self._handle_restore_in_progress()
 
-        cutils.refresh_helm_repo_information()
+        helm_utils.refresh_helm_repo_information()
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
@@ -10832,6 +10833,20 @@ class ConductorManager(service.PeriodicService):
             self._update_pciirqaffinity_config(context)
 
         return app_applied
+
+    def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile, operation):
+        """Handling of application update request (via AppOperator)
+
+        :param context: request context.
+        :param from_rpc_app: data object provided in the rpc request that
+                             application update from
+        :param to_rpc_app: data object provided in the rpc request that
+                           application update to
+        :param tarfile: location of the application tarfile to be extracted
+        :param operation: apply or rollback
+
+        """
+        self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile, operation)
 
     def perform_app_remove(self, context, rpc_app):
         """Handling of application removal request (via AppOperator)

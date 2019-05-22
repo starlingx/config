@@ -1513,12 +1513,17 @@ APP_APPLY_SUCCESS = 'applied'
 APP_APPLY_FAILURE = 'apply-failed'
 APP_REMOVE_IN_PROGRESS = 'removing'
 APP_REMOVE_FAILURE = 'remove-failed'
+APP_INACTIVE_STATE = 'inactive'
+APP_UPDATE_IN_PROGRESS = 'updating'
+APP_RECOVER_IN_PROGRESS = 'recovering'
 
 # Operation constants
 APP_UPLOAD_OP = 'upload'
 APP_APPLY_OP = 'apply'
 APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
+APP_UPDATE_OP = 'update'
+APP_ROLLBACK_OP = 'rollback'
 
 # Progress constants
 APP_PROGRESS_ABORTED = 'operation aborted, check logs for detail'
@@ -1531,6 +1536,14 @@ APP_PROGRESS_GENERATE_OVERRIDES = 'generating application overrides'
 APP_PROGRESS_TARFILE_DOWNLOAD = 'downloading tarfile'
 APP_PROGRESS_VALIDATE_UPLOAD_CHARTS = 'validating and uploading charts'
 APP_PROGRESS_DEPS_PLATFORM_APP = "%s is required and is not applied" % HELM_APP_PLATFORM
+APP_PROGRESS_ROLLBACK_RELEASES = 'rolling back application releases'
+APP_PROGRESS_UPDATE_ABORTED = 'application update from version {} to version {} aborted. '
+APP_PROGRESS_UPDATE_COMPLETED = 'application update from version {} to version {} completed.'
+APP_PROGRESS_RECOVER_ABORTED = 'application recover to version {} aborted. '
+APP_PROGRESS_RECOVER_COMPLETED = 'application recover to version {} completed. '
+APP_PROGRESS_CLEANUP_FAILED = 'application files/helm release cleanup for version {} failed.'
+APP_PROGRESS_RECOVER_IN_PROGRESS = 'recovering version {} '
+APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
 
 # Node label operation constants
 LABEL_ASSIGN_OP = 'assign'

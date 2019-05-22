@@ -119,6 +119,10 @@ LOCK_NAME = 'KubeAppController'
 class KubeAppController(rest.RestController):
     """REST controller for Helm applications."""
 
+    _custom_actions = {
+        'update': ['POST'],
+    }
+
     def __init__(self, parent=None, **kwargs):
         self._parent = parent
 
@@ -126,12 +130,25 @@ class KubeAppController(rest.RestController):
         if not utils.is_kubernetes_config():
             raise exception.OperationNotPermitted
 
-    def _check_tarfile(self, app_tarfile, app_name, app_version):
+    def _check_tarfile(self, app_tarfile, app_name, app_version, operation):
         def _handle_upload_failure(reason):
             raise wsme.exc.ClientSideError(_(
-                "Application-upload rejected: " + reason))
+                "Application-{} rejected: ".format(operation) + reason))
 
         if app_tarfile:
+            if cutils.is_url(app_tarfile):
+                # For tarfile that is downloaded remotely, defer the checksum, manifest
+                # and tarfile content validations to sysinv-conductor as download can
+                # take some time depending on network traffic, target server and file
+                # size.
+                if not app_name:
+                    app_name = constants.APP_NAME_PLACEHOLDER
+                if not app_version:
+                    app_version = constants.APP_VERSION_PLACEHOLDER
+                mname = constants.APP_MANIFEST_NAME_PLACEHOLDER
+                mfile = constants.APP_TARFILE_NAME_PLACEHOLDER
+                return app_name, app_version, mname, mfile
+
             if not os.path.isfile(app_tarfile):
                 _handle_upload_failure(
                     "application tar file {} does not exist.".format(app_tarfile))
@@ -157,14 +174,12 @@ class KubeAppController(rest.RestController):
                     mname, mfile = app_helper._find_manifest_file(app_path)
                     app_helper._extract_helm_charts(app_path)
                     LOG.info("Tar file of application %s verified." % name)
+                    return name, version, mname, mfile
                 except exception.SysinvException as e:
                     _handle_upload_failure(str(e))
-
-                return name, version, mname, mfile
-
         else:
             raise ValueError(_(
-                "Application-upload rejected: tar file must be specified."))
+                "Application-{} rejected: tar file must be specified.".format(operation)))
 
     def _get_one(self, app_name):
         # can result in KubeAppNotFound
@@ -194,20 +209,8 @@ class KubeAppController(rest.RestController):
         tarfile = body.get('tarfile')
         name = body.get('name', '')
         version = body.get('app_version', '')
-
-        if not cutils.is_url(tarfile):
-            name, version, mname, mfile = self._check_tarfile(tarfile, name, version)
-        else:
-            # For tarfile that is downloaded remotely, defer the checksum, manifest
-            # and tarfile content validations to sysinv-conductor as download can
-            # take some time depending on network traffic, target server and file
-            # size.
-            mname = constants.APP_MANIFEST_NAME_PLACEHOLDER
-            mfile = constants.APP_TARFILE_NAME_PLACEHOLDER
-            if not name:
-                name = constants.APP_NAME_PLACEHOLDER
-            if not version:
-                version = constants.APP_VERSION_PLACEHOLDER
+        name, version, mname, mfile = self._check_tarfile(tarfile, name, version,
+                                                          constants.APP_UPLOAD_OP)
 
         try:
             objects.kube_app.get_by_name(pecan.request.context, name)
@@ -303,6 +306,91 @@ class KubeAppController(rest.RestController):
             return KubeApp.convert_with_links(db_app)
 
     @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
+    def update(self, body):
+        """Update the applied application to a different version"""
+
+        self._check_environment()
+        tarfile = body.get('tarfile')
+        name = body.get('name', '')
+        version = body.get('app_version', '')
+        name, version, mname, mfile = self._check_tarfile(tarfile, name, version,
+                                                          constants.APP_UPDATE_OP)
+
+        try:
+            applied_app = objects.kube_app.get_by_name(pecan.request.context, name)
+        except exception.KubeAppNotFound:
+            LOG.error("Received a request to update app %s which does not exist." %
+                      name)
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: application not found."))
+
+        if applied_app.status == constants.APP_UPDATE_IN_PROGRESS:
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: update is already "
+                "in progress."))
+        elif applied_app.status != constants.APP_APPLY_SUCCESS:
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: operation is not allowed "
+                "while the current status is {}.".format(applied_app.status)))
+
+        if applied_app.app_version == version:
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: the version %s is already "
+                "applied." % version))
+        # Set the status for the current applied app to inactive
+        applied_app.status = constants.APP_INACTIVE_STATE
+        applied_app.progress = None
+        applied_app.save()
+
+        # If the version has ever applied before(inactive app found),
+        # use armada rollback to apply application later, otherwise,
+        # use armada apply.
+        # On the AIO-SX, always use armada apply even it was applied
+        # before, issue on AIO-SX(replicas is 1) to leverage rollback,
+        # armada/helm rollback --wait does not wait for pods to be
+        # ready before it returns.
+        # related to helm issue,
+        # https://github.com/helm/helm/issues/4210
+        # https://github.com/helm/helm/issues/2006
+        try:
+            target_app = objects.kube_app.get_inactive_app_by_name_version(
+                pecan.request.context, name, version)
+            target_app.status = constants.APP_UPDATE_IN_PROGRESS
+            target_app.save()
+            if utils.is_aio_simplex_system(pecan.request.dbapi):
+                operation = constants.APP_APPLY_OP
+            else:
+                operation = constants.APP_ROLLBACK_OP
+        except exception.KubeAppInactiveNotFound:
+            target_app_data = {
+                'name': name,
+                'app_version': version,
+                'manifest_name': mname,
+                'manifest_file': os.path.basename(mfile),
+                'status': constants.APP_UPDATE_IN_PROGRESS,
+                'active': True
+            }
+            operation = constants.APP_APPLY_OP
+
+            try:
+                target_app = pecan.request.dbapi.kube_app_create(target_app_data)
+            except exception.KubeAppAlreadyExists as e:
+                applied_app.status = constants.APP_APPLY_SUCCESS
+                applied_app.progress = constants.APP_PROGRESS_COMPLETED
+                applied_app.save()
+                LOG.exception(e)
+                raise wsme.exc.ClientSideError(_(
+                    "Application-update failed: Unable to start application update, "
+                    "application info update failed."))
+
+        pecan.request.rpcapi.perform_app_update(pecan.request.context,
+                                                applied_app, target_app,
+                                                tarfile, operation)
+
+        return KubeApp.convert_with_links(target_app)
+
+    @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, wtypes.text, status_code=204)
     def delete(self, name):
         """Delete the application with the given name
@@ -316,7 +404,14 @@ class KubeAppController(rest.RestController):
         except exception.KubeAppNotFound:
             LOG.error("Received a request to delete app %s which does not "
                       "exist." % name)
-            raise
+            raise wsme.exc.ClientSideError(_(
+                "Application-delete rejected: application not found."))
+
+        if db_app.status not in [constants.APP_UPLOAD_SUCCESS,
+                                 constants.APP_UPLOAD_FAILURE]:
+            raise wsme.exc.ClientSideError(_(
+                "Application-delete rejected: operation is not allowed "
+                "while the current status is {}.".format(db_app.status)))
 
         response = pecan.request.rpcapi.perform_app_delete(
             pecan.request.context, db_app)

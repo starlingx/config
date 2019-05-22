@@ -37,6 +37,7 @@ from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.helm import common
 from sysinv.helm import helm
+from sysinv.helm import utils as helm_utils
 
 
 # Log and config
@@ -55,8 +56,10 @@ CONF.register_opts(kube_app_opts)
 APPLY_SEARCH_PATTERN = 'Processing Chart,'
 ARMADA_CONTAINER_NAME = 'armada_service'
 ARMADA_MANIFEST_APPLY_SUCCESS_MSG = 'Done applying manifest'
+ARMADA_RELEASE_ROLLBACK_FAILURE_MSG = 'Error while rolling back tiller release'
 CONTAINER_ABNORMAL_EXIT_CODE = 137
 DELETE_SEARCH_PATTERN = 'Deleting release'
+ROLLBACK_SEARCH_PATTERN = 'Helm rollback of release'
 INSTALLATION_TIMEOUT = 3600
 MAX_DOWNLOAD_THREAD = 5
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
@@ -125,7 +128,7 @@ def get_local_docker_registry_auth():
                 password=registry_password)
 
 
-Chart = namedtuple('Chart', 'name namespace location')
+Chart = namedtuple('Chart', 'name namespace location release labels sequenced')
 
 
 class AppOperator(object):
@@ -141,20 +144,26 @@ class AppOperator(object):
         self._app = kube_app.KubeAppHelper(self._dbapi)
         self._lock = threading.Lock()
 
-    def _cleanup(self, app):
+    def _cleanup(self, app, app_dir=True):
         """" Remove application directories and override files """
         try:
             if os.path.exists(app.overrides_dir):
-                shutil.rmtree(os.path.dirname(
-                    app.overrides_dir))
+                shutil.rmtree(app.overrides_dir)
+                if app_dir:
+                    shutil.rmtree(os.path.dirname(
+                        app.overrides_dir))
 
             if os.path.exists(app.armada_mfile_dir):
-                shutil.rmtree(os.path.dirname(
-                    app.armada_mfile_dir))
+                shutil.rmtree(app.armada_mfile_dir)
+                if app_dir:
+                    shutil.rmtree(os.path.dirname(
+                        app.armada_mfile_dir))
 
             if os.path.exists(app.path):
-                shutil.rmtree(os.path.dirname(
-                    app.path))
+                shutil.rmtree(app.path)
+                if app_dir:
+                    shutil.rmtree(os.path.dirname(
+                        app.path))
         except OSError as e:
             LOG.error(e)
             raise
@@ -164,9 +173,6 @@ class AppOperator(object):
 
         if new_status is None:
             new_status = app.status
-        elif (new_status in [constants.APP_UPLOAD_SUCCESS,
-                             constants.APP_APPLY_SUCCESS]):
-            new_progress = constants.APP_PROGRESS_COMPLETED
 
         with self._lock:
             app.update_status(new_status, new_progress)
@@ -455,9 +461,9 @@ class AppOperator(object):
         # Extract the list of images from the charts and overrides where
         # applicable. Save the list to the same location as the armada manifest
         # so it can be sync'ed.
+        app.charts = self._get_list_of_charts(app.armada_mfile_abs)
         if app.system_app:
             LOG.info("Generating application overrides...")
-            app.charts = self._get_list_of_charts(app.armada_mfile_abs)
             self._helm.generate_helm_application_overrides(
                 app.overrides_dir, app.name, mode=None, cnamespace=None,
                 armada_format=True, armada_chart_info=app.charts, combined=True)
@@ -593,8 +599,8 @@ class AppOperator(object):
                 except KeyError:
                     pass
 
-        LOG.info("Application %s will load charts to chart repo %s" % (
-            app.name, repo))
+        LOG.info("Application %s (%s) will load charts to chart repo %s" % (
+            app.name, app.version, repo))
         return repo
 
     def _upload_helm_charts(self, app):
@@ -617,7 +623,7 @@ class AppOperator(object):
                     LOG.info("Helm chart %s uploaded" % os.path.basename(chart))
 
             # Make sure any helm repo changes are reflected for the users
-            cutils.refresh_helm_repo_information()
+            helm_utils.refresh_helm_repo_information()
 
         except Exception as e:
             raise exception.KubeAppUploadFailure(
@@ -853,24 +859,116 @@ class AppOperator(object):
             raise
 
     def _get_list_of_charts(self, manifest_file):
+        """Get the charts information from the manifest file
+
+        The following chart data for each chart in the manifest file
+        are extracted and stored into a namedtuple Chart object:
+         - chart_name
+         - namespace
+         - location
+         - release
+         - pre-delete job labels
+
+        The method returns a list of namedtuple charts which following
+        the install order in the manifest chart_groups.
+
+        :param manifest_file: the manifest file of the application
+        :return: a list of namedtuple charts
+        """
         charts = []
+        release_prefix = ""
+        chart_group = {}
+        chart_groups = []
+        armada_charts = {}
+
         with open(manifest_file, 'r') as f:
             docs = yaml.safe_load_all(f)
             for doc in docs:
+                # iterative docs in the manifest file to get required
+                # chart information
                 try:
-                    if "armada/Chart/" in doc['schema']:
-                        charts.append(Chart(
-                            name=doc['data']['chart_name'],
-                            namespace=doc['data']['namespace'],
-                            location=doc['data']['source']['location']))
+                    if "armada/Manifest/" in doc['schema']:
+                        release_prefix = doc['data']['release_prefix']
+                        chart_groups = doc['data']['chart_groups']
+
+                    elif "armada/ChartGroup/" in doc['schema']:
+                        chart_group.update(
+                            {doc['metadata']['name']: {
+                                'chart_group': doc['data']['chart_group'],
+                                'sequenced': doc.get('data').get('sequenced', False)}})
+
+                    elif "armada/Chart/" in doc['schema']:
+                        labels = []
+                        delete_resource = \
+                            doc['data'].get('upgrade', {}).get('pre', {}).get('delete', [])
+                        for resource in delete_resource:
+                            if resource.get('type') == 'job':
+                                label = ''
+                                for k, v in resource['labels'].items():
+                                    label = k + '=' + v + ',' + label
+                                labels.append(label[:-1])
+
+                        armada_charts.update(
+                            {doc['metadata']['name']: {
+                                'chart_name': doc['data']['chart_name'],
+                                'namespace': doc['data']['namespace'],
+                                'location': doc['data']['source']['location'],
+                                'release': doc['data']['release'],
+                                'labels': labels}})
                         LOG.debug("Manifest: Chart: {} Namespace: {} "
-                                  "Location: {}".format(
+                                  "Location: {} Release: {}".format(
                                       doc['data']['chart_name'],
                                       doc['data']['namespace'],
-                                      doc['data']['source']['location']))
-
+                                      doc['data']['source']['location'],
+                                      doc['data']['release']))
                 except KeyError:
                     pass
+
+            # Push Chart to the list that following the order
+            # in the chart_groups(install list)
+            for c_group in chart_groups:
+                for chart in chart_group[c_group]['chart_group']:
+                    charts.append(Chart(
+                        name=armada_charts[chart]['chart_name'],
+                        namespace=armada_charts[chart]['namespace'],
+                        location=armada_charts[chart]['location'],
+                        release=armada_charts[chart]['release'],
+                        labels=armada_charts[chart]['labels'],
+                        sequenced=chart_group[c_group]['sequenced']))
+                    del armada_charts[chart]
+                del chart_group[c_group]
+
+            # Push Chart to the list that are not referenced
+            # in the chart_groups (install list)
+            if chart_group:
+                for c_group in chart_group:
+                    for chart in chart_group[c_group]['chart_group']:
+                        charts.append(Chart(
+                            name=armada_charts[chart]['chart_name'],
+                            namespace=armada_charts[chart]['namespace'],
+                            location=armada_charts[chart]['location'],
+                            release=armada_charts[chart]['release'],
+                            labels=armada_charts[chart]['labels'],
+                            sequenced=chart_group[c_group]['sequenced']))
+                        del armada_charts[chart]
+
+            if armada_charts:
+                for chart in armada_charts:
+                    charts.append(Chart(
+                        name=armada_charts[chart]['chart_name'],
+                        namespace=armada_charts[chart]['namespace'],
+                        location=armada_charts[chart]['location'],
+                        release=armada_charts[chart]['release'],
+                        labels=armada_charts[chart]['labels'],
+                        sequenced=False))
+
+        # Update each Chart in the list if there has release prefix
+        # for each release
+        if release_prefix:
+            for i, chart in enumerate(charts):
+                charts[i] = chart._replace(
+                    release=release_prefix + "-" + chart.release)
+
         return charts
 
     def _get_overrides_files(self, overrides_dir, charts, app_name, mode):
@@ -919,6 +1017,57 @@ class AppOperator(object):
                                                        chart.name,
                                                        chart.namespace)
 
+    def _update_app_releases_version(self, app_name):
+        """Update application helm releases records
+
+        This method retrieves the deployed helm releases and updates the
+        releases records in sysinv db if needed
+        :param app_name: the name of the application
+        """
+        try:
+            deployed_releases = helm_utils.retrieve_helm_releases()
+
+            app = self._dbapi.kube_app_get(app_name)
+            app_releases = self._dbapi.kube_app_chart_release_get_all(app.id)
+
+            for r in app_releases:
+                if (r.release in deployed_releases and
+                        r.namespace in deployed_releases[r.release] and
+                        r.version != deployed_releases[r.release][r.namespace]):
+
+                    self._dbapi.kube_app_chart_release_update(
+                        app.id, r.release, r.namespace,
+                        {'version': deployed_releases[r.release][r.namespace]})
+        except Exception as e:
+            LOG.exception(e)
+            raise exception.SysinvException(_(
+                "Failed to update/record application %s releases' versions." % str(e)))
+
+    def _create_app_releases_version(self, app_name, app_charts):
+        """Create application helm releases records
+
+        This method creates/initializes the helm releases objects for the application.
+        :param app_name: the name of the application
+        :param app_charts: the charts of the application
+        """
+        kube_app = self._dbapi.kube_app_get(app_name)
+        app_releases = self._dbapi.kube_app_chart_release_get_all(kube_app.id)
+        if app_releases:
+            return
+
+        for chart in app_charts:
+            values = {
+                'release': chart.release,
+                'version': 0,
+                'namespace': chart.namespace,
+                'app_id': kube_app.id
+            }
+
+            try:
+                self._dbapi.kube_app_chart_release_create(values)
+            except Exception as e:
+                LOG.exception(e)
+
     def _make_armada_request_with_monitor(self, app, request, overrides_str=None):
         """Initiate armada request with monitoring
 
@@ -938,17 +1087,21 @@ class AppOperator(object):
             inner method is to be replaced with an official API call when
             it becomes available.
             """
+            if pattern == ROLLBACK_SEARCH_PATTERN:
+                print_chart = '{print $10}'
+            else:
+                print_chart = '{print $NF}'
             p1 = subprocess.Popen(['docker', 'exec', ARMADA_CONTAINER_NAME,
                                    'grep', pattern, logfile],
                                    stdout=subprocess.PIPE)
-            p2 = subprocess.Popen(['awk', '{print $NF}'], stdin=p1.stdout,
+            p2 = subprocess.Popen(['awk', print_chart], stdin=p1.stdout,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             p1.stdout.close()
             result, err = p2.communicate()
             if result:
                 # Strip out ANSI color code that might be in the text stream
                 r = re.compile("\x1b\[[0-9;]*m")
-                result = r.sub('', result)
+                result = r.sub('', result).replace(',', '')
                 matches = result.split()
                 num_chart_processed = len(matches)
                 last_chart_processed = matches[num_chart_processed - 1]
@@ -998,13 +1151,15 @@ class AppOperator(object):
         logfile = ARMADA_CONTAINER_LOG_LOCATION + '/' + app.name + '-' + request + '.log'
         if request == constants.APP_APPLY_OP:
             pattern = APPLY_SEARCH_PATTERN
-        else:
+        elif request == constants.APP_DELETE_OP:
             pattern = DELETE_SEARCH_PATTERN
+        else:
+            pattern = ROLLBACK_SEARCH_PATTERN
 
         monitor = greenthread.spawn_after(1, _check_progress, mqueue, app,
                                           pattern, logfile)
         rc = self._docker.make_armada_request(request, app.armada_mfile,
-                                              overrides_str, logfile)
+                                              overrides_str, app.releases, logfile)
         mqueue.put('done')
         monitor.kill()
         return rc
@@ -1066,31 +1221,163 @@ class AppOperator(object):
 
             self._delete_namespace(common.HELM_NS_OPENSTACK)
 
-    def _inter_app_dependencies_are_met(self, app):
-        """Verify that any required applications are applied.
+    def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
+        """Perform application recover
 
-        Some applications may require that another application is already
-        uploaded and applied in order to correctly function. Verify those
-        dependencies here.
+        This recover method is triggered when application update failed, it cleans
+        up the files/data for the new application and recover helm charts for the
+        old application. If the armada process is required, armada apply is invoked
+        to recover the application releases for the old version.
 
-        :param app: application object with which to verify dependencies.
+        The app status will be populated to "apply-failed" if recover fails so that
+        the user can re-apply app.
+
+        :param old_app: the application object that application recovering to
+        :param new_app: the application object that application recovering from
+        :param armada_process_required: boolean, whether armada operation is needed
+        """
+        LOG.info("Starting recover Application %s from version: %s to version: %s" %
+                 (old_app.name, new_app.version, old_app.version))
+
+        self._update_app_status(
+            old_app, constants.APP_RECOVER_IN_PROGRESS,
+            constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
+            constants.APP_PROGRESS_RECOVER_IN_PROGRESS.format(old_app.version))
+        # Set the status for the new app to inactive
+        self._update_app_status(new_app, constants.APP_INACTIVE_STATE)
+
+        try:
+            self._cleanup(new_app, app_dir=False)
+            self._app._patch_report_app_dependencies(
+                new_app.name + '-' + new_app.version)
+            self._dbapi.kube_app_destroy(new_app.name,
+                                         version=new_app.version,
+                                         inactive=True)
+
+            LOG.info("Recovering helm charts for Application %s (%s)..."
+                     % (old_app.name, old_app.version))
+            self._update_app_status(old_app,
+                                    new_progress=constants.APP_PROGRESS_RECOVER_CHARTS)
+            with self._lock:
+                self._upload_helm_charts(old_app)
+
+            rc = True
+            if armada_process_required:
+                overrides_str = ''
+                old_app.charts = self._get_list_of_charts(old_app.armada_mfile_abs)
+                if old_app.system_app:
+                    overrides_files = self._get_overrides_files(old_app.overrides_dir,
+                                                                old_app.charts,
+                                                                old_app.name, mode=None)
+                    overrides_str = \
+                        self._generate_armada_overrides_str(old_app.name, old_app.version,
+                                                            overrides_files)
+
+                if self._make_armada_request_with_monitor(old_app,
+                                                          constants.APP_APPLY_OP,
+                                                          overrides_str):
+                    old_app_charts = [c.release for c in old_app.charts]
+                    deployed_releases = helm_utils.retrieve_helm_releases()
+                    for new_chart in new_app.charts:
+                        if (new_chart.release not in old_app_charts and
+                                new_chart.release in deployed_releases):
+                            # Cleanup the releases in the new application version
+                            # but are not in the old application version
+                            helm_utils.delete_helm_release(new_chart.release)
+                else:
+                    rc = False
+
+        except Exception as e:
+            # ie. patch report error, cleanup application files error
+            #     helm release delete failure
+            self._update_app_status(
+                old_app, constants.APP_APPLY_SUCCESS,
+                constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
+                constants.APP_PROGRESS_RECOVER_COMPLETED.format(old_app.version) +
+                constants.APP_PROGRESS_CLEANUP_FAILED.format(new_app.version) +
+                'please check logs for detail.')
+            LOG.error(e)
+            return
+
+        if rc:
+            self._update_app_status(
+                old_app, constants.APP_APPLY_SUCCESS,
+                constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
+                constants.APP_PROGRESS_RECOVER_COMPLETED.format(old_app.version) +
+                'please check logs for detail.')
+            LOG.info("Application %s recover to version %s completed."
+                     % (old_app.name, old_app.version))
+        else:
+            self._update_app_status(
+                old_app, constants.APP_APPLY_FAILURE,
+                constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
+                constants.APP_PROGRESS_RECOVER_ABORTED.format(old_app.version) +
+                'please check logs for detail.')
+            LOG.error("Application %s recover to version %s aborted!"
+                      % (old_app.name, old_app.version))
+
+    def _perform_app_rollback(self, from_app, to_app):
+        """Perform application rollback request
+
+        This method invokes Armada to rollback the application releases to
+        previous installed versions. The jobs for the current installed
+        releases require to be cleaned up before starting armada rollback.
+
+        :param from_app: application object that application updating from
+        :param to_app: application object that application updating to
+        :return boolean: whether application rollback was successful
         """
 
-        if app.name == constants.HELM_APP_OPENSTACK:
-            try:
-                dep_app = self._dbapi.kube_app_get(constants.HELM_APP_PLATFORM)
-                status = dep_app.status
-            except exception.KubeAppNotFound:
-                status = constants.APP_NOT_PRESENT
+        LOG.info("Application %s (%s) rollback started." % (to_app.name, to_app.version))
 
-            if status != constants.APP_APPLY_SUCCESS:
-                self._update_app_status(app,
-                    new_status=constants.APP_APPLY_FAILURE,
-                    new_progress=constants.APP_PROGRESS_DEPS_PLATFORM_APP)
-                LOG.error("Cannot apply %s until %s is applied." % (
-                    constants.HELM_APP_OPENSTACK, constants.HELM_APP_PLATFORM))
-                return False
-        return True
+        try:
+            to_db_app = self._dbapi.kube_app_get(to_app.name)
+            to_app_releases = \
+                self._dbapi.kube_app_chart_release_get_all(to_db_app.id)
+
+            from_db_app = self._dbapi.kube_app_get_inactive_by_name_version(
+                from_app.name, version=from_app.version)
+            from_app_releases = \
+                self._dbapi.kube_app_chart_release_get_all(from_db_app.id)
+            from_app_r_dict = {r.release: r.version for r in from_app_releases}
+
+            self._update_app_status(
+                to_app, new_progress=constants.APP_PROGRESS_ROLLBACK_RELEASES)
+
+            charts_sequence = {c.release: c.sequenced for c in to_app.charts}
+            charts_labels = {c.release: c.labels for c in to_app.charts}
+            for to_app_r in to_app_releases:
+                if to_app_r.version != 0:
+                    if (to_app_r.release not in from_app_r_dict or
+                            (to_app_r.release in from_app_r_dict and
+                             to_app_r.version != from_app_r_dict[to_app_r.release])):
+                        # Append the release which needs to be rolled back
+                        to_app.releases.append(
+                            {'release': to_app_r.release,
+                             'version': to_app_r.version,
+                             'sequenced': charts_sequence[to_app_r.release]})
+
+                        # Cleanup the jobs for the current installed release
+                        if to_app_r.release in charts_labels:
+                            for label in charts_labels[to_app_r.release]:
+                                self._kube.kube_delete_collection_namespaced_job(
+                                    to_app_r.namespace, label)
+                        LOG.info("Jobs deleted for release %s" % to_app_r.release)
+
+            if self._make_armada_request_with_monitor(to_app,
+                                                      constants.APP_ROLLBACK_OP):
+                self._update_app_status(to_app, constants.APP_APPLY_SUCCESS,
+                                        constants.APP_PROGRESS_COMPLETED)
+                LOG.info("Application %s (%s) rollback completed."
+                         % (to_app.name, to_app.version))
+                return True
+        except Exception as e:
+            # unexpected KubeAppNotFound, KubeAppInactiveNotFound, KeyError
+            # k8s exception:fail to cleanup release jobs
+            LOG.exception(e)
+
+        LOG.error("Application rollback aborted!")
+        return False
 
     def perform_app_upload(self, rpc_app, tarfile):
         """Process application upload request
@@ -1106,7 +1393,7 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
-        LOG.info("Application (%s) upload started." % app.name)
+        LOG.info("Application %s (%s) upload started." % (app.name, app.version))
 
         try:
             app.tarfile = tarfile
@@ -1117,7 +1404,10 @@ class AppOperator(object):
                 downloaded_tarfile = self._download_tarfile(app)
 
                 if downloaded_tarfile is None:
-                    self._abort_operation(app, constants.APP_UPLOAD_OP)
+                    raise exception.KubeAppUploadFailure(
+                        name=app.name,
+                        version=app.version,
+                        reason="Failed to find the downloaded tarball.")
                 else:
                     app.tarfile = downloaded_tarfile
 
@@ -1133,8 +1423,12 @@ class AppOperator(object):
                 self._extract_tarfile(app)
             shutil.copy(app.mfile_abs, app.armada_mfile_abs)
 
-            if not self._docker.make_armada_request('validate', app.armada_mfile):
-                return self._abort_operation(app, constants.APP_UPLOAD_OP)
+            if not self._docker.make_armada_request(
+                    'validate', manifest_file=app.armada_mfile):
+                raise exception.KubeAppUploadFailure(
+                    name=app.name,
+                    version=app.version,
+                    reason="Failed to validate application manifest.")
 
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_VALIDATE_UPLOAD_CHARTS)
@@ -1146,15 +1440,21 @@ class AppOperator(object):
             self._save_images_list(app)
             if app.patch_dependencies:
                 self._app._patch_report_app_dependencies(
-                    app.name, app.patch_dependencies)
-            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
-            LOG.info("Application (%s) upload completed." % app.name)
+                    app.name + '-' + app.version, app.patch_dependencies)
+            self._create_app_releases_version(app.name, app.charts)
+            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
+                                    constants.APP_PROGRESS_COMPLETED)
+            LOG.info("Application %s (%s) upload completed." % (app.name, app.version))
+            return app
         except exception.KubeAppUploadFailure as e:
             LOG.exception(e)
             self._abort_operation(app, constants.APP_UPLOAD_OP, str(e))
+            raise
         except Exception as e:
             LOG.exception(e)
             self._abort_operation(app, constants.APP_UPLOAD_OP)
+            raise exception.KubeAppUploadFailure(
+                name=app.name, version=app.version, reason=e)
 
     def perform_app_apply(self, rpc_app, mode):
         """Process application install request
@@ -1179,11 +1479,7 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
-
-        if not self._inter_app_dependencies_are_met(app):
-            return False
-
-        LOG.info("Application (%s) apply started." % app.name)
+        LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
         overrides_str = ''
         ready = True
@@ -1204,9 +1500,6 @@ class AppOperator(object):
                                                             app.name, mode)
                 if overrides_files:
                     LOG.info("Application overrides generated.")
-                    # Ensure all chart overrides are readable by Armada
-                    for file in overrides_files:
-                        os.chmod(file, 0o644)
                     overrides_str =\
                         self._generate_armada_overrides_str(app.name, app.version,
                                                             overrides_files)
@@ -1221,24 +1514,139 @@ class AppOperator(object):
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
                 self._download_images(app)
+        except exception.KubeAppApplyFailure as e:
+            # ex:Image download failure
+            LOG.exception(e)
+            self._abort_operation(app, constants.APP_APPLY_OP, str(e))
+            raise
+        except Exception as e:
+            # ex:K8s resource creation failure
+            LOG.exception(e)
+            self._abort_operation(app, constants.APP_APPLY_OP)
+            raise exception.KubeAppApplyFailure(
+                name=app.name, version=app.version, reason=e)
 
+        try:
             if ready:
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_APPLY_MANIFEST)
                 if self._make_armada_request_with_monitor(app,
                                                           constants.APP_APPLY_OP,
                                                           overrides_str):
+                    self._update_app_releases_version(app.name)
                     self._update_app_status(app,
-                                            constants.APP_APPLY_SUCCESS)
+                                            constants.APP_APPLY_SUCCESS,
+                                            constants.APP_PROGRESS_COMPLETED)
                     app.update_active(True)
-                    LOG.info("Application (%s) apply completed." % app.name)
+                    LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
                     return True
         except Exception as e:
+            # ex: update release version failure
             LOG.exception(e)
 
         # If it gets here, something went wrong
         self._abort_operation(app, constants.APP_APPLY_OP)
         return False
+
+    def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile, operation):
+        """Process application update request
+
+        This method leverages the existing application upload workflow to
+        validate/upload the new application tarfile, then invokes Armada
+        apply or rollback to update application from an applied version
+        to the new version. If any failure happens during updating, the
+        recover action will be triggered to recover the application to
+        the old version.
+
+        After apply/rollback to the new version is done, the files for the
+        old application version will be cleaned up as well as the releases
+        which are not in the new application version.
+
+        The app status will be populated to "applied" once update is completed
+        so that user can continue applying app with user overrides.
+
+        Usage ex: the method can be used to update from v1 to v2 and also
+                  update back from v2 to v1
+
+        :param from_rpc_app: application object in the RPC request that
+                             application updating from
+        :param to_rpc_app: application object in the RPC request that
+                           application updating to
+        :param tarfile: location of application tarfile
+        :param operation: apply or rollback
+        """
+
+        from_app = AppOperator.Application(from_rpc_app,
+            from_rpc_app.get('name') in self._helm.get_helm_applications())
+        to_app = AppOperator.Application(to_rpc_app,
+            to_rpc_app.get('name') in self._helm.get_helm_applications())
+        LOG.info("Start updating Application %s from version %s to version %s ..."
+                 % (to_app.name, from_app.version, to_app.version))
+
+        try:
+            # Upload new app tarball
+            to_app = self.perform_app_upload(to_rpc_app, tarfile)
+
+            self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
+
+            result = False
+            if operation == constants.APP_APPLY_OP:
+                result = self.perform_app_apply(to_rpc_app, mode=None)
+            elif operation == constants.APP_ROLLBACK_OP:
+                result = self._perform_app_rollback(from_app, to_app)
+
+            if not result:
+                LOG.error("Application %s update from version %s to version "
+                          "%s aborted." % (to_app.name, from_app.version, to_app.version))
+                return self._perform_app_recover(from_app, to_app)
+
+            self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
+                                    "cleanup application version {}".format(from_app.version))
+
+            # App apply/rollback succeeded
+            # Starting cleanup old application
+            from_app.charts = self._get_list_of_charts(from_app.armada_mfile_abs)
+            to_app_charts = [c.release for c in to_app.charts]
+            deployed_releases = helm_utils.retrieve_helm_releases()
+            for from_chart in from_app.charts:
+                if (from_chart.release not in to_app_charts and
+                        from_chart.release in deployed_releases):
+                    # Cleanup the releases in the old application version
+                    # but are not in the new application version
+                    helm_utils.delete_helm_release(from_chart.release)
+                    LOG.info("Helm release %s for Application %s (%s) deleted"
+                             % (from_chart.release, from_app.name, from_app.version))
+
+            self._cleanup(from_app, app_dir=False)
+            self._app._patch_report_app_dependencies(
+                from_app.name + '-' + from_app.version)
+
+            self._update_app_status(
+                to_app, constants.APP_APPLY_SUCCESS,
+                constants.APP_PROGRESS_UPDATE_COMPLETED.format(from_app.version,
+                                                               to_app.version))
+            LOG.info("Application %s update from version %s to version "
+                     "%s completed." % (to_app.name, from_app.version, to_app.version))
+        except (exception.KubeAppUploadFailure,
+                exception.KubeAppApplyFailure):
+            # Error occurs during app uploading or applying but before
+            # armada apply process...
+            # ie.images download/k8s resource creation failure
+            # Start recovering without trigger armada process
+            return self._perform_app_recover(from_app, to_app,
+                                             armada_process_required=False)
+        except Exception as e:
+            # Application update successfully(armada apply/rollback)
+            # Error occurs during cleanup old app
+            # ie. delete app files failure, patch controller failure,
+            #     helm release delete failure
+            self._update_app_status(
+                to_app, constants.APP_APPLY_SUCCESS,
+                constants.APP_PROGRESS_UPDATE_COMPLETED.format(from_app.version, to_app.version) +
+                constants.APP_PROGRESS_CLEANUP_FAILED.format(from_app.version) +
+                'please check logs for detail.')
+            LOG.exception(e)
+        return True
 
     def perform_app_remove(self, rpc_app):
         """Process application remove request
@@ -1260,6 +1668,19 @@ class AppOperator(object):
             app, new_progress=constants.APP_PROGRESS_DELETE_MANIFEST)
 
         if self._make_armada_request_with_monitor(app, constants.APP_DELETE_OP):
+            # After armada delete, the data for the releases are purged from
+            # tiller/etcd, the releases info for the active app stored in sysinv
+            # db should be set back to 0 and the inactive apps require to be
+            # destroyed too.
+            db_app = self._dbapi.kube_app_get(app.name)
+            app_releases = self._dbapi.kube_app_chart_release_get_all(db_app.id)
+            for r in app_releases:
+                if r.version != 0:
+                    self._dbapi.kube_app_chart_release_update(
+                        db_app.id, r.release, r.namespace, {'version': 0})
+            if self._dbapi.kube_app_get_inactive(app.name):
+                self._dbapi.kube_app_destroy(app.name, inactive=True)
+
             if app.system_app:
 
                 try:
@@ -1271,7 +1692,8 @@ class AppOperator(object):
                     LOG.exception(e)
                     return False
 
-            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS)
+            self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
+                                    constants.APP_PROGRESS_COMPLETED)
             LOG.info("Application (%s) remove completed." % app.name)
             return True
         else:
@@ -1320,7 +1742,7 @@ class AppOperator(object):
         try:
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
-            self._app._patch_report_app_dependencies(app.name)
+            self._app._patch_report_app_dependencies(app.name + '-' + app.version)
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
             msg = None
@@ -1370,6 +1792,7 @@ class AppOperator(object):
 
             self.patch_dependencies = []
             self.charts = []
+            self.releases = []
 
         @property
         def name(self):
@@ -1533,8 +1956,8 @@ class DockerHelper(object):
                 os.unlink(kube_config)
             return None
 
-    def make_armada_request(self, request, manifest_file, overrides_str='',
-                            logfile=None):
+    def make_armada_request(self, request, manifest_file='', overrides_str='',
+                            app_releases=[], logfile=None):
 
         if logfile is None:
             logfile = request + '.log'
@@ -1587,6 +2010,44 @@ class DockerHelper(object):
                         else:
                             LOG.error("Failed to apply application manifest %s: "
                                       "%s." % (manifest_file, exec_logs))
+                elif request == constants.APP_ROLLBACK_OP:
+                    cmd_rm = "rm " + logfile
+                    armada_svc.exec_run(cmd_rm)
+
+                    for app_release in app_releases:
+                        release = app_release.get('release')
+                        version = app_release.get('version')
+                        sequenced = app_release.get('sequenced')
+
+                        if sequenced:
+                            cmd = "/bin/bash -c 'armada rollback --debug --wait --timeout 1800 " +\
+                                  "--release " + release + " --version " + str(version) + tiller_host +\
+                                  " | tee -a " + logfile + "'"
+                        else:
+                            cmd = "/bin/bash -c 'armada rollback --debug --release " +\
+                                  release + " --version " + str(version) + tiller_host +\
+                                  " | tee -a " + logfile + "'"
+                        (exit_code, exec_logs) = armada_svc.exec_run(cmd)
+                        if exit_code == 0:
+                            if ARMADA_RELEASE_ROLLBACK_FAILURE_MSG in exec_logs:
+                                rc = False
+                                LOG.error("Received a false positive response from "
+                                          "Docker/Armada. Failed to rollback release "
+                                          "(%s): %s" % (release, exec_logs))
+                                break
+                        else:
+                            rc = False
+                            if exit_code == CONTAINER_ABNORMAL_EXIT_CODE:
+                                LOG.error("Failed to rollback release (%s). "
+                                          "Armada service has exited abnormally."
+                                          % release)
+                            else:
+                                LOG.error("Failed to rollback release (%s): %s"
+                                          % (release, exec_logs))
+                            break
+                    if rc:
+                        LOG.info("Application releases %s were successfully "
+                                 "rolled back." % app_releases)
                 elif request == constants.APP_DELETE_OP:
                     cmd = "/bin/bash -c 'armada delete --debug --manifest " +\
                           manifest_file + tiller_host + " | tee " + logfile + "'"

@@ -31,5 +31,9 @@ class KubeApp(base.SysinvObject):
     def get_by_name(cls, context, name):
         return cls.dbapi.kube_app_get(name)
 
+    @base.remotable_classmethod
+    def get_inactive_app_by_name_version(cls, context, name, version):
+        return cls.dbapi.kube_app_get_inactive_by_name_version(name, version)
+
     def save_changes(self, context, updates):
         self.dbapi.kube_app_update(self.id, updates)

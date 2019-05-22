@@ -244,6 +244,10 @@ class KubeAppDeleteFailure(SysinvException):
     message = _("Delete of application %(name)s (%(version)s) failed: %(reason)s")
 
 
+class HelmTillerFailure(SysinvException):
+    message = _("Helm operation failure: %(reason)s")
+
+
 class InvalidCPUInfo(Invalid):
     message = _("Unacceptable CPU info") + ": %(reason)s"
 
@@ -560,7 +564,12 @@ class HelmOverrideAlreadyExists(Conflict):
 
 
 class KubeAppAlreadyExists(Conflict):
-    message = _("An application with name %(name)s already exists.")
+    message = _("An application with name %(name)s %(version)s already exists.")
+
+
+class KubeAppChartReleaseAlreadyExists(Conflict):
+    message = _("A chart release with name %(name)s and namespace "
+                "%(namespace)s for application %(app_id)s already exists.")
 
 
 class InstanceDeployFailure(Invalid):
@@ -893,6 +902,19 @@ class CertificateTypeNotFound(NotFound):
 
 class KubeAppNotFound(NotFound):
     message = _("No application with name %(name)s.")
+
+
+class KubeAppInactiveNotFound(NotFound):
+    message = _("No inactive application with name %(name)s and version %(version)s")
+
+
+class KubeAppChartReleaseNotFound(NotFound):
+    message = _("No chart release with name %(name)s and "
+                "namespace %(namespace)s for application %(app_id)s")
+
+
+class KubeAppReleasesNotFound(NotFound):
+    message = _("No releases found for application %(app_id)s")
 
 
 class DockerRegistryCredentialNotFound(NotFound):

@@ -44,7 +44,7 @@ import testtools
 import eventlet
 eventlet.monkey_patch(os=False)
 
-import sysinv.common.utils
+import sysinv.helm.utils
 
 CONF = cfg.CONF
 _DB_CACHE = None
@@ -122,7 +122,7 @@ class TestingException(Exception):
 class TestCase(testtools.TestCase):
     """Test case base class for all unit tests."""
 
-    helm_refresh_patcher = mock.patch.object(sysinv.common.utils, 'refresh_helm_repo_information')
+    helm_refresh_patcher = mock.patch.object(sysinv.helm.utils, 'refresh_helm_repo_information')
 
     def setUp(self):
         """Run before each test method to initialize test environment."""

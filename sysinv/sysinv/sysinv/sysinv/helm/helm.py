@@ -584,6 +584,8 @@ class HelmOperator(object):
                 yaml.dump(overrides, f, default_flow_style=False)
             os.close(fd)
             os.rename(tmppath, filepath)
+            # Change the permission to be readable to non-root users(ie.Armada)
+            os.chmod(filepath, 0o644)
         except Exception:
             LOG.exception("failed to write overrides file: %s" % filepath)
             raise

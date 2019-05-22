@@ -1701,10 +1701,23 @@ class KubeApp(Base):
     __tablename__ = 'kube_app'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
     app_version = Column(String(255), nullable=False)
     manifest_name = Column(String(255), nullable=False)
     manifest_file = Column(String(255), nullable=False)
     status = Column(String(255), nullable=False)
     progress = Column(String(255), nullable=True)
     active = Column(Boolean, nullable=False, default=False)
+    UniqueConstraint('name', 'app_version', name='u_app_name_version')
+
+
+class KubeAppReleases(Base):
+    __tablename__ = 'kube_app_releases'
+
+    id = Column(Integer, primary_key=True)
+    release = Column(String(255), nullable=True)
+    namespace = Column(String(255), nullable=True)
+    version = Column(Integer)
+    app_id = Column(Integer, ForeignKey('kube_app.id', ondelete='CASCADE'))
+    kube_app = relationship("KubeApp", lazy="joined", join_depth=1)
+    UniqueConstraint('release', 'namespace', 'app_id', name='u_app_release_namespace')

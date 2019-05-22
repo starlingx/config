@@ -278,6 +278,7 @@ data:
     images:
       tags:
         prometheus_rabbitmq_exporter_helm_tests: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        rabbitmq_init: docker.io/starlingx/stx-heat:master-centos-stable-latest
     pod:
       affinity:
         anti:
@@ -787,36 +788,7 @@ data:
       delete:
         - type: job
           labels:
-            application: nova
-            component: db-init
-        - type: job
-          labels:
-            application: nova
-            component: db-sync
-        - type: job
-          labels:
-            application: nova
-            component: ks-user
-        - type: job
-          labels:
-            application: nova
-            component: ks-service
-        - type: job
-          labels:
-            application: placement
-            component: ks-user
-        - type: job
-          labels:
-            application: placement
-            component: ks-service
-        - type: job
-          labels:
-            application: placement
-            component: ks-endpoints
-        - type: job
-          labels:
-            application: nova
-            component: cell-setup
+            release_group: osh-openstack-nova
   values:
     manifests:
       job_ks_endpoints: false
@@ -1082,24 +1054,7 @@ data:
       delete:
         - type: job
           labels:
-            application: neutron
-            component: db-init
-        - type: job
-          labels:
-            application: neutron
-            component: db-sync
-        - type: job
-          labels:
-            application: neutron
-            component: ks-user
-        - type: job
-          labels:
-            application: neutron
-            component: ks-service
-        - type: job
-          labels:
-            application: neutron
-            component: ks-endpoints
+            release_group: osh-openstack-neutron
   values:
     pod:
       replicas:
