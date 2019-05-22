@@ -38,6 +38,10 @@ global:
   #
   provisionStorageClass: true
   #
+  # Enable this storage class as the system default storage class
+  #
+  defaultStorageClass: fast-rbd
+  #
   # Choose if rbd-provisioner pod should be deployed as deplyment or DaemonSet
   # Values: none, Deployment, DaemonSet
   #
