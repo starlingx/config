@@ -66,11 +66,11 @@
 
 
 # DNS servers config validation
-- block:
-  # Looping over a block of tasks is not yet supported. For now, move the
-  # DNS validation to a seprate tasks file.
-  - include: validate_dns.yml dns_server={{ item }}
-    with_items: "{{ dns_servers }}"
+- name: Check format of DNS server IP(s)
+  debug:
+    msg: "DNS Server: {{ item }}"
+  failed_when: item | ipaddr == False
+  with_items: "{{ dns_servers }}"
 
 
 # Networks config validation
@@ -135,7 +135,7 @@
       set_fact:
         localhost_name_ip_mapping: "::1\tlocalhost\tlocalhost.localdomain localhost6 localhost6.localdomain6"
 
-    when: ipv6_addressing
+    when: ipv6_addressing != False
 
   - name: Fail if address allocation is misconfigured
     fail:
