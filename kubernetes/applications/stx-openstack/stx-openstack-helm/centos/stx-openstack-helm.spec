@@ -59,6 +59,7 @@ helm repo add local http://localhost:8879/charts
 make nova-api-proxy
 make garbd
 make keystone-api-proxy
+make fm-rest-api
 
 # terminate helm server (the last backgrounded task)
 kill %1
