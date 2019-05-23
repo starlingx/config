@@ -53,19 +53,24 @@ class platform::ceph
       if $system_mode == 'simplex' {
         # 1 node configuration, a single monitor is available
         $mon_initial_members = $mon_0_host
+        $osd_pool_default_size = 1
       } else {
         # 2 node configuration, we have a floating monitor
         $mon_initial_members = $floating_mon_host
+        $osd_pool_default_size = 2
       }
     } else {
       # Multinode & standard, any 2 monitors form a cluster
       $mon_initial_members = undef
+      $osd_pool_default_size = 2
     }
 
     class { '::ceph':
-      fsid                => $cluster_uuid,
-      authentication_type => $authentication_type,
-      mon_initial_members => $mon_initial_members
+      fsid                      => $cluster_uuid,
+      authentication_type       => $authentication_type,
+      mon_initial_members       => $mon_initial_members,
+      osd_pool_default_size     => $osd_pool_default_size,
+      osd_pool_default_min_size => 1
     }
     -> ceph_config {
       'mon/mon clock drift allowed': value => '.1';
@@ -83,7 +88,7 @@ class platform::ceph
         # Simplex case, a single monitor binded to the controller.
         Class['::ceph']
         -> ceph_config {
-          "mon.${mon_0_host}/host":      value => $mon_0_host;
+          "mon.${mon_0_host}/host":     value => $mon_0_host;
           "mon.${mon_0_host}/mon_addr": value => $mon_0_addr;
         }
       }
