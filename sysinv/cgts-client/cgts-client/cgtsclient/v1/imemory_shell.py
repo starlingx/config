@@ -133,14 +133,14 @@ def do_host_memory_list(cc, args):
                     'vs_hp_total',
                     'vs_hp_avail',
                     'vs_hp_reqd',
-                    'vm_total_4K',
-                    'vm_hp_total_2M',
-                    'vm_hp_avail_2M',
-                    'vm_hp_pending_2M',
-                    'vm_hp_total_1G',
-                    'vm_hp_avail_1G',
-                    'vm_hp_pending_1G',
-                    'vm_hp_use_1G']
+                    'app_total_4K',
+                    'app_hp_total_2M',
+                    'app_hp_avail_2M',
+                    'app_hp_pending_2M',
+                    'app_hp_total_1G',
+                    'app_hp_avail_1G',
+                    'app_hp_pending_1G',
+                    'app_hp_use_1G']
 
     utils.print_list(imemorys, fields, field_labels, sortby=1)
 
@@ -156,14 +156,14 @@ def do_host_memory_list(cc, args):
            help='The amount of platform memory (MiB) for the numa node')
 @utils.arg('-2M', '--hugepages_nr_2M_pending',
            metavar='<2M hugepages number>',
-           help='The number of 2M vm huge pages for the numa node')
+           help='The number of 2M application huge pages for the numa node')
 @utils.arg('-1G', '--hugepages_nr_1G_pending',
            metavar='<1G hugepages number>',
-           help='The number of 1G vm huge pages for the numa node')
+           help='The number of 1G application huge pages for the numa node')
 @utils.arg('-f', '--function',
            metavar='<function>',
-           choices=['vswitch', 'vm'],
-           default='vm',
+           choices=['vswitch', 'application'],
+           default='application',
            help='The Memory Function.')
 def do_host_memory_modify(cc, args):
     """Modify platform reserved and/or application huge page memory attributes for worker nodes."""
