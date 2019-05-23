@@ -35,3 +35,12 @@ failSwapOn: false
 featureGates:
   HugePages: false
 cgroupRoot: "/k8s-infra"
+---
+kind: KubeProxyConfiguration
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+# Workaround to disable resource-container for kube-proxy issues:
+# https://github.com/kubernetes/kubernetes/issues/66614
+# https://github.com/kubernetes/kubernetes/issues/54967
+# https://github.com/kubernetes/kubernetes/issues/17619
+# https://github.com/kubernetes-sigs/kubespray/issues/3518
+resourceContainer: "/"
