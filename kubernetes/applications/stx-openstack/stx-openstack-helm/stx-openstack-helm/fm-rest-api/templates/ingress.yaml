@@ -1,0 +1,10 @@
+{{/*
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if and .Values.manifests.ingress .Values.network.alarming.ingress.public }}
+{{- $ingressOpts := dict "envAll" . "backendService" "alarming" "backendServiceType" "alarming" "backendPort" "fm-port" -}}
+{{ $ingressOpts | include "helm-toolkit.manifests.ingress" }}
+{{- end }}
