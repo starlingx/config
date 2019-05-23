@@ -22,14 +22,16 @@ CONF = cfg.CONF
 
 def create_app_overrides_action(path, app_name=None, namespace=None):
     dbapi = api.get_instance()
-    operator = helm.HelmOperator(dbapi=dbapi, path=path)
-    operator.generate_helm_application_overrides(app_name, mode=None, cnamespace=namespace)
+    operator = helm.HelmOperator(dbapi=dbapi)
+    operator.generate_helm_application_overrides(path, app_name, mode=None,
+                                                 cnamespace=namespace)
 
 
 def create_armada_app_overrides_action(path, app_name=None, namespace=None):
     dbapi = api.get_instance()
-    operator = helm.HelmOperator(dbapi=dbapi, path=path)
-    operator.generate_helm_application_overrides(app_name, mode=None, cnamespace=namespace,
+    operator = helm.HelmOperator(dbapi=dbapi)
+    operator.generate_helm_application_overrides(path, app_name, mode=None,
+                                                 cnamespace=namespace,
                                                  armada_format=True,
                                                  armada_chart_info=None,
                                                  combined=False)
@@ -37,8 +39,8 @@ def create_armada_app_overrides_action(path, app_name=None, namespace=None):
 
 def create_chart_override_action(path, chart_name=None, namespace=None):
     dbapi = api.get_instance()
-    operator = helm.HelmOperator(dbapi=dbapi, path=path)
-    operator.generate_helm_chart_overrides(chart_name, namespace)
+    operator = helm.HelmOperator(dbapi=dbapi)
+    operator.generate_helm_chart_overrides(path, chart_name, namespace)
 
 
 def add_action_parsers(subparsers):

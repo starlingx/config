@@ -21,17 +21,18 @@ class HelmManager(base.Manager):
     def _path(name=''):
         return '/v1/helm_charts/%s' % name
 
-    def list_charts(self):
+    def list_charts(self, app):
         """Get list of charts
 
         For each chart it will show any overrides for that chart along
         with the namespace of the overrides.
         """
-        return self._list(self._path(), 'charts')
+        return self._list(self._path() + '?app_name=' + app, 'charts')
 
-    def get_overrides(self, name, namespace):
+    def get_overrides(self, app, name, namespace):
         """Get overrides for a given chart.
 
+        :param app_name: name of application
         :param name: name of the chart
         :param namespace: namespace for the chart overrides
 
@@ -39,14 +40,17 @@ class HelmManager(base.Manager):
         specified chart.
         """
         try:
-            return self._list(self._path(name) + '?namespace=' + namespace)[0]
+            return self._list(self._path(app) +
+                              '?name=' + name +
+                              '&namespace=' + namespace)[0]
         except IndexError:
             return None
 
-    def update_overrides(self, name, namespace,
+    def update_overrides(self, app, name, namespace,
                          flag='reset', override_values={}):
         """Update overrides for a given chart.
 
+        :param app_name: name of application
         :param name: name of the chart
         :param namespace: namespace for the chart overrides
         :param flag: 'reuse' or 'reset' to indicate how to handle existing
@@ -56,12 +60,17 @@ class HelmManager(base.Manager):
         This will return the end-user overrides for the specified chart.
         """
         body = {'flag': flag, 'values': override_values}
-        return self._update(self._path(name) + '?namespace=' + namespace, body)
+        return self._update(self._path(app) +
+                            '?name=' + name +
+                            '&namespace=' + namespace, body)
 
-    def delete_overrides(self, name, namespace):
+    def delete_overrides(self, app, name, namespace):
         """Delete overrides for a given chart.
 
+        :param app_name: name of application
         :param name: name of the chart
         :param namespace: namespace for the chart overrides
         """
-        return self._delete(self._path(name) + '?namespace=' + namespace)
+        return self._delete(self._path(app) +
+                            '?name=' + name +
+                            '&namespace=' + namespace)

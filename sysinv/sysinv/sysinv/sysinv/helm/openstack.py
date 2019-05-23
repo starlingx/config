@@ -149,7 +149,9 @@ class OpenstackBaseHelm(base.BaseHelm):
             return None
 
         try:
-            override = self.dbapi.helm_override_get(name=chart,
+            app = self.dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
+            override = self.dbapi.helm_override_get(app_id=app.id,
+                                                    name=chart,
                                                     namespace=namespace)
         except exception.HelmOverrideNotFound:
             # Override for this chart not found, so create one
@@ -157,6 +159,7 @@ class OpenstackBaseHelm(base.BaseHelm):
                 values = {
                     'name': chart,
                     'namespace': namespace,
+                    'app_id': app.id,
                 }
                 override = self.dbapi.helm_override_create(values=values)
             except Exception as e:
@@ -176,7 +179,7 @@ class OpenstackBaseHelm(base.BaseHelm):
         })
         try:
             self.dbapi.helm_override_update(
-                name=chart, namespace=namespace, values=values)
+                app_id=app.id, name=chart, namespace=namespace, values=values)
         except Exception as e:
             LOG.exception(e)
 
@@ -337,13 +340,16 @@ class OpenstackBaseHelm(base.BaseHelm):
 
     def _get_or_generate_ssh_keys(self, chart, namespace):
         try:
-            override = self.dbapi.helm_override_get(name=chart,
+            app = self.dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
+            override = self.dbapi.helm_override_get(app_id=app.id,
+                                                    name=chart,
                                                     namespace=namespace)
         except exception.HelmOverrideNotFound:
             # Override for this chart not found, so create one
             values = {
                 'name': chart,
                 'namespace': namespace,
+                'app_id': app.id
             }
             override = self.dbapi.helm_override_create(values=values)
 
@@ -362,7 +368,7 @@ class OpenstackBaseHelm(base.BaseHelm):
         values['system_overrides'].update({'privatekey': newprivatekey,
                                            'publickey': newpublickey})
         self.dbapi.helm_override_update(
-            name=chart, namespace=namespace, values=values)
+            app_id=app.id, name=chart, namespace=namespace, values=values)
 
         return newprivatekey, newpublickey
 

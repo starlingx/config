@@ -11,6 +11,7 @@ import yaml
 
 from cgtsclient.common import utils
 from cgtsclient import exc
+from cgtsclient.v1 import app as app_utils
 
 
 def _print_helm_chart(chart):
@@ -22,12 +23,32 @@ def _print_helm_chart(chart):
     utils.print_dict(ordereddata)
 
 
+def _find_overrides(cc, app, chart, namespace):
+    charts = cc.helm.list_charts(app.name)
+    for c in charts:
+        if chart == c.name and namespace in c.namespaces:
+            break
+    else:
+        raise exc.CommandError('Chart overrides %s:%s for application '
+                               '%s not found' %
+                               (chart, namespace, app.name))
+
+    return c
+
+
+@utils.arg('app',
+           metavar='<app name>',
+           help="Name of the application")
 def do_helm_override_list(cc, args):
     """List system helm charts."""
-    charts = cc.helm.list_charts()
+    app = app_utils._find_app(cc, args.app)
+    charts = cc.helm.list_charts(app.name)
     utils.print_list(charts, ['name', 'namespaces'], ['chart name', 'overrides namespaces'], sortby=0)
 
 
+@utils.arg('app',
+           metavar='<app name>',
+           help="Name of the application")
 @utils.arg('chart', metavar='<chart name>',
            help="Name of chart")
 @utils.arg('namespace',
@@ -35,14 +56,15 @@ def do_helm_override_list(cc, args):
            help="namespace of chart overrides")
 def do_helm_override_show(cc, args):
     """Show overrides for chart."""
-    try:
-        chart = cc.helm.get_overrides(args.chart, args.namespace)
-        _print_helm_chart(chart)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('chart overrides not found: %s:%s' % (
-            args.chart, args.namespace))
+    app = app_utils._find_app(cc, args.app)
+    _find_overrides(cc, app, args.chart, args.namespace)
+    chart = cc.helm.get_overrides(args.app, args.chart, args.namespace)
+    _print_helm_chart(chart)
 
 
+@utils.arg('app',
+           metavar='<app name>',
+           help="Name of the application")
 @utils.arg('chart',
            metavar='<chart name>',
            help="Name of chart")
@@ -51,15 +73,16 @@ def do_helm_override_show(cc, args):
            help="namespace of chart overrides")
 def do_helm_override_delete(cc, args):
     """Delete overrides for a chart."""
-    try:
-        cc.helm.delete_overrides(args.chart, args.namespace)
-        print('Deleted chart overrides for %s:%s' % (
-            args.chart, args.namespace))
-    except exc.HTTPNotFound:
-        raise exc.CommandError('chart overrides not found: %s:%s' % (
-            args.chart, args.namespace))
+    app = app_utils._find_app(cc, args.app)
+    _find_overrides(cc, app, args.chart, args.namespace)
+    cc.helm.delete_overrides(args.app, args.chart, args.namespace)
+    print('Deleted chart overrides %s:%s for application %s' %
+          (args.chart, args.namespace, args.app))
 
 
+@utils.arg('app',
+           metavar='<app name>',
+           help="Name of the application")
 @utils.arg('chart',
            metavar='<chart name>',
            help="Name of chart")
@@ -84,6 +107,9 @@ def do_helm_override_delete(cc, args):
                 'files.')
 def do_helm_override_update(cc, args):
     """Update helm chart user overrides."""
+
+    app = app_utils._find_app(cc, args.app)
+    _find_overrides(cc, app, args.chart, args.namespace)
 
     # This logic results in similar behaviour to "helm upgrade".
     flag = 'reset'
@@ -114,10 +140,6 @@ def do_helm_override_update(cc, args):
         'set': override_set,
     }
 
-    try:
-        chart = cc.helm.update_overrides(args.chart, args.namespace,
-                                         flag, overrides)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('helm chart not found: %s:%s' % (
-            args.chart, args.namespace))
+    chart = cc.helm.update_overrides(args.app, args.chart, args.namespace,
+                                     flag, overrides)
     _print_helm_chart(chart)

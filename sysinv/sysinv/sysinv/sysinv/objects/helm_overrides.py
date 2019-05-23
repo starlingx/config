@@ -21,11 +21,13 @@ class HelmOverrides(base.SysinvObject):
               'namespace': utils.str_or_none,
               'user_overrides': utils.str_or_none,
               'system_overrides': utils.dict_or_none,
+              'app_id': int
               }
 
     @base.remotable_classmethod
-    def get_by_name(cls, context, name, namespace):
-        return cls.dbapi.helm_override_get(name, namespace)
+    def get_by_appid_name(cls, context, app_id, name, namespace):
+        return cls.dbapi.helm_override_get(app_id, name, namespace)
 
     def save_changes(self, context, updates):
-        self.dbapi.helm_override_update(self.name, self.namespace, updates)
+        self.dbapi.helm_override_update(self.app_id, self.name,
+                                        self.namespace, updates)

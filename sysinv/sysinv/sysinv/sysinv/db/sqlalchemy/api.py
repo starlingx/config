@@ -7358,9 +7358,10 @@ class Connection(api.Connection):
                 raise exception.CertificateNotFound(uuid)
             query.delete()
 
-    def _helm_override_get(self, name, namespace):
+    def _helm_override_get(self, app_id, name, namespace):
         query = model_query(models.HelmOverrides)
-        query = query.filter_by(name=name, namespace=namespace)
+        query = query.filter_by(
+            app_id=app_id, name=name, namespace=namespace)
         try:
             return query.one()
         except NoResultFound:
@@ -7382,12 +7383,13 @@ class Connection(api.Connection):
                           (values['name']))
                 raise exception.HelmOverrideAlreadyExists(
                     name=values['name'], namespace=values['namespace'])
-            return self._helm_override_get(values['name'],
+            return self._helm_override_get(values['app_id'],
+                                           values['name'],
                                            values['namespace'])
 
     @objects.objectify(objects.helm_overrides)
-    def helm_override_get(self, name, namespace):
-        return self._helm_override_get(name, namespace)
+    def helm_override_get(self, app_id, name, namespace):
+        return self._helm_override_get(app_id, name, namespace)
 
     @objects.objectify(objects.helm_overrides)
     def helm_override_get_all(self):
@@ -7395,10 +7397,11 @@ class Connection(api.Connection):
         return query.all()
 
     @objects.objectify(objects.helm_overrides)
-    def helm_override_update(self, name, namespace, values):
+    def helm_override_update(self, app_id, name, namespace, values):
         with _session_for_write() as session:
             query = model_query(models.HelmOverrides, session=session)
-            query = query.filter_by(name=name, namespace=namespace)
+            query = query.filter_by(
+                app_id=app_id, name=name, namespace=namespace)
 
             count = query.update(values, synchronize_session='fetch')
             if count == 0:
@@ -7406,10 +7409,11 @@ class Connection(api.Connection):
                                                      namespace=namespace)
             return query.one()
 
-    def helm_override_destroy(self, name, namespace):
+    def helm_override_destroy(self, app_id, name, namespace):
         with _session_for_write() as session:
             query = model_query(models.HelmOverrides, session=session)
-            query = query.filter_by(name=name, namespace=namespace)
+            query = query.filter_by(
+                app_id=app_id, name=name, namespace=namespace)
 
             try:
                 query.one()
@@ -7573,6 +7577,7 @@ class Connection(api.Connection):
                         "operation is not allowed while status is " + app.status
                     raise exception.KubeAppDeleteFailure(
                         name=name,
+                        version=app.app_version,
                         reason=failure_reason)
             except NoResultFound:
                 raise exception.KubeAppNotFound(name)

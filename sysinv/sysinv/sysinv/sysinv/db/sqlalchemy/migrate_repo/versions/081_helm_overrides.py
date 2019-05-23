@@ -6,7 +6,7 @@
 #
 
 from sqlalchemy import DateTime, String, Text, Integer
-from sqlalchemy import Column, MetaData, Table, UniqueConstraint
+from sqlalchemy import Column, MetaData, Table, UniqueConstraint, ForeignKey
 
 from sysinv.openstack.common import log
 
@@ -25,6 +25,8 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
+    Table('kube_app', meta, autoload=True)
+
     # Define and create the helm_overrides table.
     helm_overrides = Table(
         'helm_overrides',
@@ -36,7 +38,9 @@ def upgrade(migrate_engine):
         Column('name', String(255), nullable=False),
         Column('namespace', String(255), nullable=False),
         Column('user_overrides', Text, nullable=True),
-        UniqueConstraint('name', 'namespace', name='u_name_namespace'),
+        Column('app_id', Integer,
+               ForeignKey('kube_app.id', ondelete='CASCADE')),
+        UniqueConstraint('name', 'namespace', 'app_id', name='u_app_name_namespace'),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,
