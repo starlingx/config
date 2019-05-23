@@ -6006,6 +6006,9 @@ class ConductorManager(service.PeriodicService):
         else:
             new_uuid = str(uuid.uuid4())
 
+        # Apply runtime config but keep reboot required flag set in
+        # _config_update_hosts() above. Node needs a reboot to clear it.
+        new_uuid = self._config_clear_reboot_required(new_uuid)
         self._config_apply_runtime_manifest(context,
                                             config_uuid=new_uuid,
                                             config_dict=config_dict)
@@ -6166,6 +6169,9 @@ class ConductorManager(service.PeriodicService):
             else:
                 new_uuid = config_uuid
 
+            # Apply runtime config but keep reboot required flag set in
+            # _config_update_hosts() above. Node needs a reboot to clear it.
+            new_uuid = self._config_clear_reboot_required(new_uuid)
             self._config_apply_runtime_manifest(context,
                                                 config_uuid=new_uuid,
                                                 config_dict=config_dict)
@@ -7442,6 +7448,9 @@ class ConductorManager(service.PeriodicService):
             'classes': ['platform::grub::runtime']
         }
 
+        # Apply runtime config but keep reboot required flag set in
+        # _config_update_hosts() above. Node needs a reboot to clear it.
+        config_uuid = self._config_clear_reboot_required(config_uuid)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
 
     def _update_emc_state(self):
