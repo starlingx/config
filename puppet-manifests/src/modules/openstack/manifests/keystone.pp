@@ -349,6 +349,15 @@ class openstack::keystone::endpoint::runtime {
     }
 
     include ::smapi::keystone::auth
+
+    Keystone::Resource::Service_identity <||>
+    -> file { '/etc/platform/.service_endpoint_reconfigured':
+      ensure => present,
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0644',
+    }
+
   }
 }
 

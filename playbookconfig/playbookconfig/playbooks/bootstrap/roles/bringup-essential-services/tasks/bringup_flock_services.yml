@@ -5,7 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # SUB-TASKS DESCRIPTION:
-#   - Restart Sysinv agent and api when applicable
 #   - Restart Barbican
 #   - Start up FM, skip auth middleware as it is not functional at this
 #     early stage
@@ -13,33 +12,6 @@
 #   - Restart Maintenance Client to pick the new config which will update
 #     the controller-0 status from offline to online.
 #
-
-# If this is the initial play, wait for service endpoints reconfiguration to complete
-# and restart sysinv-api and agent to pick up the managment floating IP.
-- block:
-  - name: Wait for service endpoints reconfiguration to complete
-    wait_for:
-      path: /etc/platform/.config_applied
-      state: present
-      timeout: 180
-      msg: Timeout waiting for service endpoints reconfiguration to complete
-
-  - name: Update sysinv API bind host with management floating IP
-    replace:
-      path: /etc/sysinv/sysinv.conf
-      regexp: "sysinv_api_bind_ip=.*$"
-      replace: "sysinv_api_bind_ip={{ controller_floating_address }}"
-
-  - name: Restart sysinv-agent and sysinv-api
-    command: "{{ item }}"
-    with_items:
-      - /etc/init.d/sysinv-agent restart
-      - /usr/lib/ocf/resource.d/platform/sysinv-api reload
-    environment:
-      OCF_ROOT: "/usr/lib/ocf"
-
-  when: not replayed
-
 - block:
   - name: Update barbican bind host with management floating IP
     replace:

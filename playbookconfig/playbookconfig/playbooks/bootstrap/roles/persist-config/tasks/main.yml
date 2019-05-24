@@ -82,6 +82,12 @@
 
   - debug: var=script_input
 
+  - name: Remove the endpoint reconfig flag before reconfiguring the service endpoints
+    file:
+      path: /etc/platform/.service_endpoint_reconfigured
+      state: absent
+    when: reconfigure_endpoints
+
   - name: Shuting down services for reconfiguration
     include: shutdown_services.yml
     when: restart_services
@@ -99,12 +105,16 @@
     when: populate_result.rc != 0
 
   - block:
-    # If this is a replay with management and/or oam network config change, must
+    - name: Add management floating address if this is the initial play
+      command: ip addr add {{ mgmt_floating_virtual }} dev lo scope host
+      when: not replayed
+
+    # If this is initial play or replay with management and/or oam network config change, must
     # wait for the keystone endpoint runtime manifest to complete and restart
-    # sysinv.
+    # sysinv agent and api.
     - name: Wait for service endpoints reconfiguration to complete
       wait_for:
-        path: /etc/platform/.config_applied
+        path: /etc/platform/.service_endpoint_reconfigured
         state: present
         timeout: 180
         msg: Timeout waiting for service endpoints reconfiguration to complete
@@ -123,7 +133,7 @@
       environment:
         OCF_ROOT: "/usr/lib/ocf"
 
-    when: reconfigure_endpoints
+    when: not replayed or reconfigure_endpoints
 
   - block:
     - name: Ensure docker config directory exists
