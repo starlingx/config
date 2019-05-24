@@ -141,6 +141,8 @@ class PuppetOperator(object):
 
         self.config_uuid = config_uuid
         self.context['config'] = config = {}
+        LOG.info("Updating hiera for host: %s "
+                 "with config_uuid: %s" % (host.hostname, config_uuid))
         for puppet_plugin in self.puppet_plugins:
             config.update(puppet_plugin.obj.get_host_config(host))
 

@@ -3572,7 +3572,7 @@ class ConductorManager(service.PeriodicService):
                                                 host_uuids=[host_uuid],
                                                 reboot=False)
         config_dict = {
-            "host_uuids": host_uuid,
+            "host_uuids": [host_uuid],
             'personalities': personalities,
             "classes": ['platform::partitions::runtime'],
             "idisk_uuid": partition.get('idisk_uuid'),
@@ -3588,7 +3588,6 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context,
                                             config_uuid,
                                             config_dict,
-                                            host_uuids=[host_uuid],
                                             force=force_apply)
 
     def ipartition_update_by_ihost(self, context,
@@ -4567,13 +4566,13 @@ class ConductorManager(service.PeriodicService):
                                                         host_uuids=[active_host.uuid])
                 config_dict = {
                     "personalities": personalities,
-                    "host_uuids": active_host.uuid,
+                    "host_uuids": [active_host.uuid],
                     "classes": ['openstack::keystone::endpoint::runtime',
                                 'platform::firewall::runtime',
                                 'platform::sysinv::runtime']
                 }
                 self._config_apply_runtime_manifest(
-                    context, config_uuid, config_dict, host_uuids=[active_host.uuid])
+                    context, config_uuid, config_dict)
 
             # apply filesystem config changes if all controllers at target
             standby_config_target_flipped = None
@@ -5643,7 +5642,7 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            'host_uuids': host_uuid,
+            'host_uuids': [host_uuid],
             "classes": 'platform::network::runtime',
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
@@ -5977,7 +5976,6 @@ class ConductorManager(service.PeriodicService):
         classes.append('platform::sm::norestart::runtime')
         host_ids = [ctrl.uuid for ctrl in valid_ctrls]
         config_dict = {"personalities": personalities,
-                       # "host_uuids": host.uuid,
                        "host_uuids": host_ids,
                        "classes": classes,
                        puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
@@ -5998,14 +5996,13 @@ class ConductorManager(service.PeriodicService):
                                                 reboot=reboot)
 
         # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
-        # Once sm supports in-service config reload, allways set config_uuid=config_uuid
+        # Once sm supports in-service config reload, always set config_uuid=config_uuid
         # in _config_apply_runtime_manifest and remove code bellow.
         active_controller = utils.HostHelper.get_active_controller(self.dbapi)
         if utils.is_host_simplex_controller(active_controller):
             new_uuid = config_uuid
         else:
             new_uuid = str(uuid.uuid4())
-
         # Apply runtime config but keep reboot required flag set in
         # _config_update_hosts() above. Node needs a reboot to clear it.
         new_uuid = self._config_clear_reboot_required(new_uuid)
@@ -6057,7 +6054,7 @@ class ConductorManager(service.PeriodicService):
 
             config_dict = {
                 "personalities": host.personality,
-                "host_uuids": host.uuid,
+                "host_uuids": [host.uuid],
                 "stor_uuid": stor_uuid,
                 "classes": ['platform::ceph::runtime_osds'],
                 puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_OSD_CONFIG
@@ -7696,8 +7693,7 @@ class ConductorManager(service.PeriodicService):
             }
             self._config_apply_runtime_manifest(context, config_uuid,
                                                 config_dict,
-                                                force=force,
-                                                host_uuids=[host_uuid])
+                                                force=force)
 
     def _update_resolv_file(self, context, config_uuid, personalities):
         """Generate and update the resolv.conf files on the system"""
@@ -8313,6 +8309,8 @@ class ConductorManager(service.PeriodicService):
                         ihost_obj.config_applied != ihost_obj.config_target):
                     if self._config_is_reboot_required(ihost_obj.config_target):
                         config_uuid = self._config_set_reboot_required(config_uuid)
+                LOG.info("Setting config target of "
+                         "host '%s' to '%s'." % (ihost_obj.hostname, config_uuid))
                 ihost_obj.config_target = config_uuid
                 ihost_obj.save(context)
             if cutils.is_initial_config_complete():
@@ -8457,12 +8455,14 @@ class ConductorManager(service.PeriodicService):
                                        context,
                                        config_uuid,
                                        config_dict,
-                                       host_uuids=None,
                                        force=False):
 
         """Apply manifests on all hosts affected by the supplied personalities.
-           If host_uuid is set, only update hiera data for that host
+           If host_uuids is set in config_dict, only update hiera data and apply
+           manifests for these hosts.
         """
+        host_uuids = config_dict.get('host_uuids')
+
         if "classes" in config_dict:
             LOG.info("applying runtime manifest config_uuid=%s, classes: %s" % (
                 config_uuid, config_dict["classes"]))
@@ -8470,11 +8470,16 @@ class ConductorManager(service.PeriodicService):
             LOG.info("applying runtime manifest config_uuid=%s" % config_uuid)
 
         # Update hiera data for all hosts prior to runtime apply if host_uuid
-        # is not set. If host_uuid is set only update hiera data for that host
+        # is not set. If host_uuids is set only update hiera data for those hosts.
         self._config_update_puppet(config_uuid,
                                    config_dict,
                                    host_uuids=host_uuids,
                                    force=force)
+
+        # Remove reboot required flag in case it's present. Runtime manifests
+        # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
+        # should do it.
+        config_uuid = self._config_clear_reboot_required(config_uuid)
 
         config_dict.update({'force': force})
         rpcapi = agent_rpcapi.AgentAPI()
