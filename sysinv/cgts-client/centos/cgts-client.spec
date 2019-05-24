@@ -29,12 +29,6 @@ System Client and CLI
 %define pythonroot /usr/lib64/python2.7/site-packages
 %define debug_package %{nil}
 
-%package          sdk
-Summary:          SDK files for %{name}
-
-%description      sdk
-Contains SDK files for %{name} package
-
 %prep
 %autosetup -n %{name}-%{version} -S git
 
