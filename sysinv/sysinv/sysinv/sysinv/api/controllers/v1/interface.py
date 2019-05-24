@@ -2374,7 +2374,9 @@ def _create(interface, from_profile=False):
 
     # Get ports
     ports = None
+    ethernet_port_mac = None
     uses_if = None
+
     if 'uses' in interface:
         uses_if = interface['uses']
     if 'ports' in interface:
@@ -2411,6 +2413,7 @@ def _create(interface, from_profile=False):
     if not from_profile:
         # Select appropriate MAC address from lower interface(s)
         interface = set_interface_mac(ihost, interface)
+        ethernet_port_mac = interface['imac']
 
     new_interface = pecan.request.dbapi.iinterface_create(
         forihostid,
@@ -2502,6 +2505,7 @@ def _create(interface, from_profile=False):
                     network = pecan.request.dbapi.network_get_by_id(network_id)
                     if network.type == constants.NETWORK_TYPE_MGMT:
                         _update_host_mgmt_address(ihost, new_interface.as_dict())
+                        _update_host_mgmt_mac(ihost, ethernet_port_mac)
                     elif network.type == constants.NETWORK_TYPE_CLUSTER_HOST:
                         _update_host_cluster_address(ihost,
                                                      new_interface.as_dict())
