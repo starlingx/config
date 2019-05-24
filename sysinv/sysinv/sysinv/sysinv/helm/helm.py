@@ -42,6 +42,16 @@ def helm_context(func):
     return _wrapper
 
 
+def suppress_stevedore_errors(manager, entrypoint, exception):
+    """
+    stevedore.ExtensionManager will try to import the entry point defined in the module.
+    For helm_applications, both stx_openstack and platform_integ_apps are virtual modules.
+    So ExtensionManager will throw the "Could not load ..." error message, which is expected.
+    Just suppress this error message to avoid cause confusion.
+    """
+    pass
+
+
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
@@ -58,7 +68,10 @@ class HelmOperator(object):
         """Build a dictionary of supported helm applications"""
 
         helm_application_dict = {}
-        helm_applications = extension.ExtensionManager(namespace='systemconfig.helm_applications')
+        helm_applications = extension.ExtensionManager(
+            namespace='systemconfig.helm_applications',
+            on_load_failure_callback=suppress_stevedore_errors
+        )
         for entry_point in helm_applications.list_entry_points():
             helm_application_dict[entry_point.name] = entry_point.module_name
 
