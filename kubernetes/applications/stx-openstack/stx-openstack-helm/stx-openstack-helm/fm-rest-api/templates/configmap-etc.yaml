@@ -43,3 +43,4 @@ type: Opaque
 data:
   api-paste.ini: {{ include "helm-toolkit.utils.to_ini" .Values.conf.paste | b64enc }}
   fm.conf: {{ include "helm-toolkit.utils.to_oslo_conf" .Values.conf.fm | b64enc }}
+  logging.conf: {{ include "helm-toolkit.utils.to_oslo_conf" .Values.conf.logging | b64enc }}

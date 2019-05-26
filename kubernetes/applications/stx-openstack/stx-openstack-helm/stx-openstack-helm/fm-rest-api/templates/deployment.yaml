@@ -48,6 +48,10 @@ spec:
               mountPath: /etc/fm/fm.conf
               subPath: fm.conf
               readOnly: true
+            - name: fm-etc
+              mountPath: /etc/fm/logging.conf
+              subPath: logging.conf
+              readOnly: true
             - name: fm-etc-event
               mountPath: /etc/fm/events.yaml
               readOnly: true
