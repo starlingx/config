@@ -355,12 +355,10 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         return ml2_config
 
     def _is_data_network_type(self, iface):
-        networktypelist = utils.get_network_type_list(iface)
-        return bool(any(n in DATA_NETWORK_TYPES for n in networktypelist))
+        return iface.ifclass == constants.INTERFACE_CLASS_DATA
 
     def _is_sriov_network_type(self, iface):
-        networktypelist = utils.get_network_type_list(iface)
-        return bool(any(n in SRIOV_NETWORK_TYPES for n in networktypelist))
+        return iface.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV
 
     def _get_interface_datanets(self, iface):
         """

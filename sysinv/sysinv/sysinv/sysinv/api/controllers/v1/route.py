@@ -263,9 +263,12 @@ class RouteController(rest.RestController):
 
     def _check_interface_type(self, interface_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        networktype = interface['networktype']
-        if networktype not in ALLOWED_NETWORK_TYPES:
-            raise exception.RoutesNotSupportedOnInterfaces(iftype=networktype)
+        if (interface['ifclass'] == constants.INTERFACE_TYPE_PLATFORM and
+                interface['networktypelist'] is None):
+            raise exception.InterfaceNetworkNotSet()
+        for nt in interface['networktypelist']:
+            if nt not in ALLOWED_NETWORK_TYPES:
+                raise exception.RoutesNotSupportedOnInterfaces(type=nt)
         return
 
     def _check_duplicate_route(self, host_id, route):

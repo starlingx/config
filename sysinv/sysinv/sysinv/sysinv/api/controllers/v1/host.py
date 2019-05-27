@@ -3106,8 +3106,8 @@ class HostController(rest.RestController):
         """
         count = 0
 
-        if interface.networktype not in address_api.ALLOWED_NETWORK_TYPES:
-            return
+        if not any(nt in address_api.ALLOWED_NETWORK_TYPES for nt in interface.networktypelist):
+                return
         # Check IPv4 address presence
         addresses = pecan.request.dbapi.addresses_get_by_interface(
             interface['id'], family=constants.IPV4_FAMILY)
@@ -3134,9 +3134,9 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(msg)
         if min_count and (count < min_count):
             msg = (_("Expecting at least %(min)s IP address(es) on "
-                     "%(networktype)s interface %(ifname)s; found %(count)s") %
+                     "%(ifclass)s interface %(ifname)s; found %(count)s") %
                    {'min': min_count,
-                    'networktype': interface.networktype,
+                    'ifclass': interface.ifclass,
                     'ifname': interface.ifname,
                     'count': count})
             raise wsme.exc.ClientSideError(msg)
@@ -3220,7 +3220,7 @@ class HostController(rest.RestController):
         interfaces = (
             pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid']))
         for interface in interfaces:
-            if interface.networktype == constants.NETWORK_TYPE_OAM:
+            if constants.NETWORK_TYPE_OAM in interface.networktypelist:
                 break
         else:
             msg = _("Can not unlock a controller host without an oam "
@@ -3333,7 +3333,7 @@ class HostController(rest.RestController):
         address_count = 0
         interfaces = pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid'])
         for iface in interfaces:
-            if iface.networktype != constants.NETWORK_TYPE_DATA:
+            if iface.ifclass != constants.INTERFACE_TYPE_DATA:
                 continue
             addresses = (
                 pecan.request.dbapi.addresses_get_by_interface(iface['uuid']))
@@ -5900,11 +5900,10 @@ class HostController(rest.RestController):
             # controller/worker/storage
             ihost_iinterfaces = pecan.request.dbapi.iinterface_get_by_ihost(
                 ihost['uuid'])
-            network = pecan.request.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT)
             mgmt_interface_configured = False
             for iif in ihost_iinterfaces:
-                if iif.networks and str(network.id) in iif.networks:
+                if (iif.networktypelist and
+                        constants.NETWORK_TYPE_MGMT in iif.networktypelist):
                     mgmt_interface_configured = True
 
             if not mgmt_interface_configured:
@@ -5917,10 +5916,9 @@ class HostController(rest.RestController):
             # controller/worker/storage
             host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(
                 ihost['uuid'])
-            network = pecan.request.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_CLUSTER_HOST)
             for iif in host_interfaces:
-                if iif.networks and str(network.id) in iif.networks:
+                if (iif.networktypelist and
+                        constants.NETWORK_TYPE_CLUSTER_HOST in iif.networktypelist):
                     break
             else:
                 msg = _("Cannot unlock host %s "
@@ -5969,15 +5967,9 @@ class HostController(rest.RestController):
             # updated management interfaces
             idata = {}
             for iif in ihost_iinterfaces:
-                iif_networktype = []
-                if iif.networktype:
-                    iif_networktype = [network.strip() for network in iif.networktype.split(",")]
-                if any(network in [constants.NETWORK_TYPE_MGMT] for network in iif_networktype):
+                if constants.NETWORK_TYPE_MGMT in iif.networktypelist:
                     for ila in interface_list_active:
-                        ila_networktype = []
-                        if ila.networktype:
-                            ila_networktype = [network.strip() for network in ila.networktype.split(",")]
-                        if any(network in ila_networktype for network in iif_networktype):
+                        if constants.NETWORK_TYPE_MGMT in ila.networktypelist:
                             idata['imtu'] = ila.imtu
                             pecan.request.dbapi.iinterface_update(iif.uuid, idata)
                             break

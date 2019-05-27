@@ -16,6 +16,7 @@ from cgtsclient import exc
 from cgtsclient.v1 import ethernetport as ethernetport_utils
 from cgtsclient.v1 import icpu as icpu_utils
 from cgtsclient.v1 import ihost as ihost_utils
+from cgtsclient.v1 import interface_network as ifnet_utils
 from cgtsclient.v1 import iprofile as iprofile_utils
 import math
 
@@ -58,11 +59,13 @@ def get_portconfig(iprofile):
     return pstr
 
 
-def get_interfaceconfig(iprofile):
+def get_interfaceconfig(cc, iprofile):
     istr = ''
     for interface in iprofile.interfaces:
-        istr = istr + "%s: %s" % (interface.ifname, interface.networktype)
-        if interface.networktype == 'data':
+        if interface.ifclass == 'platform':
+            network_names = ifnet_utils.get_network_names(cc, interface)
+            istr = istr + "%s: %s" % (interface.ifname, network_names)
+        elif interface.ifclass == 'data':
             istr = istr + "( %s )" % interface.datanetworks
         _get_interface_ports_interfaces(iprofile, interface)
         if interface.ports:
@@ -83,7 +86,7 @@ def get_ifprofile_data(cc, iprofile):
     if iprofile.ports:  # an 'interface' profile
         iprofile.portconfig = get_portconfig(iprofile)
         iprofile.interfaces = cc.iprofile.list_iinterface(iprofile.uuid)
-        iprofile.interfaceconfig = get_interfaceconfig(iprofile)
+        iprofile.interfaceconfig = get_interfaceconfig(cc, iprofile)
 
 
 def do_ifprofile_list(cc, args):
@@ -91,7 +94,7 @@ def do_ifprofile_list(cc, args):
     profiles = cc.iprofile.list_interface_profiles()
     for profile in profiles:
         profile.portconfig = get_portconfig(profile)
-        profile.interfaceconfig = get_interfaceconfig(profile)
+        profile.interfaceconfig = get_interfaceconfig(cc, profile)
 
     field_labels = ['uuid', 'name', 'port config', 'interface config']
     fields = ['uuid', 'profilename', 'portconfig', 'interfaceconfig']

@@ -200,8 +200,10 @@ class InterfaceDataNetworkController(rest.RestController):
             pecan.request.dbapi.iinterface_update(interface_obj.uuid, values)
             return
         else:
-            # Allow ifclass data to assign another; disallow other ifclass
-            if interface_obj.ifclass != constants.INTERFACE_CLASS_DATA:
+            # Allow ifclass data, pcipt and sriov to assign data networks
+            if interface_obj.ifclass not in [constants.INTERFACE_CLASS_DATA,
+                    constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                    constants.INTERFACE_CLASS_PCI_SRIOV]:
                 msg = _("An interface with interface class '%s' "
                         "cannot assign datanetworks." %
                         interface_obj.ifclass)

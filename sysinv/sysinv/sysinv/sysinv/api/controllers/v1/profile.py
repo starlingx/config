@@ -35,6 +35,7 @@ from sysinv.api.controllers.v1 import cpu as cpu_api
 from sysinv.api.controllers.v1 import disk as disk_api
 from sysinv.api.controllers.v1 import partition as partition_api
 from sysinv.api.controllers.v1 import interface as interface_api
+from sysinv.api.controllers.v1 import interface_network as ifnet_api
 from sysinv.api.controllers.v1 import memory as memory_api
 from sysinv.api.controllers.v1 import node as node_api
 from sysinv.api.controllers.v1 import storage as storage_api
@@ -2022,6 +2023,13 @@ def ifprofile_copy_data(host, profile):
                 pdict = {k: v for (k, v) in p.as_dict().items() if k in ethernet_port_fields}
                 pecan.request.dbapi.ethernet_port_create(iprofile_id, pdict)
 
+        interface_networks = pecan.request.dbapi.interface_network_get_by_interface(i.id)
+        for ifnet in interface_networks:
+            ifnetdict = {}
+            ifnetdict['interface_id'] = newIf.id
+            ifnetdict['network_id'] = ifnet.network_id
+            pecan.request.dbapi.interface_network_create(ifnetdict)
+
     # Generate the uses/used_by relationships
     for i in newIfList:
         uses_list = []
@@ -2614,6 +2622,14 @@ def ifprofile_apply_to_host(host, profile):
 
                 if interface_found is False:
                     hinterface = interface_api._create(data, from_profile=True)
+                    interface_networks = pecan.request.dbapi.interface_network_get_by_interface(interface.id)
+                    for ifnet in interface_networks:
+                        ifnetdict = {}
+                        ifnetdict['interface_id'] = hinterface.id
+                        ifnetdict['network_id'] = ifnet.network_id
+                        pecan.request.dbapi.interface_network_create(ifnetdict)
+                        network = pecan.request.dbapi.network_get_by_id(ifnet.network_id)
+                        ifnet_api._update_host_address(host, hinterface, network.type)
 
             except Exception as e:
                 # Delete all Host's interfaces
@@ -2677,6 +2693,15 @@ def ifprofile_apply_to_host(host, profile):
             data = dict((k, v) for k, v in i.as_dict().items() if k in fields)
             data['forihostid'] = host.id
             hinterface = interface_api._create(data, from_profile=True)
+
+            interface_networks = pecan.request.dbapi.interface_network_get_by_interface(i.id)
+            for ifnet in interface_networks:
+                ifnetdict = {}
+                ifnetdict['interface_id'] = hinterface.id
+                ifnetdict['network_id'] = ifnet.network_id
+                pecan.request.dbapi.interface_network_create(ifnetdict)
+                network = pecan.request.dbapi.network_get_by_id(ifnet.network_id)
+                ifnet_api._update_host_address(host, hinterface, network.type)
 
         for r in profile.routes.get(i.uuid, []):
             pecan.request.dbapi.route_create(hinterface.id, r)

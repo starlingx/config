@@ -598,11 +598,9 @@ class SystemController(rest.RestController):
         host_id = controller['id']
         interface_list = pecan.request.dbapi.iinterface_get_by_ihost(host_id)
         for interface in interface_list:
-            for network_id in interface['networks']:
-                network = pecan.request.dbapi.network_get_by_id(network_id)
-                if network.type == constants.NETWORK_TYPE_MGMT:
-                    if 'vlan_id' not in interface:
-                        return 0
-                    else:
-                        return interface['vlan_id']
+            if constants.NETWORK_TYPE_MGMT in interface['networktypelist']:
+                if 'vlan_id' not in interface:
+                    return 0
+                else:
+                    return interface['vlan_id']
         return None

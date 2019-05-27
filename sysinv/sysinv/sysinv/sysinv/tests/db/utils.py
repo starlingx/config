@@ -674,8 +674,6 @@ def post_get_test_interface(**kw):
         'imac': kw.get('imac', '11:22:33:44:55:66'),
         'imtu': kw.get('imtu', 1500),
         'ifclass': kw.get("ifclass"),
-        'networktype': kw.get('networktype'),
-        'networks': kw.get('networks', []),
         'aemode': kw.get('aemode', 'balanced'),
         'txhashpolicy': kw.get('txhashpolicy', 'layer2'),
         'datanetworks': datanetworks_list,
@@ -710,8 +708,7 @@ def get_test_interface(**kw):
         'imac': kw.get('imac', '11:22:33:44:55:66'),
         'imtu': kw.get('imtu', 1500),
         'ifclass': kw.get('ifclass', None),
-        'networktype': kw.get('networktype'),
-        'networks': kw.get('networks', []),
+        'networktypelist': kw.get('networktypelist', []),
         'aemode': kw.get('aemode'),
         'txhashpolicy': kw.get('txhashpolicy', None),
         'datanetworks': datanetworks_list,
@@ -737,6 +734,7 @@ def create_test_interface(**kw):
 
     interface = get_test_interface(**kw)
     datanetworks_list = interface.get('datanetworks') or []
+    networks_list = interface.get('networks') or []
 
     # Let DB generate ID if it isn't specified explicitly
     if 'id' not in kw:
@@ -745,9 +743,21 @@ def create_test_interface(**kw):
     if 'datanetworks' in interface:
         del interface['datanetworks']
 
+    if 'networks' in interface:
+        del interface['networks']
+
     dbapi = db_api.get_instance()
     forihostid = kw.get('forihostid')
     interface_obj = dbapi.iinterface_create(forihostid, interface)
+
+    # assign the network to the interface
+    for network in networks_list:
+        if not network:
+            continue
+        net = dbapi.network_get(network)
+        values = {'interface_id': interface_obj.id,
+                  'network_id': net.id}
+        dbapi.interface_network_create(values)
 
     # assign the interface to the datanetwork
     for datanetwork in datanetworks_list:

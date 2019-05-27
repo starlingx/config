@@ -99,8 +99,7 @@ def list_of_strings_or_none(val):
     if not isinstance(val, list):
         raise ValueError(_('A list of strings is required here'))
     if not all([isinstance(x, six.string_types) for x in val]):
-        raise ValueError(_('Invalid values found in list '
-                           '(strings are required)'))
+        raise ValueError(_('Invalid values %s found in list (strings are required)') % val)
     return val
 
 

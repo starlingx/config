@@ -213,22 +213,22 @@ class AgentManager(service.PeriodicService):
                 # do not bother with alarms since that adds too much noise.
                 LOG.info("Cross-numa performance degradation over port %s "
                          "on processor %d on host %s.  Better performance "
-                         "if you configure %s interface on port "
+                         "if you configure platform interface on port "
                          "residing on processor 0, or configure a platform "
                          "core on processor %d." %
                          (info['name'], info['numa_node'], self.host,
-                          info['networktype'], info['numa_node']))
+                          info['numa_node']))
 
-            LOG.info("Affine %s interface %s with cpulist %s" %
-                    (info['networktype'], info['name'], cpulist))
+            LOG.info("Affine platform interface %s with cpulist %s" %
+                    (info['name'], cpulist))
             cmd = '/usr/bin/affine-interrupts.sh %s %s' % \
                     (info['name'], cpulist)
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
             proc.communicate()
             LOG.info("%s return %d" % (cmd, proc.returncode))
             if proc.returncode == 1:
-                LOG.error("Failed to affine %s %s interrupts with %s" %
-                          (info['networktype'], info['name'], cpulist))
+                LOG.error("Failed to affine platform interface %s interrupts with %s" %
+                          (info['name'], cpulist))
 
     def _update_ttys_dcd_status(self, context, host_id):
         # Retrieve the serial line carrier detect flag
