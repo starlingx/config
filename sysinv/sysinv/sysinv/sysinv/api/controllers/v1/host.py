@@ -3579,6 +3579,53 @@ class HostController(rest.RestController):
                 pending_2M_memory, pending_1G_memory)
 
     @staticmethod
+    def _check_memory_for_non_openstack(ihost):
+        """
+        Perform memory semantic checks on a non openstack worker.
+        It restricts the huge page allocation to either a 2M or 1G
+        pool.
+        """
+
+        allocate_2m = False
+        allocate_1g = False
+        vs_mem = False
+        if utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE:
+            vs_mem = True
+        ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
+        for node in ihost_inodes:
+            mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
+            for m in mems:
+                request_2m = (True if m.vm_hugepages_nr_2M_pending and
+                              m.vm_hugepages_nr_2M_pending != 0
+                              else False)
+                request_1g = (True if m.vm_hugepages_nr_1G_pending and
+                              m.vm_hugepages_nr_1G_pending != 0
+                              else False)
+                # if vswitch is used, we go with the vswitch huge page size
+                if vs_mem:
+                    if (m.vswitch_hugepages_size_mib ==
+                            constants.VSWITCH_MEMORY_MB):
+                        allocate_1g = True
+                    else:
+                        allocate_2m = True
+                if request_2m and allocate_1g:
+                    msg = (_(
+                        "Rejected: Only 1G huge page allocation is supported"))
+                    raise wsme.exc.ClientSideError(msg)
+                elif request_1g and allocate_2m:
+                    msg = (_(
+                        "Rejected: Only 2M huge page allocation is supported"))
+                    raise wsme.exc.ClientSideError(msg)
+                elif request_2m and request_1g:
+                    msg = (_(
+                        "Rejected: Only one huge page size can be modified"))
+                    raise wsme.exc.ClientSideError(msg)
+                elif request_2m and not allocate_2m:
+                    allocate_2m = True
+                elif request_1g and not allocate_1g:
+                    allocate_1g = True
+
+    @staticmethod
     def _align_pending_memory(ihost, align_2M_memory, align_1G_memory):
         """
         Update pending fields as required without clearing other settings.
@@ -5246,6 +5293,11 @@ class HostController(rest.RestController):
 
         # Check if cpu assignments are valid
         self._semantic_check_worker_cpu_assignments(ihost)
+
+        # for non-openstack worker node, only allow allocating huge pages
+        # for a single size
+        if not utils.is_openstack_compute(ihost):
+            self._check_memory_for_non_openstack(ihost)
 
         # check if the platform reserved memory is valid
         ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
