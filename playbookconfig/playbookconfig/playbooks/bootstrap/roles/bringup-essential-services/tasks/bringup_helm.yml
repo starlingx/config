@@ -94,11 +94,10 @@
     regexp: "var.pxeboot_ip_network =.*$"
     replace: 'var.pxeboot_ip_network = "{{ pxeboot_subnet }}"'
 
-- name: Update tiller image tag if using unified registry
+- name: Update Tiller and Armada image tags
   set_fact:
-    tiller_img: "{{ tiller_img | regex_replace('gcr.io', '{{ docker_registries[0] }}') }}"
-    armada_img: "{{ armada_img | regex_replace('quay.io', '{{ docker_registries[0] }}') }}"
-  when: use_unified_registry
+    tiller_img: "{{ tiller_img | regex_replace('gcr.io', '{{ gcr_registry }}') }}"
+    armada_img: "{{ armada_img | regex_replace('quay.io', '{{ quay_registry }}') }}"
 
 - name: Pull Tiller and Armada images
   docker_image:
