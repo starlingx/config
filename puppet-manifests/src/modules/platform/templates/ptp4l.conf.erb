@@ -82,7 +82,7 @@ delay_filter            moving_median
 delay_filter_length     10
 egressLatency           0
 ingressLatency          0
-<%- if @slave_only == false and scope['platform::ptp::mode'].downcase == 'hardware' -%>
+<%- if scope['platform::ptp::mode'].downcase == 'hardware' -%>
 boundary_clock_jbod     1
 <%- else -%>
 boundary_clock_jbod     0
