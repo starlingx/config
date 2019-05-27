@@ -5,6 +5,6 @@
 */}}
 
 {{- if .Values.manifests.job_ks_service }}
-{{- $ksServiceJob := dict "envAll" . "serviceName" "fm" "serviceTypes" ( tuple "alarming" ) -}}
+{{- $ksServiceJob := dict "envAll" . "serviceName" "fm" "serviceTypes" ( tuple "faultmanagement" ) -}}
 {{ $ksServiceJob | include "helm-toolkit.manifests.job_ks_service" }}
 {{- end }}
