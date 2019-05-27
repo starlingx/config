@@ -157,15 +157,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
     def get_host_config(self, host):
         config = {}
-        backend = StorageBackendConfig.get_configured_backend(
-                  self.dbapi,
-                  constants.CINDER_BACKEND_CEPH)
-        # Do not write osd_config in controller hieradata
-        # during restore
-        if host.personality == constants.STORAGE:
-            config.update(self._get_ceph_osd_config(host))
-        elif (host.personality == constants.CONTROLLER and
-                backend.task != constants.SB_TASK_RESTORE):
+        if host.personality in [constants.CONTROLLER, constants.STORAGE]:
             config.update(self._get_ceph_osd_config(host))
         config.update(self._get_ceph_mon_config(host))
 

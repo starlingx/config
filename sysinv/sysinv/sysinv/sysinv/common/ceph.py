@@ -725,12 +725,11 @@ def fix_crushmap(dbapi=None):
                 LOG.info("Not enough monitors yet available to fix crushmap.")
                 return False
 
-        # Crushmap may be already loaded through puppet, avoid doing it twice.
+        # Crushmap may be already loaded thorough puppet, avoid doing it twice.
         default_ceph_tier_name = constants.SB_TIER_DEFAULT_NAMES[
                 constants.SB_TIER_TYPE_CEPH] + constants.CEPH_CRUSH_TIER_SUFFIX
         rule_is_present, __, __ = _operator._crush_rule_status(default_ceph_tier_name)
         if rule_is_present:
-            LOG.info("Crushmap is already loaded through puppet.")
             _create_crushmap_flag_file()
             return False
 

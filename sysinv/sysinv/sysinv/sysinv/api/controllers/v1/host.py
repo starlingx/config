@@ -4510,7 +4510,8 @@ class HostController(rest.RestController):
         else:
             return False
 
-    def _update_add_ceph_state(self):
+    @staticmethod
+    def _update_add_ceph_state():
         api = pecan.request.dbapi
 
         backend = StorageBackendConfig.get_configuring_backend(api)
@@ -4618,49 +4619,19 @@ class HostController(rest.RestController):
                         raise wsme.exc.ClientSideError(
                             _("Restore Ceph config failed: %s" % e))
             elif utils.is_aio_system(pecan.request.dbapi):
-                # For AIO, Ceph restore is done in ceph puppet
-                if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG):
-                    api.storage_backend_update(backend.uuid, {'task': None})
+                # TODO(wz): Need more work to restore ceph for AIO
+                LOG.info("For an AIO system, Restore crushmap...")
+                try:
+                    if not pecan.request.rpcapi.restore_ceph_config(
+                                pecan.request.context, after_storage_enabled=True):
+                        raise Exception("restore_ceph_config returned false")
+                except Exception as e:
+                    raise wsme.exc.ClientSideError(
+                        _("Restore Ceph config failed: %s" % e))
+
             else:
-                # This is ceph restore for 2+2.
-
-                # If config_controller restore is still in progress, we wait.
-                if os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG):
-                    LOG.info("Restore flag is still on. Do nothing now. ")
-                    return
-
-                active_mons, required_mons, __ = \
-                        self._ceph.get_monitors_status(pecan.request.dbapi)
-                if required_mons > active_mons:
-                    LOG.info("Not enough monitors yet available to fix crushmap.")
-                else:
-                    LOG.info("Restore Ceph config ...")
-                    # First restore ceph config
-                    try:
-                        if not pecan.request.rpcapi.restore_ceph_config(
-                                pecan.request.context):
-                            raise Exception("restore_ceph_config returned false")
-                    except Exception as e:
-                        raise wsme.exc.ClientSideError(
-                            _("Restore Ceph config failed: %s" % e))
-
-                    # Set Ceph backend task to None
-                    api.storage_backend_update(backend.uuid, {'task': None})
-
-                    # Apply runtime manifests for OSDs on two controller nodes.
-                    c_hosts = api.ihost_get_by_personality(
-                        constants.CONTROLLER
-                    )
-
-                    runtime_manifests = True
-                    for c_host in c_hosts:
-                        istors = pecan.request.dbapi.istor_get_by_ihost(c_host.uuid)
-                        for stor in istors:
-                            pecan.request.rpcapi.update_ceph_osd_config(
-                                pecan.request.context,
-                                c_host,
-                                stor.uuid,
-                                runtime_manifests)
+                # TODO(wz): Need more work to restore ceph for 2+2
+                pass
 
     @staticmethod
     def update_ihost_action(action, hostupdate):
