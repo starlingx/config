@@ -371,6 +371,7 @@ class CephOperator(object):
                     except IOError as e:
                         LOG.warn(_('Failed to create flag file: {}. '
                                    'Reason: {}').format(crushmap_flag_file, e))
+            LOG.info("Ceph crushmap is set.")
         except OSError as e:
             LOG.warn(_('Failed to restore Ceph crush map. '
                        'Reason: {}').format(e))
@@ -390,7 +391,7 @@ class CephOperator(object):
         if int(osd_stats['num_osds']) > 0:
             return True
 
-        LOG.info("osdmap is empty, restoring Ceph config...")
+        LOG.info("osdmap is empty, creating osds...")
         return self.rebuild_osdmap()
 
     # TODO(CephPoolsDecouple): remove
