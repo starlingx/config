@@ -241,20 +241,13 @@ class platform::ceph::monitor
 
     # ensure we load the crushmap at first unlock
     if $system_type == 'All-in-one' and str2bool($::is_standalone_controller) {
-      $software_version = $::platform::params::software_version
-
       if 'duplex' in $system_mode {
         $crushmap_txt = '/etc/sysinv/crushmap-controller-model.txt'
       } else {
         $crushmap_txt = '/etc/sysinv/crushmap-aio-sx.txt'
       }
       $crushmap_bin = '/etc/sysinv/crushmap.bin'
-      $crushmap_backup_bin = "/opt/platform/sysinv/${software_version}/crushmap.bin.backup"
       Ceph::Mon <| |>
-      -> exec { 'Copy crushmap if backup exists':
-        command => "cp -f ${crushmap_backup_bin} ${crushmap_bin} && rm -f ${crushmap_backup_bin}",
-        onlyif  => "test -f ${crushmap_backup_bin}",
-      }
       -> exec { 'Compile crushmap':
         command   => "crushtool -c ${crushmap_txt} -o ${crushmap_bin}",
         onlyif    => "test ! -f ${crushmap_bin}",
@@ -373,38 +366,32 @@ class platform::ceph::osds(
   $osd_config = {},
   $journal_config = {},
 ) inherits ::platform::ceph::params {
-  $system_type = $::platform::params::system_type
 
-  # When applying controller manifest during restore the backed-up
-  # controller-0 hieradata contains osd info in osd_config but
-  # osd shouldn't be created as Ceph is down.
-  if $system_type == 'All-in-one' or ! str2bool($::is_standalone_controller) {
-    file { '/var/lib/ceph/osd':
-      ensure => 'directory',
-      path   => '/var/lib/ceph/osd',
-      owner  => 'root',
-      group  => 'root',
-      mode   => '0755',
-    }
-
-    # Ensure ceph.conf is complete before configuring OSDs
-    Class['::ceph'] -> Platform_ceph_osd <| |>
-
-    # Journal disks need to be prepared before the OSDs are configured
-    Platform_ceph_journal <| |> -> Platform_ceph_osd <| |>
-    # Crush locations in ceph.conf need to be set before the OSDs are configured
-    Osd_crush_location <| |> -> Platform_ceph_osd <| |>
-
-    # default configuration for all ceph object resources
-    Ceph::Osd {
-      cluster => $cluster_name,
-      cluster_uuid => $cluster_uuid,
-    }
-
-    create_resources('osd_crush_location', $osd_config)
-    create_resources('platform_ceph_osd', $osd_config)
-    create_resources('platform_ceph_journal', $journal_config)
+  file { '/var/lib/ceph/osd':
+    ensure => 'directory',
+    path   => '/var/lib/ceph/osd',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
   }
+
+  # Ensure ceph.conf is complete before configuring OSDs
+  Class['::ceph'] -> Platform_ceph_osd <| |>
+
+  # Journal disks need to be prepared before the OSDs are configured
+  Platform_ceph_journal <| |> -> Platform_ceph_osd <| |>
+  # Crush locations in ceph.conf need to be set before the OSDs are configured
+  Osd_crush_location <| |> -> Platform_ceph_osd <| |>
+
+  # default configuration for all ceph object resources
+  Ceph::Osd {
+    cluster => $cluster_name,
+    cluster_uuid => $cluster_uuid,
+  }
+
+  create_resources('osd_crush_location', $osd_config)
+  create_resources('platform_ceph_osd', $osd_config)
+  create_resources('platform_ceph_journal', $journal_config)
 }
 
 class platform::ceph::haproxy
