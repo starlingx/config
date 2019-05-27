@@ -250,11 +250,15 @@ class KubernetesPuppet(base.BasePuppet):
                     # Add to the list of pci addreses for this data network
                     resource['rootDevices'].append(port['pciaddr'])
                 else:
+                    device_type = iface.get('sriov_vf_driver', None)
+                    if not device_type:
+                        device_type = constants.SRIOV_DRIVER_TYPE_NETDEVICE
+
                     # PCI addresses don't exist for this data network yet
                     resource = {dn_name: {
                         "resourceName": "{}_net_{}".format(
                             ifclass, dn_name).replace("-", "_"),
-                        "deviceType": "netdevice",
+                        "deviceType": device_type,
                         "rootDevices": [port['pciaddr']],
                         "sriovMode":
                             ifclass == constants.INTERFACE_CLASS_PCI_SRIOV

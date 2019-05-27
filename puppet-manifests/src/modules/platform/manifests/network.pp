@@ -110,13 +110,32 @@ class platform::addresses (
   create_resources('network_address', $address_config, {})
 }
 
+define platform::interfaces::sriov_config(
+  $vf_addrs,
+  $vf_driver = undef
+) {
+  if $vf_driver != undef {
+    exec { "load ${vf_driver}":
+      command   => "modprobe ${vf_driver}",
+      path      => '/bin:/sbin:/usr/bin:/usr/sbin',
+      unless    => "egrep -q '^${vf_driver} ' /proc/modules",
+      logoutput => true
+    }
+    -> exec { "sriov-vf-bind-device: ${title}":
+      command   => template('platform/sriov.bind-device.erb'),
+      logoutput => true
+    }
+  }
+}
 
 class platform::interfaces (
   $network_config = {},
   $route_config = {},
+  $sriov_config = {}
 ) {
   create_resources('network_config', $network_config, {})
   create_resources('network_route', $route_config, {})
+  create_resources('platform::interfaces::sriov_config', $sriov_config, {})
 }
 
 class platform::network::apply {

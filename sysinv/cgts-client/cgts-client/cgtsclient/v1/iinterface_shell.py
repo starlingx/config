@@ -22,7 +22,7 @@ def _print_iinterface_show(cc, iinterface):
               'aemode', 'schedpolicy', 'txhashpolicy',
               'uuid', 'ihost_uuid',
               'vlan_id', 'uses', 'used_by',
-              'created_at', 'updated_at', 'sriov_numvfs']
+              'created_at', 'updated_at', 'sriov_numvfs', 'sriov_vf_driver']
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
     rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
     network_names = ""
@@ -272,13 +272,18 @@ def do_host_if_add(cc, args):
            dest='sriov_numvfs',
            metavar='<sriov numvfs>',
            help='The number of SR-IOV VFs of the interface')
+@utils.arg('--vf-driver',
+           dest='sriov_vf_driver',
+           metavar='<sriov vf driver>',
+           choices=['netdevice', 'vfio'],
+           help='The SR-IOV VF driver for this device')
 def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
                 'datanetworks', 'providernetworks', 'ports', 'ifclass', 'networks',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                'sriov_numvfs']
+                'sriov_numvfs', 'sriov_vf_driver']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 

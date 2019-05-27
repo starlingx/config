@@ -127,6 +127,7 @@ class Port:
         self.sriov_totalvfs = kwargs.get('sriov_totalvfs')
         self.sriov_numvfs = kwargs.get('sriov_numvfs')
         self.sriov_vfs_pci_address = kwargs.get('sriov_vfs_pci_address')
+        self.sriov_vf_driver = kwargs.get('sriov_vf_driver')
         self.driver = kwargs.get('driver')
         self.dpdksupport = kwargs.get('dpdksupport')
 
@@ -233,6 +234,31 @@ class PCIOperator(object):
             i += 1
         LOG.debug("sriov_vfs_pci_address: %s" % sriov_vfs_pci_address)
         return sriov_vfs_pci_address
+
+    def get_pci_sriov_vf_driver_name(self, pciaddr, sriov_vfs_pci_address):
+        vf_driver = None
+        for addr in sriov_vfs_pci_address:
+
+            try:
+                with open(os.devnull, "w") as fnull:
+                    output = subprocess.check_output(['lspci', '-vmmks', addr],
+                                                    stderr=fnull)
+            except Exception as e:
+                LOG.error("Error getting PCI data for SR-IOV "
+                          "VF address %s: %s", addr, e)
+                continue
+
+            for line in output.split('\n'):
+                pci_attr = shlex.split(line.strip())
+                if (pci_attr and len(pci_attr) == 2 and 'Module' in pci_attr[0]):
+                    vf_driver = pci_attr[1]
+                    break
+
+            # All VFs have the same driver per device.
+            if vf_driver:
+                break
+
+        return vf_driver
 
     def get_pci_driver_name(self, pciaddr):
         ddriver = '/sys/bus/pci/devices/' + pciaddr + '/driver/module/drivers'
@@ -443,6 +469,7 @@ class PCIOperator(object):
                 sriov_totalvfs = self.get_pci_sriov_totalvfs(a)
                 sriov_numvfs = self.get_pci_sriov_numvfs(a)
                 sriov_vfs_pci_address = self.get_pci_sriov_vfs_pci_address(a, sriov_numvfs)
+                sriov_vf_driver = self.get_pci_sriov_vf_driver_name(a, sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
                 # Determine DPDK support
@@ -597,6 +624,7 @@ class PCIOperator(object):
                         "sriov_numvfs": sriov_numvfs,
                         "sriov_vfs_pci_address":
                             ','.join(str(x) for x in sriov_vfs_pci_address),
+                        "sriov_vf_driver": sriov_vf_driver,
                         "driver": driver,
                         "pci_address": a,
                         "mac": mac,

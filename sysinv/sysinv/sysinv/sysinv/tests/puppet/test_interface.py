@@ -14,6 +14,7 @@ from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.puppet import interface
 from sysinv.puppet import puppet
+from sysinv.puppet import quoted_str
 from sysinv.objects import base as objbase
 
 from sysinv.tests.db import base as dbbase
@@ -160,7 +161,8 @@ class BaseTestCase(dbbase.DbTestCase):
                      'networks': networks,
                      'networktype': networktype,
                      'imtu': 1500,
-                     'sriov_numvfs': kwargs.get('sriov_numvfs', 0)}
+                     'sriov_numvfs': kwargs.get('sriov_numvfs', 0),
+                     'sriov_vf_driver': kwargs.get('sriov_vf_driver', None)}
         db_interface = dbutils.create_test_interface(**interface)
         self.interfaces.append(db_interface)
 
@@ -175,7 +177,9 @@ class BaseTestCase(dbbase.DbTestCase):
                 'dpdksupport': kwargs.get('dpdksupport', True),
                 'pciaddr': kwargs.get('pciaddr',
                                       '0000:00:00.' + str(port_id + 1)),
-                'dev_id': kwargs.get('dev_id', 0)}
+                'dev_id': kwargs.get('dev_id', 0),
+                'sriov_vf_driver': kwargs.get('sriov_vf_driver', None),
+                'sriov_vfs_pci_address': kwargs.get('sriov_vfs_pci_address', '')}
         db_port = dbutils.create_test_ethernet_port(**port)
         self.ports.append(db_port)
         self._setup_address_and_routes(db_interface)
@@ -1103,6 +1107,13 @@ class InterfaceTestCase(BaseTestCase):
                   'options': 'metric ' + str(metric)}
         return config
 
+    def _get_sriov_config(self, ifname='default', vf_driver='vfio',
+                          vf_addrs=[""]):
+        config = {'ifname': ifname,
+                  'vf_driver': vf_driver,
+                  'vf_addrs': vf_addrs}
+        return config
+
     def _get_loopback_config(self):
         network_config = self._get_network_config(
             ifname=interface.LOOPBACK_IFNAME, method=interface.LOOPBACK_METHOD)
@@ -1353,6 +1364,55 @@ class InterfaceTestCase(BaseTestCase):
         config = interface.get_route_config(route, "eth0")
         expected = self._get_route_config()
         print(expected)
+        self.assertEqual(expected, config)
+
+    def _create_sriov_vf_driver_config(self, iface_vf_driver, port_vf_driver, vf_addr_list):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
+        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
+        self.iface['sriov_vf_driver'] = iface_vf_driver
+        self.port['sriov_vf_driver'] = port_vf_driver
+        self.port['sriov_vfs_pci_address'] = vf_addr_list
+        self._update_context()
+        config = interface.get_sriov_config(self.context, self.iface)
+        return config
+
+    def test_get_sriov_config_netdevice(self):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        vf_addr_list = "{},{}".format(vf_addr1, vf_addr2)
+
+        config = self._create_sriov_vf_driver_config(
+            constants.SRIOV_DRIVER_TYPE_NETDEVICE, 'i40evf', vf_addr_list)
+        expected = self._get_sriov_config(
+            self.iface['ifname'], 'i40evf',
+            [quoted_str(vf_addr1),
+             quoted_str(vf_addr2)])
+        self.assertEqual(expected, config)
+
+    def test_get_sriov_config_vfio(self):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        vf_addr_list = "{},{}".format(vf_addr1, vf_addr2)
+
+        config = self._create_sriov_vf_driver_config(
+            constants.SRIOV_DRIVER_TYPE_VFIO, 'i40evf', vf_addr_list)
+        expected = self._get_sriov_config(
+            self.iface['ifname'], 'vfio-pci',
+            [quoted_str(vf_addr1),
+             quoted_str(vf_addr2)])
+        self.assertEqual(expected, config)
+
+    def test_get_sriov_config_default(self):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        vf_addr_list = "{},{}".format(vf_addr1, vf_addr2)
+
+        config = self._create_sriov_vf_driver_config(
+            None, 'i40evf', vf_addr_list)
+        expected = self._get_sriov_config(
+            self.iface['ifname'], None,
+            [quoted_str(vf_addr1),
+             quoted_str(vf_addr2)])
         self.assertEqual(expected, config)
 
     def test_is_a_mellanox_cx3_device_false(self):

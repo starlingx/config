@@ -78,7 +78,7 @@ INTERFACE_PROFILE_FIELDS = ['ifname', 'iftype', 'imtu', 'networktype',
                             'txhashpolicy', 'forihostid', 'datanetworks',
                             'vlan_id', 'ipv4_mode', 'ipv6_mode',
                             'ipv4_pool', 'ipv6_pool',
-                            'sriov_numvfs']
+                            'sriov_numvfs', 'sriov_vf_driver']
 
 
 class Profile(base.APIBase):
@@ -1353,6 +1353,7 @@ def _create_if_profile(profile_name, profile_node):
                      'ipv4_pool': ipv4_mode['pool'],
                      'ipv6_pool': ipv6_mode['pool'],
                      'sriov_numvfs': ethIf.virtualFunctions,
+                     'sriov_vf_driver': ethIf.virtualFunctionDriver,
                      'interface_profile': True
                      }
             newIf = interface_api._create(idict, from_profile=True)
@@ -1394,6 +1395,7 @@ def _create_if_profile(profile_name, profile_node):
                      'ipv6_pool': ipv6_pool,
                      'imtu': aeIf.mtu,
                      'sriov_numvfs': ethIf.virtualFunctions,
+                     'sriov_vf_driver': ethIf.virtualFunctionDriver,
                      'interface_profile': True
                      }
 
@@ -1421,6 +1423,7 @@ def _create_if_profile(profile_name, profile_node):
                      'ipv6_pool': ipv6_pool,
                      'imtu': vlanIf.mtu,
                      'sriov_numvfs': ethIf.virtualFunctions,
+                     'sriov_vf_driver': ethIf.virtualFunctionDriver,
                      'interface_profile': True
                      }
 

@@ -563,6 +563,7 @@ def get_test_port(**kw):
         'sriov_totalvfs': kw.get('sriov_totalvfs'),
         'sriov_numvfs': kw.get('sriov_numvfs'),
         'sriov_vfs_pci_address': kw.get('sriov_vfs_pci_address'),
+        'sriov_vf_driver': kw.get('sriov_vf_driver'),
         'driver': kw.get('driver'),
         'capabilities': kw.get('capabilities'),
         'created_at': kw.get('created_at'),
@@ -604,6 +605,7 @@ def get_test_ethernet_port(**kw):
         'dev_id': kw.get('dev_id'),
         'sriov_totalvfs': kw.get('sriov_totalvfs'),
         'sriov_numvfs': kw.get('sriov_numvfs'),
+        'sriov_vf_driver': kw.get('sriov_vf_driver'),
         'driver': kw.get('driver')
     }
     return ethernet_port
@@ -685,6 +687,7 @@ def post_get_test_interface(**kw):
         'ipv4_pool': kw.get('ipv4_pool'),
         'ipv6_pool': kw.get('ipv6_pool'),
         'sriov_numvfs': kw.get('sriov_numvfs', None),
+        'sriov_vf_driver': kw.get('sriov_vf_driver', None),
     }
     return interface
 
@@ -720,6 +723,7 @@ def get_test_interface(**kw):
         'ipv4_pool': kw.get('ipv4_pool'),
         'ipv6_pool': kw.get('ipv6_pool'),
         'sriov_numvfs': kw.get('sriov_numvfs', None),
+        'sriov_vf_driver': kw.get('sriov_vf_driver', None)
     }
     return interface
 
