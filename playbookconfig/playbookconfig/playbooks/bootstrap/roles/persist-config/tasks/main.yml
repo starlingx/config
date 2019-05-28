@@ -235,4 +235,6 @@
     path: /etc/resolv.conf
     regex: "nameserver ::1"
     state: absent
-  when: ipv6_addressing == False
+
+- name: Invalidate name service caching server
+  command: nscd -i hosts

@@ -1321,7 +1321,9 @@ MURANO_CERT_KEY_FILE = os.path.join(CERT_MURANO_DIR, CERT_KEY_FILE)
 MURANO_CERT_FILE = os.path.join(CERT_MURANO_DIR, CERT_FILE)
 MURANO_CERT_CA_FILE = os.path.join(CERT_MURANO_DIR, CERT_CA_FILE)
 
+DOCKER_REGISTRY_HOST = 'registry.local'
 DOCKER_REGISTRY_PORT = '9001'
+DOCKER_REGISTRY_SERVER = '%s:%s' % (DOCKER_REGISTRY_HOST, DOCKER_REGISTRY_PORT)
 DOCKER_REGISTRY_CERT_FILE = os.path.join(SSL_CERT_DIR, "registry-cert.crt")
 DOCKER_REGISTRY_KEY_FILE = os.path.join(SSL_CERT_DIR, "registry-cert.key")
 DOCKER_REGISTRY_PKCS1_KEY_FILE = os.path.join(SSL_CERT_DIR,
@@ -1563,7 +1565,6 @@ SRIOVDP_LABEL = 'sriovdp=enabled'
 
 # Default DNS service domain
 DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
-DEFAULT_DNS_SERVICE_IP = '10.96.0.10'
 
 # Ansible bootstrap
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")

@@ -43,10 +43,7 @@ class openstack::keystone (
     # to the management address while still being able to authenticate the client
     if str2bool($::is_initial_config_primary) {
       $enabled = true
-      $bind_host = $::platform::network::mgmt::params::subnet_version ? {
-        6       => '[::]',
-        default => '0.0.0.0',
-      }
+      $bind_host = '[::]'
     } else {
       $enabled = false
       $bind_host = $::platform::network::mgmt::params::controller_address_url
@@ -202,7 +199,7 @@ class openstack::keystone::bootstrap(
 
   $keystone_key_repo_path = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
   $eng_workers = $::platform::params::eng_workers
-  $bind_host = '0.0.0.0'
+  $bind_host = '[::]'
 
   # In the case of a classical Multi-Region deployment, apply the Keystone
   # controller configuration for Primary Region ONLY

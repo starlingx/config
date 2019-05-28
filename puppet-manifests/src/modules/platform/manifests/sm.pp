@@ -235,11 +235,11 @@ class platform::sm
     }
 
     exec { 'Configure Management Interface':
-      command => "sm-configure interface controller management-interface ${mgmt_ip_multicast} ${management_my_unit_ip} 2222 2223 \"\" 2222 2223",
+      command => "sm-configure interface controller management-interface \"\" ${management_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
 
     exec { 'Configure Cluster Host Interface':
-      command => "sm-configure interface controller cluster-host-interface ${cluster_host_ip_multicast} ${cluster_host_my_unit_ip} 2222 2223 \"\" 2222 2223",
+      command => "sm-configure interface controller cluster-host-interface \"\" ${cluster_host_my_unit_ip} 2222 2223 \"\" 2222 2223",
     }
 
   } else {

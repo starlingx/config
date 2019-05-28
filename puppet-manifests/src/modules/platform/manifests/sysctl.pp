@@ -1,12 +1,14 @@
 class platform::sysctl::params (
-  $ip_forwarding = false,
-  $ip_version = $::platform::params::ipv4,
   $low_latency = false,
 ) inherits ::platform::params {}
 
 
 class platform::sysctl
   inherits ::platform::sysctl::params {
+
+  include ::platform::network::mgmt::params
+
+  $ip_version = $::platform::network::mgmt::params::subnet_version
 
   # Increase min_free_kbytes to 128 MiB from 88 MiB, helps prevent OOM
   sysctl::value { 'vm.min_free_kbytes':
@@ -20,7 +22,6 @@ class platform::sysctl
 
   # Enable br_netfilter (required to allow setting bridge-nf-call-arptables)
   exec { 'modprobe br_netfilter':
-    path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
     command => 'modprobe br_netfilter',
   }
 
@@ -49,6 +50,35 @@ class platform::sysctl
     # Disable NUMA balancing
     sysctl::value { 'kernel.numa_balancing':
       value => '0',
+    }
+  }
+
+  if $ip_version == $::platform::params::ipv6 {
+    sysctl::value { 'net.ipv6.conf.all.forwarding':
+      value => '1'
+    }
+
+  } else {
+    sysctl::value { 'net.ipv4.ip_forward':
+      value => '1'
+    }
+
+    sysctl::value { 'net.ipv4.conf.default.rp_filter':
+      value => '0'
+    }
+
+    sysctl::value { 'net.ipv4.conf.all.rp_filter':
+      value => '0'
+    }
+
+    # If this manifest is applied without rebooting the controller, as is done
+    # when config_controller is run, any existing interfaces will not have
+    # their rp_filter setting changed. This is because the kernel uses a MAX
+    # of the 'all' setting (which is now 0) and the current setting for the
+    # interface (which will be 1). When a blade is rebooted, the interfaces
+    # come up with the new 'default' setting so all is well.
+    exec { 'Clear rp_filter for existing interfaces':
+      command => "bash -c 'for f in /proc/sys/net/ipv4/conf/*/rp_filter; do echo 0 > \$f; done'",
     }
   }
 }
@@ -98,40 +128,6 @@ class platform::sysctl::controller
   # When increasing postgres connections, add 7.5 MB for every 100 connections
   sysctl::value { 'kernel.shmmax':
     value => '167772160'
-  }
-
-  if $ip_forwarding {
-
-    if $ip_version == $::platform::params::ipv6 {
-      # sysctl does not support ipv6 rp_filter
-      sysctl::value { 'net.ipv6.conf.all.forwarding':
-        value => '1'
-      }
-
-    } else {
-      sysctl::value { 'net.ipv4.ip_forward':
-        value => '1'
-      }
-
-      sysctl::value { 'net.ipv4.conf.default.rp_filter':
-        value => '0'
-      }
-
-      sysctl::value { 'net.ipv4.conf.all.rp_filter':
-        value => '0'
-      }
-
-      # If this manifest is applied without rebooting the controller, as is done
-      # when config_controller is run, any existing interfaces will not have
-      # their rp_filter setting changed. This is because the kernel uses a MAX
-      # of the 'all' setting (which is now 0) and the current setting for the
-      # interface (which will be 1). When a blade is rebooted, the interfaces
-      # come up with the new 'default' setting so all is well.
-      exec { 'Clear rp_filter for existing interfaces':
-        path    => [ '/usr/bin', '/usr/sbin', '/usr/local/bin', '/etc', '/sbin', '/bin' ],
-        command => "bash -c 'for f in /proc/sys/net/ipv4/conf/*/rp_filter; do echo 0 > \$f; done'",
-      }
-    }
   }
 }
 

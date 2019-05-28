@@ -17,7 +17,7 @@
     replace:
       path: /etc/barbican/barbican.conf
       regexp: "bind_host=.*$"
-      replace: "bind_host={{ controller_floating_address }}"
+      replace: "bind_host={{ controller_floating_address | ipwrap }}"
 
   - name: Restart barbican
     systemd:

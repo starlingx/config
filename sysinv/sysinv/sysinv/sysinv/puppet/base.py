@@ -5,7 +5,6 @@
 #
 
 import abc
-import netaddr
 import os
 import six
 
@@ -256,15 +255,7 @@ class BasePuppet(object):
 
     @staticmethod
     def _format_url_address(address):
-        """Format the URL address according to RFC 2732"""
-        try:
-            addr = netaddr.IPAddress(address)
-            if addr.version == constants.IPV6_FAMILY:
-                return "[%s]" % address
-            else:
-                return str(address)
-        except netaddr.AddrFormatError:
-            return address
+        return utils.format_url_address(address)
 
     # TODO (jgauld): Refactor to use utility has_openstack_compute(labels)
     def is_openstack_compute(self, host):

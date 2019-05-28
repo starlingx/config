@@ -3,7 +3,6 @@
 # Based off:
 # https://docs.projectcalico.org/v3.6/getting-started/kubernetes/installation/
 #              hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml
-# Original file located in the source tree as calico.yaml.erb.orig
 #
 # This is the calico configuration file for systems with less than 50 nodes.
 #
@@ -15,7 +14,7 @@
 #
 # It is important to test in a multi-controller environment (ie: AIO-DX)  that
 # the pods can be pinged by their endpoint.  ie: A pod running on controller-1
-# can be pinged from controller-0, and vica versa.
+# can be pinged from controller-0, and vice versa.
 #
 # An additional test (run on controller-0) that queries the calico daemon
 # health and status
@@ -58,17 +57,8 @@ data:
           "mtu": __CNI_MTU__,
           "ipam": {
             "type": "calico-ipam",
-            <%- if @pod_network_ipversion == 4 -%>
-            "assign_ipv4": "true",
-            <%- else -%>
-            "assign_ipv4": "false",
-            <%- end -%>
-            <%- if @pod_network_ipversion == 6 -%>
-            "assign_ipv6": "true"
-            <%- else -%>
-            "assign_ipv6": "false"
-            <%- end -%>
-          },
+            "assign_ipv4": "{{ "true" if cluster_network_ipv4 else "false" }}",
+            "assign_ipv6": "{{ "true" if cluster_network_ipv6 else "false" }}"
           "policy": {
               "type": "k8s"
           },
@@ -540,7 +530,7 @@ spec:
         # It can be deleted if this is a fresh installation, or if you have already
         # upgraded to use calico-ipam.
         - name: upgrade-ipam
-          image: "<%= @quay_registry %>/calico/cni:v3.6.2"
+          image: "{{ quay_registry }}/calico/cni:v3.6.2"
           command: ["/opt/cni/bin/calico-ipam", "-upgrade"]
           env:
             - name: KUBERNETES_NODE_NAME
@@ -560,7 +550,7 @@ spec:
         # This container installs the Calico CNI binaries
         # and CNI network config file on each node.
         - name: install-cni
-          image: "<%= @quay_registry %>/calico/cni:v3.6.2"
+          image: "{{ quay_registry }}/calico/cni:v3.6.2"
           command: ["/install-cni.sh"]
           env:
             # Name of the CNI config file to create.
@@ -596,7 +586,7 @@ spec:
         # container programs network policy and routes on each
         # host.
         - name: calico-node
-          image: "<%= @quay_registry %>/calico/node:v3.6.2"
+          image: "{{ quay_registry }}/calico/node:v3.6.2"
           env:
             # Configure inbound failsafe rules
             - name: FELIX_FAILSAFEINBOUNDHOSTPORTS
@@ -624,12 +614,12 @@ spec:
             # Cluster type to identify the deployment type
             - name: CLUSTER_TYPE
               value: "k8s,bgp"
+            {% if cluster_network_ipv4 -%}
             # Auto-detect the BGP IP address.
-            <%- if @pod_network_ipversion == 4 -%>
             - name: IP
               value: "autodetect"
             - name: IP_AUTODETECTION_METHOD
-              value: "can-reach=<%= @apiserver_advertise_address %>"
+              value: "can-reach={{ cluster_floating_address }}"
             # Enable IPIP
             - name: CALICO_IPV4POOL_IPIP
               value: "Always"
@@ -637,29 +627,31 @@ spec:
             # chosen from this range. Changing this value after installation will have
             # no effect. This should fall within `--cluster-cidr`.
             - name: CALICO_IPV4POOL_CIDR
-              value: "<%= @pod_network_cidr %>"
+              value: "{{ cluster_pod_subnet }}"
             - name: CALICO_IPV4POOL_NAT_OUTGOING
               value: "true"
-            <%- else -%>
+            {% else -%}
+            # Disable IPv4
             - name: IP
               value: "none"
-            <%- end -%>
-            <%- if @pod_network_ipversion == 6 -%>
+            {% endif -%}
+            {% if cluster_network_ipv6 -%}
             - name: IP6
               value: "autodetect"
             - name: IP6_AUTODETECTION_METHOD
-              value: "can-reach=<%= @apiserver_advertise_address %>"
+              value: "can-reach={{ cluster_floating_address }}"
             # The default IPv6 pool to create on startup if none exists. Pod IPs will be
             # chosen from this range. Changing this value after installation will have
             # no effect. This should fall within `--cluster-cidr`.
             - name: CALICO_IPV6POOL_CIDR
-              value: "<%= @pod_network_cidr %>"
+              value: "{{ cluster_pod_subnet }}"
             - name: CALICO_IPV6POOL_NAT_OUTGOING
               value: "true"
-            <%- else -%>
+            {% else -%}
+            # Disable IPv6
             - name: IP6
               value: "none"
-            <%- end -%>
+            {% endif -%}
             # Set MTU for tunnel device used if ipip is enabled
             - name: FELIX_IPINIPMTU
               valueFrom:
@@ -672,17 +664,17 @@ spec:
             # Set Felix endpoint to host default action to ACCEPT.
             - name: FELIX_DEFAULTENDPOINTTOHOSTACTION
               value: "ACCEPT"
-            <%- if @pod_network_ipversion == 6 -%>
+            {% if cluster_network_ipv6 -%}
             # Enable IPv6 on Kubernetes.
             - name: FELIX_IPV6SUPPORT
               value: "true"
             - name: CALICO_ROUTER_ID
               value: "hash"
-            <%- else -%>
+            {% else -%}
             # Disable IPv6 on Kubernetes.
             - name: FELIX_IPV6SUPPORT
               value: "false"
-            <%- end -%>
+            {% endif -%}
             # Set Felix logging to "info"
             - name: FELIX_LOGSEVERITYSCREEN
               value: "info"
@@ -793,7 +785,7 @@ spec:
       serviceAccountName: calico-kube-controllers
       containers:
         - name: calico-kube-controllers
-          image: "<%= @quay_registry %>/calico/kube-controllers:v3.6.2"
+          image: "{{ quay_registry }}/calico/kube-controllers:v3.6.2"
           env:
             # Choose which controllers to run.
             - name: ENABLED_CONTROLLERS

@@ -48,6 +48,7 @@
     src: "{{ item }}"
     dest: "{{ config_permdir }}"
     remote_src: yes
+    mode: preserve
   with_items:
     - "{{ registry_cert_key }}"
     - "{{ registry_cert_crt }}"
@@ -55,7 +56,7 @@
 
 - name: Create docker certificate directory
   file:
-    path: "{{ docker_cert_dir }}/{{ controller_floating_address }}:9001"
+    path: "{{ docker_cert_dir }}/registry.local:9001"
     state: directory
     recurse: yes
     mode: 0700
@@ -63,5 +64,5 @@
 - name: Copy certificate file to docker certificate directory
   copy:
     src: "{{ registry_cert_crt }}"
-    dest: "{{ docker_cert_dir }}/{{ controller_floating_address }}:9001"
+    dest: "{{ docker_cert_dir }}/registry.local:9001"
     remote_src: yes

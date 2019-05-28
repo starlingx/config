@@ -174,7 +174,7 @@ class BaseHelm(object):
         port = self.CEPH_MON_SERVICE_PORT
         monitor_ips = self._get_ceph_monitor_ips()
         formatted_monitor_ips = [
-            utils._format_ceph_mon_address(mon, port) for mon in monitor_ips
+            utils.format_ceph_mon_address(mon, port) for mon in monitor_ips
         ]
         return formatted_monitor_ips
 
@@ -187,6 +187,10 @@ class BaseHelm(object):
         address = self._get_address_by_name(
             constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
         return address.address
+
+    @staticmethod
+    def _format_url_address(address):
+        return utils.format_url_address(address)
 
     def _get_host_cpu_list(self, host, function=None, threads=False):
         """

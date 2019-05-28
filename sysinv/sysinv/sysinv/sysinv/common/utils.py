@@ -538,6 +538,18 @@ def get_ip_version(network):
         return "IPv4"
 
 
+def format_url_address(address):
+    """Format the URL address according to RFC 2732"""
+    try:
+        addr = netaddr.IPAddress(address)
+        if addr.version == constants.IPV6_FAMILY:
+            return "[%s]" % address
+        else:
+            return str(address)
+    except netaddr.AddrFormatError:
+        return address
+
+
 def convert_to_list_dict(lst, label):
     """Convert a value or list into a list of dicts."""
     if not lst:
@@ -1751,11 +1763,8 @@ def get_numa_index_list(obj):
     return obj_lists
 
 
-def _format_ceph_mon_address(ip_address, service_port_mon):
-    if netaddr.IPAddress(ip_address).version == constants.IPV4_FAMILY:
-        return '%s:%d' % (ip_address, service_port_mon)
-    else:
-        return '[%s]:%d' % (ip_address, service_port_mon)
+def format_ceph_mon_address(ip_address, service_port_mon):
+    return '%s:%d' % (format_url_address(ip_address), service_port_mon)
 
 
 def get_files_matching(path, pattern):

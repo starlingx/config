@@ -8,11 +8,13 @@ import base64
 import keyring
 import requests
 
+from sysinv.common import constants
 from sysinv.common import exception
 
 CERT_PATH = '/etc/ssl/private/registry-cert.crt'
 KEYRING_SERVICE = 'CGCS'
 REGISTRY_USERNAME = 'admin'
+REGISTRY_BASEURL = 'https://%s/v2/' % constants.DOCKER_REGISTRY_SERVER
 
 
 def get_registry_password():
@@ -76,30 +78,30 @@ def docker_registry_authenticate(www_authenticate):
     return auth_headers
 
 
-def docker_registry_get(path, registry_addr):
+def docker_registry_get(path, registry_url=REGISTRY_BASEURL):
     # we need to have this header to get the correct digest when giving the tag
     headers = {"Accept": "application/vnd.docker.distribution.manifest.v2+json"}
 
-    resp = requests.get("%s%s" % (registry_addr, path), verify=CERT_PATH, headers=headers)
+    resp = requests.get("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
 
     # authenticated registry, need to do auth with token server
     if resp.status_code == 401:
         auth_headers = docker_registry_authenticate(resp.headers["Www-Authenticate"])
         headers.update(auth_headers)
-        resp = requests.get("%s%s" % (registry_addr, path), verify=CERT_PATH, headers=headers)
+        resp = requests.get("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
 
     return resp
 
 
-def docker_registry_delete(path, registry_addr):
+def docker_registry_delete(path, registry_url=REGISTRY_BASEURL):
     headers = {}
 
-    resp = requests.delete("%s%s" % (registry_addr, path), verify=CERT_PATH, headers=headers)
+    resp = requests.delete("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
 
     # authenticated registry, need to do auth with token server
     if resp.status_code == 401:
         auth_headers = docker_registry_authenticate(resp.headers["Www-Authenticate"])
         headers.update(auth_headers)
-        resp = requests.delete("%s%s" % (registry_addr, path), verify=CERT_PATH, headers=headers)
+        resp = requests.delete("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
 
     return resp

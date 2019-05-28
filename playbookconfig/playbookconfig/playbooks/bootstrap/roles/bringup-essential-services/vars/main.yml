@@ -6,10 +6,6 @@ target_helm_bind_dir: /www/pages/helm_charts
 helm_repo_name_apps: starlingx
 helm_repo_name_platform: stx-platform
 kube_admin_yaml_template: /usr/share/puppet/modules/platform/templates/kubeadm.yaml.erb
-multus_yaml_template: /usr/share/puppet/modules/platform/templates/multus.yaml.erb
-calico_yaml_template: /usr/share/puppet/modules/platform/templates/calico.yaml.erb
-sriov_cni_yaml_template: /usr/share/puppet/modules/platform/templates/sriov-cni.yaml.erb
-sriovdp_daemonset_yaml_template: /usr/share/puppet/modules/platform/templates/sriovdp-daemonset.yaml.erb
 kubelet_override_template: /usr/share/puppet/modules/platform/templates/kube-stx-override.conf.erb
 kubelet_pmond_template: /usr/share/puppet/modules/platform/templates/kubelet-pmond-conf.erb
 lighttpd_conf_template: /usr/share/puppet/modules/openstack/templates/lighttpd.conf.erb

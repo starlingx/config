@@ -37,6 +37,10 @@
   with_items:
     - net.bridge.bridge-nf-call-ip6tables = 1
     - net.bridge.bridge-nf-call-iptables = 1
+    - net.ipv4.ip_forward = 1
+    - net.ipv4.conf.default.rp_filter = 0
+    - net.ipv4.conf.all.rp_filter = 0
+    - net.ipv6.conf.all.forwarding = 1
 
 - block:
   - block:
@@ -108,6 +112,15 @@
     group: root
     mode: 0644
 
+- name: Set kubelet node configuration
+  set_fact:
+    node_ip: "{{ controller_0_cluster_host }}"
+
+- name: Create kubelet override config file
+  template:
+    src: "kubelet.conf.j2"
+    dest: /etc/sysconfig/kubelet
+
 - name: Enable kubelet
   systemd:
     name: kubelet
@@ -125,15 +138,16 @@
     warn: false
   with_items:
     - "sed -i -e 's|<%= @apiserver_advertise_address %>|'$CLUSTER_IP'|g' /etc/kubernetes/kubeadm.yaml"
-    - "sed -i -e 's|<%= @etcd_endpoint %>|'http://\"$CLUSTER_IP\":$ETCD_PORT'|g' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i -e 's|<%= @apiserver_loopback_address %>|'$LOOPBACK_IP'|g' /etc/kubernetes/kubeadm.yaml"
+    - "sed -i -e 's|<%= @etcd_endpoint %>|'$ETCD_ENDPOINT'|g' /etc/kubernetes/kubeadm.yaml"
     - "sed -i -e 's|<%= @service_domain %>|'cluster.local'|g' /etc/kubernetes/kubeadm.yaml"
     - "sed -i -e 's|<%= @pod_network_cidr %>|'$POD_NETWORK_CIDR'|g' /etc/kubernetes/kubeadm.yaml"
     - "sed -i -e 's|<%= @service_network_cidr %>|'$SERVICE_NETWORK_CIDR'|g' /etc/kubernetes/kubeadm.yaml"
-    - "sed -i '/<%- /d' /etc/kubernetes/kubeadm.yaml"
     - "sed -i -e 's|<%= @k8s_registry %>|'$K8S_REGISTRY'|g' /etc/kubernetes/kubeadm.yaml"
   environment:
     CLUSTER_IP: "{{ cluster_floating_address }}"
-    ETCD_PORT: 2379
+    LOOPBACK_IP: "{{ '127.0.0.1' if ipv6_addressing == False else '::1' }}"
+    ETCD_ENDPOINT: "http://{{ cluster_floating_address | ipwrap }}:2379"
     POD_NETWORK_CIDR: "{{ cluster_pod_subnet }}"
     SERVICE_NETWORK_CIDR: "{{ cluster_service_subnet }}"
     K8S_REGISTRY: "{{ k8s_registry }}"
@@ -153,73 +167,40 @@
     dest: /etc/profile.d/kubeconfig.sh
     remote_src: yes
 
-- name: Create Multus config file
-  copy:
-    src: "{{ multus_yaml_template }}"
-    dest: /etc/kubernetes/multus.yaml
-    remote_src: yes
-
-- name: Update Multus config file
-  command: "sed -i -e 's|<%= @docker_registry %>|'$DOCKER_REGISTRY'|g' /etc/kubernetes/multus.yaml"
-  args:
-    warn: false
-  environment:
-    DOCKER_REGISTRY: "{{ docker_registry }}"
-
-- name: Activate Multus Networking
-  command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/multus.yaml"
+- name: Set Calico cluster configuration
+  set_fact:
+    cluster_network_ipv4: "{{ cluster_pod_subnet | ipv4 }}"
+    cluster_network_ipv6: "{{ cluster_pod_subnet | ipv6 }}"
 
 # Configure calico networking using the Kubernetes API datastore.
 - name: Create Calico config file
-  copy:
-    src: "{{ calico_yaml_template }}"
+  template:
+    src: "calico-cni.yaml.j2"
     dest: /etc/kubernetes/calico.yaml
-    remote_src: yes
-
-- name: Update Calico config files with networking info
-  command: "{{ item }}"
-  args:
-    warn: false
-  with_items:
-    - "sed -i -e 's|<%= @apiserver_advertise_address %>|'$CLUSTER_IP'|g' /etc/kubernetes/calico.yaml"
-    - "sed -i -e 's|<%= @pod_network_cidr %>|'$POD_NETWORK_CIDR'|g' /etc/kubernetes/calico.yaml"
-    - "sed -i -e 's|<%= @quay_registry %>|'$QUAY_REGISTRY'|g' /etc/kubernetes/calico.yaml"
-  environment:
-    CLUSTER_IP: "{{ cluster_floating_address }}"
-    POD_NETWORK_CIDR: "{{ cluster_pod_subnet }}"
-    QUAY_REGISTRY: "{{ quay_registry }}"
 
 - name: Activate Calico Networking
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/calico.yaml"
 
-- name: Create SRIOV Networking config file
-  copy:
-    src: "{{ sriov_cni_yaml_template }}"
-    dest: /etc/kubernetes/sriov-cni.yaml
-    remote_src: yes
+- name: Create Multus config file
+  template:
+    src: "multus-cni.yaml.j2"
+    dest: /etc/kubernetes/multus.yaml
 
-- name: Update SRIOV Networking config file
-  command: "sed -i -e 's|<%= @docker_registry %>|'$DOCKER_REGISTRY'|g' /etc/kubernetes/sriov-cni.yaml"
-  args:
-    warn: false
-  environment:
-    DOCKER_REGISTRY: "{{ docker_registry }}"
+- name: Activate Multus Networking
+  command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/multus.yaml"
+
+- name: Create SRIOV Networking config file
+  template:
+    src: "sriov-cni.yaml.j2"
+    dest: /etc/kubernetes/sriov-cni.yaml
 
 - name: Activate SRIOV Networking
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriov-cni.yaml"
 
 - name: Create SRIOV device plugin config file
-  copy:
-    src: "{{ sriovdp_daemonset_yaml_template }}"
+  template:
+    src: "sriov-plugin.yaml.j2"
     dest: /etc/kubernetes/sriovdp-daemonset.yaml
-    remote_src: yes
-
-- name: Update SRIOV device plugin config file
-  command: "sed -i -e 's|<%= @docker_registry %>|'$DOCKER_REGISTRY'|g' /etc/kubernetes/sriovdp-daemonset.yaml"
-  args:
-    warn: false
-  environment:
-    DOCKER_REGISTRY: "{{ docker_registry }}"
 
 - name: Activate SRIOV device plugin
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriovdp-daemonset.yaml"
