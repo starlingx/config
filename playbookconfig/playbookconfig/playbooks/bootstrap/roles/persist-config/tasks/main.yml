@@ -174,7 +174,7 @@
     - name: Add no proxy address list to docker proxy config file
       lineinfile:
         path: "{{ docker_proxy_conf }}"
-        line: "Environment='NO_PROXY={{ docker_no_proxy | join(',') }}'"
+        line: "Environment='NO_PROXY={{ docker_no_proxy_combined | join(',') }}'"
 
     - name: Restart Docker
       systemd:
