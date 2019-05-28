@@ -43,3 +43,6 @@ playbookconfig
 
 # Platform helm charts
 stx-platform-helm
+
+# PM QoS cpu latency manager
+pm-qos-mgr

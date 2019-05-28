@@ -20,3 +20,4 @@ puppet-modules-wrs/puppet-smapi
 puppet-modules-wrs/puppet-fm
 playbookconfig
 puppet-modules-wrs/puppet-dcdbsync
+pm-qos-mgr
