@@ -266,8 +266,6 @@ class CertificateController(rest.RestController):
            Certificates are installed according to one of the following modes:
                default: install certificate for ssl
                tpm_mode: install certificate to tpm devices for ssl
-               murano: install certificate for rabbit-murano
-               murano_ca: install ca certificate for rabbit-murano
                docker_registry: install certificate for docker registry
                openstack: install certificate for openstack
                openstack_ca: install ca certificate for openstack
@@ -300,8 +298,7 @@ class CertificateController(rest.RestController):
         system = pecan.request.dbapi.isystem_get_one()
         capabilities = system.capabilities
 
-        if not mode.startswith(constants.CERT_MODE_MURANO) and \
-                mode != constants.CERT_MODE_DOCKER_REGISTRY:
+        if mode != constants.CERT_MODE_DOCKER_REGISTRY:
             system_https_enabled = capabilities.get('https_enabled', False)
             if system_https_enabled is False or system_https_enabled == 'n':
                 msg = "No certificates have been added, https is not enabled."

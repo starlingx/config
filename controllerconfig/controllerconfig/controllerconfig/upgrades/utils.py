@@ -33,7 +33,6 @@ LOG = log.get_logger(__name__)
 POSTGRES_PATH = '/var/lib/postgresql'
 POSTGRES_DATA_DIR = os.path.join(POSTGRES_PATH, SW_VERSION)
 RABBIT_PATH = '/var/lib/rabbitmq'
-MURANO_RABBIT_PATH = '/var/lib/rabbitmq/murano'
 CONTROLLER_1_HOSTNAME = "controller-1"
 DB_CONNECTION = "postgresql://%s:%s@127.0.0.1/%s\n"
 

@@ -107,12 +107,6 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
             })
 
         # Optional services settings
-        service_config = self._get_service_config('murano')
-        if service_config is not None and service_config.enabled:
-            local_settings_config.update({
-                'enable_murano': 'True',
-            })
-
         service_config = self._get_service_config('magnum')
         if service_config is not None and service_config.enabled:
             local_settings_config.update({

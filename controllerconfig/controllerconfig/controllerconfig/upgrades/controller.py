@@ -93,9 +93,6 @@ def get_db_credentials(shared_services, from_release):
          'sysinv': {'hiera_user_key': 'sysinv::db::postgresql::user',
                     'keyring_password_key': 'sysinv',
                     },
-         'murano': {'hiera_user_key': 'murano::db::postgresql::user',
-                    'keyring_password_key': 'murano',
-                    },
          'magnum': {'hiera_user_key': 'magnum::db::postgresql::user',
                     'keyring_password_key': 'magnum',
                     },
@@ -548,10 +545,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         f.write("[api_database]\n")
         f.write(get_connection_string(db_credentials, 'nova_api'))
 
-    with open("/etc/murano/murano-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'murano'))
-
     with open("/etc/magnum/magnum-dbsync.conf", "w") as f:
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'magnum'))
@@ -601,10 +594,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         # Migrate nova_api (new in R3)
         ('nova',
          'nova-manage --config-file /etc/nova/nova-dbsync.conf api_db sync'),
-        # Migrate murano (new in R4)
-        ('murano',
-         'murano-db-manage --config-file /etc/murano/murano-dbsync.conf ' +
-         'upgrade'),
         # Migrate magnum (new in R5)
         ('magnum',
          'magnum-db-manage --config-file /etc/magnum/magnum-dbsync.conf ' +

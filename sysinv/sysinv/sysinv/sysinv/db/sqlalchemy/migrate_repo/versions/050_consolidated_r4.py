@@ -95,7 +95,7 @@ def upgrade(migrate_engine):
     i_host.create_column(Column('install_state', String(255)))
     i_host.create_column(Column('install_state_info', String(255)))
 
-    # 048 Replace services enum with string (include ceph, platform, murano)
+    # 048 Replace services enum with string (include ceph, platform)
     service_parameter = Table('service_parameter',
                               meta,
                               Column('id', Integer,
@@ -259,8 +259,7 @@ def upgrade(migrate_engine):
     systems.create_column(Column('timezone', String(255)))
     _populate_system_timezone(systems)
 
-    # 059_murano_service_parameters.py
-    # Enhance the services enum to include murano; String per 048
+    # 059 N/A
 
     # 060_disk_device_path.py
     i_pv = Table('i_pv', meta, autoload=True)

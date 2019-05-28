@@ -7278,10 +7278,6 @@ class ConductorManager(service.PeriodicService):
                 # controller hosts will actively apply the manifests
                 config_uuid = self._config_update_hosts(context,
                                                         [constants.CONTROLLER])
-        elif service == constants.SERVICE_TYPE_MURANO:
-            config_uuid = self._config_update_hosts(context,
-                                                    [constants.CONTROLLER],
-                                                    reboot=True)
         elif service == constants.SERVICE_TYPE_MAGNUM:
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER],
@@ -10171,8 +10167,7 @@ class ConductorManager(service.PeriodicService):
                                passphrase=None):
         """Extract keys from the pem contents
 
-        :param mode: mode one of: ssl, tpm_mode, murano, murano_ca,
-                     docker_registry
+        :param mode: mode one of: ssl, tpm_mode, docker_registry
         :param pem_contents: pem_contents
         :param cert_format: serialization.PrivateFormat
         :param passphrase: passphrase for PEM file
@@ -10193,7 +10188,6 @@ class ConductorManager(service.PeriodicService):
         private_mode = False
         if mode in [constants.CERT_MODE_SSL,
                     constants.CERT_MODE_TPM,
-                    constants.CERT_MODE_MURANO,
                     constants.CERT_MODE_DOCKER_REGISTRY,
                     constants.CERT_MODE_OPENSTACK,
                     ]:
@@ -10400,32 +10394,6 @@ class ConductorManager(service.PeriodicService):
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,
                                                 config_dict)
-        elif mode == constants.CERT_MODE_MURANO:
-            LOG.info("Murano certificate install")
-            config_uuid = self._config_update_hosts(context, personalities,
-                                                    reboot=True)
-            key_path = constants.MURANO_CERT_KEY_FILE
-            cert_path = constants.MURANO_CERT_FILE
-            config_dict = {
-                'personalities': personalities,
-                'file_names': [key_path, cert_path],
-                'file_content': {key_path: private_bytes,
-                                 cert_path: public_bytes},
-                'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
-            }
-            self._config_update_file(context, config_uuid, config_dict)
-            self._remove_certificate_file(mode, certificate_file)
-        elif mode == constants.CERT_MODE_MURANO_CA:
-            LOG.info("Murano CA certificate install")
-            config_uuid = self._config_update_hosts(context, personalities,
-                                                    reboot=True)
-            config_dict = {
-                'personalities': personalities,
-                'file_names': [constants.MURANO_CERT_CA_FILE],
-                'file_content': public_bytes,
-                'permissions': constants.CONFIG_FILE_PERMISSION_DEFAULT,
-            }
-            self._config_update_file(context, config_uuid, config_dict)
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server

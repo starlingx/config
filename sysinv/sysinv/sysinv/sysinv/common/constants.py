@@ -894,7 +894,6 @@ SERVICE_TYPE_NETWORK = 'network'
 SERVICE_TYPE_HORIZON = "horizon"
 SERVICE_TYPE_CEPH = 'ceph'
 SERVICE_TYPE_CINDER = 'cinder'
-SERVICE_TYPE_MURANO = 'murano'
 SERVICE_TYPE_MAGNUM = 'magnum'
 SERVICE_TYPE_PLATFORM = 'platform'
 SERVICE_TYPE_NOVA = 'nova'
@@ -905,9 +904,6 @@ SERVICE_TYPE_BARBICAN = 'barbican'
 SERVICE_TYPE_DOCKER = 'docker'
 SERVICE_TYPE_HTTP = 'http'
 SERVICE_TYPE_OPENSTACK = 'openstack'
-
-SERVICE_PARAM_SECTION_MURANO_RABBITMQ = 'rabbitmq'
-SERVICE_PARAM_SECTION_MURANO_ENGINE = 'engine'
 
 SERVICE_PARAM_SECTION_IRONIC_NEUTRON = 'neutron'
 SERVICE_PARAM_SECTION_IRONIC_PXE = 'pxe'
@@ -950,8 +946,6 @@ SERVICE_PARAM_SECTION_NETWORK_SFC = 'sfc'
 SERVICE_PARAM_SECTION_NETWORK_DHCP = 'dhcp'
 
 SERVICE_PARAM_PARAMETER_NAME_EXTERNAL_ADMINURL = 'external-admin-url'
-SERVICE_PARAM_NAME_MURANO_DISABLE_AGENT = 'disable_murano_agent'
-SERVICE_PARAM_NAME_MURANO_SSL = 'ssl'
 SERVICE_PARAM_NAME_IRONIC_TFTP_SERVER = 'tftp_server'
 SERVICE_PARAM_NAME_IRONIC_CONTROLLER_0_NIC = 'controller_0_if'
 SERVICE_PARAM_NAME_IRONIC_CONTROLLER_1_NIC = 'controller_1_if'
@@ -1255,7 +1249,7 @@ LINUX_LVM_PARTITION = "e6d6d379-f507-44c2-a23c-238f2a3df928"
 CEPH_DATA_PARTITION = "4fbd7e29-9d25-41b8-afd0-062c0ceff05d"
 CEPH_JOURNAL_PARTITION = "45b0969e-9b03-4f30-b4c6-b4b80ceff106"
 
-# Partition name for those partitions deignated for PV use.
+# Partition name for those partitions designated for PV use.
 PARTITION_NAME_PV = "LVM Physical Volume"
 
 # Partition table types.
@@ -1265,7 +1259,7 @@ PARTITION_TABLE_MSDOS = "msdos"
 PARTITION_MANAGE_LOCK = "partition-manage"
 
 # Optional services
-ALL_OPTIONAL_SERVICES = [SERVICE_TYPE_CINDER, SERVICE_TYPE_MURANO,
+ALL_OPTIONAL_SERVICES = [SERVICE_TYPE_CINDER,
                          SERVICE_TYPE_MAGNUM, SERVICE_TYPE_SWIFT,
                          SERVICE_TYPE_IRONIC]
 
@@ -1309,17 +1303,12 @@ SSL_CERT_DIR = "/etc/ssl/private/"
 SSL_CERT_FILE = "server-cert.pem"  # pem with PK and cert
 # self signed pem to get started
 SSL_CERT_SS_FILE = "self-signed-server-cert.pem"
-CERT_MURANO_DIR = "/etc/ssl/private/murano-rabbit"
 CERT_FILE = "cert.pem"
 CERT_KEY_FILE = "key.pem"
 CERT_CA_FILE = "ca-cert.pem"
 SSL_PEM_FILE = os.path.join(SSL_CERT_DIR, SSL_CERT_FILE)
 SSL_PEM_SS_FILE = os.path.join(SSL_CERT_DIR, SSL_CERT_SS_FILE)
 SSL_PEM_FILE_SHARED = os.path.join(tsc.CONFIG_PATH, SSL_CERT_FILE)
-
-MURANO_CERT_KEY_FILE = os.path.join(CERT_MURANO_DIR, CERT_KEY_FILE)
-MURANO_CERT_FILE = os.path.join(CERT_MURANO_DIR, CERT_FILE)
-MURANO_CERT_CA_FILE = os.path.join(CERT_MURANO_DIR, CERT_CA_FILE)
 
 DOCKER_REGISTRY_HOST = 'registry.local'
 DOCKER_REGISTRY_PORT = '9001'
@@ -1354,16 +1343,12 @@ OPENSTACK_CERT_CA_FILE_SHARED = os.path.join(CERT_OPENSTACK_SHARED_DIR,
 CERT_MODE_SSL = 'ssl'
 CERT_MODE_SSL_CA = 'ssl_ca'
 CERT_MODE_TPM = 'tpm_mode'
-CERT_MODE_MURANO = 'murano'
-CERT_MODE_MURANO_CA = 'murano_ca'
 CERT_MODE_DOCKER_REGISTRY = 'docker_registry'
 CERT_MODE_OPENSTACK = 'openstack'
 CERT_MODE_OPENSTACK_CA = 'openstack_ca'
 CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_SSL_CA,
                         CERT_MODE_TPM,
-                        CERT_MODE_MURANO,
-                        CERT_MODE_MURANO_CA,
                         CERT_MODE_DOCKER_REGISTRY,
                         CERT_MODE_OPENSTACK,
                         CERT_MODE_OPENSTACK_CA,

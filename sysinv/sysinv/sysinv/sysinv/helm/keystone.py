@@ -192,7 +192,6 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
                 ["'sysinv':%(target.user.name)s"],
                 ["'mtce':%(target.user.name)s"],
                 ["'magnum':%(target.user.name)s"],
-                ["'murano':%(target.user.name)s"],
                 ["'panko':%(target.user.name)s"],
                 ["'gnocchi':%(target.user.name)s"]
             ],

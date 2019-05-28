@@ -2766,7 +2766,7 @@ class Connection(object):
         :param values: A dict containing several items used to identify
                        and track the Services
                         {
-                         'service': 'murano',
+                         'service': 'some_new_service',
                          'enabled': 'False',
                         }
         :returns: A Services.

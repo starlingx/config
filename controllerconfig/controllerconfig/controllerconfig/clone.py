@@ -555,7 +555,6 @@ def update_oamip_in_archive(tmpdir):
                  os.path.join(tmpdir, 'etc/haproxy/haproxy.cfg'),
                  os.path.join(tmpdir, 'etc/heat/heat.conf'),
                  os.path.join(tmpdir, 'etc/keepalived/keepalived.conf'),
-                 os.path.join(tmpdir, 'etc/murano/murano.conf'),
                  os.path.join(tmpdir, 'etc/vswitch/vswitch.ini'),
                  os.path.join(tmpdir, 'etc/nova/nova.conf'),
                  os.path.join(tmpdir, 'config/hosts'),

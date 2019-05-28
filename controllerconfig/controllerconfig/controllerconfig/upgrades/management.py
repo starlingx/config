@@ -26,7 +26,7 @@ LOG = log.get_logger(__name__)
 
 def get_upgrade_databases(shared_services):
 
-    UPGRADE_DATABASES = ('postgres', 'template1', 'nova', 'sysinv', 'murano',
+    UPGRADE_DATABASES = ('postgres', 'template1', 'nova', 'sysinv',
                          'ceilometer', 'neutron', 'heat', 'nova_api', 'aodh',
                          'magnum', 'ironic', 'barbican')
 
@@ -35,7 +35,6 @@ def get_upgrade_databases(shared_services):
                                     'sysinv': ('i_alarm',),
                                     'neutron': (),
                                     'aodh': (),
-                                    'murano': (),
                                     'magnum': (),
                                     'ironic': (),
                                     'barbican': (),
@@ -257,7 +256,6 @@ def abort_upgrade(from_load, to_load, upgrade):
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, to_load),
         os.path.join(utils.RABBIT_PATH, to_load),
-        os.path.join(utils.MURANO_RABBIT_PATH, to_load),
         os.path.join(tsc.CGCS_PATH, "ironic", to_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", to_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", to_load),
@@ -329,7 +327,6 @@ def complete_upgrade(from_load, to_load):
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, from_load),
         os.path.join(utils.RABBIT_PATH, from_load),
-        os.path.join(utils.MURANO_RABBIT_PATH, from_load),
         os.path.join(tsc.CGCS_PATH, "ironic", from_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", from_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", from_load),

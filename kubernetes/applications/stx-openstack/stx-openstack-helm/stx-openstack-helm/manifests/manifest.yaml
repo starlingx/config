@@ -2129,7 +2129,6 @@ data:
             lockout_retries_num: '3'
             # Optional Services
             enable_magnum: 'False'
-            enable_murano: 'False'
             # Turn off domain support as we aren't using
             keystone_multidomain_support: 'False'
           template: |
