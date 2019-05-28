@@ -221,8 +221,6 @@
     line: "{{ item }}"
   with_items:
     - region_config=no
-    # Probably don't need this line with Eric's change to mtc
-    - system_mode=simplex
     - sw_version={{ software_version }}
     - vswitch_type=none
 
