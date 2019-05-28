@@ -23,10 +23,6 @@
       - ip addr add {{ mgmt_nfs_1_virtual }} dev lo scope host
       - ip addr add {{ mgmt_nfs_2_virtual }} dev lo scope host
 
-  - name: Add management floating adddress if this is the initial play
-    command: ip addr add {{ mgmt_floating_virtual }} dev lo scope host
-    when: not replayed
-
   - name: Remove previous management floating address if management network config has changed
     command: ip addr delete {{ prev_mgmt_floating_virtual }} dev lo scope host
     when: reconfigure_endpoints and
@@ -69,6 +65,12 @@
 
 
 - block:
+  - name: Check for controller-0 online status
+    shell: source /etc/platform/openrc; system host-list | grep online
+    register: online_check
+    until: online_check.rc == 0
+    retries: 10
+
   - name: Remove config file from previous play
     file:
       path: "{{ last_bootstrap_config_file }}"
