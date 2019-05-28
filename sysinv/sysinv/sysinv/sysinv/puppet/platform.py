@@ -567,6 +567,7 @@ class PlatformPuppet(base.BasePuppet):
 
             cpu_options = ""
             cpu_ranges = {}
+            isolcpus_ranges = vswitch_ranges
             if constants.LOWLATENCY in host.subfunctions:
                 config.update({
                     'platform::compute::pmqos::low_wakeup_cpus':
@@ -574,11 +575,14 @@ class PlatformPuppet(base.BasePuppet):
                     'platform::compute::pmqos::hight_wakeup_cpus':
                         "\"%s\"" % non_vswitch_ranges,
                 })
-                vswitch_ranges = rcu_nocbs_ranges
-                cpu_ranges.update({"nohz_full": vswitch_ranges})
+                cpu_ranges.update({"nohz_full": rcu_nocbs_ranges})
+
+                host_labels = self.dbapi.label_get_by_host(host.id)
+                if utils.has_openstack_compute(host_labels):
+                    isolcpus_ranges = rcu_nocbs_ranges
 
             cpu_ranges.update({
-                "isolcpus": vswitch_ranges,
+                "isolcpus": isolcpus_ranges,
                 "rcu_nocbs": rcu_nocbs_ranges,
                 "kthread_cpus": platform_ranges,
                 "irqaffinity": platform_ranges
