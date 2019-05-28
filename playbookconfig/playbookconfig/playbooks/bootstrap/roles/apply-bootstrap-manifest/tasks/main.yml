@@ -36,8 +36,6 @@
   environment:
     INITIAL_CONFIG_PRIMARY: "true"
 
-- debug: var=bootstrap_manifest
-
 - name: Fail if puppet manifest apply script returns an error
   fail:
     msg: >-
