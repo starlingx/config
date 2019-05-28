@@ -114,6 +114,21 @@ data:
 schema: armada/Chart/v1
 metadata:
   schema: metadata/Document/v1
+  name: openstack-nginx-ports-control
+data:
+  chart_name: nginx-ports-control
+  release: openstack-nginx-ports-control
+  namespace: openstack
+  values: {}
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/starlingx/nginx-ports-control-0.1.0.tgz
+    subpath: nginx-ports-control
+  dependencies: []
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
   name: openstack-mariadb
 data:
   chart_name: mariadb
@@ -3101,6 +3116,7 @@ data:
   sequenced: false
   chart_group:
     - openstack-ingress
+    - openstack-nginx-ports-control
 ---
 schema: armada/ChartGroup/v1
 metadata:

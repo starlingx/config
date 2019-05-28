@@ -1458,6 +1458,7 @@ HELM_CHART_CEPH_POOLS_AUDIT = 'ceph-pools-audit'
 HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
 HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
 HELM_CHART_SWIFT = 'ceph-rgw'
+HELM_CHART_NGINX_PORTS_CONTROL = "nginx-ports-control"
 
 # Helm: Supported application (aka chart bundles)
 HELM_APP_OPENSTACK = 'stx-openstack'
