@@ -68,6 +68,14 @@ class platform::ntp (
       hasstatus  => true,
       hasrestart => true,
     }
+
+    if $::personality == 'controller' {
+      Class['::platform::dns']
+      -> Exec['enable-ntpdate']
+    } else {
+      Anchor['platform::networking']
+      -> Exec['enable-ntpdate']
+    }
   } else {
     exec { 'disable-ntpdate':
       command => '/usr/bin/systemctl disable ntpdate.service',
