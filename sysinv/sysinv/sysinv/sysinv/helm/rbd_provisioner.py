@@ -71,7 +71,7 @@ class RbdProvisionerHelm(base.BaseHelm):
             classes.append(cls)
 
         global_settings = {
-            "replicas": self._num_controllers(),
+            "replicas": self._num_controllers_by_personality(),
             "defaultStorageClass": constants.K8S_RBD_PROV_STOR_CLASS_NAME
         }
 

@@ -193,6 +193,16 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def count_hosts_by_personality(self, personality):
+        """Return the number of hosts for a provided personality.
+
+        :param personality: The personality of the server
+            e.g. controller or worker
+        returns: The number of hosts matching the personality
+            parameter.
+        """
+
+    @abc.abstractmethod
     def ihost_update(self, server, values):
         """Update properties of a server.
 
