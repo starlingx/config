@@ -634,89 +634,13 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
             LOG.info(msg)
 
 
-def _check_vswitch_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
-                               vm_hugepages_nr_1G=None,
-                               vswitch_hugepages_reqd=None,
-                               vswitch_hugepages_size_mib=None):
-
-    if vswitch_hugepages_reqd and not vswitch_hugepages_size_mib:
-        raise wsme.exc.ClientSideError(_(
-              "No vswitch hugepage size specified."))
-
-    if vswitch_hugepages_reqd:
-        try:
-            val = int(vswitch_hugepages_reqd)
-        except ValueError:
-            raise wsme.exc.ClientSideError(_(
-                  "Vswitch huge pages must be a number"))
-        if val <= 0:
-            raise wsme.exc.ClientSideError(_(
-                  "Vswitch huge pages must be greater than zero"))
-
-    if vswitch_hugepages_size_mib:
-        try:
-            val = int(vswitch_hugepages_size_mib)
-        except ValueError:
-            raise wsme.exc.ClientSideError(_(
-                  "Vswitch huge pages must be a number"))
-        if val <= 0:
-            raise wsme.exc.ClientSideError(_(
-                  "Vswitch huge pages size (Mib) must be greater than zero"))
-        if ((val & (val - 1)) != 0):
-            raise wsme.exc.ClientSideError(_(
-                  "Vswitch hugepage size (Mib) must be a power of 2"))
-
-    # None == unchanged
-    if vswitch_hugepages_reqd is not None:
-        new_vs_pages = int(vswitch_hugepages_reqd)
-    elif rpc_port['vswitch_hugepages_nr']:
-        new_vs_pages = rpc_port['vswitch_hugepages_nr']
-    else:
-        new_vs_pages = 0
-
-    # None == unchanged
-    if vswitch_hugepages_size_mib is not None:
-        vs_hp_size_mib = int(vswitch_hugepages_size_mib)
-    elif rpc_port['vswitch_hugepages_size_mib']:
-        vs_hp_size_mib = rpc_port['vswitch_hugepages_size_mib']
-    else:
-        # default
-        vs_hp_size_mib = constants.MIB_2M
-
-    vs_hp_reqd_mib = new_vs_pages * vs_hp_size_mib
-
-    # Throttle the maximum amount of memory that vswitch can take to
-    # 90% of usable memory to account for fluctuations in the reported
-    # node mem total.
-    vs_hp_avail_mib = 0.9 * (rpc_port['node_memtotal_mib'] -
-        rpc_port['platform_reserved_mib'] -
-        vm_hugepages_nr_2M*constants.MIB_2M -
-        vm_hugepages_nr_1G*constants.MIB_1G)
-
-    if vs_hp_avail_mib < vs_hp_reqd_mib:
-        if vs_hp_size_mib == constants.MIB_2M:
-            vs_possible_2M = int(vs_hp_avail_mib / constants.MIB_2M)
-            msg = _("No available space for 2M vswitch huge page allocation, "
-                    "max 2M vswitch pages: %d") % vs_possible_2M
-        elif vs_hp_size_mib == constants.MIB_1G:
-            vs_possible_1G = int(vs_hp_avail_mib / constants.MIB_1G)
-            msg = _("No available space for 1G vswitch huge page allocation, "
-                    "max 1G vswitch pages: %d") % vs_possible_1G
-        else:
-            msg = _("No available space for vswitch huge page allocation, "
-                    "max memory (MB): %d") % vs_hp_avail_mib
-        raise wsme.exc.ClientSideError(msg)
-
-    return patch
-
-
 def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                        vm_hugepages_nr_1G=None, vswitch_hugepages_reqd=None,
                        vswitch_hugepages_size_mib=None):
 
     if rpc_port['vm_hugepages_use_1G'] == 'False':
         vs_hp_size = vswitch_hugepages_size_mib
-        if (vm_hugepages_nr_1G or vs_hp_size == constants.MIB_1G):
+        if vm_hugepages_nr_1G or vs_hp_size == constants.MIB_1G:
             # cannot provision 1G huge pages if the processor does not support
             # them
             raise wsme.exc.ClientSideError(_(
@@ -743,17 +667,37 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
             raise wsme.exc.ClientSideError(_(
                   "VM huge pages 1G must be greater than or equal to zero"))
 
-    # Check to make sure that the huge pages aren't over committed
-    if rpc_port['vm_hugepages_possible_2M'] is None and vm_hugepages_nr_2M:
+    if vswitch_hugepages_reqd and not vswitch_hugepages_size_mib:
         raise wsme.exc.ClientSideError(_(
-              "No available space for 2M huge page allocation"))
+            "No vswitch hugepage size specified."))
 
-    if rpc_port['vm_hugepages_possible_1G'] is None and vm_hugepages_nr_1G:
-        raise wsme.exc.ClientSideError(_(
-              "No available space for 1G huge page allocation"))
+    if vswitch_hugepages_reqd:
+        try:
+            val = int(vswitch_hugepages_reqd)
+        except ValueError:
+            raise wsme.exc.ClientSideError(_(
+                "vSwitch huge pages must be a number"))
+        if (utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE and
+           val <= 0):
+            raise wsme.exc.ClientSideError(_(
+                "vSwitch huge pages must be greater than zero"))
+        elif (utils.get_vswitch_type() == constants.VSWITCH_TYPE_NONE and
+              val != 0):
+            raise wsme.exc.ClientSideError(_(
+                "vSwitch huge pages must be 0 when vSwitch type is none"))
 
-    # Update the number of available huge pages
-    num_2M_for_1G = 512
+    if vswitch_hugepages_size_mib:
+        try:
+            val = int(vswitch_hugepages_size_mib)
+        except ValueError:
+            raise wsme.exc.ClientSideError(_(
+                "vSwitch huge pages must be a number"))
+        if val <= 0:
+            raise wsme.exc.ClientSideError(_(
+                "vSwitch huge pages size (MiB) must be greater than zero"))
+        if (val & (val - 1)) != 0:
+            raise wsme.exc.ClientSideError(_(
+                "vSwitch hugepage size (MiB) must be a power of 2"))
 
     # None == unchanged
     if vm_hugepages_nr_1G is not None:
@@ -764,6 +708,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         new_1G_pages = int(rpc_port['vm_hugepages_nr_1G'])
     else:
         new_1G_pages = 0
+    vm_hp_1G_reqd_mib = new_1G_pages * constants.MIB_1G
 
     # None == unchanged
     if vm_hugepages_nr_2M is not None:
@@ -774,50 +719,70 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         new_2M_pages = int(rpc_port['vm_hugepages_nr_2M'])
     else:
         new_2M_pages = 0
+    vm_hp_2M_reqd_mib = new_2M_pages * constants.MIB_2M
 
-    LOG.debug('new 2M pages: %s, 1G pages: %s' % (new_2M_pages, new_1G_pages))
-    vm_possible_2M = 0
-    vm_possible_1G = 0
-    if rpc_port['vm_hugepages_possible_2M']:
-        vm_possible_2M = int(rpc_port['vm_hugepages_possible_2M'])
+    # None == unchanged
+    if vswitch_hugepages_reqd is not None:
+        new_vs_pages = int(vswitch_hugepages_reqd)
+    elif rpc_port['vswitch_hugepages_nr']:
+        new_vs_pages = rpc_port['vswitch_hugepages_nr']
+    else:
+        new_vs_pages = 0
+    LOG.debug('new 2M pages: %s, 1G pages: %s, vswitch: %s' %
+              (new_2M_pages, new_1G_pages, new_vs_pages))
 
-    if rpc_port['vm_hugepages_possible_1G']:
-        vm_possible_1G = int(rpc_port['vm_hugepages_possible_1G'])
+    # None == unchanged
+    if vswitch_hugepages_size_mib is not None:
+        vs_hp_size_mib = int(vswitch_hugepages_size_mib)
+    elif rpc_port['vswitch_hugepages_size_mib']:
+        vs_hp_size_mib = rpc_port['vswitch_hugepages_size_mib']
+    else:
+        # default
+        vs_hp_size_mib = constants.MIB_2M
+    vs_hp_reqd_mib = new_vs_pages * vs_hp_size_mib
 
-    LOG.debug("max possible 2M VM pages: %s, max possible 1G VM pages: %s" %
-              (vm_possible_2M, vm_possible_1G))
+    # The size of possible hugepages is the size of reported possible
+    # vm pages + the reported current number of vswitch pages.
+    if vs_hp_size_mib == constants.MIB_2M:
+        hp_possible_mib = int(
+            rpc_port.get('vm_hugepages_possible_2M', 0) +
+            rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
+    elif vs_hp_size_mib == constants.MIB_1G:
+        hp_possible_mib = int(
+            rpc_port.get('vm_hugepages_possible_1G', 0) +
+            rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
 
-    if vm_possible_2M < new_2M_pages:
-        msg = _("No available space for 2M VM huge page allocation, "
-                "max 2M VM pages: %d") % vm_possible_2M
-        raise wsme.exc.ClientSideError(msg)
+    # Total requested huge pages
+    hp_requested_mib = vm_hp_2M_reqd_mib + vm_hp_1G_reqd_mib + vs_hp_reqd_mib
 
-    if vm_possible_1G < new_1G_pages:
-        msg = _("No available space for 1G VM huge page allocation, "
-                "max 1G VM pages: %d") % vm_possible_1G
-        raise wsme.exc.ClientSideError(msg)
+    # Make sure everything fits
+    if hp_possible_mib < hp_requested_mib:
+        vm_max_hp_2M = ((hp_possible_mib - vs_hp_reqd_mib - vm_hp_1G_reqd_mib)
+                        / constants.MIB_2M)
+        vm_max_hp_1G = ((hp_possible_mib - vs_hp_reqd_mib - vm_hp_2M_reqd_mib)
+                        / constants.MIB_1G)
 
-    # always use vm_possible_2M to compare,
-    if vm_possible_2M < (new_2M_pages + new_1G_pages * num_2M_for_1G):
-        max_1G = int((vm_possible_2M - new_2M_pages) / num_2M_for_1G)
-        max_2M = vm_possible_2M - new_1G_pages * num_2M_for_1G
+        if vm_max_hp_2M < 0:
+            vm_max_hp_2M = 0
+        if vm_max_hp_1G < 0:
+            vm_max_hp_1G = 0
+
         if new_2M_pages > 0 and new_1G_pages > 0:
-            msg = _("No available space for new VM hugepage settings."
-                    "Max 1G pages is %s when 2M is %s, or "
-                    "Max 2M pages is %s when 1G is %s." % (
-                        max_1G, new_2M_pages, max_2M, new_1G_pages
+            msg = _("For a requested vSwitch hugepage allocation of %s MiB, "
+                    "max 1G pages is %s when 2M is %s, or "
+                    "max 2M pages is %s when 1G is %s." % (
+                        vs_hp_reqd_mib, vm_max_hp_1G, new_2M_pages,
+                        vm_max_hp_2M, new_1G_pages
                     ))
         elif new_1G_pages > 0:
-            msg = _("No available space for 1G VM huge page allocation, "
-                    "max 1G VM pages: %d") % vm_possible_1G
+            msg = _("For a requested vSwitch hugepage allocation of %s MiB, "
+                    "max 1G pages: %s" % (vs_hp_reqd_mib, vm_max_hp_1G))
+        elif new_2M_pages > 0:
+            msg = _("For a requested vSwitch hugepage allocation of %s MiB, "
+                    "max 2M pages: %s" % (vs_hp_reqd_mib, vm_max_hp_2M))
         else:
-            msg = _("No available space for 2M VM huge page allocation, "
-                    "max 2M VM pages: %d") % vm_possible_2M
-
+            msg = _("Max vSwitch hugepage allocation is %s MiB, when 2M is %s "
+                    "and 1G is %s" % (hp_requested_mib, new_2M_pages,
+                                      new_1G_pages))
         raise wsme.exc.ClientSideError(msg)
-
-    _check_vswitch_huge_values(
-        rpc_port, patch, new_2M_pages, new_1G_pages,
-        vswitch_hugepages_reqd, vswitch_hugepages_size_mib)
-
     return patch
