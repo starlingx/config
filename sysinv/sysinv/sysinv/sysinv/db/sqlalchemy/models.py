@@ -343,6 +343,7 @@ class Interfaces(Base):
     ifcapabilities = Column(JSONEncodedDict)
     farend = Column(JSONEncodedDict)
     sriov_numvfs = Column(Integer)
+    sriov_vf_driver = Column(String(255))
 
     used_by = relationship(
         "Interfaces",
@@ -450,6 +451,7 @@ class Ports(Base):
     dev_id = Column(Integer)
     sriov_totalvfs = Column(Integer)
     sriov_numvfs = Column(Integer)
+    sriov_vf_driver = Column(String(255))
     # Each PCI Address is 12 char, 1020 char is enough for 64 devices
     sriov_vfs_pci_address = Column(String(1020))
     driver = Column(String(255))

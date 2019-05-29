@@ -1121,6 +1121,38 @@ class TestPatch(InterfaceTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
 
+    def _create_sriov_vf_driver_valid(self, vf_driver, expect_errors=False):
+        interface = dbutils.create_test_interface(forihostid='1',
+                                                  datanetworks='group0-data0')
+        dbutils.create_test_ethernet_port(
+            id=1, name='eth1', host_id=1, interface_id=interface.id,
+            pciaddr='0000:00:00.11', dev_id=0, sriov_totalvfs=1, sriov_numvfs=1,
+            driver='i40e',
+            sriov_vf_driver='i40evf')
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            networktype=constants.NETWORK_TYPE_PCI_SRIOV,
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            sriov_numvfs=1,
+            sriov_vf_driver=vf_driver,
+            expect_errors=expect_errors)
+        self.assertEqual('application/json', response.content_type)
+        if expect_errors:
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertTrue(response.json['error_message'])
+        else:
+            self.assertEqual(http_client.OK, response.status_code)
+            self.assertEqual(vf_driver, response.json['sriov_vf_driver'])
+
+    def test_create_sriov_vf_driver_netdevice_valid(self):
+        self._create_sriov_vf_driver_valid('netdevice')
+
+    def test_create_sriov_vf_driver_vfio_valid(self):
+        self._create_sriov_vf_driver_valid('vfio')
+
+    def test_create_sriov_vf_driver_invalid(self):
+        self._create_sriov_vf_driver_valid('bad_driver', expect_errors=True)
+
     # No longer requires setting the network type back to none
     # Expected error: The network type of an interface cannot be changed without
     # first being reset back to none

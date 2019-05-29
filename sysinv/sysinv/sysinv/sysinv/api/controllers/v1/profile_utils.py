@@ -135,6 +135,7 @@ class PciSriov(Network):
     def __init__(self, node):
         super(PciSriov, self).__init__(node, constants.NETWORK_TYPE_PCI_SRIOV)
         self.virtualFunctions = int(node.get('virtualFunctions'))
+        self.virtualFunctionDriver = node.get('virtualFunctionDriver')
 
 
 class Interface(object):
@@ -148,6 +149,7 @@ class Interface(object):
         self.ipv6Mode = {'mode': None, 'pool': None}
         self.routes = []
         self.virtualFunctions = 0
+        self.virtualFunctionDriver = None
         networksNode = ifNode.find('networks')
         if networksNode is not None:
             for netNode in networksNode:
@@ -168,6 +170,7 @@ class Interface(object):
                 self.routes = network.routes
             elif network.networkType == constants.NETWORK_TYPE_PCI_SRIOV:
                 self.virtualFunctions = network.virtualFunctions
+                self.virtualFunctionDriver = network.virtualFunctionDriver
 
             if isinstance(network, Network):
                 self.providerNetworks = network.providerNetworks

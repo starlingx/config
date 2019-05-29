@@ -145,7 +145,8 @@ class Interface(base.SysinvObject):
             'ipv6_mode': utils.ipv6_mode_or_none,
             'ipv4_pool': utils.uuid_or_none,
             'ipv6_pool': utils.uuid_or_none,
-            'sriov_numvfs': utils.int_or_none
+            'sriov_numvfs': utils.int_or_none,
+            'sriov_vf_driver': utils.str_or_none
              }
 
     _foreign_fields = {'uses': _get_interface_name_list,

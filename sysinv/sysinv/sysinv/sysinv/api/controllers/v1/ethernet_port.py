@@ -103,6 +103,9 @@ class EthernetPort(base.APIBase):
     sriov_vfs_pci_address = wtypes.text
     "The PCI Addresses of the VFs"
 
+    sriov_vf_driver = wtypes.text
+    "The SR-IOV VF driver for this device"
+
     driver = wtypes.text
     "The kernel driver for this device"
 
@@ -170,8 +173,8 @@ class EthernetPort(base.APIBase):
                                       'pclass', 'pvendor', 'pdevice',
                                       'psvendor', 'psdevice', 'numa_node',
                                       'mac', 'sriov_totalvfs', 'sriov_numvfs',
-                                      'sriov_vfs_pci_address', 'driver',
-                                      'mtu', 'speed', 'link_mode',
+                                      'sriov_vfs_pci_address', 'sriov_vf_driver',
+                                      'driver', 'mtu', 'speed', 'link_mode',
                                       'duplex', 'autoneg', 'bootp',
                                       'capabilities',
                                       'host_uuid', 'interface_uuid',

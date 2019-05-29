@@ -1894,3 +1894,23 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in ptp_cols.items():
             self.assertTrue(isinstance(ptp.c[col].type,
                                        getattr(sqlalchemy.types, coltype)))
+
+    def _check_085(self, engine, data):
+        # 085_sriov_vf_driver.py
+
+        # Assert data types for new columns in tables "interfaces" and "ports"
+        interfaces = db_utils.get_table(engine, 'interfaces')
+        interfaces_col = {
+            'sriov_vf_driver': 'String',
+        }
+        for col, coltype in interfaces_col.items():
+            self.assertTrue(isinstance(interfaces.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))
+
+        ports = db_utils.get_table(engine, 'ports')
+        ports_col = {
+            'sriov_vf_driver': 'String',
+        }
+        for col, coltype in ports_col.items():
+            self.assertTrue(isinstance(ports.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))

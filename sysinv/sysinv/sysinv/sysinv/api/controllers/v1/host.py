@@ -3174,6 +3174,14 @@ class HostController(rest.RestController):
                 host['uuid'])
             raise wsme.exc.ClientSideError(msg)
 
+        for p in ports:
+            if (interface.sriov_vf_driver == constants.SRIOV_DRIVER_TYPE_NETDEVICE and
+                    p.sriov_vf_driver is None):
+                msg = (_("Value for SR-IOV VF driver is 'netdevice', but "
+                         "corresponding port has an invalid driver"))
+                LOG.info(msg)
+                raise wsme.exc.ClientSideError(msg)
+
     def _semantic_check_unlock_upgrade(self, ihost, force_unlock=False):
         """
         Perform semantic checks related to upgrades prior to unlocking host.

@@ -195,6 +195,9 @@ class Interface(base.APIBase):
     sriov_numvfs = int
     "The number of configured SR-IOV VFs"
 
+    sriov_vf_driver = wtypes.text
+    "The driver of configured SR-IOV VFs"
+
     networks = [wtypes.text]
     "Represent the networks of the interface"
 
@@ -223,7 +226,7 @@ class Interface(base.APIBase):
                                            'aemode', 'schedpolicy', 'txhashpolicy',
                                            'vlan_id', 'uses', 'usesmodify', 'used_by',
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                                           'sriov_numvfs',
+                                           'sriov_numvfs', 'sriov_vf_driver',
                                            'datanetworks'])
 
         # never expose the ihost_id attribute
@@ -526,12 +529,16 @@ class InterfaceController(rest.RestController):
                 temp_interface['ifclass'] = p['value']
             elif '/sriov_numvfs' == p['path']:
                 temp_interface['sriov_numvfs'] = p['value']
+            elif '/sriov_vf_driver' == p['path']:
+                temp_interface['sriov_vf_driver'] = p['value']
+
         # If network type is not pci-sriov, reset the sriov-numvfs to zero
         if (temp_interface['sriov_numvfs'] is not None and
                 temp_interface['ifclass'] is not None and
                 temp_interface[
                         'ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV):
             temp_interface['sriov_numvfs'] = None
+            temp_interface['sriov_vf_driver'] = None
 
         sriov_update = _check_interface_sriov(temp_interface.as_dict(), ihost)
 
@@ -591,6 +598,7 @@ class InterfaceController(rest.RestController):
             # specific fields are reset as well
             interface['networktype'] = None
             interface['sriov_numvfs'] = 0
+            interface['sriov_vf_driver'] = None
             interface['ipv4_mode'] = None
             interface['ipv6_mode'] = None
             delete_addressing = True
@@ -897,7 +905,8 @@ def _set_defaults(interface):
                 'aemode': 'active_standby',
                 'txhashpolicy': None,
                 'vlan_id': None,
-                'sriov_numvfs': 0}
+                'sriov_numvfs': 0,
+                'sriov_vf_driver': None}
 
     networktypelist = []
     if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
@@ -1034,6 +1043,14 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
                                          "but interface class is not "
                                          "pci-sriov."))
 
+    if ('sriov_vf_driver' in interface.keys() and interface['sriov_vf_driver']
+            is not None and
+            ('ifclass' not in interface.keys() or
+             interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV)):
+        raise wsme.exc.ClientSideError(_("SR-IOV VF driver is specified "
+                                         "but interface class is not "
+                                         "pci-sriov."))
+
     if ('ifclass' in interface.keys() and
             interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
             'sriov_numvfs' in interface.keys()):
@@ -1046,6 +1063,12 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
 
         if interface['sriov_numvfs'] <= 0:
             raise wsme.exc.ClientSideError(_("Value for number of SR-IOV VFs must be > 0."))
+
+        if interface['sriov_vf_driver'] is not None:
+            if interface['sriov_vf_driver'] not in constants.SRIOV_DRIVER_TYPES:
+                msg = (_("Value for SR-IOV VF driver must be one of "
+                 "{}").format(', '.join(constants.SRIOV_DRIVER_TYPES)))
+                raise wsme.exc.ClientSideError(msg)
 
         ports = pecan.request.dbapi.ethernet_port_get_all(hostid=ihost['id'])
         port_list = [
@@ -1062,10 +1085,10 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
 
         if int(interface['sriov_numvfs']) > sriov_totalvfs:
             raise wsme.exc.ClientSideError(_("The interface support a maximum of %s VFs" % sriov_totalvfs))
-
         driver = port_list[0][2]
         if driver is None or not driver:
             raise wsme.exc.ClientSideError(_("Corresponding port has invalid driver"))
+
         sriov_update = True
     return sriov_update
 

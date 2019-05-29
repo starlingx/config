@@ -19,6 +19,7 @@ from sysinv.conductor import openstack
 from sysinv.openstack.common import log
 
 from sysinv.puppet import base
+from sysinv.puppet import quoted_str
 
 
 LOG = log.getLogger(__name__)
@@ -56,6 +57,7 @@ DHCP_METHOD = 'dhcp'
 
 NETWORK_CONFIG_RESOURCE = 'platform::interfaces::network_config'
 ROUTE_CONFIG_RESOURCE = 'platform::interfaces::route_config'
+SRIOV_CONFIG_RESOURCE = 'platform::interfaces::sriov_config'
 ADDRESS_CONFIG_RESOURCE = 'platform::addresses::address_config'
 
 
@@ -88,6 +90,7 @@ class InterfacePuppet(base.BasePuppet):
             NETWORK_CONFIG_RESOURCE: {},
             ROUTE_CONFIG_RESOURCE: {},
             ADDRESS_CONFIG_RESOURCE: {},
+            SRIOV_CONFIG_RESOURCE: {},
         }
 
         system = self._get_system()
@@ -892,6 +895,38 @@ def get_route_config(route, ifname):
     return config
 
 
+def get_sriov_config(context, iface):
+    vf_driver = iface['sriov_vf_driver']
+    port = get_interface_port(context, iface)
+    vf_addr_list = port['sriov_vfs_pci_address']
+
+    if not vf_addr_list:
+        return {}
+
+    if vf_driver:
+        if "vfio" in vf_driver:
+            vf_driver = "vfio-pci"
+        elif "netdevice" in vf_driver:
+            if port['sriov_vf_driver'] is not None:
+                vf_driver = port['sriov_vf_driver']
+            else:
+                # Should not happen, but in this case the vf driver
+                # will be determined by the kernel.  That is,
+                # no explicit bind will be performed by Puppet.
+                vf_driver = None
+
+    # Format the vf addresses as quoted strings in order to prevent
+    # puppet from treating the address as a time/date value
+    vf_addrs = [quoted_str(addr.strip()) for addr in vf_addr_list.split(",")]
+
+    config = {
+        'ifname': iface['ifname'],
+        'vf_driver': vf_driver,
+        'vf_addrs': vf_addrs
+    }
+    return config
+
+
 def get_common_network_config(context, iface, config, network_id=None):
     """
     Augments a basic config dictionary with the attributes specific to an upper
@@ -988,6 +1023,14 @@ def generate_network_config(context, config, iface):
         config[ROUTE_CONFIG_RESOURCE].update({
             route_config['name']: route_config
         })
+
+    interface_class = iface['ifclass']
+    if interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
+        sriov_config = get_sriov_config(context, iface)
+        if sriov_config:
+            config[SRIOV_CONFIG_RESOURCE].update({
+                sriov_config['ifname']: format_sriov_config(sriov_config)
+            })
 
 
 def find_network_by_pool_uuid(context, pool_uuid):
@@ -1188,3 +1231,13 @@ def format_network_config(config):
     network_config = copy.copy(config)
     del network_config['ifname']
     return network_config
+
+
+def format_sriov_config(config):
+    """
+    Converts a sriov_config resource dictionary to the equivalent puppet
+    resource definition parameters.
+    """
+    sriov_config = copy.copy(config)
+    del sriov_config['ifname']
+    return sriov_config
