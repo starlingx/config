@@ -68,8 +68,7 @@ conf:
 
   fm:
     DEFAULT:
-      use_syslog: True
-      syslog_log_facility: local2
+      log_config_append: /etc/fm/logging.conf
       trap_destinations:
       region_name: RegionOne
       event_log_max_size: 4000
@@ -89,7 +88,52 @@ conf:
       api_paste_config: /etc/fm/api-paste.ini
       api_workers: 2
       bind_port: 18003
-
+  logging:
+    loggers:
+      keys:
+        - root
+        - fm
+    handlers:
+      keys:
+        - stdout
+        - stderr
+        - "null"
+    formatters:
+      keys:
+        - context
+        - default
+    logger_root:
+      level: WARNING
+      handlers: 'null'
+    logger_fm:
+      level: INFO
+      handlers:
+        - stdout
+      qualname: fm
+    logger_eventletwsgi:
+      level: WARNING
+      handlers: stderr
+      qualname: eventlet.wsgi.server
+    logger_sqlalchemy:
+      level: WARNING
+      handlers: stderr
+      qualname: sqlalchemy
+    handler_null:
+      class: logging.NullHandler
+      formatter: default
+      args: ()
+    handler_stdout:
+      class: StreamHandler
+      args: (sys.stdout,)
+      formatter: context
+    handler_stderr:
+      class: StreamHandler
+      args: (sys.stderr,)
+      formatter: context
+    formatter_context:
+      class: oslo_log.formatters.ContextFormatter
+    formatter_default:
+      format: "%(message)s"
 dependencies:
   static:
     fmapi:
