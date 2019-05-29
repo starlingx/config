@@ -93,8 +93,7 @@ data:
           "nodename": "__KUBERNETES_NODE_NAME__",
           "mtu": 1500,
           "ipam": {
-              "type": "host-local",
-              "subnet": "usePodCidr"
+              "type": "calico-ipam"
           },
           "policy": {
               "type": "k8s"
