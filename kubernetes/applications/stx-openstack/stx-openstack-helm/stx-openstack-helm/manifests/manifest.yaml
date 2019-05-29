@@ -844,6 +844,7 @@ data:
         enabled: true
       nova:
         DEFAULT:
+          allow_resize_to_same_host: true
           default_mempages_size: 2048
           reserved_host_memory_mb: 0
           compute_monitors: cpu.virt_driver
