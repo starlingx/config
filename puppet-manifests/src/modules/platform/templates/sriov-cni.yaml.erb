@@ -26,7 +26,7 @@ spec:
         effect: NoSchedule
       containers:
       - name: kube-sriov-cni
-        image: <%= @docker_registry %>/nfvpe/sriov-cni:latest
+        image: <%= @docker_registry %>/starlingx/k8s-cni-sriov:master-centos-stable-latest
         securityContext:
           privileged: true
         resources:
