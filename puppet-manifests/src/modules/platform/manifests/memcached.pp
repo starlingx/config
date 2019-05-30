@@ -37,7 +37,9 @@ class platform::memcached::params(
 class platform::memcached
   inherits ::platform::memcached::params {
 
-  class { '::memcached':
+  Anchor['platform::networking']
+
+  -> class { '::memcached':
     package_ensure  => $package_ensure,
     logfile         => $logfile,
     listen_ip       => $listen_ip,
