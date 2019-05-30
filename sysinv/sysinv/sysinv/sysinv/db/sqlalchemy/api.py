@@ -1279,6 +1279,12 @@ class Connection(api.Connection):
         return _paginate_query(models.ihost, limit, marker,
                                sort_key, sort_dir, query)
 
+    def count_hosts_by_personality(self, personality):
+        query = model_query(models.ihost)
+        query = add_host_options(query)
+        query = query.filter_by(personality=personality, recordtype="standard")
+        return query.count()
+
     @objects.objectify(objects.host)
     def ihost_get_by_function(self, function,
                               limit=None, marker=None,

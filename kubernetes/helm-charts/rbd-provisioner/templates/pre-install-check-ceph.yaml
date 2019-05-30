@@ -190,6 +190,10 @@ spec:
             - name: config-volume-{{- $root.Values.global.name }}
               mountPath: {{ $mount }}
         {{- end }}
+      {{- if .Values.global.nodeSelector }}
+      nodeSelector:
+      {{ .Values.global.nodeSelector | toYaml | trim | indent 8 }}
+      {{- end }}
 
 ---
 # This ConfigMap is needed because we're not using ceph's helm chart

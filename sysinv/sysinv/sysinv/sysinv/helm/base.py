@@ -137,6 +137,10 @@ class BaseHelm(object):
     def _num_computes(self):
         return self._count_hosts_by_label(common.LABEL_COMPUTE)
 
+    def _num_controllers_by_personality(self):
+        return int(self.dbapi.count_hosts_by_personality(
+            constants.CONTROLLER))
+
     def _get_address_by_name(self, name, networktype):
         """
         Retrieve an address entry by name and scoped by network type

@@ -5,4 +5,4 @@ $PKG_BASE/../../../helm-charts/node-feature-discovery \
 $PKG_BASE/../../../helm-charts/rbd-provisioner  \
 $PKG_BASE/../../../helm-charts/ceph-pools-audit"
 
-TIS_PATCH_VER=5
+TIS_PATCH_VER=6
