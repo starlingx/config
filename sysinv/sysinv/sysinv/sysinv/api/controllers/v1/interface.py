@@ -70,7 +70,8 @@ VALID_NETWORK_TYPES = [constants.NETWORK_TYPE_NONE,
                        constants.NETWORK_TYPE_CLUSTER_HOST,
                        constants.NETWORK_TYPE_DATA,
                        constants.NETWORK_TYPE_PCI_PASSTHROUGH,
-                       constants.NETWORK_TYPE_PCI_SRIOV]
+                       constants.NETWORK_TYPE_PCI_SRIOV,
+                       constants.NETWORK_TYPE_IRONIC]
 
 VALID_INTERFACE_CLASS = [constants.INTERFACE_CLASS_PLATFORM,
                          constants.INTERFACE_CLASS_DATA,
@@ -765,6 +766,8 @@ class InterfaceController(rest.RestController):
 
             if constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist:
                 _update_host_cluster_address(ihost, interface)
+            if constants.NETWORK_TYPE_IRONIC in networktypelist:
+                _update_host_ironic_address(ihost, interface)
             if ihost['personality'] == constants.CONTROLLER:
                 if constants.NETWORK_TYPE_OAM in networktypelist:
                     _update_host_oam_address(ihost, interface)
@@ -2049,6 +2052,14 @@ def _update_host_cluster_address(host, interface):
         ).pool_uuid
         _allocate_pool_address(interface['id'], cluster_host_pool_uuid,
                                address_name)
+
+
+def _update_host_ironic_address(host, interface):
+    address_name = cutils.format_address_name(host.hostname,
+                                              constants.NETWORK_TYPE_IRONIC)
+    address = pecan.request.dbapi.address_get_by_name(address_name)
+    updates = {'interface_id': interface['id']}
+    pecan.request.dbapi.address_update(address.uuid, updates)
 
 
 def _get_interface_vlans(ihost_uuid, interface):

@@ -27,7 +27,8 @@ LOG = log.getLogger(__name__)
 PLATFORM_NETWORK_TYPES = [constants.NETWORK_TYPE_PXEBOOT,
                           constants.NETWORK_TYPE_MGMT,
                           constants.NETWORK_TYPE_CLUSTER_HOST,
-                          constants.NETWORK_TYPE_OAM]
+                          constants.NETWORK_TYPE_OAM,
+                          constants.NETWORK_TYPE_IRONIC]
 
 DATA_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA]
 
