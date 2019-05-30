@@ -116,7 +116,7 @@
       wait_for:
         path: /etc/platform/.service_endpoint_reconfigured
         state: present
-        timeout: 180
+        timeout: 360
         msg: Timeout waiting for service endpoints reconfiguration to complete
 
     - name: Update sysinv API bind host with new management floating IP
