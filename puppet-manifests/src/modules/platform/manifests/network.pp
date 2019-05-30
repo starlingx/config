@@ -115,15 +115,11 @@ define platform::interfaces::sriov_config(
   $vf_driver = undef
 ) {
   if $vf_driver != undef {
-    exec { "load ${vf_driver}":
-      command   => "modprobe ${vf_driver}",
-      path      => '/bin:/sbin:/usr/bin:/usr/sbin',
-      unless    => "egrep -q '^${vf_driver} ' /proc/modules",
-      logoutput => true
-    }
-    -> exec { "sriov-vf-bind-device: ${title}":
+    ensure_resource(kmod::load, $vf_driver)
+    exec { "sriov-vf-bind-device: ${title}":
       command   => template('platform/sriov.bind-device.erb'),
-      logoutput => true
+      logoutput => true,
+      require   => Kmod::Load[$vf_driver],
     }
   }
 }
