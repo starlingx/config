@@ -3693,7 +3693,7 @@ class HostController(rest.RestController):
                                     vm_hugepages_nr_2M == 0 and \
                                     vm_hugepages_nr_1G == 0 and \
                             cutils.is_default_huge_pages_required(ihost):
-                        vm_hugepages_nr_2M = m.vm_hugepages_possible_2M * 0.9
+                        vm_hugepages_nr_2M = int(m.vm_hugepages_possible_2M * 0.9)
                         value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
 
                     vm_hugepages_4K = \
