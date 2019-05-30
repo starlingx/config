@@ -450,11 +450,17 @@ def populate_docker_config(client):
         'BOOTSTRAP_CONFIG', 'USE_DEFAULT_REGISTRIES')
 
     if not use_default_registries:
-        registries = CONF.get('BOOTSTRAP_CONFIG', 'DOCKER_REGISTRIES')
         secure_registry = CONF.getboolean('BOOTSTRAP_CONFIG',
                                           'IS_SECURE_REGISTRY')
         parameters = {}
-        parameters['registries'] = registries
+
+        # TODO(tngo): The following 4 service parameters will be removed when
+        # we switch to the long term solution using a single "registries"
+        # service parameter that is extensible.
+        parameters['k8s'] = CONF.get('BOOTSTRAP_CONFIG', 'K8S_REGISTRY')
+        parameters['gcr'] = CONF.get('BOOTSTRAP_CONFIG', 'GCR_REGISTRY')
+        parameters['quay'] = CONF.get('BOOTSTRAP_CONFIG', 'QUAY_REGISTRY')
+        parameters['docker'] = CONF.get('BOOTSTRAP_CONFIG', 'DOCKER_REGISTRY')
 
         if not secure_registry:
             parameters['insecure_registry'] = "True"
@@ -469,7 +475,10 @@ def populate_docker_config(client):
         if RECONFIGURE_SERVICE:
             parameters = client.sysinv.service_parameter.list()
             for parameter in parameters:
-                if (parameter.name == 'registries' or
+                if (parameter.name == 'k8s' or
+                        parameter.name == 'gcr' or
+                        parameter.name == 'quay' or
+                        parameter.name == 'docker' or
                         parameter.name == 'insecure_registry'):
                     client.sysinv.service_parameter.delete(
                         parameter.uuid)

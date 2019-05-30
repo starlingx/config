@@ -96,7 +96,6 @@
       - "prev_external_oam_floating_address: {{ external_oam_floating_address }}"
       - "prev_management_multicast_subnet: {{ management_multicast_subnet }}"
       - "prev_dns_servers: {{ dns_servers | join(',') }}"
-      - "prev_docker_registries: {{ docker_registries | join(',') }}"
       - "prev_docker_http_proxy: {{ docker_http_proxy }}"
       - "prev_docker_https_proxy: {{ docker_https_proxy }}"
       - "prev_docker_no_proxy: {{ docker_no_proxy | join(',') }}"
@@ -120,5 +119,17 @@
       - "prev_management_multicast_end_address: {{ management_multicast_end_address }}"
       - "prev_external_oam_node_0_address: {{ external_oam_node_0_address }}"
       - "prev_external_oam_node_1_address: {{ external_oam_node_1_address }}"
+
+  # Need to save the dictionary this way for proper comparison during replay
+  - name: Save previous docker registries header
+    lineinfile:
+      path: "{{ last_bootstrap_config_file }}"
+      line: "prev_docker_registries:"
+
+  - name: Save previous docker registries content
+    lineinfile:
+      path: "{{ last_bootstrap_config_file }}"
+      line: "  {{ item.key }}: {{ item.value }}"
+    with_dict: "{{ docker_registries }}"
 
   when: save_config

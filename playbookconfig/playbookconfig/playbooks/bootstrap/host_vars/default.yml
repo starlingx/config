@@ -92,7 +92,23 @@ dynamic_address_allocation: True
 # DOCKER REGISTRIES
 # =================
 #
-# The default list of registries can be extended with new entries.
+# The docker_registries is a map of known registry keys and their
+# source values. Each key is a fully scoped registry name and the
+# same name is used as the default value. For instance,
+# k8s.gcr.io registry which hosts Kubernetes related images, has
+# the default registry value of k8s.gcr.io
+#
+# To overwrite a particular registry, use the original registry
+# value as the key followed by a custom IP address or domain for
+# the value.
+#
+# The "unified" is a special registry key. Defining and giving
+# it a value implies all images are to be retrieved from this
+# single source. Hence, registry values of all other registry keys
+# if specified will be ignored.
+#
+# The docker registries map can be extended with new custom keys in
+# the near future.
 #
 # The valid formats for a registry value are:
 #   - domain (e.g. example.domain)
@@ -102,17 +118,15 @@ dynamic_address_allocation: True
 #   - IPv6 address (e.g. FD01::0100)
 #   - IPv6 address with port (e.g. [FD01::0100]:5000
 #
-# If the registry list contains only a single item, the specified registry is
-# considered a unified registry and will replace all default registries.
-#
 # Parameter is_secure_registry is only relevant when a unified registry is
 # used.
 
 docker_registries:
-#  - k8s.gcr.io
-#  - gcr.io
-#  - quay.io
-#  - docker.io
+  k8s.gcr.io:
+  gcr.io:
+  quay.io:
+  docker.io:
+  # unified: example.domain
 
 #is_secure_registry: True
 

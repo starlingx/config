@@ -135,14 +135,17 @@
       external_oam_node_0_address: "{{ external_oam_node_0_address | default('derived') }}"
       external_oam_node_1_address: "{{ external_oam_node_1_address | default('derived') }}"
 
-  - name: Set docker registries to default values if not specified
+  - name: Set default registries dictionary
     set_fact:
-      docker_registries:
-        - k8s.gcr.io
-        - gcr.io
-        - quay.io
-        - docker.io
-    when: docker_registries is none
+      default_docker_registries:
+        k8s.gcr.io: k8s.gcr.io
+        gcr.io: gcr.io
+        quay.io: quay.io
+        docker.io: docker.io
+
+  - name: Merge user and default registries dictionaries
+    set_fact:
+      docker_registries: "{{ default_docker_registries | combine(docker_registries) }}"
 
   - name: Initialize some flags to be used in subsequent roles/tasks
     set_fact:
@@ -185,6 +188,13 @@
       use_docker_proxy: true
     when: (docker_http_proxy is defined and docker_http_proxy is not none) or
           (docker_https_proxy is defined and docker_https_proxy is not none)
+
+  - name: Set default values for platform registries
+    set_fact:
+      default_k8s_registry: k8s.gcr.io
+      default_gcr_registry: gcr.io
+      default_quay_registry: quay.io
+      default_docker_registry: docker.io
 
   - name: Set default values for docker proxies if not defined
     set_fact:
@@ -277,7 +287,7 @@
         - name: Turn on docker reconfiguration flag if docker config is changed
           set_fact:
             docker_config_update: true
-          when: (prev_docker_registries.split(',') | sort != docker_registries | sort) or
+          when: (prev_docker_registries != docker_registries) or
                 ((use_docker_proxy) and
                  (prev_docker_http_proxy != docker_http_proxy or
                   prev_docker_https_proxy != docker_https_proxy or

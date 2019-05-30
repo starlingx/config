@@ -257,11 +257,10 @@
 - block:
   - set_fact:
       use_default_registries: true
-      # Define these just in case we need them later
-      default_k8s_registry: k8s.gcr.io
-      default_gcr_registry: gcr.io
-      default_quay_registry: quay.io
-      default_docker_registry: docker.io
+      k8s_registry: "{{ docker_registries[default_k8s_registry] if docker_registries[default_k8s_registry] is not none else default_k8s_registry }}"
+      gcr_registry: "{{ docker_registries[default_gcr_registry] if docker_registries[default_gcr_registry] is not none else default_gcr_registry }}"
+      quay_registry: "{{ docker_registries[default_quay_registry] if docker_registries[default_quay_registry] is not none else default_quay_registry }}"
+      docker_registry: "{{ docker_registries[default_docker_registry] if docker_registries[default_docker_registry] is not none else default_docker_registry }}"
       default_no_proxy:
         - localhost
         - 127.0.0.1
@@ -314,23 +313,26 @@
     - name: Turn on use_unified_registry flag
       set_fact:
         use_unified_registry: true
-        unified_registry: "{{ docker_registries }}"
+        k8s_registry: "{{ docker_registries['unified'] }}" 
+        gcr_registry: "{{ docker_registries['unified'] }}"
+        quay_registry: "{{ docker_registries['unified'] }}"
+        docker_registry: "{{ docker_registries['unified'] }}"
 
-    when: docker_registries|length == 1
+    when: docker_registries['unified'] is defined and docker_registries['unified'] is not none
 
   - name: Update use_default_registries flag
     set_fact:
       use_default_registries: false
     when: use_unified_registry or
           docker_registries|length != 4 or
-          default_k8s_registry not in docker_registries or
-          default_gcr_registry not in docker_registries or
-          default_quay_registry not in docker_registries or
-          default_docker_registry not in docker_registries
+          k8s_registry != default_k8s_registry or
+          gcr_registry != default_gcr_registry or
+          quay_registry != default_quay_registry or
+          docker_registry != default_docker_registry
 
   - block:
-    - include: validate_address.yml  input_address={{ item }}
-      with_items: "{{ docker_registries }}"
+    - include: validate_address.yml  input_address={{ item.value }}
+      with_dict: "{{ docker_registries }}"
     when: not use_default_registries
 
 
@@ -417,7 +419,10 @@
       - "DOCKER_HTTP_PROXY={{ docker_http_proxy }}"
       - "DOCKER_HTTPS_PROXY={{ docker_https_proxy }}"
       - "DOCKER_NO_PROXY={{ docker_no_proxy_combined | join(',') }}"
-      - "DOCKER_REGISTRIES={{ docker_registries | join(',') }}"
+      - "K8S_REGISTRY={{ k8s_registry }}"
+      - "GCR_REGISTRY={{ gcr_registry }}"
+      - "QUAY_REGISTRY={{ quay_registry }}"
+      - "DOCKER_REGISTRY={{ docker_registry }}"
       - "USE_DEFAULT_REGISTRIES={{ use_default_registries }}"
       - "IS_SECURE_REGISTRY={{ is_secure_registry | default(True) }}"
       - "RECONFIGURE_ENDPOINTS={{ reconfigure_endpoints }}"
