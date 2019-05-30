@@ -252,10 +252,6 @@ def configure_system(config_file):
 
 def show_help():
     print("Usage: %s\n"
-          "Perform system configuration\n"
-          "\nThe default action is to perform the initial configuration for "
-          "the system.\nThe following options are also available:\n"
-          "--config-file <name>     Perform configuration using INI file\n"
           "--backup <name>          Backup configuration using the given "
           "name\n"
           "--clone-iso <name>       Clone and create an image with "
@@ -268,8 +264,6 @@ def show_help():
           "                         Restore system configuration from backup "
           "file with\n"
           "                         the given name, full path required\n"
-          "--allow-ssh              Allow configuration to be executed in "
-          "ssh\n"
           % sys.argv[0])
 
 
@@ -306,7 +300,6 @@ def main():
     do_clone = False
     do_non_interactive = False
     do_provision = False
-    force_config = False
     system_config_file = "/home/wrsroot/system_config"
     allow_ssh = False
 
@@ -402,8 +395,6 @@ def main():
             # This is a temporary flag for use during development. Once things
             # are stable, we will remove it and make kubernetes the default.
             options['kubernetes'] = True
-        elif sys.argv[arg] == "--force":
-            force_config = True
         else:
             print("Invalid option. Use --help for more information.")
             exit(1)
@@ -462,11 +453,10 @@ def main():
             assistant = ConfigAssistant(**options)
             assistant.provision(answerfile)
         else:
-            if not force_config:
-                print(textwrap.fill(
-                    "Please use bootstrap playbook to configure the "
-                    "first controller.", 80))
-                exit(1)
+            print(textwrap.fill(
+                "Please use bootstrap playbook to configure the "
+                "first controller.", 80))
+            exit(1)
 
             if do_non_interactive:
                 if not os.path.isfile(system_config_file):
