@@ -6,6 +6,7 @@
 #
 # - A nodeSelector of 'sriovdp' has been added to ensure the sriov device plugin
 #   pods only run on appropriately labelled nodes.
+# - The config hostPath is explicitly set to 'File'
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -64,3 +65,4 @@ spec:
         - name: config
           hostPath:
             path: /etc/pcidp/config.json
+            type: File
