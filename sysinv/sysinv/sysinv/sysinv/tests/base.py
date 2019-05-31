@@ -52,6 +52,7 @@ _DB_CACHE = None
 logging.setup('sysinv')
 
 sys.modules['fm_core'] = mock.Mock()
+sys.modules['rpm'] = mock.Mock()
 
 
 class Database(fixtures.Fixture):
