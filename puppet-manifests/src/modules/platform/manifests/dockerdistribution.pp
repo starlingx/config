@@ -6,6 +6,7 @@ define platform::dockerdistribution::write_config (
   $registry_readonly = false,
   $file_path = '/etc/docker-distribution/registry/runtime_config.yml',
   $docker_registry_ip = undef,
+  $docker_registry_host = undef,
 ){
   file { $file_path:
     ensure  => present,
@@ -25,6 +26,7 @@ class platform::dockerdistribution::config
   include ::platform::docker::params
 
   $docker_registry_ip = $::platform::network::mgmt::params::controller_address
+  $docker_registry_host = $::platform::network::mgmt::params::controller_address_url
   $runtime_config = '/etc/docker-distribution/registry/runtime_config.yml'
   $used_config = '/etc/docker-distribution/registry/config.yml'
 
@@ -52,7 +54,8 @@ class platform::dockerdistribution::config
   }
 
   platform::dockerdistribution::write_config { 'runtime_config':
-    docker_registry_ip => $docker_registry_ip
+    docker_registry_ip   => $docker_registry_ip,
+    docker_registry_host => $docker_registry_host
   }
 
   -> exec { 'use runtime config file':
@@ -60,9 +63,10 @@ class platform::dockerdistribution::config
   }
 
   platform::dockerdistribution::write_config { 'readonly_config':
-    registry_readonly  => true,
-    file_path          => '/etc/docker-distribution/registry/readonly_config.yml',
-    docker_registry_ip => $docker_registry_ip,
+    registry_readonly    => true,
+    file_path            => '/etc/docker-distribution/registry/readonly_config.yml',
+    docker_registry_ip   => $docker_registry_ip,
+    docker_registry_host => $docker_registry_host
   }
 
   file { '/etc/docker-distribution/registry/token_server.conf':
@@ -184,14 +188,14 @@ class platform::dockerdistribution::config
       mode   => '0700',
     }
 
-    -> file { "/etc/docker/certs.d/${docker_registry_ip}:9001":
+    -> file { '/etc/docker/certs.d/registry.local:9001':
       ensure => 'directory',
       owner  => 'root',
       group  => 'root',
       mode   => '0700',
     }
 
-    -> file { "/etc/docker/certs.d/${docker_registry_ip}:9001/registry-cert.crt":
+    -> file { '/etc/docker/certs.d/registry.local:9001/registry-cert.crt':
       ensure => 'file',
       owner  => 'root',
       group  => 'root',

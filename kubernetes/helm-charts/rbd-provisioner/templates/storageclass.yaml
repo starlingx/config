@@ -22,7 +22,7 @@ metadata:
     name: {{ $classConfig.name }}
 provisioner: {{ $provisioner }}
 parameters:
-    monitors: {{ $monitors := or $classConfig.monitors $defaults.monitors }}{{ join "," $monitors}}
+    monitors: "{{ $monitors := or $classConfig.monitors $defaults.monitors }}{{ join "," $monitors}}"
     adminId: {{ or $classConfig.adminId $defaults.adminId}}
     adminSecretName: {{ or $classConfig.adminSecretName $defaults.adminSecretName }}
     adminSecretNamespace: {{ $namespace }}

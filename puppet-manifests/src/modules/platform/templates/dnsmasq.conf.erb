@@ -113,3 +113,7 @@ addn-hosts=<%= @config_path %>/dnsmasq.addn_hosts_dc
 <%- if @dns_service_ip != nil -%>
 server=/<%= @service_domain %>/<%= @dns_service_ip %>
 <%- end -%>
+
+# Local CNAME records
+cname=registry.local,controller
+cname=registry-token-server.local,controller

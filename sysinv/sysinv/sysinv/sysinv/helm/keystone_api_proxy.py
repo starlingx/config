@@ -117,13 +117,13 @@ class KeystoneApiProxyHelm(openstack.OpenstackBaseHelm):
         }
 
     def _get_transport_url(self):
-        host_url = self._get_management_address()
+        host_url = self._format_url_address(self._get_management_address())
         auth_password = self._get_keyring_password('amqp', 'rabbit')
         transport_url = "rabbit://guest:%s@%s:5672" % (auth_password, host_url)
         return transport_url
 
     def _get_database_connection(self):
-        host_url = self._get_management_address()
+        host_url = self._format_url_address(self._get_management_address())
         auth_password = self._get_keyring_password(
             self.DCORCH_SERVICE_NAME, 'database')
         connection = "postgresql+psycopg2://admin-dcorch:%s@%s/dcorch" %\

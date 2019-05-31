@@ -94,16 +94,8 @@ data:
           "mtu": 1500,
           "ipam": {
               "type": "calico-ipam",
-              <%- if @pod_network_ipversion == 4 -%>
-              "assign_ipv4": "true",
-              <%- else -%>
-              "assign_ipv4": "false",
-              <%- end -%>
-              <%- if @pod_network_ipversion == 6 -%>
-              "assign_ipv6": "true"
-              <%- else -%>
-              "assign_ipv6": "false"
-              <%- end -%>
+              "assign_ipv4": "{{ "true" if cluster_network_ipv4 else "false" }}",
+              "assign_ipv6": "{{ "true" if cluster_network_ipv6 else "false" }}"
           },
           "policy": {
               "type": "k8s"
@@ -140,7 +132,7 @@ spec:
       serviceAccountName: multus
       containers:
       - name: kube-multus
-        image: <%= @docker_registry %>/nfvpe/multus:v3.2
+        image: "{{ docker_registry }}/nfvpe/multus:v3.2"
         env:
           - name: KUBERNETES_NODE_NAME
             valueFrom:

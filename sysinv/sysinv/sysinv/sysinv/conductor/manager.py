@@ -1431,19 +1431,8 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def _get_docker_registry_addr(self):
-        registry_ip = self.dbapi.address_get_by_name(
-            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                   constants.NETWORK_TYPE_MGMT)
-        ).address
-        registry_server = 'https://{}:{}/v2/'.format(
-            registry_ip, constants.DOCKER_REGISTRY_PORT)
-        return registry_server
-
     def docker_registry_image_list(self, context):
-        image_list_response = docker_registry.docker_registry_get(
-            "_catalog", self._get_docker_registry_addr())
-
+        image_list_response = docker_registry.docker_registry_get("_catalog")
         if image_list_response.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
                 % image_list_response.status_code)
@@ -1466,7 +1455,7 @@ class ConductorManager(service.PeriodicService):
 
     def docker_registry_image_tags(self, context, image_name):
         image_tags_response = docker_registry.docker_registry_get(
-            "%s/tags/list" % image_name, self._get_docker_registry_addr())
+            "%s/tags/list" % image_name)
 
         if image_tags_response.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
@@ -1495,8 +1484,7 @@ class ConductorManager(service.PeriodicService):
 
         # first get the image digest for the image name and tag provided
         digest_resp = docker_registry.docker_registry_get("%s/manifests/%s"
-            % (image_name_and_tag[0], image_name_and_tag[1]),
-            self._get_docker_registry_addr())
+            % (image_name_and_tag[0], image_name_and_tag[1]))
 
         if digest_resp.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
@@ -1507,8 +1495,7 @@ class ConductorManager(service.PeriodicService):
 
         # now delete the image
         image_delete_response = docker_registry.docker_registry_delete(
-            "%s/manifests/%s" % (image_name_and_tag[0], image_digest),
-            self._get_docker_registry_addr())
+            "%s/manifests/%s" % (image_name_and_tag[0], image_digest))
 
         if image_delete_response.status_code != 202:
             LOG.error("Bad response from docker registry: %s"

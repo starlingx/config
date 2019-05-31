@@ -81,6 +81,41 @@
     failed_when: item.value|ipaddr == False
     with_dict: "{{ network_params }}"
 
+  - set_fact:
+      ipv4_addressing: "{{ network_params.management_subnet|ipv4 }}"
+      ipv6_addressing: "{{ network_params.management_subnet|ipv6 }}"
+
+  - name: Validate all network subnets are IPv4
+    debug:
+      msg: "All infrastructure and cluster subnets must be the same IP version"
+    failed_when: item|ipv4 == False
+    with_items:
+      - "{{ network_params.management_subnet }}"
+      - "{{ network_params.cluster_host_subnet }}"
+      - "{{ network_params.cluster_pod_subnet }}"
+      - "{{ network_params.cluster_service_subnet }}"
+      - "{{ network_params.external_oam_subnet }}"
+      - "{{ network_params.management_multicast_subnet }}"
+    when: ipv4_addressing != False
+
+  - name: Validate all network subnets are IPv6
+    debug:
+      msg: "All infrastructure and cluster subnets must be the same IP version"
+    failed_when: item|ipv6 == False
+    with_items:
+      - "{{ network_params.management_subnet }}"
+      - "{{ network_params.cluster_host_subnet }}"
+      - "{{ network_params.cluster_pod_subnet }}"
+      - "{{ network_params.cluster_service_subnet }}"
+      - "{{ network_params.external_oam_subnet }}"
+      - "{{ network_params.management_multicast_subnet }}"
+    when: ipv6_addressing != False
+
+  - name: Validate pxeboot subnet is IPv4
+    debug:
+      msg: "pxeboot_subnet subnet must always be IPv4"
+    failed_when: network_params.pxeboot_subnet|ipv4 == False
+
   - name: Fail if cluster pod/service subnet size is too small (minimum size = 65536)
     fail:
       msg: "Subnet size is too small, must have minimum {{ min_pod_service_num_addresses }} addresses."
@@ -109,7 +144,7 @@
   - name: Generate warning if subnet prefix is not typical for Standard systems
     debug:
       msg: "WARNING: Subnet prefix of less than /24 is not typical. This will affect scaling of the system!"
-    when: item|ipaddr('prefix')|int > typical_subnet_prefix and system_type == 'Standard'
+    when: item|ipaddr('prefix')|int < typical_subnet_prefix and system_type == 'Standard'
     with_items:
       - "{{ network_params.pxeboot_subnet }}"
       - "{{ network_params.management_subnet }}"
@@ -117,23 +152,11 @@
       - "{{ network_params.external_oam_subnet }}"
       - "{{ network_params.management_multicast_subnet }}"
 
-  - set_fact:
-      ipv6_addressing: "{{ network_params.management_subnet|ipv6 }}"
-
   - block:
-    - name: Fail if IPv6 management on simplex
-      fail:
-        msg: "IPv6 management network not supported on simplex configuration."
-      when: system_mode == 'simplex'
-
     - name: Fail if IPv6 prefix length is too short
       fail:
         msg: "IPv6 minimum prefix length is {{ minimum_prefix_length }}"
       when: network_params.management_subnet|ipaddr('prefix')|int < minimum_ipv6_prefix_length
-
-    - name: Update localhost name ip mapping for IPv6
-      set_fact:
-        localhost_name_ip_mapping: "::1\tlocalhost\tlocalhost.localdomain localhost6 localhost6.localdomain6"
 
     when: ipv6_addressing != False
 

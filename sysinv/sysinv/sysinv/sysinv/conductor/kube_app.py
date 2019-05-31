@@ -326,11 +326,10 @@ class AppOperator(object):
             the image tags in the manifest file. Intended for system app.
 
             The image tagging conversion(local docker registry address prepended):
-            ${LOCAL_DOCKER_REGISTRY_IP}:${REGISTRY_PORT}/<image-name>
-            (ie..192.168.204.2:9001/docker.io/mariadb:10.2.13)
+            ${LOCAL_REGISTRY_SERVER}:${REGISTRY_PORT}/<image-name>
+            (ie..registry.local:9001/docker.io/mariadb:10.2.13)
         """
 
-        local_registry_server = self._docker.get_local_docker_registry_server()
         manifest_image_tags_updated = False
         image_tags = []
 
@@ -389,13 +388,15 @@ class AppOperator(object):
                             images_manifest.update({key: images_charts[key]})
                         if not re.match(r'^.+:.+/', images_manifest[key]):
                             images_manifest.update(
-                                {key: '{}/{}'.format(local_registry_server, images_manifest[key])})
+                                {key: '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
+                                                     images_manifest[key])})
                             chart_image_tags_updated = True
                         image_tags.append(images_manifest[key])
                     else:
                         if not re.match(r'^.+:.+/', images_overrides[key]):
                             images_overrides.update(
-                                {key: '{}/{}'.format(local_registry_server, images_overrides[key])})
+                                {key: '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
+                                                     images_overrides[key])})
                             overrides_image_tags_updated = True
                         image_tags.append(images_overrides[key])
 
@@ -438,8 +439,8 @@ class AppOperator(object):
             b. tag and push them to the docker registery on the controller
             c. find image tag IDs in each chart and replace their values with
                new tags. Alternatively, document the image tagging convention
-               ${MGMT_FLOATING_IP}:${REGISTRY_PORT}/<image-name>
-               (e.g. 192.168.204.2:9001/prom/mysqld-exporter)
+               ${LOCAL_REGISTRY_SERVER}:${REGISTRY_PORT}/<image-name>
+               (e.g. registry.local:9001/prom/mysqld-exporter)
                to be referenced in the application Helm charts.
         """
         raise exception.KubeAppApplyFailure(
@@ -768,13 +769,12 @@ class AppOperator(object):
                 continue
 
             try:
-                local_registry_server = self._docker.get_local_docker_registry_server()
                 local_registry_auth = get_local_docker_registry_auth()
 
                 auth = '{0}:{1}'.format(local_registry_auth['username'],
                                         local_registry_auth['password'])
                 token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
-                    local_registry_server, base64.b64encode(auth))
+                    constants.DOCKER_REGISTRY_SERVER, base64.b64encode(auth))
 
                 body['data'].update({'.dockerconfigjson': base64.b64encode(token)})
                 body['metadata'].update({'name': DOCKER_REGISTRY_SECRET,
@@ -1507,6 +1507,7 @@ class DockerHelper(object):
                     detach=True,
                     volumes=binds,
                     restart_policy={'Name': 'always'},
+                    network_mode='host',
                     command=None)
                 LOG.info("Armada service started!")
                 return container
@@ -1527,6 +1528,10 @@ class DockerHelper(object):
             logfile = request + '.log'
 
         rc = True
+
+        # Instruct Armada to use the tiller service since it does not properly
+        # process IPv6 endpoints, therefore use a resolvable hostname
+        tiller_host = " --tiller-host tiller-deploy.kube-system.svc.cluster.local"
 
         try:
             client = docker.from_env(timeout=INSTALLATION_TIMEOUT)
@@ -1549,7 +1554,7 @@ class DockerHelper(object):
                                       "%s: %s." % (manifest_file, exec_logs))
                 elif request == constants.APP_APPLY_OP:
                     cmd = "/bin/bash -c 'armada apply --debug " + manifest_file +\
-                          overrides_str + " | tee " + logfile + "'"
+                          overrides_str + tiller_host + " | tee " + logfile + "'"
                     LOG.info("Armada apply command = %s" % cmd)
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
@@ -1572,7 +1577,7 @@ class DockerHelper(object):
                                       "%s." % (manifest_file, exec_logs))
                 elif request == constants.APP_DELETE_OP:
                     cmd = "/bin/bash -c 'armada delete --debug --manifest " +\
-                          manifest_file + " | tee " + logfile + "'"
+                          manifest_file + tiller_host + " | tee " + logfile + "'"
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
                         LOG.info("Application charts were successfully "
@@ -1598,14 +1603,6 @@ class DockerHelper(object):
             LOG.error("Armada request %s for manifest %s failed: %s " %
                       (request, manifest_file, e))
         return rc
-
-    def get_local_docker_registry_server(self):
-        registry_ip = self._dbapi.address_get_by_name(
-            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                   constants.NETWORK_TYPE_MGMT)
-        ).address
-        registry_server = '{}:{}'.format(registry_ip, constants.DOCKER_REGISTRY_PORT)
-        return registry_server
 
     def _get_img_tag_with_registry(self, pub_img_tag):
         registry_name = pub_img_tag[0:1 + pub_img_tag.find('/')]
@@ -1651,10 +1648,9 @@ class DockerHelper(object):
         rc = True
         # retrieve user specified registries first
         self._retrieve_specified_registries()
-        local_registry_server = self.get_local_docker_registry_server()
 
         start = time.time()
-        if img_tag.startswith(local_registry_server):
+        if img_tag.startswith(constants.DOCKER_REGISTRY_HOST):
             try:
                 LOG.info("Image %s download started from local registry" % img_tag)
                 local_registry_auth = get_local_docker_registry_auth()
@@ -1666,7 +1662,8 @@ class DockerHelper(object):
                     LOG.info("Image %s is not available in local registry, "
                              "download started from public/private registry"
                              % img_tag)
-                    pub_img_tag = img_tag.replace(local_registry_server + "/", "")
+                    pub_img_tag = img_tag.replace(
+                        constants.DOCKER_REGISTRY_SERVER + "/", "")
                     target_img_tag = self._get_img_tag_with_registry(pub_img_tag)
                     client.pull(target_img_tag)
                 except Exception as e:

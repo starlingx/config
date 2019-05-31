@@ -5,6 +5,7 @@
 #
 
 from __future__ import absolute_import
+import netaddr
 import os
 import json
 import subprocess
@@ -19,6 +20,10 @@ from sysinv.puppet import interface
 
 LOG = logging.getLogger(__name__)
 
+# Offset aligns with kubeadm DNS IP allocation scheme:
+# kubenetes/cmd/kubeadm/app/constants/constants.go:GetDNSIP
+CLUSTER_SERVICE_DNS_IP_OFFSET = 10
+
 
 class KubernetesPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for kubernetes configuration"""
@@ -31,6 +36,8 @@ class KubernetesPuppet(base.BasePuppet):
                 {'platform::kubernetes::params::enabled': True,
                  'platform::kubernetes::params::pod_network_cidr':
                      self._get_pod_network_cidr(),
+                 'platform::kubernetes::params::pod_network_ipversion':
+                     self._get_pod_network_ipversion(),
                  'platform::kubernetes::params::service_network_cidr':
                      self._get_cluster_service_subnet(),
                  'platform::kubernetes::params::apiserver_advertise_address':
@@ -73,6 +80,9 @@ class KubernetesPuppet(base.BasePuppet):
     def get_host_config(self, host):
         config = {}
 
+        # Update node configuration for host
+        config.update(self._get_host_node_config(host))
+
         # Retrieve labels for this host
         config.update(self._get_host_label_config(host))
 
@@ -109,6 +119,10 @@ class KubernetesPuppet(base.BasePuppet):
     def _get_pod_network_cidr(self):
         return self._get_network_config(constants.NETWORK_TYPE_CLUSTER_POD)
 
+    def _get_pod_network_ipversion(self):
+        subnet = netaddr.IPNetwork(self._get_pod_network_cidr())
+        return subnet.version
+
     def _get_cluster_service_subnet(self):
         return self._get_network_config(constants.NETWORK_TYPE_CLUSTER_SERVICE)
 
@@ -127,8 +141,15 @@ class KubernetesPuppet(base.BasePuppet):
         return constants.DEFAULT_DNS_SERVICE_DOMAIN
 
     def _get_dns_service_ip(self):
-        # Setting this to a constant for now. Will be configurable later
-        return constants.DEFAULT_DNS_SERVICE_IP
+        subnet = netaddr.IPNetwork(self._get_cluster_service_subnet())
+        return str(subnet[CLUSTER_SERVICE_DNS_IP_OFFSET])
+
+    def _get_host_node_config(self, host):
+        node_ip = self._get_address_by_name(
+            host.hostname, constants.NETWORK_TYPE_MGMT).address
+        return {
+            'platform::kubernetes::params::node_ip': node_ip
+        }
 
     def _get_host_label_config(self, host):
         config = {}

@@ -3,8 +3,9 @@ prompt = no
 x509_extensions = v3_req
 distinguished_name = dn
 [dn]
-CN = <%= @docker_registry_ip %>
+CN = registry.local
 [v3_req]
 subjectAltName = @alt_names
 [alt_names]
-IP = <%= @docker_registry_ip %>
+DNS.1 = registry.local
+IP.1 = <%= @docker_registry_ip %>

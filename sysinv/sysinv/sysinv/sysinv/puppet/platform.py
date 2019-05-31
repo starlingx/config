@@ -435,24 +435,6 @@ class PlatformPuppet(base.BasePuppet):
     def _get_host_sysctl_config(self, host):
         config = {}
 
-        if host.personality == constants.CONTROLLER:
-            remotelogging = self.dbapi.remotelogging_get_one()
-
-            ip_forwarding = (self._region_config() or
-                             self._sdn_enabled() or
-                             remotelogging.enabled)
-
-            # The forwarding IP version is based on the OAM network version
-            address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_OAM)
-
-            ip_version = address.family
-
-            config.update({
-                'platform::sysctl::params::ip_forwarding': ip_forwarding,
-                'platform::sysctl::params::ip_version': ip_version,
-            })
-
         if constants.LOWLATENCY in host.subfunctions:
             config.update({
                 'platform::sysctl::params::low_latency': True

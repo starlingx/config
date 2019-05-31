@@ -9,6 +9,7 @@ import uuid
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 from sysinv.puppet import openstack
@@ -262,10 +263,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         }
 
     def _format_ceph_mon_address(self, ip_address):
-        if netaddr.IPAddress(ip_address).version == constants.IPV4_FAMILY:
-            return '%s:%d' % (ip_address, self.SERVICE_PORT_MON)
-        else:
-            return '[%s]:%d' % (ip_address, self.SERVICE_PORT_MON)
+        return utils.format_ceph_mon_address(
+            ip_address, self.SERVICE_PORT_MON)
 
     def _get_host_ceph_mon(self, host):
         ceph_mons = self.dbapi.ceph_mon_get_by_ihost(host.uuid)

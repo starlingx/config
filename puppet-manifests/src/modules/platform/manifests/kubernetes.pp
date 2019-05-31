@@ -1,6 +1,8 @@
 class platform::kubernetes::params (
   $enabled = true,
+  $node_ip = undef,
   $pod_network_cidr = undef,
+  $pod_network_ipversion = 4,
   $service_network_cidr = undef,
   $apiserver_advertise_address = undef,
   $etcd_endpoint = undef,
@@ -98,6 +100,7 @@ class platform::kubernetes::kubeadm {
   include ::platform::docker::params
   include ::platform::kubernetes::params
 
+  $node_ip = $::platform::kubernetes::params::node_ip
   $host_labels = $::platform::kubernetes::params::host_labels
   $k8s_reserved_cpus = $::platform::kubernetes::params::k8s_reserved_cpus
   $k8s_reserved_mem = $::platform::kubernetes::params::k8s_reserved_mem
@@ -108,7 +111,7 @@ class platform::kubernetes::kubeadm {
   if $::platform::docker::params::k8s_registry {
     $k8s_registry = $::platform::docker::params::k8s_registry
   } else {
-    $k8s_registry = undef
+    $k8s_registry = 'k8s.gcr.io'
   }
 
   # Configure kubelet hugepage and cpumanager options
@@ -181,11 +184,16 @@ class platform::kubernetes::master::init
   include ::platform::params
   include ::platform::docker::params
 
+  $apiserver_loopback_address = $pod_network_ipversion ? {
+    4 => '127.0.0.1',
+    6 => '::1',
+  }
+
   # This is used for imageRepository in template kubeadm.yaml.erb
   if $::platform::docker::params::k8s_registry {
     $k8s_registry = $::platform::docker::params::k8s_registry
   } else {
-    $k8s_registry = undef
+    $k8s_registry = 'k8s.gcr.io'
   }
 
   # This is used for calico image in template calico.yaml.erb
@@ -633,16 +641,17 @@ class platform::kubernetes::firewall
   $d_mgmt_subnet = "! ${s_mgmt_subnet}"
 
   if $system_mode != 'simplex' {
-    firewall { '000 kubernetes nat':
-      table       => $table,
-      chain       => $chain,
-      proto       => $transport,
-      jump        => $jump,
-      dport       => $dports,
-      destination => $d_mgmt_subnet,
-      source      => $s_mgmt_subnet,
-      tosource    => $oam_float_ip,
-      outiface    => $oam_interface,
+    platform::firewall::rule { 'kubernetes-nat':
+      service_name => 'kubernetes',
+      table        => $table,
+      chain        => $chain,
+      proto        => $transport,
+      jump         => $jump,
+      ports        => $dports,
+      host         => $s_mgmt_subnet,
+      destination  => $d_mgmt_subnet,
+      outiface     => $oam_interface,
+      tosource     => $oam_float_ip,
     }
   }
 }

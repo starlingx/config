@@ -104,6 +104,25 @@ define network_address (
   }
 }
 
+
+# Defines a single route resource for an interface.
+# If multiple are required in the future, then this will need to
+# iterate over a hash to create multiple entries per file.
+define network_route6 (
+  $prefix,
+  $gateway,
+  $ifname,
+) {
+  file { "/etc/sysconfig/network-scripts/route6-${ifname}":
+    ensure  => present,
+    owner   => root,
+    group   => root,
+    mode    => '0644',
+    content => "${prefix} via ${gateway} dev ${ifname}"
+  }
+}
+
+
 class platform::addresses (
   $address_config = {},
 ) {
@@ -132,7 +151,22 @@ class platform::interfaces (
   create_resources('network_config', $network_config, {})
   create_resources('network_route', $route_config, {})
   create_resources('platform::interfaces::sriov_config', $sriov_config, {})
+
+  include ::platform::params
+  include ::platform::network::mgmt::params
+
+  # Add static IPv6 default route since DHCPv6 does not support the router option
+  if $::personality != 'controller' {
+    if $::platform::network::mgmt::params::subnet_version == $::platform::params::ipv6 {
+      network_route6 { 'ipv6 default route':
+        prefix  => 'default',
+        gateway => $::platform::network::mgmt::params::controller_address,
+        ifname  => $::platform::network::mgmt::params::interface_name
+      }
+    }
+  }
 }
+
 
 class platform::network::apply {
   include ::platform::interfaces
@@ -149,6 +183,10 @@ class platform::network::apply {
   # https://projects.puppetlabs.com/issues/18399
   Network_config <| |>
   -> Network_route <| |>
+  -> Exec['apply-network-config']
+
+  Network_config <| |>
+  -> Network_route6 <| |>
   -> Exec['apply-network-config']
 
   exec {'apply-network-config':

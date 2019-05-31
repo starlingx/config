@@ -11,7 +11,7 @@ storage:
     readonly:
       enabled: <%= @registry_readonly %>
 http:
-  addr: <%= @docker_registry_ip %>:9001
+  addr: "<%= @docker_registry_host %>:9001"
   tls:
     certificate: /etc/ssl/private/registry-cert.crt
     key: /etc/ssl/private/registry-cert.key
@@ -24,7 +24,7 @@ health:
     threshold: 3
 auth:
   token:
-    realm: https://<%= @docker_registry_ip %>:9002/token/
-    service: <%= @docker_registry_ip %>:9001
+    realm: "https://<%= @docker_registry_host %>:9002/token/"
+    service: "<%= @docker_registry_host %>:9001"
     issuer: bird-token-server
     rootcertbundle: /etc/ssl/private/registry-cert.crt
