@@ -32,7 +32,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 network:
-  alarming:
+  faultmanagement:
     ingress:
       public: true
       classes:
@@ -246,7 +246,7 @@ endpoints:
       api:
         default: 80
         internal: 5000
-  alarming:
+  faultmanagement:
     name: fm
     hosts:
       default: fm-rest-api
@@ -336,7 +336,7 @@ secrets:
     admin: fm-db-admin
     fm: fm-db-user
   tls:
-    alarming:
+    faultmanagement:
       fm_api:
         public: fm-rest-api-tls-public
 

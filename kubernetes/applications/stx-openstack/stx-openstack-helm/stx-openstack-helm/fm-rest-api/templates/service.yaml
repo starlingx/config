@@ -10,19 +10,19 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ tuple "alarming" "internal" . | include "helm-toolkit.endpoints.hostname_short_endpoint_lookup" }}
+  name: {{ tuple "faultmanagement" "internal" . | include "helm-toolkit.endpoints.hostname_short_endpoint_lookup" }}
 spec:
   ports:
   - name: fm-port
-    port: {{ .Values.network.alarming.port }}
-    {{ if .Values.network.alarming.node_port.enabled }}
-    nodePort: {{ .Values.network.alarming.node_port.port }}
+    port: {{ .Values.network.faultmanagement.port }}
+    {{ if .Values.network.faultmanagement.node_port.enabled }}
+    nodePort: {{ .Values.network.faultmanagement.node_port.port }}
     {{ end }}
   selector:
 {{ tuple $envAll "fm-rest-api" "fm" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
-  {{ if .Values.network.alarming.node_port.enabled }}
+  {{ if .Values.network.faultmanagement.node_port.enabled }}
   type: NodePort
-  {{ if .Values.network.alarming.external_policy_local }}
+  {{ if .Values.network.faultmanagement.external_policy_local }}
   externalTrafficPolicy: Local
   {{ end }}
   {{ end }}
