@@ -19,7 +19,7 @@ spec:
     nodePort: {{ .Values.network.faultmanagement.node_port.port }}
     {{ end }}
   selector:
-{{ tuple $envAll "fm-rest-api" "fm" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
+{{ tuple $envAll "fm" "fmapi" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
   {{ if .Values.network.faultmanagement.node_port.enabled }}
   type: NodePort
   {{ if .Values.network.faultmanagement.external_policy_local }}

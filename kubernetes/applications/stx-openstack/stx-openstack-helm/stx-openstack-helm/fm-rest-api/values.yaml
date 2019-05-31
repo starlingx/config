@@ -168,6 +168,14 @@ dependencies:
       services:
         - endpoint: internal
           service: oslo_db
+    ks_service:
+      services:
+        - endpoint: internal
+          service: identity
+    ks_user:
+      services:
+        - endpoint: internal
+          service: identity
 
 manifests:
   configmap_bin: true
