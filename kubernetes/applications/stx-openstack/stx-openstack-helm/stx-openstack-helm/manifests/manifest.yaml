@@ -2835,15 +2835,6 @@ data:
                           " [%(method)s %(request_url)s %(http_status)s]"
                           " parameters:[%(param)s] message:[%(message)s]"),
             }
-            # StarlingX Branding Configuration
-            SITE_BRANDING = "StarlingX"
-
-            AVAILABLE_THEMES = [
-                ('default', 'Default', 'themes/default'),
-                ('material', 'Material', 'themes/material'),
-                ('starlingx', 'StarlingX', 'themes/starlingx'),
-            ]
-            DEFAULT_THEME = 'starlingx'
 
             # Custom Theme Override
             for root, dirs, files in os.walk('/opt/branding/applied'):
