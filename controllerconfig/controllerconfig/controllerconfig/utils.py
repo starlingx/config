@@ -805,17 +805,6 @@ def persist_config():
             raise Exception("Failed to persist config files")
 
         try:
-            if os.path.isfile(
-                    '/opt/branding/horizon-region-exclusions.csv'):
-                subprocess.check_call(
-                    ["cp", "-p",
-                     '/opt/branding/horizon-region-exclusions.csv',
-                     constants.CONFIG_PERMDIR + "/branding/"])
-        except IOError:
-            LOG.error("Failed to persist horizon exclusion file")
-            raise Exception("Failed to persist config files")
-
-        try:
             for f in glob.glob("/opt/branding/*.tgz"):
                 subprocess.check_call([
                     "cp", "-p", f, constants.CONFIG_PERMDIR + "/branding/"])

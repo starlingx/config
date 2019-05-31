@@ -2820,18 +2820,6 @@ data:
             SS_ENABLED = "False"
             {{- end }}
 
-            # Load Horizon region exclusion list
-            REGION_EXCLUSIONS = []
-            try:
-                if os.path.exists('/opt/branding/horizon-region-exclusions.csv'):
-                    with open('/opt/branding/horizon-region-exclusions.csv') as f:
-                        for line in f:
-                            if line.startswith('#') or line.startswith(' '):
-                                continue
-                            REGION_EXCLUSIONS = line.rstrip('\n').rstrip('\r').split(',')
-            except Exception:
-                pass
-
             DC_MODE = {{ .Values.conf.horizon.local_settings.config.dc_mode }}
 
             # Override openstack-dashboard NG_CACHE_TEMPLATE_AGE
@@ -2877,28 +2865,12 @@ data:
             SESSION_COOKIE_SECURE = True
             {{- end }}
 
-            LOCKOUT_PERIOD_SEC = float({{ .Values.conf.horizon.local_settings.config.lockout_period_sec }})
-            LOCKOUT_RETRIES_NUM = int({{ .Values.conf.horizon.local_settings.config.lockout_retries_num }})
-
             # The OPENSTACK_HEAT_STACK settings can be used to disable password
             # field required while launching the stack.
             OPENSTACK_HEAT_STACK = {
                 'enable_user_pass': False,
             }
             HORIZON_CONFIG["password_autocomplete"] = "off"
-
-            # Optional service configuration
-            {{- if eq .Values.conf.horizon.local_settings.config.enable_murano "True"}}
-            ENABLE_MURANO_TAB = True
-            {{- else }}
-            ENABLE_MURANO_TAB = False
-            {{- end }}
-
-            {{- if eq .Values.conf.horizon.local_settings.config.enable_magnum "True"}}
-            ENABLE_MAGNUM_TAB = True
-            {{- else }}
-            ENABLE_MAGNUM_TAB = False
-            {{- end }}
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/starlingx/horizon-0.1.0.tgz

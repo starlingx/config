@@ -324,11 +324,7 @@ start()
         fi
     fi
 
-    # Keep the /opt/branding directory to preserve any new files and explicitly copy over any required files
-    if [ -e $CONFIG_DIR/branding/horizon-region-exclusions.csv ]
-    then
-        cp $CONFIG_DIR/branding/horizon-region-exclusions.csv /opt/branding
-    fi
+    # Keep the /opt/branding directory to preserve any new files
     rm -rf /opt/branding/*.tgz
     cp $CONFIG_DIR/branding/*.tgz /opt/branding 2>/dev/null
 

@@ -76,19 +76,6 @@
         group: root
         mode: 0755
 
-    - name: Check if horizon-region-exclusion.csv file exists
-      stat:
-        path: /opt/branding/horizon-region-exclusions.csv
-      register: hre_result
-
-    - name: Copy horizon-region-exclusions.csv if exists
-      copy:
-        src: /opt/branding/horizon-region-exclusions.csv
-        dest: "{{ branding_config_dir }}"
-        remote_src: yes
-        mode: preserve
-      when: hre_result.stat.exists
-
     - name: Check if branding tar files exist (there should be only one)
       find:
         paths: /opt/branding
