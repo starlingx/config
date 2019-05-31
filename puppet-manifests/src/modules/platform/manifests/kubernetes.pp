@@ -530,7 +530,10 @@ class platform::kubernetes::worker
     # Reconfigure cgroups cpusets on AIO
     contain ::platform::kubernetes::cgroup
 
-    Class['::platform::kubernetes::cgroup']
+    # Add refresh dependency for kubelet for hugepage allocation
+    Class['::platform::compute::allocate']
+    ~> service { 'kubelet':
+    }
   }
 
   file { '/var/run/.disable_worker_services':
