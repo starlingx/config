@@ -57,8 +57,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
     CHART = constants.HELM_CHART_NOVA
 
     SERVICE_NAME = 'nova'
-    AUTH_USERS = ['nova', 'placement']
-    SERVICE_USERS = ['neutron', 'ironic']
+    AUTH_USERS = ['nova', ]
+    SERVICE_USERS = ['neutron', 'ironic', 'placement']
     NOVNCPROXY_SERVICE_NAME = 'novncproxy'
 
     def get_overrides(self, namespace=None):
