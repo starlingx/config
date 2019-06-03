@@ -4039,7 +4039,7 @@ class HostController(rest.RestController):
             if bk['state'] != constants.SB_STATE_CONFIGURED:
                 # TODO(oponcea): Remove once sm supports in-service configuration
                 if (bk['backend'] != constants.SB_TYPE_CEPH or
-                        bk['task'] != constants.SB_TASK_RECONFIG_CONTROLLER or
+                        bk['task'] != constants.SB_TASK_PROVISION_STORAGE or
                         ihost['personality'] != constants.CONTROLLER):
                     msg = _("%(backend)s is %(notok)s. All storage backends must "
                             "be %(ok)s before operation "
@@ -4565,7 +4565,7 @@ class HostController(rest.RestController):
                     return
 
             # check if customer needs to install storage nodes
-            if backend.task == constants.SB_TASK_RECONFIG_CONTROLLER:
+            if backend.task == constants.SB_TASK_PROVISION_STORAGE:
                 stor_model = ceph.get_ceph_storage_model()
                 if (HostController._check_provisioned_storage_hosts() or
                         stor_model == constants.CEPH_CONTROLLER_MODEL):

@@ -791,7 +791,7 @@ def _set_defaults(storage_ceph):
         if utils.is_aio_simplex_system(pecan.request.dbapi):
             sc['task'] = None
         else:
-            sc['task'] = constants.SB_TASK_RECONFIG_CONTROLLER
+            sc['task'] = constants.SB_TASK_PROVISION_STORAGE
 
     return sc
 

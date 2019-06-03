@@ -43,7 +43,6 @@ SB_STATE_CONFIGURING = 'configuring'
 
 # Storage backend tasks
 SB_TASK_NONE = None
-SB_TASK_RECONFIG_CONTROLLER = 'reconfig-controller'
 SB_TASK_PROVISION_STORAGE = 'provision-storage'
 SB_TASK_RECONFIG_WORKER = 'reconfig-worker'
 SB_TASK_RESIZE_CEPH_MON_LV = 'resize-ceph-mon-lv'
