@@ -8,8 +8,8 @@ replicaCount: 1
 
 labels:
   job:
-    node_selector_key: openstack-control-plane
-    node_selector_value: enabled
+    node_selector_key: node-role.kubernetes.io/master
+    node_selector_value: ""
 
 name: ceph-pools-audit
 ceph_client:
