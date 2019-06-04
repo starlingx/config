@@ -67,8 +67,8 @@ spec:
                   value: {{ $tierConfig.replication | quote }}
                 - name: RBD_POOL_MIN_REPLICATION
                   value: {{ $tierConfig.min_replication | quote }}
-                - name: RBD_POOL_CRUSH_RULESET
-                  value: {{ $tierConfig.crush_ruleset | quote }}
+                - name: RBD_POOL_CRUSH_RULE_NAME
+                  value: {{ $tierConfig.crush_rule_name | quote }}
               command:
                 - /tmp/ceph-pools-audit.sh
               volumeMounts:
