@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -64,6 +64,9 @@ TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 DOCKER_REGISTRY_USER = 'admin'
 DOCKER_REGISTRY_SERVICE = 'CGCS'
 DOCKER_REGISTRY_SECRET = 'default-registry-key'
+
+ARMADA_HOST_LOG_LOCATION = '/var/log/armada'
+ARMADA_CONTAINER_LOG_LOCATION = '/logs'
 
 
 # Helper functions
@@ -992,7 +995,7 @@ class AppOperator(object):
         # Body of the outer method
         mqueue = queue.Queue()
         rc = True
-        logfile = app.name + '-' + request + '.log'
+        logfile = ARMADA_CONTAINER_LOG_LOCATION + '/' + app.name + '-' + request + '.log'
         if request == constants.APP_APPLY_OP:
             pattern = APPLY_SEARCH_PATTERN
         else:
@@ -1484,6 +1487,12 @@ class DockerHelper(object):
         except Exception:
             LOG.info("Starting Armada service...")
             try:
+                # Create the armada log folder if it does not exists
+                if not os.path.exists(ARMADA_HOST_LOG_LOCATION):
+                    os.mkdir(ARMADA_HOST_LOG_LOCATION)
+                    os.chmod(ARMADA_HOST_LOG_LOCATION, 0o755)
+                    os.chown(ARMADA_HOST_LOG_LOCATION, 1000, grp.getgrnam("wrs").gr_gid)
+
                 # First make kubernetes config accessible to Armada. This
                 # is a work around the permission issue in Armada container.
                 kube_config = os.path.join(constants.APP_SYNCED_DATA_PATH,
@@ -1493,13 +1502,16 @@ class DockerHelper(object):
 
                 overrides_dir = common.HELM_OVERRIDES_PATH
                 manifests_dir = constants.APP_SYNCED_DATA_PATH
+                logs_dir = ARMADA_HOST_LOG_LOCATION
                 LOG.info("kube_config=%s, manifests_dir=%s, "
-                         "overrides_dir=%s." % (kube_config, manifests_dir,
-                                                overrides_dir))
+                         "overrides_dir=%s, logs_dir=%s." %
+                         (kube_config, manifests_dir, overrides_dir, logs_dir))
+
                 binds = {
                     kube_config: {'bind': '/armada/.kube/config', 'mode': 'ro'},
                     manifests_dir: {'bind': '/manifests', 'mode': 'ro'},
-                    overrides_dir: {'bind': '/overrides', 'mode': 'ro'}}
+                    overrides_dir: {'bind': '/overrides', 'mode': 'ro'},
+                    logs_dir: {'bind': ARMADA_CONTAINER_LOG_LOCATION, 'mode': 'rw'}}
 
                 container = client.containers.run(
                     CONF.armada_image_tag,
