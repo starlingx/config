@@ -10,29 +10,29 @@
 {{- $mounts_fm_rest_api := .Values.pod.mounts.fm_rest_api.fm_rest_api }}
 {{- $mounts_fm_rest_api_init := .Values.pod.mounts.fm_rest_api.init_container }}
 
-{{- $serviceAccountName := "fm-rest-api" }}
+{{- $serviceAccountName := "fm" }}
 {{ tuple $envAll "fmapi" $serviceAccountName | include "helm-toolkit.snippets.kubernetes_pod_rbac_serviceaccount" }}
-
-apiVersion: apps/v1beta2
+---
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fm-rest-api
   labels:
-{{ tuple $envAll "fm-rest-api" "fm" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
+{{ tuple $envAll "fm" "fmapi" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 4 }}
 spec:
   replicas: {{ .Values.pod.replicas.api }}
   selector:
     matchLabels:
-{{ tuple $envAll "fm-rest-api" "fm" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 6 }}
+{{ tuple $envAll "fm" "fmapi" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 6 }}
 {{ tuple $envAll | include "helm-toolkit.snippets.kubernetes_upgrades_deployment" | indent 2 }}
   template:
     metadata:
       labels:
-{{ tuple $envAll "fm-rest-api" "fm" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 8 }}
+{{ tuple $envAll "fm" "fmapi" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 8 }}
     spec:
       serviceAccountName: {{ $serviceAccountName }}
       initContainers:
-{{ tuple $envAll "api" $mounts_fm_rest_api_init | include "helm-toolkit.snippets.kubernetes_entrypoint_init_container" | indent 8 }}
+{{ tuple $envAll "fmapi" $mounts_fm_rest_api_init | include "helm-toolkit.snippets.kubernetes_entrypoint_init_container" | indent 8 }}
       containers:
         - name: fm-rest-api
           volumeMounts:
@@ -68,7 +68,7 @@ spec:
       nodeSelector:
         {{ .Values.labels.fm_api.node_selector_key }}: {{ .Values.labels.fm_api.node_selector_value }}
       affinity:
-        {{ tuple $envAll "fm-rest-api" "fm" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
+        {{ tuple $envAll "fm" "fmapi" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
     {{- with .Values.tolerations }}
       tolerations:
 {{ toYaml . | indent 8 }}
