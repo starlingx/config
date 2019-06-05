@@ -25,6 +25,7 @@ class nfv::vim (
   $compute_plugin_disabled  = false,
   $network_plugin_disabled  = false,
   $guest_plugin_disabled    = false,
+  $fault_mgmt_plugin_disabled = false,
   $vim_rpc_ip               = '127.0.0.1',
   $vim_rpc_port             = 4343,
   $vim_api_ip               = '0.0.0.0',
@@ -70,6 +71,7 @@ class nfv::vim (
     'nfvi/compute_plugin_disabled': value => $compute_plugin_disabled;
     'nfvi/network_plugin_disabled': value => $network_plugin_disabled;
     'nfvi/guest_plugin_disabled': value => $guest_plugin_disabled;
+    'nfvi/fault_mgmt_plugin_disabled': value => $fault_mgmt_plugin_disabled;
 
     # INSTANCE CONFIGURATION
     'instance-configuration/max_live_migrate_wait_in_secs': value => $instance_max_live_migrate_wait_in_secs;
