@@ -653,9 +653,15 @@ class platform::sm
             command => 'sm-provision service-group-member cloud-services dbmon --apply'
         }
     }
+    exec { 'provision guest-agent service group member':
+        command => 'sm-provision service-group-member controller-services guest-agent --apply'
+    }
   } else {
     exec { 'deprovision service group member':
         command => 'sm-deprovision service-group-member cloud-services dbmon --apply'
+    }
+    exec { 'deprovision guest-agent service group member':
+        command => 'sm-deprovision service-group-member controller-services guest-agent --apply'
     }
   }
 
@@ -953,9 +959,15 @@ class platform::sm::stx_openstack::runtime {
             command => 'sm-provision service-group-member cloud-services dbmon --apply'
         }
     }
+    exec { 'provision guest-agent service group member':
+        command => 'sm-provision service-group-member controller-services guest-agent --apply'
+    }
   } else {
     exec { 'deprovision service group member':
         command => 'sm-deprovision service-group-member cloud-services dbmon --apply'
+    }
+    exec { 'deprovision guest-agent service group member':
+        command => 'sm-deprovision service-group-member controller-services guest-agent --apply'
     }
   }
 }
