@@ -1752,6 +1752,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
 
+    def remove_unlock_ready_flag(self, context):
+        """Synchronously, remove the unlock ready flag file.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('remove_unlock_ready_flag'))
+
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handle application upload request
 
