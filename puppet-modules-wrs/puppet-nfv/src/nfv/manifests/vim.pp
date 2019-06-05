@@ -26,6 +26,7 @@ class nfv::vim (
   $network_plugin_disabled  = false,
   $guest_plugin_disabled    = false,
   $fault_mgmt_plugin_disabled = false,
+  $fault_management_pod_disabled = true,
   $vim_rpc_ip               = '127.0.0.1',
   $vim_rpc_port             = 4343,
   $vim_api_ip               = '0.0.0.0',
@@ -72,6 +73,9 @@ class nfv::vim (
     'nfvi/network_plugin_disabled': value => $network_plugin_disabled;
     'nfvi/guest_plugin_disabled': value => $guest_plugin_disabled;
     'nfvi/fault_mgmt_plugin_disabled': value => $fault_mgmt_plugin_disabled;
+    # This flag is used to disable raising alarm to containerized fm
+    # and will be removed in future.
+    'nfvi/fault_management_pod_disabled': value => $fault_management_pod_disabled;
 
     # INSTANCE CONFIGURATION
     'instance-configuration/max_live_migrate_wait_in_secs': value => $instance_max_live_migrate_wait_in_secs;

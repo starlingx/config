@@ -20,6 +20,7 @@ class nfv::alarm (
   $fault_mgmt_service_type       = 'faultmanagement',
   $fault_mgmt_endpoint_type      = 'admin',
   $fault_mgmt_endpoint_disabled  = false,
+  $fault_management_pod_disabled      = true,
 ) {
 
   include nfv::params
@@ -27,6 +28,9 @@ class nfv::alarm (
   nfv_plugin_alarm_config {
     # File-Storage Information
     'File-Storage/file': value => $storage_file;
+    # This flag is used to disable raising alarm to containerized fm
+    # and will be removed in future.
+    'openstack/fault_management_pod_disabled': value => $fault_management_pod_disabled;
 
     # OpenStack Authentication Information
     'openstack/username': value => $openstack_username;
