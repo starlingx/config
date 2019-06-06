@@ -5,6 +5,7 @@
 #
 
 import keyring
+import os
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -46,6 +47,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_drbd_sync_config())
         config.update(self._get_remotelogging_config())
         config.update(self._get_snmp_config())
+        config.update(self._get_certificate_config())
         return config
 
     def get_secure_system_config(self):
@@ -788,6 +790,17 @@ class PlatformPuppet(base.BasePuppet):
                 trap_list.append(e.ip_address + ' ' + e.community)
             config.update({'platform::snmp::params::trap_destinations':
                            trap_list})
+
+        return config
+
+    def _get_certificate_config(self):
+        config = {}
+
+        if os.path.exists(constants.SSL_CERT_CA_FILE_SHARED):
+            config.update({
+                'platform::config::certs::params::ssl_ca_cert':
+                    utils.get_file_content(constants.SSL_CERT_CA_FILE_SHARED),
+            })
 
         return config
 
