@@ -23,7 +23,7 @@ class sysinv::agent (
 
   include sysinv::params
 
-  # Pacemaker should be starting up agent
+  # SM should be starting up agent
   Sysinv_config<||> ~> Service['sysinv-agent']
   Sysinv_api_paste_ini<||> ~> Service['sysinv-agent']
 
