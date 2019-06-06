@@ -3794,8 +3794,7 @@ class ConfigAssistant():
                         'vswitch_type': str(self.vswitch_type),
                         'shared_services': str(self.shared_services),
                         'sdn_enabled': self.enable_sdn,
-                        'https_enabled': self.enable_https,
-                        'kubernetes_enabled': self.kubernetes}
+                        'https_enabled': self.enable_https}
 
         system_type = utils.get_system_type()
 

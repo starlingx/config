@@ -2101,7 +2101,7 @@ class HostController(rest.RestController):
                     ibm_msg_dict)
 
             # Trigger a system app reapply if the host has been unlocked
-            if (utils.is_kubernetes_config() and patched_ihost.get('action') in
+            if (patched_ihost.get('action') in
                     [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
                 self._reapply_system_app()
 
@@ -2291,17 +2291,6 @@ class HostController(rest.RestController):
             storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
                 constants.STORAGE)
             if len(storage_nodes) == 1:
-                # TODO(CephPoolsDecouple): rework
-                # delete osd pools
-                # It would be nice if we have a ceph API that can delete
-                # all osd pools at once.
-                if not utils.is_kubernetes_config():
-                    pools = pecan.request.rpcapi.list_osd_pools(
-                        pecan.request.context)
-                    for ceph_pool in pools:
-                        pecan.request.rpcapi.delete_osd_pool(
-                            pecan.request.context, ceph_pool)
-
                 # update tier status
                 tier_list = pecan.request.dbapi.storage_tier_get_list()
                 for tier in tier_list:
@@ -2337,13 +2326,12 @@ class HostController(rest.RestController):
                 return
 
         openstack_worker = False
-        if utils.is_kubernetes_config():
-            labels = objects.label.get_by_host_id(pecan.request.context, ihost.uuid)
-            for l in labels:
-                if (constants.COMPUTE_NODE_LABEL ==
-                        str(l.label_key) + '=' + str(l.label_value)):
-                    openstack_worker = True
-                    break
+        labels = objects.label.get_by_host_id(pecan.request.context, ihost.uuid)
+        for l in labels:
+            if (constants.COMPUTE_NODE_LABEL ==
+                    str(l.label_key) + '=' + str(l.label_value)):
+                openstack_worker = True
+                break
 
         idict = {'operation': constants.DELETE_ACTION,
                  'uuid': ihost.uuid,
@@ -3299,7 +3287,7 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(msg)
 
     def _semantic_check_data_interfaces(
-            self, ihost, kubernetes_config, force_unlock=False):
+            self, ihost, force_unlock=False):
         """
         Perform semantic checks against data interfaces to ensure validity of
         the node configuration prior to unlocking it.
@@ -3307,7 +3295,6 @@ class HostController(rest.RestController):
         ihost_iinterfaces = (
             pecan.request.dbapi.iinterface_get_by_ihost(ihost['uuid']))
         vswitch_type = utils.get_vswitch_type()
-        data_interface_configured = False
         for iif in ihost_iinterfaces:
             if ((vswitch_type == constants.VSWITCH_TYPE_OVS_DPDK) and
                     (iif.ifclass == constants.INTERFACE_CLASS_DATA)):
@@ -3317,14 +3304,6 @@ class HostController(rest.RestController):
             if not iif.ifclass:
                 continue
             self._semantic_check_sriov_interface(ihost, iif, force_unlock)
-            if iif.ifclass == constants.NETWORK_TYPE_DATA:
-                data_interface_configured = True
-
-        if not data_interface_configured and not kubernetes_config:
-            msg = _("Can not unlock a worker host without data interfaces. "
-                    "Add at least one data interface before re-attempting "
-                    "this command.")
-            raise wsme.exc.ClientSideError(msg)
 
     def _semantic_check_data_addresses(self, ihost):
         """
@@ -5254,24 +5233,8 @@ class HostController(rest.RestController):
         # Check whether a restore was properly completed
         self._semantic_check_restore_complete(ihost)
         # Disable certain worker unlock checks in a kubernetes config
-        kubernetes_config = utils.is_kubernetes_config()
-        if kubernetes_config:
-            self._semantic_check_data_interfaces(ihost,
-                                                 kubernetes_config,
-                                                 force_unlock)
-        else:
-            # sdn configuration check
-            self._semantic_check_sdn_attributes(ihost)
-
-            # check whether data route gateways are reachable
-            self._semantic_check_data_routes(ihost)
-
-            # check whether data interfaces have been configured
-            self._semantic_check_data_interfaces(ihost,
-                                                 kubernetes_config,
-                                                 force_unlock)
-            self._semantic_check_data_addresses(ihost)
-            self._semantic_check_data_vrs_attributes(ihost)
+        self._semantic_check_data_interfaces(ihost,
+                                             force_unlock)
 
         # Check if cpu assignments are valid
         self._semantic_check_worker_cpu_assignments(ihost)
@@ -5937,21 +5900,20 @@ class HostController(rest.RestController):
                         % hostupdate.displayid)
                 raise wsme.exc.ClientSideError(msg)
 
-            if utils.is_kubernetes_config():
-                # Check if there is a cluster-host interface on
-                # controller/worker/storage
-                host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(
-                    ihost['uuid'])
-                network = pecan.request.dbapi.network_get_by_type(
-                    constants.NETWORK_TYPE_CLUSTER_HOST)
-                for iif in host_interfaces:
-                    if iif.networks and str(network.id) in iif.networks:
-                        break
-                else:
-                    msg = _("Cannot unlock host %s "
-                            "without configuring a cluster-host interface."
-                            % hostupdate.displayid)
-                    raise wsme.exc.ClientSideError(msg)
+            # Check if there is a cluster-host interface on
+            # controller/worker/storage
+            host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(
+                ihost['uuid'])
+            network = pecan.request.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+            for iif in host_interfaces:
+                if iif.networks and str(network.id) in iif.networks:
+                    break
+            else:
+                msg = _("Cannot unlock host %s "
+                        "without configuring a cluster-host interface."
+                        % hostupdate.displayid)
+                raise wsme.exc.ClientSideError(msg)
 
             hostupdate.configure_required = True
 

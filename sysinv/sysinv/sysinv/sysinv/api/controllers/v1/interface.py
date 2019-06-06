@@ -2163,19 +2163,7 @@ def _neutron_providernet_extension_supported():
     """
     # In the case of a kubernetes config, neutron may not be running, and
     # sysinv should not rely on talking to containerized neutron.
-    if utils.is_kubernetes_config():
-        return False
-
-    return True
-    # TODO: This should be looking at the neutron extension list, but because
-    # our config file is not setup properly to have a different region on a per
-    # service basis we cannot.
-    #
-    # The code should like something like this:
-    #
-    # extensions = pecan.request.rpcapi.neutron_extension_list(
-    #    pecan.request.context)
-    # return bool(constants.NEUTRON_WRS_PROVIDER_ALIAS in extensions)
+    return False
 
 
 def _neutron_providernet_list():

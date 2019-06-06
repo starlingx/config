@@ -71,8 +71,7 @@ def populate_system_config(client):
                     'vswitch_type': 'none',
                     'shared_services': '[]',
                     'sdn_enabled': False,
-                    'https_enabled': False,
-                    'kubernetes_enabled': True}
+                    'https_enabled': False}
 
     values = {
         'system_mode': CONF.get('BOOTSTRAP_CONFIG', 'SYSTEM_MODE'),

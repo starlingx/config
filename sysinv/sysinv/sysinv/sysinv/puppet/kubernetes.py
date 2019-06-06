@@ -31,50 +31,48 @@ class KubernetesPuppet(base.BasePuppet):
 
     def get_system_config(self):
         config = {}
-        if self._kubernetes_enabled():
-            config.update(
-                {'platform::kubernetes::params::enabled': True,
-                 'platform::kubernetes::params::pod_network_cidr':
-                     self._get_pod_network_cidr(),
-                 'platform::kubernetes::params::pod_network_ipversion':
-                     self._get_pod_network_ipversion(),
-                 'platform::kubernetes::params::service_network_cidr':
-                     self._get_cluster_service_subnet(),
-                 'platform::kubernetes::params::apiserver_advertise_address':
-                     self._get_cluster_host_address(),
-                 'platform::kubernetes::params::etcd_endpoint':
-                     self._get_etcd_endpoint(),
-                 'platform::kubernetes::params::service_domain':
-                     self._get_dns_service_domain(),
-                 'platform::kubernetes::params::dns_service_ip':
-                     self._get_dns_service_ip(),
-                 })
+        config.update(
+            {'platform::kubernetes::params::enabled': True,
+             'platform::kubernetes::params::pod_network_cidr':
+                 self._get_pod_network_cidr(),
+             'platform::kubernetes::params::pod_network_ipversion':
+                 self._get_pod_network_ipversion(),
+             'platform::kubernetes::params::service_network_cidr':
+                 self._get_cluster_service_subnet(),
+             'platform::kubernetes::params::apiserver_advertise_address':
+                 self._get_cluster_host_address(),
+             'platform::kubernetes::params::etcd_endpoint':
+                 self._get_etcd_endpoint(),
+             'platform::kubernetes::params::service_domain':
+                 self._get_dns_service_domain(),
+             'platform::kubernetes::params::dns_service_ip':
+                 self._get_dns_service_ip(),
+             })
 
         return config
 
     def get_secure_system_config(self):
         config = {}
-        if self._kubernetes_enabled():
-            # This is retrieving the certificates that 'kubeadm init'
-            # generated. We will want to change this to generate the
-            # certificates ourselves, store in hiera and then feed those
-            # back into 'kubeadm init'.
-            if os.path.exists('/etc/kubernetes/pki/ca.crt'):
-                # Store required certificates in configuration.
-                with open('/etc/kubernetes/pki/ca.crt', 'r') as f:
-                    ca_crt = f.read()
-                with open('/etc/kubernetes/pki/ca.key', 'r') as f:
-                    ca_key = f.read()
-                with open('/etc/kubernetes/pki/sa.key', 'r') as f:
-                    sa_key = f.read()
-                with open('/etc/kubernetes/pki/sa.pub', 'r') as f:
-                    sa_pub = f.read()
-                config.update(
-                    {'platform::kubernetes::params::ca_crt': ca_crt,
-                     'platform::kubernetes::params::ca_key': ca_key,
-                     'platform::kubernetes::params::sa_key': sa_key,
-                     'platform::kubernetes::params::sa_pub': sa_pub,
-                     })
+        # This is retrieving the certificates that 'kubeadm init'
+        # generated. We will want to change this to generate the
+        # certificates ourselves, store in hiera and then feed those
+        # back into 'kubeadm init'.
+        if os.path.exists('/etc/kubernetes/pki/ca.crt'):
+            # Store required certificates in configuration.
+            with open('/etc/kubernetes/pki/ca.crt', 'r') as f:
+                ca_crt = f.read()
+            with open('/etc/kubernetes/pki/ca.key', 'r') as f:
+                ca_key = f.read()
+            with open('/etc/kubernetes/pki/sa.key', 'r') as f:
+                sa_key = f.read()
+            with open('/etc/kubernetes/pki/sa.pub', 'r') as f:
+                sa_pub = f.read()
+            config.update(
+                {'platform::kubernetes::params::ca_crt': ca_crt,
+                 'platform::kubernetes::params::ca_key': ca_key,
+                 'platform::kubernetes::params::sa_key': sa_key,
+                 'platform::kubernetes::params::sa_pub': sa_pub,
+                 })
         return config
 
     def get_host_config(self, host):

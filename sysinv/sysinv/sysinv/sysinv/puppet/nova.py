@@ -637,7 +637,4 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         return url
 
     def _enable_nova_compute(self):
-        if self._kubernetes_enabled():
-            return False
-        else:
-            return True
+        return False

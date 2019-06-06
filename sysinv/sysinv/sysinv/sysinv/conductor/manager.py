@@ -1575,13 +1575,6 @@ class ConductorManager(service.PeriodicService):
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
 
-                # TODO(CephPoolsDecouple): remove
-                # Ensure the OSD pools exists. In the case of a system restore,
-                # the pools must be re-created when the first storage node is
-                # unlocked.
-                if not utils.is_kubernetes_config(self.dbapi):
-                    self._ceph.configure_osd_pools()
-
                 # Generate host configuration files
                 self._puppet.update_host_config(host)
         else:
@@ -4324,35 +4317,6 @@ class ConductorManager(service.PeriodicService):
         if not availability:
             return
 
-        kubernetes_config = utils.is_kubernetes_config(self.dbapi)
-
-        if (cutils.host_has_function(ihost, constants.WORKER) and not
-                kubernetes_config):
-            if availability == constants.VIM_SERVICES_ENABLED:
-                # report to nova the host aggregate groupings now that
-                # the worker node is available
-                LOG.info("AGG iplatform available for ihost= %s imsg= %s" %
-                         (ihost_uuid, imsg_dict))
-                # AGG10 noted 13secs in vbox between nova manifests applied and
-                # reported by inv to conductor and available signal to
-                # nova conductor
-                for attempts in range(1, 10):
-                    try:
-                        if self._openstack.nova_host_available(ihost_uuid):
-                            break
-                        else:
-                            LOG.error(
-                                "AGG iplatform attempt failed for ihost= %s imsg= %s" % (
-                                    ihost_uuid, imsg_dict))
-                    except Exception:
-                        LOG.exception("nova_host_available exception, continuing!")
-
-                    time.sleep(2)
-
-            elif availability == constants.AVAILABILITY_OFFLINE:
-                LOG.debug("AGG iplatform not available for ihost= %s imsg= %s" % (ihost_uuid, imsg_dict))
-                self._openstack.nova_host_offline(ihost_uuid)
-
         if ((ihost.personality == constants.STORAGE and
                 ihost.hostname == constants.STORAGE_0_HOSTNAME) or
                 (ihost.personality == constants.CONTROLLER)):
@@ -4372,41 +4336,6 @@ class ConductorManager(service.PeriodicService):
                         constants.STOR_FUNCTION_MONITOR})
                 self.dbapi.ihost_update(ihost_uuid,
                     {'capabilities': ihost.capabilities})
-
-            storage_lvm = StorageBackendConfig.get_configured_backend_conf(
-                self.dbapi,
-                constants.CINDER_BACKEND_LVM
-            )
-
-            if (storage_lvm and ihost.personality == constants.CONTROLLER and
-                    not kubernetes_config):
-                LOG.debug("iplatform monitor check system has lvm backend")
-                cinder_device = cutils._get_cinder_device(self.dbapi, ihost.id)
-                idisks = self.dbapi.idisk_get_by_ihost(ihost_uuid)
-                for idisk in idisks:
-                    LOG.debug("checking for cinder disk device_path=%s "
-                              "cinder_device=%s" %
-                              (idisk.device_path, cinder_device))
-                    if ((idisk.device_path and
-                        idisk.device_path == cinder_device) or
-                        (idisk.device_node and
-                           idisk.device_node == cinder_device)):
-                        idisk_capabilities = idisk.capabilities
-                        idisk_dict = {'device_function': 'cinder_device'}
-                        idisk_capabilities.update(idisk_dict)
-
-                        idisk_val = {'capabilities': idisk_capabilities}
-                        LOG.info("SYS_I MATCH host %s device_node %s cinder_device %s idisk.uuid %s val %s" %
-                             (ihost.hostname,
-                              idisk.device_node,
-                              cinder_device,
-                              idisk.uuid,
-                              idisk_val))
-
-                        self.dbapi.idisk_update(idisk.uuid, idisk_val)
-
-                if availability == constants.VIM_SERVICES_ENABLED:
-                    self._resize_cinder_volumes()
 
         if availability == constants.AVAILABILITY_AVAILABLE:
             if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
@@ -5014,8 +4943,7 @@ class ConductorManager(service.PeriodicService):
             self._audit_ihost_action(host)
 
     def _audit_kubernetes_labels(self, hosts):
-        if (not utils.is_kubernetes_config(self.dbapi) or
-                not cutils.is_initial_config_complete()):
+        if not cutils.is_initial_config_complete():
             LOG.debug("_audit_kubernetes_labels skip")
             return
 
@@ -5047,29 +4975,8 @@ class ConductorManager(service.PeriodicService):
     # TODO(CephPoolsDecouple): remove
     @periodic_task.periodic_task(spacing=60)
     def _osd_pool_audit(self, context):
-        if utils.is_kubernetes_config(self.dbapi):
-            LOG.debug("_osd_pool_audit skip")
-            return
-
-        # Only do the audit if ceph is configured.
-        if not StorageBackendConfig.has_backend(
-            self.dbapi,
-            constants.CINDER_BACKEND_CEPH
-        ):
-            return
-
-        LOG.debug("_osd_pool_audit")
-
-        # Only run the pool audit task if we have at least one storage node
-        # available. Pools are created with initial PG num values and quotas
-        # when the first OSD is added. This is done with only controller-0
-        # and controller-1 forming a quorum in the cluster. Trigger the code
-        # that will look to scale the PG num values and validate pool quotas
-        # once a storage host becomes available.
-        if self._ceph.get_ceph_cluster_info_availability():
-            # periodically, perform audit of OSD pool
-            LOG.debug("Sysinv Conductor running periodic OSD pool audit task.")
-            self._ceph.audit_osd_pools_by_tier()
+        LOG.debug("_osd_pool_audit skip")
+        return
 
     def set_backend_to_err(self, backend):
         """Set backend state to error"""
@@ -7021,7 +6928,6 @@ class ConductorManager(service.PeriodicService):
 
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
-        kubernetes_config = system.capabilities.get('kubernetes_enabled', False)
 
         LOG.info("Local  Region Name: %s" % system.region_name)
 
@@ -7222,44 +7128,43 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
-        if kubernetes_config:
-            docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
+        docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
 
-            data = {
-                'name': constants.FILESYSTEM_NAME_DOCKER,
-                'size': docker_lv_size,
+        data = {
+            'name': constants.FILESYSTEM_NAME_DOCKER,
+            'size': docker_lv_size,
+            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                constants.FILESYSTEM_NAME_DOCKER],
+            'replicated': False,
+        }
+        LOG.info("Creating FS:%s:%s %d" % (
+            data['name'], data['logical_volume'], data['size']))
+        self.dbapi.controller_fs_create(data)
+
+        # ETCD fs added to cgts-lv
+        etcd_lv_size = constants.ETCD_STOR_SIZE
+
+        data_etcd = {
+                'name': constants.FILESYSTEM_NAME_ETCD,
+                'size': etcd_lv_size,
                 'logical_volume': constants.FILESYSTEM_LV_DICT[
-                    constants.FILESYSTEM_NAME_DOCKER],
-                'replicated': False,
-            }
-            LOG.info("Creating FS:%s:%s %d" % (
-                data['name'], data['logical_volume'], data['size']))
-            self.dbapi.controller_fs_create(data)
-
-            # ETCD fs added to cgts-lv
-            etcd_lv_size = constants.ETCD_STOR_SIZE
-
-            data_etcd = {
-                    'name': constants.FILESYSTEM_NAME_ETCD,
-                    'size': etcd_lv_size,
-                    'logical_volume': constants.FILESYSTEM_LV_DICT[
-                        constants.FILESYSTEM_NAME_ETCD],
-                    'replicated': True,
-            }
-            LOG.info("Creating FS:%s:%s %d" % (
-                data_etcd['name'], data_etcd['logical_volume'], data_etcd['size']))
-            self.dbapi.controller_fs_create(data_etcd)
-
-            data = {
-                'name': constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION,
-                'size': constants.DOCKER_DISTRIBUTION_STOR_SIZE,
-                'logical_volume': constants.FILESYSTEM_LV_DICT[
-                    constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION],
+                    constants.FILESYSTEM_NAME_ETCD],
                 'replicated': True,
-            }
-            LOG.info("Creating FS:%s:%s %d" % (
-                data['name'], data['logical_volume'], data['size']))
-            self.dbapi.controller_fs_create(data)
+        }
+        LOG.info("Creating FS:%s:%s %d" % (
+            data_etcd['name'], data_etcd['logical_volume'], data_etcd['size']))
+        self.dbapi.controller_fs_create(data_etcd)
+
+        data = {
+            'name': constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION,
+            'size': constants.DOCKER_DISTRIBUTION_STOR_SIZE,
+            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION],
+            'replicated': True,
+        }
+        LOG.info("Creating FS:%s:%s %d" % (
+            data['name'], data['logical_volume'], data['size']))
+        self.dbapi.controller_fs_create(data)
 
         if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
                 tsc.system_type != constants.TIS_AIO_BUILD):

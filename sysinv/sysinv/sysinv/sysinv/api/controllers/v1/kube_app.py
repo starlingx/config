@@ -126,10 +126,6 @@ class KubeAppController(rest.RestController):
     def __init__(self, parent=None, **kwargs):
         self._parent = parent
 
-    def _check_environment(self):
-        if not utils.is_kubernetes_config():
-            raise exception.OperationNotPermitted
-
     def _check_tarfile(self, app_tarfile, app_name, app_version, operation):
         def _handle_upload_failure(reason):
             raise wsme.exc.ClientSideError(_(
@@ -189,23 +185,18 @@ class KubeAppController(rest.RestController):
 
     @wsme_pecan.wsexpose(KubeAppCollection)
     def get_all(self):
-        self._check_environment()
         apps = pecan.request.dbapi.kube_app_get_all()
         return KubeAppCollection.convert_with_links(apps)
 
     @wsme_pecan.wsexpose(KubeApp, wtypes.text)
     def get_one(self, app_name):
         """Retrieve a single application."""
-        self._check_environment()
         return self._get_one(app_name)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
     def post(self, body):
         """Uploading an application to be deployed by Armada"""
-
-        self._check_environment()
-
         tarfile = body.get('tarfile')
         name = body.get('name', '')
         version = body.get('app_version', '')
@@ -245,8 +236,6 @@ class KubeAppController(rest.RestController):
         :param name: application name
         :param directive: either 'apply' (fresh install/update) or 'remove'
         """
-
-        self._check_environment()
         if directive not in ['apply', 'remove']:
             raise exception.OperationNotPermitted
 
@@ -397,8 +386,6 @@ class KubeAppController(rest.RestController):
 
         :param name: application name
         """
-
-        self._check_environment()
         try:
             db_app = objects.kube_app.get_by_name(pecan.request.context, name)
         except exception.KubeAppNotFound:
