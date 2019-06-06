@@ -2043,3 +2043,18 @@ def refresh_helm_repo_information():
         except subprocess.CalledProcessError:
             # Just log an error. Don't stop any callers from further execution.
             LOG.error("Failed to update helm repo data for user wrsroot.")
+
+
+def is_inventory_config_complete(dbapi, forihostid):
+    """Check if the initial inventory has completed
+
+    Due to lack of host state that signifies the completion of inventory, this
+    function retrieves the list of persistent volumes from the database. If
+    the count is not zero; ports, disks and PVs have been inventoried.
+    """
+
+    try:
+        pvs = dbapi.ipv_get_by_ihost(forihostid)
+        return len(pvs) > 0
+    except Exception:
+        return False

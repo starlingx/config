@@ -10846,21 +10846,37 @@ class ConductorManager(service.PeriodicService):
         if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
                 host.hostname == constants.CONTROLLER_0_HOSTNAME):
 
-            controller_0_address = self.dbapi.address_get_by_name(
-                constants.CONTROLLER_0_MGMT)
-            if controller_0_address.address != host.mgmt_ip:
-                self.dbapi.ihost_update(host.uuid,
-                                        {'mgmt_ip': controller_0_address.address})
+            inventory_completed = True
 
-            personalities = [constants.CONTROLLER]
-            config_uuid = self._config_update_hosts(context, personalities)
-            config_dict = {
-                "personalities": personalities,
-                "host_uuids": [host.uuid],
-                "classes": ['openstack::keystone::endpoint::runtime']
-            }
-            self._config_apply_runtime_manifest(
-                context, config_uuid, config_dict, force=True)
+            # This could be called as part of host creation, wait for
+            # inventory to complete
+            for i in range(constants.INVENTORY_WAIT_TIMEOUT_IN_SECS):
+                if cutils.is_inventory_config_complete(self.dbapi, host.uuid):
+                    break
+                LOG.info('Inventory incomplete, will try again in 1 second.')
+                greenthread.sleep(1)
+            else:
+                inventory_completed = False
+
+            if inventory_completed:
+                controller_0_address = self.dbapi.address_get_by_name(
+                    constants.CONTROLLER_0_MGMT)
+                if controller_0_address.address != host.mgmt_ip:
+                    self.dbapi.ihost_update(
+                        host.uuid, {'mgmt_ip': controller_0_address.address})
+
+                personalities = [constants.CONTROLLER]
+                config_uuid = self._config_update_hosts(context, personalities)
+                config_dict = {
+                    "personalities": personalities,
+                    "host_uuids": [host.uuid],
+                    "classes": ['openstack::keystone::endpoint::runtime']
+                }
+                self._config_apply_runtime_manifest(
+                    context, config_uuid, config_dict, force=True)
+            else:
+                LOG.error("Unable to reconfigure service endpoints. Timed out "
+                          "waiting for inventory to complete.")
         else:
             LOG.error("Received a request to reconfigure service endpoints "
                       "for host %s under the wrong condition." % host.hostname)

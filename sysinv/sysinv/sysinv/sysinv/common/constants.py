@@ -1554,3 +1554,4 @@ DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
 # Ansible bootstrap
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
 UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
+INVENTORY_WAIT_TIMEOUT_IN_SECS = 90
