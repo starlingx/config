@@ -127,7 +127,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'CONFIG_KEYSTONE_ADMIN_USERNAME': self.get_admin_user_name(),
         }
 
-        if utils.is_openstack_installed(self.dbapi):
+        if utils.is_openstack_applied(self.dbapi):
             config['openstack::keystone::params::openstack_auth_uri'] = \
                 self.get_openstack_auth_uri()
 
