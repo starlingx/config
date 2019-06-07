@@ -2,6 +2,4 @@
 image_brand: StarlingX
 platform_path: /opt/platform
 puppet_path: /opt/platform/puppet
-last_bootstrap_config_file: /tmp/last_bootstrap_config_{{ inventory_hostname }}.yml
-
 standard_root_disk_size: 500
