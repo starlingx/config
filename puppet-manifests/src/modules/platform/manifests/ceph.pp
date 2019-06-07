@@ -26,6 +26,9 @@ class platform::ceph::params(
   $rgw_frontend_type = 'civetweb',
   $rgw_port = 7480,
   $rgw_log_file = '/var/log/radosgw/radosgw.log',
+  $rgw_service_domain = undef,
+  $rgw_service_project = undef,
+  $rgw_service_password = undef,
   $rgw_admin_domain = undef,
   $rgw_admin_project = undef,
   $rgw_admin_user = 'swift',
@@ -404,6 +407,56 @@ class platform::ceph::haproxy
       private_port => $rgw_port,
     }
   }
+}
+
+class platform::ceph::rgw::runtime
+  inherits ::platform::ceph::params {
+    if $service_enabled {
+      include ::platform::params
+
+      include ::openstack::keystone::params
+
+      ceph::rgw::keystone { $rgw_client_name:
+        rgw_keystone_admin_token    => '',
+        rgw_keystone_url            => $::openstack::keystone::params::openstack_auth_uri,
+        rgw_keystone_version        => $::openstack::keystone::params::api_version,
+        rgw_keystone_accepted_roles => 'admin,_member_',
+        user                        => $rgw_user_name,
+        use_pki                     => false,
+        rgw_keystone_admin_domain   => $rgw_service_domain,
+        rgw_keystone_admin_project  => $rgw_service_project,
+        rgw_keystone_admin_user     => $rgw_admin_user,
+        rgw_keystone_admin_password => $rgw_service_password,
+      }
+      exec { 'sm-restart-safe service ceph-radosgw':
+        command => 'sm-restart-safe service ceph-radosgw'
+      }
+    }
+}
+
+class platform::ceph::rgw::runtime_revert
+  inherits ::platform::ceph::params {
+    if $service_enabled {
+      include ::platform::params
+
+      include ::openstack::keystone::params
+
+      ceph::rgw::keystone { $rgw_client_name:
+        rgw_keystone_admin_token    => '',
+        rgw_keystone_url            => $::openstack::keystone::params::auth_uri,
+        rgw_keystone_version        => $::openstack::keystone::params::api_version,
+        rgw_keystone_accepted_roles => 'admin,_member_',
+        user                        => $rgw_user_name,
+        use_pki                     => false,
+        rgw_keystone_admin_domain   => $rgw_admin_domain,
+        rgw_keystone_admin_project  => $rgw_admin_project,
+        rgw_keystone_admin_user     => $rgw_admin_user,
+        rgw_keystone_admin_password => $rgw_admin_password,
+      }
+      exec { 'sm-restart-safe service ceph-radosgw':
+        command => 'sm-restart-safe service ceph-radosgw'
+      }
+    }
 }
 
 class platform::ceph::rgw

@@ -6483,6 +6483,21 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
+    def _revert_cephrgw_config(self, context):
+        """ Revert ceph rgw configuration. """
+        personalities = [constants.CONTROLLER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::ceph::rgw::runtime_revert']
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
     def _update_config_for_stx_openstack(self, context):
         """ Update the runtime configurations that are required
             for stx-openstack application
@@ -6495,6 +6510,21 @@ class ConductorManager(service.PeriodicService):
             "personalities": personalities,
             "classes": ['platform::nfv::runtime',
                         'platform::sm::stx_openstack::runtime']
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
+    def _update_cephrgw_config(self, context):
+        """ Update ceph rgw configuration. """
+        personalities = [constants.CONTROLLER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::ceph::rgw::runtime']
         }
 
         self._config_apply_runtime_manifest(context,
@@ -10795,6 +10825,7 @@ class ConductorManager(service.PeriodicService):
         appname = self._app.get_appname(rpc_app)
         if constants.HELM_APP_OPENSTACK == appname and app_applied \
                 and not was_applied:
+            self._update_cephrgw_config(context)
             # apply any runtime configurations that are needed for
             # stx_openstack application
             self._update_config_for_stx_openstack(context)
@@ -10820,6 +10851,7 @@ class ConductorManager(service.PeriodicService):
 
         app_removed = self._app.perform_app_remove(rpc_app)
         if constants.HELM_APP_OPENSTACK == appname and app_removed:
+            self._revert_cephrgw_config(context)
             # Update the VIM and PciIrqAffinity configuration.
             self._update_vim_config(context)
             self._update_pciirqaffinity_config(context)

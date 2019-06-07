@@ -3,6 +3,7 @@ class openstack::keystone::params(
   $identity_uri,
   $auth_uri,
   $host_url,
+  $openstack_auth_uri = undef,
   $api_port = 5000,
   $admin_port = 5000,
   $region_name = undef,
