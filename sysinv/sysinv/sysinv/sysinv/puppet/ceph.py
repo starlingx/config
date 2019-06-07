@@ -114,7 +114,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_tenant_name(),
         }
 
-        if utils.is_openstack_installed(self.dbapi):
+        if utils.is_openstack_applied(self.dbapi):
             override = self.dbapi.helm_override_get(
                         self.SERVICE_NAME_RGW, common.HELM_NS_OPENSTACK)
             password = override.system_overrides.get(
