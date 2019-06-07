@@ -1,0 +1,41 @@
+Source: sysinv
+Priority: optional
+Maintainer: StarlingX team <starlingx-discuss@lists.starlingx.io>
+Build-Depends: python-setuptools,
+               python-all,
+               debhelper,
+               dh-python,
+               python-pbr,
+               python-wheel,
+               python-pip,
+               systemd
+Standards-Version: 3.9.6
+
+Package: sysinv
+Architecture: all
+Depends: ${misc:Depends},
+         ${python:Depends},
+         python-docker,
+         python-parted,
+         python-six,
+         python-pyudev,
+         python-pbr,
+         python-ipaddr,
+         python-kubernetes,
+         python-eventlet,
+         python-oslo-utils,
+         python-oslo-config,
+         python-oslo-concurrency,
+         python-oslo-db,
+         python-oslo-log,
+         python-netaddr,
+         python-webtest,
+         python-wsme,
+         python-mock,
+         python-keyring,
+         python-pecan,
+         python-mox3,
+         python-pytest,
+         python-testtools,
+         tsconfig
+Description: This package contains the StarlingX sysinv project.
