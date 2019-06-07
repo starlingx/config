@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+
+export PYBUILD_INSTALL_ARGS=--install-data=/usr/share --prefix=/usr --single-version-externally-managed
+
+%:
+	dh $@ --with python2 --buildsystem=pybuild
+
+override_dh_auto_test:
+	echo "skipping test"
