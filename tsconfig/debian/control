@@ -1,0 +1,14 @@
+Source: tsconfig
+Priority: optional
+Maintainer: The StarlingX Developer Team <starlingx-discuss@lists.starlingx.io>
+Build-Depends: debhelper,
+               dh-python,
+               python-setuptools,
+               python-all
+
+Standards-Version: 3.9.6
+Package: tsconfig
+Architecture: all
+Depends: ${misc:Depends}, ${python:Depends}
+Description: This package contains the StarlingX tsconfig project.
+

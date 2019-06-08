@@ -1,0 +1,6 @@
+#!/usr/bin/make -f
+
+export PYBUILD_INSTALL_ARGS=--install-data=/usr/share --prefix=/usr
+%:
+	dh $@ --with python2 --buildsystem=pybuild
+
