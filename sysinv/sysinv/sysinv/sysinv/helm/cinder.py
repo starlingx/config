@@ -95,9 +95,6 @@ class CinderHelm(openstack.OpenstackBaseHelm):
             backend_type=constants.SB_TYPE_CEPH)
         conf_cinder = {
             'DEFAULT': {
-                # Use the CEPH backup driver. The chart will create a pool for
-                # keeping the backups. All cinder backup pods will use it.
-                'backup_driver': 'cinder.backup.drivers.ceph.CephBackupDriver',
                 'enabled_backends': ','.join(
                     b.name.encode('utf8', 'strict') for b in backends)
             },
@@ -152,6 +149,7 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                 'volume_backend_name': bk_name,
                 'volume_driver': 'cinder.volume.drivers.rbd.RBDDriver',
                 'rbd_pool': rbd_pool.encode('utf8', 'strict'),
+                'rbd_user': 'cinder',
                 'rbd_ceph_conf':
                     (constants.CEPH_CONF_PATH +
                      constants.SB_TYPE_CEPH_CONF_FILENAME),

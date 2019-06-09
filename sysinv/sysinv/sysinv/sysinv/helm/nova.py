@@ -18,7 +18,10 @@ from sysinv.helm import openstack
 
 LOG = logging.getLogger(__name__)
 
-RBD_POOL_USER = "ephemeral"
+# Align ephemeral rbd_user with the cinder rbd_user so that the same libvirt
+# secret can be used for accessing both pools. This also aligns with the
+# behavior defined in nova/virt/libvirt/volume/net.py:_set_auth_config_rbd()
+RBD_POOL_USER = "cinder"
 
 DEFAULT_NOVA_PCI_ALIAS = [
     {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
