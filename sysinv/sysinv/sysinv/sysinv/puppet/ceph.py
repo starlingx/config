@@ -115,8 +115,11 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         }
 
         if utils.is_openstack_applied(self.dbapi):
+            app = self.dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
             override = self.dbapi.helm_override_get(
-                        self.SERVICE_NAME_RGW, common.HELM_NS_OPENSTACK)
+                        app.id,
+                        self.SERVICE_NAME_RGW,
+                        common.HELM_NS_OPENSTACK)
             password = override.system_overrides.get(
                         self.SERVICE_NAME_RGW, None)
             if password:
