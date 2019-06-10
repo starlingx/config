@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -635,7 +635,7 @@ class ControllerFsController(rest.RestController):
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(types.uuid, [ControllerFsPatchType])
-    @wsme_pecan.wsexpose(ControllerFs, types.uuid, body=[[ControllerFsPatchType]])
+    @wsme_pecan.wsexpose(None, types.uuid, body=[[ControllerFsPatchType]])
     def update_many(self, isystem_uuid, patch):
         """Update the current controller_fs configuration."""
 

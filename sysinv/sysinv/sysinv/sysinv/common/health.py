@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -138,7 +138,7 @@ class Health(object):
             # and also filter the alarms bases on entity instance id.
             # If multiple alarms with the same ID exist, we only return the ID
             # one time.
-            if not fm_api.FaultAPIs.alarm_allowed(alarm.severity, degrade_affecting):
+            if degrade_affecting == 'True':
                 if (entity_instance_id_filter in alarm.entity_instance_id and
                         alarm.alarm_id not in alarm_ignore_list and
                         alarm.alarm_id not in degrade_alarms):
