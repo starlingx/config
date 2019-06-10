@@ -192,6 +192,7 @@ manifests:
   secret_ingress_tls: false
   secret_keystone: true
   service_fm: true
+  service_ingress: true
 endpoints:
   cluster_domain_suffix: cluster.local
   oslo_db:
