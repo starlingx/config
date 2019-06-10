@@ -181,7 +181,6 @@
       # Set this placeholder here to workaround an Ansible quirk
       derived_network_params:
         place_holder: place_holder
-      last_bootstrap_config_file: "{{ last_bootstrap_config_file }}"
 
   - name: Turn on use_docker_proxy flag
     set_fact:
@@ -233,6 +232,13 @@
       config_permdir: "{{ platform_path + '/config/' + software_version }}"
       puppet_permdir: "{{ platform_path + '/puppet/' + software_version }}"
 
+  # Give the bootstrap config output file on the host a generic name so the
+  # same file is referenced if the host is bootstrapped locally and remotely
+  # in whatever order.
+  - name: Set bootstrap output file
+    set_fact:
+      last_bootstrap_config_file: "{{ config_permdir }}/last_bootstrap_config.yml"
+
   - name: Check Docker status
     command: systemctl status docker
     failed_when: false
@@ -265,17 +271,29 @@
         register: last_config_file
 
       - block:
+        - name: Set last config file to import (local)
+          set_fact:
+            last_config: "{{ last_bootstrap_config_file }}"
+          when: inventory_hostname == 'localhost'
+
         # Currently Ansible include_vars only works with local file
-        - name: Fetch previous config file from this host
-          fetch:
-            src: "{{ last_bootstrap_config_file }}"
-            dest: /tmp/
-            flat: yes
+        - block:
+          # Give a host specific name in case the playbook is used to bootstrap
+          # multiple remote hosts simultaneously
+          - name: Set last config file to import (remote)
+            set_fact:
+              last_config: "/tmp/{{ (last_bootstrap_config_file | basename | splitext)[0] }}_{{ inventory_hostname }}.yml"
+
+          - name: Fetch previous config file from this host
+            fetch:
+              src: "{{ last_bootstrap_config_file }}"
+              dest: "{{ last_config }}"
+              flat: yes
           when: inventory_hostname != 'localhost'
 
         - name: Read in last config values
           include_vars:
-            file: "{{ last_bootstrap_config_file }}"
+            file: "{{ last_config }}"
 
         - name: Turn on system attributes reconfiguration flag
           set_fact:
