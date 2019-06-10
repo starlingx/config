@@ -114,7 +114,7 @@ vswitch_type=ovs-dpdk
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
         mock_open.return_value = io.StringIO(self.mock_malformed_build)
-        from tsconfig import tsconfig
+        from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
 
     # This tests the behaviour when the platform.conf is missing
@@ -129,7 +129,7 @@ vswitch_type=ovs-dpdk
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
         mock_open.return_value = io.StringIO(self.mock_19_01_build)
-        from tsconfig import tsconfig
+        from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
 
     # This tests the behaviour when the platform.conf is empty
@@ -145,7 +145,7 @@ vswitch_type=ovs-dpdk
         # 2nd: /etc/platform/platform.conf
         mock_open.side_effect = [io.StringIO(self.mock_19_01_build),
                                  io.StringIO(self.mock_platform_conf_empty)]
-        from tsconfig import tsconfig
+        from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
 
     # This tests the behaviour when the platform.conf has the minimal entries
