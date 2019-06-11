@@ -50,6 +50,7 @@ LABEL_CONTROLLER = 'openstack-control-plane'
 LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
+LABEL_IRONIC = 'openstack-ironic'
 
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'
