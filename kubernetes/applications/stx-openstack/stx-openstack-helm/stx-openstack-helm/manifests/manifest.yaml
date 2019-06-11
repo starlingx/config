@@ -796,13 +796,14 @@ data:
       service_ingress_osapi: false
       cron_job_cell_setup: false
       cron_job_service_cleaner: false
+      statefulset_compute_ironic: false
     labels:
       agent:
         compute:
           node_selector_key: openstack-compute-node
           node_selector_value: enabled
         compute_ironic:
-          node_selector_key: openstack-compute-node
+          node_selector_key: openstack-ironic
           node_selector_value: enabled
       api_metadata:
         node_selector_key: openstack-control-plane
@@ -961,7 +962,6 @@ data:
             - ServerGroupAffinityFilter
             - ServerGroupAntiAffinityFilter
             - PciPassthroughFilter
-            - DiskFilter
           io_ops_weight_multiplier: -5.0
           pci_weight_multiplier: 0.0
           ram_weight_multiplier: 0.0
@@ -1217,6 +1217,108 @@ data:
     type: tar
     location: http://172.17.0.1/helm_charts/starlingx/neutron-0.1.0.tgz
     subpath: neutron
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-ironic
+data:
+  chart_name: ironic
+  release: openstack-ironic
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-ironic
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-ironic
+  values:
+    pod:
+      replicas:
+        api: 2
+        conductor: 2
+      user:
+        ironic:
+          uid: 0
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
+    labels:
+      api:
+        node_selector_key: openstack-ironic
+        node_selector_value: enabled
+      conductor:
+        node_selector_key: openstack-ironic
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-ironic
+        node_selector_value: enabled
+    images:
+      tags:
+        ironic_manage_cleaning_network: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ironic_retrive_cleaning_network: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ironic_retrive_swift_config: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        bootstrap: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        db_drop: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        db_init: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ironic_db_sync: docker.io/starlingx/stx-ironic:master-centos-stable-latest
+        ks_user: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ironic_api: docker.io/starlingx/stx-ironic:master-centos-stable-latest
+        ironic_conductor: docker.io/starlingx/stx-ironic:master-centos-stable-latest
+        ironic_pxe: docker.io/starlingx/stx-ironic:master-centos-stable-latest
+        ironic_pxe_init: docker.io/starlingx/stx-ironic:master-centos-stable-latest
+        ironic_pxe_http: docker.io/nginx:1.13.3
+    conf:
+      ironic:
+        DEFAULT:
+          # enabled_drivers is deprecated in stein
+          enabled_drivers: ''
+          enabled_hardware_types: ipmi
+          enabled_bios_interfaces: no-bios
+          enabled_boot_interfaces: pxe,ipxe
+          enabled_console_interfaces: ipmitool-socat
+          enabled_deploy_interfaces: iscsi,direct
+          enabled_inspect_interfaces: no-inspect
+          enabled_management_interfaces: ipmitool
+          enabled_network_interfaces: flat,noop
+          enabled_power_interfaces: ipmitool
+          enabled_raid_interfaces: no-raid
+          enabled_storage_interfaces: cinder,noop
+          enabled_vendor_interfaces: ipmitool,no-vendor
+        api:
+          port: 6385
+        pxe:
+          pxe_append_params: "nofb nomodeset vga=normal console=ttyS0,115200n8"
+        dhcp:
+          dhcp_provider: neutron
+    # Disable ipa image downloading during bootstrap
+    bootstrap:
+      image:
+        enabled: false
+    endpoints:
+      baremetal:
+        port:
+          pxe_http:
+            default: 28080
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/starlingx/ironic-0.1.0.tgz
+    subpath: ironic
     reference: master
   dependencies:
     - helm-toolkit
