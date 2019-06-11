@@ -10804,6 +10804,16 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
+    def remove_unlock_ready_flag(self, context):
+        """Remove the unlock ready flag if it exists
+
+          :param context: request context.
+          """
+        try:
+            os.remove(constants.UNLOCK_READY_FLAG)
+        except OSError:
+            pass
+
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handling of application upload request (via AppOperator)
 
@@ -10824,13 +10834,18 @@ class ConductorManager(service.PeriodicService):
         was_applied = self._app.is_app_active(rpc_app)
         app_applied = self._app.perform_app_apply(rpc_app, mode)
         appname = self._app.get_appname(rpc_app)
-        if constants.HELM_APP_OPENSTACK == appname and app_applied \
-                and not was_applied:
-            self._update_cephrgw_config(context)
-            # apply any runtime configurations that are needed for
-            # stx_openstack application
-            self._update_config_for_stx_openstack(context)
-            self._update_pciirqaffinity_config(context)
+        if constants.HELM_APP_OPENSTACK == appname and app_applied:
+            if was_applied:
+                # stx-openstack application was applied, this is a
+                # reapply action
+                # generate .unlock_ready flag
+                cutils.touch(constants.UNLOCK_READY_FLAG)
+            else:
+                self._update_cephrgw_config(context)
+                # apply any runtime configurations that are needed for
+                # stx_openstack application
+                self._update_config_for_stx_openstack(context)
+                self._update_pciirqaffinity_config(context)
 
         return app_applied
 

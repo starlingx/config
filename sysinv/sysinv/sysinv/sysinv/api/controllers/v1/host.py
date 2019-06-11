@@ -2048,6 +2048,15 @@ class HostController(rest.RestController):
                         new_ihost_mtc,
                         constants.MTC_DEFAULT_TIMEOUT_IN_SECS)
                 elif new_ihost_mtc['operation'] == 'modify':
+                    if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+                        if new_ihost_mtc['action'] == constants.UNLOCK_ACTION:
+                            if cutils.is_openstack_applied(pecan.request.dbapi):
+                                # Unlock action on a simplex with stx-openstack
+                                # applied, should remove the unlock ready flag
+                                # because the application should be reapplied
+                                # before unlock
+                                LOG.info("Remove unlock ready flag")
+                                self._remove_unlock_ready_flag()
                     mtc_response = mtce_api.host_modify(
                         self._api_token, self._mtc_address, self._mtc_port,
                         new_ihost_mtc,
@@ -2466,6 +2475,10 @@ class HostController(rest.RestController):
         # a reapply
         if openstack_worker:
             self._reapply_system_app()
+
+    def _remove_unlock_ready_flag(self):
+        pecan.request.rpcapi.remove_unlock_ready_flag(
+            pecan.request.context)
 
     def _reapply_system_app(self):
         try:
