@@ -11,11 +11,15 @@
 
 # Check host connectivity, change password if provided
 - block:
+  - name: Set SSH port
+    set_fact:
+      ansible_port: "{{ ansible_port | default(22) }}"
+
   - name: Update SSH known hosts
     lineinfile:
       path: ~/.ssh/known_hosts
       state: absent
-      regexp: '^{{ ansible_host }}'
+      regexp: '^{{ ansible_host }}|^\[{{ ansible_host }}\]:{{ ansible_port }}'
     delegate_to: localhost
 
   - name: Check connectivity
@@ -35,7 +39,7 @@
     - name: Change initial password
       expect:
         echo: yes
-        command: "ssh {{ ansible_ssh_user }}@{{ ansible_host }}"
+        command: "ssh -p {{ ansible_port }} {{ ansible_ssh_user }}@{{ ansible_host }}"
         responses: "{{ password_change_responses }}"
       failed_when: false
       delegate_to: localhost
@@ -85,12 +89,6 @@
 
 # Proceed only if skip_play flag is not turned on
 - block:
-  #- name: Disable SSH timeout
-  #  lineinfile:
-  #    path: /etc/profile.d/custom.sh
-  #    regexp: "export TMOUT*"
-  #    line: "export TMOUT=0"
-
   # The following parameters should exist in default.yml. If any of them is
   # not available, the file is invalid.
   - name: Fail if any of the mandatory configurations are not defined
@@ -181,6 +179,7 @@
       # Set this placeholder here to workaround an Ansible quirk
       derived_network_params:
         place_holder: place_holder
+      ansible_remote_tmp: "{{ ansible_remote_tmp | default(lookup('ini', 'remote_tmp section=defaults file={{ playbook_dir }}/ansible.cfg')) }}"
 
   - name: Turn on use_docker_proxy flag
     set_fact:
@@ -455,6 +454,16 @@
     file:
       path: /var/run/.ansible_bootstrap
       state: touch
+
+  # Set up the remote tmp dir beforehand to get rid of the annoying warning
+  # when pipelining is turned on for better performance.
+  - name: Set up Ansible remote tmp dir
+    file:
+      path: "{{ ansible_remote_tmp }}"
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
 
   - debug:
       msg: >-
