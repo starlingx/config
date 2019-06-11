@@ -606,6 +606,18 @@ def file_open(*args, **kwargs):
     return file(*args, **kwargs)
 
 
+def get_file_content(filename):
+    """Returns the contents of the specified file.
+
+    :param filename: The full path/name of the file
+    :return: The contents of the file
+    """
+    file_contents = ''
+    with open(filename) as f:
+        file_contents = f.read()
+    return file_contents
+
+
 def hash_file(file_like_object):
     """Generate a hash for the contents of a file."""
     checksum = hashlib.sha1()

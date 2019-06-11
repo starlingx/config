@@ -10399,16 +10399,10 @@ class ConductorManager(service.PeriodicService):
 
             self._remove_certificate_file(mode, certificate_file)
         elif mode == constants.CERT_MODE_SSL_CA:
-            config_uuid = self._config_update_hosts(context, personalities)
             file_content = public_bytes
-            config_dict = {
-                'personalities': personalities,
-                'file_names': [constants.SSL_CERT_CA_FILE],
-                'file_content': file_content,
-                'permissions': constants.CONFIG_FILE_PERMISSION_DEFAULT,
-            }
-            self._config_update_file(context, config_uuid, config_dict)
-
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER,
+                             constants.STORAGE]
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.SSL_CERT_CA_FILE_SHARED,
                                    os.O_CREAT | os.O_WRONLY,
@@ -10419,8 +10413,7 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context, personalities)
             config_dict = {
                 "personalities": personalities,
-                "classes": ['platform::haproxy::runtime',
-                            'openstack::horizon::runtime']
+                "classes": ['platform::config::runtime']
             }
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,

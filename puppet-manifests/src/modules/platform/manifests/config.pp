@@ -4,6 +4,12 @@ class platform::config::params (
   $timezone = 'UTC',
 ) { }
 
+
+class platform::config::certs::params (
+  $ssl_ca_cert = '',
+) { }
+
+
 class platform::config
   inherits ::platform::config::params {
 
@@ -241,6 +247,44 @@ class platform::config::tpm {
 }
 
 
+class platform::config::certs::ssl_ca
+  inherits ::platform::config::certs::params {
+
+  $ssl_ca_file = '/etc/pki/ca-trust/source/anchors/ca-cert.pem'
+  if ! empty($ssl_ca_cert) {
+    file { 'create-ssl-ca-cert':
+      ensure  => present,
+      path    => $ssl_ca_file,
+      owner   => root,
+      group   => root,
+      mode    => '0644',
+      content => $ssl_ca_cert,
+    }
+  }
+  else {
+    file { 'create-ssl-ca-cert':
+      ensure => absent,
+      path   => $ssl_ca_file
+    }
+  }
+  exec { 'update-ca-trust ':
+    command     => 'update-ca-trust',
+    subscribe   => File[$ssl_ca_file],
+    refreshonly => true
+  }
+  -> exec { 'restart docker':
+    command     => 'pmon-restart dockerd',
+    subscribe   => File[$ssl_ca_file],
+    refreshonly => true
+  }
+}
+
+
+class platform::config::runtime {
+  include ::platform::config::certs::ssl_ca
+}
+
+
 class platform::config::pre {
   group { 'nobody':
     ensure => 'present',
@@ -252,6 +296,7 @@ class platform::config::pre {
   include ::platform::config::hosts
   include ::platform::config::file
   include ::platform::config::tpm
+  include ::platform::config::certs::ssl_ca
 }
 
 

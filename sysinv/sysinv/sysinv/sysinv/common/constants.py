@@ -1324,7 +1324,7 @@ DOCKER_REGISTRY_KEY_FILE_SHARED = os.path.join(tsc.CONFIG_PATH,
 DOCKER_REGISTRY_PKCS1_KEY_FILE_SHARED = os.path.join(tsc.CONFIG_PATH,
                                               "registry-cert-pkcs1.key")
 
-SSL_CERT_CA_DIR = "/etc/ssl/certs/"
+SSL_CERT_CA_DIR = "/etc/pki/ca-trust/source/anchors/"
 SSL_CERT_CA_FILE = os.path.join(SSL_CERT_CA_DIR, CERT_CA_FILE)
 SSL_CERT_CA_FILE_SHARED = os.path.join(tsc.CONFIG_PATH, CERT_CA_FILE)
 

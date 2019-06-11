@@ -298,7 +298,9 @@ class CertificateController(rest.RestController):
         system = pecan.request.dbapi.isystem_get_one()
         capabilities = system.capabilities
 
-        if mode != constants.CERT_MODE_DOCKER_REGISTRY:
+        standalone_certs = [constants.CERT_MODE_DOCKER_REGISTRY,
+                            constants.CERT_MODE_SSL_CA]
+        if mode not in standalone_certs:
             system_https_enabled = capabilities.get('https_enabled', False)
             if system_https_enabled is False or system_https_enabled == 'n':
                 msg = "No certificates have been added, https is not enabled."
