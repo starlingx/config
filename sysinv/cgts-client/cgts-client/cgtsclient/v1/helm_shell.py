@@ -101,10 +101,9 @@ def do_helm_override_delete(cc, args):
                 'Can specify multiple times.')
 @utils.arg('--set', metavar='<commandline_overrides>', action='append',
            default=[],
-           help='Set helm chart override values on the command line (can '
-                'specify multiple times or separate values with commas: '
-                'key1=val1,key2=val2). These are processed after "--values" '
-                'files.')
+           help='Set helm chart override values on the command line. Multiple '
+                'override values can be specified with multiple --set arguments.'
+                'These are processed after "--values" files.')
 def do_helm_override_update(cc, args):
     """Update helm chart user overrides."""
 

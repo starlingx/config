@@ -7398,8 +7398,9 @@ class Connection(api.Connection):
         return self._helm_override_get(app_id, name, namespace)
 
     @objects.objectify(objects.helm_overrides)
-    def helm_override_get_all(self):
+    def helm_override_get_all(self, app_id):
         query = model_query(models.HelmOverrides, read_deleted="no")
+        query = query.filter_by(app_id=app_id)
         return query.all()
 
     @objects.objectify(objects.helm_overrides)

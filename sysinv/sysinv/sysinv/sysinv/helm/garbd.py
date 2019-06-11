@@ -25,6 +25,10 @@ class GarbdHelm(base.BaseHelm):
     CHART = constants.HELM_CHART_GARBD
     SUPPORTED_NAMESPACES = \
         base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    SUPPORTED_APP_NAMESPACES = {
+        constants.HELM_APP_OPENSTACK:
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    }
 
     def get_meta_overrides(self, namespace, app_name=None, mode=None):
 

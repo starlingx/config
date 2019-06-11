@@ -28,13 +28,12 @@ class HelmChartsController(rest.RestController):
         """Provides information about the available charts to override."""
 
         try:
-            objects.kube_app.get_by_name(
+            namespaces = pecan.request.rpcapi.get_helm_application_namespaces(
                 pecan.request.context, app_name)
-        except exception.KubeAppNotFound:
-            raise wsme.exc.ClientSideError(_("Application %s not found." % app_name))
+        except Exception as e:
+            raise wsme.exc.ClientSideError(_("Unable to get the helm charts for "
+                                             "application %s: %s" % (app_name, str(e))))
 
-        namespaces = pecan.request.rpcapi.get_helm_application_namespaces(
-            pecan.request.context, app_name)
         charts = [{'name': chart, 'namespaces': namespaces[chart]}
                   for chart in namespaces]
 
@@ -60,25 +59,38 @@ class HelmChartsController(rest.RestController):
         except exception.KubeAppNotFound:
             raise wsme.exc.ClientSideError(_("Application %s not found." % app_name))
         except exception.HelmOverrideNotFound:
-            user_overrides = ''
+            user_overrides = None
 
-        # Get any system overrides.
-        try:
-            system_overrides = pecan.request.rpcapi.get_helm_chart_overrides(
-                pecan.request.context, name, namespace)
-            system_overrides = yaml.safe_dump(system_overrides)
-        except Exception:
-            # Unsupported/invalid namespace
-            raise wsme.exc.ClientSideError(_("Override not found."))
+        system_apps = pecan.request.rpcapi.get_helm_applications(
+                      pecan.request.context)
+        if app_name in system_apps:
+            # Get any system overrides for system app.
+            try:
+                system_overrides = pecan.request.rpcapi.get_helm_chart_overrides(
+                    pecan.request.context, name, namespace)
+                system_overrides = yaml.safe_dump(system_overrides) \
+                    if system_overrides else None
+            except Exception as e:
+                raise wsme.exc.ClientSideError(_("Unable to get the helm chart overrides "
+                                                 "for chart %s under Namespace %s: %s"
+                                                 % (name, namespace, str(e))))
+        else:
+            # No system overrides for generic app
+            system_overrides = None
 
         # Merge the system overrides with the saved user-specified overrides,
         # with user-specified overrides taking priority over the system
         # overrides.
-        file_overrides = [system_overrides, user_overrides] \
-            if user_overrides else [system_overrides]
+        file_overrides = []
+        if system_overrides:
+            file_overrides.append(system_overrides)
+        if user_overrides:
+            file_overrides.append(user_overrides)
 
-        combined_overrides = pecan.request.rpcapi.merge_overrides(
-             pecan.request.context, file_overrides=file_overrides)
+        combined_overrides = None
+        if file_overrides:
+            combined_overrides = pecan.request.rpcapi.merge_overrides(
+                pecan.request.context, file_overrides=file_overrides)
 
         rpc_chart = {'name': name,
                      'namespace': namespace,
@@ -111,6 +123,14 @@ class HelmChartsController(rest.RestController):
         file_overrides = values.get('files', [])
         set_overrides = values.get('set', [])
 
+        if set_overrides:
+            for overrides in set_overrides:
+                if ',' in overrides:
+                    raise wsme.exc.ClientSideError(
+                        _("Invalid input: One (or more) set overrides contains "
+                          "multiple values. Consider using --values option "
+                          "instead."))
+
         # Get any stored user overrides for this chart.  We'll need this
         # object later either way.
         try:
@@ -124,31 +144,24 @@ class HelmChartsController(rest.RestController):
             pecan.request.dbapi.helm_override_create({
                 'name': name,
                 'namespace': namespace,
-                'user_overrides': '',
                 'app_id': app.id})
             db_chart = objects.helm_overrides.get_by_appid_name(
                 pecan.request.context, app.id, name, namespace)
 
+        user_overrides = db_chart.user_overrides
         if flag == 'reuse':
-            if db_chart.user_overrides is not None:
-                file_overrides.insert(0, db_chart.user_overrides)
+            if user_overrides is not None:
+                file_overrides.insert(0, user_overrides)
         elif flag == 'reset':
             pass
         else:
             raise wsme.exc.ClientSideError(_("Invalid flag: %s must be either "
                                              "'reuse' or 'reset'.") % flag)
 
-        if set_overrides:
-            for overrides in set_overrides:
-                if ',' in overrides:
-                    raise wsme.exc.ClientSideError(
-                        _("Invalid input: One (or more) set overrides contains "
-                          "multiple values. Consider using --values option "
-                          "instead."))
-
-        user_overrides = pecan.request.rpcapi.merge_overrides(
-            pecan.request.context, file_overrides=file_overrides,
-            set_overrides=set_overrides)
+        if file_overrides or set_overrides:
+            user_overrides = pecan.request.rpcapi.merge_overrides(
+                pecan.request.context, file_overrides=file_overrides,
+                set_overrides=set_overrides)
 
         # save chart overrides back to DB
         db_chart.user_overrides = user_overrides

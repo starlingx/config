@@ -19,6 +19,10 @@ class MemcachedHelm(base.BaseHelm):
     CHART = constants.HELM_CHART_MEMCACHED
     SUPPORTED_NAMESPACES = \
         base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    SUPPORTED_APP_NAMESPACES = {
+        constants.HELM_APP_OPENSTACK:
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
+    }
 
     def get_overrides(self, namespace=None):
         overrides = {

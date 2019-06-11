@@ -128,7 +128,7 @@ def get_local_docker_registry_auth():
                 password=registry_password)
 
 
-Chart = namedtuple('Chart', 'name namespace location release labels sequenced')
+Chart = namedtuple('Chart', 'metadata_name name namespace location release labels sequenced')
 
 
 class AppOperator(object):
@@ -462,11 +462,11 @@ class AppOperator(object):
         # applicable. Save the list to the same location as the armada manifest
         # so it can be sync'ed.
         app.charts = self._get_list_of_charts(app.armada_mfile_abs)
+        LOG.info("Generating application overrides...")
+        self._helm.generate_helm_application_overrides(
+            app.overrides_dir, app.name, mode=None, cnamespace=None,
+            armada_format=True, armada_chart_info=app.charts, combined=True)
         if app.system_app:
-            LOG.info("Generating application overrides...")
-            self._helm.generate_helm_application_overrides(
-                app.overrides_dir, app.name, mode=None, cnamespace=None,
-                armada_format=True, armada_chart_info=app.charts, combined=True)
             self._save_images_list_by_charts(app)
             # Get the list of images from the updated images overrides
             images_to_download = self._get_image_tags_by_charts(
@@ -863,6 +863,7 @@ class AppOperator(object):
 
         The following chart data for each chart in the manifest file
         are extracted and stored into a namedtuple Chart object:
+         - metadata_name
          - chart_name
          - namespace
          - location
@@ -929,6 +930,7 @@ class AppOperator(object):
             for c_group in chart_groups:
                 for chart in chart_group[c_group]['chart_group']:
                     charts.append(Chart(
+                        metadata_name=chart,
                         name=armada_charts[chart]['chart_name'],
                         namespace=armada_charts[chart]['namespace'],
                         location=armada_charts[chart]['location'],
@@ -944,6 +946,7 @@ class AppOperator(object):
                 for c_group in chart_group:
                     for chart in chart_group[c_group]['chart_group']:
                         charts.append(Chart(
+                            metadata_name=chart,
                             name=armada_charts[chart]['chart_name'],
                             namespace=armada_charts[chart]['namespace'],
                             location=armada_charts[chart]['location'],
@@ -955,6 +958,7 @@ class AppOperator(object):
             if armada_charts:
                 for chart in armada_charts:
                     charts.append(Chart(
+                        metadata_name=chart,
                         name=armada_charts[chart]['chart_name'],
                         namespace=armada_charts[chart]['namespace'],
                         location=armada_charts[chart]['location'],
@@ -1489,31 +1493,24 @@ class AppOperator(object):
                 self._create_local_registry_secrets(app.name)
                 self._create_storage_provisioner_secrets(app.name)
                 self._create_app_specific_resources(app.name)
-                self._update_app_status(
-                    app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
-                LOG.info("Generating application overrides...")
-                self._helm.generate_helm_application_overrides(
-                    app.overrides_dir, app.name, mode, cnamespace=None,
-                    armada_format=True, armada_chart_info=app.charts, combined=True)
-                overrides_files = self._get_overrides_files(app.overrides_dir,
-                                                            app.charts,
-                                                            app.name, mode)
-                if overrides_files:
-                    LOG.info("Application overrides generated.")
-                    overrides_str =\
-                        self._generate_armada_overrides_str(app.name, app.version,
-                                                            overrides_files)
-                    self._update_app_status(
-                        app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
-                    self._download_images(app)
-                else:
-                    ready = False
-            else:
-                # No support for custom app overrides at this point, just
-                # download the needed images.
+            self._update_app_status(
+                app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
+            LOG.info("Generating application overrides...")
+            self._helm.generate_helm_application_overrides(
+                app.overrides_dir, app.name, mode, cnamespace=None,
+                armada_format=True, armada_chart_info=app.charts, combined=True)
+            overrides_files = self._get_overrides_files(app.overrides_dir,
+                                                        app.charts,
+                                                        app.name, mode)
+            if overrides_files:
+                LOG.info("Application overrides generated.")
+                overrides_str = self._generate_armada_overrides_str(
+                    app.name, app.version, overrides_files)
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
                 self._download_images(app)
+            else:
+                ready = False
         except exception.KubeAppApplyFailure as e:
             # ex:Image download failure
             LOG.exception(e)

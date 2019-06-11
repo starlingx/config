@@ -19,6 +19,7 @@ from six import iteritems
 from stevedore import extension
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 
@@ -62,7 +63,7 @@ class HelmOperator(object):
         self.chart_operators = {}
 
         # dict containing sequence of helm charts per app
-        self.helm_applications = self.get_helm_applications()
+        self.helm_system_applications = self.get_helm_applications()
 
     def get_helm_applications(self):
         """Build a dictionary of supported helm applications"""
@@ -189,9 +190,15 @@ class HelmOperator(object):
                   overrides may be provided.
         """
 
+        try:
+            app = self.dbapi.kube_app_get(app_name)
+        except exception.KubeAppNotFound:
+            LOG.exception("Application %s not found." % app_name)
+            raise
+
         app_namespaces = {}
-        if app_name in self.helm_applications:
-            for chart_name in self.helm_applications[app_name]:
+        if app_name in self.helm_system_applications:
+            for chart_name in self.helm_system_applications[app_name]:
                 try:
                     app_namespaces.update(
                         {chart_name:
@@ -199,6 +206,13 @@ class HelmOperator(object):
                              chart_name, app_name)})
                 except exception.InvalidHelmNamespace as e:
                     LOG.info(e)
+        else:
+            # Generic apps
+            db_namespaces = self.dbapi.helm_override_get_all(app.id)
+            for chart in db_namespaces:
+                app_namespaces.setdefault(
+                    chart.name, []).append(chart.namespace)
+
         return app_namespaces
 
     @helm_context
@@ -248,8 +262,8 @@ class HelmOperator(object):
         }
         """
         overrides = {}
-        if app_name in self.helm_applications:
-            for chart_name in self.helm_applications[app_name]:
+        if app_name in self.helm_system_applications:
+            for chart_name in self.helm_system_applications[app_name]:
                 try:
                     overrides.update({chart_name:
                                       self._get_helm_chart_overrides(
@@ -259,37 +273,40 @@ class HelmOperator(object):
                     LOG.info(e)
         return overrides
 
-    def _get_helm_chart_location(self, chart_name, repo_name):
-        """Get supported chart location.
+    def _get_helm_chart_location(self, chart_name, repo_name, chart_tarfile):
+        """Get the chart location.
 
         This method returns the download location for a given chart.
 
         :param chart_name: name of the chart
-        :returns: a URL as location or None if the chart is not supported
+        :param repo_name: name of the repo that chart uploaded to
+        :param chart_tarfile: name of the chart tarfile
+        :returns: a URL as location
         """
-        if chart_name in self.chart_operators:
-            return self.chart_operators[chart_name].get_chart_location(
-                chart_name, repo_name)
-        return None
+        if repo_name is None:
+            repo_name = common.HELM_REPO_FOR_APPS
+        if chart_tarfile is None:
+            # TODO: Clean up the assumption
+            chart_tarfile = chart_name + '-0.1.0'
+        return 'http://controller:{}/helm_charts/{}/{}.tgz'.format(
+            utils.get_http_port(self.dbapi), repo_name, chart_tarfile)
 
-    def _add_armada_override_header(self, chart_name, repo_name, namespace,
-                                    overrides):
-        use_chart_name_only = [common.HELM_NS_HELM_TOOLKIT]
-        if namespace in use_chart_name_only:
-            name = chart_name
-        else:
-            name = namespace + '-' + chart_name
+    def _add_armada_override_header(self, chart_name, chart_metadata_name, repo_name,
+                                    chart_tarfile, namespace, overrides):
+        if chart_metadata_name is None:
+            chart_metadata_name = namespace + '-' + chart_name
+
         new_overrides = {
             'schema': 'armada/Chart/v1',
             'metadata': {
                 'schema': 'metadata/Document/v1',
-                'name': name
+                'name': chart_metadata_name
             },
             'data': {
                 'values': overrides
             }
         }
-        location = self._get_helm_chart_location(chart_name, repo_name)
+        location = self._get_helm_chart_location(chart_name, repo_name, chart_tarfile)
         if location:
             new_overrides['data'].update({
                 'source': {
@@ -298,31 +315,42 @@ class HelmOperator(object):
             })
         return new_overrides
 
-    def _get_repo_from_armada_chart_info(self, chart_name, chart_info_list):
-        """ Extract the repo from the armada manifest chart location.
+    def _get_chart_info_from_armada_chart(self, chart_name, chart_namespace,
+                                          chart_info_list):
+        """ Extract the metadata name of the armada chart, repo and the name of
+            the chart tarfile from the armada manifest chart.
 
         :param chart_name: name of the chart from the (application list)
+        :param chart_namespace: namespace of the chart
         :param chart_info_list: a list of chart objects containing information
             extracted from the armada manifest
-        :returns: the supported StarlingX repository or None if not present
+        :returns: the metadata name of the chart, the supported StarlingX repository,
+                  the name of the chart tarfile or None,None,None if not present
         """
 
         # Could be called without any armada_manifest info. Returning 'None'
         # will enable helm defaults to point to common.HELM_REPO_FOR_APPS
+        metadata_name = None
         repo = None
+        chart_tarfile = None
         if chart_info_list is None:
-            return repo
+            return metadata_name, repo, chart_tarfile
 
-        location = next(
-            (c.location for c in chart_info_list if c.name == chart_name),
-            None)
+        location = None
+        for c in chart_info_list:
+            if (c.name == chart_name and
+                    c.namespace == chart_namespace):
+                location = c.location
+                metadata_name = c.metadata_name
+                break
 
         if location:
-            match = re.search('/helm_charts/(.*)/', location)
+            match = re.search('/helm_charts/(.*)/(.*).tgz', location)
             if match:
                 repo = match.group(1)
+                chart_tarfile = match.group(2)
         LOG.debug("Chart %s can be found in repo: %s" % (chart_name, repo))
-        return repo
+        return metadata_name, repo, chart_tarfile
 
     def merge_overrides(self, file_overrides=[], set_overrides=[]):
         """ Merge helm overrides together.
@@ -460,12 +488,13 @@ class HelmOperator(object):
             system overrides
         """
 
-        if app_name in self.helm_applications:
-            try:
-                app = self.dbapi.kube_app_get(app_name)
-            except exception.KubeAppNotFound:
-                LOG.exception("Application %s not found." % app_name)
+        try:
+            app = self.dbapi.kube_app_get(app_name)
+        except exception.KubeAppNotFound:
+            LOG.exception("Application %s not found." % app_name)
+            raise
 
+        if app_name in self.helm_system_applications:
             app_overrides = self._get_helm_application_overrides(app_name,
                                                                  cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
@@ -505,10 +534,11 @@ class HelmOperator(object):
                 # structure of the yaml file somewhat
                 if armada_format:
                     for key in overrides:
-                        armada_chart_repo_name = self._get_repo_from_armada_chart_info(
-                            chart_name, armada_chart_info)
+                        metadata_name, repo_name, chart_tarfile = \
+                            self._get_chart_info_from_armada_chart(chart_name, key,
+                                                                   armada_chart_info)
                         new_overrides = self._add_armada_override_header(
-                            chart_name, armada_chart_repo_name,
+                            chart_name, metadata_name, repo_name, chart_tarfile,
                             key, overrides[key])
                         overrides[key] = new_overrides
                 self._write_chart_overrides(path, chart_name, cnamespace, overrides)
@@ -524,11 +554,45 @@ class HelmOperator(object):
                         chart_meta_name = chart_name + '-meta'
                         self._write_chart_overrides(
                             path, chart_meta_name, cnamespace, overrides)
-
-        elif app_name:
-            LOG.exception("%s application is not supported" % app_name)
         else:
-            LOG.exception("application name is required")
+            # Generic applications
+            for chart in armada_chart_info:
+                try:
+                    db_chart = self.dbapi.helm_override_get(
+                        app.id, chart.name, chart.namespace)
+                except exception.HelmOverrideNotFound:
+                    # This routine is to create helm overrides entries
+                    # in database during application-upload so that user
+                    # can list the supported helm chart overrides of the
+                    # application via helm-override-list
+                    try:
+                        values = {
+                            'name': chart.name,
+                            'namespace': chart.namespace,
+                            'app_id': app.id,
+                        }
+                        db_chart = self.dbapi.helm_override_create(values=values)
+                    except Exception as e:
+                        LOG.exception(e)
+                        return
+
+                user_overrides = {chart.namespace: {}}
+                db_user_overrides = db_chart.user_overrides
+                if db_user_overrides:
+                    user_overrides = yaml.load(yaml.dump(
+                        {chart.namespace: yaml.load(db_user_overrides)}))
+
+                if armada_format:
+                    metadata_name, repo_name, chart_tarfile =\
+                        self._get_chart_info_from_armada_chart(chart.name, chart.namespace,
+                                                               armada_chart_info)
+                    new_overrides = self._add_armada_override_header(
+                        chart.name, metadata_name, repo_name, chart_tarfile,
+                        chart.namespace, user_overrides[chart.namespace])
+                    user_overrides[chart.namespace] = new_overrides
+
+                self._write_chart_overrides(path, chart.name,
+                                            cnamespace, user_overrides)
 
     def remove_helm_chart_overrides(self, path, chart_name, cnamespace=None):
         """Remove the overrides files for a chart"""
