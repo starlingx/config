@@ -279,7 +279,7 @@ class CertificateController(rest.RestController):
 
         certificate_file = pecan.request.POST.get('certificate_file')
         # Ensure that the certificate_file is a valid file path
-        if os.path.isabs(certificate_file):
+        if certificate_file and os.path.isabs(certificate_file):
             if not os.path.isfile(certificate_file):
                 msg = "'certificate_file' is not a valid file path"
                 LOG.info(msg)
