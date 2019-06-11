@@ -15,6 +15,8 @@
   pre_tasks:
     - include_vars: "{{ override_files_dir }}/secret"
       failed_when: false
+    - include_vars: "{{ override_files_dir }}/site.yml"
+      failed_when: false
     - include_vars: "{{ override_files_dir }}/{{ inventory_hostname }}.yml"
       failed_when: false
 
