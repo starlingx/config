@@ -58,36 +58,39 @@ class CinderHelm(openstack.OpenstackBaseHelm):
         if not ceph_backend:
             return {}
 
+        primary_tier_name =\
+            constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]
+
         replication, min_replication =\
             StorageBackendConfig.get_ceph_pool_replication(self.dbapi)
 
-        rule_name = "{0}{1}{2}".format(
-            constants.SB_TIER_DEFAULT_NAMES[
-                constants.SB_TIER_TYPE_CEPH],
-            constants.CEPH_CRUSH_TIER_SUFFIX,
-            "-ruleset").replace('-', '_')
+        pools = {}
+        for backend in self.dbapi.storage_ceph_get_list():
+            if backend.tier_name == primary_tier_name:
+                pool_name = constants.CEPH_POOL_VOLUMES_NAME
+            else:
+                pool_name = "%s-%s" % (constants.CEPH_POOL_VOLUMES_NAME,
+                                      backend.tier_name)
+            rule_name = "{0}{1}{2}".format(
+                backend.tier_name, constants.CEPH_CRUSH_TIER_SUFFIX,
+                "-ruleset").replace('-', '_')
+            pool = {
+                'replication': replication,
+                'crush_rule': rule_name.encode('utf8', 'strict'),
+                'chunk_size': constants.CEPH_POOL_VOLUMES_CHUNK_SIZE,
+                'app_name': constants.CEPH_POOL_VOLUMES_APP_NAME
+            }
+            pools[pool_name.encode('utf8', 'strict')] = pool
+            if backend.name == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
+                # Backup uses the same replication and crush rule as
+                # the default storage backend
+                pools['backup'] = dict(pool)
 
-        conf_ceph = {
+        return {
             'monitors': self._get_formatted_ceph_monitor_ips(),
             'admin_keyring': 'null',
-            'pools': {
-                'backup': {
-                    # We use the chart to configure the pool for backups, so
-                    # it's safe to use the same replication as for the primary
-                    # tier pools.
-                    'replication': replication,
-                    'crush_rule': rule_name,
-                },
-                'volume': {
-                    # The cinder chart doesn't currently support specifying
-                    # the config for multiple volume/backup pools.
-                    'replication': replication,
-                    'crush_rule': rule_name,
-                }
-            }
+            'pools': pools
         }
-
-        return conf_ceph
 
     def _get_conf_cinder_overrides(self):
         # Get all the internal CEPH backends.
