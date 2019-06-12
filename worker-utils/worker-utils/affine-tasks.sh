@@ -5,10 +5,19 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ###############################################################################
+#
+### BEGIN INIT INFO
+# Provides:          affine-tasks
+# Required-Start:
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: affine tasks
+# Description:       This script will affine tasks to the platform cores of the
+#       host. This ensures that system processes are constrained to platform
+#       cores and will not run on cores with VMs/containers.
+### END INIT INFO
 
-# This script will affine tasks to the platform cores of the host.
-# This ensures that system processes are constrained to platform cores and will
-# not run on cores with VMs/containers.
 
 . /usr/bin/tsconfig
 . /etc/init.d/task_affinity_functions.sh

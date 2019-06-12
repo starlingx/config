@@ -5,6 +5,15 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ################################################################################
+#
+### BEGIN INIT INFO
+# Provides:          cpumap_functions
+# Required-Start:
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: cpumap_functions
+### END INIT INFO
 
 source /etc/platform/platform.conf
 
