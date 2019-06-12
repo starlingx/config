@@ -90,13 +90,6 @@ class BasePuppet(object):
         system = self._get_system()
         return system.capabilities.get('sdn_enabled', False)
 
-    def _kubernetes_enabled(self):
-        if self.dbapi is None:
-            return False
-
-        system = self._get_system()
-        return system.capabilities.get('kubernetes_enabled', False)
-
     def _https_enabled(self):
         if self.dbapi is None:
             return False

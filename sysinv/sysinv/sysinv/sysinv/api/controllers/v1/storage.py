@@ -564,12 +564,6 @@ def _check_host(stor):
             raise wsme.exc.ClientSideError(_("Host %s must be locked." %
                                              ihost['hostname']))
 
-    # semantic check: only storage nodes are allowed without k8s
-    if (not utils.is_kubernetes_config(pecan.request.dbapi) and
-            ihost['personality'] != constants.STORAGE):
-        msg = ("Host personality must be 'storage' or kubernetes enabled.")
-        raise wsme.exc.ClientSideError(_(msg))
-
     # semantic check: whether system has a ceph backend
     if not StorageBackendConfig.has_backend_configured(
             pecan.request.dbapi,

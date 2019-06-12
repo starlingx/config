@@ -387,13 +387,6 @@ def get_distributed_cloud_role(dbapi=None):
     return system.distributed_cloud_role
 
 
-def is_kubernetes_config(dbapi=None):
-    if not dbapi:
-        dbapi = pecan.request.dbapi
-    system = dbapi.isystem_get_one()
-    return system.capabilities.get('kubernetes_enabled', False)
-
-
 def is_aio_system(dbapi=None):
     if not dbapi:
         dbapi = pecan.request.dbapi
@@ -416,13 +409,6 @@ def is_aio_duplex_system(dbapi=None):
     return (system.system_type == constants.TIS_AIO_BUILD and
             (system.system_mode == constants.SYSTEM_MODE_DUPLEX or
              system.system_mode == constants.SYSTEM_MODE_DUPLEX_DIRECT))
-
-
-def is_aio_kubernetes(dbapi=None):
-    if not dbapi:
-        dbapi = pecan.request.dbapi
-    return SystemHelper.get_product_build() == constants.TIS_AIO_BUILD and \
-           is_kubernetes_config(dbapi)
 
 
 def get_worker_count(dbapi=None):

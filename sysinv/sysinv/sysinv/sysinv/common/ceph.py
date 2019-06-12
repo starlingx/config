@@ -611,32 +611,19 @@ class CephApiOperator(object):
         :return True if the data CEPH pools are empty
         :return False if the data CEPH pools are not empty
         """
-        # TODO(CephPoolsDecouple): rework
-        if utils.is_kubernetes_config(db_api):
-            for ceph_pool in pools_usage:
-                # We only need to check data pools.
-                if (constants.CEPH_POOL_OBJECT_GATEWAY_NAME_PART in
-                        ceph_pool['name']):
-                    if not (
-                        ceph_pool['name'].startswith(
-                            constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL) or
-                        ceph_pool['name'].startswith(
-                            constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER)):
-                        continue
-
-                # Ceph pool is not empty.
-                if int(ceph_pool['stats']['bytes_used']) > 0:
-                    return False
-
-            return True
-
-        # TODO(CephPoolsDecouple): remove iteration below
         for ceph_pool in pools_usage:
             # We only need to check data pools.
-            if ([pool for pool in constants.ALL_CEPH_POOLS
-                 if ceph_pool['name'].startswith(pool)] and
-                        int(ceph_pool['stats']['bytes_used']) > 0):
-                # Ceph pool is not empty.
+            if (constants.CEPH_POOL_OBJECT_GATEWAY_NAME_PART in
+                    ceph_pool['name']):
+                if not (
+                    ceph_pool['name'].startswith(
+                        constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL) or
+                    ceph_pool['name'].startswith(
+                        constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER)):
+                    continue
+
+            # Ceph pool is not empty.
+            if int(ceph_pool['stats']['bytes_used']) > 0:
                 return False
 
         return True

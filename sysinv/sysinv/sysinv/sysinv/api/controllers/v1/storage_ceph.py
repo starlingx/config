@@ -1262,11 +1262,8 @@ def _patch(storceph_uuid, patch):
     # these services depend on will not trigger manifest application.
     fast_config = False
     if not (delta - set(['capabilities']) - set(['services'])):
-        if utils.is_kubernetes_config(pecan.request.dbapi):
-            fast_cfg_services = [constants.SB_SVC_NOVA, constants.SB_SVC_RBD_PROVISIONER,
-                                 constants.SB_SVC_CINDER, constants.SB_SVC_GLANCE]
-        else:
-            fast_cfg_services = [constants.SB_SVC_NOVA, constants.SB_SVC_RBD_PROVISIONER]
+        fast_cfg_services = [constants.SB_SVC_NOVA, constants.SB_SVC_RBD_PROVISIONER,
+                             constants.SB_SVC_CINDER, constants.SB_SVC_GLANCE]
 
         # Changes to unrelated capabilities?
         storceph_cap = storceph_config.as_dict()['capabilities'].items()
@@ -1356,51 +1353,28 @@ def _patch(storceph_uuid, patch):
     LOG.info("SYS_I orig    storage_ceph: %s " % ostorceph.as_dict())
     LOG.info("SYS_I patched storage_ceph: %s " % storceph_config.as_dict())
 
-    # TODO(CephPoolsDecouple): remove block
-    if not utils.is_kubernetes_config():
-        if _is_quotaconfig_changed(ostorceph, storceph_config):
-            _check_pool_quotas_data(ostorceph, storceph_config.as_dict())
-            _update_pool_quotas(storceph_config.as_dict())
-            # check again after update
-            _check_pool_quotas_data(ostorceph, storceph_config.as_dict())
-    else:
-        LOG.info("Don't check quotas")
+    LOG.info("Don't check quotas")
 
-    # TODO(CephPoolsDecouple): remove condition
-    if not quota_only_update or utils.is_kubernetes_config():
-        # Execute the common semantic checks for all backends, if backend
-        # is not present this will not return.
-        api_helper.common_checks(constants.SB_API_OP_MODIFY,
-                                 rpc_storceph.as_dict())
+    # Execute the common semantic checks for all backends, if backend
+    # is not present this will not return.
+    api_helper.common_checks(constants.SB_API_OP_MODIFY,
+                             rpc_storceph.as_dict())
 
-        # Run the backend specific semantic checks
-        _check_backend_ceph(constants.SB_API_OP_MODIFY,
-                            rpc_storceph.as_dict(),
-                            True)
+    # Run the backend specific semantic checks
+    _check_backend_ceph(constants.SB_API_OP_MODIFY,
+                        rpc_storceph.as_dict(),
+                        True)
 
-        # TODO (rchurch): In R6, refactor and remove object_gateway
-        # attribute and DB column. This should be driven by if the service
-        # is added to the services list
-        if object_gateway_install:
-            _check_object_gateway_install(pecan.request.dbapi)
+    # TODO (rchurch): In R6, refactor and remove object_gateway
+    # attribute and DB column. This should be driven by if the service
+    # is added to the services list
+    if object_gateway_install:
+        _check_object_gateway_install(pecan.request.dbapi)
 
     for field in objects.storage_ceph.fields:
         if (field in storceph_config.as_dict() and
                 rpc_storceph[field] != storceph_config.as_dict()[field]):
             rpc_storceph[field] = storceph_config.as_dict()[field]
-
-    # TODO(CephPoolsDecouple): remove - on a containerized deployment,
-    # replication is updated through the helm charts.
-    # Update replication on the fly on a single node install.
-    if not utils.is_kubernetes_config():
-        if (replication_only_update and
-                utils.is_aio_simplex_system(pecan.request.dbapi)):
-            # For single node setups update replication number on the fly.
-            min_replication = new_cap.get(constants.CEPH_BACKEND_MIN_REPLICATION_CAP, None)
-            replication = new_cap.get(constants.CEPH_BACKEND_REPLICATION_CAP, None)
-            pecan.request.rpcapi.configure_osd_pools(
-                pecan.request.context, rpc_storceph, replication,
-                min_replication)
 
     LOG.info("SYS_I new     storage_ceph: %s " % rpc_storceph.as_dict())
     try:

@@ -594,8 +594,7 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
                                                          enabled_backends))
 
         # Disable cinder services if kubernetes is enabled
-        if self._kubernetes_enabled():
-            is_service_enabled = False
+        is_service_enabled = False
 
         config.update({
             'openstack::cinder::params::service_enabled': is_service_enabled,

@@ -1005,11 +1005,9 @@ class CephOperator(object):
         storage_hosts = self._db_api.ihost_get_by_personality(
             constants.STORAGE)
 
-        is_aio_kubernetes = (
-            tsc.system_type == constants.TIS_AIO_BUILD and
-            utils.is_kubernetes_config(self._db_api))
+        is_aio = tsc.system_type == constants.TIS_AIO_BUILD
 
-        if not storage_hosts and is_aio_kubernetes:
+        if not storage_hosts and is_aio:
             storage_hosts = self._db_api.ihost_get_by_personality(
                 constants.CONTROLLER)
 
