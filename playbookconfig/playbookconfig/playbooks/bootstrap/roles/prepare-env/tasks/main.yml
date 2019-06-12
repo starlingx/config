@@ -62,6 +62,16 @@
   failed_when: false
   register: controllerconfig_installed
 
+- name: Fail if the become password is incorrect
+  fail:
+    msg: >-
+      The provided sudo password does not match with {{ ansible_ssh_user }} password!.
+      If {{ ansible_ssh_user }} password differs from StarlingX default ansible_become_pass
+      (St8rlingX*), please overwrite the default ansible_become_pass either in host/site
+      secret/override file or at the command line using playbook --extra-vars option.
+  when: controllerconfig_installed.module_stderr is defined and
+        controllerconfig_installed.module_stderr is search(' incorrect password attempts')
+
 - name: Fail if host is not running the right image
   fail: msg='Host {{ ansible_host }} does not have the right image!.'
   when: controllerconfig_installed.rc > 0
@@ -404,7 +414,6 @@
     script: check_root_disk_size.py {{ standard_root_disk_size }}
     register: disk_size_check_result
     failed_when: false
-
 
   # Workaround an Ansible quirk
   - name: Update root disk index for remote play
