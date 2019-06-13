@@ -4972,12 +4972,6 @@ class ConductorManager(service.PeriodicService):
                 LOG.warning("Failed to sync kubernetes label to host %s: %s" %
                             (host.hostname, e))
 
-    # TODO(CephPoolsDecouple): remove
-    @periodic_task.periodic_task(spacing=60)
-    def _osd_pool_audit(self, context):
-        LOG.debug("_osd_pool_audit skip")
-        return
-
     def set_backend_to_err(self, backend):
         """Set backend state to error"""
 
