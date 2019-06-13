@@ -298,8 +298,6 @@ class KubeAppController(rest.RestController):
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
     def update(self, body):
         """Update the applied application to a different version"""
-
-        self._check_environment()
         tarfile = body.get('tarfile')
         name = body.get('name', '')
         version = body.get('app_version', '')
