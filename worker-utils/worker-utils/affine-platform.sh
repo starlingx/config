@@ -5,6 +5,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ################################################################################
+#
+### BEGIN INIT INFO
+# Provides:          affine-platform
+# Required-Start:
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Affine platform
+### END INIT INFO
+
 # Define minimal path
 PATH=/bin:/usr/bin:/usr/local/bin
 
