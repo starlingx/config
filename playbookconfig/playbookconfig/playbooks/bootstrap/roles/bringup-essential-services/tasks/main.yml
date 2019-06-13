@@ -6,7 +6,7 @@
 #
 # ROLE DESCRIPTION:
 #   This role is to bring up Kubernetes and essential flock services required
-#   initial controller unlock.
+#   for initial controller unlock.
 #
 
 - block:
@@ -35,20 +35,17 @@
     include: load_images_from_archive.yml
     when: images_archive_exists
 
-  - block:
-    - name: Bring up Kubernetes master
-      include: bringup_kubemaster.yml
+  - name: Bring up Kubernetes master
+    include: bringup_kubemaster.yml
 
-    - name: Bring up Helm
-      include: bringup_helm.yml
+  - name: Bring up Helm
+    include: bringup_helm.yml
 
-    - name: Set up controller registry certificate and keys
-      include: setup_registry_certificate_and_keys.yml
+  - name: Set up controller registry certificate and keys
+    include: setup_registry_certificate_and_keys.yml
 
-    - name: Bring up essential flock services
-      include: bringup_flock_services.yml
-
-    when: (not replayed) or (restart_services)
+  - name: Bring up essential flock services
+    include: bringup_flock_services.yml
 
   - name: Set dnsmasq.leases flag for unlock
     file:
@@ -61,16 +58,64 @@
       line: "nameserver {{ controller_floating_address }}"
       insertbefore: BOF
 
-  when: (not replayed) or (network_config_update) or (docker_config_update)
-
-
-- block:
   - name: Check for controller-0 online status
     shell: source /etc/platform/openrc; system host-list | grep online
     register: online_check
     until: online_check.rc == 0
     retries: 10
 
+  # Don't need to run this task for initial play as it will take a while to pull
+  # Armada image and additional time to wait for controller-0 to become online
+  # during which time kube-system pods are all started.
+  - name: Wait for 60 seconds to ensure kube-system pods are all started
+    wait_for:
+      timeout: 60
+    when: restart_services
+
+  - name: Start parallel tasks to wait for Kubernetes component, Networking and Tiller pods to reach ready state
+    command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait  --namespace=kube-system --for=condition=Ready pods --selector {{ item }} --timeout=30s
+    async: 30
+    poll: 0
+    with_items:
+      - k8s-app=calico-node
+      - k8s-app=calico-kube-controllers
+      - k8s-app=kube-proxy
+      - app=multus
+      - app=sriov-cni
+      - app=helm
+      - component=kube-apiserver
+      - component=kube-controller-manager
+      - component=kube-scheduler
+    register: wait_for_pods
+
+  - name: Get wait tasks results
+    async_status:
+      jid: "{{ item.ansible_job_id }}"
+    register: wait_job_result
+    until: wait_job_result.finished
+    # Set the retry to 10 times (60 seconds) but the async jobs above will
+    # complete (success or failure) within 30 seconds
+    retries: 10
+    with_items: "{{ wait_for_pods.results }}"
+
+  - name: Fail if any of the Kubernetes component, Networking and Tiller pods is not ready by this time
+    fail:
+      msg: "Pod {{ item._ansible_item_label._ansible_item_label }} is still not ready."
+    when: item.stdout is not search(" condition met")
+    with_items: "{{ wait_job_result.results }}"
+
+  # Have to check for kube-dns pods separately as at most only one is
+  # running at this point so checking for "Ready" condition at kube-dns
+  # app level won't work
+  - name: Fail if no kube-dns pod is running
+    shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods --namespace=kube-system | grep coredns | grep Running
+    register: dns_pod_result
+    failed_when: dns_pod_result.rc != 0
+
+  when: (not replayed) or (restart_services)
+
+
+- block:
   - name: Remove config file from previous play
     file:
       path: "{{ last_bootstrap_config_file }}"

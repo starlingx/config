@@ -7,22 +7,19 @@
 # SUB-TASKS DESCRIPTION:
 #   Bring up Kubernetes master
 #   - Update iptables
+#   - Create daemon.json for insecure unified registry if applicable
 #   - Create manifest directory
 #   - Set up pods cgroups for minimal set of controllers
 #   - Enable kubelet service (with default/custom registry)
 #   - Run kubeadm init
 #   - Prepare admin.conf
 #   - Set k8s environment variable for new shell
-#   - Generate conf files for Multus
-#   - Bring up Multus networking
-#   - Generate conf files for Calico
-#   - Bring up Calico networking
-#   - Generate conf files for SRIOV networking
-#   - Bring up SRIOV networking
-#   - Generate conf files for SRIOV device plugin
-#   - Bring up SRIOV device plugin
-#   - Restrict coredns to master node
-#   - Use anti-affinity for coredns pods
+#   - Prepare Calico config and activate Calico networking
+#   - Precare Multus config and activate Multus networking
+#   - Prepare SRIOV config and activate SRIOV networking
+#   - Prepare SRIOV device plugin config and activate SRIOV device plugin
+#   - Restrict coredns to master node and set anti-affnity (duplex system)
+#   - Restrict coredns to 1 pod (simplex system)
 #   - Remove taint from master node
 #   - Add kubelet service override
 #   - Register kubelet with pmond
@@ -205,15 +202,22 @@
 - name: Activate SRIOV device plugin
   command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /etc/kubernetes/sriovdp-daemonset.yaml"
 
-- name: Restrict coredns to master node
-  command: >-
-    kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p
-    '{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}'
+  # Restrict coredns to master node and use anti-affinity for core dns for duplex systems
+- block:
+  - name: Restrict coredns to master node
+    command: >-
+      kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p
+      '{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/master":""}}}}}'
 
-- name: Use anti-affinity for coredns pods
-  command: >-
-    kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p
-    '{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}'
+  - name: Use anti-affinity for coredns pods
+    command: >-
+      kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system patch deployment coredns -p
+      '{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"k8s-app","operator":"In","values":["kube-dns"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}}}'
+  when: system_mode != 'simplex'
+
+- name: Restrict coredns to 1 pod for simplex
+  command: kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system scale --replicas=1 deployment coredns
+  when: system_mode == 'simplex'
 
 - name: Remove taint from master node
   shell: "kubectl --kubeconfig=/etc/kubernetes/admin.conf taint node controller-0 node-role.kubernetes.io/master- || true"
