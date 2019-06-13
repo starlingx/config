@@ -758,6 +758,10 @@ data:
       ovs:
         node_selector_key: openvswitch
         node_selector_value: enabled
+    images:
+      tags:
+        openvswitch_db_server: docker.io/starlingx/stx-ovs:master-centos-stable-latest
+        openvswitch_vswitchd: docker.io/starlingx/stx-ovs:master-centos-stable-latest
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/starlingx/openvswitch-0.1.0.tgz
