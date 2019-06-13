@@ -1,3 +1,4 @@
 SRC_DIR="stx-openstack-helm"
-COPY_LIST_TO_TAR="$PKG_BASE/../../../helm-charts/garbd"
+COPY_LIST_TO_TAR="$PKG_BASE/../../../helm-charts/garbd \
+    $PKG_BASE/../../../helm-charts/clients"
 TIS_PATCH_VER=14

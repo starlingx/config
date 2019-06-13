@@ -1,0 +1,21 @@
+{{/*
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+*/}}
+
+{{- if and .Values.volume.enabled (eq .Values.global.deployAs "Deployment") }}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc-{{- .Values.global.name }}
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: {{ .Values.volume.size }}
+  storageClassName: {{ .Values.volume.class_name }}
+{{- end }}

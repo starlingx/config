@@ -1,0 +1,61 @@
+#
+# Copyright (c) 2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+endpoints:
+  cluster_domain_suffix: cluster.local
+  identity:
+    name: keystone
+    namespace: openstack
+    auth:
+      auth_url: null
+      admin:
+        region_name: RegionOne
+        username: admin
+        password: password
+        project_name: admin
+        user_domain_name: default
+        project_domain_name: default
+    hosts:
+      default: keystone-api
+      public: keystone
+    host_fqdn_override:
+      default: null
+    path:
+      default: /v3
+    scheme:
+      default: http
+    port:
+      api:
+        default: 80
+        internal: 5000
+pod:
+  affinity:
+    anti:
+      type:
+        default: preferredDuringSchedulingIgnoredDuringExecution
+      topologyKey:
+        default: kubernetes.io/hostname
+labels:
+  node_selector_key: openstack-control-plane
+  node_selector_value: enabled
+global:
+  deployAs: Deployment
+  configmap_etc: true
+  replicas: 1
+  name: "openstack-clients"
+  cloud_name: cloud
+  keep_running: false
+  rbac: true
+volume:
+  enabled: true
+  class_name: general
+  size: 5Gi
+  mount_path: "/scratch"
+rbac:
+  serviceAccount: clients
+images:
+  tags:
+    openstackclients: docker.io/starlingx/stx-openstackclients:master-centos-stable-latest
