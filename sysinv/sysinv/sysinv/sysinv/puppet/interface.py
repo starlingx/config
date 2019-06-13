@@ -934,7 +934,7 @@ def get_common_network_config(context, iface, config, network_id=None):
     layer interface (i.e., an interface that is used to terminate IP traffic).
     """
     LOG.debug("get_common_network_config %s %s network_id=%s" %
-              (iface.ifname, iface.networks, network_id))
+              (iface.ifname, iface.networktypelist, network_id))
     traffic_classifier = get_interface_traffic_classifier(context, iface,
                                                           network_id)
     if traffic_classifier:
@@ -967,7 +967,7 @@ def get_interface_network_config(context, iface, network_id=None):
 
     # setup an alias interface if there are multiple addresses assigned
     # NOTE: DHCP will only operate over a non-alias interface
-    if len(iface.networks) > 1 and network_id and method != DHCP_METHOD:
+    if len(iface.networktypelist) > 1 and network_id and method != DHCP_METHOD:
         ifname = "%s:%d" % (os_ifname, network_id)
     else:
         ifname = os_ifname
@@ -1012,8 +1012,9 @@ def generate_network_config(context, config, iface):
         net_config['ifname']: format_network_config(net_config)
     })
 
-    for net_id in iface.networks:
-        net_config = get_interface_network_config(context, iface, int(net_id))
+    for net_type in iface.networktypelist:
+        net_id = find_network_id_by_networktype(context, net_type)
+        net_config = get_interface_network_config(context, iface, net_id)
         config[NETWORK_CONFIG_RESOURCE].update({
             net_config['ifname']: format_network_config(net_config)
         })
@@ -1060,8 +1061,7 @@ def find_interface_by_type(context, networktype):
     mgmt, cluster-host, pxeboot, bmc).
     """
     for ifname, iface in six.iteritems(context['interfaces']):
-        for net_id in iface.networks:
-            net_type = find_networktype_by_network_id(context, int(net_id))
+        for net_type in iface.networktypelist:
             if networktype == net_type:
                 return iface
 

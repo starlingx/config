@@ -339,7 +339,6 @@ class Interfaces(Base):
 
     ifname = Column(String(255))
     ifclass = Column(String(255))
-    networktype = Column(String(255))
     ifcapabilities = Column(JSONEncodedDict)
     farend = Column(JSONEncodedDict)
     sriov_numvfs = Column(Integer)

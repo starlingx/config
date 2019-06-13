@@ -842,7 +842,6 @@ class Connection(object):
                         {
                          'uuid': uuidutils.generate_uuid(),
                          'ifname': 'bond1',
-                         'networktype': constants.NETWORK_TYPE_DATA,
                          'aemode': 'balanced',
                          'schedpolicy': 'xor',
                          'txhashpolicy': 'L2',
@@ -934,7 +933,6 @@ class Connection(object):
                         {
                          'uuid': uuidutils.generate_uuid(),
                          'ifname': 'eth1',
-                         'networktype': constants.NETWORK_TYPE_MGMT,
                          'extra': { ... },
                         }
         :returns: An EthernetInterface.

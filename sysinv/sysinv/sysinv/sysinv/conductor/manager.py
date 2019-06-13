@@ -1196,7 +1196,7 @@ class ConductorManager(service.PeriodicService):
         port_list = self.dbapi.port_get_all(host_id)
         ports = dict((p['interface_id'], p) for p in port_list)
         for interface in interface_list:
-            if interface.networktype == network_type:
+            if network_type in interface.networktypelist:
                 return cutils.get_interface_os_ifname(interface, ifaces, ports)
 
     def _find_local_mgmt_interface_vlan_id(self):
@@ -1204,7 +1204,7 @@ class ConductorManager(service.PeriodicService):
         host_id = self.get_my_host_id()
         interface_list = self.dbapi.iinterface_get_all(host_id, expunge=True)
         for interface in interface_list:
-            if interface.networktype == constants.NETWORK_TYPE_MGMT:
+            if constants.NETWORK_TYPE_MGMT in interface.networktypelist:
                 if 'vlan_id' not in interface:
                     return 0
                 else:
@@ -1820,7 +1820,7 @@ class ConductorManager(service.PeriodicService):
                                                              expunge=True)
 
         for i in iinterfaces:
-            if i.networktype == constants.NETWORK_TYPE_MGMT:
+            if constants.NETWORK_TYPE_MGMT in i.networktypelist:
                 break
 
         cloning = False
@@ -1923,7 +1923,6 @@ class ConductorManager(service.PeriodicService):
                                       'imtu': mtu,
                                       'iftype': 'ethernet',
                                       'ifclass': ifclass,
-                                      'networktype': networktype
                                       }
 
                     # autocreate untagged interface
@@ -1940,6 +1939,7 @@ class ConductorManager(service.PeriodicService):
                              })
                         if networktype in [constants.NETWORK_TYPE_MGMT,
                                            constants.NETWORK_TYPE_PXEBOOT]:
+                            new_interface_networktype = networktype
                             network = self.dbapi.network_get_by_type(networktype)
                             # create interface network association
                             ifnet_dict = {
@@ -1960,6 +1960,7 @@ class ConductorManager(service.PeriodicService):
 
                     if create_tagged_interface:
                         # autocreate tagged management interface
+                        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
                         interface_dict = {
                             'forihostid': ihost['id'],
                             'ifname': 'mgmt0',
@@ -1967,7 +1968,6 @@ class ConductorManager(service.PeriodicService):
                             'imtu': constants.DEFAULT_MTU,
                             'iftype': 'vlan',
                             'ifclass': constants.INTERFACE_CLASS_PLATFORM,
-                            'networktype': constants.NETWORK_TYPE_MGMT,
                             'uses': [ifname],
                             'vlan_id': vlan_id,
                         }
@@ -1978,6 +1978,7 @@ class ConductorManager(service.PeriodicService):
                             new_interface = self.dbapi.iinterface_create(
                                 ihost['id'], interface_dict
                             )
+                            new_interface_networktype = constants.NETWORK_TYPE_MGMT
                             network = self.dbapi.network_get_by_type(
                                 constants.NETWORK_TYPE_MGMT
                             )
@@ -2057,7 +2058,7 @@ class ConductorManager(service.PeriodicService):
                     values = {'interface_id': new_interface['id']}
                     try:
                         addr_name = cutils.format_address_name(
-                            ihost.hostname, new_interface['networktype'])
+                            ihost.hostname, new_interface_networktype)
                         address = self.dbapi.address_get_by_name(addr_name)
                         self.dbapi.address_update(address['uuid'], values)
                     except exception.AddressNotFoundByName:
@@ -8449,7 +8450,8 @@ class ConductorManager(service.PeriodicService):
 
         if nettype:
             iinterfaces[:] = [i for i in iinterfaces if
-                              i.networktype == nettype]
+                              nettype in i.networktypelist]
+
         return iinterfaces
 
     def mgmt_ip_set_by_ihost(self,
@@ -8604,13 +8606,12 @@ class ConductorManager(service.PeriodicService):
 
         return ilvgs
 
-    def _add_port_to_list(self, interface_id, networktype, port_list):
+    def _add_port_to_list(self, interface_id, port_list):
         info = {}
         ports = self.dbapi.port_get_all(interfaceid=interface_id)
         if ports:
             info['name'] = ports[0]['name']
             info['numa_node'] = ports[0]['numa_node']
-            info['networktype'] = networktype
             if info not in port_list:
                 port_list.append(info)
         return port_list
@@ -8622,30 +8623,22 @@ class ConductorManager(service.PeriodicService):
         info_list = []
         interface_list = self.dbapi.iinterface_get_all(ihost_id, expunge=True)
         for interface in interface_list:
-            ntype = interface['networktype']
-            if (ntype == constants.NETWORK_TYPE_CLUSTER_HOST or
-                    ntype == constants.NETWORK_TYPE_MGMT):
-                if interface['iftype'] == 'vlan' or \
-                                interface['iftype'] == 'ae':
+            if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+                if interface['iftype'] == constants.INTERFACE_TYPE_VLAN or \
+                        interface['iftype'] == constants.INTERFACE_TYPE_AE:
                     for uses_if in interface['uses']:
-                        for i in interface_list:
-                            if i['ifname'] == str(uses_if):
-                                if i['iftype'] == 'ethernet':
-                                    info_list = self._add_port_to_list(i['id'],
-                                                                       ntype,
+                        lower_iface = self.dbapi.iinterface_get(uses_if, ihost_id)
+                        if lower_iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                            info_list = self._add_port_to_list(lower_iface['id'],
+                                                               info_list)
+                        elif lower_iface['iftype'] == constants.INTERFACE_TYPE_AE:
+                            for lower_uses_if in lower_iface['uses']:
+                                ll_iface = self.dbapi.iinterface_get(lower_uses_if, ihost_id)
+                                if ll_iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                                    info_list = self._add_port_to_list(ll_iface['id'],
                                                                        info_list)
-                                elif i['iftype'] == 'ae':
-                                    for uses in i['uses']:
-                                        for a in interface_list:
-                                            if a['ifname'] == str(uses) and \
-                                                    a['iftype'] == 'ethernet':
-                                                info_list = self._add_port_to_list(
-                                                                    a['id'],
-                                                                    ntype,
-                                                                    info_list)
-                elif interface['iftype'] == 'ethernet':
+                elif interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
                     info_list = self._add_port_to_list(interface['id'],
-                                                       ntype,
                                                        info_list)
 
         LOG.info("platform_interfaces host_id=%s info_list=%s" %

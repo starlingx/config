@@ -650,6 +650,13 @@ INTERFACE_CLASS_DATA = 'data'
 INTERFACE_CLASS_PCI_PASSTHROUGH = 'pci-passthrough'
 INTERFACE_CLASS_PCI_SRIOV = 'pci-sriov'
 
+AE_MODE_ACTIVE_STANDBY = 'active_standby'
+AE_MODE_BALANCED = 'balanced'
+AE_MODE_LACP = '802.3ad'
+VALID_AEMODE_LIST = [AE_MODE_ACTIVE_STANDBY,
+                     AE_MODE_BALANCED,
+                     AE_MODE_LACP]
+
 SM_MULTICAST_MGMT_IP_NAME = "sm-mgmt-ip"
 MTCE_MULTICAST_MGMT_IP_NAME = "mtce-mgmt-ip"
 PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME = "patch-controller-mgmt-ip"

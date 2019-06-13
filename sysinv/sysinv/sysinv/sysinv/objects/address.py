@@ -24,7 +24,6 @@ class Address(base.SysinvObject):
               'forihostid': utils.int_or_none,
               'interface_uuid': utils.uuid_or_none,
               'pool_uuid': utils.uuid_or_none,
-              'networktype': utils.str_or_none,
               'ifname': utils.str_or_none,
               'family': utils.int_or_none,
               'address': utils.ip_str_or_none(),
@@ -36,8 +35,7 @@ class Address(base.SysinvObject):
     _foreign_fields = {'interface_uuid': 'interface:uuid',
                        'pool_uuid': 'address_pool:uuid',
                        'ifname': 'interface:ifname',
-                       'forihostid': 'interface:forihostid',
-                       'networktype': 'interface:networktype'}
+                       'forihostid': 'interface:forihostid'}
 
     @base.remotable_classmethod
     def get_by_uuid(cls, context, uuid):

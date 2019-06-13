@@ -7,8 +7,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import mock
 from six.moves import http_client
 
+from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
@@ -17,6 +19,13 @@ from sysinv.tests.db import utils as dbutils
 class InterfaceNetworkTestCase(base.FunctionalTest):
     def setUp(self):
         super(InterfaceNetworkTestCase, self).setUp()
+
+        p = mock.patch.object(api_if_v1, '_get_lower_interface_macs')
+        self.mock_lower_macs = p.start()
+        self.mock_lower_macs.return_value = {'enp0s18': '08:00:27:8a:87:48',
+                                             'enp0s19': '08:00:27:ea:93:8e'}
+        self.addCleanup(p.stop)
+
         self.system = dbutils.create_test_isystem()
         self.load = dbutils.create_test_load()
         self.controller = dbutils.create_test_ihost(
@@ -76,6 +85,12 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             name='oam',
             type=constants.NETWORK_TYPE_OAM,
             address_pool_id=self.address_pool_oam.id)
+        self.oam_address = dbutils.create_test_address(
+                family=2,
+                address='10.10.10.3',
+                prefix=24,
+                name='controller-0-oam',
+                address_pool_id=self.address_pool_oam.id)
         self.address_pool_pxeboot = dbutils.create_test_address_pool(
             id=4,
             network='192.168.202.0',
@@ -86,6 +101,12 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             id=4,
             type=constants.NETWORK_TYPE_PXEBOOT,
             address_pool_id=self.address_pool_pxeboot.id)
+        self.pxeboot_address = dbutils.create_test_address(
+                family=2,
+                address='192.168.202.3',
+                prefix=24,
+                name='controller-0-pxeboot',
+                address_pool_id=self.address_pool_pxeboot.id)
 
     def _post_and_check(self, ndict, expect_errors=False):
         response = self.post_json('%s' % self._get_path(), ndict,
@@ -162,7 +183,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
             network_uuid=self.oam_network.uuid)
-        self._post_and_check(worker_interface_network, expect_errors=False)
+        self._post_and_check(worker_interface_network, expect_errors=True)
 
     def test_create_pxeboot_interface_network(self):
         controller_interface = dbutils.create_test_interface(
@@ -290,3 +311,68 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_uuid=worker_interface.uuid,
             network_uuid=self.mgmt_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=True)
+
+    # Expected error: The oam network type is only supported on controller nodes
+    def test_invalid_oam_on_worker(self):
+        worker_interface = dbutils.create_test_interface(
+            ifname='enp0s3',
+            forihostid=self.worker.id)
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
+            network_uuid=self.oam_network.uuid)
+        self._post_and_check(worker_interface_network, expect_errors=True)
+
+    # Expected message: An interface with \'oam\' network type is already
+    # provisioned on this node
+    def test_create_invalid_duplicate_networktype(self):
+        controller_interface1 = dbutils.create_test_interface(
+            ifname='enp0s3',
+            forihostid=self.controller.id)
+        dbutils.create_test_interface_network(
+            interface_id=controller_interface1.id,
+            network_id=self.oam_network.id)
+        controller_interface2 = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.controller.id)
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface2.uuid,
+            network_uuid=self.oam_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=True)
+
+    # Expected error: Interface ___ does not have associated cluster-host
+    # interface on controller.
+    def test_no_cluster_host_on_controller(self):
+        worker_interface = dbutils.create_test_interface(
+            ifname='enp0s3',
+            forihostid=self.worker.id)
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
+            network_uuid=self.cluster_host_network.uuid)
+        self._post_and_check(worker_interface_network, expect_errors=True)
+
+    # Expected error: An interface with interface class data cannot
+    # assign platform networks.
+    def test_create_invalid_network_on_data_interface(self):
+        controller_interface = dbutils.create_test_interface(
+            ifname='enp0s3',
+            ifclass=constants.NETWORK_TYPE_DATA,
+            forihostid=self.controller.id)
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.cluster_host_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=True)
+
+    # Expected error: Device interface with network type ___, and interface type
+    #  'aggregated ethernet' must be in mode '802.3ad'
+    def test_aemode_invalid_mgmt(self):
+        controller_interface = dbutils.create_test_interface(
+            ifname='name',
+            forihostid=self.controller.id,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode='balanced',
+            txhashpolicy='layer2')
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.mgmt_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=True)

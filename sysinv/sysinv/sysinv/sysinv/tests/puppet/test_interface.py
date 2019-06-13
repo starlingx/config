@@ -64,20 +64,21 @@ class BaseTestCase(dbbase.DbTestCase):
         super(BaseTestCase, self).assertEqual(expected, observed, message)
 
     def _setup_address_and_routes(self, iface):
-        networktype = utils.get_primary_network_type(iface)
-        if networktype in NETWORKTYPES_WITH_V4_ADDRESSES:
+        if not iface['ifclass'] or iface['ifclass'] == constants.INTERFACE_CLASS_NONE:
+            return None
+        if iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
             address = {'interface_id': iface['id'],
                        'family': 4,
                        'prefix': 24,
                        'address': '192.168.1.2'}
             self.addresses.append(dbutils.create_test_address(**address))
-        elif networktype in NETWORKTYPES_WITH_V6_ADDRESSES:
+        elif iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
             address = {'interface_id': iface['id'],
                        'family': 6,
                        'prefix': 64,
                        'address': '2001:1::2'}
             self.addresses.append(dbutils.create_test_address(**address))
-        if networktype in NETWORKTYPES_WITH_V4_ROUTES:
+        if iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
             route = {'interface_id': iface['id'],
                      'family': 4,
                      'prefix': 24,
@@ -92,7 +93,7 @@ class BaseTestCase(dbbase.DbTestCase):
                      'gateway': '192.168.1.1',
                      'metric': '1'}
             self.routes.append(dbutils.create_test_route(**route))
-        if networktype in NETWORKTYPES_WITH_V6_ROUTES:
+        if iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
             route = {'interface_id': iface['id'],
                      'family': 6,
                      'prefix': 64,

@@ -246,11 +246,13 @@ class AddressController(rest.RestController):
 
     def _check_interface_type(self, interface_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        if not interface.networktype:
-            raise exception.InterfaceNetworkTypeNotSet()
-        if interface.networktype not in ALLOWED_NETWORK_TYPES:
-            raise exception.UnsupportedInterfaceNetworkType(
-                networktype=interface.networktype)
+        if (interface['ifclass'] == constants.INTERFACE_TYPE_PLATFORM and
+                interface['networktypelist'] is None):
+            raise exception.InterfaceNetworkNotSet()
+        for nt in interface['networktypelist']:
+            if nt not in ALLOWED_NETWORK_TYPES:
+                raise exception.UnsupportedInterfaceNetworkType(
+                    networktype=nt)
         return
 
     def _check_address_mode(self, interface_id, family):
@@ -292,10 +294,9 @@ class AddressController(rest.RestController):
 
     def _check_address_count(self, interface_id, host_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        networktype = interface['networktype']
         sdn_enabled = utils.get_sdn_enabled()
 
-        if networktype == constants.NETWORK_TYPE_DATA and not sdn_enabled:
+        if interface['ifclass'] == constants.INTERFACE_CLASS_DATA and not sdn_enabled:
             # Is permitted to add multiple addresses only
             # if SDN L3 mode is not enabled.
             return
@@ -309,12 +310,12 @@ class AddressController(rest.RestController):
                 # skip the one we came in with
                 if uuid == interface_id:
                     continue
-                if iface['ifclass'] == constants.NETWORK_TYPE_DATA:
+                if iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
                     addresses = (
                         pecan.request.dbapi.addresses_get_by_interface(uuid))
                     if len(addresses) != 0:
-                        raise exception.\
-                            AddressLimitedToOneWithSDN(iftype=networktype)
+                        raise exception.AddressLimitedToOneWithSDN(
+                            iftype=constants.INTERFACE_CLASS_DATA)
 
     def _check_address_conflicts(self, host_id, interface_id, address):
         self._check_address_count(interface_id, host_id)
@@ -357,13 +358,14 @@ class AddressController(rest.RestController):
     def _check_managed_addr(self, host_id, interface_id):
         # Check that static address alloc is enabled
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        networktype = interface['networktype']
-        if networktype not in [constants.NETWORK_TYPE_MGMT,
-                               constants.NETWORK_TYPE_OAM]:
-            return
-        network = pecan.request.dbapi.network_get_by_type(networktype)
-        if network.dynamic:
-            raise exception.StaticAddressNotConfigured()
+        if interface['networktypelist']:
+            for networktype in interface['networktypelist']:
+                if networktype not in [constants.NETWORK_TYPE_MGMT,
+                                       constants.NETWORK_TYPE_OAM]:
+                    continue
+                network = pecan.request.dbapi.network_get_by_type(networktype)
+                if network.dynamic:
+                    raise exception.StaticAddressNotConfigured()
         host = pecan.request.dbapi.ihost_get(host_id)
         if host['personality'] in [constants.STORAGE]:
             raise exception.ManagedIPAddress()

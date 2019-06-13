@@ -14,8 +14,9 @@
     # Use shell instead of command module as source is an internal shell command
     shell: "{{ item }}"
     with_items:
-      - source /etc/platform/openrc; system host-if-add controller-0 lo virtual none lo -c platform --networks mgmt -m 1500
-      - source /etc/platform/openrc; system host-if-modify controller-0 -c platform --networks cluster-host lo
+      - source /etc/platform/openrc; system host-if-add controller-0 lo virtual none lo -c platform -m 1500
+      - source /etc/platform/openrc; system interface-network-assign controller-0 lo mgmt
+      - source /etc/platform/openrc; system interface-network-assign controller-0 lo cluster-host
       - ip addr add {{ cluster_virtual }}  brd {{ cluster_broadcast }} dev lo scope host label lo:5
       - ip addr add {{ mgmt_virtual }} brd {{ management_broadcast }} dev lo scope host label lo:1
       - ip addr add {{ pxe_virtual }} dev lo scope host

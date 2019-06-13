@@ -56,3 +56,11 @@ class InterfaceNetworkManager(base.Manager):
     def remove(self, interface_network_uuid):
         path = '/v1/interface_networks/%s' % interface_network_uuid
         return self._delete(path)
+
+
+def get_network_names(cc, interface):
+    network_names = []
+    ifnets = cc.interface_network.list_by_interface(interface.uuid)
+    for ifnet in ifnets:
+        network_names.append(getattr(ifnet, 'network_name'))
+    return network_names

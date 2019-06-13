@@ -723,16 +723,12 @@ class PlatformPuppet(base.BasePuppet):
         # Calculate the optimal NFS r/w size based on the network mtu based
         # on the configured network(s)
         mtu = constants.DEFAULT_MTU
-        mgmt_network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        network_id = mgmt_network.id
         interfaces = self.dbapi.iinterface_get_by_ihost(host.uuid)
         for interface in interfaces:
             if interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
-                for net_id in interface['networks']:
-                    if int(net_id) == network_id:
-                        mtu = interface.imtu
-                        break
+                if constants.NETWORK_TYPE_MGMT in interface['networktypelist']:
+                    mtu = interface.imtu
+                    break
 
         if self._get_address_by_name(
                 constants.CONTROLLER_PLATFORM_NFS,

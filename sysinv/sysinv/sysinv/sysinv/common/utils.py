@@ -1027,51 +1027,6 @@ def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
     return required_reserved
 
 
-def get_network_type_list(interface):
-    if interface['networktype']:
-        return [n.strip() for n in interface['networktype'].split(",")]
-    else:
-        return []
-
-
-def is_pci_network_types(networktypelist):
-    """
-    Check if the network type consists of the combined PCI passthrough
-    and SRIOV network types.
-    """
-    return (len(constants.PCI_NETWORK_TYPES) == len(networktypelist) and
-            all(i in networktypelist for i in constants.PCI_NETWORK_TYPES))
-
-
-def get_primary_network_type(interface):
-    """
-    An interface can be associated with up to 2 network types but it can only
-    have 1 primary network type.  The additional network type can only be
-    'data' and is used as a placeholder to indicate that there is at least one
-    VLAN based neutron provider network associated to the interface.  This
-    information is used to determine whether the vswitch on the worker needs
-    to control the interface or not.   This function examines the list of
-    network types, discards the secondary type (if any) and returns the primary
-    network type.
-    """
-    if not interface['ifclass'] or interface['ifclass'] == constants.INTERFACE_CLASS_NONE:
-        return None
-    primary_network_type = None
-    if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
-        primary_network_type = constants.NETWORK_TYPE_DATA
-    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
-        primary_network_type = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV:
-        primary_network_type = constants.NETWORK_TYPE_PCI_SRIOV
-    elif interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
-        if not interface['networktype'] or interface[
-                'networktype'] == constants.NETWORK_TYPE_NONE:
-            return None
-        primary_network_type = interface['networktype']
-
-    return primary_network_type
-
-
 def get_sw_version():
     return SW_VERSION
 
@@ -1502,7 +1457,7 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
         mate_interfaces = dbapi.iinterface_get_all(
             forihostid=mate_controller_id)
         for interface in mate_interfaces:
-            if interface.networktype == constants.NETWORK_TYPE_MGMT:
+            if constants.NETWORK_TYPE_MGMT in interface.networktypelist:
                 mate_mgmt_iface = interface
                 break
         else:

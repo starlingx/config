@@ -13,25 +13,17 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import iinterface as iinterface_utils
-from cgtsclient.v1 import network as network_utils
 
 
 def _print_iinterface_show(cc, iinterface):
     fields = ['ifname', 'iftype', 'ports', 'datanetworks',
-              'imac', 'imtu', 'ifclass', 'networks',
+              'imac', 'imtu', 'ifclass',
               'aemode', 'schedpolicy', 'txhashpolicy',
               'uuid', 'ihost_uuid',
               'vlan_id', 'uses', 'used_by',
               'created_at', 'updated_at', 'sriov_numvfs', 'sriov_vf_driver']
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
     rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
-    network_names = ""
-    networks = getattr(iinterface, 'networks', [])
-    for n in networks:
-        network = network_utils._find_network(cc, n)
-        network_names += "{},".format(network.name)
-    network_names = network_names.strip(',')
-    setattr(iinterface, 'networks', network_names)
     data = [(f, getattr(iinterface, f, '')) for f in fields]
     data += [(f, getattr(iinterface, f, '')) for f in optional_fields
              if hasattr(iinterface, f)]
@@ -153,9 +145,6 @@ def do_host_if_delete(cc, args):
            metavar='<class>',
            choices=['platform', 'data', 'pci-passthrough', 'pci-sriov', 'none'],
            help='The class of the interface')
-@utils.arg('--networks',
-           metavar='<network name or id>',
-           help="Name or ID of network")
 @utils.arg('portsorifaces',
            metavar='<portsorifaces>',
            nargs='+',
@@ -177,7 +166,7 @@ def do_host_if_delete(cc, args):
 def do_host_if_add(cc, args):
     """Add an interface."""
 
-    field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'networks', 'aemode',
+    field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
                   'txhashpolicy', 'datanetworks', 'vlan_id',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
 
@@ -203,10 +192,6 @@ def do_host_if_add(cc, args):
     if 'datanetworks' in user_specified_fields.keys():
         user_specified_fields['datanetworks'] = \
             user_specified_fields['datanetworks'].split(',')
-
-    if 'networks' in user_specified_fields.keys():
-        network = network_utils._find_network(cc, args.networks)
-        user_specified_fields['networks'] = [str(network.id)]
 
     user_specified_fields['ihost_uuid'] = ihost.uuid
     user_specified_fields['ports'] = portnamesoruuids
@@ -251,9 +236,6 @@ def do_host_if_add(cc, args):
 @utils.arg('-c', '--ifclass',
            metavar='<class>',
            help='The class of the interface')
-@utils.arg('--networks',
-           metavar='<network name or id>',
-           help="Name or ID of network")
 @utils.arg('--ipv4-mode',
            metavar='<ipv4_mode>',
            choices=['disabled', 'static', 'pool'],
@@ -281,7 +263,7 @@ def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
-                'datanetworks', 'providernetworks', 'ports', 'ifclass', 'networks',
+                'datanetworks', 'providernetworks', 'ports', 'ifclass',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                 'sriov_numvfs', 'sriov_vf_driver']
 
@@ -302,10 +284,6 @@ def do_host_if_modify(cc, args):
     interface = _find_interface(cc, ihost, args.ifnameoruuid)
     fields = interface.__dict__
     fields.update(user_specified_fields)
-
-    if 'networks' in user_specified_fields.keys():
-        network = network_utils._find_network(cc, args.networks)
-        user_specified_fields['networks'] = str(network.id)
 
     # Allow setting an interface back to a None type
     if 'ifclass' in user_specified_fields.keys():

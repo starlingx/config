@@ -2085,14 +2085,13 @@ class Connection(api.Connection):
                             query, models.ihost, [forihostid])
         return query.all()
 
-    def _iinterface_get(self, iinterface_id, ihost=None, network=None):
+    def _iinterface_get(self, iinterface_id, ihost=None):
         entity = with_polymorphic(models.Interfaces, '*')
         query = model_query(entity)
         query = add_interface_filter(query, iinterface_id)
         if ihost is not None:
             query = add_interface_filter_by_ihost(query, ihost)
-        if network is not None:
-            query = query.filter_by(networktype=network)
+
         try:
             result = query.one()
         except NoResultFound:
@@ -2106,7 +2105,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.interface)
     def iinterface_get(self, iinterface_id, ihost=None, network=None):
-        return self._iinterface_get(iinterface_id, ihost, network)
+        return self._iinterface_get(iinterface_id, ihost)
 
     @objects.objectify(objects.interface)
     def iinterface_get_list(self, limit=None, marker=None,
@@ -2152,16 +2151,6 @@ class Connection(api.Connection):
         query, field = add_filter_by_many_identities(
                             query, models.ihost, [ihost])
 
-        return _paginate_query(models.Interfaces, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @objects.objectify(objects.interface)
-    def iinterface_get_by_network(self, network,
-                                limit=None, marker=None,
-                                sort_key=None, sort_dir=None):
-        entity = with_polymorphic(models.Interfaces, '*')
-        query = model_query(entity)
-        query = query.filter_by(networktype=network)
         return _paginate_query(models.Interfaces, limit, marker,
                                sort_key, sort_dir, query)
 
@@ -2237,13 +2226,6 @@ class Connection(api.Connection):
             if obj.id is None:
                 obj.id = temp_id
 
-            # Ensure networktype results are None when they
-            # are specified as 'none'.  Otherwise the 'none' value is written to
-            # the database which causes issues with checks that expects it to be
-            # the None type
-            if getattr(obj, 'networktype', None) == constants.NETWORK_TYPE_NONE:
-                setattr(obj, 'networktype', None)
-
             try:
                 session.add(obj)
                 session.flush()
@@ -2318,8 +2300,6 @@ class Connection(api.Connection):
                 obj = self._interface_get(models.Interfaces, interface_id)
 
                 for k, v in list(values.items()):
-                    if k == 'networktype' and v == constants.NETWORK_TYPE_NONE:
-                        v = None
                     if k == 'datanetworks' and v == 'none':
                         v = None
                     if k == 'uses':
@@ -4951,6 +4931,26 @@ class Connection(api.Connection):
         return self._addresses_get_by_pool_uuid(pool_uuid,
                                                 limit, marker,
                                                 sort_key, sort_dir)
+
+    @objects.objectify(objects.address)
+    def addresses_get_by_interface_pool(self, interface_uuid, pool_uuid,
+                                   limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        interface_id = self.iinterface_get(interface_uuid).id
+        pool_id = self.address_pool_get(pool_uuid).id
+        query = model_query(models.Addresses)
+        query = (query.
+                 join(models.AddressPools,
+                      models.AddressPools.id == pool_id).
+                 join(models.Interfaces,
+                      models.Interfaces.id == interface_id).
+                 filter(models.Addresses.interface_id == interface_id).
+                 filter(models.Addresses.address_pool_id == pool_id))
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.AddressNotFoundByInterfacePool(interface=interface_uuid, pool=pool_uuid)
+        return result
 
     def address_destroy(self, address_uuid):
         query = model_query(models.Addresses)

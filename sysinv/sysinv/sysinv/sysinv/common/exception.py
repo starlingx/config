@@ -331,9 +331,8 @@ class InterfaceNameAlreadyExists(Conflict):
     message = _("Interface with name %(name)s already exists.")
 
 
-class InterfaceNetworkTypeNotSet(Conflict):
-    message = _("The Interface must have a networktype configured to "
-                "support addresses. (data or infra)")
+class InterfaceNetworkNotSet(Conflict):
+    message = _("The Interface does not have any network assigned to it.")
 
 
 class AddressInUseByRouteGateway(Conflict):
@@ -372,7 +371,7 @@ class RouteGatewayCannotBeLocal(Conflict):
 
 class RoutesNotSupportedOnInterfaces(Conflict):
     message = _("Routes may not be configured against interfaces with network "
-                "type '%(iftype)s'")
+                "type '%(type)s'")
 
 
 class DefaultRouteNotAllowedOnVRSInterface(Conflict):
@@ -697,6 +696,11 @@ class AddressNotFoundByAddress(NotFound):
 
 class AddressNotFoundByName(NotFound):
     message = _("Address could not be found for %(name)s")
+
+
+class AddressNotFoundByInterfacePool(NotFound):
+    message = _("Address could not be found for interface %(interface)s "
+                "pool %(pool)s")
 
 
 class AddressModeAlreadyExists(Conflict):

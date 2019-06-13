@@ -78,12 +78,12 @@ def get_host_uuid(field, db_server):
     return host_uuid
 
 
-def get_networks(field, db_object):
+def get_networktypes(field, db_object):
     result = []
     try:
         if getattr(db_object, 'interface_networks', None):
             for entry in getattr(db_object, 'interface_networks', []):
-                id_str = str(entry.network_id)
+                id_str = str(entry.network.type)
                 result.append(id_str)
     except exc.DetachedInstanceError:
         # instrument and return empty network
@@ -126,11 +126,10 @@ class Interface(base.SysinvObject):
             'ifclass': utils.str_or_none,
             'imac': utils.str_or_none,
             'imtu': utils.int_or_none,
-            'networktype': utils.str_or_none,
             'aemode': utils.str_or_none,
             'schedpolicy': utils.str_or_none,
             'txhashpolicy': utils.str_or_none,
-            'networks': utils.list_of_strings_or_none,
+            'networktypelist': utils.list_of_strings_or_none,
             'datanetworks': utils.list_of_strings_or_none,
 
             'ifcapabilities': utils.dict_or_none,
@@ -156,7 +155,7 @@ class Interface(base.SysinvObject):
                        'ipv4_pool': get_ipv4_address_pool,
                        'ipv6_pool': get_ipv6_address_pool,
                        'ihost_uuid': get_host_uuid,
-                       'networks': get_networks,
+                       'networktypelist': get_networktypes,
                        'datanetworks': get_datanetworks}
 
     _optional_fields = ['aemode', 'txhashpolicy', 'schedpolicy',

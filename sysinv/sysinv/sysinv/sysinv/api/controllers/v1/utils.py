@@ -326,6 +326,28 @@ def lookup_static_ip_address(name, networktype):
         return None
 
 
+def update_address_mode(interface, family, mode, pool):
+    interface_id = interface['id']
+    pool_id = pecan.request.dbapi.address_pool_get(pool)['id'] if pool else None
+    try:
+        # retrieve the existing value and compare
+        existing = pecan.request.dbapi.address_mode_query(
+            interface_id, family)
+        if existing.mode == mode:
+            if (mode != 'pool' or existing.pool_uuid == pool):
+                return
+        if existing.mode == 'pool' or (not mode or mode == 'disabled'):
+            pecan.request.dbapi.routes_destroy_by_interface(
+                interface_id, family)
+            pecan.request.dbapi.addresses_destroy_by_interface(
+                interface_id, family)
+    except exception.AddressModeNotFoundByFamily:
+        # continue and update DB with new record
+        pass
+    updates = {'family': family, 'mode': mode, 'address_pool_id': pool_id}
+    pecan.request.dbapi.address_mode_update(interface_id, updates)
+
+
 class SystemHelper(object):
     @staticmethod
     def get_product_build():
