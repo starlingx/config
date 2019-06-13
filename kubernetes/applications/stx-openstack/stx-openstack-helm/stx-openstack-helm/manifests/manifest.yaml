@@ -684,7 +684,7 @@ data:
     conf:
       cinder:
         DEFAULT:
-          backup_driver: cinder.backup.drivers.swift
+          backup_driver: cinder.backup.drivers.ceph.CephBackupDriver
     storage: rbd
   source:
     type: tar
@@ -711,12 +711,16 @@ data:
   upgrade:
     no_hooks: false
   values:
+    ceph_client:
+      user_secret_name: cinder-volume-rbd-keyring
     labels:
       agent:
         libvirt:
           node_selector_key: openstack-compute-node
           node_selector_value: enabled
     conf:
+      ceph:
+        enabled: true
       kubernetes:
         cgroup: "k8s-infra"
     images:
@@ -929,8 +933,7 @@ data:
           live_migration_completion_timeout: 180
           live_migration_permit_auto_converge: true
           mem_stats_period_seconds: 0
-          rbd_secret_uuid: null
-          rbd_user: null
+          rbd_user: cinder
           # Allow up to 1 day for resize conf
           remove_unused_resized_minimum_age_seconds: 86400
         database:
@@ -3242,9 +3245,9 @@ data:
     - openstack-clients
     - openstack-barbican
     - openstack-glance
+    - openstack-cinder
     - openstack-ceph-rgw
     - openstack-compute-kit
     - openstack-heat
     - openstack-horizon
-    - openstack-cinder
     - openstack-telemetry

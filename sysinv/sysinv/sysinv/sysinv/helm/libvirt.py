@@ -27,9 +27,6 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
                     'libvirt': {
                         'listen_addr': '0.0.0.0'
                     },
-                    'ceph': {
-                        'enabled': False
-                    },
                     'qemu': {
                         'user': "root",
                         'group': "root",
