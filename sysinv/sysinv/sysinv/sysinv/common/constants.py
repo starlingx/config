@@ -456,7 +456,6 @@ SB_STATE_CONFIGURING_ON_UNLOCK = 'configuring-on-unlock'
 SB_TASK_NONE = None
 SB_TASK_APPLY_MANIFESTS = 'applying-manifests'
 SB_TASK_APPLY_CONFIG_FILE = 'applying-config-file'
-SB_TASK_RECONFIG_CONTROLLER = 'reconfig-controller'
 SB_TASK_PROVISION_STORAGE = 'provision-storage'
 SB_TASK_PROVISION_SERVICES = 'provision-services'
 SB_TASK_RECONFIG_WORKER = 'reconfig-worker'

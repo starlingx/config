@@ -6696,7 +6696,7 @@ class ConductorManager(service.PeriodicService):
 
                 if ceph_conf.state != constants.SB_STATE_CONFIG_ERR:
                     if config_success:
-                        values = {'task': constants.SB_TASK_RECONFIG_CONTROLLER}
+                        values = {'task': constants.SB_TASK_PROVISION_STORAGE}
                     else:
                         values = {'task': str(tasks)}
             self.dbapi.storage_backend_update(ceph_conf.uuid, values)
