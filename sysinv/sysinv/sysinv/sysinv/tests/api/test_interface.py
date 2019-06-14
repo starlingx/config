@@ -1184,9 +1184,9 @@ class TestPost(InterfaceTestCase):
 
     def test_ipv4_mode_valid(self):
         ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.controller.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            ifclass=constants.INTERFACE_CLASS_DATA,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
             ipv4_mode=constants.IPV4_POOL,
             ipv4_pool=self.address_pool1.uuid)

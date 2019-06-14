@@ -246,9 +246,9 @@ class Interface(base.APIBase):
                     bookmark=True)
             ]
 
-        if _is_interface_address_allowed(rpc_interface.as_dict()):
+        if not _is_interface_address_allowed(rpc_interface.as_dict()):
             # Hide this functionality when the network type does not support
-            # setting or updating the network type
+            # setting or updating the address
             interface.ipv4_mode = wtypes.Unset
             interface.ipv6_mode = wtypes.Unset
             interface.ipv4_pool = wtypes.Unset
@@ -1049,7 +1049,7 @@ def _check_address_mode(op, interface, ihost, existing_interface):
     object_utils.ipv6_mode_or_none(ipv6_mode)
 
     # Check for supported interface network types
-    if _is_interface_address_allowed(interface):
+    if not _is_interface_address_allowed(interface):
         if (ipv4_mode and ipv4_mode != constants.IPV4_DISABLED):
             raise exception.AddressModeOnlyOnSupportedTypes(
                 types=", ".join(address.ALLOWED_NETWORK_TYPES))
