@@ -190,6 +190,7 @@
       derived_network_params:
         place_holder: place_holder
       ansible_remote_tmp: "{{ ansible_remote_tmp | default(lookup('ini', 'remote_tmp section=defaults file={{ playbook_dir }}/ansible.cfg')) }}"
+      pods_wait_time: "{{ pods_wait_time | default(30) }}"
 
   - name: Turn on use_docker_proxy flag
     set_fact:
@@ -358,6 +359,7 @@
         - name: Turn on restart services flag if management/oam/cluster network or docker config is changed
           set_fact:
             restart_services: true
+            pods_wait_time: "{{ pods_wait_time|int + 30 }}"
           when: reconfigure_endpoints or
                 docker_config_update or
                 (prev_cluster_host_subnet != cluster_host_subnet) or

@@ -15,7 +15,7 @@
 #   - Prepare admin.conf
 #   - Set k8s environment variable for new shell
 #   - Prepare Calico config and activate Calico networking
-#   - Precare Multus config and activate Multus networking
+#   - Prepare Multus config and activate Multus networking
 #   - Prepare SRIOV config and activate SRIOV networking
 #   - Prepare SRIOV device plugin config and activate SRIOV device plugin
 #   - Restrict coredns to master node and set anti-affnity (duplex system)

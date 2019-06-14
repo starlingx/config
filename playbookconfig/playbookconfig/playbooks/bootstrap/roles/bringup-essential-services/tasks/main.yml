@@ -65,13 +65,9 @@
     until: online_check.rc == 0
     retries: 10
 
-  # Don't need to run this task for initial play as it will take a while to pull
-  # Armada image and additional time to wait for controller-0 to become online
-  # during which time kube-system pods are all started.
-  - name: Wait for 60 seconds to ensure kube-system pods are all started
+  - name: Wait for {{ pods_wait_time }} seconds to ensure kube-system pods are all started
     wait_for:
-      timeout: 60
-    when: restart_services
+      timeout: "{{ pods_wait_time }}"
 
   - name: Start parallel tasks to wait for Kubernetes component, Networking and Tiller pods to reach ready state
     command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait  --namespace=kube-system --for=condition=Ready pods --selector {{ item }} --timeout=30s
