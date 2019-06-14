@@ -1,4 +1,0 @@
----
-hieradata_workdir: /tmp/hieradata
-manifest_apply_log: /tmp/apply_manifest.log
-loopback_ifname: lo

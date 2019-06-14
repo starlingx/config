@@ -18,6 +18,5 @@ puppet-modules-wrs/puppet-dcorch
 puppet-modules-wrs/puppet-dcmanager
 puppet-modules-wrs/puppet-smapi
 puppet-modules-wrs/puppet-fm
-playbookconfig
 puppet-modules-wrs/puppet-dcdbsync
 pm-qos-mgr
