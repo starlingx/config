@@ -263,7 +263,7 @@ class RouteController(rest.RestController):
 
     def _check_interface_type(self, interface_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        if (interface['ifclass'] == constants.INTERFACE_TYPE_PLATFORM and
+        if (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
                 interface['networktypelist'] is None):
             raise exception.InterfaceNetworkNotSet()
         for nt in interface['networktypelist']:
