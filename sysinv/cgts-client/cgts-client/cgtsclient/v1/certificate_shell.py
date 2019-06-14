@@ -83,8 +83,7 @@ def do_certificate_install(cc, args):
                                certificate_file)
 
     data = {'passphrase': args.passphrase,
-            'mode': args.mode,
-            'certificate_file': os.path.abspath(args.certificate_file)}
+            'mode': args.mode}
 
     print("WARNING: For security reasons, the original certificate, ")
     print("containing the private key, will be removed, ")
@@ -95,11 +94,16 @@ def do_certificate_install(cc, args):
         error = response.get('error')
         if error:
             raise exc.CommandError("%s" % error)
-        else:
-            _print_certificate_show(response.get('certificates'))
     except exc.HTTPNotFound:
         raise exc.CommandError('Certificate not installed %s. No response.' %
                                certificate_file)
     except Exception as e:
         raise exc.CommandError('Certificate %s not installed: %s' %
                                (certificate_file, e))
+    else:
+        _print_certificate_show(response.get('certificates'))
+        try:
+            os.remove(certificate_file)
+        except OSError:
+            raise exc.CommandError('Error: Could not remove the '
+                                   'certificate %s' % certificate_file)
