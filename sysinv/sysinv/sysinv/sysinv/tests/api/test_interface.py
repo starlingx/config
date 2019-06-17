@@ -202,6 +202,7 @@ class InterfaceTestCase(base.FunctionalTest):
                 id=4,
                 network='abde::',
                 name='ipv6',
+                family='6',
                 ranges=[['abde::2', 'abde::ffff:ffff:ffff:fffe']],
                 prefix=64)
             self.address_pool_pxeboot = dbutils.create_test_address_pool(
@@ -298,12 +299,10 @@ class InterfaceTestCase(base.FunctionalTest):
             pciaddr='0000:00:00.' + str(port_id + 1),
             dev_id=0)
 
-        interface_uuid = None
         if not networktype:
             interface = dbutils.create_test_interface(ifname=ifname,
                                                       forihostid=host.id,
                                                       ihost_uuid=host.uuid)
-            interface_uuid = interface.uuid
         else:
             interface = dbutils.post_get_test_interface(
                 ifname=ifname,
@@ -312,12 +311,12 @@ class InterfaceTestCase(base.FunctionalTest):
                 forihostid=host.id, ihost_uuid=host.uuid)
             response = self._post_and_check(interface, expect_errors)
             if expect_errors is False:
-                interface_uuid = response.json['uuid']
-                interface['uuid'] = interface_uuid
+                interface['uuid'] = response.json['uuid']
                 if ifclass == constants.INTERFACE_CLASS_PLATFORM and networktype:
                     network = self.dbapi.network_get_by_type(networktype)
+                    iface = self.dbapi.iinterface_get(interface['uuid'])
                     dbutils.create_test_interface_network(
-                        interface_id=interface_uuid,
+                        interface_id=iface.id,
                         network_id=network.id)
 
         self.profile['interfaces'].append(interface)
@@ -392,9 +391,10 @@ class InterfaceTestCase(base.FunctionalTest):
             if ifclass == constants.INTERFACE_CLASS_PLATFORM and networktype:
                 interface['uuid'] = response.json['uuid']
                 network = self.dbapi.network_get_by_type(networktype)
+                iface = self.dbapi.iinterface_get(interface['uuid'])
                 dbutils.create_test_interface_network(
-                    interface_id=interface['uuid'],
-                    network_id=network.id)
+                        interface_id=iface.id,
+                        network_id=network.id)
         self.profile['interfaces'].append(interface)
         return interface
 
@@ -1182,7 +1182,7 @@ class TestPost(InterfaceTestCase):
                               host=self.worker,
                               expect_errors=True)
 
-    def test_ipv4_mode_valid(self):
+    def test_data_ipv4_mode_valid(self):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
@@ -1191,6 +1191,50 @@ class TestPost(InterfaceTestCase):
             ipv4_mode=constants.IPV4_POOL,
             ipv4_pool=self.address_pool1.uuid)
         self._post_and_check_success(ndict)
+
+    def test_data_ipv6_mode_valid(self):
+        ndict = dbutils.post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ipv6_mode=constants.IPV6_POOL,
+            ipv6_pool=self.address_pool_v6.uuid)
+        self._post_and_check_success(ndict)
+
+    def test_platform_ipv4_mode_valid(self):
+        port, interface = self._create_ethernet(
+            'mgmt', constants.NETWORK_TYPE_MGMT,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM)
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ipv4_mode=constants.IPV4_STATIC)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(constants.IPV4_STATIC, response.json['ipv4_mode'])
+
+    def test_platform_ipv6_mode_valid(self):
+        port, interface = self._create_ethernet(
+            'mgmt', constants.NETWORK_TYPE_MGMT,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM)
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ipv6_mode=constants.IPV6_STATIC)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual(constants.IPV6_STATIC, response.json['ipv6_mode'])
+
+    # Expected error: Address mode attributes only supported on
+    # mgmt, oam, cluster-host, data interfaces
+    def test_platform_no_network_ipv4_mode(self):
+        ndict = dbutils.post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            ipv4_mode=constants.IPV4_STATIC,
+            ipv4_pool=self.address_pool1.uuid)
+        self._post_and_check_failure(ndict)
 
     # Expected error: Address mode attributes only supported on
     # mgmt, oam, cluster-host, data interfaces
@@ -1249,7 +1293,7 @@ class TestPost(InterfaceTestCase):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            ifclass=constants.INTERFACE_CLASS_DATA,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
             ipv4_mode=constants.IPV4_POOL,
             ipv6_mode=constants.IPV6_POOL)
@@ -1260,7 +1304,7 @@ class TestPost(InterfaceTestCase):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            ifclass=constants.INTERFACE_CLASS_DATA,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
             ipv4_mode=constants.IPV4_POOL,
             ipv6_mode=constants.IPV6_POOL,
@@ -1272,7 +1316,7 @@ class TestPost(InterfaceTestCase):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            ifclass=constants.INTERFACE_CLASS_DATA,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
             ipv4_mode=constants.IPV4_POOL,
             ipv6_mode=constants.IPV6_POOL,
@@ -1285,7 +1329,7 @@ class TestPost(InterfaceTestCase):
         ndict = dbutils.post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            ifclass=constants.INTERFACE_CLASS_DATA,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
             ipv4_mode=constants.IPV4_POOL,
             ipv6_mode=constants.IPV6_POOL,
