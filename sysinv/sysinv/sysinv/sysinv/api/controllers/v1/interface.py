@@ -2285,7 +2285,7 @@ def _is_interface_address_allowed(interface):
         return False
     elif interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         return True
-    elif (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
-            interface['networktypelist'] is not None):
-        if not any(nt in address.ALLOWED_NETWORK_TYPES for nt in interface['networktypelist']):
-            return False
+    elif interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+        if any(nt in address.ALLOWED_NETWORK_TYPES for nt in interface['networktypelist'] or []):
+            return True
+    return False
