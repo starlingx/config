@@ -566,9 +566,9 @@ def show_help_subcloud():
 def config_main(config_type=REGION_CONFIG):
     allow_ssh = False
     if config_type == REGION_CONFIG:
-        config_file = "/home/wrsroot/region_config"
+        config_file = "/home/sysadmin/region_config"
     elif config_type == SUBCLOUD_CONFIG:
-        config_file = "/home/wrsroot/subcloud_config"
+        config_file = "/home/sysadmin/subcloud_config"
     else:
         raise ConfigFail("Invalid config_type: %s" % config_type)
 

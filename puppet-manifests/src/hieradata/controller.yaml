@@ -109,7 +109,7 @@ platform::haproxy::params::global_options:
   log:
     - '127.0.0.1:514 local1 info'
   user: 'haproxy'
-  group: 'wrs_protected'
+  group: 'sys_protected'
   chroot: '/var/lib/haproxy'
   pidfile: '/var/run/haproxy.pid'
   maxconn: '4000'

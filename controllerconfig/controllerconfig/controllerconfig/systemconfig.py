@@ -300,7 +300,7 @@ def main():
     do_clone = False
     do_non_interactive = False
     do_provision = False
-    system_config_file = "/home/wrsroot/system_config"
+    system_config_file = "/home/sysadmin/system_config"
     allow_ssh = False
 
     # Disable completion as the default completer shows python commands

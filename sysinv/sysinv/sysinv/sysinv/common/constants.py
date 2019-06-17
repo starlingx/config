@@ -1185,10 +1185,10 @@ LLDP_FULL_AUDIT_COUNT = 6
 FM_SUPPRESSED = 'suppressed'
 FM_UNSUPPRESSED = 'unsuppressed'
 
-# wrsroot password aging.
+# sysadmin password aging.
 # Setting aging to max defined value qualifies
 # as "never" on certain Linux distros including WRL
-WRSROOT_PASSWORD_NO_AGING = 99999
+SYSADMIN_PASSWORD_NO_AGING = 99999
 
 # SDN Controller
 SDN_CONTROLLER_STATE_ENABLED = 'enabled'
@@ -1298,7 +1298,7 @@ NETWORK_CONFIG_LOCK_FILE = os.path.join(
 
 SYSINV_USERNAME = "sysinv"
 SYSINV_GRPNAME = "sysinv"
-SYSINV_WRS_GRPNAME = "wrs_protected"
+SYSINV_SYSADMIN_GRPNAME = "sys_protected"
 
 # This is the first report sysinv is sending to conductor since boot
 SYSINV_AGENT_FIRST_REPORT = 'first_report'

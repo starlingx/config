@@ -30,7 +30,9 @@ class platform::params (
 
   $nfs_mount_options = "timeo=30,proto=${nfs_proto},vers=3,rsize=${nfs_rw_size},wsize=${nfs_rw_size}"
 
-  $protected_group_name = 'wrs_protected'
+  $sysadmin_user_name = 'sysadmin'
+  $sysadmin_user_dir = '/home/sysadmin'
+  $protected_group_name = 'sys_protected'
   $protected_group_id = '345'
 
   # PUPPET 4 treats custom facts as strings. We convert to int by adding zero.

@@ -10565,7 +10565,7 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "Content-Type multipart/form-data", "plain", "xsd:string", "The content of a file. e.g. if using curl, this would be specified as: curl -F name=@full_path_of_filename <div class=""example""><pre>file=@/home/wrsroot/server-with-key.pem </pre></div>"
+   "Content-Type multipart/form-data", "plain", "xsd:string", "The content of a file. e.g. if using curl, this would be specified as: curl -F name=@full_path_of_filename <div class=""example""><pre>file=@/home/sysadmin/server-with-key.pem </pre></div>"
    "passphrase (Optional)", "plain", "xsd:string", "The passphrase for the PEM file."
    "mode (Optional)", "plain", "xsd:string", "This parameter specifies the type of System certificate. Possible values are: <emphasis xmlns=""http://docbook.org/ns/docbook"">ssl, tpm_mode, docker_registry, openstack, openstack_ca</emphasis>. Default: <emphasis xmlns=""http://docbook.org/ns/docbook"">ssl</emphasis>"
 

@@ -28,7 +28,7 @@ class platform::sysinv
     ensure           => 'present',
     comment          => 'sysinv Daemons',
     gid              => '168',
-    groups           => ['nobody', 'sysinv', 'wrs_protected'],
+    groups           => ['nobody', 'sysinv', 'sys_protected'],
     home             => '/var/lib/sysinv',
     password         => '!!',
     password_max_age => '-1',

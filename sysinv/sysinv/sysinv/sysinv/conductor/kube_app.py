@@ -272,9 +272,9 @@ class AppOperator(object):
             if not os.path.isdir(app.path):
                 create_app_path(app.path)
 
-            # Temporarily change /scratch group ownership to wrs_protected
+            # Temporarily change /scratch group ownership to sys_protected
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid,
-                     grp.getgrnam(constants.SYSINV_WRS_GRPNAME).gr_gid)
+                     grp.getgrnam(constants.SYSINV_SYSADMIN_GRPNAME).gr_gid)
 
             # Extract the tarfile as sysinv user
             if not cutils.extract_tarfile(app.path, app.tarfile, demote_user=True):
@@ -613,9 +613,9 @@ class AppOperator(object):
         orig_uid, orig_gid = get_app_install_root_path_ownership()
         helm_repo = self._get_helm_repo_from_metadata(app)
         try:
-            # Temporarily change /scratch group ownership to wrs_protected
+            # Temporarily change /scratch group ownership to sys_protected
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid,
-                     grp.getgrnam(constants.SYSINV_WRS_GRPNAME).gr_gid)
+                     grp.getgrnam(constants.SYSINV_SYSADMIN_GRPNAME).gr_gid)
             with open(os.devnull, "w") as fnull:
                 for chart in charts:
                     subprocess.check_call(['helm-upload', helm_repo, chart],
@@ -1914,14 +1914,14 @@ class DockerHelper(object):
                 if not os.path.exists(ARMADA_HOST_LOG_LOCATION):
                     os.mkdir(ARMADA_HOST_LOG_LOCATION)
                     os.chmod(ARMADA_HOST_LOG_LOCATION, 0o755)
-                    os.chown(ARMADA_HOST_LOG_LOCATION, 1000, grp.getgrnam("wrs").gr_gid)
+                    os.chown(ARMADA_HOST_LOG_LOCATION, 1000, grp.getgrnam("sys_protected").gr_gid)
 
                 # First make kubernetes config accessible to Armada. This
                 # is a work around the permission issue in Armada container.
                 kube_config = os.path.join(constants.APP_SYNCED_DATA_PATH,
                                            'admin.conf')
                 shutil.copy('/etc/kubernetes/admin.conf', kube_config)
-                os.chown(kube_config, 1000, grp.getgrnam("wrs").gr_gid)
+                os.chown(kube_config, 1000, grp.getgrnam("sys_protected").gr_gid)
 
                 overrides_dir = common.HELM_OVERRIDES_PATH
                 manifests_dir = constants.APP_SYNCED_DATA_PATH

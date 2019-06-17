@@ -235,9 +235,9 @@ class PlatformPuppet(base.BasePuppet):
     def _get_user_config(self):
         user = self.dbapi.iuser_get_one()
         return {
-            'platform::users::params::wrsroot_password':
+            'platform::users::params::sysadmin_password':
                 user.passwd_hash,
-            'platform::users::params::wrsroot_password_max_age':
+            'platform::users::params::sysadmin_password_max_age':
                 user.passwd_expiry_days,
         }
 

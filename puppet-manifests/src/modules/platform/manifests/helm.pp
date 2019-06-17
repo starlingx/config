@@ -30,19 +30,19 @@ define platform::helm::repository (
     }
 
     $before_relationship = Exec['Stop lighttpd']
-    $require_relationship =  [ User['wrsroot'], Exec["Generate index: ${repo_path}"] ]
+    $require_relationship =  [ User['sysadmin'], Exec["Generate index: ${repo_path}"] ]
   } else {
     $before_relationship = undef
-    $require_relationship =  User['wrsroot']
+    $require_relationship =  User['sysadmin']
   }
 
   exec { "Adding StarlingX helm repo: ${name}":
     before      => $before_relationship,
-    environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf' , 'HOME=/home/wrsroot'],
+    environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf' , 'HOME=/home/sysadmin'],
     command     => "helm repo add ${name} http://127.0.0.1:${repo_port}/helm_charts/${name}",
     logoutput   => true,
-    user        => 'wrsroot',
-    group       => 'wrs',
+    user        => 'sysadmin',
+    group       => 'sys_protected',
     require     => $require_relationship
   }
 }
@@ -62,12 +62,12 @@ class platform::helm::repositories
   }
 
   -> exec { 'Updating info of available charts locally from chart repo':
-    environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
+    environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/sysadmin' ],
     command     => 'helm repo update',
     logoutput   => true,
-    user        => 'wrsroot',
-    group       => 'wrs',
-    require     => User['wrsroot']
+    user        => 'sysadmin',
+    group       => 'sys_protected',
+    require     => User['sysadmin']
   }
 }
 
@@ -132,12 +132,12 @@ class platform::helm
       }
 
       -> exec { 'initialize helm':
-        environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
+        environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/sysadmin' ],
         command     => "helm init --skip-refresh --service-account tiller --node-selectors \"node-role.kubernetes.io/master\"=\"\" --tiller-image=${gcr_registry}/kubernetes-helm/tiller:v2.13.1  --override spec.template.spec.hostNetwork=true", # lint:ignore:140chars
         logoutput   => true,
-        user        => 'wrsroot',
-        group       => 'wrs',
-        require     => User['wrsroot']
+        user        => 'sysadmin',
+        group       => 'sys_protected',
+        require     => User['sysadmin']
       }
 
       exec { "bind mount ${target_helm_repos_base_dir}":
@@ -150,12 +150,12 @@ class platform::helm
       Class['::platform::kubernetes::master']
 
       -> exec { 'initialize helm':
-        environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/wrsroot' ],
+        environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/sysadmin' ],
         command     => 'helm init --skip-refresh --client-only',
         logoutput   => true,
-        user        => 'wrsroot',
-        group       => 'wrs',
-        require     => User['wrsroot']
+        user        => 'sysadmin',
+        group       => 'sys_protected',
+        require     => User['sysadmin']
       }
     }
 
