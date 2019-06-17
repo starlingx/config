@@ -10,10 +10,12 @@
 #
 
 ### BEGIN INIT INFO
-# Provides:		worker_config
-# Short-Description: 	Worker node config agent
-# Default-Start:	2 3 4 5
-# Default-Stop:		0 1 6
+# Provides:             worker_config
+# Required-Start:
+# Required-Stop:
+# Default-Start:        2 3 4 5
+# Default-Stop:         0 1 6
+# Short-Description:    Worker node config agent
 ### END INIT INFO
 
 . /usr/bin/tsconfig
