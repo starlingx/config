@@ -3030,12 +3030,6 @@ class ConfigAssistant():
                     self.system_controller_floating_ip = config.get(
                         'cREGION', 'SYSTEM_CONTROLLER_FLOATING_ADDRESS')
 
-            # Deprecated Ceilometer time_to_live option.
-            # made this a ceilometer service parameter.
-            if config.has_option('cCEILOMETER', 'TIME_TO_LIVE'):
-                raise ConfigFail("The option TIME_TO_LIVE is "
-                                 "no longer supported")
-
         except Exception:
             print("Error parsing answer file")
             raise

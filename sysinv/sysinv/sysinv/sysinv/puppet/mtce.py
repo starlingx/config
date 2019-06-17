@@ -50,15 +50,10 @@ class MtcePuppet(openstack.OpenstackBasePuppet):
                 self._keystone_region_name(),
 
             'platform::mtce::params::keyring_directory': KEYRING_PATH,
-            'platform::mtce::params::ceilometer_port':
-                self._get_ceilometer_port(),
             'platform::mtce::params::mtce_multicast':
                 multicast_address.address,
         }
         return config
-
-    def _get_ceilometer_port(self):
-        return self._operator.ceilometer.SERVICE_PORT
 
     def get_public_url(self):
         # not an openstack service

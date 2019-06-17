@@ -17,9 +17,6 @@
 #    under the License.
 """Base classes for API tests."""
 
-# NOTE: Ported from ceilometer/tests/api.py
-#       https://bugs.launchpad.net/ceilometer/+bug/1193666
-
 from oslo_config import cfg
 import mock
 import pecan
