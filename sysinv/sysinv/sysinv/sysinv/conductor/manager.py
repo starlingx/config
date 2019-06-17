@@ -5861,8 +5861,6 @@ class ConductorManager(service.PeriodicService):
             classes.append('platform::drbd::cephmon::runtime')
             classes.append('platform::drbd::runtime')
 
-        if constants.SB_SVC_GLANCE in services:
-            classes.append('openstack::glance::api::runtime')
         if constants.SB_SVC_CINDER in services:
             classes.append('openstack::cinder::runtime')
         classes.append('platform::sm::norestart::runtime')
@@ -6000,8 +5998,6 @@ class ConductorManager(service.PeriodicService):
                        'openstack::keystone::endpoint::runtime',
                        ]
 
-            if constants.SB_SVC_GLANCE in services:
-                classes.append('openstack::glance::api::runtime')
             if constants.SB_SVC_CINDER in services:
                 classes.append('openstack::cinder::runtime')
             classes.append('platform::sm::norestart::runtime')

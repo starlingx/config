@@ -997,10 +997,6 @@ class IncompatibleObjectVersion(SysinvException):
     message = _('Version %(objver)s of %(objname)s is not supported')
 
 
-class GlanceConnectionFailed(SysinvException):
-    message = "Connection to glance host %(host)s:%(port)s failed: %(reason)s"
-
-
 class ImageNotAuthorized(SysinvException):
     message = "Not authorized for image %(image_id)s."
 

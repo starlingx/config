@@ -25,8 +25,7 @@ class VersionInfo(object):
 
     def __init__(self, package):
         """Object that understands versioning for a package
-        :param package: name of the python package, such as glance, or
-                        python-glanceclient
+        :param package: name of the python package
         """
         self.package = package
         self.release = None

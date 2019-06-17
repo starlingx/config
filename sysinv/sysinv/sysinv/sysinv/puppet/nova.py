@@ -199,13 +199,9 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         if system.system_type == constants.TIS_STD_BUILD:
             scheduler_filters.extend(SCHEDULER_FILTERS_STANDARD)
 
-        glance_host = self._operator.glance.get_glance_address()
-
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
         config = {
-            'nova::glance_api_servers':
-                self._operator.glance.get_glance_url(),
             'nova::os_region_name':
                 self._operator.cinder.get_region_name(),
 
@@ -275,11 +271,8 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
 
             'nova::api::api_bind_address': self._get_management_address(),
             'nova::api::metadata_listen': self._get_management_address(),
-            'nova::api::glance_host': glance_host,
             'nova::api::compute_link_prefix':
                 self._get_compute_url(),
-            'nova::api::glance_link_prefix':
-                self._operator.glance.get_public_url(),
 
             'openstack::nova::params::region_name':
                 self.get_region_name(),

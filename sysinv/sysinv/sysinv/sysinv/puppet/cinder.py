@@ -461,9 +461,6 @@ class CinderPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_tenant_name(),
             'cinder::keystone::authtoken::username': ksuser,
 
-            'cinder::glance::glance_api_servers':
-                self._operator.glance.get_glance_url(),
-
             'openstack::cinder::params::region_name':
                 self.get_region_name(),
             'openstack::cinder::params::service_type':

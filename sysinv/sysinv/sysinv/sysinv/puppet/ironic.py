@@ -29,7 +29,6 @@ class IronicPuppet(openstack.OpenstackBasePuppet):
             'ironic::keystone::auth::password': kspass,
             'ironic::api::authtoken::password': kspass,
             'ironic::neutron::password': self._get_neutron_password(),
-            'ironic::glance::password': self._get_glance_password(),
             'nova::ironic::common::password': kspass,
 
         }
@@ -45,7 +44,6 @@ class IronicPuppet(openstack.OpenstackBasePuppet):
             'ironic::api::authtoken::auth_url': self._keystone_identity_uri(),
             'ironic::api::authtoken::auth_uri': self._keystone_auth_uri(),
             'ironic::neutron::username': self._get_neutron_username(),
-            'ironic::glance::username': self._get_glance_username(),
         }
         if self._get_service_enabled():
             config.update({
@@ -66,12 +64,6 @@ class IronicPuppet(openstack.OpenstackBasePuppet):
                 'ironic::neutron::project_name': self._get_service_tenant_name(),
                 'ironic::neutron::user_domain_name': self._get_service_user_domain_name(),
                 'ironic::neutron::project_domain_name': self._get_service_project_domain_name(),
-                # Populate Glance credentials
-                'ironic::glance::auth_url': self._keystone_auth_uri(),
-                # 'ironic::glance::api_servers': self._format_url_address(self._operator.glance.get_glance_url()),
-                'ironic::glance::user_domain_name': self._get_service_user_domain_name(),
-                'ironic::glance::project_domain_name': self._get_service_project_domain_name(),
-                'ironic::glance::api_servers': self._operator.glance.get_glance_url(),
                 'nova::ironic::common::username': ksuser,
                 'nova::ironic::common::auth_url': self._keystone_identity_uri(),
                 'nova::ironic::common::api_endpoint': self.get_internal_url(),
@@ -107,9 +99,3 @@ class IronicPuppet(openstack.OpenstackBasePuppet):
 
     def _get_neutron_password(self):
         return self._get_service_password(self._operator.neutron.SERVICE_NAME)
-
-    def _get_glance_username(self):
-        return self._get_service_user_name(self._operator.glance.SERVICE_NAME)
-
-    def _get_glance_password(self):
-        return self._get_service_password(self._operator.glance.SERVICE_NAME)
