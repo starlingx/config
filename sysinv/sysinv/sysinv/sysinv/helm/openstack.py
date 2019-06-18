@@ -73,21 +73,6 @@ class OpenstackBaseHelm(base.BaseHelm):
             constants.HELM_CHART_KEYSTONE]
         return keystone_operator.get_admin_user_name()
 
-    def _get_admin_project_name(self):
-        keystone_operator = self._operator.chart_operators[
-            constants.HELM_CHART_KEYSTONE]
-        return keystone_operator.get_admin_project_name()
-
-    def _get_admin_project_domain(self):
-        keystone_operator = self._operator.chart_operators[
-            constants.HELM_CHART_KEYSTONE]
-        return keystone_operator.get_admin_project_domain()
-
-    def _get_admin_user_domain(self):
-        keystone_operator = self._operator.chart_operators[
-            constants.HELM_CHART_KEYSTONE]
-        return keystone_operator.get_admin_user_domain()
-
     def _get_identity_password(self, service, user):
         passwords = self.context.setdefault('_service_passwords', {})
         if service not in passwords:

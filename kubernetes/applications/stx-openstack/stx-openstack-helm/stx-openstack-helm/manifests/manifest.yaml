@@ -3016,52 +3016,6 @@ data:
   dependencies:
     - helm-toolkit
 ---
-schema: armada/Chart/v1
-metadata:
-  schema: metadata/Document/v1
-  name: openstack-clients
-data:
-  chart_name: clients
-  release: openstack-clients
-  namespace: openstack
-  wait:
-    timeout: 600
-    labels:
-      app: openstack-clients
-  install:
-    no_hooks: false
-  upgrade:
-    no_hooks: false
-    pre:
-      delete:
-        - type: job
-          labels:
-            app: openstack-clients
-  values:
-    endpoints:
-      identity:
-        name: keystone
-        namespace: openstack
-    labels:
-      node_selector_key: openstack-control-plane
-      node_selector_value: enabled
-    global:
-      cloud_name: openstack_helm
-      replicas: 1
-      keep_running: true
-    volume:
-      size: 20Gi
-    images:
-      tags:
-        openstackclients: docker.io/starlingx/stx-openstackclients:master-centos-stable-latest
-  source:
-    type: tar
-    location: http://172.17.0.1/helm_charts/starlingx/clients-0.1.0.tgz
-    subpath: clients
-    reference: master
-  dependencies:
-    - helm-toolkit
----
 schema: armada/ChartGroup/v1
 metadata:
   schema: metadata/Document/v1
@@ -3219,16 +3173,6 @@ data:
     - openstack-panko
     - openstack-ceilometer
 ---
-schema: armada/ChartGroup/v1
-metadata:
-  schema: metadata/Document/v1
-  name: openstack-clients
-data:
-  description: "Deploy clients"
-  sequenced: false
-  chart_group:
-    - openstack-clients
----
 schema: armada/Manifest/v1
 metadata:
   schema: metadata/Document/v1
@@ -3242,7 +3186,6 @@ data:
     - openstack-memcached
     - openstack-rabbitmq
     - openstack-keystone
-    - openstack-clients
     - openstack-barbican
     - openstack-glance
     - openstack-cinder
