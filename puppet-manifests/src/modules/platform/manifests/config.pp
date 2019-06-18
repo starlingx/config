@@ -251,6 +251,13 @@ class platform::config::certs::ssl_ca
   inherits ::platform::config::certs::params {
 
   $ssl_ca_file = '/etc/pki/ca-trust/source/anchors/ca-cert.pem'
+  if str2bool($::is_initial_config) {
+    $docker_restart_cmd = 'systemctl restart docker'
+  }
+  else {
+    $docker_restart_cmd = 'pmon-restart dockerd'
+  }
+
   if ! empty($ssl_ca_cert) {
     file { 'create-ssl-ca-cert':
       ensure  => present,
@@ -273,9 +280,18 @@ class platform::config::certs::ssl_ca
     refreshonly => true
   }
   -> exec { 'restart docker':
-    command     => 'pmon-restart dockerd',
+    command     => $docker_restart_cmd,
     subscribe   => File[$ssl_ca_file],
     refreshonly => true
+  }
+  if str2bool($::is_controller_active) {
+    Exec['restart docker']
+    -> file { '/etc/platform/.ssl_ca_complete':
+      ensure => present,
+      owner  => root,
+      group  => root,
+      mode   => '0644',
+    }
   }
 }
 
