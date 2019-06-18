@@ -60,7 +60,6 @@ make nova-api-proxy
 make garbd
 make keystone-api-proxy
 make fm-rest-api
-make clients
 
 # terminate helm server (the last backgrounded task)
 kill %1
