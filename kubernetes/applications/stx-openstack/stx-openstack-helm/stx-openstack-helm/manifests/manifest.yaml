@@ -803,6 +803,16 @@ data:
       cron_job_cell_setup: false
       cron_job_service_cleaner: false
       statefulset_compute_ironic: false
+      deployment_placement: false
+      ingress_placement: false
+      job_db_init_placement: false
+      job_ks_placement_endpoints: false
+      job_ks_placement_service: false
+      job_ks_placement_user: false
+      pdb_placement: false
+      secret_keystone_placement: false
+      service_ingress_placement: false
+      service_placement: false
     labels:
       agent:
         compute:
@@ -827,9 +837,6 @@ data:
         node_selector_key: openstack-control-plane
         node_selector_value: enabled
       osapi:
-        node_selector_key: openstack-control-plane
-        node_selector_value: enabled
-      placement:
         node_selector_key: openstack-control-plane
         node_selector_value: enabled
       scheduler:
@@ -872,7 +879,6 @@ data:
         type: null
       replicas:
         api_metadata: 1
-        placement: 1
         osapi: 1
         conductor: 1
         consoleauth: 1
@@ -948,8 +954,6 @@ data:
           idle_timeout: 60
           max_overflow: 64
           max_pool_size: 1
-        placement:
-          os_interface: internal
         neutron:
           default_floating_pool: public
         notifications:
@@ -993,6 +997,68 @@ data:
     type: tar
     location: http://172.17.0.1/helm_charts/starlingx/nova-0.1.0.tgz
     subpath: nova
+    reference: master
+  dependencies:
+    - helm-toolkit
+---
+schema: armada/Chart/v1
+metadata:
+  schema: metadata/Document/v1
+  name: openstack-placement
+data:
+  chart_name: placement
+  release: openstack-placement
+  namespace: openstack
+  wait:
+    timeout: 1800
+    labels:
+      release_group: osh-openstack-placement
+  test:
+    enabled: false
+  install:
+    no_hooks: false
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-placement
+  values:
+    labels:
+      placement:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+      job:
+        node_selector_key: openstack-control-plane
+        node_selector_value: enabled
+    images:
+      tags:
+        placement: docker.io/starlingx/stx-placement:master-centos-stable-latest
+        ks_user: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        db_drop: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        db_init: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        placement_db_sync: docker.io/starlingx/stx-placement:master-centos-stable-latest
+    pod:
+      replicas:
+        placement: 1
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
+      user:
+        placement:
+          uid: 42424
+    conf:
+      placement:
+        DEFAULT:
+          log_config_append: /etc/placement/logging.conf
+  source:
+    type: tar
+    location: http://172.17.0.1/helm_charts/starlingx/placement-0.1.0.tgz
+    subpath: placement
     reference: master
   dependencies:
     - helm-toolkit
@@ -3139,6 +3205,7 @@ data:
     - openstack-nova
     - openstack-nova-api-proxy
     - openstack-neutron
+    - openstack-placement
 ---
 schema: armada/ChartGroup/v1
 metadata:
