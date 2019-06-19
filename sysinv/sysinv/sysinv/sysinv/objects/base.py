@@ -463,14 +463,14 @@ class SysinvObject(object):
     def _from_db_object(cls_object, db_object):
         """Converts a database entity to a formal object."""
         for field in cls_object.fields:
-            if field in cls_object._optional_fields:
-                if not hasattr(db_object, field):
-                    continue
-
             if field in cls_object._foreign_fields:
                 cls_object[field] = cls_object._get_foreign_field(
                     field, db_object)
                 continue
+
+            if field in cls_object._optional_fields:
+                if not hasattr(db_object, field):
+                    continue
 
             cls_object[field] = db_object[field]
 
