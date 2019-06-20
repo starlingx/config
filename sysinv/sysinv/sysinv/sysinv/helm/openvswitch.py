@@ -41,6 +41,7 @@ class OpenvswitchHelm(openstack.OpenstackBaseHelm):
                             'openstack-nova',
                             'openstack-nova-api-proxy',
                             'openstack-neutron',
+                            'openstack-placement',
                         ]
                     }
                 }

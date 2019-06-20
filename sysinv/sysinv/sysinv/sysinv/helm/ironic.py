@@ -45,6 +45,7 @@ class IronicHelm(openstack.OpenstackBaseHelm):
                             'openstack-nova',
                             'openstack-nova-api-proxy',
                             'openstack-neutron',
+                            'openstack-placement',
                             'openstack-ironic',
                         ]
                     }
