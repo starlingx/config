@@ -10292,7 +10292,8 @@ class ConductorManager(service.PeriodicService):
             }
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,
-                                                config_dict)
+                                                config_dict,
+                                                force=True)
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
