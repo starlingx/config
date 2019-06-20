@@ -104,12 +104,6 @@ def get_db_credentials(shared_services, from_release):
                         'keyring_password_key': 'cinder',
                         }})
 
-    if sysinv_constants.SERVICE_TYPE_IMAGE not in shared_services:
-        db_credential_keys.update(
-            {'glance': {'hiera_user_key': 'glance::db::postgresql::user',
-                        'keyring_password_key': 'glance',
-                        }})
-
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         db_credential_keys.update(
             {'keystone': {'hiera_user_key':
@@ -551,11 +545,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
             f.write("[database]\n")
             f.write(get_connection_string(db_credentials, 'cinder'))
 
-    if sysinv_constants.SERVICE_TYPE_IMAGE not in shared_services:
-        with open("/etc/glance/glance-dbsync.conf", "w") as f:
-            f.write("[database]\n")
-            f.write(get_connection_string(db_credentials, 'glance'))
-
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         with open("/etc/keystone/keystone-dbsync.conf", "w") as f:
             f.write("[database]\n")
@@ -600,17 +589,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
             ('cinder',
              'cinder-manage --config-file /etc/cinder/cinder-dbsync.conf ' +
              'db sync'),
-        ]
-
-    if sysinv_constants.SERVICE_TYPE_IMAGE not in shared_services:
-        migrate_commands += [
-            # Migrate glance database and metadata
-            ('glance',
-             'glance-manage --config-file /etc/glance/glance-dbsync.conf ' +
-             'db sync'),
-            ('glance',
-             'glance-manage --config-file /etc/glance/glance-dbsync.conf ' +
-             'db_load_metadefs'),
         ]
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
