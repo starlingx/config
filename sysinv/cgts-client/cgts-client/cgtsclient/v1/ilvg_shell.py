@@ -180,11 +180,6 @@ def do_host_lvg_delete(cc, args):
            choices=['image', 'remote'],
            help=("Type of instance backing. "
                  "Allowed values: image, remote. [nova-local]"))
-@utils.arg('-c', '--concurrent_disk_operations',
-           metavar='<concurrent disk operations>',
-           help=("Set the number of concurrent I/O intensive disk operations "
-                 "such as glance image downloads, image format conversions, "
-                 "etc. [nova-local]"))
 @utils.arg('-l', '--lvm_type',
            metavar='<lvm_type>',
            choices=['thick', 'thin'],
@@ -195,22 +190,17 @@ def do_host_lvg_modify(cc, args):
 
     # Get all the fields from the command arguments
     field_list = ['hostnameorid', 'lvgnameoruuid',
-                  'instance_backing', 'concurrent_disk_operations', 'lvm_type']
+                  'instance_backing', 'lvm_type']
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
 
-    all_caps_list = ['instance_backing', 'concurrent_disk_operations',
-                     'lvm_type']
-    integer_fields = ['concurrent_disk_operations']
+    all_caps_list = ['instance_backing', 'lvm_type']
     requested_caps_dict = {}
 
     for cap in all_caps_list:
         if cap in fields:
             try:
-                if cap in integer_fields:
-                    requested_caps_dict[cap] = int(fields[cap])
-                else:
-                    requested_caps_dict[cap] = fields[cap]
+                requested_caps_dict[cap] = fields[cap]
             except ValueError:
                 raise exc.CommandError(
                     '{0} value {1} is invalid'.format(cap, fields[cap]))

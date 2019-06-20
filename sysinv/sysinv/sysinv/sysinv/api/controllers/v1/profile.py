@@ -1817,17 +1817,12 @@ def _create_localstorage_profile(profile_name, profile_node):
     try:
         ilvg = ilvgs_local[0]
         instance_backing = ilvg.get(constants.LVG_NOVA_PARAM_BACKING)
-        concurrent_disk_operations = ilvg.get(constants.LVG_NOVA_PARAM_DISK_OPS)
         if instance_backing == constants.LVG_NOVA_BACKING_IMAGE:
             capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
-                                     constants.LVG_NOVA_BACKING_IMAGE,
-                                 constants.LVG_NOVA_PARAM_DISK_OPS:
-                                     int(concurrent_disk_operations)}
+                                     constants.LVG_NOVA_BACKING_IMAGE}
         elif instance_backing == constants.LVG_NOVA_BACKING_REMOTE:
             capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
-                                     constants.LVG_NOVA_BACKING_REMOTE,
-                                 constants.LVG_NOVA_PARAM_DISK_OPS:
-                                     int(concurrent_disk_operations)}
+                                     constants.LVG_NOVA_BACKING_REMOTE}
         else:
             return ("Error", _('error: Local Storage profile %s is invalid')
                     % profile_name,
