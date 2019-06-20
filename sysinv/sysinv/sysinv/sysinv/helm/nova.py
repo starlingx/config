@@ -438,6 +438,29 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         address_pool = self.dbapi.address_pool_get(cluster_host_network.pool_uuid)
         return '%s/%s' % (str(address_pool.network), str(address_pool.prefix))
 
+    def _update_reserved_memory(self, host, default_config):
+        host_memory = self.dbapi.imemory_get_by_ihost(host.id)
+        reserved_pages = []
+        reserved_host_memory = 0
+        for cell in host_memory:
+            reserved_4K_pages = 'node:%d,size:4,count:%d' % (
+                                cell.numa_node,
+                                cell.platform_reserved_mib*constants.NUM_4K_PER_MiB)
+            reserved_pages.append(reserved_4K_pages)
+            # vswitch pages will be either 2M or 1G
+            reserved_vswitch_pages = 'node:%d,size:%d,count:%d' % (cell.numa_node,
+                                     cell.vswitch_hugepages_size_mib*constants.Ki,
+                                     cell.vswitch_hugepages_nr)
+            reserved_pages.append(reserved_vswitch_pages)
+            reserved_host_memory += cell.platform_reserved_mib
+            reserved_host_memory += cell.vswitch_hugepages_size_mib * cell.vswitch_hugepages_nr
+
+        multistring = self._oslo_multistring_override(
+            name='reserved_huge_pages', values=reserved_pages)
+        if multistring is not None:
+            default_config.update(multistring)
+        default_config.update({'reserved_host_memory_mb': reserved_host_memory})
+
     def _get_per_host_overrides(self):
         host_list = []
         hosts = self.dbapi.ihost_get_list()
@@ -457,6 +480,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     self._update_host_addresses(host, default_config, vnc_config,
                                                 libvirt_config)
                     self._update_host_pci_whitelist(host, pci_config)
+                    self._update_reserved_memory(host, default_config)
                     host_nova = {
                         'name': hostname,
                         'conf': {
