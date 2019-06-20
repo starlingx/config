@@ -277,14 +277,6 @@ class CertificateController(rest.RestController):
         passphrase = pecan.request.POST.get('passphrase')
         mode = pecan.request.POST.get('mode')
 
-        certificate_file = pecan.request.POST.get('certificate_file')
-        # Ensure that the certificate_file is a valid file path
-        if certificate_file and os.path.isabs(certificate_file):
-            if not os.path.isfile(certificate_file):
-                msg = "'certificate_file' is not a valid file path"
-                LOG.info(msg)
-                return dict(success="", error=msg)
-
         LOG.info("certificate %s mode=%s" % (log_start, mode))
 
         if mode and mode not in constants.CERT_MODES_SUPPORTED:
@@ -360,7 +352,6 @@ class CertificateController(rest.RestController):
         try:
             config_dict = {'passphrase': passphrase,
                            'mode': mode,
-                           'certificate_file': certificate_file,
                            }
             signature = pecan.request.rpcapi.config_certificate(
                 pecan.request.context,

@@ -10186,16 +10186,6 @@ class ConductorManager(service.PeriodicService):
                                tpmconfig_dict,
                                update_file_required=False)
 
-    @staticmethod
-    def _remove_certificate_file(mode, certificate_file):
-        if certificate_file:
-            try:
-                LOG.info("config_certificate mode=%s remove %s" %
-                         (mode, certificate_file))
-                os.remove(certificate_file)
-            except OSError:
-                pass
-
     def _get_registry_floating_address(self):
         """gets the registry floating address. Currently this is mgmt
         """
@@ -10221,9 +10211,8 @@ class ConductorManager(service.PeriodicService):
 
         passphrase = config_dict.get('passphrase', None)
         mode = config_dict.get('mode', None)
-        certificate_file = config_dict.get('certificate_file', None)
 
-        LOG.info("config_certificate mode=%s file=%s" % (mode, certificate_file))
+        LOG.info("config_certificate mode=%s" % mode)
 
         private_bytes, public_bytes, signature = \
             self._extract_keys_from_pem(mode, pem_contents,
@@ -10248,8 +10237,6 @@ class ConductorManager(service.PeriodicService):
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(file_content)
-
-            self._remove_certificate_file(mode, certificate_file)
 
         elif mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)
@@ -10285,7 +10272,6 @@ class ConductorManager(service.PeriodicService):
                                                 config_uuid,
                                                 config_dict)
 
-            self._remove_certificate_file(mode, certificate_file)
         elif mode == constants.CERT_MODE_SSL_CA:
             file_content = public_bytes
             personalities = [constants.CONTROLLER,
@@ -10357,8 +10343,6 @@ class ConductorManager(service.PeriodicService):
                                                 config_uuid,
                                                 config_dict)
 
-            self._remove_certificate_file(mode, certificate_file)
-
             # install docker certificate on controllers and workers
             registry_full_address = self._get_registry_floating_address() + ":" + helm_common.REGISTRY_PORT
             docker_cert_path = os.path.join("/etc/docker/certs.d",
@@ -10414,8 +10398,6 @@ class ConductorManager(service.PeriodicService):
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,
                                                 config_dict)
-
-            self._remove_certificate_file(mode, certificate_file)
 
         elif mode == constants.CERT_MODE_OPENSTACK_CA:
             config_uuid = self._config_update_hosts(context, personalities)
