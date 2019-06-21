@@ -348,6 +348,8 @@ class CephOperator(object):
                      'recognized as operational.')
             return False
 
+        # TODO (Wei): This function is not invoked during AIO system restore.
+        #             It will be revisited in the non-AIO system restore tasks.
         try:
             backup = os.path.join(constants.SYSINV_CONFIG_PATH,
                                   constants.CEPH_CRUSH_MAP_BACKUP)

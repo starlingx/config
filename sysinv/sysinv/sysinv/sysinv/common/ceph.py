@@ -12,6 +12,7 @@
 
 from __future__ import absolute_import
 
+import shutil
 import subprocess
 import os
 import pecan
@@ -709,7 +710,8 @@ def fix_crushmap(dbapi=None):
                 LOG.info("Not enough monitors yet available to fix crushmap.")
                 return False
 
-        # Crushmap may be already loaded thorough puppet, avoid doing it twice.
+        # For AIO system, crushmap should be already loaded through puppet.
+        # If it was loaded, set the crushmap flag to avoid loading it twice.
         default_ceph_tier_name = constants.SB_TIER_DEFAULT_NAMES[
                 constants.SB_TIER_TYPE_CEPH] + constants.CEPH_CRUSH_TIER_SUFFIX
         rule_is_present, __, __ = _operator._crush_rule_status(default_ceph_tier_name)
@@ -717,28 +719,53 @@ def fix_crushmap(dbapi=None):
             _create_crushmap_flag_file()
             return False
 
-        stor_model = get_ceph_storage_model(dbapi)
-        if stor_model == constants.CEPH_AIO_SX_MODEL:
-            crushmap_txt = "/etc/sysinv/crushmap-aio-sx.txt"
-        elif stor_model == constants.CEPH_CONTROLLER_MODEL:
-            crushmap_txt = "/etc/sysinv/crushmap-controller-model.txt"
-        else:
-            crushmap_txt = "/etc/sysinv/crushmap-storage-model.txt"
-        LOG.info("Updating crushmap with: %s" % crushmap_txt)
-
         try:
-            # Compile crushmap
+            # For AIO system, crushmap should alreadby be loaded through
+            # puppet. If for any reason it is not, as a precaution we set
+            # the crushmap here.
+
+            # Check if a backup crushmap exists. If it does, that means
+            # it is during restore. We need to restore the backup crushmap
+            # instead of generating it. For AIO system, the backup crushmap
+            # is stored in /etc/sysinv. For non-AIO system, it is stored in
+            # /opt/platform/sysinv.
+            if cutils.is_aio_system(dbapi):
+                backup = os.path.join(constants.CEPH_CRUSH_MAP_BACKUP_DIR_FOR_AIO,
+                                      constants.CEPH_CRUSH_MAP_BACKUP)
+            else:
+                backup = os.path.join(constants.SYSINV_CONFIG_PATH,
+                                      constants.CEPH_CRUSH_MAP_BACKUP)
             crushmap_bin = "/etc/sysinv/crushmap.bin"
-            subprocess.check_output("crushtool -c %s "
-                                    "-o %s" % (crushmap_txt, crushmap_bin),
+            if os.path.exists(backup):
+                shutil.copyfile(backup, crushmap_bin)
+            else:
+                stor_model = get_ceph_storage_model(dbapi)
+                if stor_model == constants.CEPH_AIO_SX_MODEL:
+                    crushmap_txt = "/etc/sysinv/crushmap-aio-sx.txt"
+                elif stor_model == constants.CEPH_CONTROLLER_MODEL:
+                    crushmap_txt = "/etc/sysinv/crushmap-controller-model.txt"
+                elif stor_model == constants.CEPH_STORAGE_MODEL:
+                    crushmap_txt = "/etc/sysinv/crushmap-storage-model.txt"
+                else:
+                    reason = "Error: Undefined ceph storage model %s" % stor_model
+                    raise exception.CephCrushMapNotApplied(reason=reason)
+                LOG.info("Updating crushmap with: %s" % crushmap_txt)
+
+                # Compile crushmap
+                subprocess.check_output("crushtool -c %s "
+                                        "-o %s" % (crushmap_txt, crushmap_bin),
                                     stderr=subprocess.STDOUT, shell=True)
             # Set crushmap
             subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_bin,
                                     stderr=subprocess.STDOUT, shell=True)
-        except subprocess.CalledProcessError as e:
+
+            if os.path.exists(backup):
+                os.remove(backup)
+        except (IOError, subprocess.CalledProcessError) as e:
             # May not be critical, depends on where this is called.
             reason = "Error: %s Output: %s" % (str(e), e.output)
             raise exception.CephCrushMapNotApplied(reason=reason)
+
         _create_crushmap_flag_file()
 
         return True
