@@ -408,45 +408,10 @@ def _cinder_volumes_patch_semantic_checks(caps_dict):
         raise wsme.exc.ClientSideError(msg)
 
 
-def _nova_local_patch_semantic_checks(caps_dict):
-    # make sure that only valid capabilities are provided
-    valid_caps = set([constants.LVG_NOVA_PARAM_BACKING])
-    invalid_caps = set(caps_dict.keys()) - valid_caps
-
-    # Do we have something unexpected?
-    if len(invalid_caps) > 0:
-        raise wsme.exc.ClientSideError(
-            _("Invalid parameter(s) for volume group %s: %s " %
-              (constants.LVG_NOVA_LOCAL,
-               ", ".join(str(i) for i in invalid_caps))))
-
-    # make sure that we are modifying something
-    elif len(caps_dict) == 0:
-        msg = _('No parameter specified. No action taken')
-        raise wsme.exc.ClientSideError(msg)
-
-
 def _lvg_pre_patch_checks(lvg_obj, patch_obj):
     lvg_dict = lvg_obj.as_dict()
 
-    # nova-local VG checks:
-    if lvg_dict['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
-        for p in patch_obj:
-            if p['path'] == '/capabilities':
-                patch_caps_dict = p['value']
-
-                # Make sure we've been handed a valid patch
-                _nova_local_patch_semantic_checks(patch_caps_dict)
-
-                # Update the patch with the current capabilities that aren't
-                # being patched
-                current_caps_dict = lvg_dict['capabilities']
-                for k in (set(current_caps_dict.keys()) -
-                          set(patch_caps_dict.keys())):
-                    patch_caps_dict[k] = current_caps_dict[k]
-
-                p['value'] = patch_caps_dict
-    elif lvg_dict['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
+    if lvg_dict['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
         for p in patch_obj:
             if p['path'] == '/capabilities':
                 patch_caps_dict = p['value']
@@ -584,10 +549,11 @@ def _check(op, lvg):
     elif op == "modify":
         # Sanity check: parameters
 
-        if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
+        if lvg['lvm_vg_name'] in [constants.LVG_CGTS_VG,
+                                  constants.LVG_NOVA_LOCAL]:
             raise wsme.exc.ClientSideError(_("%s volume group does not have "
                                              "any parameters to modify") %
-                                           constants.LVG_CGTS_VG)
+                                           lvg['lvm_vg_name'])
         elif lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
             if constants.LVG_CINDER_PARAM_LVM_TYPE not in lvg_caps:
                 raise wsme.exc.ClientSideError(
@@ -605,44 +571,6 @@ def _check(op, lvg):
                              constants.LVG_CINDER_LVM_TYPE_THICK))
                     raise wsme.exc.ClientSideError(msg)
 
-        elif lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
-            # instance_backing: This is a required parameter
-            if constants.LVG_NOVA_PARAM_BACKING not in lvg_caps:
-                raise wsme.exc.ClientSideError(
-                    _('Internal Error: %s parameter missing for volume '
-                      'group.') % constants.LVG_NOVA_PARAM_BACKING)
-            else:
-                # Instances backed by remote ephemeral storage can only be
-                # used on systems that have a Ceph (internal or external)
-                # backend.
-                if ((lvg_caps.get(constants.LVG_NOVA_PARAM_BACKING) ==
-                     constants.LVG_NOVA_BACKING_REMOTE) and
-                        not StorageBackendConfig.has_backend_configured(
-                            pecan.request.dbapi,
-                            constants.SB_TYPE_CEPH,
-                            service=constants.SB_SVC_NOVA,
-                            check_only_defaults=False,
-                            rpcapi=pecan.request.rpcapi) and
-                        not StorageBackendConfig.has_backend_configured(
-                            pecan.request.dbapi,
-                            constants.SB_TYPE_CEPH_EXTERNAL,
-                            service=constants.SB_SVC_NOVA,
-                            check_only_defaults=False,
-                            rpcapi=pecan.request.rpcapi)):
-                    raise wsme.exc.ClientSideError(
-                        _('Invalid value for instance_backing. Instances '
-                          'backed by remote ephemeral storage can only be '
-                          'used on systems that have a Ceph (internal or '
-                          'external) backend.'))
-
-            if (lvg['lvm_cur_lv'] > 1):
-                raise wsme.exc.ClientSideError(
-                    _("Can't modify the volume group: %s. There are currently "
-                      "%d instance volumes present in the volume group. "
-                      "Terminate or migrate all instances from the worker to "
-                      "allow volume group madifications." %
-                        (lvg['lvm_vg_name'], lvg['lvm_cur_lv'] - 1)))
-
     elif op == "delete":
         if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
             raise wsme.exc.ClientSideError(_("%s volume group cannot be deleted") %
@@ -656,13 +584,8 @@ def _check(op, lvg):
                     _("cinder-volumes LVG cannot be removed once it is "
                       "provisioned and LVM backend is added."))
         elif lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
-            if (lvg['lvm_cur_lv'] and lvg['lvm_cur_lv'] > 1):
-                raise wsme.exc.ClientSideError(
-                    _("Can't delete volume group: %s. There are currently %d "
-                      "instance volumes present in the volume group. Terminate"
-                      " or migrate all instances from the worker to allow "
-                      "volume group deletion." % (lvg['lvm_vg_name'],
-                                                  lvg['lvm_cur_lv'] - 1)))
+            # We never have more than 1 LV in nova-local VG
+            pass
     else:
         raise wsme.exc.ClientSideError(
             _("Internal Error: Invalid Volume Group operation: %s" % op))
@@ -725,21 +648,7 @@ def _create(lvg, iprofile=None, applyprofile=None):
 
     if not lvg_in_db:
         # Add the default volume group parameters
-        if lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL and not iprofile:
-            lvg_caps = lvg['capabilities']
-
-            if applyprofile:
-                # defined from create or inherit the capabilities
-                LOG.info("LVG create %s applyprofile=%s" %
-                         (lvg_caps, applyprofile))
-            else:
-                lvg_caps_dict = {
-                    constants.LVG_NOVA_PARAM_BACKING:
-                        constants.LVG_NOVA_BACKING_IMAGE
-                }
-                lvg_caps.update(lvg_caps_dict)
-                LOG.info("Updated lvg capabilities=%s" % lvg_caps)
-        elif lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES and not iprofile:
+        if lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES and not iprofile:
             lvg_caps = lvg['capabilities']
 
             if (constants.LVG_CINDER_PARAM_LVM_TYPE in lvg_caps) or applyprofile:

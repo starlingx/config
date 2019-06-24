@@ -134,19 +134,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
         return config
 
-    def _is_ceph_mon_required(self, host, operator):
-        # Two conditions that we need to check for:
-        # 1) If cinder is a shared service and it has a ceph backend
-        # 2) If remote instance backing is configured on the host
-        if (constants.SERVICE_TYPE_VOLUME in self._get_shared_services() and
-                operator.region_has_ceph_backend()):
-            lvgs = self.dbapi.ilvg_get_by_ihost(host.uuid)
-            for lvg in lvgs:
-                if lvg.capabilities.get(constants.LVG_NOVA_PARAM_BACKING) \
-                        == constants.LVG_NOVA_BACKING_REMOTE:
-                    return True
-        return False
-
     def _get_remote_ceph_mon_info(self, operator):
         # retrieve the ceph monitor information from the primary
         ceph_mon_info = operator.get_ceph_mon_info()
@@ -182,17 +169,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         if host.personality in [constants.CONTROLLER, constants.STORAGE]:
             config.update(self._get_ceph_osd_config(host))
         config.update(self._get_ceph_mon_config(host))
-
-        # if it is a worker node and on an secondary region,
-        # check if ceph mon configuration is required
-        if constants.WORKER in host.subfunctions and self._region_config():
-            from sysinv.conductor import openstack
-            op = openstack.OpenStackOperator(self.dbapi)
-            if self._is_ceph_mon_required(host, op):
-                ceph_mon_info = self._get_remote_ceph_mon_info(op)
-                if ceph_mon_info is not None:
-                    config.update(ceph_mon_info)
-
         return config
 
     def get_public_url(self):

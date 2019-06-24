@@ -583,12 +583,7 @@ PV_TYPE_PARTITION = 'partition'
 PV_NAME_UNKNOWN = 'unknown'
 
 # Storage: Volume Group Parameter Types
-LVG_NOVA_PARAM_BACKING = 'instance_backing'
 LVG_CINDER_PARAM_LVM_TYPE = 'lvm_type'
-
-# Storage: Volume Group Parameter: Nova: Backing types
-LVG_NOVA_BACKING_IMAGE = 'image'
-LVG_NOVA_BACKING_REMOTE = 'remote'
 
 # Storage: Volume Group Parameter: Cinder: LVM provisioing
 LVG_CINDER_LVM_TYPE_THIN = 'thin'
@@ -816,7 +811,7 @@ SB_TIER_CEPH_POOLS = [
      'data_pt': 20}]
 
 # See http://ceph.com/pgcalc/. We set it to more than 100 because pool usage
-# varies greatly in Titanium Cloud and we want to avoid running too low on PGs
+# varies greatly in StarlingX and we want to avoid running too low on PGs
 CEPH_TARGET_PGS_PER_OSD = 200
 
 # Dual node and Storage
@@ -1377,12 +1372,12 @@ WARN_CINDER_ON_ROOT_WITH_LVM = 1
 WARN_CINDER_ON_ROOT_WITH_CEPH = 2
 WARNING_ROOT_PV_CINDER_LVM_MSG = (
     "Warning: All deployed VMs must be booted from Cinder volumes and "
-    "not use ephemeral or swap disks. See Titanium Cloud System Engineering "
+    "not use ephemeral or swap disks. See StarlingX System Engineering "
     "Guidelines for more details on supported worker configurations.")
 WARNING_ROOT_PV_CINDER_CEPH_MSG = (
-    "Warning: This worker must have instance_backing set to 'remote' "
-    "or use a secondary disk for local storage. See Titanium Cloud System "
-    "Engineering Guidelines for more details on supported worker configurations.")
+    "Warning: This worker must use a secondary disk for local storage. "
+    "See StarlingX System Engineering Guidelines for more details on "
+    "supported worker configurations.")
 PV_WARNINGS = {WARN_CINDER_ON_ROOT_WITH_LVM: WARNING_ROOT_PV_CINDER_LVM_MSG,
                WARN_CINDER_ON_ROOT_WITH_CEPH: WARNING_ROOT_PV_CINDER_CEPH_MSG}
 

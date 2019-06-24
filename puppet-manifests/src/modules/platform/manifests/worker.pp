@@ -39,37 +39,15 @@ class platform::worker::storage (
   $final_pvs,
   $lvm_global_filter = '[]',
   $lvm_update_filter = '[]',
-  $instance_backing = 'image',
   $images_rbd_pool = 'ephemeral',
   $images_rbd_ceph_conf = '/etc/ceph/ceph.conf'
 ) {
   $adding_pvs_str = join($adding_pvs,' ')
   $removing_pvs_str = join($removing_pvs,' ')
+  $round_to_extent = false
 
   # Ensure partitions update prior to local storage configuration
   Class['::platform::partitions'] -> Class[$name]
-
-  case $instance_backing {
-    'image': {
-      $images_type = 'default'
-      $images_volume_group = absent
-      $round_to_extent = false
-      $local_monitor_state = 'disabled'
-      $images_rbd_pool_real = absent
-      $images_rbd_ceph_conf_real = absent
-    }
-    'remote': {
-      $images_type = 'rbd'
-      $images_volume_group = absent
-      $round_to_extent = false
-      $local_monitor_state = 'disabled'
-      $images_rbd_pool_real = $images_rbd_pool
-      $images_rbd_ceph_conf_real = $images_rbd_ceph_conf
-    }
-    default: {
-      fail("Unsupported instance backing: ${instance_backing}")
-    }
-  }
 
   ::platform::worker::storage::wipe_new_pv { $adding_pvs: }
   ::platform::worker::storage::wipe_pv_and_format { $removing_pvs: }

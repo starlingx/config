@@ -1545,7 +1545,7 @@ badMediaType (415)
    :widths: 20, 20, 20, 60
 
    "volumegroup_id", "URI", "csapi:UUID", "The unique identifier of an existing LVM volume group."
-   "capabilities (Optional)", "plain", "xsd:string", "A dictionary of key-value pairs prepresenting volume group parameters and values. Valid nova-local parameters are: ``instance_backing``. Valid cinder-volumes parameters are: ``lvm_type``"
+   "capabilities (Optional)", "plain", "xsd:string", "A dictionary of key-value pairs prepresenting volume group parameters and values. Valid cinder-volumes parameters are: ``lvm_type``"
 
 **Response parameters**
 

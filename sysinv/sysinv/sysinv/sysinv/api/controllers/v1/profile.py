@@ -1815,18 +1815,7 @@ def _create_localstorage_profile(profile_name, profile_node):
 
     profile_id = ihost.id
     try:
-        ilvg = ilvgs_local[0]
-        instance_backing = ilvg.get(constants.LVG_NOVA_PARAM_BACKING)
-        if instance_backing == constants.LVG_NOVA_BACKING_IMAGE:
-            capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
-                                     constants.LVG_NOVA_BACKING_IMAGE}
-        elif instance_backing == constants.LVG_NOVA_BACKING_REMOTE:
-            capabilities_dict = {constants.LVG_NOVA_PARAM_BACKING:
-                                     constants.LVG_NOVA_BACKING_REMOTE}
-        else:
-            return ("Error", _('error: Local Storage profile %s is invalid')
-                    % profile_name,
-                    _('Unrecognized instance_backing %s.') % instance_backing)
+        capabilities_dict = {}
 
         # create profile ilvg
         lvgdict = {'capabilities': capabilities_dict,

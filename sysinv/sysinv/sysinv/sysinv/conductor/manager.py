@@ -5952,30 +5952,6 @@ class ConductorManager(service.PeriodicService):
             }
             self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def config_update_nova_local_backed_hosts(self, context, instance_backing):
-        hosts_uuid = self.hosts_with_nova_local(instance_backing)
-        if hosts_uuid:
-            personalities = [constants.CONTROLLER, constants.WORKER]
-            self._config_update_hosts(context,
-                                      personalities,
-                                      host_uuids=hosts_uuid,
-                                      reboot=True)
-
-    def hosts_with_nova_local(self, backing_type):
-        """Returns a list of hosts with certain backing type of nova_local"""
-        hosts_uuid = []
-        hosts = self.dbapi.ihost_get_list()
-        for host in hosts:
-            if ((host.personality and host.personality == constants.WORKER) or
-                    (host.subfunctions and constants.WORKER in host.subfunctions)):
-                ilvgs = self.dbapi.ilvg_get_by_ihost(host['uuid'])
-                for lvg in ilvgs:
-                    if (lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL and
-                          lvg['capabilities'].get(constants.LVG_NOVA_PARAM_BACKING) ==
-                          backing_type):
-                        hosts_uuid.append(host['uuid'])
-        return hosts_uuid
-
     def update_ceph_external_config(self, context, sb_uuid, services):
         """Update the manifests for Cinder/Glance External Ceph backend"""
 
@@ -6065,10 +6041,6 @@ class ConductorManager(service.PeriodicService):
             values = {'state': constants.SB_STATE_CONFIGURED,
                       'task': None}
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
-
-        if constants.SB_SVC_NOVA in services:
-            self.config_update_nova_local_backed_hosts(
-                context, constants.LVG_NOVA_BACKING_REMOTE)
 
     def _update_storage_backend_alarm(self, alarm_state, backend, reason_text=None):
         """ Update storage backend configuration alarm"""

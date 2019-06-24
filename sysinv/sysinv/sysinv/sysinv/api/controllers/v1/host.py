@@ -4183,8 +4183,7 @@ class HostController(rest.RestController):
                 break
 
         # Prevent unlock if nova-local volume group has: invalid state
-        # (e.g., removing), invalid instance_backing, no physical
-        # volumes allocated.
+        # (e.g., removing), no physical volumes allocated.
         if nova_local_storage_lvg:
             if nova_local_storage_lvg.vg_state == constants.LVG_DEL:
                 raise wsme.exc.ClientSideError(
@@ -4212,17 +4211,6 @@ class HostController(rest.RestController):
                           "physical volumes in the adding or provisioned "
                           "state."))
 
-                lvg_capabilities = nova_local_storage_lvg['capabilities']
-                instance_backing = lvg_capabilities.get(
-                    constants.LVG_NOVA_PARAM_BACKING)
-
-                if instance_backing not in [
-                        constants.LVG_NOVA_BACKING_IMAGE,
-                        constants.LVG_NOVA_BACKING_REMOTE]:
-                    raise wsme.exc.ClientSideError(
-                        _("A host with worker functionality and a "
-                          "nova-local volume group requires that a valid "
-                          "instance backing is configured. "))
         else:
             # This method is only called with hosts that have a worker
             # subfunction and is locked or if subfunction_config action is
