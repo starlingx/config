@@ -51,6 +51,7 @@ import uuid
 import wsme
 import yaml
 
+from django.core.validators import URLValidator
 from eventlet.green import subprocess
 from eventlet import greenthread
 import netaddr
@@ -1769,20 +1770,10 @@ def is_openstack_applied(dbapi):
 
 
 def is_url(url_str):
-    # Django URL validation patterns
-    r = re.compile(
-        r'^(?:http|ftp)s?://'  # http:// or https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
-        r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
-        r'localhost|'  # localhost...
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-        r'(?::\d+)?'  # optional port
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-
-    url = r.match(url_str)
-    if url:
+    try:
+        URLValidator()(url_str)
         return True
-    else:
+    except Exception:
         return False
 
 

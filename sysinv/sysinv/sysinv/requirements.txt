@@ -40,3 +40,5 @@ rpm
 ruamel.yaml>=0.13.14 # MIT
 docker  # Apache-2.0
 kubernetes  # Apache-2.0
+Django<2,>=1.11.20 # BSD
+
