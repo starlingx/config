@@ -1865,6 +1865,7 @@ class DockerHelper(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
+        self._lock = threading.Lock()
         self.k8s_registry = None
         self.gcr_registry = None
         self.quay_registry = None
@@ -1967,7 +1968,13 @@ class DockerHelper(object):
 
         try:
             client = docker.from_env(timeout=INSTALLATION_TIMEOUT)
-            armada_svc = self._start_armada_service(client)
+
+            # It causes problem if multiple threads attempt to start the
+            # same container, so add lock to ensure only one thread can
+            # start the Armada container at a time
+            with self._lock:
+                armada_svc = self._start_armada_service(client)
+
             if armada_svc:
                 if request == 'validate':
                     cmd = 'armada validate ' + manifest_file
