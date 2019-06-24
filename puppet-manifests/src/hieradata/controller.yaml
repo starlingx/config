@@ -73,7 +73,7 @@ platform::influxdb::params::batch_timeout: '2s'
 platform::influxdb::params::read_buffer: 0
 
 # influxdb log ratation file
-platform::influxdb::logrotate::params::log_file_name: '/var/log/influxdb/influxdb.log'
+platform::influxdb::logrotate::params::log_file_name: '/var/log/influxdb/influxd.log'
 platform::influxdb::logrotate::params::log_file_size: '20M'
 platform::influxdb::logrotate::params::log_file_rotate: 10
 
