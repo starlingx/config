@@ -584,7 +584,6 @@ PV_NAME_UNKNOWN = 'unknown'
 
 # Storage: Volume Group Parameter Types
 LVG_NOVA_PARAM_BACKING = 'instance_backing'
-LVG_NOVA_PARAM_DISK_OPS = 'concurrent_disk_operations'
 LVG_CINDER_PARAM_LVM_TYPE = 'lvm_type'
 
 # Storage: Volume Group Parameter: Nova: Backing types
@@ -594,9 +593,6 @@ LVG_NOVA_BACKING_REMOTE = 'remote'
 # Storage: Volume Group Parameter: Cinder: LVM provisioing
 LVG_CINDER_LVM_TYPE_THIN = 'thin'
 LVG_CINDER_LVM_TYPE_THICK = 'thick'
-
-# Storage: Volume Group Parameter: Nova: Concurrent Disk Ops
-LVG_NOVA_PARAM_DISK_OPS_DEFAULT = 2
 
 # Controller audit requests (force updates from agents)
 DISK_AUDIT_REQUEST = "audit_disk"

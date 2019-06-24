@@ -410,8 +410,7 @@ def _cinder_volumes_patch_semantic_checks(caps_dict):
 
 def _nova_local_patch_semantic_checks(caps_dict):
     # make sure that only valid capabilities are provided
-    valid_caps = set([constants.LVG_NOVA_PARAM_BACKING,
-                      constants.LVG_NOVA_PARAM_DISK_OPS])
+    valid_caps = set([constants.LVG_NOVA_PARAM_BACKING])
     invalid_caps = set(caps_dict.keys()) - valid_caps
 
     # Do we have something unexpected?
@@ -424,14 +423,6 @@ def _nova_local_patch_semantic_checks(caps_dict):
     # make sure that we are modifying something
     elif len(caps_dict) == 0:
         msg = _('No parameter specified. No action taken')
-        raise wsme.exc.ClientSideError(msg)
-
-    # Make sure that the concurrent disk operations floor is
-    # valid_actions -> Always present regardless of mode
-    if constants.LVG_NOVA_PARAM_DISK_OPS in caps_dict and \
-       caps_dict[constants.LVG_NOVA_PARAM_DISK_OPS] < 1:
-        msg = _('Invalid parameter: %s must be > 0' %
-                constants.LVG_NOVA_PARAM_DISK_OPS)
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -744,9 +735,7 @@ def _create(lvg, iprofile=None, applyprofile=None):
             else:
                 lvg_caps_dict = {
                     constants.LVG_NOVA_PARAM_BACKING:
-                        constants.LVG_NOVA_BACKING_IMAGE,
-                    constants.LVG_NOVA_PARAM_DISK_OPS:
-                        constants.LVG_NOVA_PARAM_DISK_OPS_DEFAULT
+                        constants.LVG_NOVA_BACKING_IMAGE
                 }
                 lvg_caps.update(lvg_caps_dict)
                 LOG.info("Updated lvg capabilities=%s" % lvg_caps)

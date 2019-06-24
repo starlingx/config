@@ -158,10 +158,9 @@
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
                         instance_backing: image, or remote
-                        concurrent_disk_operations: number of parallel I/O intensive disk operations
                 -->
            <disk path="/dev/sdb" size="223" />
-           <lvg lvm_vg_name="nova-local" instance_backing="image" concurrent_disk_operations="2" />
+           <lvg lvm_vg_name="nova-local" instance_backing="image" />
         </localstorageProfile>
 
         <localstorageProfile name="localstorage-profile_remote">
@@ -171,10 +170,9 @@
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
                         instance_backing: image, or remote
-                        concurrent_disk_operations: number of parallel I/O intensive disk operations
                 -->
            <disk path="/dev/sdb" size="223" />
-           <lvg lvm_vg_name="nova-local" instance_backing="remote" concurrent_disk_operations="2" />
+           <lvg lvm_vg_name="nova-local" instance_backing="remote" />
         </localstorageProfile>
 
 
