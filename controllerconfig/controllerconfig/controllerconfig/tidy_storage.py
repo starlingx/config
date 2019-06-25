@@ -308,7 +308,7 @@ def tidy_storage(result_file):
             raise TidyStorageFail("Failed to get Cinder volume info")
 
         if pools:
-            host = pools[0].name
+            host = pools[0].name  # pylint: disable=no-member
 
         if v_t_d is None:
             v_t_d = 'ceph'
@@ -318,7 +318,7 @@ def tidy_storage(result_file):
         cinder_volume_l = [i.id.encode('utf-8') for i in volume_l]
 
         if avail_zones:
-            avail_z = avail_zones[0].zoneName
+            avail_z = avail_zones[0].zoneName  # pylint: disable=no-member
 
         try:
             output = subprocess.check_output(

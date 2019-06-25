@@ -1,0 +1,5 @@
+# Override upstream constraints based on StarlingX load
+iso8601==0.1.11
+openstacksdk==0.25.0
+os-client-config==1.28.0
+paramiko==2.1.1
