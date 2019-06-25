@@ -16,6 +16,7 @@ from cgtsclient import exc
 from cgtsclient.v1 import ethernetport as ethernetport_utils
 from cgtsclient.v1 import icpu as icpu_utils
 from cgtsclient.v1 import ihost as ihost_utils
+from cgtsclient.v1 import interface_datanetwork as ifdn_utils
 from cgtsclient.v1 import interface_network as ifnet_utils
 from cgtsclient.v1 import iprofile as iprofile_utils
 import math
@@ -62,11 +63,12 @@ def get_portconfig(iprofile):
 def get_interfaceconfig(cc, iprofile):
     istr = ''
     for interface in iprofile.interfaces:
+        istr = istr + "%s: " % (interface.ifname)
         if interface.ifclass == 'platform':
             network_names = ifnet_utils.get_network_names(cc, interface)
-            istr = istr + "%s: %s" % (interface.ifname, network_names)
+            istr = istr + "( %s )" % network_names
         elif interface.ifclass == 'data':
-            istr = istr + "( %s )" % interface.datanetworks
+            istr = istr + "( %s )" % ifdn_utils.get_datanetwork_names(cc, interface)
         _get_interface_ports_interfaces(iprofile, interface)
         if interface.ports:
             istr = istr + " | %s | PORTS = %s" % (interface.iftype, interface.ports)

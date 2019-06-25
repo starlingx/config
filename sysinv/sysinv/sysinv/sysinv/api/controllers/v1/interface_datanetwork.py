@@ -147,6 +147,8 @@ class InterfaceDataNetworkController(rest.RestController):
         self._check_interface_class(interface_obj)
         self._check_interface_mtu(interface_obj, datanetwork_obj)
         self._check_duplicate_interface_datanetwork(interface_datanetwork_dict)
+        self._check_iftype_network_type(interface_obj, datanetwork_obj)
+        self._check_datanetwork_used(interface_obj, datanetwork_obj)
 
         result = pecan.request.dbapi.interface_datanetwork_create(
             interface_datanetwork_dict)
@@ -240,14 +242,34 @@ class InterfaceDataNetworkController(rest.RestController):
         return result
 
     def _check_duplicate_interface_datanetwork(self, interface_datanetwork):
-        result = self._query_interface_datanetwork(interface_datanetwork)
-        if not result:
+        ifdn = self._query_interface_datanetwork(interface_datanetwork)
+        if not ifdn:
             return
         msg = _("Interface '%s' assignment with Data Network '%s' "
                 "already exists."
-                % (interface_datanetwork['interface_id'],
-                   interface_datanetwork['datanetwork_id']))
+                % (ifdn['ifname'],
+                   ifdn['datanetwork_name']))
         raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
+    def _check_iftype_network_type(interface_obj, datanetwork_obj):
+        if interface_obj.iftype == constants.INTERFACE_TYPE_VLAN:
+            if datanetwork_obj.network_type == constants.DATANETWORK_TYPE_VLAN:
+                msg = _("VLAN based data network '%s' cannot be "
+                        "assigned to a VLAN interface" % datanetwork_obj.name)
+                raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
+    def _check_datanetwork_used(interface, datanetwork):
+        ifnets = pecan.request.dbapi.interface_datanetwork_get_by_datanetwork(
+            datanetwork.uuid)
+        for i in ifnets:
+            if i.forihostid == interface.forihostid:
+                msg = _("Data interface %(ifname)s is already "
+                        "attached to this Data Network: "
+                        "%(datanetwork)s." %
+                        {'ifname': i.ifname, 'datanetwork': datanetwork.name})
+                raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
     def _get_interface_id(interface_uuid):

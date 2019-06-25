@@ -307,17 +307,23 @@ class InterfaceTestCase(base.FunctionalTest):
             interface = dbutils.post_get_test_interface(
                 ifname=ifname,
                 ifclass=ifclass,
-                datanetworks=datanetworks,
                 forihostid=host.id, ihost_uuid=host.uuid)
             response = self._post_and_check(interface, expect_errors)
             if expect_errors is False:
                 interface['uuid'] = response.json['uuid']
+                iface = self.dbapi.iinterface_get(interface['uuid'])
                 if ifclass == constants.INTERFACE_CLASS_PLATFORM and networktype:
                     network = self.dbapi.network_get_by_type(networktype)
-                    iface = self.dbapi.iinterface_get(interface['uuid'])
                     dbutils.create_test_interface_network(
                         interface_id=iface.id,
                         network_id=network.id)
+                elif ifclass == constants.INTERFACE_CLASS_DATA and datanetworks:
+                    for dn_name in datanetworks:
+                        dn = self.dbapi.datanetworks_get_all({'name': dn_name})
+                        if dn:
+                            dbutils.create_test_interface_datanetwork(
+                                interface_id=iface.id,
+                                datanetwork_id=dn.id)
 
         self.profile['interfaces'].append(interface)
         self.profile['ports'].append(port)
@@ -342,7 +348,6 @@ class InterfaceTestCase(base.FunctionalTest):
             ifclass=ifclass,
             uses=[iface1['ifname'], iface2['ifname']],
             txhashpolicy='layer2',
-            datanetworks=datanetworks,
             forihostid=host.id, ihost_uuid=host.uuid)
 
         lacp_types = [constants.NETWORK_TYPE_MGMT,
@@ -354,8 +359,20 @@ class InterfaceTestCase(base.FunctionalTest):
 
         response = self._post_and_check(interface, expect_errors)
         if expect_errors is False:
-            interface_uuid = response.json['uuid']
-            interface['uuid'] = interface_uuid
+            interface['uuid'] = response.json['uuid']
+            iface = self.dbapi.iinterface_get(interface['uuid'])
+            if ifclass == constants.INTERFACE_CLASS_PLATFORM and networktype:
+                network = self.dbapi.network_get_by_type(networktype)
+                dbutils.create_test_interface_network(
+                        interface_id=iface.id,
+                        network_id=network.id)
+            elif ifclass == constants.INTERFACE_CLASS_DATA and datanetworks:
+                for dn_name in datanetworks:
+                    dn = self.dbapi.datanetworks_get_all({'name': dn_name})
+                    if dn:
+                        dbutils.create_test_interface_datanetwork(
+                            interface_id=iface.id,
+                            datanetwork_id=dn.id)
 
         iface1['used_by'].append(interface['ifname'])
         iface2['used_by'].append(interface['ifname'])
@@ -384,17 +401,24 @@ class InterfaceTestCase(base.FunctionalTest):
             ifclass=ifclass,
             vlan_id=vlan_id,
             uses=[lower_iface['ifname']],
-            datanetworks=datanetworks,
             forihostid=host.id, ihost_uuid=host.uuid)
         response = self._post_and_check(interface, expect_errors)
         if expect_errors is False:
+            interface['uuid'] = response.json['uuid']
+            iface = self.dbapi.iinterface_get(interface['uuid'])
             if ifclass == constants.INTERFACE_CLASS_PLATFORM and networktype:
-                interface['uuid'] = response.json['uuid']
                 network = self.dbapi.network_get_by_type(networktype)
-                iface = self.dbapi.iinterface_get(interface['uuid'])
                 dbutils.create_test_interface_network(
                         interface_id=iface.id,
                         network_id=network.id)
+            elif ifclass == constants.INTERFACE_CLASS_DATA and datanetworks:
+                for dn_name in datanetworks:
+                    dn = self.dbapi.datanetworks_get_all({'name': dn_name})
+                    if dn:
+                        dbutils.create_test_interface_datanetwork(
+                            interface_id=iface.id,
+                            datanetwork_id=dn.id)
+
         self.profile['interfaces'].append(interface)
         return interface
 
@@ -1560,12 +1584,21 @@ class TestPost(InterfaceTestCase):
             expect_errors=True)
 
     # Expected message:
-    #   Data network(s) not supported for non-data interfaces.
+    #   An interface with interface class platform cannot assign datanetworks.
     def test_create_nondata_data_network(self):
-        self._create_worker_bond(
+        bond_iface = self._create_worker_bond(
             'pxeboot', constants.NETWORK_TYPE_PXEBOOT,
-            constants.INTERFACE_CLASS_PLATFORM,
-            datanetworks='group0-data0', expect_errors=True)
+            constants.INTERFACE_CLASS_PLATFORM)
+        iface = self.dbapi.iinterface_get(bond_iface['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn, expect_errors=True)
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
 
     # Expected message: Name must be unique
     def test_create_invalid_ae_name(self):
@@ -1585,14 +1618,23 @@ class TestPost(InterfaceTestCase):
                               expect_errors=True)
 
     # Expected message:
-    # Data network(s) not supported for non-data interfaces
+    # An interface with interface class platform cannot assign datanetworks.
     def test_create_invalid_mgmt_data_ethernet(self):
-        self._create_ethernet('shared',
+        port, mgmt_if = self._create_ethernet('shared',
                               networktype=constants.NETWORK_TYPE_MGMT,
                               ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                              datanetworks='group0-data0',
-                              host=self.worker,
-                              expect_errors=True)
+                              host=self.worker)
+        iface = self.dbapi.iinterface_get(mgmt_if['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn,
+                                      expect_errors=True)
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
 
 
 class TestCpePost(InterfaceTestCase):
@@ -1653,10 +1695,19 @@ class TestCpePost(InterfaceTestCase):
     # assigned to a VLAN interface
     def test_create_invalid_vlan_with_vlan_data_network(self):
         port, lower = self._create_ethernet('eth1', constants.NETWORK_TYPE_NONE)
-        self._create_vlan('vlan2', networktype=constants.NETWORK_TYPE_DATA,
+        vlan_if = self._create_vlan('vlan2', networktype=constants.NETWORK_TYPE_DATA,
                           ifclass=constants.INTERFACE_CLASS_DATA,
-                          datanetworks='group0-data0',
-                          vlan_id=2, lower_iface=lower, expect_errors=True)
+                          vlan_id=2, lower_iface=lower)
+        iface = self.dbapi.iinterface_get(vlan_if['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn, expect_errors=True)
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
 
     @testtools.skip("deprecate neutron bind interface")
     @mock.patch.object(dbsql_api.Connection, 'iinterface_destroy')
@@ -1687,32 +1738,31 @@ class TestCpePost(InterfaceTestCase):
     # Expected error: Data interface data0 is already attached to this
     # Data Network: group0-data0.
     def test_create_invalid_data_network_used(self):
-        self._create_ethernet('data0',
+        port1, data0_if = self._create_ethernet('data0',
                               networktype=constants.NETWORK_TYPE_DATA,
-                              ifclass=constants.INTERFACE_CLASS_DATA,
-                              datanetworks='group0-data0')
-        self._create_ethernet('data1',
+                              ifclass=constants.INTERFACE_CLASS_DATA)
+        iface = self.dbapi.iinterface_get(data0_if['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn,
+                                      expect_errors=False)
+        port2, data1_if = self._create_ethernet('data1',
                               networktype=constants.NETWORK_TYPE_DATA,
-                              ifclass=constants.INTERFACE_CLASS_DATA,
-                              datanetworks='group0-data0',
-                              expect_errors=True)
-
-    # Expected error: Data network \'group0-dataXX\' does not exist.
-    def test_create_invalid_data_network_not_exist(self):
-        self._create_ethernet('data0',
-                              networktype=constants.NETWORK_TYPE_DATA,
-                              ifclass=constants.INTERFACE_CLASS_DATA,
-                              datanetworks='group0-dataXX',
-                              expect_errors=True)
-
-    # Expected error: Specifying duplicate provider network 'group0-data1'
-    # is not permitted
-    def test_create_invalid_duplicate_data_network(self):
-        self._create_ethernet('data0',
-                              networktype=constants.NETWORK_TYPE_DATA,
-                              ifclass=constants.INTERFACE_CLASS_DATA,
-                              datanetworks='group0-data1,group0-data1',
-                              expect_errors=True)
+                              ifclass=constants.INTERFACE_CLASS_DATA)
+        iface = self.dbapi.iinterface_get(data1_if['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn,
+                                      expect_errors=True)
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
 
 
 class TestCpePatch(InterfaceTestCase):
