@@ -1168,7 +1168,8 @@ class DataNetworks(Base):
 
     __mapper_args__ = {
         'polymorphic_identity': 'datanetwork',
-        'polymorphic_on': network_type
+        'polymorphic_on': network_type,
+        'with_polymorphic': '*',
     }
 
 
