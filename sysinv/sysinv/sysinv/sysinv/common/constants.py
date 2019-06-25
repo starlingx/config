@@ -893,7 +893,6 @@ SERVICE_TYPE_NETWORK = 'network'
 SERVICE_TYPE_HORIZON = "horizon"
 SERVICE_TYPE_CEPH = 'ceph'
 SERVICE_TYPE_CINDER = 'cinder'
-SERVICE_TYPE_MAGNUM = 'magnum'
 SERVICE_TYPE_PLATFORM = 'platform'
 SERVICE_TYPE_NOVA = 'nova'
 SERVICE_TYPE_SWIFT = 'swift'
@@ -1259,7 +1258,7 @@ PARTITION_MANAGE_LOCK = "partition-manage"
 
 # Optional services
 ALL_OPTIONAL_SERVICES = [SERVICE_TYPE_CINDER,
-                         SERVICE_TYPE_MAGNUM, SERVICE_TYPE_SWIFT,
+                         SERVICE_TYPE_SWIFT,
                          SERVICE_TYPE_IRONIC]
 
 # System mode

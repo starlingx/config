@@ -48,7 +48,6 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
         neutron_region_name = self._operator.neutron.get_region_name()
         cinder_region_name = self._operator.cinder.get_region_name()
         nova_region_name = self._operator.nova.get_region_name()
-        magnum_region_name = self._operator.magnum.get_region_name()
         barbican_region_name = self._operator.barbican.get_region_name()
 
         return {
@@ -57,7 +56,6 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
             'sysinv::neutron_region_name': neutron_region_name,
             'sysinv::cinder_region_name': cinder_region_name,
             'sysinv::nova_region_name': nova_region_name,
-            'sysinv::magnum_region_name': magnum_region_name,
             'sysinv::barbican_region_name': barbican_region_name,
 
             'sysinv::keystone::auth::public_url': self.get_public_url(),

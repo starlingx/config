@@ -106,13 +106,6 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
                 'lockout_period_sec': str(lockout_seconds.value),
             })
 
-        # Optional services settings
-        service_config = self._get_service_config('magnum')
-        if service_config is not None and service_config.enabled:
-            local_settings_config.update({
-                'enable_magnum': 'True',
-            })
-
         return local_settings_config
 
     def _region_config(self):

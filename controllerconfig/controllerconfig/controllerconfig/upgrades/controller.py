@@ -90,9 +90,6 @@ def get_db_credentials(shared_services, from_release):
          'sysinv': {'hiera_user_key': 'sysinv::db::postgresql::user',
                     'keyring_password_key': 'sysinv',
                     },
-         'magnum': {'hiera_user_key': 'magnum::db::postgresql::user',
-                    'keyring_password_key': 'magnum',
-                    },
          'ironic': {'hiera_user_key': 'ironic::db::postgresql::user',
                     'keyring_password_key': 'ironic',
                     },
@@ -532,10 +529,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         f.write("[api_database]\n")
         f.write(get_connection_string(db_credentials, 'nova_api'))
 
-    with open("/etc/magnum/magnum-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'magnum'))
-
     with open("/etc/ironic/ironic-dbsync.conf", "w") as f:
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'ironic'))
@@ -572,10 +565,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         # Migrate nova_api (new in R3)
         ('nova',
          'nova-manage --config-file /etc/nova/nova-dbsync.conf api_db sync'),
-        # Migrate magnum (new in R5)
-        ('magnum',
-         'magnum-db-manage --config-file /etc/magnum/magnum-dbsync.conf ' +
-         'upgrade'),
         # Migrate ironic (new in R5)
         ('ironic',
          'ironic-dbsync --config-file /etc/ironic/ironic-dbsync.conf ' +

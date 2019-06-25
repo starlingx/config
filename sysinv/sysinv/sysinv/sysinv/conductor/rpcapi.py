@@ -876,15 +876,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context,
                          self.make_msg('docker_registry_garbage_collect'))
 
-    def get_magnum_cluster_count(self, context):
-        """Synchronously, have the conductor get magnum cluster count
-        configuration.
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('get_magnum_cluster_count'))
-
     def update_lvm_cinder_config(self, context):
         """Synchronously, have the conductor update Cinder LVM on a controller.
 

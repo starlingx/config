@@ -2350,8 +2350,6 @@ data:
             https_enabled: 'False'
             lockout_period_sec: '300'
             lockout_retries_num: '3'
-            # Optional Services
-            enable_magnum: 'False'
             # Turn off domain support as we aren't using
             keystone_multidomain_support: 'False'
           template: |

@@ -114,26 +114,6 @@ def _check_service_data(op, service):
         raise wsme.exc.ClientSideError(_(
                         "Invalid service name"))
 
-    # magnum-specific error checking
-    if name == constants.SERVICE_TYPE_MAGNUM:
-        # magnum clusters need to all be cleared before service can be disabled
-        # this error check is commented out because get_magnum_cluster_count
-        # cannot count clusters of different projects
-        # it is commented instead of removed in case a --all-tenants feature is
-        # added to magnum in the future
-        # if service['enabled'] == False:
-        #    cluster_count = pecan.request.rpcapi.get_magnum_cluster_count(
-        #        pecan.request.context)
-        #    if cluster_count > 0:
-        #        raise wsme.exc.ClientSideError(_(
-        #                "Cannot disable Magnum while clusters are active"))
-        # magnum can be enabled only on AIO duplex
-        if service['enabled']:
-            system = pecan.request.dbapi.isystem_get_one()
-            if system.system_type != constants.TIS_STD_BUILD:
-                raise wsme.exc.ClientSideError(_(
-                        "Magnum can be enabled on only Standard systems"))
-
     # ironic-specific error checking
     if name == constants.SERVICE_TYPE_IRONIC:
         if service['enabled']:

@@ -25,7 +25,6 @@ from keystoneclient.v3 import client as keystone_client
 from keystoneclient.auth.identity import v3
 from keystoneclient import session
 from sqlalchemy.orm import exc
-from magnumclient.v1 import client as magnum_client_v1
 from barbicanclient.v1 import client as barbican_client_v1
 
 LOG = logging.getLogger(__name__)
@@ -102,9 +101,6 @@ openstack_keystone_opts = [
     cfg.StrOpt('nova_region_name',
                default='RegionOne',
                help=_("Nova Region Name")),
-    cfg.StrOpt('magnum_region_name',
-               default='RegionOne',
-               help=_("Magnum Region Name")),
     cfg.StrOpt('barbican_region_name',
                default='RegionOne',
                help=_("Barbican Region Name")),
@@ -138,7 +134,6 @@ class OpenStackOperator(object):
         self.keystone_session = None
         self.openstack_keystone_client = None
         self.openstack_keystone_session = None
-        self.magnum_client = None
         self.nova_client = None
         self.neutron_client = None
         self._neutron_extension_list = []
@@ -758,27 +753,6 @@ class OpenStackOperator(object):
             LOG.error("Unable to get storage backend list from the primary "
                       "region: %s" % e)
         return ceph_present
-
-    def _get_magnumclient(self):
-        if not self.magnum_client:  # should not cache this forever
-            # magnumclient doesn't yet use v3 keystone auth
-            # because neutron and nova client doesn't
-            # and I shamelessly copied them
-            self.magnum_client = magnum_client_v1.Client(
-                session=self._get_keystone_session(OPENSTACK_CONFIG),
-                auth_url=self._get_auth_url(OPENSTACK_CONFIG),
-                endpoint_type='internalURL',
-                direct_use=False,
-                region_name=cfg.CONF[OPENSTACK_CONFIG].magnum_region_name)
-        return self.magnum_client
-
-    def get_magnum_cluster_count(self):
-        try:
-            clusters = self._get_magnumclient().clusters.list()
-            return len(clusters)
-        except Exception:
-            LOG.error("Unable to get backend list of magnum clusters")
-            return 0
 
     #################
     # Barbican

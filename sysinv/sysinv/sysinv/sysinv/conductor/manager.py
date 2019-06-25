@@ -1518,9 +1518,6 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def get_magnum_cluster_count(self, context):
-        return self._openstack.get_magnum_cluster_count()
-
     def _configure_worker_host(self, context, host):
         """Configure a worker host with the supplied data.
 
@@ -7178,11 +7175,6 @@ class ConductorManager(service.PeriodicService):
                 # controller hosts will actively apply the manifests
                 config_uuid = self._config_update_hosts(context,
                                                         [constants.CONTROLLER])
-        elif service == constants.SERVICE_TYPE_MAGNUM:
-            config_uuid = self._config_update_hosts(context,
-                                                    [constants.CONTROLLER],
-                                                    reboot=True)
-
         elif service == constants.SERVICE_TYPE_IRONIC:
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER],
