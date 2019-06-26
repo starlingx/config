@@ -1,5 +1,5 @@
 # Job cloned from:
-# https://github.com/openstack/openstack-zuul-jobs/blob/master/playbooks/legacy/puppet-lint/run.yaml
+# https://opendev.org/openstack/openstack-zuul-jobs/src/branch/master/playbooks/legacy/puppet-lint/run.yaml
 # to install gem and puppet-lint in Zuul operating enviroment,
 # before running puppet-lint within the tox.ini file. The only
 # modification to this job is to not run puppet-lint here.
@@ -17,35 +17,6 @@
       file:
         path: '{{ ansible_user_dir }}/workspace'
         state: directory
-
-    - shell:
-        cmd: |
-          set -e
-          set -x
-          CLONEMAP=`mktemp`
-          function cleanup {
-              # In cases where zuul-cloner is aborted during a git
-              # clone operation, git will remove the git work tree in
-              # its cleanup. The work tree in these jobs is the
-              # workspace directory, which means that subsequent
-              # jenkins post-build actions can not run because the
-              # workspace has been removed.
-              # To reduce the likelihood of this having an impact,
-              # recreate the workspace directory if needed
-              mkdir -p $WORKSPACE
-              rm -f $CLONEMAP
-          }
-          trap cleanup EXIT
-          cat > $CLONEMAP << EOF
-          clonemap:
-            - name: $ZUUL_PROJECT
-              dest: .
-          EOF
-          /usr/zuul-env/bin/zuul-cloner -m $CLONEMAP --cache-dir /opt/git \
-              https://opendev.org $ZUUL_PROJECT
-        executable: /bin/bash
-        chdir: '{{ ansible_user_dir }}/workspace'
-      environment: '{{ zuul | zuul_legacy_vars }}'
 
     - shell:
         cmd: |
@@ -95,7 +66,7 @@
           mkdir .bundled_gems
           export GEM_HOME=`pwd`/.bundled_gems
           if [ -f Gemfile ]; then
-            gem install bundler --no-rdoc --no-ri --verbose
+            gem install bundler --no-rdoc --no-ri --verbose --version '<2.0.0'
             $GEM_HOME/bin/bundle install --without system_tests
             # We'll run puppet-lint from tox
             #$GEM_HOME/bin/bundle exec rake lint 2>&1
