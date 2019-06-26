@@ -10,6 +10,9 @@ etcd:
   external:
     endpoints:
     - <%= @etcd_endpoint %>
+apiServerExtraArgs:
+  default-not-ready-toleration-seconds: "30"
+  default-unreachable-toleration-seconds: "30"
 apiServerCertSANs:
 - "<%= @apiserver_advertise_address %>"
 - "<%= @apiserver_loopback_address %>"
