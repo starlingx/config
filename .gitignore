@@ -1,5 +1,5 @@
 *.a
-*.egg
+*.egg*
 *.egg-info
 *.o
 *.py[co]
