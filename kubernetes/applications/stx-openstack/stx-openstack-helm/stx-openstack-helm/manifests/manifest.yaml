@@ -995,6 +995,8 @@ data:
           workers: 1
           discover_hosts_in_cells_interval: 30
           periodic_task_interval: -1
+        service_user:
+          send_service_user_token: true
         upgrade_levels: None
         metrics:
           required: false
