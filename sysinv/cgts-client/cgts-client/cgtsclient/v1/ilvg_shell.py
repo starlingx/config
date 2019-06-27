@@ -175,11 +175,6 @@ def do_host_lvg_delete(cc, args):
 @utils.arg('lvgnameoruuid',
            metavar='<lvg name or uuid>',
            help="Name or UUID of lvg [REQUIRED]")
-@utils.arg('-b', '--instance_backing',
-           metavar='<instance backing>',
-           choices=['image', 'remote'],
-           help=("Type of instance backing. "
-                 "Allowed values: image, remote. [nova-local]"))
 @utils.arg('-l', '--lvm_type',
            metavar='<lvm_type>',
            choices=['thick', 'thin'],
@@ -189,12 +184,11 @@ def do_host_lvg_modify(cc, args):
     """Modify the attributes of a Local Volume Group."""
 
     # Get all the fields from the command arguments
-    field_list = ['hostnameorid', 'lvgnameoruuid',
-                  'instance_backing', 'lvm_type']
+    field_list = ['hostnameorid', 'lvgnameoruuid', 'lvm_type']
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
 
-    all_caps_list = ['instance_backing', 'lvm_type']
+    all_caps_list = ['lvm_type']
     requested_caps_dict = {}
 
     for cap in all_caps_list:

@@ -440,15 +440,9 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
     def _get_storage_config(self, host):
         pvs = self.dbapi.ipv_get_by_ihost(host.id)
 
-        # TODO(abailey)  instance_backing is deprecated.
-        # local vs remote storage is now determined by a
-        # kubernetes label: common.LABEL_REMOTE_STORAGE
-        instance_backing = constants.LVG_NOVA_BACKING_IMAGE
-
         final_pvs = []
         adding_pvs = []
         removing_pvs = []
-        nova_lvg_uuid = None
         for pv in pvs:
             if (pv.lvm_vg_name == constants.LVG_NOVA_LOCAL and
                     pv.pv_state != constants.PV_ERR):
@@ -468,13 +462,6 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
                     removing_pvs.append(pv_path)
                 else:
                     final_pvs.append(pv_path)
-                nova_lvg_uuid = pv.ilvg_uuid
-
-        if nova_lvg_uuid:
-            lvg = self.dbapi.ilvg_get(nova_lvg_uuid)
-
-            instance_backing = lvg.capabilities.get(
-                constants.LVG_NOVA_PARAM_BACKING)
 
         global_filter, update_filter = self._get_lvm_global_filter(host)
 
@@ -483,8 +470,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
             'platform::worker::storage::adding_pvs': adding_pvs,
             'platform::worker::storage::removing_pvs': removing_pvs,
             'platform::worker::storage::lvm_global_filter': global_filter,
-            'platform::worker::storage::lvm_update_filter': update_filter,
-            'platform::worker::storage::instance_backing': instance_backing}
+            'platform::worker::storage::lvm_update_filter': update_filter}
 
         # If NOVA is a service on a ceph-external backend, use the ephemeral_pool
         # and ceph_conf file that are stored in that DB entry.

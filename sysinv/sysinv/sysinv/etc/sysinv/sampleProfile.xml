@@ -157,10 +157,9 @@
 		        size: minimum size (in GiB).
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
-                        instance_backing: image, or remote
                 -->
            <disk path="/dev/sdb" size="223" />
-           <lvg lvm_vg_name="nova-local" instance_backing="image" />
+           <lvg lvm_vg_name="nova-local" />
         </localstorageProfile>
 
         <localstorageProfile name="localstorage-profile_remote">
@@ -169,10 +168,9 @@
 		        size: minimum size (in MB).
                     The lvg tags below define the local volume group 
                         lvm_vg_name: local volume group name
-                        instance_backing: image, or remote
                 -->
            <disk path="/dev/sdb" size="223" />
-           <lvg lvm_vg_name="nova-local" instance_backing="remote" />
+           <lvg lvm_vg_name="nova-local" />
         </localstorageProfile>
 
 
