@@ -420,8 +420,11 @@ class MemoryController(rest.RestController):
         try:
             # Semantics checks and update hugepage memory accounting
             patch = _check_huge_values(rpc_port, patch,
-                    vm_hugepages_nr_2M_pending, vm_hugepages_nr_1G_pending,
-                    vswitch_hugepages_reqd, vswitch_hugepages_size_mib)
+                                       vm_hugepages_nr_2M_pending,
+                                       vm_hugepages_nr_1G_pending,
+                                       vswitch_hugepages_reqd,
+                                       vswitch_hugepages_size_mib,
+                                       platform_reserved_mib)
         except wsme.exc.ClientSideError as e:
             inode = pecan.request.dbapi.inode_get(inode_id=rpc_port.forinodeid)
             numa_node = inode.numa_node
@@ -519,8 +522,11 @@ def _update(mem_uuid, mem_values):
 
     # Semantics checks and update hugepage memory accounting
     mem_values = _check_huge_values(rpc_port, mem_values,
-                                    vm_hugepages_nr_2M_pending, vm_hugepages_nr_1G_pending,
-                                    vswitch_hugepages_reqd, vswitch_hugepages_size_mib)
+                                    vm_hugepages_nr_2M_pending,
+                                    vm_hugepages_nr_1G_pending,
+                                    vswitch_hugepages_reqd,
+                                    vswitch_hugepages_size_mib,
+                                    platform_reserved_mib)
 
     # Semantics checks for platform memory
     _check_memory(rpc_port, host_id, platform_reserved_mib,
@@ -549,16 +555,6 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
                   vm_hugepages_nr_2M_pending=None, vm_hugepages_nr_1G_pending=None,
                   vswitch_hugepages_reqd=None, vswitch_hugepages_size_mib=None):
     if platform_reserved_mib:
-        # Check for invalid characters
-        try:
-            val = int(platform_reserved_mib)
-        except ValueError:
-            raise wsme.exc.ClientSideError((
-                "Platform memory must be a number"))
-        if val < 0:
-            raise wsme.exc.ClientSideError((
-                "Platform memory must be greater than zero"))
-
         # Check for lower limit
         inode_id = rpc_port['forinodeid']
         inode = pecan.request.dbapi.inode_get(inode_id)
@@ -636,7 +632,8 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
 
 def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                        vm_hugepages_nr_1G=None, vswitch_hugepages_reqd=None,
-                       vswitch_hugepages_size_mib=None):
+                       vswitch_hugepages_size_mib=None,
+                       platform_reserved_mib=None):
 
     if rpc_port['vm_hugepages_use_1G'] == 'False':
         vs_hp_size = vswitch_hugepages_size_mib
@@ -741,16 +738,33 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         vs_hp_size_mib = constants.MIB_2M
     vs_hp_reqd_mib = new_vs_pages * vs_hp_size_mib
 
-    # The size of possible hugepages is the size of reported possible
-    # vm pages + the reported current number of vswitch pages.
+    # The size of possible hugepages is the node mem total - platform reserved
+    base_mem_mib = rpc_port['platform_reserved_mib']
+    if platform_reserved_mib:
+        # Check for invalid characters
+        try:
+            val = int(platform_reserved_mib)
+        except ValueError:
+            raise wsme.exc.ClientSideError((
+                "Platform memory must be a number"))
+        if val < 0:
+            raise wsme.exc.ClientSideError((
+                "Platform memory must be greater than zero"))
+        base_mem_mib = int(platform_reserved_mib)
+
+    hp_possible_mib = rpc_port['node_memtotal_mib'] - base_mem_mib
     if vs_hp_size_mib == constants.MIB_2M:
-        hp_possible_mib = int(
+        agent_hp_possible_mib = int(
             rpc_port.get('vm_hugepages_possible_2M', 0) +
             rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
+        if hp_possible_mib > agent_hp_possible_mib:
+            hp_possible_mib = agent_hp_possible_mib
     elif vs_hp_size_mib == constants.MIB_1G:
-        hp_possible_mib = int(
-            rpc_port.get('vm_hugepages_possible_1G', 0) +
-            rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
+        agent_hp_possible_mib = int(
+                rpc_port.get('vm_hugepages_possible_1G', 0) +
+                rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
+        if hp_possible_mib > agent_hp_possible_mib:
+            hp_possible_mib = agent_hp_possible_mib
 
     # Total requested huge pages
     hp_requested_mib = vm_hp_2M_reqd_mib + vm_hp_1G_reqd_mib + vs_hp_reqd_mib
@@ -762,12 +776,8 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         vm_max_hp_1G = ((hp_possible_mib - vs_hp_reqd_mib - vm_hp_2M_reqd_mib)
                         / constants.MIB_1G)
 
-        if vm_max_hp_2M < 0:
-            vm_max_hp_2M = 0
-        if vm_max_hp_1G < 0:
-            vm_max_hp_1G = 0
-
         if new_2M_pages > 0 and new_1G_pages > 0:
+
             msg = _("For a requested vSwitch hugepage allocation of %s MiB, "
                     "max 1G pages is %s when 2M is %s, or "
                     "max 2M pages is %s when 1G is %s." % (
