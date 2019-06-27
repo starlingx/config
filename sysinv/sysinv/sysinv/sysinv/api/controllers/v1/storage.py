@@ -575,7 +575,7 @@ def _check_host(stor):
     # semantic check: whether at least 2 unlocked hosts are monitors
     if not utils.is_aio_system(pecan.request.dbapi):
         ceph_helper = ceph.CephApiOperator()
-        num_monitors, required_monitors, quorum_names = \
+        num_monitors, required_monitors, __ = \
             ceph_helper.get_monitors_status(pecan.request.dbapi)
         # CGTS 503 for now update monitors requirement until controller-0 is
         # inventoried

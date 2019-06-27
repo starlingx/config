@@ -305,7 +305,7 @@ class StorageTierController(rest.RestController):
             raise exception.PatchError(patch=patch, reason=e)
 
         # Semantic Checks
-        _check("modify", tier.as_dict())
+        _check(self, "modify", tier.as_dict())
         try:
             # Update only the fields that have changed
             for field in objects.storage_tier.fields:
@@ -396,7 +396,7 @@ def _pre_patch_checks(tier_obj, patch_obj):
                       "cannot be changed.") % tier_obj.name)
 
 
-def _check(op, tier):
+def _check(self, op, tier):
     # Semantic checks
     LOG.debug("storage_tier: Semantic check for %s operation" % op)
 
@@ -410,10 +410,16 @@ def _check(op, tier):
             raise wsme.exc.ClientSideError(_("Storage tier (%s) "
                                              "already present." %
                                              tier['name']))
+
+        # Deny adding secondary tier if initial configuration is not done.
+        if not cutils.is_initial_config_complete():
+            msg = _("Operation denied. Adding secondary tiers to a cluster requires "
+                    "initial configuration to be complete and controller node unlocked.")
+            raise wsme.exc.ClientSideError(msg)
+
         if utils.is_aio_system(pecan.request.dbapi):
             # Deny adding secondary tiers if primary tier backend is not configured
-            # for cluster. When secondary tier is added we also query ceph to create
-            # pools and set replication therefore cluster has to be up.
+            # for cluster.
             clusterId = tier.get('forclusterid') or tier.get('cluster_uuid')
             cluster_tiers = pecan.request.dbapi.storage_tier_get_by_cluster(clusterId)
             configured = False if cluster_tiers else True
@@ -430,9 +436,20 @@ def _check(op, tier):
                 msg = _("Operation denied. Adding secondary tiers to a cluster requires "
                         "primary tier storage backend of this cluster to be configured.")
                 raise wsme.exc.ClientSideError(msg)
+        else:
+            # Deny adding secondary tier if ceph is down on standard
+            num_monitors, required_monitors, __ = \
+                self._ceph.get_monitors_status(pecan.request.dbapi)
+            if num_monitors < required_monitors:
+                raise wsme.exc.ClientSideError(_(
+                     "Operation denied. Ceph is not operational. "
+                     "Only %d storage monitor available. "
+                     "At least %s unlocked and enabled hosts with "
+                     "monitors are required. Please ensure hosts "
+                     "with monitors are unlocked and enabled.") %
+                     (num_monitors, required_monitors))
 
     elif op == "delete":
-
         if tier['name'] == constants.SB_TIER_DEFAULT_NAMES[
                 constants.SB_TIER_TYPE_CEPH]:
             raise wsme.exc.ClientSideError(_("Storage Tier %s cannot be "
@@ -484,7 +501,7 @@ def _create(self, tier, iprofile=None):
     tier = _set_defaults(tier)
 
     # Semantic checks
-    tier = _check("add", tier)
+    tier = _check(self, "add", tier)
 
     LOG.info("storage_tier._create with validated params: %s" % tier)
 
@@ -524,7 +541,7 @@ def _delete(self, tier_uuid):
     tier = objects.storage_tier.get_by_uuid(pecan.request.context, tier_uuid)
 
     # Semantic checks
-    _check("delete", tier.as_dict())
+    _check(self, "delete", tier.as_dict())
 
     # update the crushmap by removing the tier
     try:
