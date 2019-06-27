@@ -5380,29 +5380,14 @@ class HostController(rest.RestController):
                                 "configured. Tier \"%s\" has no OSD configured." % tier['name'])
 
                 else:
-                    storage_nodes = []
-                    try:
-                        storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
-                            personality=constants.STORAGE)
-                    except Exception:
-                        # We are unlocking worker node when no storage nodes are
-                        # defined. This is ok in CEPH_CONTROLLER_MODEL.
-                        pass
-                    is_storage_host_unlocked = False
-                    if storage_nodes:
-                        for node in storage_nodes:
-                            if (node.administrative == constants.ADMIN_UNLOCKED and
-                               (node.operational ==
-                                    constants.OPERATIONAL_ENABLED)):
-
-                                is_storage_host_unlocked = True
-                                break
                     stor_model = ceph.get_ceph_storage_model()
-                    if (not is_storage_host_unlocked and
-                            not stor_model == constants.CEPH_CONTROLLER_MODEL):
+                    if stor_model == constants.CEPH_UNDEFINED_MODEL:
                         raise wsme.exc.ClientSideError(
-                            _("Can not unlock a worker node until at "
-                              "least one storage node is unlocked and enabled."))
+                            _("Can not unlock a worker node until the third Ceph monitor "
+                              "is defined by either adding a storage node or configuring "
+                              "a monitor on a worker node. "
+                              "Note that this will select the storage deployment model, "
+                              "check documentation for details and restrictions."))
 
         # Local Storage checks
         labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
