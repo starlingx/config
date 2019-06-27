@@ -43,11 +43,19 @@ class openstack::horizon
 
   #The intention here is to set up /www as a chroot'ed
   #environment for lighttpd so that it will remain in a jail under /www.
+  #The uid and gid for www match the uid and gid in the setup package.
 
-  user { 'www':
+  group { 'www':
     ensure => 'present',
+    gid    => '1877',
+  }
+
+  -> user { 'www':
+    ensure => 'present',
+    gid    => '1877',
     shell  => '/sbin/nologin',
-    groups => ['sys_protected'],
+    groups => ['www', 'sys_protected'],
+    uid    => '1877',
   }
 
   file { '/www/tmp':
