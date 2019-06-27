@@ -478,9 +478,9 @@ def _discover_and_validate_rbd_provisioner_capabilities(caps_dict, storage_ceph)
         # Check for a valid RBD StorageClass name
         name = caps_dict[constants.K8S_RBD_PROV_STORAGECLASS_NAME]
         if not r.match(name):
-                msg = _("Invalid RBD StorageClass name '%s'. %s" %
-                        (name, msg_help))
-                raise wsme.exc.ClientSideError(msg)
+            msg = _("Invalid RBD StorageClass name '%s'. %s" %
+                    (name, msg_help))
+            raise wsme.exc.ClientSideError(msg)
 
         # Check the uniqueness of RBD StorageClass name in DB.
         if constants.K8S_RBD_PROV_STORAGECLASS_NAME in caps_dict:

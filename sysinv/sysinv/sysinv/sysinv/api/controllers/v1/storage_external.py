@@ -363,10 +363,9 @@ def _apply_backend_changes(op, sb_obj):
                                       pecan.request.rpcapi.update_external_cinder_config)
 
         else:
-            # If no service is specified or glance is the only service, this is a DB
-            # only change => Set the state to configured
-            pecan.request.dbapi.storage_external_update(
-                sb_obj.uuid,
+            # If no service is specified or glance or swift is the only service
+            # this is a DB only change => Set the state to configured
+            pecan.request.dbapi.storage_external_update(sb_obj.uuid,
                 {'state': constants.SB_STATE_CONFIGURED})
 
         # update shared_services

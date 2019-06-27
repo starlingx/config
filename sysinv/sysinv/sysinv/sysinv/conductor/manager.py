@@ -433,36 +433,6 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES,
          'value': constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES_DEFAULT
          },
-        {'service': constants.SERVICE_TYPE_CINDER,
-         'section': constants.SERVICE_PARAM_SECTION_CINDER_EMC_VNX,
-         'name': constants.SERVICE_PARAM_CINDER_EMC_VNX_ENABLED,
-         'value': False
-         },
-        {'service': constants.SERVICE_TYPE_CINDER,
-         'section': constants.SERVICE_PARAM_SECTION_CINDER_EMC_VNX_STATE,
-         'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS,
-         'value': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLED
-         },
-        {'service': constants.SERVICE_TYPE_CINDER,
-         'section': constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
-         'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
-         'value': False
-         },
-        {'service': constants.SERVICE_TYPE_CINDER,
-         'section': constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND,
-         'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
-         'value': False
-         },
-        {'service': constants.SERVICE_TYPE_CINDER,
-         'section': constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR_STATE,
-         'name': 'status',
-         'value': 'disabled'
-         },
-        {'service': constants.SERVICE_TYPE_CINDER,
-         'section': constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND_STATE,
-         'name': 'status',
-         'value': 'disabled'
-         },
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE,
          'name': constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT,
@@ -522,16 +492,6 @@ class ConductorManager(service.PeriodicService):
          'value': constants.SERVICE_PARAM_HTTP_PORT_HTTPS_DEFAULT
          },
     ]
-
-    for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
-        section = "{0}{1}".format(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR, i)
-        DEFAULT_PARAMETERS.extend([
-            {'service': constants.SERVICE_TYPE_CINDER,
-             'section': section,
-             'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED,
-             'value': False
-             }]
-        )
 
     def _create_default_service_parameter(self):
         """ Populate the default service parameters"""
@@ -4810,166 +4770,6 @@ class ConductorManager(service.PeriodicService):
                                          'install_state_info':
                                              host.install_state_info})
 
-    def _audit_cinder_state(self):
-        """
-         Complete disabling the EMC by removing it from the list of cinder
-         services.
-         """
-        emc_state_param = self._get_emc_state()
-        current_emc_state = emc_state_param.value
-
-        if (current_emc_state !=
-                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLING):
-            return
-
-        LOG.info("Running cinder state audit")
-        try:
-            hostname = socket.gethostname()
-            active_host = \
-                self.dbapi.ihost_get_by_hostname(hostname)
-        except Exception as e:
-            LOG.error(
-                "Failed to get local host object during cinder audit: %s",
-                str(e))
-            return
-
-        if (active_host and active_host.config_target and
-                active_host.config_applied == active_host.config_target):
-            # The manifest has been applied on the active controller
-            # Now check that the emc service has gone down
-            emc_service_removed = False
-            emc_service_found = False
-            cinder_services = self._openstack.get_cinder_services()
-            for cinder_service in cinder_services:
-                if '@emc' in cinder_service.host:
-                    emc_service_found = True
-
-                    if cinder_service.state == 'down':
-                        command_args = [
-                            '/usr/bin/cinder-manage',
-                            'service',
-                            'remove',
-                            'cinder-volume',
-                            cinder_service.host
-                        ]
-                        with open(os.devnull, "w") as fnull:
-                            LOG.info("Removing emc cinder-volume service")
-                            try:
-                                subprocess.check_call(
-                                    command_args, stdout=fnull, stderr=fnull)
-                                emc_service_removed = True
-                            except subprocess.CalledProcessError as e:
-                                LOG.exception(e)
-
-            if emc_service_removed or not emc_service_found:
-                LOG.info("Setting EMC state to disabled")
-                new_state = constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLED
-                self.dbapi.service_parameter_update(
-                    emc_state_param.uuid,
-                    {'value': new_state}
-                )
-
-    def _hpe_audit_cinder_state(self):
-        """
-         Complete disabling the hpe drivers by removing them from the list
-         of cinder services.
-         """
-
-        # Only run audit if any one of the backends is enabled
-
-        hpe3par_enabled = False
-        try:
-            param = self.dbapi.service_parameter_get_one(constants.SERVICE_TYPE_CINDER,
-                constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
-                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
-            hpe3par_enabled = param.value.lower() == 'true'
-        except exception.NotFound:
-            pass
-        if not hpe3par_enabled:
-            for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
-                section = "{0}{1}".format(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR, i)
-                try:
-                    param = self.dbapi.service_parameter_get_one(constants.SERVICE_TYPE_CINDER,
-                        section,
-                        constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
-                    hpe3par_enabled = param.value.lower() == 'true'
-                except exception.NotFound:
-                    pass
-                if hpe3par_enabled:
-                    break
-        try:
-            param = self.dbapi.service_parameter_get_one(constants.SERVICE_TYPE_CINDER,
-                constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND,
-                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED)
-            hpelefthand_enabled = param.value.lower() == 'true'
-        except exception.NotFound:
-            hpelefthand_enabled = False
-
-        if not (hpe3par_enabled or hpelefthand_enabled):
-            return
-
-        # Start audit
-
-        try:
-            hostname = socket.gethostname()
-            active_host = \
-                self.dbapi.ihost_get_by_hostname(hostname)
-        except Exception as e:
-            LOG.error(
-                "Failed to get local host object during cinder audit: %s",
-                str(e))
-            return
-
-        if (not (active_host and active_host.config_target and
-                active_host.config_applied == active_host.config_target)):
-            return
-
-        #
-        # The manifest has been applied on the active controller. Now, ensure
-        # that the hpe services are down.
-        #
-
-        hosts = [constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR,
-                 constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND]
-
-        services = self._openstack.get_cinder_services()
-
-        for host in hosts:
-            status = self._hpe_get_state(host)
-            if status.value != "disabling":
-                continue
-
-            found = False
-            removed = False
-
-            LOG.info("Running hpe cinder state audit for %s", host)
-
-            for cinder_service in services:
-                if "@" + host in cinder_service.host:
-                    found = True
-                    if cinder_service.state == 'down':
-                        command_args = [
-                            '/usr/bin/cinder-manage',
-                            'service',
-                            'remove',
-                            'cinder-volume',
-                            cinder_service.host
-                        ]
-                        with open(os.devnull, "w") as fnull:
-                            LOG.info("Removing cinder-volume service %s" % host)
-                            try:
-                                subprocess.check_call(
-                                    command_args, stdout=fnull, stderr=fnull)
-                                removed = True
-                            except subprocess.CalledProcessError as e:
-                                LOG.exception(e)
-                    break
-
-                if removed or not found:
-                    LOG.info("Setting %s state to disabled", host)
-                    self.dbapi.service_parameter_update(status.uuid,
-                                                        {"value": "disabled"})
-
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _conductor_audit(self, context):
         # periodically, perform audit of inventory
@@ -4980,10 +4780,6 @@ class ConductorManager(service.PeriodicService):
 
         # Audit upgrade status
         self._audit_upgrade_status()
-
-        self._audit_cinder_state()
-
-        self._hpe_audit_cinder_state()
 
         hosts = self.dbapi.ihost_get_list()
 
@@ -5746,8 +5542,7 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::drbd::runtime',
-                        'openstack::cinder::runtime']
+            "classes": ['platform::drbd::runtime']
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -5761,7 +5556,8 @@ class ConductorManager(service.PeriodicService):
         # Update service table
         self.update_service_table_for_cinder(endpoint_list, external=True)
 
-        classes = ['openstack::cinder::endpoint::runtime']
+        # TODO (tliu) classes may be removable from the config_dict
+        classes = []
 
         config_dict = {
             "personalities": personalities,
@@ -5801,7 +5597,6 @@ class ConductorManager(service.PeriodicService):
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
                    'platform::drbd::runtime',
-                   'openstack::cinder::runtime',
                    'platform::sm::norestart::runtime']
 
         host_ids = [ctrl.uuid for ctrl in valid_ctrls]
@@ -5917,8 +5712,9 @@ class ConductorManager(service.PeriodicService):
             classes.append('platform::drbd::cephmon::runtime')
             classes.append('platform::drbd::runtime')
 
+        # TODO (tliu) determine if this SB_SVC_CINDER section can be removed
         if constants.SB_SVC_CINDER in services:
-            classes.append('openstack::cinder::runtime')
+            LOG.info("No cinder manifests for update_ceph_config")
         classes.append('platform::sm::norestart::runtime')
         host_ids = [ctrl.uuid for ctrl in valid_ctrls]
         config_dict = {"personalities": personalities,
@@ -6030,8 +5826,9 @@ class ConductorManager(service.PeriodicService):
                        'openstack::keystone::endpoint::runtime',
                        ]
 
+            # TODO (tliu) determine if this SB_SVC_CINDER section can be removed
             if constants.SB_SVC_CINDER in services:
-                classes.append('openstack::cinder::runtime')
+                LOG.info("No cinder manifests for update_ceph_external_config")
             classes.append('platform::sm::norestart::runtime')
 
             report_config = puppet_common.REPORT_CEPH_EXTERNAL_BACKEND_CONFIG
@@ -7279,35 +7076,6 @@ class ConductorManager(service.PeriodicService):
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-            elif service == constants.SERVICE_TYPE_CINDER:
-                self._update_emc_state()
-
-                self._hpe_update_state(constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR)
-                self._hpe_update_state(constants.SERVICE_PARAM_SECTION_CINDER_HPELEFTHAND)
-
-                # service params need to be applied to controllers that have cinder provisioned
-                # TODO(rchurch) make sure that we can't apply without a cinder backend.
-                ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-                valid_ctrls = [ctrl for ctrl in ctrls if
-                               (utils.is_host_active_controller(ctrl) and
-                                ctrl.administrative == constants.ADMIN_LOCKED and
-                                ctrl.availability == constants.AVAILABILITY_ONLINE) or
-                               (ctrl.administrative == constants.ADMIN_UNLOCKED and
-                                ctrl.operational == constants.OPERATIONAL_ENABLED)]
-
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['openstack::cinder::service_param::runtime'],
-                    "host_uuids": [ctrl.uuid for ctrl in valid_ctrls],
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-                multipath_state_changed = self._multipath_update_state()
-                if multipath_state_changed:
-                    self._config_update_hosts(context,
-                        [constants.CONTROLLER, constants.WORKER],
-                        reboot=True)
-
             elif service == constants.SERVICE_TYPE_PLATFORM:
                 config_dict = {
                     "personalities": personalities,
@@ -7384,141 +7152,6 @@ class ConductorManager(service.PeriodicService):
         # _config_update_hosts() above. Node needs a reboot to clear it.
         config_uuid = self._config_clear_reboot_required(config_uuid)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
-
-    def _update_emc_state(self):
-        emc_state_param = self._get_emc_state()
-        current_state = emc_state_param.value
-
-        enabled_param = self.dbapi.service_parameter_get_one(
-            constants.SERVICE_TYPE_CINDER,
-            constants.SERVICE_PARAM_SECTION_CINDER_EMC_VNX,
-            constants.SERVICE_PARAM_CINDER_EMC_VNX_ENABLED
-        )
-        requested_state = (enabled_param.value.lower() == 'true')
-
-        if (requested_state and current_state ==
-                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLED):
-            new_state = constants.SERVICE_PARAM_CINDER_EMC_VNX_ENABLED
-            LOG.info("Updating EMC state to %s" % new_state)
-            self.dbapi.service_parameter_update(
-                emc_state_param.uuid,
-                {'value': new_state}
-            )
-        elif (not requested_state and current_state ==
-                constants.SERVICE_PARAM_CINDER_EMC_VNX_ENABLED):
-            new_state = constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLING
-            LOG.info("Updating EMC state to %s" % new_state)
-            self.dbapi.service_parameter_update(
-                emc_state_param.uuid,
-                {'value': new_state}
-            )
-
-    def _get_emc_state(self):
-        try:
-            state = self.dbapi.service_parameter_get_one(
-                constants.SERVICE_TYPE_CINDER,
-                constants.SERVICE_PARAM_SECTION_CINDER_EMC_VNX_STATE,
-                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS
-            )
-        except exception.NotFound:
-            LOG.info("EMC state not found, setting to disabled")
-            values = {
-                'service': constants.SERVICE_TYPE_CINDER,
-                'section': constants.SERVICE_PARAM_SECTION_CINDER_EMC_VNX_STATE,
-                'name': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS,
-                'value': constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLED
-            }
-            state = self.dbapi.service_parameter_create(values)
-        return state
-
-    def _hpe_get_state(self, name):
-        section = name + '.state'
-        try:
-            parm = self.dbapi.service_parameter_get_one(
-                constants.SERVICE_TYPE_CINDER, section,
-                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS
-            )
-
-        except exception.NotFound:
-            raise exception.SysinvException(_("Hpe section %s not "
-                                              "found" % section))
-        return parm
-
-    def _hpe_update_state(self, name):
-
-        do_update = False
-        status_param = self._hpe_get_state(name)
-        status = status_param.value
-
-        enabled = False
-        try:
-            enabled_param = self.dbapi.service_parameter_get_one(
-                constants.SERVICE_TYPE_CINDER, name,
-                constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED
-            )
-            enabled = (enabled_param.value.lower() == 'true')
-        except exception.NotFound:
-            pass
-        if not enabled and name == constants.SERVICE_PARAM_SECTION_CINDER_HPE3PAR:
-            for i in range(2, constants.SERVICE_PARAM_MAX_HPE3PAR + 1):
-                section = "{0}{1}".format(name, i)
-                try:
-                    enabled_param = self.dbapi.service_parameter_get_one(
-                        constants.SERVICE_TYPE_CINDER, section,
-                        constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED
-                    )
-                    enabled = (enabled_param.value.lower() == 'true')
-                except exception.NotFound:
-                    pass
-                if enabled:
-                    break
-        if enabled and status == constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLED:
-            do_update = True
-            new_state = constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED
-        elif not enabled and status == constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_ENABLED:
-            do_update = True
-            new_state = constants.SERVICE_PARAM_CINDER_SAN_CHANGE_STATUS_DISABLING
-
-        if do_update:
-            LOG.info("Updating %s to %s" % (name, new_state))
-            self.dbapi.service_parameter_update(status_param.uuid, {'value': new_state})
-
-    def _multipath_get_state(self):
-        try:
-            state = self.dbapi.service_parameter_get_one(
-                constants.SERVICE_TYPE_CINDER,
-                constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
-                constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE
-            )
-        except exception.NotFound:
-            state = self.dbapi.service_parameter_create({
-                'service': constants.SERVICE_TYPE_CINDER,
-                'section': constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
-                'name': constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE,
-                'value': constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE_DISABLED
-            })
-        return state
-
-    def _multipath_update_state(self):
-        """Update multipath service parameter state
-
-        :return True if multipath state changed, False otherwise
-        """
-        state_param = self._multipath_get_state()
-        current_state = state_param.value
-        try:
-            state = self.dbapi.service_parameter_get_one(
-                constants.SERVICE_TYPE_CINDER,
-                constants.SERVICE_PARAM_SECTION_CINDER_DEFAULT,
-                constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH
-            ).value
-        except exception.NotFound:
-            state = constants.SERVICE_PARAM_CINDER_DEFAULT_MULTIPATH_STATE_DISABLED
-        if current_state != state:
-            self.dbapi.service_parameter_update(
-                state_param.uuid, dict(value=state))
-            return True
-        return False
 
     def update_sdn_controller_config(self, context):
         """Update the SDN controller configuration"""
@@ -9545,22 +9178,6 @@ class ConductorManager(service.PeriodicService):
 
         return pvs_dict
 
-    def cinder_has_external_backend(self, context):
-        """
-        Check if cinder has loosely coupled external backends.
-        These are the possible backends: emc_vnx, hpe3par, hpelefthand
-        """
-
-        pools = self._openstack.get_cinder_pools()
-        if pools is not None:
-            for pool in pools:
-                volume_backend = getattr(pool, 'volume_backend_name', '')
-                if volume_backend and volume_backend != constants.CINDER_BACKEND_LVM and \
-                   volume_backend != constants.CINDER_BACKEND_CEPH:
-                    return True
-
-        return False
-
     def get_ceph_object_pool_name(self, context):
         """
         Get Rados Gateway object data pool name
@@ -9623,52 +9240,6 @@ class ConductorManager(service.PeriodicService):
         cinder_size = self.get_partition_size(context, cinder_device_partition)
 
         return cinder_size
-
-    def validate_emc_removal(self, context):
-        """
-        Check that it is safe to remove the EMC SAN
-        Ensure there are no volumes using the EMC endpoint
-        """
-        emc_volume_found = False
-
-        for volume in self._openstack.get_cinder_volumes():
-            end_point = getattr(volume, 'os-vol-host-attr:host', '')
-            if end_point and '@emc_vnx' in end_point:
-                emc_volume_found = True
-                break
-
-        return not emc_volume_found
-
-    def validate_hpe3par_removal(self, context, backend):
-        """
-        Check that it is safe to remove the HPE3PAR SAN
-        Ensure there are no volumes using the HPE3PAR endpoint
-        """
-        volume_found = False
-
-        for volume in self._openstack.get_cinder_volumes():
-            end_point = getattr(volume, 'os-vol-host-attr:host', '')
-            if end_point and '@' + backend + '#' in end_point:
-                volume_found = True
-                break
-
-        return not volume_found
-
-    def validate_hpelefthand_removal(self, context):
-        """
-        Check that it is safe to remove the HPELEFTHAND SAN
-        Ensure there are no volumes using the HPELEFTHAND endpoint
-        """
-        volume_found = False
-
-        volumes = self._openstack.get_cinder_volumes()
-        for volume in volumes:
-            end_point = getattr(volume, 'os-vol-host-attr:host', '')
-            if end_point and '@hpelefthand' in end_point:
-                volume_found = True
-                break
-
-        return not volume_found
 
     def region_has_ceph_backend(self, context):
         """

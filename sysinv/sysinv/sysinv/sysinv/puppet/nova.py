@@ -202,9 +202,6 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
         config = {
-            'nova::os_region_name':
-                self._operator.cinder.get_region_name(),
-
             'nova::keystone::auth::region': self._region_name(),
             'nova::keystone::auth::public_url': self.get_public_url(),
             'nova::keystone::auth::internal_url': self.get_internal_url(),
