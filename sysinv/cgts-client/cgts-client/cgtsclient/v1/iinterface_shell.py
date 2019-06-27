@@ -16,7 +16,7 @@ from cgtsclient.v1 import iinterface as iinterface_utils
 
 
 def _print_iinterface_show(cc, iinterface):
-    fields = ['ifname', 'iftype', 'ports', 'datanetworks',
+    fields = ['ifname', 'iftype', 'ports',
               'imac', 'imtu', 'ifclass',
               'aemode', 'schedpolicy', 'txhashpolicy',
               'uuid', 'ihost_uuid',
@@ -88,9 +88,9 @@ def do_host_if_list(cc, args):
         setattr(i, 'attrs', attr_str)
 
     field_labels = ['uuid', 'name', 'class', 'type', 'vlan id', 'ports',
-                    'uses i/f', 'used by i/f', 'attributes', 'data networks']
+                    'uses i/f', 'used by i/f', 'attributes']
     fields = ['uuid', 'ifname', 'ifclass', 'iftype', 'vlan_id', 'ports',
-              'uses', 'used_by', 'attrs', 'datanetworks']
+              'uses', 'used_by', 'attrs']
     utils.print_list(
         iinterfaces, fields, field_labels, sortby=0, no_wrap_fields=['ports'])
 
@@ -120,13 +120,6 @@ def do_host_if_delete(cc, args):
            choices=['ae', 'vlan', 'virtual'],
            nargs='?',
            help="Type of the interface")
-@utils.arg('datanetworks',
-           metavar='<datanetworks>',
-           nargs='?',
-           default=None,
-           help=('The data network attached to the interface '
-                 '(default: %(default)s) '
-                 '[REQUIRED when interface class is data or pci-passthrough'))
 @utils.arg('-a', '--aemode',
            metavar='<ae mode>',
            choices=['balanced', 'active_standby', '802.3ad'],
@@ -167,7 +160,7 @@ def do_host_if_add(cc, args):
     """Add an interface."""
 
     field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
-                  'txhashpolicy', 'datanetworks', 'vlan_id',
+                  'txhashpolicy', 'vlan_id',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
@@ -188,10 +181,6 @@ def do_host_if_add(cc, args):
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
                                  if k in field_list and not (v is None))
-
-    if 'datanetworks' in user_specified_fields.keys():
-        user_specified_fields['datanetworks'] = \
-            user_specified_fields['datanetworks'].split(',')
 
     user_specified_fields['ihost_uuid'] = ihost.uuid
     user_specified_fields['ports'] = portnamesoruuids
@@ -219,12 +208,6 @@ def do_host_if_add(cc, args):
 @utils.arg('-m', '--imtu',
            metavar='<mtu>',
            help='The MTU of the interface')
-@utils.arg('-p', '--providernetworks',
-           metavar='<providernetworks>',
-           help='[DEPRECATED] The provider network attached to the interface')
-@utils.arg('-d', '--datanetworks',
-           metavar='<datanetworks>',
-           help='The data network attached to the interface')
 @utils.arg('-a', '--aemode',
            metavar='<ae mode>',
            choices=['balanced', 'active_standby', '802.3ad'],
@@ -263,7 +246,7 @@ def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
-                'datanetworks', 'providernetworks', 'ports', 'ifclass',
+                'ports', 'ifclass',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                 'sriov_numvfs', 'sriov_vf_driver']
 
@@ -271,15 +254,6 @@ def do_host_if_modify(cc, args):
 
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
                                  if k in rwfields and not (v is None))
-
-    if 'providernetworks' in user_specified_fields.keys():
-        user_specified_fields['datanetworks'] = \
-            user_specified_fields['providernetworks']
-        del user_specified_fields['providernetworks']
-
-    elif 'datanetworks' in user_specified_fields.keys():
-        user_specified_fields['datanetworks'] = \
-            user_specified_fields['datanetworks']
 
     interface = _find_interface(cc, ihost, args.ifnameoruuid)
     fields = interface.__dict__
@@ -294,8 +268,6 @@ def do_host_if_modify(cc, args):
                     for p in interface.ports:
                         user_specified_fields['ifname'] = p
                         break
-            if interface.ifclass == 'data':
-                user_specified_fields['datanetworks'] = 'none'
 
     patch = []
     for (k, v) in user_specified_fields.items():

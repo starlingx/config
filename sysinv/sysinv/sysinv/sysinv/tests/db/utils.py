@@ -659,13 +659,6 @@ def create_test_ethernet_port(**kw):
 
 
 def post_get_test_interface(**kw):
-    datanetworks = kw.get('datanetworks') or ""
-
-    if datanetworks:
-        datanetworks_list = datanetworks.split(',')
-    else:
-        datanetworks_list = []
-
     interface = {
         'forihostid': kw.get('forihostid'),
         'ihost_uuid': kw.get('ihost_uuid'),
@@ -676,7 +669,6 @@ def post_get_test_interface(**kw):
         'ifclass': kw.get("ifclass"),
         'aemode': kw.get('aemode', 'balanced'),
         'txhashpolicy': kw.get('txhashpolicy', 'layer2'),
-        'datanetworks': datanetworks_list,
         'vlan_id': kw.get('vlan_id'),
         'uses': kw.get('uses', None),
         'used_by': kw.get('used_by', []),
@@ -691,13 +683,6 @@ def post_get_test_interface(**kw):
 
 
 def get_test_interface(**kw):
-
-    datanetworks = kw.get('datanetworks') or ""
-    if datanetworks:
-        datanetworks_list = datanetworks.split(',')
-    else:
-        datanetworks_list = []
-
     interface = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
@@ -711,7 +696,6 @@ def get_test_interface(**kw):
         'networktypelist': kw.get('networktypelist', []),
         'aemode': kw.get('aemode'),
         'txhashpolicy': kw.get('txhashpolicy', None),
-        'datanetworks': datanetworks_list,
         'vlan_id': kw.get('vlan_id', None),
         'uses': kw.get('uses', []),
         'used_by': kw.get('used_by', []),
@@ -798,6 +782,37 @@ def post_get_test_interface_network(**kw):
     inv = {
         'interface_uuid': kw.get('interface_uuid'),
         'network_uuid': kw.get('network_uuid'),
+    }
+    return inv
+
+
+def get_test_interface_datanetwork(**kw):
+    inv = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'interface_uuid': kw.get('interface_uuid'),
+        'datanetwork_uuid': kw.get('datanetwork_uuid'),
+    }
+    return inv
+
+
+def create_test_interface_datanetwork(**kw):
+    """Create test network interface entry in DB and return Network DB
+    object. Function to be used to create test Network objects in the database.
+    :param kw: kwargs with overriding values for network's attributes.
+    :returns: Test Network DB object.
+    """
+    interface_datanetwork = get_test_interface_datanetwork(**kw)
+    if 'id' not in kw:
+        del interface_datanetwork['id']
+    dbapi = db_api.get_instance()
+    return dbapi.interface_datanetwork_create(interface_datanetwork)
+
+
+def post_get_test_interface_datanetwork(**kw):
+    inv = {
+        'interface_uuid': kw.get('interface_uuid'),
+        'datanetwork_uuid': kw.get('datanetwork_uuid'),
     }
     return inv
 

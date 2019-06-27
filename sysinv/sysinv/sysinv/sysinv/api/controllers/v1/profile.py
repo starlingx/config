@@ -2007,12 +2007,20 @@ def ifprofile_copy_data(host, profile):
                 pdict = {k: v for (k, v) in p.as_dict().items() if k in ethernet_port_fields}
                 pecan.request.dbapi.ethernet_port_create(iprofile_id, pdict)
 
-        interface_networks = pecan.request.dbapi.interface_network_get_by_interface(i.id)
-        for ifnet in interface_networks:
-            ifnetdict = {}
-            ifnetdict['interface_id'] = newIf.id
-            ifnetdict['network_id'] = ifnet.network_id
-            pecan.request.dbapi.interface_network_create(ifnetdict)
+        if i.ifclass == constants.INTERFACE_CLASS_PLATFORM:
+            interface_networks = pecan.request.dbapi.interface_network_get_by_interface(i.id)
+            for ifnet in interface_networks:
+                ifnetdict = {}
+                ifnetdict['interface_id'] = newIf.id
+                ifnetdict['network_id'] = ifnet.network_id
+                pecan.request.dbapi.interface_network_create(ifnetdict)
+        else:
+            interface_datanetworks = pecan.request.dbapi.interface_datanetwork_get_by_interface(i.id)
+            for ifdn in interface_datanetworks:
+                ifdndict = {}
+                ifdndict['interface_id'] = newIf.id
+                ifdndict['datanetwork_id'] = ifdn.datanetwork_id
+                pecan.request.dbapi.interface_datanetwork_create(ifdndict)
 
     # Generate the uses/used_by relationships
     for i in newIfList:
@@ -2606,14 +2614,22 @@ def ifprofile_apply_to_host(host, profile):
 
                 if interface_found is False:
                     hinterface = interface_api._create(data, from_profile=True)
-                    interface_networks = pecan.request.dbapi.interface_network_get_by_interface(interface.id)
-                    for ifnet in interface_networks:
-                        ifnetdict = {}
-                        ifnetdict['interface_id'] = hinterface.id
-                        ifnetdict['network_id'] = ifnet.network_id
-                        pecan.request.dbapi.interface_network_create(ifnetdict)
-                        network = pecan.request.dbapi.network_get_by_id(ifnet.network_id)
-                        ifnet_api._update_host_address(host, hinterface, network.type)
+                    if interface.ifclass == constants.INTERFACE_CLASS_PLATFORM:
+                        interface_networks = pecan.request.dbapi.interface_network_get_by_interface(interface.id)
+                        for ifnet in interface_networks:
+                            ifnetdict = {}
+                            ifnetdict['interface_id'] = hinterface.id
+                            ifnetdict['network_id'] = ifnet.network_id
+                            pecan.request.dbapi.interface_network_create(ifnetdict)
+                            network = pecan.request.dbapi.network_get_by_id(ifnet.network_id)
+                            ifnet_api._update_host_address(host, hinterface, network.type)
+                    else:
+                        interface_datanetworks = pecan.request.dbapi.interface_datanetwork_get_by_interface(interface.id)
+                        for ifdn in interface_datanetworks:
+                            ifdndict = {}
+                            ifdndict['interface_id'] = hinterface.id
+                            ifdndict['datanetwork_id'] = ifdn.datanetwork_id
+                            pecan.request.dbapi.interface_datanetwork_create(ifdndict)
 
             except Exception as e:
                 # Delete all Host's interfaces
@@ -2678,14 +2694,22 @@ def ifprofile_apply_to_host(host, profile):
             data['forihostid'] = host.id
             hinterface = interface_api._create(data, from_profile=True)
 
-            interface_networks = pecan.request.dbapi.interface_network_get_by_interface(i.id)
-            for ifnet in interface_networks:
-                ifnetdict = {}
-                ifnetdict['interface_id'] = hinterface.id
-                ifnetdict['network_id'] = ifnet.network_id
-                pecan.request.dbapi.interface_network_create(ifnetdict)
-                network = pecan.request.dbapi.network_get_by_id(ifnet.network_id)
-                ifnet_api._update_host_address(host, hinterface, network.type)
+            if i.ifclass == constants.INTERFACE_CLASS_PLATFORM:
+                interface_networks = pecan.request.dbapi.interface_network_get_by_interface(i.id)
+                for ifnet in interface_networks:
+                    ifnetdict = {}
+                    ifnetdict['interface_id'] = hinterface.id
+                    ifnetdict['network_id'] = ifnet.network_id
+                    pecan.request.dbapi.interface_network_create(ifnetdict)
+                    network = pecan.request.dbapi.network_get_by_id(ifnet.network_id)
+                    ifnet_api._update_host_address(host, hinterface, network.type)
+            else:
+                interface_datanetworks = pecan.request.dbapi.interface_datanetwork_get_by_interface(i.id)
+                for ifdn in interface_datanetworks:
+                    ifdndict = {}
+                    ifdndict['interface_id'] = hinterface.id
+                    ifdndict['datanetwork_id'] = ifdn.datanetwork_id
+                    pecan.request.dbapi.interface_datanetwork_create(ifdndict)
 
         for r in profile.routes.get(i.uuid, []):
             pecan.request.dbapi.route_create(hinterface.id, r)
