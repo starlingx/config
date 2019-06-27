@@ -153,7 +153,7 @@ class HelmChartsController(rest.RestController):
             if user_overrides is not None:
                 file_overrides.insert(0, user_overrides)
         elif flag == 'reset':
-            pass
+            user_overrides = None
         else:
             raise wsme.exc.ClientSideError(_("Invalid flag: %s must be either "
                                              "'reuse' or 'reset'.") % flag)
