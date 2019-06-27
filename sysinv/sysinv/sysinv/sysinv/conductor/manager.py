@@ -3302,6 +3302,61 @@ class ConductorManager(service.PeriodicService):
 
         return
 
+    def create_host_filesystems(self, context,
+                                ihost_uuid, fs_dict_array):
+        """Create a filesystems for an ihost with the supplied data.
+
+        This method allows records for filesystems for ihost to be
+        created.
+
+        :param context: an admin context
+        :param ihost_uuid: ihost uuid unique id
+        :param fs_dict_array: initial values for filesystems group objects
+        :returns: pass or fail
+        """
+
+        ihost_uuid.strip()
+        try:
+            ihost = self.dbapi.ihost_get(ihost_uuid)
+        except exception.ServerNotFound:
+            LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
+            return
+
+        host_fs_list = self.dbapi.host_fs_get_by_ihost(ihost_uuid)
+        forihostid = ihost['id']
+
+        for fs in fs_dict_array:
+            fs_dict = {
+                'forihostid': forihostid,
+            }
+            fs_dict.update(fs)
+            found = False
+
+            for host_fs in host_fs_list:
+                if host_fs.name == fs['name']:
+                    found = True
+                    LOG.debug("Host FS '%s' already exists" % fs['name'])
+                    if host_fs.size != fs['size']:
+                        LOG.info("Host FS uuid: %s changed size from %s to %s",
+                                 host_fs.uuid, host_fs.size, fs['size'])
+                        # Update the database
+                        try:
+                            self.dbapi.host_fs_update(host_fs.id, fs_dict)
+                        except Exception:
+                            LOG.exception("Host FS Update failed")
+                    break
+            if not found:
+                try:
+
+                    LOG.info("Creating Host FS:%s:%s %d for host id %d" %
+                             (fs_dict['name'], fs_dict['logical_volume'],
+                              fs_dict['size'], fs_dict['forihostid']))
+                    self.dbapi.host_fs_create(forihostid, fs_dict)
+                except Exception:
+                    LOG.exception("Host FS Creation failed")
+
+        return
+
     def _fill_partition_info(self, db_part, ipart):
         db_part_dict = db_part.as_dict()
         keys = ['start_mib', 'end_mib', 'size_mib', 'type_name', 'type_guid']
@@ -4160,7 +4215,7 @@ class ConductorManager(service.PeriodicService):
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _agent_update_request(self, context):
         """
-        Check DB  for inventory objects with an inconsistent state and
+        Check DB for inventory objects with an inconsistent state and
         request an update from sysinv agent.
         Currently requesting updates for:
         - ipv:  if state is not 'provisioned'
@@ -4212,6 +4267,9 @@ class ConductorManager(service.PeriodicService):
                     ilvgs = self.dbapi.ilvg_get_by_ihost(host.uuid)
                     if not ilvgs:
                         update_hosts_dict(host.id, constants.LVG_AUDIT_REQUEST)
+                    host_fs = self.dbapi.host_fs_get_by_ihost(host.uuid)
+                    if not host_fs:
+                        update_hosts_dict(host.id, constants.FILESYSTEM_AUDIT_REQUEST)
 
         # Check partitions.
         partitions = self.dbapi.partition_get_all()

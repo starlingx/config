@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -88,6 +88,7 @@ from sysinv.objects import storage_file
 from sysinv.objects import storage_external
 from sysinv.objects import storage_tier
 from sysinv.objects import storage_ceph_external
+from sysinv.objects import host_fs
 
 
 def objectify(klass):
@@ -185,6 +186,7 @@ label = label.Label
 kube_app = kube_app.KubeApp
 kube_app_releases = kube_app_releases.KubeAppReleases
 datanetwork = datanetwork.DataNetwork
+host_fs = host_fs.HostFS
 
 __all__ = (system,
            cluster,
@@ -254,6 +256,7 @@ __all__ = (system,
            kube_app_releases,
            datanetwork,
            interface_network,
+           host_fs,
            # alias objects for RPC compatibility
            ihost,
            ilvg,

@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1721,3 +1721,17 @@ class KubeAppReleases(Base):
     app_id = Column(Integer, ForeignKey('kube_app.id', ondelete='CASCADE'))
     kube_app = relationship("KubeApp", lazy="joined", join_depth=1)
     UniqueConstraint('release', 'namespace', 'app_id', name='u_app_release_namespace')
+
+
+class HostFs(Base):
+    __tablename__ = 'host_fs'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+
+    name = Column(String(64))
+    size = Column(Integer)
+    logical_volume = Column(String(64))
+    forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
+
+    host = relationship("ihost", lazy="joined", join_depth=1)

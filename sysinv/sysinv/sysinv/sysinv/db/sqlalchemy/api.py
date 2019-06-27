@@ -15,7 +15,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -148,7 +148,8 @@ def add_identity_filter(query, value,
                         use_sensorgroupname=False,
                         use_sensorname=False,
                         use_cluster_uuid=False,
-                        use_pciaddr=False):
+                        use_pciaddr=False,
+                        use_fsname=False):
     """Adds an identity filter to a query.
 
     Filters results by ID, if supplied value is a valid integer.
@@ -189,6 +190,8 @@ def add_identity_filter(query, value,
             return query.filter_by(sensorname=value)
         elif use_pciaddr:
             return query.filter_by(pciaddr=value)
+        elif use_fsname:
+            return query.filter_by(name=value)
         else:
             return query.filter_by(hostname=value)
 
@@ -1119,6 +1122,25 @@ def add_label_filter_by_host(query, hostid):
     elif utils.is_uuid_like(hostid):
         query = query.join(models.ihost)
         return query.filter(models.ihost.uuid == hostid)
+
+
+def add_host_fs_filter(query, value):
+    """Adds an fs-specific filter to a query.
+
+    :param query: Initial query to add filter to.
+    :param value: Value for filtering results by.
+    :return: Modified query.
+    """
+    return add_identity_filter(query, value, use_fsname=True)
+
+
+def add_host_fs_filter_by_ihost(query, value):
+    if utils.is_int_like(value):
+        return query.filter_by(forihostid=value)
+    else:
+        query = query.join(models.ihost,
+                           models.HostFs.forihostid == models.ihost.id)
+        return query.filter(models.ihost.uuid == value)
 
 
 class Connection(api.Connection):
@@ -7934,3 +7956,82 @@ class Connection(api.Connection):
     @objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_query(self, values):
         return self._interface_datanetwork_query(values)
+
+    def _host_fs_get(self, fs_id):
+        query = model_query(models.HostFs)
+        query = add_identity_filter(query, fs_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.FilesystemNotFound(fs_id=fs_id)
+
+        return result
+
+    @objects.objectify(objects.host_fs)
+    def host_fs_create(self, forihostid, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        values['forihostid'] = int(forihostid)
+        fs = models.HostFs()
+        fs.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(fs)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.FilesystemAlreadyExists(
+                    name=values['name'], host=forihostid)
+
+            return self._host_fs_get(values['uuid'])
+
+    @objects.objectify(objects.host_fs)
+    def host_fs_get_all(self, forihostid=None):
+        query = model_query(models.HostFs, read_deleted="no")
+        if forihostid:
+            query = query.filter_by(forihostid=forihostid)
+        return query.all()
+
+    @objects.objectify(objects.host_fs)
+    def host_fs_get(self, fs_id):
+        return self._host_fs_get(fs_id)
+
+    @objects.objectify(objects.host_fs)
+    def host_fs_get_list(self, limit=None, marker=None,
+                         sort_key=None, sort_dir=None):
+        return _paginate_query(models.HostFs, limit, marker,
+                               sort_key, sort_dir)
+
+    @objects.objectify(objects.host_fs)
+    def host_fs_get_by_ihost(self, ihost, limit=None, marker=None,
+                             sort_key=None, sort_dir=None):
+
+        query = model_query(models.HostFs)
+        query = add_host_fs_filter_by_ihost(query, ihost)
+        return _paginate_query(models.HostFs, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.host_fs)
+    def host_fs_update(self, fs_id, values):
+        with _session_for_write() as session:
+            query = model_query(models.HostFs, read_deleted="no",
+                                session=session)
+            query = add_host_fs_filter(query, fs_id)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.FilesystemNotFound(fs_id=fs_id)
+            return query.one()
+
+    def host_fs_destroy(self, fs_id):
+        with _session_for_write() as session:
+            # Delete physically since it has unique columns
+            if uuidutils.is_uuid_like(fs_id):
+                model_query(models.HostFs, read_deleted="no",
+                            session=session).\
+                    filter_by(uuid=fs_id).\
+                    delete()
+            else:
+                model_query(models.HostFs, read_deleted="no").\
+                    filter_by(id=fs_id).\
+                    delete()
