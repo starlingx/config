@@ -189,8 +189,7 @@ class KubernetesPuppet(base.BasePuppet):
         # TODO(jgauld): Commented out for now, using host_cpuset instead.
         # nonplatform_cpuset = host_cpuset - platform_cpuset
 
-        if constants.WORKER in utils.get_personalities(host) \
-                and constants.CONTROLLER not in utils.get_personalities(host):
+        if constants.WORKER in utils.get_personalities(host):
             if self.is_openstack_compute(host):
                 k8s_cpuset = utils.format_range_set(platform_cpuset)
                 k8s_nodeset = utils.format_range_set(platform_nodeset)
