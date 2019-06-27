@@ -563,9 +563,6 @@ class platform::ceph::runtime_osds {
     exec { 'sm-unmanage service ceph-osd':
       command => 'sm-unmanage service ceph-osd'
     }
-    -> exec { 'stop Ceph OSDs':
-      command => '/etc/init.d/ceph-init-wrapper stop osd'
-    }
     -> Class['::platform::ceph::osds']
     -> exec { 'start Ceph OSDs':
       command => '/etc/init.d/ceph-init-wrapper start osd'
@@ -576,9 +573,6 @@ class platform::ceph::runtime_osds {
   } else {
     exec { 'remove /etc/pmon.d/ceph.conf':
       command => 'rm -f /etc/pmon.d/ceph.conf'
-    }
-    -> exec { 'stop Ceph OSDs':
-      command => '/etc/init.d/ceph-init-wrapper stop osd'
     }
     -> Class['::platform::ceph::osds']
     -> exec { 'start Ceph OSDs':
