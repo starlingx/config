@@ -171,7 +171,7 @@ class sysinv::api (
   $openstack_auth_type        = 'password',
   $service_port               = '5000',
   $package_ensure             = 'latest',
-  $bind_host                  = '0.0.0.0',
+  $bind_host                  = '::',
   $pxeboot_host               = undef,
   $enabled                    = true
 ) {
