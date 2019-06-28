@@ -51,6 +51,8 @@ LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
 LABEL_IRONIC = 'openstack-ironic'
+LABEL_BARBICAN = 'openstack-barbican'
+LABEL_TELEMETRY = 'openstack-telemetry'
 
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'

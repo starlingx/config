@@ -30,9 +30,8 @@ class GarbdHelm(base.BaseHelm):
             base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
     }
 
-    def get_meta_overrides(self, namespace, app_name=None, mode=None):
-
-        def _meta_overrides():
+    def execute_manifest_updates(self, operator, app_name=None):
+        if app_name == constants.HELM_APP_OPENSTACK:
             if (self._num_controllers() < 2 or
                     utils.is_aio_duplex_system(self.dbapi) or
                     (self._distributed_cloud_role() ==
@@ -42,33 +41,8 @@ class GarbdHelm(base.BaseHelm):
                 # we'll use a single mariadb server and so we don't want to
                 # run garbd.  This will remove "openstack-garbd" from the
                 # charts in the openstack-mariadb chartgroup.
-                return {
-                    'schema': 'armada/ChartGroup/v1',
-                    'metadata': {
-                        'schema': 'metadata/Document/v1',
-                        'name': 'openstack-mariadb',
-                    },
-                    'data': {
-                        'description': 'Mariadb',
-                        'sequenced': True,
-                        'chart_group': [
-                            'openstack-mariadb',
-                        ]
-                    }
-                }
-            else:
-                return {}
-
-        overrides = {
-            common.HELM_NS_OPENSTACK: _meta_overrides()
-        }
-        if namespace in self.SUPPORTED_NAMESPACES:
-            return overrides[namespace]
-        elif namespace:
-            raise exception.InvalidHelmNamespace(chart=self.CHART,
-                                                 namespace=namespace)
-        else:
-            return overrides
+                operator.chart_group_chart_delete('openstack-mariadb',
+                                                  'openstack-garbd')
 
     def get_overrides(self, namespace=None):
         overrides = {
