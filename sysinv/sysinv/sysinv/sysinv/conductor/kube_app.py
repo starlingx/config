@@ -1992,8 +1992,9 @@ class DockerHelper(object):
                             LOG.error("Failed to validate application manifest "
                                       "%s: %s." % (manifest_file, exec_logs))
                 elif request == constants.APP_APPLY_OP:
-                    cmd = "/bin/bash -c 'armada apply --debug " + manifest_file +\
-                          overrides_str + tiller_host + " | tee " + logfile + "'"
+                    cmd = "/bin/bash -c 'set -o pipefail; armada apply --debug " +\
+                          manifest_file + overrides_str + tiller_host + " | tee " +\
+                          logfile + "'"
                     LOG.info("Armada apply command = %s" % cmd)
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
@@ -2012,8 +2013,9 @@ class DockerHelper(object):
                                       "Armada service has exited abnormally." %
                                       manifest_file)
                         else:
-                            LOG.error("Failed to apply application manifest %s: "
-                                      "%s." % (manifest_file, exec_logs))
+                            LOG.error("Failed to apply application manifest %s. See "
+                                      "/var/log/armada/%s for details." %
+                                      (manifest_file, os.path.basename(logfile)))
                 elif request == constants.APP_ROLLBACK_OP:
                     cmd_rm = "rm " + logfile
                     armada_svc.exec_run(cmd_rm)
@@ -2024,13 +2026,14 @@ class DockerHelper(object):
                         sequenced = app_release.get('sequenced')
 
                         if sequenced:
-                            cmd = "/bin/bash -c 'armada rollback --debug --wait --timeout 1800 " +\
-                                  "--release " + release + " --version " + str(version) + tiller_host +\
-                                  " | tee -a " + logfile + "'"
-                        else:
-                            cmd = "/bin/bash -c 'armada rollback --debug --release " +\
+                            cmd = "/bin/bash -c 'set -o pipefail; armada rollback " +\
+                                  "--debug --wait --timeout 1800 --release " +\
                                   release + " --version " + str(version) + tiller_host +\
                                   " | tee -a " + logfile + "'"
+                        else:
+                            cmd = "/bin/bash -c 'set -o pipefail; armada rollback " +\
+                                  "--debug --release " + release + " --version " +\
+                                  str(version) + tiller_host + " | tee -a " + logfile + "'"
                         (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                         if exit_code == 0:
                             if ARMADA_RELEASE_ROLLBACK_FAILURE_MSG in exec_logs:
@@ -2046,15 +2049,17 @@ class DockerHelper(object):
                                           "Armada service has exited abnormally."
                                           % release)
                             else:
-                                LOG.error("Failed to rollback release (%s): %s"
-                                          % (release, exec_logs))
+                                LOG.error("Failed to rollback release %s. See  "
+                                          "/var/log/armada/%s for details." %
+                                          (release, os.path.basename(logfile)))
                             break
                     if rc:
                         LOG.info("Application releases %s were successfully "
                                  "rolled back." % app_releases)
                 elif request == constants.APP_DELETE_OP:
-                    cmd = "/bin/bash -c 'armada delete --debug --manifest " +\
-                          manifest_file + tiller_host + " | tee " + logfile + "'"
+                    cmd = "/bin/bash -c 'set -o pipefail; armada delete --debug " +\
+                          "--manifest " + manifest_file + tiller_host + " | tee " +\
+                          logfile + "'"
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
                         LOG.info("Application charts were successfully "
@@ -2066,8 +2071,9 @@ class DockerHelper(object):
                                       "Armada service has exited abnormally." %
                                       manifest_file)
                         else:
-                            LOG.error("Failed to delete application manifest %s: "
-                                      "%s" % (manifest_file, exec_logs))
+                            LOG.error("Failed to delete application manifest %s. See "
+                                      "/var/log/armada/%s for details." %
+                                      (manifest_file, os.path.basename(logfile)))
                 else:
                     rc = False
                     LOG.error("Unsupported armada request: %s." % request)
