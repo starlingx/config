@@ -60,9 +60,7 @@ class dcorch (
 ) {
 
   include dcorch::params
-
-  Package['dcorch'] -> Dcorch_config<||>
-  Package['dcorch'] -> Dcorch_api_paste_ini<||>
+  include dcorch::deps
 
   # this anchor is used to simplify the graph between dcorch components by
   # allowing a resource to serve as a point where the configuration of dcorch begins
@@ -72,6 +70,7 @@ class dcorch (
     ensure  => $package_ensure,
     name    => $::dcorch::params::package_name,
     require => Anchor['dcorch-start'],
+    tag     => 'dcorch-package',
   }
 
   file { $::dcorch::params::dcorch_conf:

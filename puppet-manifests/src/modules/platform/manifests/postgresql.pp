@@ -204,3 +204,32 @@ class platform::postgresql::upgrade
   include ::fm::db::postgresql
 }
 
+class platform::postgresql::sc::configured {
+
+  file { '/etc/platform/.sc_database_configured':
+      ensure => present,
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0644',
+  }
+}
+
+class platform::postgresql::sc::runtime
+  inherits ::platform::postgresql::params {
+  class {'::postgresql::globals':
+    datadir      => $data_dir,
+    confdir      => $config_dir,
+    needs_initdb => false,
+  }
+
+  -> class {'::postgresql::server':
+  }
+
+  include ::platform::dcmanager::runtime
+  include ::platform::dcorch::runtime
+
+  class {'::platform::postgresql::sc::configured':
+    stage => post
+  }
+}
+

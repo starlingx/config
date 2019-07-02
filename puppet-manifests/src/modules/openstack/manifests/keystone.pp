@@ -344,6 +344,7 @@ class openstack::keystone::endpoint::runtime {
     if $::platform::params::distributed_cloud_role =='systemcontroller' {
       include ::dcorch::keystone::auth
       include ::dcmanager::keystone::auth
+      include ::dcdbsync::keystone::auth
     }
 
     include ::smapi::keystone::auth

@@ -14,15 +14,13 @@ class dcorch::engine (
 ) {
 
   include dcorch::params
-
-  Dcorch_config<||> ~> Service['dcorch-engine']
+  include dcorch::deps
 
   if $::dcorch::params::engine_package {
-    Package['dcorch-engine'] -> Dcorch_config<||>
-    Package['dcorch-engine'] -> Service['dcorch-engine']
     package { 'dcorch-engine':
       ensure => $package_ensure,
       name   => $::dcorch::params::engine_package,
+      tag    => 'dcorch-package',
     }
   }
 
@@ -37,8 +35,7 @@ class dcorch::engine (
     name      => $::dcorch::params::engine_service,
     enable    => $enabled,
     hasstatus => false,
-    require   => Package['dcorch'],
+    tag       => 'dcorch-service',
   }
 
-  Exec<| title == 'dcorch-dbsync' |> -> Service['dcorch-engine']
 }

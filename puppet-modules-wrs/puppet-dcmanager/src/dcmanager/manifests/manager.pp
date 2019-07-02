@@ -14,15 +14,13 @@ class dcmanager::manager (
 ) {
 
   include dcmanager::params
-
-  Dcmanager_config<||> ~> Service['dcmanager-manager']
+  include dcmanager::deps
 
   if $::dcmanager::params::manager_package {
-    Package['dcmanager-manager'] -> Dcmanager_config<||>
-    Package['dcmanager-manager'] -> Service['dcmanager-manager']
     package { 'dcmanager-manager':
       ensure => $package_ensure,
       name   => $::dcmanager::params::manager_package,
+      tag    => 'dcmanager-package',
     }
   }
 
@@ -38,7 +36,6 @@ class dcmanager::manager (
     enable    => $enabled,
     hasstatus => false,
     require   => Package['dcmanager'],
+    tag       => 'dcmanager-service',
   }
-
-  Exec<| title == 'dcmanager-dbsync' |> -> Service['dcmanager-manager']
 }

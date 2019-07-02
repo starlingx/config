@@ -254,7 +254,7 @@ class platform::drbd::patch_vault::params (
   $service_enabled = false,
   $device = '/dev/drbd6',
   $lv_name = 'patch-vault-lv',
-  $lv_size = '1',
+  $lv_size = '8',
   $mountpoint = '/opt/patch-vault',
   $port = '7794',
   $resource_name = 'drbd-patch-vault',
@@ -264,7 +264,7 @@ class platform::drbd::patch_vault::params (
 class platform::drbd::patch_vault (
 ) inherits ::platform::drbd::patch_vault::params {
 
-  if str2bool($::is_initial_config_primary) {
+  if str2bool($::is_standalone_controller) {
     $drbd_primary = true
     $drbd_initial = true
     $drbd_automount = true

@@ -477,18 +477,26 @@ class SystemController(rest.RestController):
                                                  " as %s" % https_enabled))
 
         if 'distributed_cloud_role' in updates:
-            # At this point dc role cannot be changed after config_controller
-            # and config_subcloud
-            if rpc_isystem['distributed_cloud_role'] is None and \
-                            distributed_cloud_role in \
-                            [constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
-                             constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD]:
-
+            # At this point dc role cannot be changed after initial
+            # configuration is complete
+            if (rpc_isystem['distributed_cloud_role'] is not None and
+                    cutils.is_initial_config_complete()):
+                raise wsme.exc.ClientSideError(
+                    _("distributed_cloud_role is already set "
+                      " as %s" % rpc_isystem['distributed_cloud_role']))
+            # allow set the role to None before the initial config
+            # is complete
+            elif ((distributed_cloud_role in
+                  [constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
+                   constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD] or
+                   distributed_cloud_role is None) and not
+                    cutils.is_initial_config_complete()):
                 change_dc_role = True
                 patched_system['distributed_cloud_role'] = distributed_cloud_role
             else:
-                raise wsme.exc.ClientSideError(_("distributed_cloud_role is already set "
-                                                 " as %s" % rpc_isystem['distributed_cloud_role']))
+                raise wsme.exc.ClientSideError(_("Unexpected value %s specified"
+                                                 " for distributed_cloud_role"
+                                                 % distributed_cloud_role))
 
         if 'vswitch_type' in updates:
             if vswitch_type == rpc_isystem['capabilities']['vswitch_type']:
@@ -574,6 +582,16 @@ class SystemController(rest.RestController):
             LOG.info("update distributed cloud role to %s" % distributed_cloud_role)
             pecan.request.rpcapi.update_distributed_cloud_role(
                 pecan.request.context)
+
+        # check if we need to config the system controller database
+        if (change_dc_role and distributed_cloud_role ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            hosts = pecan.request.dbapi.ihost_get_by_personality(
+                constants.CONTROLLER)
+            # this is a replay case after the first host has been created
+            if len(hosts) == 1:
+                pecan.request.rpcapi.configure_sc_database(
+                    pecan.request.context, hosts[0])
 
         if 'security_feature' in delta_handle:
             LOG.info("update security_feature %s" % security_feature)

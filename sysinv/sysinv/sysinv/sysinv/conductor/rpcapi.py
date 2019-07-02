@@ -1815,3 +1815,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('mgmt_mac_set_by_ihost',
                                        host=host,
                                        mgmt_mac=mgmt_mac))
+
+    def configure_sc_database(self, context, host):
+        """Synchronously, configure system controller database upon the
+        creation of initial controller host and distributed_cloud_role
+        change from 'none' to 'systemcontroller' during bootstrap
+        playbook play and replay.
+
+        :param context: request context.
+        :param host: an ihost object
+        """
+        return self.call(context,
+                         self.make_msg('configure_sc_database',
+                                       host=host))

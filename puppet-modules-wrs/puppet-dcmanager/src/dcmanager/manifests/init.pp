@@ -45,8 +45,7 @@ class dcmanager (
 ) {
 
   include dcmanager::params
-
-  Package['dcmanager'] -> Dcmanager_config<||>
+  include dcmanager::deps
 
   # this anchor is used to simplify the graph between dcmanager components by
   # allowing a resource to serve as a point where the configuration of dcmanager begins

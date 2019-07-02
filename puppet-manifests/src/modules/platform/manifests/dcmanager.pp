@@ -61,9 +61,21 @@ class platform::dcmanager::api
 
     class { '::dcmanager::api':
       bind_host => $api_host,
+      sync_db   => $::platform::params::init_database,
     }
 
 
     include ::platform::dcmanager::haproxy
+  }
+}
+
+class platform::dcmanager::runtime {
+  if $::platform::params::distributed_cloud_role == 'systemcontroller' {
+    include ::platform::amqp::params
+    include ::dcmanager
+    include ::dcmanager::db::postgresql
+    class { '::dcmanager::api':
+      sync_db   => str2bool($::is_standalone_controller),
+    }
   }
 }

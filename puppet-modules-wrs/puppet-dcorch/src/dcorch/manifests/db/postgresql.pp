@@ -40,6 +40,8 @@ class dcorch::db::postgresql(
   $privileges = 'ALL',
 ) {
 
+  include dcorch::deps
+
   ::openstacklib::db::postgresql { 'dcorch':
     password_hash => postgresql_password($user, $password),
     dbname        => $dbname,
@@ -48,7 +50,7 @@ class dcorch::db::postgresql(
     privileges    => $privileges,
   }
 
-  ::Openstacklib::Db::Postgresql['dcorch'] ~> Service <| title == 'dcorch-api-proxy' |>
-  ::Openstacklib::Db::Postgresql['dcorch'] ~> Service <| title == 'dcorch-engine' |>
-  ::Openstacklib::Db::Postgresql['dcorch'] ~> Exec <| title == 'dcorch-dbsync' |>
+  Anchor['dcorch::db::begin']
+  ~> Class['dcorch::db::postgresql']
+  ~> Anchor['dcorch::db::end']
 }
