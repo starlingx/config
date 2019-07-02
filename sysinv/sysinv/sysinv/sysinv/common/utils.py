@@ -1605,6 +1605,16 @@ def get_dhcp_client_iaid(mac_address):
     return hwaddr[2] << 24 | hwaddr[3] << 16 | hwaddr[4] << 8 | hwaddr[5]
 
 
+def is_filesystem_supported(fs, personality):
+    """ Check to see if a filesystem is supported for the host personality.
+    """
+
+    if personality in constants.FILESYSTEM_HOSTS_SUPPORTED_LIST_DICT:
+        if fs in constants.FILESYSTEM_HOSTS_SUPPORTED_LIST_DICT[personality]:
+            return True
+    return False
+
+
 def get_controller_fs_scratch_size():
     """ Get the filesystem scratch size setup by kickstart.
     """
@@ -1634,6 +1644,38 @@ def get_controller_fs_scratch_size():
             raise Exception("Unexpected scratch_gib=%s" % scratch_gib)
 
     return scratch_gib
+
+
+def get_controller_fs_backup_size(rootfs_device):
+    """ Get the filesystem backup size.
+    """
+
+    disk_size = get_disk_capacity_mib(rootfs_device)
+    disk_size = int(disk_size / 1024)
+
+    if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
+        LOG.debug("Disk size : %s ... large disk defaults" % disk_size)
+
+        database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
+
+        cgcs_lv_size = constants.DEFAULT_CGCS_STOR_SIZE
+        backup_lv_size = database_storage + cgcs_lv_size + \
+            constants.BACKUP_OVERHEAD
+
+    elif disk_size >= constants.MINIMUM_DISK_SIZE:
+
+        LOG.debug("Disk size : %s ... small disk defaults" % disk_size)
+
+        # Due to the small size of the disk we can't provide the
+        # proper amount of backup space which is (database + cgcs_lv
+        # + BACKUP_OVERHEAD) so we are using a smaller default.
+        backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
+
+    else:
+        LOG.info("Disk size : %s ... disk too small" % disk_size)
+        raise exception.SysinvException("Disk size requirements not met.")
+
+    return backup_lv_size
 
 
 def get_cgts_vg_free_space():

@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -1364,3 +1364,11 @@ class UnsupportedAssignedInterfaceDataNetworkType(Conflict):
 class UnsupportedRemovedInterfaceDataNetworkType(Conflict):
     message = _("Cannot remove datanetwork with type '%(network_type)s' "
                 "from an interface.")
+
+
+class FilesystemAlreadyExists(Conflict):
+    message = _("A Host FS with name %(name)s already exists.")
+
+
+class FilesystemNotFound(NotFound):
+    message = _("No Host FS with id %(fs_id)s not found")

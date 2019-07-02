@@ -16,7 +16,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -2228,9 +2228,10 @@ class Connection(object):
         :param values: A dict containing several items used to identify
                        and track the controller_fs.
             Example:
-            values = {'name': constants.DEFAULT_DOCKER_STOR_SIZE,
+            values = {'name': constants.FILESYSTEM_NAME_DOCKER,
                       'size': 30,
-                      'logical_volume': constants.FILESYSTEM_NAME_LV_DICT,
+                      'logical_volume': constants.FILESYSTEM_LV_DICT[
+                           constants.FILESYSTEM_NAME_DOCKER],
                       'replicated': False}
         :returns: A controller_fs.
         """
@@ -4338,4 +4339,87 @@ class Connection(object):
         """Destroy an interface network association
 
         :param uuid: The uuid of an interface network association.
+        """
+
+    @abc.abstractmethod
+    def host_fs_create(self, forihostid, values):
+        """Create a new filesystem for a host.
+
+        :param forihostid: uuid or id of an ihost
+        :param values: A dict containing several items used to identify
+                       and track the filesystem.
+            Example:
+            values = {'name': constants.FILESYSTEM_NAME_DOCKER,
+                      'size': 30,
+                      'logical_volume': constants.FILESYSTEM_LV_DICT[
+                           constants.FILESYSTEM_NAME_DOCKER],
+                      'forihostid': 1}
+        :returns: A filesystem.
+        """
+
+    @abc.abstractmethod
+    def host_fs_get(self, fs_id):
+        """Return a filesystem.
+
+        :param fs_id: The id or uuid of a filesystem.
+        :returns: A filesystem.
+        """
+
+    @abc.abstractmethod
+    def host_fs_get_all(self, forihostid=None):
+        """Return filesystems.
+
+        :param forihostid: The id or uuid of an ihost.
+        :returns:  filesystem.
+        """
+
+    @abc.abstractmethod
+    def host_fs_get_list(self, limit=None, marker=None,
+                         sort_key=None, sort_dir=None):
+        """Return a list of filesystems.
+
+        :param limit: Maximum number of filesystems to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def host_fs_get_by_ihost(self, ihost, limit=None,
+                             marker=None, sort_key=None,
+                             sort_dir=None):
+        """List all the filesystems for a given ihost.
+
+        :param ihost: The id or uuid of an ihost.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of filesystems.
+        """
+
+    @abc.abstractmethod
+    def host_fs_update(self, fs_id, values):
+        """Update properties of a filesystem.
+
+        :param fs_id: The id or uuid of an filesystem.
+        :param values: Dict of values to update. May be a partial list.
+            Example:
+            values = {'name': constants.FILESYSTEM_NAME_DOCKER,
+                      'size': 30,
+                      'logical_volume': constants.FILESYSTEM_LV_DICT[
+                           constants.FILESYSTEM_NAME_DOCKER
+                           ],
+                      'forihostid': 1}
+        :returns: A filesystem.
+        """
+
+    @abc.abstractmethod
+    def host_fs_destroy(self, fs_id):
+        """Destroy a filesystem.
+
+        :param fs_id: The id or uuid of a filesystem.
         """

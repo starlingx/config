@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -146,12 +146,14 @@ class AgentManager(service.PeriodicService):
         self._iconfig_read_config_reported = None
         self._ihost_personality = None
         self._ihost_uuid = ""
+        self._ihost_rootfs_device = ""
         self._agent_throttle = 0
         self._mgmt_ip = None
         self._prev_disk = None
         self._prev_partition = None
         self._prev_lvg = None
         self._prev_pv = None
+        self._prev_fs = None
         self._subfunctions = None
         self._subfunctions_configured = False
         self._notify_subfunctions_alarm_clear = False
@@ -745,6 +747,7 @@ class AgentManager(service.PeriodicService):
                 self._ihost_uuid = ihost['uuid']
                 self._ihost_personality = ihost['personality']
                 self._mgmt_ip = ihost['mgmt_ip']
+                self._ihost_rootfs_device = ihost['rootfs_device']
 
                 if os.path.isfile(tsc.PLATFORM_CONF_FILE):
                     # read the platform config file and check for UUID
@@ -1157,8 +1160,8 @@ class AgentManager(service.PeriodicService):
             LOG.debug("SysInv Agent Audit running.")
 
             if force_updates:
-                LOG.debug("SysInv Agent Audit force updates: (%s)" %
-                          (', '.join(force_updates)))
+                LOG.info("SysInv Agent Audit force updates: (%s)" %
+                         (', '.join(force_updates)))
 
             self._update_ttys_dcd_status(icontext, self._ihost_uuid)
             if self._agent_throttle > 5:
@@ -1182,7 +1185,7 @@ class AgentManager(service.PeriodicService):
                 self._prev_disk = None
 
             # if this audit is requested by conductor, clear
-            # previous states for disk, lvg and pv to force an update
+            # previous states for disk, lvg, pv and fs to force an update
             if force_updates:
                 if constants.DISK_AUDIT_REQUEST in force_updates:
                     self._prev_disk = None
@@ -1192,6 +1195,8 @@ class AgentManager(service.PeriodicService):
                     self._prev_pv = None
                 if constants.PARTITION_AUDIT_REQUEST in force_updates:
                     self._prev_partition = None
+                if constants.FILESYSTEM_AUDIT_REQUEST in force_updates:
+                    self._prev_fs = None
 
             # Update disks
             idisk = self._idisk_operator.idisk_get()
@@ -1248,6 +1253,55 @@ class AgentManager(service.PeriodicService):
                     LOG.exception("Sysinv Agent exception updating ilvg"
                                   "conductor.")
                     self._prev_lvg = None
+                    pass
+
+            # Update the filesystems
+
+            # Get the supported filesystems for this host
+            filesystems = []
+
+            # check if the scratch fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH, self._ihost_personality):
+                scratch_lv_size = utils.get_controller_fs_scratch_size()
+                data = {
+                    'name': constants.FILESYSTEM_NAME_SCRATCH,
+                    'size': scratch_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_SCRATCH]
+                }
+                filesystems.append(data)
+
+            # check if the backup fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_BACKUP, self._ihost_personality):
+                backup_lv_size = utils.get_controller_fs_backup_size(self._ihost_rootfs_device)
+                data = {
+                    'name': constants.FILESYSTEM_NAME_BACKUP,
+                    'size': backup_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_BACKUP]
+                }
+                filesystems.append(data)
+
+            # check if the docker fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER, self._ihost_personality):
+                data = {
+                    'name': constants.FILESYSTEM_NAME_DOCKER,
+                    'size': constants.KUBERNETES_DOCKER_STOR_SIZE,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_DOCKER]
+                }
+                filesystems.append(data)
+
+            if filesystems and ((self._prev_fs is None) or (self._prev_fs != filesystems)):
+                try:
+                    rpcapi.create_host_filesystems(icontext,
+                                                   self._ihost_uuid,
+                                                   filesystems)
+                    self._prev_fs = filesystems
+                except exception.SysinvException:
+                    LOG.exception("Sysinv Agent exception updating fs"
+                                  "conductor.")
+                    self._prev_fs = None
                     pass
 
             self._report_config_applied(icontext)

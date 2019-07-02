@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 """
@@ -175,6 +175,24 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('create_controller_filesystems',
                                        rootfs_device=rootfs_device))
+
+    def create_host_filesystems(self, context, ihost_uuid, fs_dict_array):
+        """Create or update the filesystem for an ihost with the supplied
+        data.
+
+        This method allows records for a filesystem for ihost to be
+        created, or updated.
+
+        :param context: an admin context
+        :param ihost_uuid: ihost uuid unique id
+        :param fs_dict_array: initial values for the filesystems
+        :returns: pass or fail
+        """
+
+        return self.call(context,
+                         self.make_msg('create_host_filesystems',
+                                       ihost_uuid=ihost_uuid,
+                                       fs_dict_array=fs_dict_array))
 
     def get_ihost_by_macs(self, context, ihost_macs):
         """Finds ihost db entry based upon the mac list
