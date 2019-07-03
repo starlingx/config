@@ -317,7 +317,10 @@ class InterfaceTestCase(base.FunctionalTest):
                     dbutils.create_test_interface_network(
                         interface_id=iface.id,
                         network_id=network.id)
-                elif ifclass == constants.INTERFACE_CLASS_DATA and datanetworks:
+                elif ifclass in [constants.INTERFACE_CLASS_DATA,
+                                 constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                 constants.INTERFACE_CLASS_PCI_SRIOV] \
+                        and datanetworks:
                     for dn_name in datanetworks:
                         dn = self.dbapi.datanetworks_get_all({'name': dn_name})
                         if dn:
@@ -1763,6 +1766,45 @@ class TestCpePost(InterfaceTestCase):
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
+
+    def test_create_same_data_network_valid(self):
+        port2, sriov_if = self._create_ethernet('sriov',
+                              networktype=constants.NETWORK_TYPE_PCI_SRIOV,
+                              ifclass=constants.INTERFACE_CLASS_PCI_SRIOV)
+        iface = self.dbapi.iinterface_get(sriov_if['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn,
+                                      expect_errors=False)
+            self.assertEqual(http_client.OK, response.status_int)
+
+        port1, data0_if = self._create_ethernet('data0',
+                              networktype=constants.NETWORK_TYPE_DATA,
+                              ifclass=constants.INTERFACE_CLASS_DATA)
+        iface = self.dbapi.iinterface_get(data0_if['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn,
+                                      expect_errors=False)
+
+        port3, pthru_if = self._create_ethernet('pthru',
+                              networktype=constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                              ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
+        iface = self.dbapi.iinterface_get(pthru_if['uuid'])
+        datanetworks = self.dbapi.datanetworks_get_all({'name': 'group0-data0'})
+        for dn in datanetworks:
+            iface_dn = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=iface.uuid,
+                datanetwork_uuid=dn.uuid)
+            response = self.post_json('/interface_datanetworks', iface_dn,
+                                      expect_errors=False)
+            self.assertEqual(http_client.OK, response.status_int)
 
 
 class TestCpePatch(InterfaceTestCase):
