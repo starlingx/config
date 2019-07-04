@@ -7,8 +7,6 @@
 # coding=utf-8
 #
 
-import ldap
-import ldapurl
 import netaddr
 import pecan
 import re
@@ -97,54 +95,6 @@ def _validate_zero_or_range(name, value, min, max):
     except ValueError:
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' must be an integer value." % name))
-
-
-def _validate_ldap_url(name, value):
-
-    url = urlparse(value)
-
-    if cutils.is_valid_ip(url.hostname):
-        try:
-            ip_addr = netaddr.IPNetwork(url.hostname)
-        except netaddr.core.AddrFormatError:
-            raise wsme.exc.ClientSideError(_(
-                "Invalid IP address for LDAP url"))
-        if ip_addr.is_loopback():
-            raise wsme.exc.ClientSideError(_(
-                "LDAP server must not be loopback."))
-    elif url.hostname:
-        if constants.LOCALHOST_HOSTNAME in url.hostname.lower():
-            raise wsme.exc.ClientSideError(_(
-                "LDAP server must not be localhost."))
-
-    try:
-        ldapurl.LDAPUrl(value)
-    except ValueError as ve:
-        raise wsme.exc.ClientSideError(_(
-            "Invalid LDAP url format: %s" % str(ve)))
-
-
-def _validate_ldap_dn(name, value):
-    try:
-        ldap.dn.str2dn(value)
-    except ldap.DECODING_ERROR:
-        raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' must be a valid LDAP DN value" % name))
-
-
-def _validate_assignment_driver(name, value):
-    values = [constants.SERVICE_PARAM_IDENTITY_ASSIGNMENT_DRIVER_SQL]
-    if value not in values:
-        raise wsme.exc.ClientSideError(_(
-            "Identity assignment driver must be one of: %s" % values))
-
-
-def _validate_identity_driver(name, value):
-    values = [constants.SERVICE_PARAM_IDENTITY_IDENTITY_DRIVER_SQL,
-              constants.SERVICE_PARAM_IDENTITY_IDENTITY_DRIVER_LDAP]
-    if value not in values:
-        raise wsme.exc.ClientSideError(_(
-            "Identity identity driver must be one of: %s" % values))
 
 
 def _validate_neutron_ml2_mech(name, value):
@@ -467,64 +417,7 @@ def _validate_domain(name, value):
             (name, value)))
 
 
-# LDAP Identity Service Parameters (mandatory)
-SERVICE_PARAM_IDENTITY_LDAP_URL = 'url'
-
-IDENTITY_ASSIGNMENT_PARAMETER_MANDATORY = [
-    'driver'
-]
-
-IDENTITY_IDENTITY_PARAMETER_MANDATORY = [
-    'driver'
-]
-
-# LDAP Identity Service Parameters (optional)
-IDENTITY_LDAP_PARAMETER_OPTIONAL = [
-    'url', 'user', 'password', 'suffix',
-    'user_tree_dn', 'user_objectclass',
-    'use_dumb_member', 'dumb_member',
-    'query_scope', 'page_size', 'debug_level',
-
-    'user_filter', 'user_id_attribute',
-    'user_name_attribute', 'user_mail_attribute',
-    'user_enabled_attribute', 'user_enabled_mask',
-    'user_enabled_default', 'user_enabled_invert',
-    'user_attribute_ignore',
-    'user_default_project_id_attribute',
-    'user_allow_create', 'user_allow_update', 'user_allow_delete',
-    'user_pass_attribute', 'user_enabled_emulation',
-    'user_enabled_emulation_dn',
-    'user_additional_attribute_mapping',
-
-    'group_tree_dn', 'group_filter',
-    'group_objectclass', 'group_id_attribute',
-    'group_name_attribute', 'group_member_attribute',
-    'group_desc_attribute', 'group_attribute_ignore',
-    'group_allow_create', 'group_allow_update', 'group_allow_delete',
-    'group_additional_attribute_mapping',
-
-    'use_tls', 'tls_cacertdir',
-    'tls_cacertfile', 'tls_req_cert',
-
-    'use_pool', 'pool_size',
-    'pool_retry_max', 'pool_retry_delay',
-    'pool_connection_timeout', 'pool_connection_lifetime',
-    'use_auth_pool', 'auth_pool_size',
-    'auth_pool_connection_lifetime',
-]
-
-# obfuscate these fields on list/show operations
-IDENTITY_LDAP_PROTECTED_PARAMETERS = ['password']
-
-IDENTITY_IDENTITY_PARAMETER_DATA_FORMAT = {
-    constants.SERVICE_PARAM_IDENTITY_DRIVER: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-}
-
 NETWORK_ODL_PROTECTED_PARAMETERS = [constants.SERVICE_PARAM_NAME_ML2_ODL_PASSWORD]
-
-IDENTITY_ADMIN_ENDPOINT_TYPE_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_PARAMETER_NAME_EXTERNAL_ADMINURL,
-]
 
 IRONIC_NEUTRON_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_IRONIC_PROVISIONING_NETWORK,
@@ -611,88 +504,6 @@ NOVA_PCI_ALIAS_PARAMETER_DATA_FORMAT = {
 IDENTITY_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION,
 ]
-
-
-# LDAP Identity Service Parameters Validator
-IDENTITY_LDAP_PARAMETER_VALIDATOR = {
-    'url': _validate_ldap_url,
-    'use_dumb_member': _validate_boolean,
-    'user_enabled_invert': _validate_boolean,
-    'user_enabled_emulation': _validate_boolean,
-    'user_allow_create': _validate_boolean,
-    'user_allow_update': _validate_boolean,
-    'user_allow_delete': _validate_boolean,
-    'group_allow_create': _validate_boolean,
-    'group_allow_update': _validate_boolean,
-    'group_allow_delete': _validate_boolean,
-    'use_tls': _validate_boolean,
-    'use_pool': _validate_boolean,
-    'pool_size': _validate_integer,
-    'pool_retry_max': _validate_integer,
-    'pool_retry_delay': _validate_float,
-    'pool_connection_timeout': _validate_integer,
-    'pool_connection_lifetime': _validate_integer,
-    'use_auth_pool': _validate_boolean,
-    'auth_pool_size': _validate_integer,
-    'auth_pool_connection_lifetime': _validate_integer,
-    'user': _validate_ldap_dn,
-    'suffix': _validate_ldap_dn,
-    'dumb_member': _validate_ldap_dn,
-    'user_tree_dn': _validate_ldap_dn,
-    'user_enabled_emulation_dn': _validate_ldap_dn,
-}
-
-IDENTITY_LDAP_PARAMETER_RESOURCE = {
-    'url': None,
-    'use_dumb_member': None,
-    'user_enabled_invert': None,
-    'user_enabled_emulation': None,
-    'user_allow_create': None,
-    'user_allow_update': None,
-    'user_allow_delete': None,
-    'group_allow_create': None,
-    'group_allow_update': None,
-    'group_allow_delete': None,
-    'use_tls': None,
-    'use_pool': None,
-    'pool_size': None,
-    'pool_retry_max': None,
-    'pool_retry_delay': None,
-    'pool_connection_timeout': None,
-    'pool_connection_lifetime': None,
-    'use_auth_pool': None,
-    'auth_pool_size': None,
-    'auth_pool_connection_lifetime': None,
-    'user': None,
-    'suffix': None,
-    'dumb_member': None,
-    'user_tree_dn': None,
-    'user_enabled_emulation_dn': None,
-}
-
-IDENTITY_ASSIGNMENT_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_ASSIGNMENT_DRIVER: _validate_assignment_driver,
-}
-
-IDENTITY_ASSIGNMENT_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_ASSIGNMENT_DRIVER: None,
-}
-
-IDENTITY_IDENTITY_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_IDENTITY_DRIVER: _validate_identity_driver,
-}
-
-IDENTITY_IDENTITY_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_IDENTITY_DRIVER: 'keystone::ldap::identity_driver',
-}
-
-IDENTITY_ADMIN_ENDPOINT_TYPE_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_PARAMETER_NAME_EXTERNAL_ADMINURL: cutils.validate_yes_no,
-}
-
-IDENTITY_ADMIN_ENDPOINT_TYPE_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_PARAMETER_NAME_EXTERNAL_ADMINURL: None,
-}
 
 IDENTITY_CONFIG_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION:
@@ -1047,23 +858,6 @@ SERVICE_VALUE_PROTECTION_MASK = "****"
 
 SERVICE_PARAMETER_SCHEMA = {
     constants.SERVICE_TYPE_IDENTITY: {
-        constants.SERVICE_PARAM_SECTION_IDENTITY_ASSIGNMENT: {
-            SERVICE_PARAM_MANDATORY: IDENTITY_ASSIGNMENT_PARAMETER_MANDATORY,
-            SERVICE_PARAM_VALIDATOR: IDENTITY_ASSIGNMENT_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: IDENTITY_ASSIGNMENT_PARAMETER_RESOURCE,
-        },
-        constants.SERVICE_PARAM_SECTION_IDENTITY_IDENTITY: {
-            SERVICE_PARAM_MANDATORY: IDENTITY_IDENTITY_PARAMETER_MANDATORY,
-            SERVICE_PARAM_VALIDATOR: IDENTITY_IDENTITY_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: IDENTITY_IDENTITY_PARAMETER_RESOURCE,
-            SERVICE_PARAM_DATA_FORMAT: IDENTITY_IDENTITY_PARAMETER_DATA_FORMAT,
-        },
-        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP: {
-            SERVICE_PARAM_OPTIONAL: IDENTITY_LDAP_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: IDENTITY_LDAP_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: IDENTITY_LDAP_PARAMETER_RESOURCE,
-            SERVICE_PARAM_PROTECTED: IDENTITY_LDAP_PROTECTED_PARAMETERS,
-        },
         constants.SERVICE_PARAM_SECTION_IDENTITY_CONFIG: {
             SERVICE_PARAM_OPTIONAL: IDENTITY_CONFIG_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: IDENTITY_CONFIG_PARAMETER_VALIDATOR,

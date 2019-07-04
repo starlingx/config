@@ -20,7 +20,6 @@ import mock
 import os
 import os.path
 import tempfile
-import wsme
 
 import netaddr
 from oslo_config import cfg
@@ -28,7 +27,6 @@ from oslo_config import cfg
 from mox3 import mox
 from six.moves import builtins
 from sysinv.common import exception
-from sysinv.common import service_parameter
 from sysinv.common import utils
 from sysinv.tests import base
 
@@ -360,44 +358,3 @@ class IntLikeTestCase(base.TestCase):
         self.assertFalse(
             utils.is_int_like("0cc3346e-9fef-4445-abe6-5d2b2690ec64"))
         self.assertFalse(utils.is_int_like("a1"))
-
-
-class LDAPTestCase(base.TestCase):
-
-    def test_ldapurl(self):
-        # Bad Network address is not acceptable as ldap url
-        ldap_url = 'ldap://127'
-        self.assertRaises(wsme.exc.ClientSideError,
-                          service_parameter._validate_ldap_url,
-                          'foo',
-                          ldap_url)
-
-        # loopback is not acceptable as ldap url
-        ldap_url = 'ldap://127.0.0.1'
-        self.assertRaises(wsme.exc.ClientSideError,
-                          service_parameter._validate_ldap_url,
-                          'foo',
-                          ldap_url)
-
-        # localhost is not acceptable as ldap url
-        ldap_url = 'ldap://localhost:1234'
-        self.assertRaises(wsme.exc.ClientSideError,
-                          service_parameter._validate_ldap_url,
-                          'foo',
-                          ldap_url)
-
-        # A valid ldap URL should not raise an exception
-        ldap_url = 'ldap://dns.example.com:389'
-        service_parameter._validate_ldap_url('foo', ldap_url)
-
-    def test_ldap_dn(self):
-        # A poorly formatted ldap DN will raise a ClientSideError
-        ldap_dn = 'this is not a valid ldap dn'
-        self.assertRaises(wsme.exc.ClientSideError,
-                          service_parameter._validate_ldap_dn,
-                          'foo',
-                          ldap_dn)
-
-        # A valid DN will not raise a ClientSideError
-        ldap_dn = 'uid=john.doe,ou=People,dc=example,dc=com'
-        service_parameter._validate_ldap_dn('foo', ldap_dn)
