@@ -1888,13 +1888,12 @@ class AgentManager(service.PeriodicService):
         :param host_uuid: ihost uuid unique id
         :param idisk_dict: values for idisk volume object
         :param is_cinder_device: bool value tells if the idisk is for cinder
-        :returns: pass or fail
         """
         LOG.debug("AgentManager.format_disk_gpt: %s" % idisk_dict)
         if self._ihost_uuid and self._ihost_uuid == host_uuid:
-            return self._idisk_operator.disk_format_gpt(host_uuid,
-                                                        idisk_dict,
-                                                        is_cinder_device)
+            self._idisk_operator.disk_format_gpt(host_uuid,
+                                                 idisk_dict,
+                                                 is_cinder_device)
 
     def update_host_memory(self, context, host_uuid):
         """update the host memory
