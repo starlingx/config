@@ -261,15 +261,21 @@ class InterfaceDataNetworkController(rest.RestController):
 
     @staticmethod
     def _check_datanetwork_used(interface, datanetwork):
+        if interface.ifclass != constants.INTERFACE_CLASS_DATA:
+            return
         ifnets = pecan.request.dbapi.interface_datanetwork_get_by_datanetwork(
             datanetwork.uuid)
         for i in ifnets:
-            if i.forihostid == interface.forihostid:
-                msg = _("Data interface %(ifname)s is already "
-                        "attached to this Data Network: "
-                        "%(datanetwork)s." %
-                        {'ifname': i.ifname, 'datanetwork': datanetwork.name})
-                raise wsme.exc.ClientSideError(msg)
+            if (i.forihostid == interface.forihostid and
+                    i.interface_id != interface.id):
+                iface = pecan.request.dbapi.iinterface_get(i.interface_id)
+                if iface.ifclass == constants.INTERFACE_CLASS_DATA:
+                    msg = _("Data interface %(ifname)s is already "
+                            "attached to this Data Network: "
+                            "%(datanetwork)s." %
+                            {'ifname': i.ifname,
+                             'datanetwork': datanetwork.name})
+                    raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
     def _get_interface_id(interface_uuid):
