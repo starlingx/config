@@ -955,9 +955,10 @@ data:
           # Increase from default of 60 seconds to avoid services being
           # declared down during controller swacts, reboots, etc...
           service_down_time: 90
+          long_rpc_timeout: 400
 
         libvirt:
-          cpu_mode: none
+          cpu_mode: host-model
           live_migration_completion_timeout: 180
           live_migration_permit_auto_converge: true
           mem_stats_period_seconds: 0
