@@ -327,22 +327,6 @@ def get_sdn_enabled():
     return system.capabilities.get('sdn_enabled', False)
 
 
-def get_sdn_l3_mode_enabled():
-    try:
-        sdn_l3_mode = pecan.request.dbapi.service_parameter_get_one(
-                        service=constants.SERVICE_TYPE_NETWORK,
-                        section=constants.SERVICE_PARAM_SECTION_NETWORK_DEFAULT,
-                        name=constants.
-                        SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS)
-        if not sdn_l3_mode:
-            return False
-        allowed_vals = constants.SERVICE_PLUGINS_SDN
-        return (any(sp in allowed_vals
-                        for sp in sdn_l3_mode.value.split(',')))
-    except exception.SysinvException:
-        return False
-
-
 def get_region_config():
     system = pecan.request.dbapi.isystem_get_one()
     # TODO(mpeters): this should to be updated to return a boolean value

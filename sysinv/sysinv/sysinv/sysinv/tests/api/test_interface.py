@@ -16,7 +16,6 @@ import testtools
 from six.moves import http_client
 
 from sysinv.api.controllers.v1 import interface as api_if_v1
-from sysinv.api.controllers.v1 import utils as api_utils
 from sysinv.common import constants
 from sysinv.conductor import rpcapi
 from sysinv.tests.api import base
@@ -159,11 +158,6 @@ class InterfaceTestCase(base.FunctionalTest):
                               'iinterface_get_providernets')
         self.mock_iinterface_get_providernets = p.start()
         self.mock_iinterface_get_providernets.return_value = providernet_list
-        self.addCleanup(p.stop)
-
-        p = mock.patch.object(api_utils, 'get_sdn_l3_mode_enabled')
-        self.mock_sdn_l3_mode_enabled = p.start()
-        self.mock_sdn_l3_mode_enabled.return_value = True
         self.addCleanup(p.stop)
 
         self._setup_context()

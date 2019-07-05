@@ -11,8 +11,6 @@ from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 from sysinv.helm import openstack
 
-from sqlalchemy.orm.exc import NoResultFound
-
 LOG = logging.getLogger(__name__)
 
 DATA_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA]
@@ -68,10 +66,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
             }
         }
 
-        self.update_dynamic_options(overrides[common.HELM_NS_OPENSTACK]['conf'])
-
-        self.update_from_service_parameters(overrides[common.HELM_NS_OPENSTACK]['conf'])
-
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]
         elif namespace:
@@ -79,106 +73,6 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _get_service_parameters(self, service=None):
-        service_parameters = []
-        if self.dbapi is None:
-            return service_parameters
-        try:
-            service_parameters = self.dbapi.service_parameter_get_all(
-                service=service)
-        except NoResultFound:
-            pass
-        return service_parameters
-
-    def update_dynamic_options(self, overrides):
-        if utils.is_virtual():
-            utils.recur_update(overrides, {
-                'plugins': {
-                    'ml2_conf': {
-                        'ovs_driver': {
-                            'vhost_user_enabled': False
-                        }
-                    }
-                }
-            })
-
-    def update_from_service_parameters(self, overrides):
-        service_parameters = self._get_service_parameters(service=constants.SERVICE_TYPE_NETWORK)
-        for param in service_parameters:
-            if param.section == constants.SERVICE_PARAM_SECTION_NETWORK_DEFAULT:
-                if param.name == constants.SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS:
-                    overrides.update({
-                        'neutron': {
-                            'DEFAULT': {
-                                'service_plugins': str(param.value)
-                            }
-                        }
-                    })
-                if param.name == constants.SERVICE_PARAM_NAME_DEFAULT_DNS_DOMAIN:
-                    overrides.update({
-                        'neutron': {
-                            'DEFAULT': {
-                                'dns_domain': str(param.value)
-                            }
-                        }
-                    })
-                if param.name == constants.SERVICE_PARAM_NAME_BASE_MAC:
-                    overrides.update({
-                        'neutron': {
-                            'DEFAULT': {
-                                'base_mac': str(param.value)
-                            }
-                        }
-                    })
-                if param.name == constants.SERVICE_PARAM_NAME_DVR_BASE_MAC:
-                    overrides.update({
-                        'neutron': {
-                            'DEFAULT': {
-                                'dvr_base_mac': str(param.value)
-                            }
-                        }
-                    })
-            elif param.section == constants.SERVICE_PARAM_SECTION_NETWORK_ML2:
-                if param.name == constants.SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS:
-                    overrides.update({
-                        'plugins': {
-                            'ml2_conf': {
-                                'ml2': {
-                                    'mechanism_drivers': str(param.value)
-                                }
-                            }
-                        }
-                    })
-                if param.name == constants.SERVICE_PARAM_NAME_ML2_EXTENSION_DRIVERS:
-                    overrides.update({
-                        'plugins': {
-                            'ml2_conf': {
-                                'ml2': {
-                                    'extension_drivers': str(param.value)
-                                }
-                            }
-                        }
-                    })
-                if param.name == constants.SERVICE_PARAM_NAME_ML2_TENANT_NETWORK_TYPES:
-                    overrides.update({
-                        'plugins': {
-                            'ml2_conf': {
-                                'ml2': {
-                                    'tenant_network_types': str(param.value)
-                                }
-                            }
-                        }
-                    })
-            elif param.section == constants.SERVICE_PARAM_SECTION_NETWORK_DHCP:
-                if param.name == constants.SERVICE_PARAM_NAME_DHCP_FORCE_METADATA:
-                    overrides.update({
-                        'dhcp_agent': {
-                            'DEFAULT': {
-                                'force_metadata': str(param.value)
-                            }
-                        }
-                    })
 
     def _get_per_host_overrides(self):
         host_list = []

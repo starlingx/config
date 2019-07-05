@@ -900,7 +900,6 @@ SERVICE_TYPE_IDENTITY = 'identity'
 SERVICE_TYPE_KEYSTONE = 'keystone'
 SERVICE_TYPE_IMAGE = 'image'
 SERVICE_TYPE_VOLUME = 'volume'
-SERVICE_TYPE_NETWORK = 'network'
 SERVICE_TYPE_HORIZON = "horizon"
 SERVICE_TYPE_CEPH = 'ceph'
 SERVICE_TYPE_CINDER = 'cinder'
@@ -918,13 +917,6 @@ SERVICE_PARAM_SECTION_IDENTITY_CONFIG = 'config'
 SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION = 'token_expiration'
 SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION_DEFAULT = 3600
 
-SERVICE_PARAM_SECTION_NETWORK_DEFAULT = 'default'
-SERVICE_PARAM_SECTION_NETWORK_ML2 = 'ml2'
-SERVICE_PARAM_SECTION_NETWORK_ML2_ODL = 'ml2_odl'
-SERVICE_PARAM_SECTION_NETWORK_BGP = 'bgp'
-SERVICE_PARAM_SECTION_NETWORK_SFC = 'sfc'
-SERVICE_PARAM_SECTION_NETWORK_DHCP = 'dhcp'
-
 SERVICE_PARAM_PARAMETER_NAME_EXTERNAL_ADMINURL = 'external-admin-url'
 SERVICE_PARAM_SECTION_HORIZON_AUTH = 'auth'
 
@@ -934,78 +926,6 @@ SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES = \
     'lockout_retries'
 SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC_DEFAULT = 300
 SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES_DEFAULT = 3
-
-# NEUTRON Service Parameters
-
-SERVICE_PARAM_NAME_ML2_EXTENSION_DRIVERS = 'extension_drivers'
-SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS = 'mechanism_drivers'
-SERVICE_PARAM_NAME_ML2_TENANT_NETWORK_TYPES = 'tenant_network_types'
-SERVICE_PARAM_NAME_ML2_ODL_URL = 'url'
-SERVICE_PARAM_NAME_ML2_ODL_USERNAME = 'username'
-SERVICE_PARAM_NAME_ML2_ODL_PASSWORD = 'password'
-SERVICE_PARAM_NAME_ML2_PORT_BINDING_CONTROLLER = 'port_binding_controller'
-SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS = 'service_plugins'
-SERVICE_PARAM_NAME_BASE_MAC = 'base_mac'
-SERVICE_PARAM_NAME_DVR_BASE_MAC = 'dvr_base_mac'
-SERVICE_PARAM_NAME_DHCP_FORCE_METADATA = 'force_metadata'
-
-# the compulsory set of service parameters when SDN is
-# configured (required for semantic check on Compute unlock)
-SERVICE_PARAM_NETWORK_ML2_COMPULSORY = \
-    [SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS,
-     SERVICE_PARAM_NAME_ML2_ODL_URL,
-     SERVICE_PARAM_NAME_ML2_ODL_USERNAME,
-     SERVICE_PARAM_NAME_ML2_ODL_PASSWORD]
-
-# a subset of the Neutron mechanism driver endpoints that we support
-SERVICE_PARAM_NETWORK_ML2_MECH_DRIVERS = \
-    ['openvswitch', 'vswitch', 'sriovnicswitch', 'opendaylight',
-     'l2population', 'opendaylight_v2']
-
-# a subset of the Neutron extensions that we support
-SERVICE_PARAM_NETWORK_ML2_EXT_DRIVERS_PORT_SECURITY = 'port_security'
-SERVICE_PARAM_NETWORK_ML2_EXT_DRIVERS = \
-    ['dns', 'port_security']
-
-# a subset of Neutron's tenant network types that we support
-SERVICE_PARAM_NETWORK_ML2_TENANT_TYPES = \
-    ['vlan', 'vxlan']
-
-# service plugin for neutron network segment range feature
-NEUTRON_PLUGIN_NETWORK_SEGMENT_RANGE = 'network_segment_range'
-
-# a subset of Neutron service plugins that are supported
-SERVICE_PARAM_NETWORK_DEFAULT_SERVICE_PLUGINS = \
-    ['odl-router',
-     'networking_odl.l3.l3_odl.OpenDaylightL3RouterPlugin',
-     'odl-router_v2',
-     'networking_odl.l3.l3_odl_v2:OpenDaylightL3RouterPlugin',
-     'neutron_dynamic_routing.services.bgp.bgp_plugin.BgpPlugin',
-     'networking_bgpvpn.neutron.services.plugin.BGPVPNPlugin',
-     'router',
-     NEUTRON_PLUGIN_NETWORK_SEGMENT_RANGE]
-
-# Neutron service plugins for SDN
-SERVICE_PLUGINS_SDN = \
-    ['odl-router',
-     'networking_odl.l3.l3_odl.OpenDaylightL3RouterPlugin',
-     'odl-router_v2',
-     'networking_odl.l3.l3_odl_v2:OpenDaylightL3RouterPlugin']
-
-# sfc parameters
-SERVICE_PARAM_NAME_SFC_QUOTA_FLOW_CLASSIFIER = 'sfc_quota_flow_classifier'
-SERVICE_PARAM_NAME_SFC_QUOTA_PORT_CHAIN = 'sfc_quota_port_chain'
-SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR_GROUP = 'sfc_quota_port_pair_group'
-SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR = 'sfc_quota_port_pair'
-SERVICE_PARAM_NAME_SFC_SFC_DRIVERS = 'sfc_drivers'
-SERVICE_PARAM_NAME_SFC_FLOW_CLASSIFIER_DRIVERS = "flowclassifier_drivers"
-
-# bgp parameters
-SERVICE_PARAM_NAME_BGP_ROUTER_ID_C0 = 'bgp_router_id_c0'
-SERVICE_PARAM_NAME_BGP_ROUTER_ID_C1 = 'bgp_router_id_c1'
-
-# Set dns_domain for internal_dns
-SERVICE_PARAM_NAME_DEFAULT_DNS_DOMAIN = 'dns_domain'
 
 # Platform Service Parameters
 SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE = 'maintenance'

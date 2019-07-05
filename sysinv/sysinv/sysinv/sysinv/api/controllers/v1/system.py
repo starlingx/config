@@ -19,11 +19,9 @@
 # Copyright (c) 2013-2017 Wind River Systems, Inc.
 #
 
-from sqlalchemy.orm.exc import NoResultFound
-
 import jsonpatch
-import six
 import os
+import six
 
 import pecan
 from pecan import rest
@@ -237,23 +235,6 @@ class SystemController(rest.RestController):
         if sdn_controllers:
             msg = _("SDN cannot be disabled when SDN controller is "
                     "configured.")
-            raise wsme.exc.ClientSideError(msg)
-
-        # Check if SDN Controller service parameters
-        neutron_parameters = []
-        for section in [constants.SERVICE_PARAM_SECTION_NETWORK_ML2,
-                        constants.SERVICE_PARAM_SECTION_NETWORK_ML2_ODL,
-                        constants.SERVICE_PARAM_SECTION_NETWORK_DEFAULT]:
-            try:
-                parm_list = pecan.request.dbapi.service_parameter_get_all(
-                                    service=constants.SERVICE_TYPE_NETWORK,
-                                    section=section)
-                neutron_parameters = neutron_parameters + parm_list
-            except NoResultFound:
-                continue
-        if neutron_parameters:
-            msg = _("SDN cannot be disabled when SDN service parameters "
-                    "are configured.")
             raise wsme.exc.ClientSideError(msg)
 
     def _verify_sdn_enabled(self):

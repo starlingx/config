@@ -78,9 +78,6 @@ def get_db_credentials(shared_services, from_release):
          'heat': {'hiera_user_key': 'heat::db::postgresql::user',
                   'keyring_password_key': 'heat',
                   },
-         'neutron': {'hiera_user_key': 'neutron::db::postgresql::user',
-                     'keyring_password_key': 'neutron',
-                     },
          'nova': {'hiera_user_key': 'nova::db::postgresql::user',
                   'keyring_password_key': 'nova',
                   },
@@ -516,10 +513,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'heat'))
 
-    with open("/etc/neutron/neutron-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'neutron'))
-
     with open("/etc/nova/nova-dbsync.conf", "w") as f:
         f.write("[database]\n")
         f.write(get_connection_string(db_credentials, 'nova'))
@@ -548,10 +541,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         # Migrate heat
         ('heat',
          'heat-manage --config-file /etc/heat/heat-dbsync.conf db_sync'),
-        # Migrate neutron
-        ('neutron',
-         'neutron-db-manage --config-file /etc/neutron/neutron-dbsync.conf ' +
-         'upgrade heads'),
         # Migrate nova
         ('nova',
          'nova-manage --config-file /etc/nova/nova-dbsync.conf db sync'),

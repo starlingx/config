@@ -6983,20 +6983,7 @@ class ConductorManager(service.PeriodicService):
 
         # On service parameter add just update the host profile
         # for personalities pertinent to that service
-        if service == constants.SERVICE_TYPE_NETWORK:
-            if tsc.system_type == constants.TIS_AIO_BUILD:
-                personalities = [constants.CONTROLLER]
-                # AIO hosts must be rebooted following service reconfig
-                config_uuid = self._config_update_hosts(context, personalities,
-                                                        reboot=True)
-            else:
-                # worker hosts must be rebooted following service reconfig
-                self._config_update_hosts(context, [constants.WORKER],
-                                          reboot=True)
-                # controller hosts will actively apply the manifests
-                config_uuid = self._config_update_hosts(context,
-                                                        [constants.CONTROLLER])
-        elif service == constants.SERVICE_TYPE_NOVA:
+        if service == constants.SERVICE_TYPE_NOVA:
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER,
                                                      constants.WORKER])
@@ -7028,15 +7015,6 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['openstack::horizon::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-            elif service == constants.SERVICE_TYPE_NETWORK:
-                if not self._config_is_reboot_required(config_uuid):
-                    personalities = [constants.CONTROLLER]
-                    config_dict = {
-                        "personalities": personalities,
-                        "classes": ['openstack::neutron::server::runtime']
-                    }
-                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
             elif service == constants.SERVICE_TYPE_PLATFORM:
                 config_dict = {
@@ -7127,7 +7105,7 @@ class ConductorManager(service.PeriodicService):
                                                [constants.CONTROLLER])
         config_dict = {
             "personalities": [constants.CONTROLLER],
-            "classes": ['openstack::neutron::server::runtime'],
+            "classes": [],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -7141,8 +7119,7 @@ class ConductorManager(service.PeriodicService):
         personalities = [constants.CONTROLLER]
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::sysctl::controller::runtime',
-                        'openstack::neutron::server::runtime']
+            "classes": ['platform::sysctl::controller::runtime']
         }
         config_uuid = self._config_update_hosts(context, personalities)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
@@ -8756,8 +8733,7 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": [constants.CONTROLLER],
-            "classes": ['openstack::nova::controller::runtime',
-                        'openstack::neutron::server::runtime'],
+            "classes": ['openstack::nova::controller::runtime'],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 

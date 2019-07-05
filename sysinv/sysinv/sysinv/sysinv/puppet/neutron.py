@@ -180,33 +180,6 @@ class NeutronPuppet(openstack.OpenstackBasePuppet):
             'neutron::agents::ml2::sriov::physical_device_mappings':
                 device_mappings,
         }
-
-        if host.personality == constants.CONTROLLER:
-            service_parameters = self._get_service_parameter_configs(
-                constants.SERVICE_TYPE_NETWORK)
-
-            if service_parameters is None:
-                return config
-
-            # check if neutron bgp speaker is configured
-            if host.hostname == constants.CONTROLLER_0_HOSTNAME:
-                bgp_router_id = self._service_parameter_lookup_one(
-                    service_parameters,
-                    constants.SERVICE_PARAM_SECTION_NETWORK_BGP,
-                    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C0,
-                    None)
-            else:
-                bgp_router_id = self._service_parameter_lookup_one(
-                    service_parameters,
-                    constants.SERVICE_PARAM_SECTION_NETWORK_BGP,
-                    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C1,
-                    None)
-
-            if bgp_router_id is not None:
-                config.update({
-                    'openstack::neutron::params::bgp_router_id':
-                    bgp_router_id})
-
         return config
 
     def get_public_url(self):

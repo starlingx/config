@@ -2014,18 +2014,6 @@ def is_initial_config_complete():
     return os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)
 
 
-def recur_update(orig_dict, new_dict):
-    for key, val in new_dict.iteritems():
-        if isinstance(val, collections.Mapping):
-            tmp = recur_update(orig_dict.get(key, {}), val)
-            orig_dict[key] = tmp
-        elif isinstance(val, list) and isinstance(orig_dict.get(key), list):
-            orig_dict[key] = orig_dict.get[key] + val
-        else:
-            orig_dict[key] = new_dict[key]
-    return orig_dict
-
-
 def is_default_huge_pages_required(host):
     if not host_has_function(host, constants.WORKER):
         return False

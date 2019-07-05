@@ -14,7 +14,6 @@ import rpm
 import six
 import wsme
 
-from six.moves.urllib.parse import urlparse
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import StorageBackendConfig
@@ -95,64 +94,6 @@ def _validate_zero_or_range(name, value, min, max):
     except ValueError:
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' must be an integer value." % name))
-
-
-def _validate_neutron_ml2_mech(name, value):
-    allowed = constants.SERVICE_PARAM_NETWORK_ML2_MECH_DRIVERS
-    # can accept multiple comma separated values
-    values = value.split(',')
-    for item in values:
-        if item not in allowed:
-            raise wsme.exc.ClientSideError(_(
-                "Neutron ML2 mechanism driver must be one of: %s" % allowed))
-
-
-def _validate_neutron_ml2_ext(name, value):
-    allowed = constants.SERVICE_PARAM_NETWORK_ML2_EXT_DRIVERS
-    # can accept multiple comma separated values
-    values = value.split(',')
-    for item in values:
-        if item not in allowed:
-            raise wsme.exc.ClientSideError(_(
-                "Neutron ML2 extension driver must be one of: %s" % allowed))
-
-
-def _validate_neutron_network_types(name, value):
-    allowed = constants.SERVICE_PARAM_NETWORK_ML2_TENANT_TYPES
-    # can accept multiple comma separated values
-    values = value.split(',')
-    for item in values:
-        if item not in allowed:
-            raise wsme.exc.ClientSideError(_(
-                "Neutron tenant network type must be one of: %s" % allowed))
-
-
-def _validate_neutron_service_plugins(name, value):
-    allowed = constants.SERVICE_PARAM_NETWORK_DEFAULT_SERVICE_PLUGINS
-    # can accept multiple comma separated values
-    values = value.split(',')
-    for item in values:
-        if item not in allowed:
-            raise wsme.exc.ClientSideError(_(
-                "Neutron service plugins must be one of: %s" % allowed))
-
-
-def _validate_odl_connection_uri(name, value):
-    url = urlparse(value)
-
-    if cutils.is_valid_ip(url.hostname):
-        try:
-            ip_addr = netaddr.IPNetwork(url.hostname)
-        except netaddr.core.AddrFormatError:
-            raise wsme.exc.ClientSideError(_(
-                "Invalid IP address for ODL connection URI"))
-        if ip_addr.is_loopback():
-            raise wsme.exc.ClientSideError(_(
-                "SDN controller must not be loopback."))
-    elif url.hostname:
-        if constants.LOCALHOST_HOSTNAME in url.hostname.lower():
-            raise wsme.exc.ClientSideError(_(
-                "SDN controller must not be localhost."))
 
 
 def _validate_value_in_set(name, value, _set):
@@ -417,8 +358,6 @@ def _validate_domain(name, value):
             (name, value)))
 
 
-NETWORK_ODL_PROTECTED_PARAMETERS = [constants.SERVICE_PARAM_NAME_ML2_ODL_PASSWORD]
-
 NOVA_PCI_ALIAS_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU,
     constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_PF,
@@ -489,154 +428,6 @@ HORIZON_AUTH_PARAMETER_VALIDATOR = {
 HORIZON_AUTH_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC: 'openstack::horizon::params::lockout_period',
     constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES: 'openstack::horizon::params::lockout_retries',
-}
-
-# Neutron Service Parameters (optional)
-NEUTRON_ML2_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS,
-    constants.SERVICE_PARAM_NAME_ML2_EXTENSION_DRIVERS,
-    constants.SERVICE_PARAM_NAME_ML2_TENANT_NETWORK_TYPES,
-]
-
-NEUTRON_ML2_ODL_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_ML2_ODL_URL,
-    constants.SERVICE_PARAM_NAME_ML2_ODL_USERNAME,
-    constants.SERVICE_PARAM_NAME_ML2_ODL_PASSWORD,
-    constants.SERVICE_PARAM_NAME_ML2_PORT_BINDING_CONTROLLER,
-]
-
-NETWORK_BGP_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C0,
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C1,
-]
-
-NETWORK_SFC_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_FLOW_CLASSIFIER,
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_CHAIN,
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR_GROUP,
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR,
-    constants.SERVICE_PARAM_NAME_SFC_SFC_DRIVERS,
-    constants.SERVICE_PARAM_NAME_SFC_FLOW_CLASSIFIER_DRIVERS,
-]
-
-NETWORK_DHCP_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_DHCP_FORCE_METADATA,
-]
-
-NETWORK_DEFAULT_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS,
-    constants.SERVICE_PARAM_NAME_DEFAULT_DNS_DOMAIN,
-    constants.SERVICE_PARAM_NAME_BASE_MAC,
-    constants.SERVICE_PARAM_NAME_DVR_BASE_MAC,
-]
-
-NEUTRON_ML2_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS:
-        _validate_neutron_ml2_mech,
-    constants.SERVICE_PARAM_NAME_ML2_EXTENSION_DRIVERS:
-        _validate_neutron_ml2_ext,
-    constants.SERVICE_PARAM_NAME_ML2_TENANT_NETWORK_TYPES:
-        _validate_neutron_network_types,
-}
-
-NEUTRON_ML2_ODL_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_ML2_ODL_URL:
-        _validate_odl_connection_uri,
-    constants.SERVICE_PARAM_NAME_ML2_ODL_USERNAME:
-        _validate_not_empty,
-    constants.SERVICE_PARAM_NAME_ML2_ODL_PASSWORD:
-        _validate_not_empty,
-    constants.SERVICE_PARAM_NAME_ML2_PORT_BINDING_CONTROLLER:
-        _validate_not_empty,
-}
-
-NETWORK_BGP_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C0:
-        _validate_ipv4,
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C1:
-        _validate_ipv4,
-}
-
-NETWORK_SFC_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_FLOW_CLASSIFIER:
-        _validate_integer,
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_CHAIN:
-        _validate_integer,
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR_GROUP:
-        _validate_integer,
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR:
-        _validate_integer,
-    constants.SERVICE_PARAM_NAME_SFC_SFC_DRIVERS:
-        _validate_not_empty,
-    constants.SERVICE_PARAM_NAME_SFC_FLOW_CLASSIFIER_DRIVERS:
-        _validate_not_empty,
-}
-
-NETWORK_DHCP_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_DHCP_FORCE_METADATA:
-        _validate_boolean
-}
-
-NETWORK_DEFAULT_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS:
-        _validate_neutron_service_plugins,
-    constants.SERVICE_PARAM_NAME_DEFAULT_DNS_DOMAIN:
-        _validate_not_empty,
-    constants.SERVICE_PARAM_NAME_BASE_MAC:
-        _validate_mac_address,
-    constants.SERVICE_PARAM_NAME_DVR_BASE_MAC:
-        _validate_mac_address,
-}
-
-NEUTRON_ML2_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_ML2_MECHANISM_DRIVERS: 'neutron::plugins::ml2::mechanism_drivers',
-    constants.SERVICE_PARAM_NAME_ML2_EXTENSION_DRIVERS: 'neutron::plugins::ml2::extension_drivers',
-    constants.SERVICE_PARAM_NAME_ML2_TENANT_NETWORK_TYPES: 'neutron::plugins::ml2::tenant_network_types',
-}
-
-NEUTRON_ML2_ODL_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_ML2_ODL_URL: 'openstack::neutron::odl::params::url',
-    constants.SERVICE_PARAM_NAME_ML2_ODL_USERNAME: 'openstack::neutron::odl::params::username',
-    constants.SERVICE_PARAM_NAME_ML2_ODL_PASSWORD: 'openstack::neutron::odl::params::password',
-    constants.SERVICE_PARAM_NAME_ML2_PORT_BINDING_CONTROLLER: 'openstack::neutron::odl::params::port_binding_controller',
-}
-
-NETWORK_BGP_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C0: 'openstack::neutron::params::bgp_router_id',
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C1: 'openstack::neutron::params::bgp_router_id',
-}
-
-NETWORK_DHCP_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_DHCP_FORCE_METADATA: 'neutron::agents::dhcp::enable_force_metadata',
-}
-
-NETWORK_BGP_PARAMETER_DATA_FORMAT = {
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C0: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_BGP_ROUTER_ID_C1: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-}
-
-NETWORK_SFC_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_FLOW_CLASSIFIER: 'openstack::neutron::sfc::sfc_quota_flow_classifier',
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_CHAIN: 'openstack::neutron::sfc::sfc_quota_port_chain',
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR_GROUP: 'openstack::neutron::sfc::sfc_quota_port_pair_group',
-    constants.SERVICE_PARAM_NAME_SFC_QUOTA_PORT_PAIR: 'openstack::neutron::sfc::sfc_quota_port_pair',
-    constants.SERVICE_PARAM_NAME_SFC_SFC_DRIVERS: 'openstack::neutron::sfc::sfc_drivers',
-    constants.SERVICE_PARAM_NAME_SFC_FLOW_CLASSIFIER_DRIVERS: 'openstack::neutron::sfc::flowclassifier_drivers',
-}
-
-NETWORK_DHCP_PARAMETER_DATA_FORMAT = {
-    constants.SERVICE_PARAM_NAME_DHCP_FORCE_METADATA: SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN
-}
-
-NETWORK_DEFAULT_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS: 'neutron::service_plugins',
-    constants.SERVICE_PARAM_NAME_DEFAULT_DNS_DOMAIN: 'neutron::dns_domain',
-    constants.SERVICE_PARAM_NAME_BASE_MAC: 'neutron::base_mac',
-    constants.SERVICE_PARAM_NAME_DVR_BASE_MAC: 'neutron::dvr_base_mac',
-}
-
-NETWORK_DEFAULT_PARAMETER_DATA_FORMAT = {
-    constants.SERVICE_PARAM_NAME_DEFAULT_SERVICE_PLUGINS: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
 }
 
 # Maintenance Service Parameters
@@ -842,42 +633,6 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: HORIZON_AUTH_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: HORIZON_AUTH_PARAMETER_RESOURCE,
         },
-    },
-    constants.SERVICE_TYPE_NETWORK: {
-        constants.SERVICE_PARAM_SECTION_NETWORK_ML2: {
-            SERVICE_PARAM_OPTIONAL: NEUTRON_ML2_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: NEUTRON_ML2_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: NEUTRON_ML2_PARAMETER_RESOURCE,
-        },
-        constants.SERVICE_PARAM_SECTION_NETWORK_ML2_ODL: {
-            SERVICE_PARAM_OPTIONAL: NEUTRON_ML2_ODL_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: NEUTRON_ML2_ODL_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: NEUTRON_ML2_ODL_PARAMETER_RESOURCE,
-            SERVICE_PARAM_PROTECTED: NETWORK_ODL_PROTECTED_PARAMETERS,
-        },
-        constants.SERVICE_PARAM_SECTION_NETWORK_BGP: {
-            SERVICE_PARAM_OPTIONAL: NETWORK_BGP_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: NETWORK_BGP_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: NETWORK_BGP_PARAMETER_RESOURCE,
-        },
-        constants.SERVICE_PARAM_SECTION_NETWORK_SFC: {
-            SERVICE_PARAM_OPTIONAL: NETWORK_SFC_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: NETWORK_SFC_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: NETWORK_SFC_PARAMETER_RESOURCE,
-        },
-        constants.SERVICE_PARAM_SECTION_NETWORK_DHCP: {
-            SERVICE_PARAM_OPTIONAL: NETWORK_DHCP_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: NETWORK_DHCP_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: NETWORK_DHCP_PARAMETER_RESOURCE,
-            SERVICE_PARAM_DATA_FORMAT: NETWORK_DHCP_PARAMETER_DATA_FORMAT,
-        },
-        constants.SERVICE_PARAM_SECTION_NETWORK_DEFAULT: {
-            SERVICE_PARAM_OPTIONAL: NETWORK_DEFAULT_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: NETWORK_DEFAULT_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: NETWORK_DEFAULT_PARAMETER_RESOURCE,
-            SERVICE_PARAM_DATA_FORMAT: NETWORK_DEFAULT_PARAMETER_DATA_FORMAT,
-        },
-
     },
     constants.SERVICE_TYPE_NOVA: {
         constants.SERVICE_PARAM_SECTION_NOVA_PCI_ALIAS: {
