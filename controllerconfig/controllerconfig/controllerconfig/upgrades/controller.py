@@ -90,9 +90,6 @@ def get_db_credentials(shared_services, from_release):
          'sysinv': {'hiera_user_key': 'sysinv::db::postgresql::user',
                     'keyring_password_key': 'sysinv',
                     },
-         'ironic': {'hiera_user_key': 'ironic::db::postgresql::user',
-                    'keyring_password_key': 'ironic',
-                    },
          }
 
     if sysinv_constants.SERVICE_TYPE_VOLUME not in shared_services:
@@ -529,10 +526,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         f.write("[api_database]\n")
         f.write(get_connection_string(db_credentials, 'nova_api'))
 
-    with open("/etc/ironic/ironic-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'ironic'))
-
     if sysinv_constants.SERVICE_TYPE_VOLUME not in shared_services:
         with open("/etc/cinder/cinder-dbsync.conf", "w") as f:
             f.write("[database]\n")
@@ -565,10 +558,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
         # Migrate nova_api (new in R3)
         ('nova',
          'nova-manage --config-file /etc/nova/nova-dbsync.conf api_db sync'),
-        # Migrate ironic (new in R5)
-        ('ironic',
-         'ironic-dbsync --config-file /etc/ironic/ironic-dbsync.conf ' +
-         'upgrade'),
 
     ]
 
