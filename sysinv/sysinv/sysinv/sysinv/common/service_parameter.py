@@ -9,9 +9,7 @@
 
 import netaddr
 import pecan
-import re
 import rpm
-import six
 import wsme
 
 from sysinv.common import constants
@@ -129,67 +127,6 @@ def _validate_ip_address(name, value):
 def _validate_read_only(name, value):
     raise wsme.exc.ClientSideError(_(
         "Parameter '%s' is readonly" % name))
-
-
-def _validate_pci_alias(name, value):
-    allowed = ['vendor_id', 'product_id', 'class_id', 'name', 'device_id']
-    disallowed_names = [constants.NOVA_PCI_ALIAS_QAT_DH895XCC_PF_NAME,
-                        constants.NOVA_PCI_ALIAS_QAT_DH895XCC_VF_NAME,
-                        constants.NOVA_PCI_ALIAS_QAT_C62X_PF_NAME,
-                        constants.NOVA_PCI_ALIAS_QAT_C62X_VF_NAME,
-                        constants.NOVA_PCI_ALIAS_GPU_NAME]
-
-    existing_aliases = pecan.request.dbapi.service_parameter_get_all(
-        service=constants.SERVICE_TYPE_NOVA,
-        section=constants.SERVICE_PARAM_SECTION_NOVA_PCI_ALIAS)
-
-    # Note: the following regex should match that used for the pci_passthrough:alias
-    # flavor (metadata) property.
-    name_regex = re.compile("^[a-zA-Z-0-9]*")
-
-    for alias in value.rstrip(';').split(';'):
-        try:
-            alias_dict = dict(x.split('=') for x in alias.split(','))
-        except ValueError:
-            raise wsme.exc.ClientSideError(_(
-                    "Invalid PCI alias. Must be a string of <key>=<value>, pairs."))
-
-        if "name" not in alias_dict:
-            raise wsme.exc.ClientSideError(_(
-                    "PCI alias must specify a name"))
-
-        for existing in existing_aliases:
-            # Allow user to modify an existing name
-            if existing.name == name:
-                continue
-
-            # Make sure the specified name doesn't exist in any other alias
-            for alias in existing.value.rstrip(';').split(';'):
-                existing_dict = dict(x.split('=') for x in alias.split(','))
-                if alias_dict.get("name") == existing_dict.get("name"):
-                    raise wsme.exc.ClientSideError(_(
-                        "Duplicate PCI alias name %s") % alias_dict.get("name"))
-
-        if alias_dict.get("name") in disallowed_names:
-            raise wsme.exc.ClientSideError(_(
-                    "Invalid PCI alias name. Name cannot be one of %r") % disallowed_names)
-
-        if not name_regex.match(alias_dict.get("name")):
-            raise wsme.exc.ClientSideError(_(
-                    "Invalid PCI alias name. Only alphanumeric characters and '-' are allowed"))
-
-        for k, v in six.iteritems(alias_dict):
-            if k not in allowed:
-                raise wsme.exc.ClientSideError(_(
-                    "Invalid PCI alias parameter.  Must be one of: %s" % allowed))
-            elif k in ["device_id", "vendor_id", "product_id"]:
-                if not cutils.is_valid_pci_device_vendor_id(v):
-                    raise wsme.exc.ClientSideError(_(
-                        "Invalid PCI alias parameter '%s'. Must be a 4 digit hex value.") % k)
-            elif k == "class_id":
-                if not cutils.is_valid_pci_class_id(v):
-                    raise wsme.exc.ClientSideError(_(
-                        "Invalid PCI alias parameter '%s'. Must be a 6 digit hex value.") % k)
 
 
 def _get_network_pool_from_ip_address(ip, networks):
@@ -357,50 +294,6 @@ def _validate_domain(name, value):
             "Parameter '%s' includes an invalid domain name '%s'." %
             (name, value)))
 
-
-NOVA_PCI_ALIAS_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_PF,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_VF,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_PF,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_VF,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_PF,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_VF,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_USER,
-]
-
-NOVA_PCI_ALIAS_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU: _validate_pci_alias,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_PF: _validate_pci_alias,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_VF: _validate_pci_alias,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_PF: _validate_pci_alias,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_VF: _validate_pci_alias,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_PF: _validate_pci_alias,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_VF: _validate_pci_alias,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_USER: _validate_pci_alias,
-}
-
-NOVA_PCI_ALIAS_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU: 'openstack::nova::params::pci_alias',
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_PF: 'openstack::nova::params::pci_alias',
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_VF: 'openstack::nova::params::pci_alias',
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_PF: 'openstack::nova::params::pci_alias',
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_VF: 'openstack::nova::params::pci_alias',
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_PF: 'openstack::nova::params::pci_alias',
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_VF: 'openstack::nova::params::pci_alias',
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_USER: 'openstack::nova::params::pci_alias',
-}
-
-NOVA_PCI_ALIAS_PARAMETER_DATA_FORMAT = {
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_PF: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_VF: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_PF: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_VF: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_PF: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_VF: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-    constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_USER: SERVICE_PARAMETER_DATA_FORMAT_SKIP,
-}
 
 IDENTITY_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION,
@@ -632,14 +525,6 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: HORIZON_AUTH_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: HORIZON_AUTH_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: HORIZON_AUTH_PARAMETER_RESOURCE,
-        },
-    },
-    constants.SERVICE_TYPE_NOVA: {
-        constants.SERVICE_PARAM_SECTION_NOVA_PCI_ALIAS: {
-            SERVICE_PARAM_OPTIONAL: NOVA_PCI_ALIAS_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: NOVA_PCI_ALIAS_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: NOVA_PCI_ALIAS_PARAMETER_RESOURCE,
-            SERVICE_PARAM_DATA_FORMAT: NOVA_PCI_ALIAS_PARAMETER_DATA_FORMAT,
         },
     },
     constants.SERVICE_TYPE_SWIFT: {

@@ -60,16 +60,6 @@ DEFAULT_NOVA_PCI_ALIAS = [
     {"name": constants.NOVA_PCI_ALIAS_GPU_NAME}
 ]
 
-SERVICE_PARAM_NOVA_PCI_ALIAS = [
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU,
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_PF,
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_GPU_VF,
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_PF,
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_DH895XCC_VF,
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_PF,
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_QAT_C62X_VF,
-                constants.SERVICE_PARAM_NAME_NOVA_PCI_ALIAS_USER]
-
 
 class NovaPuppet(openstack.OpenstackBasePuppet):
     """Class to encapsulate puppet operations for nova configuration"""
@@ -382,31 +372,7 @@ class NovaPuppet(openstack.OpenstackBasePuppet):
         return self._get_service_user_name(self.PLACEMENT_NAME)
 
     def _get_pci_alias(self):
-        service_parameters = self._get_service_parameter_configs(
-            constants.SERVICE_TYPE_NOVA)
-
         alias_config = DEFAULT_NOVA_PCI_ALIAS[:]
-
-        if service_parameters is not None:
-            for p in SERVICE_PARAM_NOVA_PCI_ALIAS:
-                value = self._service_parameter_lookup_one(
-                    service_parameters,
-                    constants.SERVICE_PARAM_SECTION_NOVA_PCI_ALIAS,
-                    p, None)
-                if value is not None:
-                    # Replace any references to device_id with product_id
-                    # This is to align with the requirements of the
-                    # Nova PCI request alias schema.
-                    # (sysinv used device_id, nova uses product_id)
-                    value = value.replace("device_id", "product_id")
-
-                    aliases = value.rstrip(';').split(';')
-                    for alias_str in aliases:
-                        alias = dict((str(k), str(v)) for k, v in
-                                     (x.split('=') for x in
-                                      alias_str.split(',')))
-                        alias_config.append(alias)
-
         return alias_config
 
     def _get_compute_config(self, host):

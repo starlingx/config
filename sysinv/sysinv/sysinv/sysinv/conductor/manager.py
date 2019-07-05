@@ -5404,20 +5404,10 @@ class ConductorManager(service.PeriodicService):
 
         self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
-        config_uuid = self._config_update_hosts(context, [constants.WORKER],
-                                                reboot=False)
-
         extoam = self.dbapi.iextoam_get_one()
 
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
-
-        # make changes to the workers
-        config_dict = {
-            "personalities": [constants.WORKER],
-            "classes": ['openstack::nova::compute::runtime']
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_user_config(self, context):
         """Update the user configuration"""
@@ -6983,11 +6973,7 @@ class ConductorManager(service.PeriodicService):
 
         # On service parameter add just update the host profile
         # for personalities pertinent to that service
-        if service == constants.SERVICE_TYPE_NOVA:
-            config_uuid = self._config_update_hosts(context,
-                                                    [constants.CONTROLLER,
-                                                     constants.WORKER])
-        elif service == constants.SERVICE_TYPE_HTTP:
+        if service == constants.SERVICE_TYPE_HTTP:
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER,
                                                      constants.WORKER,
@@ -7020,23 +7006,6 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "classes": ['platform::mtce::runtime']
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-            elif service == constants.SERVICE_TYPE_NOVA:
-                personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities)
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['openstack::nova::controller::runtime']
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-                personalities = [constants.WORKER]
-                config_uuid = self._config_update_hosts(context, personalities)
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['openstack::nova::compute::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -8709,9 +8678,6 @@ class ConductorManager(service.PeriodicService):
         to_load = self.dbapi.load_get(upgrade.to_load)
         to_version = to_load.software_version
 
-        personalities = [constants.CONTROLLER, constants.WORKER]
-        config_uuid = self._config_update_hosts(context, personalities)
-
         self.dbapi.software_upgrade_update(
             upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING})
 
@@ -8730,18 +8696,6 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
-
-        config_dict = {
-            "personalities": [constants.CONTROLLER],
-            "classes": ['openstack::nova::controller::runtime'],
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-        config_dict = {
-            "personalities": [constants.WORKER],
-            "classes": ['openstack::nova::compute::runtime']
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def complete_upgrade(self, context, upgrade, state):
         """ Complete the upgrade"""
