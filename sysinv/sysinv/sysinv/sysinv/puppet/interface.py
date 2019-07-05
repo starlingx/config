@@ -277,6 +277,19 @@ class InterfacePuppet(base.BasePuppet):
         except exception.AddressNotFoundByName:
             pass
 
+        try:
+            ironic_address = self._get_address_by_name(
+                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_IRONIC)
+
+            ironic_floating_ip = (str(ironic_address.address) + '/' +
+                                  str(ironic_address.prefix))
+
+            floating_ips.update({
+                constants.NETWORK_TYPE_IRONIC: ironic_floating_ip,
+            })
+        except exception.AddressNotFoundByName:
+            pass
+
         return floating_ips
 
     def _get_datanetworks(self, host):
