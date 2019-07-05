@@ -1998,14 +1998,8 @@ class DockerHelper(object):
                     LOG.info("Armada apply command = %s" % cmd)
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
-                        if ARMADA_MANIFEST_APPLY_SUCCESS_MSG in exec_logs:
-                            LOG.info("Application manifest %s was successfully "
-                                     "applied/re-applied." % manifest_file)
-                        else:
-                            rc = False
-                            LOG.error("Received a false positive response from "
-                                      "Docker/Armada. Failed to apply application "
-                                      "manifest %s: %s." % (manifest_file, exec_logs))
+                        LOG.info("Application manifest %s was successfully "
+                                 "applied/re-applied." % manifest_file)
                     else:
                         rc = False
                         if exit_code == CONTAINER_ABNORMAL_EXIT_CODE:
@@ -2035,14 +2029,7 @@ class DockerHelper(object):
                                   "--debug --release " + release + " --version " +\
                                   str(version) + tiller_host + " | tee -a " + logfile + "'"
                         (exit_code, exec_logs) = armada_svc.exec_run(cmd)
-                        if exit_code == 0:
-                            if ARMADA_RELEASE_ROLLBACK_FAILURE_MSG in exec_logs:
-                                rc = False
-                                LOG.error("Received a false positive response from "
-                                          "Docker/Armada. Failed to rollback release "
-                                          "(%s): %s" % (release, exec_logs))
-                                break
-                        else:
+                        if exit_code != 0:
                             rc = False
                             if exit_code == CONTAINER_ABNORMAL_EXIT_CODE:
                                 LOG.error("Failed to rollback release (%s). "
