@@ -46,7 +46,6 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
         neutron_region_name = self._operator.neutron.get_region_name()
-        cinder_region_name = self._operator.cinder.get_region_name()
         nova_region_name = self._operator.nova.get_region_name()
         barbican_region_name = self._operator.barbican.get_region_name()
 
@@ -54,7 +53,6 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
             # The region in which the identity server can be found
             'sysinv::region_name': self._keystone_region_name(),
             'sysinv::neutron_region_name': neutron_region_name,
-            'sysinv::cinder_region_name': cinder_region_name,
             'sysinv::nova_region_name': nova_region_name,
             'sysinv::barbican_region_name': barbican_region_name,
 

@@ -220,36 +220,6 @@ class StorageBackendController(rest.RestController):
                     sort_key=sort_key,
                     sort_dir=sort_dir)
 
-        # TODO: External backend case for emc_vnx, hpe3par, hpelefthand will be
-        # handled in a separate task
-        # If cinder is not configured yet, calling cinder_has_external_backend() will
-        # timeout. If any of these loosely coupled backend exists, create an external
-        # backend with services set to cinder if external backend is not created yet.
-        # if api_helper.is_svc_enabled(storage_backends, constants.SB_SVC_CINDER):
-        #    try:
-        #        if pecan.request.rpcapi.cinder_has_external_backend(pecan.request.context):
-        #
-        #            # Check if external backend already exists.
-        #            need_soft_ext_sb = True
-        #            for s_b in storage_backends:
-        #                if s_b.backend == constants.SB_TYPE_EXTERNAL:
-        #                    if s_b.services is None:
-        #                        s_b.services = [constants.SB_SVC_CINDER]
-        #                    elif constants.SB_SVC_CINDER not in s_b.services:
-        #                        s_b.services.append(constants.SB_SVC_CINDER)
-        #                    need_soft_ext_sb = False
-        #                    break
-        #
-        #            if need_soft_ext_sb:
-        #                ext_sb = StorageBackend()
-        #                ext_sb.backend = constants.SB_TYPE_EXTERNAL
-        #                ext_sb.state = constants.SB_STATE_CONFIGURED
-        #                ext_sb.task = constants.SB_TASK_NONE
-        #                ext_sb.services = [constants.SB_SVC_CINDER]
-        #                storage_backends.extend([ext_sb])
-        #    except Timeout:
-        #        LOG.exception("Timeout while getting external backend list!")
-
         return StorageBackendCollection\
             .convert_with_links(storage_backends,
                                 limit,

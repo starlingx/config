@@ -1425,26 +1425,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_cinder_partition_size'))
 
-    def validate_emc_removal(self, context):
-        """
-        Check that it is safe to remove the EMC SAN
-        """
-        return self.call(context, self.make_msg('validate_emc_removal'))
-
-    def validate_hpe3par_removal(self, context, backend):
-        """
-        Check that it is safe to remove the HPE 3PAR storage array
-        """
-        return self.call(context,
-                         self.make_msg('validate_hpe3par_removal',
-                                       backend=backend))
-
-    def validate_hpelefthand_removal(self, context):
-        """
-        Check that it is safe to remove the HPE Lefthand storage array
-        """
-        return self.call(context, self.make_msg('validate_hpelefthand_removal'))
-
     def region_has_ceph_backend(self, context):
         """
         Send a request to primary region to see if ceph backend is configured
@@ -1529,16 +1509,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('cinder_prepare_db_for_volume_restore'))
-
-    def cinder_has_external_backend(self, context):
-        """
-        Check if cinder has loosely coupled external backends.
-        These are the possible backends: emc_vnx, hpe3par, hpelefthand
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('cinder_has_external_backend'))
 
     def get_ceph_object_pool_name(self, context):
         """
