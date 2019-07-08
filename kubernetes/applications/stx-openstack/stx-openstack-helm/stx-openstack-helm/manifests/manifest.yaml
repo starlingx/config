@@ -124,6 +124,13 @@ data:
     type: tar
     location: http://172.17.0.1/helm_charts/starlingx/nginx-ports-control-0.1.0.tgz
     subpath: nginx-ports-control
+  upgrade:
+    no_hooks: false
+    pre:
+      delete:
+        - type: job
+          labels:
+            release_group: osh-openstack-nginx-ports-control
   dependencies: []
 ---
 schema: armada/Chart/v1
