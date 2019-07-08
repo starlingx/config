@@ -417,7 +417,7 @@ def _check(self, op, tier):
                     "initial configuration to be complete and controller node unlocked.")
             raise wsme.exc.ClientSideError(msg)
 
-        if utils.is_aio_system(pecan.request.dbapi):
+        if cutils.is_aio_system(pecan.request.dbapi):
             # Deny adding secondary tiers if primary tier backend is not configured
             # for cluster.
             clusterId = tier.get('forclusterid') or tier.get('cluster_uuid')

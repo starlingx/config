@@ -1615,9 +1615,11 @@ def is_filesystem_supported(fs, personality):
     return False
 
 
-def get_controller_fs_scratch_size():
-    """ Get the filesystem scratch size setup by kickstart.
+def get_current_fs_size(fs_name):
+    """ Get the filesystem size from the lvdisplay command.
     """
+
+    volume_name = fs_name + "-lv"
 
     args = ["lvdisplay",
             "--columns",
@@ -1627,26 +1629,25 @@ def get_controller_fs_scratch_size():
             "g",
             "--noheading",
             "--nosuffix",
-            "/dev/cgts-vg/scratch-lv"]
+            "/dev/cgts-vg/" + volume_name]
 
-    scratch_gib = 8
+    size_gib = 0
 
     with open(os.devnull, "w") as fnull:
         try:
             lvdisplay_output = subprocess.check_output(args, stderr=fnull)
         except subprocess.CalledProcessError:
-            raise Exception("Failed to get controller filesystem scratch size")
+            raise Exception("Failed to get filesystem %s size" % fs_name)
 
         lvdisplay_dict = output_to_dict(lvdisplay_output)
-        scratch_gib = int(math.ceil(float(lvdisplay_dict.get('scratch-lv'))))
-        if not scratch_gib:
-            # ConfigFail
-            raise Exception("Unexpected scratch_gib=%s" % scratch_gib)
+        size_gib = int(math.ceil(float(lvdisplay_dict.get(volume_name))))
+        if not size_gib:
+            raise Exception("Unexpected size_gib=%s" % size_gib)
 
-    return scratch_gib
+    return size_gib
 
 
-def get_controller_fs_backup_size(rootfs_device):
+def get_default_controller_fs_backup_size(rootfs_device):
     """ Get the filesystem backup size.
     """
 
@@ -1654,7 +1655,8 @@ def get_controller_fs_backup_size(rootfs_device):
     disk_size = int(disk_size / 1024)
 
     if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
-        LOG.debug("Disk size : %s ... large disk defaults" % disk_size)
+        LOG.info("Disk size for %s: %s ... large disk defaults" %
+                 (rootfs_device, disk_size))
 
         database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
@@ -1664,7 +1666,8 @@ def get_controller_fs_backup_size(rootfs_device):
 
     elif disk_size >= constants.MINIMUM_DISK_SIZE:
 
-        LOG.debug("Disk size : %s ... small disk defaults" % disk_size)
+        LOG.info("Disk size for %s : %s ... small disk defaults" %
+                 (rootfs_device, disk_size))
 
         # Due to the small size of the disk we can't provide the
         # proper amount of backup space which is (database + cgcs_lv
@@ -1672,7 +1675,8 @@ def get_controller_fs_backup_size(rootfs_device):
         backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
 
     else:
-        LOG.info("Disk size : %s ... disk too small" % disk_size)
+        LOG.info("Disk size for %s : %s ... disk too small" %
+                 (rootfs_device, disk_size))
         raise exception.SysinvException("Disk size requirements not met.")
 
     return backup_lv_size
@@ -1726,6 +1730,12 @@ def read_filtered_directory_content(dirpath, *filters):
 
 
 def get_disk_capacity_mib(device_node):
+
+    # Check if the device_node is a full path, if not assume
+    # /dev/<device_node>
+    if device_node[0] != "/":
+        device_node = os.path.join('/dev', device_node)
+
     # Run command
     fdisk_command = 'fdisk -l %s | grep "^Disk %s:"' % (
         device_node, device_node)
@@ -2037,3 +2047,21 @@ def is_inventory_config_complete(dbapi, forihostid):
         return len(pvs) > 0
     except Exception:
         return False
+
+
+def is_aio_system(dbapi):
+    system = dbapi.isystem_get_one()
+    return system.system_type == constants.TIS_AIO_BUILD
+
+
+def is_aio_simplex_system(dbapi):
+    system = dbapi.isystem_get_one()
+    return (system.system_type == constants.TIS_AIO_BUILD and
+            system.system_mode == constants.SYSTEM_MODE_SIMPLEX)
+
+
+def is_aio_duplex_system(dbapi):
+    system = dbapi.isystem_get_one()
+    return (system.system_type == constants.TIS_AIO_BUILD and
+            (system.system_mode == constants.SYSTEM_MODE_DUPLEX or
+             system.system_mode == constants.SYSTEM_MODE_DUPLEX_DIRECT))

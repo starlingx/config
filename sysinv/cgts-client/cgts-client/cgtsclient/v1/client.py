@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -31,6 +31,7 @@ from cgtsclient.v1 import ethernetport
 from cgtsclient.v1 import fernet
 from cgtsclient.v1 import health
 from cgtsclient.v1 import helm
+from cgtsclient.v1 import host_fs
 from cgtsclient.v1 import icommunity
 from cgtsclient.v1 import icpu
 from cgtsclient.v1 import idisk
@@ -157,3 +158,4 @@ class Client(http.HTTPClient):
         self.label = label.KubernetesLabelManager(self)
         self.fernet = fernet.FernetManager(self)
         self.app = app.AppManager(self)
+        self.host_fs = host_fs.HostFsManager(self)

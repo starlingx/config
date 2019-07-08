@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -82,6 +82,7 @@ from sysinv.api.controllers.v1 import system
 from sysinv.api.controllers.v1 import trapdest
 from sysinv.api.controllers.v1 import upgrade
 from sysinv.api.controllers.v1 import user
+from sysinv.api.controllers.v1 import host_fs
 
 
 class MediaType(base.APIBase):
@@ -244,6 +245,9 @@ class V1(base.APIBase):
 
     apps = [link.Link]
     "Links to the application resource "
+
+    host_fs = [link.Link]
+    "Links to the host_fs resource"
 
     @classmethod
     def convert(self):
@@ -764,6 +768,13 @@ class V1(base.APIBase):
                                 'interface_datanetworks', '',
                                 bookmark=True)]
 
+        v1.host_fs = [link.Link.make_link('self', pecan.request.host_url,
+                                          'host_fs', ''),
+                      link.Link.make_link('bookmark',
+                                          pecan.request.host_url,
+                                          'host_fs', '',
+                                          bookmark=True)]
+
         return v1
 
 
@@ -831,6 +842,7 @@ class Controller(rest.RestController):
     apps = kube_app.KubeAppController()
     datanetworks = datanetwork.DataNetworkController()
     interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController()
+    host_fs = host_fs.HostFsController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

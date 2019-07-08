@@ -222,8 +222,8 @@ class ihost(Base):
     config_applied = Column(String(255))
     config_target = Column(String(255))
 
-    boot_device = Column(String(255), default="sda")
-    rootfs_device = Column(String(255), default="sda")
+    boot_device = Column(String(255), default="/dev/sda")
+    rootfs_device = Column(String(255), default="/dev/sda")
     install_output = Column(String(255), default="text")
     console = Column(String(255), default="ttyS0,115200")
     tboot = Column(String(64), default="")

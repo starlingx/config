@@ -804,6 +804,23 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
             )
         )
 
+    def update_host_filesystem_config(self, context,
+                                      host=None,
+                                      filesystem_list=None):
+        """Synchronously, have the conductor update the host's filesystem.
+
+        :param context: request context.
+        :param host: the host to update the filesystems on.
+        :param filesystem_list: list of host filesystems.
+        """
+        return self.call(
+            context, self.make_msg(
+                'update_host_filesystem_config',
+                host=host,
+                filesystem_list=filesystem_list
+            )
+        )
+
     def update_lvm_config(self, context):
         """Synchronously, have the conductor update the LVM configuration.
 

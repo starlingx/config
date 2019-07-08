@@ -1255,54 +1255,64 @@ class AgentManager(service.PeriodicService):
                     self._prev_lvg = None
                     pass
 
-            # Update the filesystems
-
-            # Get the supported filesystems for this host
+            # Create the filesystems
             filesystems = []
 
-            # check if the scratch fs is supported for current host
-            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH, self._ihost_personality):
-                scratch_lv_size = utils.get_controller_fs_scratch_size()
-                data = {
-                    'name': constants.FILESYSTEM_NAME_SCRATCH,
-                    'size': scratch_lv_size,
-                    'logical_volume': constants.FILESYSTEM_LV_DICT[
-                        constants.FILESYSTEM_NAME_SCRATCH]
-                }
-                filesystems.append(data)
-
-            # check if the backup fs is supported for current host
-            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_BACKUP, self._ihost_personality):
-                backup_lv_size = utils.get_controller_fs_backup_size(self._ihost_rootfs_device)
-                data = {
-                    'name': constants.FILESYSTEM_NAME_BACKUP,
-                    'size': backup_lv_size,
-                    'logical_volume': constants.FILESYSTEM_LV_DICT[
-                        constants.FILESYSTEM_NAME_BACKUP]
-                }
-                filesystems.append(data)
-
-            # check if the docker fs is supported for current host
-            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER, self._ihost_personality):
-                data = {
-                    'name': constants.FILESYSTEM_NAME_DOCKER,
-                    'size': constants.KUBERNETES_DOCKER_STOR_SIZE,
-                    'logical_volume': constants.FILESYSTEM_LV_DICT[
-                        constants.FILESYSTEM_NAME_DOCKER]
-                }
-                filesystems.append(data)
-
-            if filesystems and ((self._prev_fs is None) or (self._prev_fs != filesystems)):
+            if self._prev_fs is None:
                 try:
-                    rpcapi.create_host_filesystems(icontext,
-                                                   self._ihost_uuid,
-                                                   filesystems)
-                    self._prev_fs = filesystems
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating fs"
-                                  "conductor.")
+                    # Get the supported filesystems for this host with default
+                    # sizes
+
+                    # check if the scratch fs is supported for current host
+                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH,
+                                                     self._ihost_personality):
+                        scratch_lv_size = utils.get_current_fs_size("scratch")
+                        data = {
+                            'name': constants.FILESYSTEM_NAME_SCRATCH,
+                            'size': scratch_lv_size,
+                            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                                constants.FILESYSTEM_NAME_SCRATCH]
+                        }
+                        filesystems.append(data)
+
+                    # check if the backup fs is supported for current host
+                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_BACKUP,
+                                                     self._ihost_personality):
+                        backup_lv_size = utils.get_default_controller_fs_backup_size(self._ihost_rootfs_device)
+                        data = {
+                            'name': constants.FILESYSTEM_NAME_BACKUP,
+                            'size': backup_lv_size,
+                            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                                constants.FILESYSTEM_NAME_BACKUP]
+                        }
+                        filesystems.append(data)
+
+                    # check if the docker fs is supported for current host
+                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER,
+                                                     self._ihost_personality):
+                        data = {
+                            'name': constants.FILESYSTEM_NAME_DOCKER,
+                            'size': constants.KUBERNETES_DOCKER_STOR_SIZE,
+                            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                                constants.FILESYSTEM_NAME_DOCKER]
+                        }
+                        filesystems.append(data)
+
+                    if filesystems:
+                        # Create the filesystems if they do not already exist.
+                        # This audit does not check if the fs size has changed.
+                        # Doing so would interfere with the resizes done via
+                        # the HostFs API
+                        rpcapi.create_host_filesystems(icontext,
+                                                       self._ihost_uuid,
+                                                       filesystems)
+                        self._prev_fs = filesystems
+
+                except Exception as e:
+                    LOG.exception(
+                        "Sysinv Agent exception creating the host filesystems."
+                        " %s" % e)
                     self._prev_fs = None
-                    pass
 
             self._report_config_applied(icontext)
 

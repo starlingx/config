@@ -32,9 +32,12 @@ import tsconfig.tsconfig as tsc
 from oslo_config import cfg
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import health
 from sysinv.helm import common as helm_common
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
+
+from fm_api import constants as fm_constants
 
 LOG = log.getLogger(__name__)
 
@@ -250,6 +253,46 @@ def is_aio_simplex_host_unlocked(host):
             host['invprovision'] != constants.PROVISIONING)
 
 
+def is_host_state_valid_for_fs_resize(host):
+    """
+    This function verifies the administrative, operational, availability of
+    each host.
+    """
+
+    if (host.administrative != constants.ADMIN_UNLOCKED or
+            host.availability != constants.AVAILABILITY_AVAILABLE or
+            host.operational != constants.OPERATIONAL_ENABLED):
+
+        # A node can become degraded due to not free space available in a
+        # FS and thus block the resize operation. If the only alarm that
+        # degrades a node is a filesystem alarm, we shouldn't block the
+        # resize as the resize itself will clear the degrade.
+        health_helper = health.Health(pecan.request.dbapi)
+
+        degrade_alarms = health_helper.get_alarms_degrade(
+            pecan.request.context,
+            alarm_ignore_list=[fm_constants.FM_ALARM_ID_FS_USAGE],
+            entity_instance_id_filter=(host.personality + "-"))
+        allowed_resize = False
+        if (not degrade_alarms and
+                host.availability == constants.AVAILABILITY_DEGRADED):
+            allowed_resize = True
+
+        if not allowed_resize:
+            alarm_explanation = ""
+            if degrade_alarms:
+                alarm_explanation = "Check alarms with the following IDs: %s" % str(degrade_alarms)
+            raise wsme.exc.ClientSideError(
+                _("This operation requires controllers to be %s, %s, %s. "
+                  "Current status is %s, %s, %s. %s." %
+                  (constants.ADMIN_UNLOCKED, constants.OPERATIONAL_ENABLED,
+                   constants.AVAILABILITY_AVAILABLE,
+                   host.administrative, host.operational,
+                   host.availability, alarm_explanation)))
+
+    return True
+
+
 def get_vswitch_type():
     system = pecan.request.dbapi.isystem_get_one()
     return system.capabilities.get('vswitch_type')
@@ -409,34 +452,41 @@ def get_distributed_cloud_role(dbapi=None):
     return system.distributed_cloud_role
 
 
-def is_aio_system(dbapi=None):
-    if not dbapi:
-        dbapi = pecan.request.dbapi
-    system = dbapi.isystem_get_one()
-    return (system.system_type == constants.TIS_AIO_BUILD)
-
-
-def is_aio_simplex_system(dbapi=None):
-    if not dbapi:
-        dbapi = pecan.request.dbapi
-    system = dbapi.isystem_get_one()
-    return (system.system_type == constants.TIS_AIO_BUILD and
-            system.system_mode == constants.SYSTEM_MODE_SIMPLEX)
-
-
-def is_aio_duplex_system(dbapi=None):
-    if not dbapi:
-        dbapi = pecan.request.dbapi
-    system = dbapi.isystem_get_one()
-    return (system.system_type == constants.TIS_AIO_BUILD and
-            (system.system_mode == constants.SYSTEM_MODE_DUPLEX or
-             system.system_mode == constants.SYSTEM_MODE_DUPLEX_DIRECT))
-
-
 def get_worker_count(dbapi=None):
     if not dbapi:
         dbapi = pecan.request.dbapi
     return len(dbapi.ihost_get_by_personality(constants.WORKER))
+
+
+def get_node_cgtsvg_limit(host):
+    """Calculate free space for host filesystem
+       returns: cgtsvg_max_free_gib
+    """
+    cgtsvg_free_mib = 0
+
+    ipvs = pecan.request.dbapi.ipv_get_by_ihost(host.uuid)
+    for ipv in ipvs:
+        if (ipv.lvm_vg_name == constants.LVG_CGTS_VG and
+                ipv.pv_state != constants.PROVISIONED):
+            msg = _(
+                "There are still unprovisioned physical volumes on '%s'. "
+                "Cannot perform operation." % host.hostname)
+            raise wsme.exc.ClientSideError(msg)
+
+    ilvgs = pecan.request.dbapi.ilvg_get_by_ihost(host.uuid)
+    for ilvg in ilvgs:
+        if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
+                ilvg.lvm_vg_size and ilvg.lvm_vg_total_pe):
+            cgtsvg_free_mib = (int(ilvg.lvm_vg_size) * int(
+                ilvg.lvm_vg_free_pe)
+                               / int(ilvg.lvm_vg_total_pe)) / (1024 * 1024)
+            break
+
+    cgtsvg_max_free_gib = cgtsvg_free_mib / 1024
+
+    LOG.info(
+        "get_node_cgtsvg_limit cgtsvg_max_free_gib=%s" % cgtsvg_max_free_gib)
+    return cgtsvg_max_free_gib
 
 
 class SBApiHelper(object):

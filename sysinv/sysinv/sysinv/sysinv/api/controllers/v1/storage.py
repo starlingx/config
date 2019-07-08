@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -573,7 +573,7 @@ def _check_host(stor):
             "System must have a %s backend" % constants.SB_TYPE_CEPH))
 
     # semantic check: whether at least 2 unlocked hosts are monitors
-    if not utils.is_aio_system(pecan.request.dbapi):
+    if not cutils.is_aio_system(pecan.request.dbapi):
         ceph_helper = ceph.CephApiOperator()
         num_monitors, required_monitors, __ = \
             ceph_helper.get_monitors_status(pecan.request.dbapi)

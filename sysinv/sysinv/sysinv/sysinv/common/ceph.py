@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016, 2018 Wind River Systems, Inc.
+# Copyright (c) 2016, 2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,13 +19,10 @@ import requests
 
 from cephclient import wrapper as ceph
 
-from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.openstack.common import log as logging
-
-from sysinv.api.controllers.v1.utils import is_aio_system
 
 LOG = logging.getLogger(__name__)
 
@@ -371,7 +368,7 @@ class CephApiOperator(object):
             self._crushmap_root_mirror(self._default_tier, tier.name)
         except exception.CephCrushTierAlreadyExists:
             pass
-        if utils.is_aio_simplex_system(pecan.request.dbapi):
+        if cutils.is_aio_simplex_system(pecan.request.dbapi):
             # Since we have a single host replication is done on OSDs
             # to ensure disk based redundancy.
             replicate_by = 'osd'
@@ -630,7 +627,7 @@ class CephApiOperator(object):
 
     def get_monitors_status(self, db_api):
         num_inv_monitors = 0
-        if utils.is_aio_system(pecan.request.dbapi):
+        if cutils.is_aio_system(pecan.request.dbapi):
             required_monitors = constants.MIN_STOR_MONITORS_AIO
         else:
             required_monitors = constants.MIN_STOR_MONITORS_MULTINODE
@@ -675,7 +672,7 @@ class CephApiOperator(object):
         num_active_monitors = len(active_monitors)
         if (num_inv_monitors and num_active_monitors == 0 and
                 cutils.is_initial_config_complete() and
-                not utils.is_aio_system(pecan.request.dbapi)):
+                not cutils.is_aio_system(pecan.request.dbapi)):
             # The active controller always has a monitor.
             # We are on standard or storage, initial configuration
             # was completed and Ceph is down so we can't check if
@@ -713,7 +710,7 @@ def fix_crushmap(dbapi=None):
 
     if not os.path.isfile(crushmap_flag_file):
         _operator = CephApiOperator()
-        if not is_aio_system(dbapi):
+        if not cutils.is_aio_system(dbapi):
             # At least two monitors have to be running on a standard deployment,
             # otherwise don't even try to load the crushmap.
             active_mons, required_mons, __ = _operator.get_monitors_status(dbapi)
@@ -762,10 +759,10 @@ def get_ceph_storage_model(dbapi=None):
     if not dbapi:
         dbapi = pecan.request.dbapi
 
-    if utils.is_aio_simplex_system(dbapi):
+    if cutils.is_aio_simplex_system(dbapi):
         return constants.CEPH_AIO_SX_MODEL
 
-    if utils.is_aio_duplex_system(dbapi):
+    if cutils.is_aio_duplex_system(dbapi):
         return constants.CEPH_CONTROLLER_MODEL
 
     is_storage_model = False

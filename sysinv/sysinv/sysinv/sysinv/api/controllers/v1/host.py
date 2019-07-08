@@ -62,6 +62,7 @@ from sysinv.api.controllers.v1 import partition
 from sysinv.api.controllers.v1 import ceph_mon
 from sysinv.api.controllers.v1 import interface as interface_api
 from sysinv.api.controllers.v1 import lvg as lvg_api
+from sysinv.api.controllers.v1 import host_fs as host_fs_api
 from sysinv.api.controllers.v1 import memory
 from sysinv.api.controllers.v1 import node as node_api
 from sysinv.api.controllers.v1 import profile
@@ -483,6 +484,9 @@ class Host(base.APIBase):
     ilvgs = [link.Link]
     "Links to the collection of ilvgs on this ihost"
 
+    host_fs = [link.Link]
+    "Links to the collection of host_fs on this ihost"
+
     isensors = [link.Link]
     "Links to the collection of isensors on this ihost"
 
@@ -708,6 +712,18 @@ class Host(base.APIBase):
                                uhost.uuid + "/ilvgs",
                                bookmark=True)
                            ]
+
+            uhost.host_fs = [link.Link.make_link('self',
+                                                 pecan.request.host_url,
+                                                 'ihosts',
+                                                 uhost.uuid + "/host_fs"),
+                             link.Link.make_link(
+                                 'bookmark',
+                                 pecan.request.host_url,
+                                 'ihosts',
+                                 uhost.uuid + "/host_fs",
+                                 bookmark=True)
+                             ]
 
             uhost.isensors = [link.Link.make_link('self',
                                                   pecan.request.host_url,
@@ -1040,6 +1056,9 @@ class HostController(rest.RestController):
 
     ilvgs = lvg_api.LVGController(from_ihosts=True)
     "Expose ilvgs as a sub-element of ihosts"
+
+    host_fs = host_fs_api.HostFsController(from_ihosts=True)
+    "Expose host_fs as a sub-element of ihosts"
 
     addresses = address_api.AddressController(parent="ihosts")
     "Expose addresses as a sub-element of ihosts"
@@ -4639,7 +4658,7 @@ class HostController(rest.RestController):
                     except Exception as e:
                         raise wsme.exc.ClientSideError(
                             _("Restore Ceph config failed: %s" % e))
-            elif utils.is_aio_system(pecan.request.dbapi):
+            elif cutils.is_aio_system(pecan.request.dbapi):
                 # TODO(wz): Need more work to restore ceph for AIO
                 LOG.info("For an AIO system, Restore crushmap...")
                 try:
@@ -4832,7 +4851,7 @@ class HostController(rest.RestController):
         if not personality:
             return
 
-        if personality == constants.WORKER and utils.is_aio_duplex_system():
+        if personality == constants.WORKER and cutils.is_aio_duplex_system(pecan.request.dbapi):
             if utils.get_worker_count() >= constants.AIO_DUPLEX_MAX_WORKERS:
                 msg = _("All-in-one Duplex is restricted to "
                         "%s workers.") % constants.AIO_DUPLEX_MAX_WORKERS
@@ -5337,7 +5356,7 @@ class HostController(rest.RestController):
         elif StorageBackendConfig.has_backend_configured(
                 pecan.request.dbapi,
                 constants.SB_TYPE_CEPH):
-            if utils.is_aio_simplex_system(pecan.request.dbapi):
+            if cutils.is_aio_simplex_system(pecan.request.dbapi):
                 # Check if host has enough OSDs configured for each tier
                 tiers = pecan.request.dbapi.storage_tier_get_all()
                 ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
@@ -5357,7 +5376,7 @@ class HostController(rest.RestController):
                                % {'replication': str(replication), 'word': word, 'tier': tier['name']})
                         raise wsme.exc.ClientSideError(msg)
             else:
-                if utils.is_aio_duplex_system(pecan.request.dbapi):
+                if cutils.is_aio_duplex_system(pecan.request.dbapi):
                     host_stors = pecan.request.dbapi.istor_get_by_ihost(ihost['id'])
                     if not host_stors:
                         raise wsme.exc.ClientSideError(

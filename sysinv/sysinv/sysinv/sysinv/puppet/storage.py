@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,24 +23,16 @@ class StoragePuppet(base.BasePuppet):
         config = {}
         config.update(self._get_partition_config(host))
         config.update(self._get_lvm_config(host))
+        config.update(self._get_host_fs_config(host))
         return config
 
     def _get_filesystem_config(self):
         config = {}
 
         controller_fs_list = self.dbapi.controller_fs_get_list()
+
         for controller_fs in controller_fs_list:
-            if controller_fs.name == constants.FILESYSTEM_NAME_BACKUP:
-                config.update({
-                    'platform::filesystem::backup::params::lv_size':
-                        controller_fs.size
-                })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_SCRATCH:
-                config.update({
-                    'platform::filesystem::scratch::params::lv_size':
-                        controller_fs.size
-                })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_DATABASE:
+            if controller_fs.name == constants.FILESYSTEM_NAME_DATABASE:
                 pgsql_gib = int(controller_fs.size) * 2
                 config.update({
                     'platform::drbd::pgsql::params::lv_size': pgsql_gib
@@ -60,11 +52,6 @@ class StoragePuppet(base.BasePuppet):
                         True,
                     'platform::drbd::patch_vault::params::lv_size':
                         controller_fs.size,
-                })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_DOCKER:
-                config.update({
-                    'platform::filesystem::docker::params::lv_size':
-                        controller_fs.size
                 })
             elif controller_fs.name == constants.FILESYSTEM_NAME_ETCD:
                 config.update({
@@ -243,3 +230,23 @@ class StoragePuppet(base.BasePuppet):
     def format_lvm_filter(self, devices):
         filters = ['"a|%s|"' % f for f in devices] + ['"r|.*|"']
         return '[ %s ]' % ', '.join(filters)
+
+    def _get_host_fs_config(self, host):
+        config = {}
+
+        filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
+        for fs in filesystems:
+            if fs.name == constants.FILESYSTEM_NAME_BACKUP:
+                config.update({
+                    'platform::filesystem::backup::params::lv_size': fs.size
+                })
+            elif fs.name == constants.FILESYSTEM_NAME_SCRATCH:
+                config.update({
+                    'platform::filesystem::scratch::params::lv_size': fs.size
+                })
+            elif fs.name == constants.FILESYSTEM_NAME_DOCKER:
+                config.update({
+                    'platform::filesystem::docker::params::lv_size': fs.size
+                })
+
+        return config

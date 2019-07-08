@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016-2018 Wind River Systems, Inc.
+# Copyright (c) 2016-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,8 +27,6 @@ from sysinv.common import utils as cutils
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import uuidutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
-
-from sysinv.api.controllers.v1 import utils
 
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import rpc
@@ -986,7 +984,7 @@ class CephOperator(object):
 
         # Avoid calling the ceph rest_api until we have a minimum configuration
         check_access = False
-        if utils.is_aio_system(self._db_api) and available_mons > 0:
+        if cutils.is_aio_system(self._db_api) and available_mons > 0:
             # one monitor: need it available
             check_access = True
         elif available_mons > 1:

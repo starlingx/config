@@ -36,12 +36,10 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import health
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
-from fm_api import constants as fm_constants
 
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
@@ -65,10 +63,6 @@ class ControllerFs(base.APIBase):
           /var/lib/postgresql (pgsql-lv)
     The image GiB of controller_fs - maps to
           /opt/cgcs (cgcs-lv)
-    The backup GiB of controller_fs - maps to
-          /opt/backups (backup-lv)
-    The scratch GiB of controller_fs - maps to
-          /scratch (scratch-lv)
     The extension GiB of controller_fs - maps to
           /opt/extension (extension-lv)
     """
@@ -206,33 +200,45 @@ def _check_relative_controller_multi_fs(controller_fs_new_list):
     :return: None.  Raise Client exception on failure.
     """
 
-    if cutils.is_virtual():
-        return
-
     backup_gib_min = constants.BACKUP_OVERHEAD
-    for fs in controller_fs_new_list:
-        if fs.name == constants.FILESYSTEM_NAME_DATABASE:
-            database_gib = fs.size
-            backup_gib_min += fs.size
-        elif fs.name == constants.FILESYSTEM_NAME_CGCS:
-            cgcs_gib = fs.size
-            backup_gib_min += fs.size
-        elif fs.name == constants.FILESYSTEM_NAME_BACKUP:
-            backup_gib = fs.size
 
-    if backup_gib < backup_gib_min:
-        raise wsme.exc.ClientSideError(_("backup size of %d is "
-                                         "insufficient. "
-                                         "Minimum backup size of %d is "
-                                         "required based upon glance size %d "
-                                         "and database size %d. "
-                                         "Rejecting modification "
-                                         "request." %
-                                         (backup_gib,
-                                          backup_gib_min,
-                                          cgcs_gib,
-                                          database_gib
-                                          )))
+    chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+
+    for chost in chosts:
+
+        # Get the current backup size for the controller host
+        backup_gib = 0
+        hostfs_list = pecan.request.dbapi.host_fs_get_by_ihost(chost.uuid)
+        for host_fs in hostfs_list:
+            if host_fs['name'] == constants.FILESYSTEM_NAME_BACKUP:
+                backup_gib = host_fs['size']
+                break
+
+        for fs in controller_fs_new_list:
+            if fs.name == constants.FILESYSTEM_NAME_DATABASE:
+                database_gib = fs.size
+                backup_gib_min += fs.size
+            elif fs.name == constants.FILESYSTEM_NAME_CGCS:
+                cgcs_gib = fs.size
+                backup_gib_min += fs.size
+
+        LOG.info(
+            "_check_relative_controller_multi_fs min backup size %s" % backup_gib_min)
+
+        if backup_gib < backup_gib_min:
+            raise wsme.exc.ClientSideError(_("backup size of %d is "
+                                             "insufficient for host %s. "
+                                             "Minimum backup size of %d is "
+                                             "required based upon glance size %d "
+                                             "and database size %d. "
+                                             "Rejecting modification "
+                                             "request." %
+                                             (backup_gib,
+                                              chost.hostname,
+                                              backup_gib_min,
+                                              cgcs_gib,
+                                              database_gib
+                                              )))
 
 
 def _check_controller_multi_fs(controller_fs_new_list,
@@ -291,47 +297,54 @@ def _check_relative_controller_fs(controller_fs_new, controller_fs_list):
     :return: None.  Raise Client exception on failure.
     """
 
-    if cutils.is_virtual():
-        return
-
-    backup_gib = 0
     database_gib = 0
     cgcs_gib = 0
 
-    for fs in controller_fs_list:
-        if controller_fs_new and fs['name'] == controller_fs_new['name']:
-            fs['size'] = controller_fs_new['size']
+    chosts = pecan.request.dbapi.ihost_get_by_personality(
+        constants.CONTROLLER)
 
-        if fs['name'] == "backup":
-            backup_gib = fs['size']
-        elif fs['name'] == constants.DRBD_CGCS:
-            cgcs_gib = fs['size']
-        elif fs['name'] == "database":
-            database_gib = fs['size']
+    for chost in chosts:
+        # Get the current backup size for the controller host
+        backup_gib = 0
+        hostfs_list = pecan.request.dbapi.host_fs_get_by_ihost(chost.uuid)
+        for fs in hostfs_list:
+            if fs['name'] == constants.FILESYSTEM_NAME_BACKUP:
+                backup_gib = fs['size']
+                break
 
-    if backup_gib == 0:
-        LOG.info(
-            "_check_relative_controller_fs backup filesystem not yet setup")
-        return
+        for fs in controller_fs_list:
+            if controller_fs_new and fs['name'] == controller_fs_new['name']:
+                fs['size'] = controller_fs_new['size']
 
-    # Required mininum backup filesystem size
-    backup_gib_min = cgcs_gib + database_gib + constants.BACKUP_OVERHEAD
+            if fs['name'] == constants.DRBD_CGCS:
+                cgcs_gib = fs['size']
+            elif fs['name'] == constants.FILESYSTEM_NAME_DATABASE:
+                database_gib = fs['size']
 
-    if backup_gib < backup_gib_min:
-        raise wsme.exc.ClientSideError(_("backup size of %d is "
-                                         "insufficient. "
-                                         "Minimum backup size of %d is "
-                                         "required based on upon "
-                                         "glance=%d and database=%d and "
-                                         "backup overhead of %d. "
-                                         "Rejecting modification "
-                                         "request." %
-                                         (backup_gib,
-                                          backup_gib_min,
-                                          cgcs_gib,
-                                          database_gib,
-                                          constants.BACKUP_OVERHEAD
-                                          )))
+        if backup_gib == 0:
+            LOG.info(
+                "_check_relative_controller_fs backup filesystem not yet setup")
+            return
+
+        # Required mininum backup filesystem size
+        backup_gib_min = cgcs_gib + database_gib + constants.BACKUP_OVERHEAD
+
+        if backup_gib < backup_gib_min:
+            raise wsme.exc.ClientSideError(_("backup size of %d is "
+                                             "insufficient for host %s. "
+                                             "Minimum backup size of %d is "
+                                             "required based on upon "
+                                             "glance=%d and database=%d and "
+                                             "backup overhead of %d. "
+                                             "Rejecting modification "
+                                             "request." %
+                                             (backup_gib,
+                                              chost.hostname,
+                                              backup_gib_min,
+                                              cgcs_gib,
+                                              database_gib,
+                                              constants.BACKUP_OVERHEAD
+                                              )))
 
 
 def _check_controller_state():
@@ -343,35 +356,7 @@ def _check_controller_state():
         constants.CONTROLLER)
 
     for chost in chosts:
-        if (chost.administrative != constants.ADMIN_UNLOCKED or
-                chost.availability != constants.AVAILABILITY_AVAILABLE or
-                chost.operational != constants.OPERATIONAL_ENABLED):
-
-            # A node can become degraded due to not free space available in a FS
-            # and thus block the resize operation. If the only alarm that degrades
-            # a controller node is a filesystem alarm, we shouldn't block the resize
-            # as the resize itself will clear the degrade.
-            health_helper = health.Health(pecan.request.dbapi)
-            degrade_alarms = health_helper.get_alarms_degrade(
-                pecan.request.context,
-                alarm_ignore_list=[fm_constants.FM_ALARM_ID_FS_USAGE],
-                entity_instance_id_filter="controller-")
-            allowed_resize = False
-            if (not degrade_alarms and
-                    chost.availability == constants.AVAILABILITY_DEGRADED):
-                allowed_resize = True
-
-            if not allowed_resize:
-                alarm_explanation = ""
-                if degrade_alarms:
-                    alarm_explanation = "Check alarms with the following IDs: %s" % str(degrade_alarms)
-                raise wsme.exc.ClientSideError(
-                    _("This operation requires controllers to be %s, %s, %s. "
-                    "Current status is %s, %s, %s. %s." %
-                    (constants.ADMIN_UNLOCKED, constants.OPERATIONAL_ENABLED,
-                    constants.AVAILABILITY_AVAILABLE,
-                    chost.administrative, chost.operational,
-                    chost.availability, alarm_explanation)))
+        utils.is_host_state_valid_for_fs_resize(chost)
 
     return True
 
@@ -507,9 +492,7 @@ def _check_controller_multi_fs_data(context, controller_fs_list_new):
     cgtsvg_growth_gib = 0
 
     lvdisplay_keys = [constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_DATABASE],
-                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_CGCS],
-                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_BACKUP],
-                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_SCRATCH]]
+                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_CGCS]]
 
     lvdisplay_dict = pecan.request.rpcapi.get_controllerfs_lv_sizes(context)
 

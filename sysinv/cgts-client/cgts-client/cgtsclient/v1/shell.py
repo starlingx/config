@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,6 +18,7 @@ from cgtsclient.v1 import drbdconfig_shell
 from cgtsclient.v1 import ethernetport_shell
 from cgtsclient.v1 import health_shell
 from cgtsclient.v1 import helm_shell
+from cgtsclient.v1 import host_fs_shell
 
 from cgtsclient.v1 import icommunity_shell
 from cgtsclient.v1 import icpu_shell
@@ -117,6 +118,7 @@ COMMAND_MODULES = [
     helm_shell,
     label_shell,
     app_shell,
+    host_fs_shell,
 ]
 
 

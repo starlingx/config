@@ -386,7 +386,7 @@ def _discover_and_validate_backend_config_data(caps_dict, confirmed):
             raise wsme.exc.ClientSideError("Missing required backend "
                                            "parameter: %s" % k)
 
-        if utils.is_aio_simplex_system(pecan.request.dbapi):
+        if cutils.is_aio_simplex_system(pecan.request.dbapi):
             supported_replication = constants.AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED
         else:
             supported_replication = constants.CEPH_REPLICATION_FACTOR_SUPPORTED
@@ -585,7 +585,7 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
     if not confirmed and api_helper.is_primary_ceph_tier(tier.name):
         _options_str = _get_options_string(storage_ceph)
         replication = capabilities[constants.CEPH_BACKEND_REPLICATION_CAP]
-        if utils.is_aio_simplex_system(pecan.request.dbapi):
+        if cutils.is_aio_simplex_system(pecan.request.dbapi):
             what = 'osds'
         else:
             what = 'storage nodes'
@@ -666,7 +666,7 @@ def _check_and_update_rbd_provisioner(new_storceph, remove=False):
         validate_k8s_namespaces(K8RbdProvisioner.getListFromNamespaces(new_storceph))
 
     # Check if cluster is configured
-    if not utils.is_aio_system(pecan.request.dbapi):
+    if not cutils.is_aio_system(pecan.request.dbapi):
         # On multinode is enough if storage hosts are available
         storage_hosts = pecan.request.dbapi.ihost_get_by_personality(
             constants.STORAGE
@@ -710,7 +710,7 @@ def _apply_backend_changes(op, sb_obj):
 
 
 def _set_defaults(storage_ceph):
-    if utils.is_aio_simplex_system(pecan.request.dbapi):
+    if cutils.is_aio_simplex_system(pecan.request.dbapi):
         def_replication = str(constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT)
     else:
         def_replication = str(constants.CEPH_REPLICATION_FACTOR_DEFAULT)
@@ -770,7 +770,7 @@ def _set_defaults(storage_ceph):
     # set state and task accordingly.
     if sc['name'] == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
         sc['state'] = constants.SB_STATE_CONFIGURED
-        if utils.is_aio_simplex_system(pecan.request.dbapi):
+        if cutils.is_aio_simplex_system(pecan.request.dbapi):
             sc['task'] = None
         else:
             sc['task'] = constants.SB_TASK_PROVISION_STORAGE
@@ -921,7 +921,7 @@ def _pre_patch_checks(storage_ceph_obj, patch_obj):
 def _check_replication_number(new_cap, orig_cap):
     ceph_task = StorageBackendConfig.get_ceph_backend_task(pecan.request.dbapi)
     ceph_state = StorageBackendConfig.get_ceph_backend_state(pecan.request.dbapi)
-    if utils.is_aio_simplex_system(pecan.request.dbapi):
+    if cutils.is_aio_simplex_system(pecan.request.dbapi):
         # On single node install we allow both increasing and decreasing
         # replication on the fly.
         if ceph_state != constants.SB_STATE_CONFIGURED:
@@ -932,7 +932,7 @@ def _check_replication_number(new_cap, orig_cap):
                   (ceph_state, constants.SB_STATE_CONFIGURED)))
 
     else:
-        if utils.is_aio_duplex_system(pecan.request.dbapi):
+        if cutils.is_aio_duplex_system(pecan.request.dbapi):
             # Replication change is not allowed on two node configuration
             raise wsme.exc.ClientSideError(
                 _("Can not modify ceph replication factor on "
@@ -1168,7 +1168,7 @@ def _update_pool_quotas(storceph):
 
 def _check_object_gateway_install(dbapi):
     # Ensure we have the required number of monitors
-    if utils.is_aio_system(dbapi):
+    if cutils.is_aio_system(dbapi):
         api_helper.check_minimal_number_of_controllers(1)
     else:
         api_helper.check_minimal_number_of_controllers(2)

@@ -900,10 +900,10 @@ class ConductorManager(service.PeriodicService):
         # Defaults for configurable install parameters
         install_opts = []
 
-        boot_device = host.get('boot_device') or "sda"
+        boot_device = host.get('boot_device') or "/dev/sda"
         install_opts += ['-b', boot_device]
 
-        rootfs_device = host.get('rootfs_device') or "sda"
+        rootfs_device = host.get('rootfs_device') or "/dev/sda"
         install_opts += ['-r', rootfs_device]
 
         install_output = host.get('install_output') or "text"
@@ -1306,7 +1306,7 @@ class ConductorManager(service.PeriodicService):
                 host.availability == constants.AVAILABILITY_ONLINE):
             # This must be the initial controller host unlock request.
             personalities = [constants.CONTROLLER]
-            if not utils.is_aio_system(self.dbapi):
+            if not cutils.is_aio_system(self.dbapi):
                 # Standard system, touch the unlock ready flag
                 cutils.touch(constants.UNLOCK_READY_FLAG)
             else:
@@ -3292,15 +3292,7 @@ class ConductorManager(service.PeriodicService):
             for host_fs in host_fs_list:
                 if host_fs.name == fs['name']:
                     found = True
-                    LOG.debug("Host FS '%s' already exists" % fs['name'])
-                    if host_fs.size != fs['size']:
-                        LOG.info("Host FS uuid: %s changed size from %s to %s",
-                                 host_fs.uuid, host_fs.size, fs['size'])
-                        # Update the database
-                        try:
-                            self.dbapi.host_fs_update(host_fs.id, fs_dict)
-                        except Exception:
-                            LOG.exception("Host FS Update failed")
+                    LOG.info("Host FS '%s' already exists" % fs['name'])
                     break
             if not found:
                 try:
@@ -4518,8 +4510,6 @@ class ConductorManager(service.PeriodicService):
                (standby_host.config_applied == standby_host.config_target or
                standby_host.config_applied == standby_config_target_flipped)):
 
-                LOG.info("_controller_config_active_apply about to resize the filesystem")
-
                 if self._config_resize_filesystems(context, standby_host):
                     cutils.touch(CONFIG_CONTROLLER_FINI_FLAG)
 
@@ -4551,8 +4541,6 @@ class ConductorManager(service.PeriodicService):
                    (standby_host.config_applied == standby_host.config_target or
                    standby_host.config_applied == standby_config_target_flipped)):
 
-                    LOG.info(
-                        "_controller_config_active_apply about to resize the filesystem")
                     if self._config_resize_filesystems(context, standby_host):
                         cutils.touch(CONFIG_CONTROLLER_FINI_FLAG)
 
@@ -5485,12 +5473,6 @@ class ConductorManager(service.PeriodicService):
 
                 # map the updated file system to the runtime puppet class
                 classmap = {
-                    constants.FILESYSTEM_NAME_BACKUP:
-                        'platform::filesystem::backup::runtime',
-                    constants.FILESYSTEM_NAME_SCRATCH:
-                        'platform::filesystem::scratch::runtime',
-                    constants.FILESYSTEM_NAME_DOCKER:
-                        'platform::filesystem::docker::runtime',
                     constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
                         'platform::drbd::dockerdistribution::runtime',
                     constants.FILESYSTEM_NAME_DATABASE:
@@ -5518,6 +5500,46 @@ class ConductorManager(service.PeriodicService):
                 self._config_apply_runtime_manifest(context,
                                                     config_uuid,
                                                     config_dict)
+
+    def update_host_filesystem_config(self, context,
+                                      host=None,
+                                      filesystem_list=None):
+
+        """Update the filesystem configuration for a host"""
+
+        config_uuid = self._config_update_hosts(context,
+                                                personalities=host.personality,
+                                                host_uuids=[host.uuid])
+
+        LOG.info("update_host_filesystem_config config_uuid=%s" % config_uuid)
+
+        if filesystem_list:
+            # apply the manifest at runtime, otherwise a reboot is required
+            if os.path.isfile(CONFIG_CONTROLLER_FINI_FLAG):
+                os.remove(CONFIG_CONTROLLER_FINI_FLAG)
+
+            # map the updated file system to the runtime puppet class
+            classmap = {
+                constants.FILESYSTEM_NAME_BACKUP:
+                    'platform::filesystem::backup::runtime',
+                constants.FILESYSTEM_NAME_SCRATCH:
+                    'platform::filesystem::scratch::runtime',
+                constants.FILESYSTEM_NAME_DOCKER:
+                    'platform::filesystem::docker::runtime',
+            }
+
+            puppet_class = None
+            if filesystem_list:
+                puppet_class = [classmap.get(fs) for fs in filesystem_list]
+            config_dict = {
+                "personalities": host.personality,
+                "classes": puppet_class,
+                "host_uuids": [host.uuid]
+            }
+
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
 
     def update_lvm_config(self, context):
         personalities = [constants.CONTROLLER]
@@ -5707,7 +5729,7 @@ class ConductorManager(service.PeriodicService):
                    'platform::ceph::runtime_base',
                    ]
 
-        if utils.is_aio_duplex_system(self.dbapi):
+        if cutils.is_aio_duplex_system(self.dbapi):
             # On 2 node systems we have a floating Ceph monitor.
             classes.append('platform::drbd::cephmon::runtime')
             classes.append('platform::drbd::runtime')
@@ -6470,7 +6492,7 @@ class ConductorManager(service.PeriodicService):
             active_controller = utils.HostHelper.get_active_controller(self.dbapi)
             if utils.is_host_simplex_controller(active_controller):
                 state = constants.SB_STATE_CONFIGURED
-                if utils.is_aio_system(self.dbapi):
+                if cutils.is_aio_system(self.dbapi):
                     task = None
                     cceph.fix_crushmap(self.dbapi)
                 else:
@@ -6736,16 +6758,14 @@ class ConductorManager(service.PeriodicService):
         """
         database_storage = 0
         cgcs_lv_size = 0
-        backup_lv_size = 0
 
         # Add the extension storage
         extension_lv_size = constants.DEFAULT_EXTENSION_STOR_SIZE
-        scratch_lv_size = cutils.get_controller_fs_scratch_size()
 
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
 
-        LOG.info("Local  Region Name: %s" % system.region_name)
+        LOG.info("Local Region Name: %s" % system.region_name)
 
         disk_size = cutils.get_disk_capacity_mib(rootfs_device)
         disk_size = int(disk_size / 1024)
@@ -6814,8 +6834,6 @@ class ConductorManager(service.PeriodicService):
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
             cgcs_lv_size = constants.DEFAULT_CGCS_STOR_SIZE
-            backup_lv_size = database_storage + \
-                cgcs_lv_size + constants.BACKUP_OVERHEAD
 
         elif disk_size >= constants.MINIMUM_DISK_SIZE:
 
@@ -6881,24 +6899,10 @@ class ConductorManager(service.PeriodicService):
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
 
             cgcs_lv_size = constants.DEFAULT_SMALL_CGCS_STOR_SIZE
-            # Due to the small size of the disk we can't provide the
-            # proper amount of backup space which is (database + cgcs_lv
-            # + BACKUP_OVERHEAD) so we are using a smaller default.
-            backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
+
         else:
             LOG.info("Disk size : %s ... disk too small" % disk_size)
             raise exception.SysinvException("Disk size requirements not met.")
-
-        data = {
-            'name': constants.FILESYSTEM_NAME_BACKUP,
-            'size': backup_lv_size,
-            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                constants.FILESYSTEM_NAME_BACKUP],
-            'replicated': False,
-        }
-        LOG.info("Creating FS:%s:%s %d" % (
-            data['name'], data['logical_volume'], data['size']))
-        self.dbapi.controller_fs_create(data)
 
         data = {
             'name': constants.FILESYSTEM_NAME_CGCS,
@@ -6923,35 +6927,11 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.controller_fs_create(data)
 
         data = {
-            'name': constants.FILESYSTEM_NAME_SCRATCH,
-            'size': scratch_lv_size,
-            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                constants.FILESYSTEM_NAME_SCRATCH],
-            'replicated': False,
-        }
-        LOG.info("Creating FS:%s:%s %d" % (
-            data['name'], data['logical_volume'], data['size']))
-        self.dbapi.controller_fs_create(data)
-
-        data = {
             'name': constants.FILESYSTEM_NAME_EXTENSION,
             'size': extension_lv_size,
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_EXTENSION],
             'replicated': True,
-        }
-        LOG.info("Creating FS:%s:%s %d" % (
-            data['name'], data['logical_volume'], data['size']))
-        self.dbapi.controller_fs_create(data)
-
-        docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
-
-        data = {
-            'name': constants.FILESYSTEM_NAME_DOCKER,
-            'size': docker_lv_size,
-            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                constants.FILESYSTEM_NAME_DOCKER],
-            'replicated': False,
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -7413,8 +7393,6 @@ class ConductorManager(service.PeriodicService):
         """Resize the filesystems upon completion of storage config.
            Retry in case of errors or racing issues when resizing fails."""
 
-        LOG.warn("resizing filesystems")
-
         progress = ""
         retry_attempts = 3
         rc = False
@@ -7422,10 +7400,7 @@ class ConductorManager(service.PeriodicService):
             try:
                 if standby_host:
                     if not self._drbd_connected():
-                        LOG.info("resizing filesystems WAIT for drbd connected")
                         return rc
-                    else:
-                        LOG.info("resizing filesystems drbd connected")
 
                 if not os.path.isfile(CFS_DRBDADM_RECONFIGURED):
                     progress = "drbdadm resize all"

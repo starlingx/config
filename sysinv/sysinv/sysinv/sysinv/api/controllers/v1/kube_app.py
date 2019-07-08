@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,7 +19,6 @@ from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import types
-from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -345,7 +344,7 @@ class KubeAppController(rest.RestController):
                 pecan.request.context, name, version)
             target_app.status = constants.APP_UPDATE_IN_PROGRESS
             target_app.save()
-            if utils.is_aio_simplex_system(pecan.request.dbapi):
+            if cutils.is_aio_simplex_system(pecan.request.dbapi):
                 operation = constants.APP_APPLY_OP
             else:
                 operation = constants.APP_ROLLBACK_OP
