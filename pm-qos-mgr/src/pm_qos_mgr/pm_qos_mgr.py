@@ -158,7 +158,7 @@ def main():
 
     try:
         notifier.loop()
-    except pyinotify.NotifierError, err:
+    except pyinotify.NotifierError as err:
         LOG.error('Problem with notifier.loop(), error: %s', err)
 
 if __name__ == "__main__":
