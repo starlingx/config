@@ -24,7 +24,7 @@ class platform::kubernetes::params (
 class platform::kubernetes::cgroup::params (
   $cgroup_root = '/sys/fs/cgroup',
   $cgroup_name = 'k8s-infra',
-  $controllers = ['cpuset', 'cpu', 'cpuacct', 'memory', 'systemd'],
+  $controllers = ['cpuset', 'cpu', 'cpuacct', 'memory', 'systemd', 'pids'],
 ) {}
 
 class platform::kubernetes::cgroup
@@ -48,7 +48,7 @@ class platform::kubernetes::cgroup
   # NOTE: The kubernetes cgroup_manager_linux func Exists() checks that
   # specific subsystem cgroup paths actually exist on the system. The
   # particular cgroup cgroupRoot must exist for the following controllers:
-  # "cpu", "cpuacct", "cpuset", "memory", "systemd".
+  # "cpu", "cpuacct", "cpuset", "memory", "systemd", "pids".
   # Reference:
   #  https://github.com/kubernetes/kubernetes/blob/master/pkg/kubelet/cm/cgroup_manager_linux.go
   # systemd automatically mounts cgroups and controllers, so don't need

@@ -556,6 +556,8 @@ data:
         ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_user: docker.io/starlingx/stx-heat:master-centos-stable-latest
+        rgw_s3_admin: docker.io/starlingx/ceph-config-helper:v1.15.0
+        ceph_config_helper: docker.io/starlingx/ceph-config-helper:v1.15.0
     labels:
       api:
         node_selector_key: openstack-control-plane
@@ -628,6 +630,7 @@ data:
         glance_api: docker.io/starlingx/stx-glance:master-centos-stable-latest
         glance_db_sync: docker.io/starlingx/stx-glance:master-centos-stable-latest
         glance_registry: docker.io/starlingx/stx-glance:master-centos-stable-latest
+        glance_storage_init: docker.io/starlingx/ceph-config-helper:v1.15.0
         ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_user: docker.io/starlingx/stx-heat:master-centos-stable-latest
@@ -696,8 +699,10 @@ data:
         bootstrap: docker.io/starlingx/stx-heat:master-centos-stable-latest
         cinder_api: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         cinder_backup: docker.io/starlingx/stx-cinder:master-centos-stable-latest
+        cinder_backup_storage_init: docker.io/starlingx/ceph-config-helper:v1.15.0
         cinder_db_sync: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         cinder_scheduler: docker.io/starlingx/stx-cinder:master-centos-stable-latest
+        cinder_storage_init: docker.io/starlingx/ceph-config-helper:v1.15.0
         cinder_volume: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         cinder_volume_usage_audit: docker.io/starlingx/stx-cinder:master-centos-stable-latest
         db_drop: docker.io/starlingx/stx-heat:master-centos-stable-latest
@@ -901,8 +906,10 @@ data:
         nova_novncproxy: docker.io/starlingx/stx-nova:master-centos-stable-latest
         nova_placement: docker.io/starlingx/stx-nova:master-centos-stable-latest
         nova_scheduler: docker.io/starlingx/stx-nova:master-centos-stable-latest
+        nova_service_cleaner: docker.io/starlingx/ceph-config-helper:v1.15.0
         nova_spiceproxy: docker.io/starlingx/stx-nova:master-centos-stable-latest
         nova_spiceproxy_assets: docker.io/starlingx/stx-nova:master-centos-stable-latest
+        nova_storage_init: docker.io/starlingx/ceph-config-helper:v1.15.0
     pod:
       # TODO(rchurch):
       # Change-Id: I5a60efd133c156ce2ecac31d22e94b25e4e837bf broke armada apply
@@ -1622,6 +1629,7 @@ data:
         gnocchi_metricd: docker.io/starlingx/stx-gnocchi:master-centos-stable-latest
         gnocchi_resources_cleaner: docker.io/starlingx/stx-gnocchi:master-centos-stable-latest
         gnocchi_statsd: docker.io/starlingx/stx-gnocchi:master-centos-stable-latest
+        gnocchi_storage_init: docker.io/starlingx/ceph-config-helper:v1.15.0
         ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_user: docker.io/starlingx/stx-heat:master-centos-stable-latest

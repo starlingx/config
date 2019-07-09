@@ -10896,7 +10896,7 @@ itemNotFound (404)
       "registry_images": [
          {
             "tag": null,
-            "name": "docker.io/port/ceph-config-helper"
+            "name": "docker.io/starlingx/ceph-config-helper"
          },
          {
             "tag": null,
@@ -10946,8 +10946,8 @@ itemNotFound (404)
    {
       "registry_images": [
          {
-            "tag": "v1.10.3",
-            "name": "docker.io/port/ceph-config-helper"
+            "tag": "v1.15.0",
+            "name": "docker.io/starlingx/ceph-config-helper"
          }
       ]
    }

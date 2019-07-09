@@ -26,7 +26,7 @@ conf:
 
 images:
   tags:
-    ceph_config_helper: docker.io/port/ceph-config-helper:v1.10.3
+    ceph_config_helper: docker.io/starlingx/ceph-config-helper:v1.15.0
   pullPolicy: "IfNotPresent"
   local_registry:
     active: false
