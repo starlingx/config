@@ -9996,6 +9996,232 @@ Deletes a storage tier
 
 This operation does not accept a request body.
 
+
+----------------
+Host Filesystem
+----------------
+
+These APIs allow the display and configuration of the host filesystems.
+
+********************************
+Lists all filesystems of a host
+********************************
+
+.. rest_method:: GET /v1/ihosts/​{host_id}​/host_fs
+
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name (Optional)", "plain", "xsd:string", "The name of the filesystem."
+   "size (Optional)", "plain", "xsd:integer", "The size of the filesystem in GiB."
+   "logical_volume (Optional)", "plain", "xsd:string", "The logical volume of the filesystem."
+   "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host containing the filesystem."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   {
+       "host_fs": [
+           {
+               "name": "backup"
+               "logical_volume": "backup-lv",
+               "size": "90"
+               "uuid": "039de9ef-b1db-4c31-9072-add0f888b8b9",
+               "links": [
+                   {
+                       "href": "http://10.10.10.2:6385/v1/host_fs/039de9ef-b1db-4c31-9072-add0f888b8b9",
+                       "rel": "self"
+                   },
+                   {
+                       "href": "http://10.10.10.2:6385/host_fs/039de9ef-b1db-4c31-9072-add0f888b8b9",
+                       "rel": "bookmark"
+                   }
+               ],
+               "created_at": "2015-03-11T02:46:55.730611+00:00",
+               "updated_at": "2015-03-11T02:50:57.361006+00:00",
+               "ihost_uuid": "1ef159f8-0192-4879-a08e-f60328486e34",
+           }
+           {
+               "name": "scratch"
+               "logical_volume": "scratch-lv",
+               "size": "8"
+               "uuid": "a12de715-0037-4083-b652-121d3908bc6c",
+               "links": [
+                   {
+                       "href": "http://10.10.10.2:6385/v1/host_fs/a12de715-0037-4083-b652-121d3908bc6c",
+                       "rel": "self"
+                   },
+                   {
+                       "href": "http://10.10.10.2:6385/host_fs/a12de715-0037-4083-b652-121d3908bc6c",
+                       "rel": "bookmark"
+                   }
+               ],
+               "created_at": "2015-03-11T02:46:55.730611+00:00",
+               "updated_at": "2015-03-11T02:50:57.361006+00:00",
+               "ihost_uuid": "1ef159f8-0192-4879-a08e-f60328486e34",
+           }
+           {
+               "name": "docker"
+               "logical_volume": "docker-lv",
+               "size": "30"
+               "uuid": "320dc274-1e35-4700-bfaa-cee2f2d44888",
+               "links": [
+                   {
+                       "href": "http://10.10.10.2:6385/v1/host_fs/320dc274-1e35-4700-bfaa-cee2f2d44888",
+                       "rel": "self"
+                   },
+                   {
+                       "href": "http://10.10.10.2:6385/host_fs/320dc274-1e35-4700-bfaa-cee2f2d44888",
+                       "rel": "bookmark"
+                   }
+               ],
+               "created_at": "2015-03-11T02:46:55.730611+00:00",
+               "updated_at": "2015-03-11T02:50:57.361006+00:00",
+               "ihost_uuid": "1ef159f8-0192-4879-a08e-f60328486e34",
+           }
+       ]
+   }
+
+This operation does not accept a request body.
+
+***************************************************
+Show detailed information about a host filesystem
+***************************************************
+
+
+.. rest_method:: GET /v1/ihosts/​{host_id}​/host_fs/​{host_fs_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
+   "host_fs_id", "URI", "csapi:UUID", "The unique identifier of an existing host filesystem."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name (Optional)", "plain", "xsd:string", "The name of the filesystem."
+   "size (Optional)", "plain", "xsd:integer", "The size of the filesystem in GiB."
+   "logical_volume (Optional)", "plain", "xsd:string", "The logical volume of the filesystem."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host containing the port."
+
+
+::
+
+   {
+       "name": "backup",
+       "logical_volume": "backup-lv",
+       "size": 94,
+       "uuid": "139de9ef-b1db-4c31-9072-add0f888b8b9",
+       "links": [
+           {
+               "href": "http://10.10.10.2:6385/v1/host_fs/139de9ef-b1db-4c31-9072-add0f888b8b9",
+               "rel": "self"
+           },
+           {
+               "href": "http://10.10.10.2:6385/host_fs/139de9ef-b1db-4c31-9072-add0f888b8b9",
+               "rel": "bookmark"
+           }
+       ],
+       "created_at": "2015-03-11T02:46:55.730611+00:00",
+       "updated_at": "2015-03-11T02:50:57.361006+00:00",
+       "ihost_uuid": "1ef159f8-0192-4879-a08e-f60328486e34",
+   }
+
+This operation does not accept a request body.
+
+
+*************************************
+Modifies specific host filesystem(s)
+*************************************
+
+.. rest_method:: PATCH /v1/ihosts/​{host_id}​/host_fs/​update_many
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
+   "name (Optional)", "plain", "xsd:string", "The name of the filesystem."
+   "size (Optional)", "plain", "xsd:integer", "The size of the filesystem in GiB."
+
+::
+
+   [
+     [{
+        "path": "/name",
+        "value": "scratch",
+        "op": "replace"},
+      {
+        "path": "/size",
+        "value": "10",
+        "op": "replace"}],
+     [{
+        "path": "/name",
+        "value": "backup",
+        "op": "replace"},
+      {
+        "path": "/size",
+        "value": "100",
+        "op": "replace"}]
+   ]
+
+
 ----------------------
 Controller Filesystem
 ----------------------
@@ -10275,17 +10501,6 @@ itemNotFound (404)
        "controller_fs":
        [
            {
-               "logical_volume": "backup-lv",
-               "uuid": "3ce46550-4703-4161-b654-5573045546b3",
-               "links": [{"href": "http://127.168.204.2:6385/v1/controller_fs/3ce46550-4703-4161-b654-5573045546b3", "rel": "self"}, {"href": "http://127.168.204.2:6385/controller_fs/3ce46550-4703-4161-b654-5573045546b3", "rel": "bookmark"}],
-               "created_at": "2017-09-14T17:54:15.853307+00:00",
-               "updated_at": "2017-09-15T15:36:32.304443+00:00",
-               "name": "backup",
-               "state": "available",
-               "isystem_uuid": "a5b7f26c-423f-41ed-a660-cd8cff4627eb",
-               "replicated": false,
-               "size": 94},
-           {
                "logical_volume": "cgcs-lv",
                "uuid": "d30cc018-9218-403e-a1c2-9a5691a8bffb",
                "links": [{"href": "http://127.168.204.2:6385/v1/controller_fs/d30cc018-9218-403e-a1c2-9a5691a8bffb", "rel": "self"}, {"href": "http://127.168.204.2:6385/controller_fs/d30cc018-9218-403e-a1c2-9a5691a8bffb", "rel": "bookmark"}],
@@ -10309,17 +10524,6 @@ itemNotFound (404)
                "replicated": true,
                "size": 30
            },
-           {
-               "logical_volume": "scratch-lv",
-               "uuid": "a12de715-0037-4083-b652-121d3908bc6c",
-               "links": [{"href": "http://127.168.204.2:6385/v1/controller_fs/a12de715-0037-4083-b652-121d3908bc6c", "rel": "self"}, {"href": "http://127.168.204.2:6385/controller_fs/a12de715-0037-4083-b652-121d3908bc6c", "rel": "bookmark"}],
-               "created_at": "2017-09-14T17:54:16.012491+00:00",
-               "updated_at": "2017-09-14T18:35:51.859954+00:00",
-               "name": "scratch",
-               "state": "available",
-               "isystem_uuid": "a5b7f26c-423f-41ed-a660-cd8cff4627eb",
-               "replicated": false,
-               "size": 8},
            {
                "logical_volume": "img-conversions-lv",
                "uuid": "f7bae4fe-3cd1-4335-8664-a149579b2b47",
@@ -10768,3 +10972,4 @@ Run the Docker registry garbage collector
    "garbage_collect", "plain", "csapi:bool", "run the garbage collect?"
 
 This operation does not accept a request body.
+
