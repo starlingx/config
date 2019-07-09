@@ -21,9 +21,11 @@
 
 """The SysInv Service API."""
 
+import six
 import sys
 from oslo_config import cfg
 from oslo_log import log
+from sysinv.common import exception
 from sysinv.common import service as sysinv_service
 from sysinv.common import wsgi_service
 from sysinv import sanity_coverage
@@ -37,11 +39,18 @@ def sysinv_api():
     launcher = sysinv_service.process_launcher()
     # server for API
     workers = CONF.sysinv_api_workers or 2
-    server = wsgi_service.WSGIService('sysinv_api',
-                                      CONF.sysinv_api_bind_ip,
-                                      CONF.sysinv_api_port,
-                                      workers,
-                                      False)
+
+    server = None
+    try:
+        server = wsgi_service.WSGIService('sysinv_api',
+                                          CONF.sysinv_api_bind_ip,
+                                          CONF.sysinv_api_port,
+                                          workers,
+                                          False)
+    except exception.ConfigInvalid as e:
+        LOG.error(six.text_type(e))
+        raise
+
     launcher.launch_service(server, workers=server.workers)
     return launcher
 
