@@ -33,6 +33,7 @@ from sysinv.conductor import manager
 from sysinv.conductor import rpcapi
 from sysinv.common import ceph as ceph_utils
 from sysinv.common import constants
+from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import context
@@ -44,10 +45,17 @@ from sysinv.tests.db import utils as dbutils
 class StorageTierIndependentTCs(base.FunctionalTest):
 
     set_crushmap_patcher = mock.patch.object(ceph_utils.CephApiOperator, 'set_crushmap')
+    set_monitors_status_patcher = mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status')
+    set_is_initial_config_patcher = mock.patch.object(cutils, 'is_initial_config_complete')
 
     def setUp(self):
         super(StorageTierIndependentTCs, self).setUp()
         self.mock_set_crushmap = self.set_crushmap_patcher.start()
+        self.set_monitors_status_patcher = self.set_monitors_status_patcher.start()
+        self.set_monitors_status_patcher.return_value = \
+            [3, 2, ['controller-0', 'controller-1', 'storage-0']]
+        self.set_is_initial_config_patcher = self.set_is_initial_config_patcher.start()
+        self.set_is_initial_config_patcher.return_value = True
         self.system = dbutils.create_test_isystem()
         self.cluster = dbutils.create_test_cluster(system_id=self.system.id, name='ceph_cluster')
         self.load = dbutils.create_test_load()
@@ -56,6 +64,8 @@ class StorageTierIndependentTCs(base.FunctionalTest):
     def tearDown(self):
         super(StorageTierIndependentTCs, self).tearDown()
         self.set_crushmap_patcher.stop()
+        self.set_monitors_status_patcher = self.set_monitors_status_patcher.stop()
+        self.set_is_initial_config_patcher.stop()
 
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error
@@ -531,10 +541,17 @@ class StorageTierIndependentTCs(base.FunctionalTest):
 class StorageTierDependentTCs(base.FunctionalTest):
 
     set_crushmap_patcher = mock.patch.object(ceph_utils.CephApiOperator, 'set_crushmap')
+    set_monitors_status_patcher = mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status')
+    set_is_initial_config_patcher = mock.patch.object(cutils, 'is_initial_config_complete')
 
     def setUp(self):
         super(StorageTierDependentTCs, self).setUp()
         self.mock_set_crushmap = self.set_crushmap_patcher.start()
+        self.set_monitors_status_patcher = self.set_monitors_status_patcher.start()
+        self.set_monitors_status_patcher.return_value = \
+            [3, 2, ['controller-0', 'controller-1', 'storage-0']]
+        self.set_is_initial_config_patcher = self.set_is_initial_config_patcher.start()
+        self.set_is_initial_config_patcher.return_value = True
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
         self.context = context.get_admin_context()
@@ -547,6 +564,8 @@ class StorageTierDependentTCs(base.FunctionalTest):
     def tearDown(self):
         super(StorageTierDependentTCs, self).tearDown()
         self.set_crushmap_patcher.stop()
+        self.set_monitors_status_patcher = self.set_monitors_status_patcher.stop()
+        self.set_is_initial_config_patcher.stop()
 
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error
