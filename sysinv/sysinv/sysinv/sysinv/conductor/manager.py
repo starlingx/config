@@ -7000,10 +7000,6 @@ class ConductorManager(service.PeriodicService):
                 # controller hosts will actively apply the manifests
                 config_uuid = self._config_update_hosts(context,
                                                         [constants.CONTROLLER])
-        elif service == constants.SERVICE_TYPE_IRONIC:
-            config_uuid = self._config_update_hosts(context,
-                                                    [constants.CONTROLLER],
-                                                    reboot=True)
         elif service == constants.SERVICE_TYPE_NOVA:
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER,

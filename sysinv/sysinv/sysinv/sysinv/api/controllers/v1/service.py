@@ -113,15 +113,6 @@ def _check_service_data(op, service):
     if name not in constants.ALL_OPTIONAL_SERVICES:
         raise wsme.exc.ClientSideError(_(
                         "Invalid service name"))
-
-    # ironic-specific error checking
-    if name == constants.SERVICE_TYPE_IRONIC:
-        if service['enabled']:
-            system = pecan.request.dbapi.isystem_get_one()
-            if system.system_type != constants.TIS_STD_BUILD:
-                raise wsme.exc.ClientSideError(_(
-                        "Ironic can be enabled on only Standard systems"))
-
     return service
 
 
