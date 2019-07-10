@@ -70,6 +70,11 @@ DOCKER_REGISTRY_SECRET = 'default-registry-key'
 
 ARMADA_HOST_LOG_LOCATION = '/var/log/armada'
 ARMADA_CONTAINER_LOG_LOCATION = '/logs'
+ARMADA_LOCK_GROUP = 'armada.process'
+ARMADA_LOCK_VERSION = 'v1'
+ARMADA_LOCK_NAMESPACE = 'kube-system'
+ARMADA_LOCK_PLURAL = 'locks'
+ARMADA_LOCK_NAME = 'lock'
 
 
 # Helper functions
@@ -141,8 +146,68 @@ class AppOperator(object):
         self._docker = DockerHelper(self._dbapi)
         self._helm = helm.HelmOperator(self._dbapi)
         self._kube = kubernetes.KubeOperator(self._dbapi)
-        self._app = kube_app.KubeAppHelper(self._dbapi)
+        self._utils = kube_app.KubeAppHelper(self._dbapi)
         self._lock = threading.Lock()
+
+        if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
+            self._clear_stuck_applications()
+
+    def _clear_armada_locks(self):
+        lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
+                                      ARMADA_LOCK_GROUP,
+                                      ARMADA_LOCK_NAME)
+        try:
+            self._kube.delete_custom_resource(ARMADA_LOCK_GROUP,
+                                              ARMADA_LOCK_VERSION,
+                                              ARMADA_LOCK_NAMESPACE,
+                                              ARMADA_LOCK_PLURAL,
+                                              lock_name)
+        except Exception:
+            # Best effort delete
+            pass
+
+    def _clear_stuck_applications(self):
+        apps = self._dbapi.kube_app_get_all()
+        for app in apps:
+            if (app.status == constants.APP_APPLY_IN_PROGRESS or
+                    app.status == constants.APP_UPDATE_IN_PROGRESS or
+                    app.status == constants.APP_RECOVER_IN_PROGRESS):
+
+                if app.status == constants.APP_APPLY_IN_PROGRESS:
+                    op = 'application-apply'
+                else:
+                    op = 'application-update'
+
+                if app.name in constants.HELM_APPS_PLATFORM_MANAGED:
+                    # For platform core apps, set the new status
+                    # to 'uploaded'. The audit task will kick in with
+                    # all its pre-requisite checks before reapplying.
+                    new_status = constants.APP_UPLOAD_SUCCESS
+                else:
+                    new_status = constants.APP_APPLY_FAILURE
+            elif app.status == constants.APP_REMOVE_IN_PROGRESS:
+                op = 'application-remove'
+                new_status = constants.APP_REMOVE_FAILURE
+            elif app.status == constants.APP_UPLOAD_IN_PROGRESS:
+                op = 'application-upload'
+                new_status = constants.APP_UPLOAD_FAILURE
+            else:
+                continue
+
+            LOG.info("Resetting status of app %s from '%s' to '%s' " %
+                     (app.name, app.status, new_status))
+            error_msg = "Unexpected process termination while " + op +\
+                        " was in progress. The application status " +\
+                        "has changed from \'" + app.status +\
+                        "\' to \'" + new_status + "\'."
+            values = {'progress': error_msg, 'status': new_status}
+            self._dbapi.kube_app_update(app.id, values)
+
+        # Delete the Armada locks that might have been acquired previously
+        # for a fresh start. This guarantees that a re-apply, re-update or
+        # a re-remove attempt following a status reset will not fail due
+        # to a lock related issue.
+        self._clear_armada_locks()
 
     def _cleanup(self, app, app_dir=True):
         """" Remove application directories and override files """
@@ -281,7 +346,7 @@ class AppOperator(object):
                 _handle_extract_failure()
 
             if app.downloaded_tarfile:
-                name, version, patches = self._app._verify_metadata_file(
+                name, version, patches = self._utils._verify_metadata_file(
                     app.path, app.name, app.version)
                 if (name != app.name or version != app.version):
                     # Save the official application info. They will be
@@ -290,7 +355,7 @@ class AppOperator(object):
 
                 if not cutils.verify_checksum(app.path):
                     _handle_extract_failure('checksum validation failed.')
-                mname, mfile = self._app._find_manifest_file(app.path)
+                mname, mfile = self._utils._find_manifest_file(app.path)
                 # Save the official manifest file info. They will be persisted
                 # in the next status update
                 app.regenerate_manifest_filename(mname, os.path.basename(mfile))
@@ -299,7 +364,7 @@ class AppOperator(object):
                     app.path, constants.APP_METADATA_FILE)
                 app.patch_dependencies = patches
 
-            self._app._extract_helm_charts(app.path)
+            self._utils._extract_helm_charts(app.path)
 
         except exception.SysinvException as e:
             _handle_extract_failure(str(e))
@@ -1252,7 +1317,7 @@ class AppOperator(object):
 
         try:
             self._cleanup(new_app, app_dir=False)
-            self._app._patch_report_app_dependencies(
+            self._utils._patch_report_app_dependencies(
                 new_app.name + '-' + new_app.version)
             self._dbapi.kube_app_destroy(new_app.name,
                                          version=new_app.version,
@@ -1443,7 +1508,7 @@ class AppOperator(object):
 
             self._save_images_list(app)
             if app.patch_dependencies:
-                self._app._patch_report_app_dependencies(
+                self._utils._patch_report_app_dependencies(
                     app.name + '-' + app.version, app.patch_dependencies)
             self._create_app_releases_version(app.name, app.charts)
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
@@ -1615,7 +1680,7 @@ class AppOperator(object):
                              % (from_chart.release, from_app.name, from_app.version))
 
             self._cleanup(from_app, app_dir=False)
-            self._app._patch_report_app_dependencies(
+            self._utils._patch_report_app_dependencies(
                 from_app.name + '-' + from_app.version)
 
             self._update_app_status(
@@ -1739,7 +1804,7 @@ class AppOperator(object):
         try:
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
-            self._app._patch_report_app_dependencies(app.name + '-' + app.version)
+            self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
             msg = None
