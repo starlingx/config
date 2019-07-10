@@ -51,6 +51,13 @@ class GnocchiHelm(openstack.OpenstackBaseHelm):
                 'auth': self._get_endpoints_identity_overrides(
                     self.SERVICE_NAME, self.AUTH_USERS),
             },
+            'metric': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        self.SERVICE_NAME),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+            },
             'oslo_cache': {
                 'auth': {
                     'memcache_secret_key':
