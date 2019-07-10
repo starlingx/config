@@ -156,13 +156,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
         if service_parameters is None:
             return {}
 
-        identity_backend = self._service_parameter_lookup_one(
-            service_parameters,
-            constants.SERVICE_PARAM_SECTION_IDENTITY_IDENTITY,
-            constants.SERVICE_PARAM_IDENTITY_DRIVER,
-            constants.SERVICE_PARAM_IDENTITY_IDENTITY_DRIVER_SQL)
         config = {
-            'keystone::ldap::identity_driver': identity_backend,
             'openstack::keystone::params::token_expiration':
                 self._service_parameter_lookup_one(
                     service_parameters,
@@ -170,64 +164,6 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
                     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION,
                     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION_DEFAULT),
         }
-
-        if identity_backend == constants.SERVICE_PARAM_IDENTITY_IDENTITY_DRIVER_LDAP:
-            # If Keystone's Identity backend has been specified as
-            # LDAP, then redirect that to Titanium's Hybrid driver
-            # which is an abstraction over both the SQL and LDAP backends,
-            # since we still need to support SQL backend operations, without
-            # necessarily moving it into a separate domain
-            config['keystone::ldap::identity_driver'] = 'hybrid'
-
-            basic_options = ['url', 'suffix', 'user', 'password',
-                             'user_tree_dn', 'user_objectclass',
-                             'query_scope',
-                             'page_size', 'debug_level']
-            use_tls = self._service_parameter_lookup_one(
-                service_parameters,
-                constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP,
-                'use_tls', False)
-            if use_tls:
-                tls_options = ['use_tls', 'tls_cacertdir', 'tls_cacertfile',
-                               'tls_req_cert']
-                basic_options.extend(tls_options)
-
-            user_options = ['user_filter', 'user_id_attribute',
-                            'user_name_attribute', 'user_mail_attribute',
-                            'user_enabled_attribute', 'user_enabled_mask',
-                            'user_enabled_default', 'user_enabled_invert',
-                            'user_attribute_ignore',
-                            'user_default_project_id_attribute',
-                            'user_pass_attribute',
-                            'user_enabled_emulation',
-                            'user_enabled_emulation_dn',
-                            'user_additional_attribute_mapping']
-            basic_options.extend(user_options)
-
-            group_options = ['group_tree_dn', 'group_filter',
-                             'group_objectclass', 'group_id_attribute',
-                             'group_name_attribute', 'group_member_attribute',
-                             'group_desc_attribute', 'group_attribute_ignore',
-                             'group_additional_attribute_mapping']
-            basic_options.extend(group_options)
-
-            use_pool = self._service_parameter_lookup_one(
-                service_parameters,
-                constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP,
-                'use_pool', False)
-            if use_pool:
-                pool_options = ['use_pool', 'pool_size', 'pool_retry_max',
-                                'pool_retry_delay', 'pool_connection_timeout',
-                                'pool_connection_lifetime', 'use_auth_pool',
-                                'auth_pool_size',
-                                'auth_pool_connection_lifetime']
-                basic_options.extend(pool_options)
-
-            for opt in basic_options:
-                config.update(self._format_service_parameter(
-                    service_parameters,
-                    constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP,
-                    'keystone::ldap::', opt))
 
         return config
 

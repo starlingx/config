@@ -409,16 +409,6 @@ class ConductorManager(service.PeriodicService):
 
     DEFAULT_PARAMETERS = [
         {'service': constants.SERVICE_TYPE_IDENTITY,
-         'section': constants.SERVICE_PARAM_SECTION_IDENTITY_ASSIGNMENT,
-         'name': constants.SERVICE_PARAM_ASSIGNMENT_DRIVER,
-         'value': constants.SERVICE_PARAM_IDENTITY_ASSIGNMENT_DRIVER_SQL
-         },
-        {'service': constants.SERVICE_TYPE_IDENTITY,
-         'section': constants.SERVICE_PARAM_SECTION_IDENTITY_IDENTITY,
-         'name': constants.SERVICE_PARAM_IDENTITY_DRIVER,
-         'value': constants.SERVICE_PARAM_IDENTITY_IDENTITY_DRIVER_SQL
-         },
-        {'service': constants.SERVICE_TYPE_IDENTITY,
          'section': constants.SERVICE_PARAM_SECTION_IDENTITY_CONFIG,
          'name': constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION,
          'value': constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION_DEFAULT

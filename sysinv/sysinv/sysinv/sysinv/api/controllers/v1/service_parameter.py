@@ -625,31 +625,6 @@ class ServiceParameterController(rest.RestController):
             raise wsme.exc.ClientSideError(str(e.value))
 
     @staticmethod
-    def _service_parameter_apply_semantic_check_identity():
-        """ Perform checks for the Identity Service Type."""
-        identity_driver = pecan.request.dbapi.service_parameter_get_one(
-            service=constants.SERVICE_TYPE_IDENTITY,
-            section=constants.SERVICE_PARAM_SECTION_IDENTITY_IDENTITY,
-            name=constants.SERVICE_PARAM_IDENTITY_DRIVER)
-
-        # Check that the LDAP URL is specified if the identity backend is LDAP
-        if (identity_driver.value ==
-                constants.SERVICE_PARAM_IDENTITY_IDENTITY_DRIVER_LDAP):
-            try:
-                pecan.request.dbapi.service_parameter_get_one(
-                    service=constants.SERVICE_TYPE_IDENTITY,
-                    section=constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP,
-                    name=service_parameter.SERVICE_PARAM_IDENTITY_LDAP_URL)
-            except exception.NotFound:
-                msg = _("Unable to apply service parameters. "
-                        "Missing service parameter '%s' for service '%s' "
-                        "in section '%s'." % (
-                            service_parameter.SERVICE_PARAM_IDENTITY_LDAP_URL,
-                            constants.SERVICE_TYPE_IDENTITY,
-                            constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP))
-                raise wsme.exc.ClientSideError(msg)
-
-    @staticmethod
     def _service_parameter_apply_semantic_check_mtce():
         """Semantic checks for the Platform Maintenance Service Type """
         hbs_failure_threshold = pecan.request.dbapi.service_parameter_get_one(
@@ -718,9 +693,6 @@ class ServiceParameterController(rest.RestController):
                     raise wsme.exc.ClientSideError(msg)
 
         # Apply service specific semantic checks
-        if service == constants.SERVICE_TYPE_IDENTITY:
-            self._service_parameter_apply_semantic_check_identity()
-
         if service == constants.SERVICE_TYPE_PLATFORM:
             self._service_parameter_apply_semantic_check_mtce()
 
