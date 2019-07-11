@@ -43,7 +43,8 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
     def _get_pod_overrides(self):
         return {
             'replicas': {
-                'central': self._num_controllers()
+                'central': self._num_controllers(),
+                'notification': self._num_controllers()
             }
         }
 
