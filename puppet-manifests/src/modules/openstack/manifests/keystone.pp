@@ -347,14 +347,54 @@ class openstack::keystone::endpoint::runtime {
       include ::dcdbsync::keystone::auth
     }
 
+    if $::platform::params::distributed_cloud_role == 'subcloud' {
+      include ::dcdbsync::keystone::auth
+    }
+
     include ::smapi::keystone::auth
 
-    Keystone::Resource::Service_identity <||>
-    -> file { '/etc/platform/.service_endpoint_reconfigured':
-      ensure => present,
-      owner  => 'root',
-      group  => 'root',
-      mode   => '0644',
+    if ($::platform::params::distributed_cloud_role == 'subcloud' and
+        $::platform::params::region_2_name != 'RegionOne') {
+      $interfaces = [ 'public', 'internal', 'admin' ]
+      include ::platform::client
+      # Cleanup the endpoints created at bootstrap if they are not in
+      # the subcloud region.
+      Keystone::Resource::Service_identity <||>
+      -> Class['::platform::client']
+      -> delete_endpoints { 'Delete keystone endpoints':
+        region     => 'RegionOne',
+        service    => 'keystone',
+        interfaces => $interfaces,
+      }
+      -> delete_endpoints { 'Delete sysinv endpoints':
+        region     => 'RegionOne',
+        service    => 'sysinv',
+        interfaces => $interfaces,
+      }
+      -> delete_endpoints { 'Delete barbican endpoints':
+        region     => 'RegionOne',
+        service    => 'barbican',
+        interfaces => $interfaces,
+      }
+      -> delete_endpoints { 'Delete fm endpoints':
+        region     => 'RegionOne',
+        service    => 'fm',
+        interfaces => $interfaces,
+      }
+      -> file { '/etc/platform/.service_endpoint_reconfigured':
+        ensure => present,
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0644',
+      }
+    } else {
+      Keystone::Resource::Service_identity <||>
+      -> file { '/etc/platform/.service_endpoint_reconfigured':
+        ensure => present,
+        owner  => 'root',
+        group  => 'root',
+        mode   => '0644',
+      }
     }
 
   }
