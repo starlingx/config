@@ -48,7 +48,8 @@ SUMMARY_FILE = 'armada-overrides.yaml'
 class ArmadaManifestOperator(object):
 
     def __init__(self, manifest_fqpn=None):
-        self.manifest_path = None   # Location to write overrides
+        self.manifest_path = None    # Location to write overrides
+        self.delete_manifest = None  # Unified manifest for app deletion
 
         self.content = []  # original app manifest content
 
@@ -98,7 +99,12 @@ class ArmadaManifestOperator(object):
         :param manifest_fqpn: fully qualified path name of the application manifest
         """
         if os.path.exists(manifest_fqpn):
+            # Save the path for writing overrides files
             self.manifest_path = os.path.dirname(manifest_fqpn)
+
+            # Save the name for a delete manifest
+            self.delete_manifest = "%s-del%s" % os.path.splitext(manifest_fqpn)
+
             with open(manifest_fqpn, 'r') as f:
                 self.content = list(yaml.load_all(
                     f, Loader=yaml.RoundTripLoader))
@@ -134,6 +140,12 @@ class ArmadaManifestOperator(object):
             filepath = os.path.join(self.manifest_path, fileregex)
             for f in glob(filepath):
                 os.remove(f)
+
+    def _cleanup_deletion_manifest(self):
+        """ Remove any previously written deletion manifest
+        """
+        if self.delete_manifest and os.path.exists(self.delete_manifest):
+            os.remove(self.delete_manifest)
 
     def _write_file(self, path, filename, pathfilename, data):
         """ Write a yaml file
@@ -186,7 +198,7 @@ class ArmadaManifestOperator(object):
                              os.path.join(self.manifest_path, SUMMARY_FILE),
                              files_written)
 
-    def save(self):
+    def save_overrides(self):
         """ Save the overrides files
 
         Write the elements of the manifest (manifest, chart_group, chart) that
@@ -205,6 +217,38 @@ class ArmadaManifestOperator(object):
                     filepath = os.path.join(self.manifest_path, filename)
                     self._write_file(self.manifest_path, filename, filepath,
                                 self.docs[k][i])
+        else:
+            LOG.error("Manifest directory %s does not exist" % self.manifest_path)
+
+    def save_delete_manifest(self):
+        """ Save an updated manifest for deletion
+
+        armada delete doesn't support --values files as does the apply. To
+        handle proper deletion of the conditional charts/chart groups that end
+        up in the overrides files, create a unified file for use when deleting.
+
+        NOTE #1: If we want to abandon using manifest overrides files altogether,
+        this generated file could probably be used on apply and delete.
+
+        NOTE #2: Diffing the original manifest and this manifest provides a
+        clear view of the conditional changes that were enforced by the system
+        in the plugins
+        """
+        if os.path.exists(self.manifest_path):
+
+            # cleanup existing deletion manifest
+            self._cleanup_deletion_manifest()
+
+            with open(self.delete_manifest, 'w') as f:
+                try:
+                    yaml.dump_all(self.content, f, Dumper=yaml.RoundTripDumper,
+                                  explicit_start=True,
+                                  default_flow_style=False)
+                    LOG.info("Delete manifest file %s generated" %
+                             self.delete_manifest)
+                except Exception as e:
+                    LOG.error("Failed to generate delete manifest file %s: "
+                              "%s" % (self.delete_manifest, e))
         else:
             LOG.error("Manifest directory %s does not exist" % self.manifest_path)
 

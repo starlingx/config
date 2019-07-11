@@ -550,9 +550,11 @@ class HelmOperator(object):
             manifest.platform_mode_manifest_updates(
                 self.dbapi, manifest_op, app_name, mode)
 
-            # Write the manifest doc overrides for the chart, chart group and manifest
-            manifest_op.save()
+            # Write the manifest doc overrides, a summmary file for easy --value
+            # generation on the apply, and a unified manifest for deletion.
+            manifest_op.save_overrides()
             manifest_op.save_summary(path=path)
+            manifest_op.save_delete_manifest()
 
         else:
             # Generic applications
