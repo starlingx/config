@@ -615,6 +615,19 @@ def _check_disk(stor):
             raise wsme.exc.ClientSideError(_(
                 "Can not associate to a rootfs disk"))
 
+    # semantic check: whether disk has any partitions created
+    partitions = pecan.request.dbapi.partition_get_by_idisk(idisk_uuid)
+    if partitions:
+        raise wsme.exc.ClientSideError(_(
+            "Cannot assign storage function to a disk that contains "
+            "other partitions."))
+
+    # semantic check: whether disk is already associated to a PV
+    if idisk.ipv_uuid:
+        raise wsme.exc.ClientSideError(_(
+            "Cannot assign storage function to a disk already assigned "
+            "as a physical volume to a volume group."))
+
     return idisk_uuid
 
 
