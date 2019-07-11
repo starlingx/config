@@ -22,9 +22,11 @@ class dcmanager::client(
 ) {
 
   include dcmanager::params
+  include dcmanager::deps
 
   package { 'dcmanagerclient':
     ensure => $package_ensure,
     name   => $::dcmanager::params::client_package,
+    tag    => 'dcmanager-package',
   }
 }

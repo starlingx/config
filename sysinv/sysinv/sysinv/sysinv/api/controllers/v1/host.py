@@ -1431,6 +1431,12 @@ class HostController(rest.RestController):
                     pecan.request.rpcapi.reconfigure_service_endpoints(
                         pecan.request.context, controller_ihost)
 
+                    # if it is a system controller, config the database
+                    if (utils.get_distributed_cloud_role() ==
+                            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+                        pecan.request.rpcapi.configure_sc_database(
+                            pecan.request.context, controller_ihost)
+
                 return Host.convert_with_links(controller_ihost)
 
         if ihost_dict['personality'] in (constants.CONTROLLER, constants.STORAGE):

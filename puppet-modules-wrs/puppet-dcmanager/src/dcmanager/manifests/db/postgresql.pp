@@ -40,6 +40,8 @@ class dcmanager::db::postgresql(
   $privileges = 'ALL',
 ) {
 
+  include dcmanager::deps
+
   ::openstacklib::db::postgresql { 'dcmanager':
     password_hash => postgresql_password($user, $password),
     dbname        => $dbname,
@@ -48,7 +50,7 @@ class dcmanager::db::postgresql(
     privileges    => $privileges,
   }
 
-  ::Openstacklib::Db::Postgresql['dcmanager'] ~> Service <| title == 'dcmanager-api' |>
-  ::Openstacklib::Db::Postgresql['dcmanager'] ~> Service <| title == 'dcmanager-manager' |>
-  ::Openstacklib::Db::Postgresql['dcmanager'] ~> Exec <| title == 'dcmanager-dbsync' |>
+  Anchor['dcmanager::db::begin']
+  ~> Class['dcmanager::db::postgresql']
+  ~> Anchor['dcmanager::db::end']
 }

@@ -130,9 +130,22 @@ class platform::dcorch::api_proxy
 
     class { '::dcorch::api_proxy':
       bind_host => $api_host,
+      sync_db   => $::platform::params::init_database,
     }
 
     include ::platform::dcorch::firewall
     include ::platform::dcorch::haproxy
+  }
+}
+
+class platform::dcorch::runtime {
+  if $::platform::params::distributed_cloud_role == 'systemcontroller' {
+    include ::platform::amqp::params
+    include ::dcorch
+    include ::dcorch::db::postgresql
+
+    class { '::dcorch::api_proxy':
+      sync_db   => str2bool($::is_standalone_controller),
+    }
   }
 }

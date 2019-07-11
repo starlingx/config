@@ -23,9 +23,11 @@ class dcorch::client(
 ) {
 
   include dcorch::params
+  include dcorch::deps
 
   package { 'dcorchclient':
     ensure => $package_ensure,
     name   => $::dcorch::params::client_package,
+    tag    => 'dcorch-package',
   }
 }

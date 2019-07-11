@@ -99,20 +99,18 @@ class dcmanager::api (
   $service_port               = '5000',
   $package_ensure             = 'latest',
   $bind_host                  = '0.0.0.0',
-  $enabled                    = false
+  $enabled                    = false,
+  $sync_db                    = false,
 ) {
 
   include dcmanager::params
-
-  Dcmanager_config<||> ~> Service['dcmanager-api']
-  Dcmanager_config<||> ~> Exec['dcmanager-dbsync']
+  include dcmanager::deps
 
   if $::dcmanager::params::api_package {
-    Package['dcmanager'] -> Dcmanager_config<||>
-    Package['dcmanager'] -> Service['dcmanager-api']
     package { 'dcmanager':
       ensure => $package_ensure,
       name   => $::dcmanager::params::api_package,
+      tag    => 'dcmanager-package',
     }
   }
 
@@ -194,15 +192,7 @@ class dcmanager::api (
   }
   Keystone_endpoint<||> -> Service['dcmanager-api']
 
-  exec { 'dcmanager-dbsync':
-    command     => $::dcmanager::params::db_sync_command,
-    path        => '/usr/bin',
-    refreshonly => true,
-    logoutput   => 'on_failure',
-    require     => Package['dcmanager'],
-    # Only do the db sync if both controllers are running the same software
-    # version. Avoids impacting mate controller during an upgrade.
-    onlyif      => "test ${::controller_sw_versions_match} = true",
+  if $sync_db {
+    include ::dcmanager::db::sync
   }
-
 }

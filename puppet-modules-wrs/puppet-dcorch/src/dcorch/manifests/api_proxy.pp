@@ -99,22 +99,18 @@ class dcorch::api_proxy (
   $service_port               = '5000',
   $package_ensure             = 'latest',
   $bind_host                  = '0.0.0.0',
-  $enabled                    = false
+  $enabled                    = false,
+  $sync_db                    = false,
 ) {
 
   include dcorch::params
-
-  Dcorch_config<||> ~> Service['dcorch-api-proxy']
-  Dcorch_config<||> ~> Exec['dcorch-dbsync']
-  Dcorch_api_paste_ini<||> ~> Service['dcorch-api-proxy']
+  include dcorch::deps
 
   if $::dcorch::params::api_package {
-    Package['dcorch'] -> Dcorch_config<||>
-    Package['dcorch'] -> Dcorch_api_paste_ini<||>
-    Package['dcorch'] -> Service['dcorch-api-proxy']
     package { 'dcorch':
       ensure => $package_ensure,
       name   => $::dcorch::params::api_proxy_package,
+      tag    => 'dcorch-package',
     }
   }
 
@@ -196,15 +192,7 @@ class dcorch::api_proxy (
   }
   Keystone_endpoint<||> -> Service['dcorch-api-proxy']
 
-  exec { 'dcorch-dbsync':
-    command     => $::dcorch::params::db_sync_command,
-    path        => '/usr/bin',
-    refreshonly => true,
-    logoutput   => 'on_failure',
-    require     => Package['dcorch'],
-    # Only do the db sync if both controllers are running the same software
-    # version. Avoids impacting mate controller during an upgrade.
-    onlyif      => "test ${::controller_sw_versions_match} = true",
+  if $sync_db {
+    include ::dcorch::db::sync
   }
-
 }

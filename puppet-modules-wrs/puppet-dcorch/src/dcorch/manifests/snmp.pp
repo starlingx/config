@@ -16,15 +16,13 @@ class dcorch::snmp (
 ) {
 
   include dcorch::params
-
-  Dcorch_config<||> ~> Service['dcorch-snmp']
+  include dcorch::deps
 
   if $::dcorch::params::snmp_package {
-    Package['dcorch-snmp'] -> Dcorch_config<||>
-    Package['dcorch-snmp'] -> Service['dcorch-snmp']
     package { 'dcorch-snmp':
       ensure => $package_ensure,
       name   => $::dcorch::params::snmp_package,
+      tag    => 'dcorch-package',
     }
   }
   dcorch_config {
@@ -43,8 +41,7 @@ class dcorch::snmp (
     name      => $::dcorch::params::snmp_service,
     enable    => $enabled,
     hasstatus => false,
-    require   => Package['dcorch'],
+    tag       => 'dcorch-service',
   }
 
-  Exec<| title == 'dcorch-dbsync' |> -> Service['dcorch-snmp']
 }
