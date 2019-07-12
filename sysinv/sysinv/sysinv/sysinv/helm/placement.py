@@ -49,7 +49,14 @@ class PlacementHelm(openstack.OpenstackBaseHelm):
             'oslo_db': {
                 'auth': self._get_endpoints_oslo_db_overrides(
                     self.SERVICE_NAME, [self.SERVICE_NAME])
-            }
+            },
+            'placement': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        self.SERVICE_NAME),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+            },
         }
 
         return overrides
