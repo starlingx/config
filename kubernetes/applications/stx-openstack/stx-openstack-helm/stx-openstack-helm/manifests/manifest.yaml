@@ -120,6 +120,11 @@ data:
   release: openstack-nginx-ports-control
   namespace: openstack
   values: {}
+  wait:
+    timeout: 1800
+    resources: []
+    labels:
+      release_group: osh-openstack-nginx-ports-control
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/starlingx/nginx-ports-control-0.1.0.tgz
