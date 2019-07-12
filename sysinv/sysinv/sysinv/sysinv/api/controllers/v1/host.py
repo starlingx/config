@@ -3591,8 +3591,15 @@ class HostController(rest.RestController):
             elif m.vm_hugepages_nr_1G:
                 allocated += constants.MIB_1G * m.vm_hugepages_nr_1G
 
-            LOG.debug("MemTotal=%s allocated=%s" % (memtotal, allocated))
-            if memtotal < allocated:
+            LOG.info("Memory: Total=%s MiB, Allocated=%s MiB, "
+                    "2M: %s pages %s pages pending, "
+                    "1G: %s pages %s pages pending"
+                    % (memtotal, allocated,
+                        m.vm_hugepages_possible_2M, m.vm_hugepages_nr_2M_pending,
+                        m.vm_hugepages_possible_1G, m.vm_hugepages_nr_1G_pending))
+            if (memtotal < allocated or
+                    m.vm_hugepages_possible_2M < m.vm_hugepages_nr_2M_pending or
+                    m.vm_hugepages_possible_1G < m.vm_hugepages_nr_1G_pending):
                 msg = (_("Rejected: Total allocated memory exceeds the total memory of "
                          "%(host)s numa node %(node)s "
                          ) %
@@ -3704,19 +3711,46 @@ class HostController(rest.RestController):
                         if m.vm_hugepages_nr_1G_pending is not None \
                         else m.vm_hugepages_nr_1G
 
+                    hp_possible_mib = (m.node_memtotal_mib -
+                                       m.platform_reserved_mib)
+                    vs_mem_mib = (vs_hugepages_nr *
+                                  m.vswitch_hugepages_size_mib)
+                    vm_mem_mib = hp_possible_mib - vs_mem_mib
+
+                    vm_mem_mib_possible = m.vm_hugepages_possible_2M * constants.MIB_2M
+
+                    LOG.info("host(%s) node(%d): vm_mem_mib=%d,"
+                            "vm_mem_mib_possible (from agent) = %d"
+                            % (ihost['hostname'], node['id'], vm_mem_mib,
+                                vm_mem_mib_possible))
+
+                    # vm_mem_mib should not be negative
+                    if vm_mem_mib < constants.MIB_2M:
+                        vm_mem_mib = 0
+                    # worker_reserved.conf might have different setting
+                    # during upgrading or patching
+                    if vm_mem_mib > vm_mem_mib_possible:
+                        vm_mem_mib = vm_mem_mib_possible
+                    # Current value might not be suitable after upgrading or
+                    # patching
+                    if vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) /
+                            constants.MIB_2M):
+                        vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) /
+                                                 constants.MIB_2M)
+                        value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
+
                     # calculate 90% 2M pages if the huge pages have not been
                     # allocated and the compute label is set
                     if cutils.has_openstack_compute(labels) and \
-                                    vm_hugepages_nr_2M == 0 and \
-                                    vm_hugepages_nr_1G == 0 and \
+                            vm_hugepages_nr_2M == 0 and \
+                            vm_hugepages_nr_1G == 0 and \
+                            vm_mem_mib > 0 and \
                             cutils.is_default_huge_pages_required(ihost):
-                        vm_hugepages_nr_2M = int(m.vm_hugepages_possible_2M * 0.9)
+                        vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) /
+                                                 constants.MIB_2M)
                         value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
 
-                    vm_hugepages_4K = \
-                        (m.node_memtotal_mib - m.platform_reserved_mib)
-                    vm_hugepages_4K -= \
-                        (vs_hugepages_nr * m.vswitch_hugepages_size_mib)
+                    vm_hugepages_4K = vm_mem_mib
                     vm_hugepages_4K -= \
                         (constants.MIB_2M * vm_hugepages_nr_2M)
                     vm_hugepages_4K -=  \
