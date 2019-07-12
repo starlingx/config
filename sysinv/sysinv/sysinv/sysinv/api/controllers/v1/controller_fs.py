@@ -429,59 +429,26 @@ def _get_controller_cgtsvg_limit():
     return cgtsvg_max_free_GiB
 
 
-def _check_controller_fs(controller_fs_new=None,
-                         ceph_mon_gib_new=None,
-                         cgtsvg_growth_gib=None,
-                         controller_fs_list=None):
-
-    ceph_mons = pecan.request.dbapi.ceph_mon_get_list()
-
-    if not controller_fs_list:
-        controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
-
-    if not ceph_mon_gib_new:
-        if ceph_mons:
-            ceph_mon_gib_new = ceph_mons[0].ceph_mon_gib
-        else:
-            ceph_mon_gib_new = 0
-    else:
-        if ceph_mons:
-            cgtsvg_growth_gib = ceph_mon_gib_new - ceph_mons[0].ceph_mon_gib
-        else:
-            cgtsvg_growth_gib = ceph_mon_gib_new
+def _check_ceph_mon_growth(ceph_mon_gib):
+    """ Check growth of ceph_mon in controller.
+        There is additional items to check for controller_fs compared with
+        check_node_ceph_mon_growth().
+    """
+    controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
 
     cgtsvg_max_free_GiB = _get_controller_cgtsvg_limit()
 
-    LOG.info("_check_controller_fs ceph_mon_gib_new = %s" % ceph_mon_gib_new)
-    LOG.info("_check_controller_fs cgtsvg_growth_gib = %s" % cgtsvg_growth_gib)
-    LOG.info("_check_controller_fs cgtsvg_max_free_GiB = %s" % cgtsvg_max_free_GiB)
+    LOG.info("_check_ceph_mon_growth ceph_mon_gib = %s, "
+        "cgtsvg_max_free_GiB = %s" % (ceph_mon_gib, cgtsvg_max_free_GiB))
 
-    _check_relative_controller_fs(controller_fs_new, controller_fs_list)
+    _check_relative_controller_fs(None, controller_fs_list)
 
     rootfs_configured_size_GiB = \
-        _total_size_controller_fs(controller_fs_new,
-                                  controller_fs_list) + ceph_mon_gib_new
-
-    LOG.info("_check_controller_fs rootfs_configured_size_GiB = %s" %
+        _total_size_controller_fs(None, controller_fs_list) + ceph_mon_gib
+    LOG.info("_check_ceph_mon_growth rootfs_configured_size_GiB = %s" %
              rootfs_configured_size_GiB)
 
-    if cgtsvg_growth_gib and (cgtsvg_growth_gib > cgtsvg_max_free_GiB):
-        if ceph_mon_gib_new:
-            msg = _(
-                "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, "
-                "scratch, backup, extension and ceph-mon exceeds "
-                "growth limit of %s GiB." %
-                (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
-            )
-        else:
-            msg = _(
-                "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, scratch, "
-                "backup and extension exceeds growth limit of %s GiB." %
-                (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
-            )
-        raise wsme.exc.ClientSideError(msg)
+    utils.check_node_ceph_mon_growth(None, ceph_mon_gib, cgtsvg_max_free_GiB)
 
 
 def _check_controller_multi_fs_data(context, controller_fs_list_new):
