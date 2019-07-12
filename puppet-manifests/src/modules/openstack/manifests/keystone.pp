@@ -335,11 +335,7 @@ class openstack::keystone::endpoint::runtime {
     include ::patching::keystone::auth
     include ::nfv::keystone::auth
     include ::fm::keystone::auth
-
-    include ::openstack::barbican::params
-    if $::openstack::barbican::params::service_enabled {
-      include ::barbican::keystone::auth
-    }
+    include ::barbican::keystone::auth
 
     if $::platform::params::distributed_cloud_role =='systemcontroller' {
       include ::dcorch::keystone::auth
