@@ -31,6 +31,7 @@ class KubeOperator(object):
         self._dbapi = dbapi
         self._kube_client_batch = None
         self._kube_client_core = None
+        self._kube_client_custom_objects = None
 
     def _load_kube_config(self):
         config.load_kube_config('/etc/kubernetes/admin.conf')
@@ -51,6 +52,12 @@ class KubeOperator(object):
             self._load_kube_config()
             self._kube_client_core = client.CoreV1Api()
         return self._kube_client_core
+
+    def _get_kubernetesclient_custom_objects(self):
+        if not self._kube_client_custom_objects:
+            self._load_kube_config()
+            self._kube_client_custom_objects = client.CustomObjectsApi()
+        return self._kube_client_custom_objects
 
     def kube_patch_node(self, name, body):
         try:
@@ -263,4 +270,19 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Failed to delete Jobs with label %s under "
                       "Namespace %s: %s" % (label, namespace, e))
+            raise
+
+    def delete_custom_resource(self, group, version, namespace, plural, name):
+        c = self._get_kubernetesclient_custom_objects()
+        body = {}
+
+        try:
+            c.delete_namespaced_custom_object(group, version, namespace,
+                plural, name, body)
+        except ApiException as ex:
+            if ex.reason == "Not Found":
+                pass
+        except Exception as e:
+            LOG.error("Failed to delete custom object, Namespace %s: %s"
+                      % (namespace, e))
             raise
