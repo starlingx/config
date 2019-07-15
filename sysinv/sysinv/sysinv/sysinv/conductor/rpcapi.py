@@ -426,6 +426,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('update_partition_config',
                                                 partition=partition))
 
+    def device_plugin_labels_update_by_ihost(self, context,
+                                             host_uuid, device_plugin_labels):
+
+        """Assign device plugin labels to an ihost with the supplied data.
+
+        :param context: an admin context
+        :param host_uuid: host uuid unique id
+        :param device_plugin_labels: kubernetes labels request to assign
+        :returns: pass or fail
+        """
+
+        return self.call(context,
+                         self.make_msg('device_plugin_labels_update_by_ihost',
+                                       host_uuid=host_uuid,
+                                       device_plugin_labels=device_plugin_labels))
+
     def iplatform_update_by_ihost(self, context,
                                   ihost_uuid, imsg_dict):
         """Create or update memory for an ihost with the supplied data.
