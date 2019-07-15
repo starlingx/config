@@ -665,6 +665,19 @@ class HelmOperator(object):
             LOG.exception("failed to delete overrides file: %s" % filepath)
             raise
 
+    @helm_context
+    def version_check(self, app_name, app_version):
+        """Validate application version"""
+        if app_name in self.helm_system_applications:
+            for chart_name in self.helm_system_applications[app_name]:
+                if not self.chart_operators[chart_name].version_check(app_version):
+                    LOG.info("Unsupported version reported by %s: %s %s" % (
+                             chart_name, app_name, app_version))
+                    return False
+
+        # Return True by default
+        return True
+
 
 class HelmOperatorData(HelmOperator):
     """Class to allow retrieval of helm managed data"""

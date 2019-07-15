@@ -253,3 +253,11 @@ class BaseHelm(object):
         May be left blank to indicate that there are no additional overrides.
         """
         return {}
+
+    def version_check(self, app_version):
+        """
+        Validate application version
+
+        Return False if version is not supported by the plugin.
+        """
+        return True
