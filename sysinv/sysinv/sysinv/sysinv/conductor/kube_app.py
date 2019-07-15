@@ -1397,9 +1397,18 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
+
         LOG.info("Application %s (%s) upload started." % (app.name, app.version))
 
         try:
+            if not self._helm.version_check(app.name, app.version):
+                LOG.info("Application %s (%s) upload rejected. Unsupported version."
+                         % (app.name, app.version))
+                raise exception.KubeAppUploadFailure(
+                    name=app.name,
+                    version=app.version,
+                    reason="Unsupported application version.")
+
             app.tarfile = tarfile
 
             if cutils.is_url(app.tarfile):
