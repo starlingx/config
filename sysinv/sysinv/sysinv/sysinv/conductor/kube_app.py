@@ -2113,8 +2113,13 @@ class DockerHelper(object):
                         LOG.info("Application releases %s were successfully "
                                  "rolled back." % app_releases)
                 elif request == constants.APP_DELETE_OP:
+                    # Since armada delete doesn't support --values overrides
+                    # files, use the delete manifest generated from the
+                    # ArmadaManifestOperator during overrides generation. It
+                    # will contain an accurate view of what was applied
+                    manifest_delete_file = "%s-del%s" % os.path.splitext(manifest_file)
                     cmd = "/bin/bash -c 'set -o pipefail; armada delete --debug " +\
-                          "--manifest " + manifest_file + tiller_host + " | tee " +\
+                          "--manifest " + manifest_delete_file + tiller_host + " | tee " +\
                           logfile + "'"
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
