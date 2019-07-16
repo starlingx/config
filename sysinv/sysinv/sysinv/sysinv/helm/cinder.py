@@ -181,6 +181,27 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                 'auth': self._get_endpoints_oslo_messaging_overrides(
                     self.SERVICE_NAME, self.AUTH_USERS)
             },
+            'volume': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        self.SERVICE_NAME),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+            },
+            'volumev2': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        self.SERVICE_NAME),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+            },
+            'volumev3': {
+                'host_fqdn_override':
+                    self._get_endpoints_host_fqdn_overrides(
+                        self.SERVICE_NAME),
+                'port': self._get_endpoints_port_api_public_overrides(),
+                'scheme': self._get_endpoints_scheme_public_overrides(),
+            },
 
         }
 
