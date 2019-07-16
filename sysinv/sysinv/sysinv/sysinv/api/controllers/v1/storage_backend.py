@@ -20,7 +20,6 @@
 #
 
 
-import jsonpatch
 import pecan
 
 from pecan import rest
@@ -42,7 +41,6 @@ from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import uuidutils
-from oslo_serialization import jsonutils
 
 from sysinv.api.controllers.v1 import storage_ceph           # noqa
 from sysinv.api.controllers.v1 import storage_lvm            # noqa
@@ -279,52 +277,6 @@ class StorageBackendController(rest.RestController):
         # This is the base class call into the appropriate backend class to
         # update
         return _patch(storage_backend_uuid, patch)
-
-        rpc_storage_backend = objects.storage_backend.get_by_uuid(
-            pecan.request.context, storage_backend_uuid)
-        # action = None
-        for p in patch:
-            # if '/action' in p['path']:
-            #     value = p['value']
-            #     patch.remove(p)
-            #     if value in (constants.APPLY_ACTION,
-            #                  constants.INSTALL_ACTION):
-            #         action = value
-            # elif p['path'] == '/capabilities':
-            if p['path'] == '/capabilities':
-                p['value'] = jsonutils.loads(p['value'])
-
-        # replace isystem_uuid and storage_backend_uuid with corresponding
-        patch_obj = jsonpatch.JsonPatch(patch)
-        state_rel_path = ['/uuid', '/forisystemid', '/isystem_uuid']
-        if any(p['path'] in state_rel_path for p in patch_obj):
-            raise wsme.exc.ClientSideError(_("The following fields can not be "
-                                             "modified: %s" %
-                                             state_rel_path))
-        for p in patch_obj:
-            if p['path'] == '/isystem_uuid':
-                isystem = objects.system.get_by_uuid(pecan.request.context,
-                                                     p['value'])
-                p['path'] = '/forisystemid'
-                p['value'] = isystem.id
-                break
-
-        try:
-            storage_backend = StorageBackend(**jsonpatch.apply_patch(
-                rpc_storage_backend.as_dict(),
-                patch_obj))
-
-        except utils.JSONPATCH_EXCEPTIONS as e:
-            raise exception.PatchError(patch=patch, reason=e)
-
-        # Update only the fields that have changed
-        for field in objects.storage_backend.fields:
-            if rpc_storage_backend[field] != getattr(storage_backend, field):
-                rpc_storage_backend[field] = getattr(storage_backend, field)
-
-        # Save storage_backend
-        rpc_storage_backend.save()
-        return StorageBackend.convert_with_links(rpc_storage_backend)
 
     @wsme_pecan.wsexpose(None)
     def delete(self):
