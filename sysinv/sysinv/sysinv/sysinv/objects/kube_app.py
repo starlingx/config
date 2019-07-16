@@ -25,6 +25,7 @@ class KubeApp(base.SysinvObject):
               'status': utils.str_or_none,
               'progress': utils.str_or_none,
               'active': utils.bool_or_none,
+              'recovery_attempts': utils.int_or_zero,
               }
 
     @base.remotable_classmethod

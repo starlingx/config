@@ -44,6 +44,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
+from datetime import datetime
 
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
@@ -120,6 +121,9 @@ conductor_opts = [
        cfg.IntOpt('osd_remove_retry_interval',
                   default=5,
                   help='Interval in seconds between retries to remove Ceph OSD.'),
+       cfg.IntOpt('managed_app_auto_recovery_interval',
+                  default=300,
+                  help='Interval to run managed app auto recovery'),
                   ]
 
 CONF = cfg.CONF
@@ -144,6 +148,11 @@ CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
 CONFIG_REBOOT_REQUIRED = (1 << 127)
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
+
+
+AppTarBall = namedtuple(
+    'AppTarBall',
+    "tarball_name app_name app_version manifest_name manifest_file")
 
 
 class ConductorManager(service.PeriodicService):
@@ -4851,91 +4860,183 @@ class ConductorManager(service.PeriodicService):
             elif bk.backend in self._stor_bck_op_timeouts:
                 del self._stor_bck_op_timeouts[bk.backend]
 
+    def _auto_upload_managed_app(self, context, app_name):
+        if self._patching_operation_is_occurring():
+            return
+
+        LOG.info("Platform managed application %s: Creating..." % app_name)
+        app_data = {'name': app_name,
+                    'app_version': constants.APP_VERSION_PLACEHOLDER,
+                    'manifest_name': constants.APP_MANIFEST_NAME_PLACEHOLDER,
+                    'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
+                    'status': constants.APP_UPLOAD_IN_PROGRESS}
+        try:
+            self.dbapi.kube_app_create(app_data)
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppAlreadyExists as e:
+            LOG.exception(e)
+            return
+        except exception.KubeAppNotFound as e:
+            LOG.exception(e)
+            return
+
+        tarball = self._check_tarfile(app_name)
+        if ((tarball.manifest_name is None) or
+                (tarball.manifest_file is None)):
+            app.status = constants.APP_UPLOAD_FAILURE
+            app.save()
+            return
+
+        app.name = tarball.app_name
+        app.app_version = tarball.app_version
+        app.manifest_name = tarball.manifest_name
+        app.manifest_file = os.path.basename(tarball.manifest_file)
+        app.save()
+
+        # Action: Upload.
+        # Do not block this audit task or any other periodic task. This
+        # could be long running. The next audit cycle will pick up the
+        # latest status.
+        LOG.info("Platform managed application %s: "
+                    "Uploading..." % app_name)
+        greenthread.spawn(self._app.perform_app_upload, app,
+                            tarball.tarball_name)
+
+    def _auto_apply_managed_app(self, context, app_name):
+        if not self._met_app_apply_prerequisites(app_name):
+            LOG.info("Platform managed application %s: Prerequisites "
+                        "not met." % app_name)
+            return
+
+        if self._patching_operation_is_occurring():
+            return
+
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppNotFound as e:
+            LOG.exception(e)
+            return
+
+        app.status = constants.APP_APPLY_IN_PROGRESS
+        app.save()
+
+        # Action: Apply the application
+        # Do not block this audit task or any other periodic task. This
+        # could be long running. The next audit cycle will pick up the
+        # latest status.
+        LOG.info("Platform managed application %s: "
+                    "Applying..." % app_name)
+        greenthread.spawn(self._app.perform_app_apply, app, None)
+
+    def _check_tarfile(self, app_name):
+        tarfiles = []
+        for f in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
+            if fnmatch.fnmatch(f, '{}-*'.format(app_name)):
+                tarfiles.append(f)
+
+        if not tarfiles:
+            LOG.error("Failed to find an application tarball for {}.".format(app_name))
+            return AppTarBall(None, None, None, None, None)
+        elif len(tarfiles) > 1:
+            LOG.error("Found multiple application tarballs for {}.".format(app_name))
+            return AppTarBall(None, None, None, None, None)
+
+        tarball_name = '{}/{}'.format(
+            constants.HELM_APP_ISO_INSTALL_PATH, tarfiles[0])
+
+        with kube_api.TempDirectory() as app_path:
+            if not cutils.extract_tarfile(app_path, tarball_name):
+                LOG.error("Failed to extract tar file {}.".format(
+                    os.path.basename(tarball_name)))
+                return AppTarBall(tarball_name, None, None, None, None)
+
+            # If checksum file is included in the tarball, verify its contents.
+            if not cutils.verify_checksum(app_path):
+                LOG.error("Checksum validation failed for %s." % app_name)
+                return AppTarBall(tarball_name, None, None, None, None)
+
+            try:
+                name, version, patches = \
+                    self._kube_app_helper._verify_metadata_file(
+                        app_path, app_name, None)
+                manifest_name, manifest_file = \
+                    self._kube_app_helper._find_manifest_file(app_path)
+                self._kube_app_helper._extract_helm_charts(app_path)
+            except exception.SysinvException as e:
+                LOG.error("Extracting tarfile for %s failed: %s." % (
+                    app_name, str(e)))
+                return AppTarBall(tarball_name, None, None, None, None)
+
+            LOG.debug("Tar file of application %s verified." % app_name)
+            return AppTarBall(tarball_name, name, version,
+                                manifest_name, manifest_file)
+
+    def _patching_operation_is_occurring(self):
+        # Makes sure a patching operation is not currently underway. We want
+        # all hosts to be patch-current before taking any application
+        # actions
+        #
+        # Execute this check in a function as the rest_api has info logs on
+        # the request/response. Call this only when an action will occur and
+        # not on in every audit cycle
+        try:
+            self._kube_app_helper._check_patching_operation()
+            return False
+        except exception.SysinvException as e:
+            LOG.info("{}. Patching operations are in progress. Suspending "
+                        "actions on platform managed application until patching is "
+                        "completed.".format(e))
+        except Exception as e:
+            LOG.error("{}. Communication Error with patching subsystem. "
+                        "Preventing managed application actions.".format(e))
+        return True
+
+    def _met_app_apply_prerequisites(self, app_name):
+        prereqs_met = False
+        if app_name == constants.HELM_APP_PLATFORM:
+            # make sure for the ceph related apps that we have ceph access
+            # and the crushmap is applied to correctly set up related k8s
+            # resources.
+            crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
+                constants.CEPH_CRUSH_MAP_APPLIED)
+            if (os.path.isfile(crushmap_flag_file) and
+                    self._ceph.have_ceph_monitor_access() and
+                    self._ceph.ceph_status_ok()):
+                prereqs_met = True
+        return prereqs_met
+
+    def _auto_recover_managed_app(self, context, app_name):
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppNotFound as e:
+            LOG.exception(e)
+            return
+
+        if self._app.is_app_aborted(app_name):
+            return
+
+        if constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED not in app.progress:
+            return
+
+        if app.recovery_attempts >= constants.APP_AUTO_RECOVERY_MAX_COUNT:
+            return
+
+        tz = app.updated_at.tzinfo
+        if (datetime.now(tz) - app.updated_at).total_seconds() \
+                < CONF.conductor.managed_app_auto_recovery_interval:
+            return
+
+        app.status = constants.APP_UPLOAD_SUCCESS
+        LOG.info("Reset managed application %s status to %s",
+                app_name, app.status)
+        app.recovery_attempts += 1
+        app.save()
+        self._auto_apply_managed_app(context, app_name)
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
         """Make sure that the required k8s applications are running"""
-
-        AppTarBall = namedtuple(
-            'AppTarBall',
-            "tarball_name app_name app_version manifest_name manifest_file")
-
-        def _check_tarfile(app_name):
-            tarfiles = []
-            for f in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
-                if fnmatch.fnmatch(f, '{}-*'.format(app_name)):
-                    tarfiles.append(f)
-
-            if not tarfiles:
-                LOG.error("Failed to find an application tarball for {}.".format(app_name))
-                return AppTarBall(None, None, None, None, None)
-            elif len(tarfiles) > 1:
-                LOG.error("Found multiple application tarballs for {}.".format(app_name))
-                return AppTarBall(None, None, None, None, None)
-
-            tarball_name = '{}/{}'.format(
-                constants.HELM_APP_ISO_INSTALL_PATH, tarfiles[0])
-
-            with kube_api.TempDirectory() as app_path:
-                if not cutils.extract_tarfile(app_path, tarball_name):
-                    LOG.error("Failed to extract tar file {}.".format(
-                        os.path.basename(tarball_name)))
-                    return AppTarBall(tarball_name, None, None, None, None)
-
-                # If checksum file is included in the tarball, verify its contents.
-                if not cutils.verify_checksum(app_path):
-                    LOG.error("Checksum validation failed for %s." % app_name)
-                    return AppTarBall(tarball_name, None, None, None, None)
-
-                try:
-                    name, version, patches = \
-                        self._kube_app_helper._verify_metadata_file(
-                            app_path, app_name, None)
-                    manifest_name, manifest_file = \
-                        self._kube_app_helper._find_manifest_file(app_path)
-                    self._kube_app_helper._extract_helm_charts(app_path)
-                except exception.SysinvException as e:
-                    LOG.error("Extracting tarfile for %s failed: %s." % (
-                        app_name, str(e)))
-                    return AppTarBall(tarball_name, None, None, None, None)
-
-                LOG.debug("Tar file of application %s verified." % app_name)
-                return AppTarBall(tarball_name, name, version,
-                                  manifest_name, manifest_file)
-
-        def _patching_operation_is_occurring():
-            # Makes sure a patching operation is not currently underway. We want
-            # all hosts to be patch-current before taking any application
-            # actions
-            #
-            # Execute this check in a function as the rest_api has info logs on
-            # the request/response. Call this only when an action will occur and
-            # not on in every audit cycle
-            try:
-                self._kube_app_helper._check_patching_operation()
-                return False
-            except exception.SysinvException as e:
-                LOG.info("{}. Patching operations are in progress. Suspending "
-                         "actions on platform managed application until patching is "
-                         "completed.".format(e))
-            except Exception as e:
-                LOG.error("{}. Communication Error with patching subsystem. "
-                          "Preventing managed application actions.".format(e))
-            return True
-
-        def _met_app_apply_prerequisites(app_name):
-            prereqs_met = False
-            if app_name == constants.HELM_APP_PLATFORM:
-                # make sure for the ceph related apps that we have ceph access
-                # and the crushmap is applied to correctly set up related k8s
-                # resources.
-                crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
-                    constants.CEPH_CRUSH_MAP_APPLIED)
-                if (os.path.isfile(crushmap_flag_file) and
-                        self._ceph.have_ceph_monitor_access() and
-                        self._ceph.ceph_status_ok()):
-                    prereqs_met = True
-            return prereqs_met
 
         LOG.debug("Periodic Task: _k8s_application_audit: Starting")
         # Make sure that the active controller is unlocked/enabled. Only
@@ -4959,47 +5060,7 @@ class ConductorManager(service.PeriodicService):
 
             LOG.debug("Platform managed application %s: %s" % (app_name, status))
             if status == constants.APP_NOT_PRESENT:
-
-                if _patching_operation_is_occurring():
-                    continue
-
-                LOG.info("Platform managed application %s: Creating..." % app_name)
-                app_data = {'name': app_name,
-                            'app_version': constants.APP_VERSION_PLACEHOLDER,
-                            'manifest_name': constants.APP_MANIFEST_NAME_PLACEHOLDER,
-                            'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
-                            'status': constants.APP_UPLOAD_IN_PROGRESS}
-                try:
-                    self.dbapi.kube_app_create(app_data)
-                    app = kubeapp_obj.get_by_name(context, app_name)
-                except exception.KubeAppAlreadyExists as e:
-                    LOG.exception(e)
-                    continue
-                except exception.KubeAppNotFound as e:
-                    LOG.exception(e)
-                    continue
-
-                tarball = _check_tarfile(app_name)
-                if ((tarball.manifest_name is None) or
-                        (tarball.manifest_file is None)):
-                    app.status = constants.APP_UPLOAD_FAILURE
-                    app.save()
-                    continue
-
-                app.name = tarball.app_name
-                app.app_version = tarball.app_version
-                app.manifest_name = tarball.manifest_name
-                app.manifest_file = os.path.basename(tarball.manifest_file)
-                app.save()
-
-                # Action: Upload.
-                # Do not block this audit task or any other periodic task. This
-                # could be long running. The next audit cycle will pick up the
-                # latest status.
-                LOG.info("Platform managed application %s: "
-                         "Uploading..." % app_name)
-                greenthread.spawn(self._app.perform_app_upload, app,
-                                  tarball.tarball_name)
+                self._auto_upload_managed_app(context, app_name)
             elif status == constants.APP_UPLOAD_IN_PROGRESS:
                 # Action: do nothing
                 pass
@@ -5007,37 +5068,12 @@ class ConductorManager(service.PeriodicService):
                 # Action: Raise alarm?
                 pass
             elif status == constants.APP_UPLOAD_SUCCESS:
-                if not _met_app_apply_prerequisites(app_name):
-                    LOG.info("Platform managed application %s: Prerequisites "
-                             "not met." % app_name)
-                    continue
-
-                if _patching_operation_is_occurring():
-                    continue
-
-                try:
-                    app = kubeapp_obj.get_by_name(context, app_name)
-                except exception.KubeAppNotFound as e:
-                    LOG.exception(e)
-                    continue
-
-                app.status = constants.APP_APPLY_IN_PROGRESS
-                app.save()
-
-                # Action: Apply the application
-                # Do not block this audit task or any other periodic task. This
-                # could be long running. The next audit cycle will pick up the
-                # latest status.
-                LOG.info("Platform managed application %s: "
-                         "Applying..." % app_name)
-                greenthread.spawn(self._app.perform_app_apply, app, None)
-                pass
+                self._auto_apply_managed_app(context, app_name)
             elif status == constants.APP_APPLY_IN_PROGRESS:
                 # Action: do nothing
                 pass
             elif status == constants.APP_APPLY_FAILURE:
-                # Action: Raise alarm?
-                pass
+                self._auto_recover_managed_app(context, app_name)
             elif status == constants.APP_APPLY_SUCCESS:
                 # Action: do nothing -> done
 
