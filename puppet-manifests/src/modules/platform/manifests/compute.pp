@@ -16,10 +16,12 @@ class platform::compute::config
       content => template('platform/worker_reserved.conf.erb')
   }
 
-  file { '/etc/systemd/system.conf.d/platform-cpuaffinity.conf':
-      ensure  => 'present',
-      replace => true,
-      content => template('platform/systemd-system-cpuaffinity.conf.erb')
+  if $::platform::params::system_type != 'All-in-one' {
+    file { '/etc/systemd/system.conf.d/platform-cpuaffinity.conf':
+        ensure  => 'present',
+        replace => true,
+        content => template('platform/systemd-system-cpuaffinity.conf.erb')
+    }
   }
 }
 

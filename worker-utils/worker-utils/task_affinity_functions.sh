@@ -29,19 +29,22 @@ LOG_DEBUG=1
 TAG="TASKAFFINITY:"
 
 TASK_AFFINING_INCOMPLETE="/etc/platform/.task_affining_incomplete"
-N_CPUS=$(cat /proc/cpuinfo 2>/dev/null | \
-            awk '/^[pP]rocessor/ { n +=1 } END { print (n>0) ? n : 1}')
+N_CPUS=$(getconf _NPROCESSORS_ONLN)
 FULLSET_CPUS="0-"$((N_CPUS-1))
 FULLSET_MASK=$(cpulist_to_cpumap ${FULLSET_CPUS} ${N_CPUS})
-PLATFORM_CPUS=$(get_platform_cpu_list)
-PLATFORM_CPULIST=$(get_platform_cpu_list| \
+PLATFORM_CPUS=$(platform_expanded_cpu_list)
+PLATFORM_CPULIST=$(platform_expanded_cpu_list| \
                     perl -pe 's/(\d+)-(\d+)/join(",",$1..$2)/eg'| \
                     sed 's/,/ /g')
 VSWITCH_CPULIST=$(get_vswitch_cpu_list| \
                     perl -pe 's/(\d+)-(\d+)/join(",",$1..$2)/eg'| \
                     sed 's/,/ /g')
+if [[ $vswitch_type =~ none ]]; then
+    VSWITCH_CPULIST=""
+fi
+
 IDLE_MARK=95.0
-KERNEL=`uname -a`
+KERNEL=$(uname -a)
 
 ################################################################################
 # Check if a given core is one of the platform cores
@@ -69,98 +72,19 @@ function is_vswitch_core {
     return 0
 }
 
-################################################################################
-# An audit and corrective action following a swact
-################################################################################
-function audit_and_reaffine {
-    local mask=$1
-    local cmd_str=""
-    local tasklist
-
-    cmd_str="ps-sched.sh|awk '(\$9==\"$mask\") {print \$2}'"
-
-    tasklist=($(eval $cmd_str))
-    # log_debug "cmd str = $cmd_str"
-    log_debug "${TAG} There are ${#tasklist[@]} tasks to reaffine."
-
-    for task in ${tasklist[@]}; do
-        taskset -acp ${PLATFORM_CPUS} $task &> /dev/null
-        rc=$?
-        [[ $rc -ne 0 ]] && log_error "Failed to set CPU affinity for pid $pid, rc=$rc"
-    done
-    tasklist=($(eval $cmd_str))
-    [[ ${#tasklist[@]} -eq 0 ]] && return 0 || return 1
-}
-
-################################################################################
-# The following function is used to verify that any sleeping management tasks
-# that are on non-platform cores can be migrated to platform cores as soon as
-# they are scheduled. It can be invoked either manually or from goenableCompute
-# script as a scheduled job (with a few minute delay) if desired.
-# The induced tasks migration should be done after all VMs have been restored
-# following a host reboot in AIO, hence the delay.
-################################################################################
-function move_inactive_threads_to_platform_cores {
-    local tasklist
-    local cmd_str=""
-
-    # Compile a list of non-kernel & non-vswitch/VM related threads that are not
-    # on platform cores.
-    # e.g. if the platform cpulist value is "0 8", the resulting command to be
-    # evaluated should look like this:
-    # ps-sched.sh|grep -v vswitch|awk '($10!=0 && $10!=8 && $3!=2) {if(NR>1)print $2}'
-    cmd_str="ps-sched.sh|grep -v vswitch|awk '("
-    for cpu_num in ${PLATFORM_CPULIST}; do
-        cmd_str=$cmd_str"\$10!="${cpu_num}" && "
-    done
-    cmd_str=$cmd_str"\$3!=2) {if(NR>1)print \$2}'"
-    echo "selection string = $cmd_str"
-    tasklist=($(eval $cmd_str))
-    log_debug "${TAG} There are ${#tasklist[@]} number of tasks to be moved."
-
-    # These sleep tasks are stuck on the wrong core(s). They need to be woken up
-    # so they can be migrated to the right ones. Attaching and detaching strace
-    # momentarily to the task does the trick.
-    for task in ${tasklist[@]}; do
-        strace -p $task 2>/dev/null &
-        pid=$!
-        sleep 0.1
-        kill -SIGINT $pid
-    done
-    tasklist=($(eval $cmd_str))
-    [[ ${#tasklist[@]} -eq 0 ]] && return 0 || return 1
-}
-
-################################################################################
-# The following function is called by affine-platform.sh to affine tasks to
-# all available cores during initial startup and subsequent host reboots.
-################################################################################
-function affine_tasks_to_all_cores {
+# Return list of reaffineable pids. This includes all processes, but excludes
+# kernel threads, vSwitch, and anything in K8S or qemu/kvm.
+function reaffineable_pids {
+    local pids_excl
     local pidlist
-    local rc=0
 
-    if [[ "${KERNEL}" == *" RT "* ]]; then
-        return 0
-    fi
-
-    log_debug "${TAG} Affining all tasks to CPU (${FULLSET_CPUS})"
-
-    pidlist=$(ps --ppid 2 -p 2 --deselect -o pid= | awk '{ print $1; }')
-    for pid in ${pidlist[@]}; do
-        ppid=$(ps -o ppid= -p $pid |tr -d '[:space:]')
-        if [ -z $ppid ] || [ $ppid -eq 2 ]; then
-            continue
-        fi
-        log_debug "Affining pid $pid, parent pid = $ppid"
-        taskset --all-tasks --pid --cpu-list ${FULLSET_CPUS} $pid &> /dev/null
-        rc=$?
-        [[ $rc -ne 0 ]] && log_error "Failed to set CPU affinity for pid $pid, rc=$rc"
-    done
-    # Write the cpu list to a temp file which will be read and removed when
-    # the tasks are reaffined back to platform cores later on.
-    echo ${FULLSET_CPUS} > ${TASK_AFFINING_INCOMPLETE}
-
-    return $rc
+    pids_excl=$(ps -eL -o pid=,comm= | \
+                awk -vORS=',' '/eal-intr-thread|kthreadd/ {print $1}' | \
+                sed 's/,$/\n/')
+    pidlist=$(ps --ppid ${pids_excl} -p ${pids_excl} --deselect \
+                -o pid=,cgroup= | \
+                awk '!/k8s-infra|machine.slice/ {print $1; }')
+    echo "${pidlist[@]}"
 }
 
 ################################################################################
@@ -208,35 +132,25 @@ function affine_tasks_to_idle_cores {
 
         is_platform_core $cpu
         if [ $? -eq 1 ]; then
-       # Platform core is added to the idle list by default
+            # Platform core is added to the idle list by default
             idle_cpulist=$idle_cpulist$cpu","
         else
-      # Non platform core is added to the idle list if it is more than 95% idle
-            [[ $(echo "$idle_value > ${IDLE_MARK}"|bc) -eq 1 ]] && idle_cpulist=$idle_cpulist$cpu","
+            # Non platform core is added to the idle list if it is more
+            # than 95% idle
+            if [[ $(echo "$idle_value > ${IDLE_MARK}"|bc) -eq 1 ]]; then
+                idle_cpulist=$idle_cpulist$cpu","
+            fi
         fi
         cpu=$(($cpu+1))
     done
 
     idle_cpulist=$(echo $idle_cpulist|sed 's/.$//')
-    platform_affinity_mask=$(cpulist_to_cpumap ${PLATFORM_CPUS} ${N_CPUS} \
-                            |awk '{print tolower($0)}')
 
     log_debug "${TAG} Affining all tasks to idle CPU ($idle_cpulist)"
-
-    vswitch_pid=$(pgrep vswitch)
-    pidlist=$(ps --ppid 2 -p 2 --deselect -o pid= | awk '{ print $1; }')
+    pidlist=( $(reaffineable_pids) )
     for pid in ${pidlist[@]}; do
-        ppid=$(ps -o ppid= -p $pid |tr -d '[:space:]')
-        if [ -z $ppid ] || [ $ppid -eq 2 ] || [ "$pid" = "$vswitch_pid" ]; then
-            continue
-        fi
-        pid_affinity_mask=$(taskset -p $pid | awk '{print $6}')
-        if [ "${pid_affinity_mask}" == "${platform_affinity_mask}" ]; then
-            # log_debug "Affining pid $pid to idle cores..."
-            taskset --all-tasks --pid --cpu-list $idle_cpulist $pid &> /dev/null
-            rc=$?
-            [[ $rc -ne 0 ]] && log_error "Failed to set CPU affinity for pid $pid, rc=$rc"
-        fi
+        taskset --all-tasks --pid --cpu-list \
+            ${idle_cpulist} ${pid} > /dev/null 2>&1
     done
 
     # Save the cpu list to the temp file which will be read and removed when
@@ -246,10 +160,7 @@ function affine_tasks_to_idle_cores {
 }
 
 ################################################################################
-# The following function is called by either:
-# a) nova-compute wrapper script during AIO system initial bringup or reboot
-# or
-# b) sm at the end of swact sequence
+# The following function is called by sm at the end of swact sequence
 # to re-affine management tasks back to the platform cores.
 ################################################################################
 function affine_tasks_to_platform_cores {
@@ -259,42 +170,32 @@ function affine_tasks_to_platform_cores {
     local count=0
 
     if [ ! -f ${TASK_AFFINING_INCOMPLETE} ]; then
-        dbg_str="${TAG} Either tasks have never been affined to all/idle cores or"
-        dbg_str=$dbg_str" they have already been reaffined to platform cores."
+        dbg_str="${TAG} Either tasks have never been affined to all/idle"
+        dbg_str="${TAG} cores or they have already been reaffined to"
+        dbg_str="${TAG} platform cores."
         log_debug "$dbg_str"
         return 0
     fi
 
     read cpulist < ${TASK_AFFINING_INCOMPLETE}
-    affinity_mask=$(cpulist_to_cpumap $cpulist ${N_CPUS}|awk '{print tolower($0)}')
 
     log_debug "${TAG} Reaffining tasks to platform cores (${PLATFORM_CPUS})..."
-    pidlist=$(ps --ppid 2 -p 2 --deselect -o pid= | awk '{ print $1; }')
+    pidlist=( $(reaffineable_pids) )
     for pid in ${pidlist[@]}; do
-        # log_debug "Processing pid $pid..."
-        pid_affinity_mask=$(taskset -p $pid | awk '{print $6}')
-        # Only management tasks need to be reaffined. Kernel, vswitch and VM related
-        # tasks were not affined previously so they should have different affinity
-        # mask(s).
-        if [ "${pid_affinity_mask}" == "${affinity_mask}" ]; then
-            count=$(($count+1))
-            # log_debug "Affining pid $pid to platform cores..."
-            taskset --all-tasks --pid --cpu-list ${PLATFORM_CPUS} $pid &> /dev/null
-            rc=$?
-            [[ $rc -ne 0 ]] && log_error "Failed to set CPU affinity for pid $pid, rc=$rc"
-        fi
+        taskset --all-tasks --pid --cpu-list \
+            ${PLATFORM_CPUS} ${pid} > /dev/null 2>&1
     done
 
-    # A workaround for lack of "end of swact" state
-    fullmask=$(echo ${FULLSET_MASK} | awk '{print tolower($0)}')
-    if [ "${affinity_mask}" != "${fullmask}" ]; then
-        log_debug "${TAG} Schedule an audit and cleanup"
-        (sleep 60; audit_and_reaffine "0x"$affinity_mask) &
-    fi
+    # Reaffine vSwitch tasks that span multiple cpus to platform cpus
+    pidlist=$(ps -eL -o pid=,comm= | awk '/eal-intr-thread/ {print $1}')
+    for pid in ${pidlist[@]}; do
+        grep Cpus_allowed_list /proc/${pid}/task/*/status 2>/dev/null | \
+            sed 's#/# #g' | awk '/,|-/ {print $4}' | \
+            xargs --no-run-if-empty -i{} \
+            taskset --pid --cpu-list ${PLATFORM_CPUS} {} > /dev/null 2>&1
+    done
 
     rm -rf ${TASK_AFFINING_INCOMPLETE}
-    log_debug "${TAG} $count tasks were reaffined to platform cores."
-
     return $rc
 }
 
