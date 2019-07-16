@@ -1762,6 +1762,39 @@ data:
         ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
         ks_user: docker.io/starlingx/stx-heat:master-centos-stable-latest
+    conf:
+      paste:
+        composite:panko+noauth:
+          use: egg:Paste#urlmap
+          /: pankoversions_pipeline
+          /v2: pankov2_noauth_pipeline
+        composite:panko+keystone:
+          use: egg:Paste#urlmap
+          /: pankoversions_pipeline
+          /v2: pankov2_keystone_pipeline
+        pipeline:pankoversions_pipeline:
+          pipeline: cors http_proxy_to_wsgi pankoversions
+        app:pankoversions:
+          paste.app_factory: panko.api.app:app_factory
+          root: panko.api.controllers.root.VersionsController
+        pipeline:pankov2_keystone_pipeline:
+          pipeline: cors http_proxy_to_wsgi request_id authtoken pankov2
+        pipeline:pankov2_noauth_pipeline:
+          pipeline: cors http_proxy_to_wsgi request_id pankov2
+        app:pankov2:
+          paste.app_factory: panko.api.app:app_factory
+          root: panko.api.controllers.v2.root.V2Controller
+        filter:authtoken:
+          paste.filter_factory: keystonemiddleware.auth_token:filter_factory
+          oslo_config_project: panko
+        filter:request_id:
+          paste.filter_factory: oslo_middleware:RequestId.factory
+        filter:cors:
+          paste.filter_factory: oslo_middleware.cors:filter_factory
+          oslo_config_project: panko
+        filter:http_proxy_to_wsgi:
+          paste.filter_factory: oslo_middleware.http_proxy_to_wsgi:HTTPProxyToWSGI.factory
+          oslo_config_project: panko
     jobs:
       events_cleaner:
         # hourly at the 10 minute mark
