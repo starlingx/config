@@ -1249,6 +1249,7 @@ data:
           max_overflow: 64
           max_pool_size: 1
           idle_timeout: 60
+          rpc_response_max_timeout: 60
           router_status_managed: true
           vlan_transparent: true
           wsgi_default_pool_size: 100
