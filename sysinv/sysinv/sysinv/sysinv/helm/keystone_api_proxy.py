@@ -21,50 +21,11 @@ class KeystoneApiProxyHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = constants.HELM_CHART_KEYSTONE_API_PROXY
     DCORCH_SERVICE_NAME = 'dcorch'
 
-    def get_meta_overrides(self, namespace, app_name=None, mode=None):
-
-        def _meta_overrides():
-            if (self._distributed_cloud_role() ==
-                    constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-                # If we are on distributed cloud system controller,
-                # it will only include the required chart groups
-                # in the armada manifest
-                return {
-                    'schema': 'armada/Manifest/v1',
-                    'metadata': {
-                        'schema': 'metadata/Document/v1',
-                        'name': 'armada-manifest'
-                    },
-                    'data': {
-                        'release_prefix': 'osh',
-                        'chart_groups': [
-                            'kube-system-ingress',
-                            'openstack-ingress',
-                            'openstack-mariadb',
-                            'openstack-memcached',
-                            'openstack-rabbitmq',
-                            'openstack-keystone',
-                            'openstack-barbican',
-                            'openstack-glance',
-                            'openstack-horizon',
-                            'openstack-cinder',
-                            'openstack-keystone-api-proxy',
-                        ]
-                    }
-                }
-            else:
-                return {}
-
-        overrides = {
-            common.HELM_NS_OPENSTACK: _meta_overrides()
-        }
-        if namespace in self.SUPPORTED_NAMESPACES:
-            return overrides[namespace]
-        elif namespace:
-            raise exception.InvalidHelmNamespace(chart=self.CHART,
-                                                 namespace=namespace)
-        else:
-            return overrides
+    def execute_manifest_updates(self, operator, app_name=None):
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            operator.manifest_chart_groups_insert(
+                'armada-manifest', 'openstack-keystone-api-proxy')
 
     def get_overrides(self, namespace=None):
         overrides = {

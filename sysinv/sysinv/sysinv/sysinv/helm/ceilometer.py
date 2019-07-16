@@ -22,6 +22,11 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
     SERVICE_NAME = 'ceilometer'
     AUTH_USERS = ['ceilometer']
 
+    def execute_manifest_updates(self, operator, app_name=None):
+        if not self._is_labeled(common.LABEL_TELEMETRY, 'enabled'):
+            operator.manifest_chart_groups_delete(
+                'armada-manifest', 'openstack-telemetry')
+
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {

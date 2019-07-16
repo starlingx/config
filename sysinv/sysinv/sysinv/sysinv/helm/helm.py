@@ -22,6 +22,7 @@ from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
+from sysinv.helm import manifest
 
 
 LOG = logging.getLogger(__name__)
@@ -449,19 +450,6 @@ class HelmOperator(object):
             LOG.exception("chart name is required")
 
     @helm_context
-    def generate_meta_overrides(self, chart_name, chart_namespace,
-                                app_name=None, mode=None):
-        overrides = {}
-        if chart_name in self.chart_operators:
-            try:
-                overrides.update(
-                    self.chart_operators[chart_name].get_meta_overrides(
-                        chart_namespace, app_name, mode))
-            except exception.InvalidHelmNamespace:
-                raise
-        return overrides
-
-    @helm_context
     def generate_helm_application_overrides(self, path, app_name,
                                             mode=None,
                                             cnamespace=None,
@@ -495,6 +483,16 @@ class HelmOperator(object):
             raise
 
         if app_name in self.helm_system_applications:
+            # Get a manifest operator to provide a single point of
+            # manipulation for the chart, chart group and manifest schemas
+            manifest_op = manifest.ArmadaManifestOperator()
+
+            # Load the manifest into the operator
+            armada_manifest = utils.generate_armada_manifest_filename_abs(
+                utils.generate_armada_manifest_dir(app.name, app.app_version),
+                app.name, app.manifest_file)
+            manifest_op.load(armada_manifest)
+
             app_overrides = self._get_helm_application_overrides(app_name,
                                                                  cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
@@ -543,17 +541,19 @@ class HelmOperator(object):
                         overrides[key] = new_overrides
                 self._write_chart_overrides(path, chart_name, cnamespace, overrides)
 
-                # Write any meta-overrides for this chart.  These will be in
-                # armada format already.
-                if armada_format:
-                    overrides = self.generate_meta_overrides(chart_name,
-                                                             cnamespace,
-                                                             app_name,
-                                                             mode)
-                    if overrides:
-                        chart_meta_name = chart_name + '-meta'
-                        self._write_chart_overrides(
-                            path, chart_meta_name, cnamespace, overrides)
+                # Update manifest docs based on the plugin directives
+                if chart_name in self.chart_operators:
+                    self.chart_operators[chart_name].execute_manifest_updates(
+                        manifest_op, app_name)
+
+            # Update the manifest based on platform conditions
+            manifest.platform_mode_manifest_updates(
+                self.dbapi, manifest_op, app_name, mode)
+
+            # Write the manifest doc overrides for the chart, chart group and manifest
+            manifest_op.save()
+            manifest_op.save_summary(path=path)
+
         else:
             # Generic applications
             for chart in armada_chart_info:

@@ -17,6 +17,11 @@ class BarbicanHelm(openstack.OpenstackBaseHelm):
     AUTH_USERS = ['barbican']
     SERVICE_NAME = constants.HELM_CHART_BARBICAN
 
+    def execute_manifest_updates(self, operator, app_name=None):
+        if not self._is_labeled(common.LABEL_BARBICAN, 'enabled'):
+            operator.manifest_chart_groups_delete(
+                'armada-manifest', 'openstack-barbican')
+
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {

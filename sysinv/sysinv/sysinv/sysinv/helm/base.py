@@ -241,19 +241,6 @@ class BaseHelm(object):
         """
         return {}
 
-    def get_meta_overrides(self, namespace, app_name=None, mode=None):
-        """
-        Return Armada-formatted chart-specific meta-overrides
-
-        This allows a helm chart class to specify overrides (in Armada format)
-        for things other than the "values" section of a chart.  This includes
-        other sections of a chart, as well as chart groups or even the
-        overall manifest itself.
-
-        May be left blank to indicate that there are no additional overrides.
-        """
-        return {}
-
     def version_check(self, app_version):
         """
         Validate application version
@@ -261,3 +248,20 @@ class BaseHelm(object):
         Return False if version is not supported by the plugin.
         """
         return True
+
+    def execute_manifest_updates(self, operator, app_name=None):
+        """
+        Update the elements of the armada manifest.
+
+        This allows a helm chart plugin to use the ArmadaManifestOperator to
+        make dynamic structural changes to the application manifest based on the
+        current conditions in the platform
+
+        Changes include updates to manifest documents for the following schemas:
+        armada/Manifest/v1, armada/ChartGroup/v1, armada/Chart/v1.
+
+        :param operator: an instance of the ArmadaManifestOperator
+        :parameter app_name: application for which the specific actions are
+            taken
+        """
+        pass
