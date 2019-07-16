@@ -139,7 +139,10 @@ class openstack::barbican::bootstrap
     configure_user_role => false,
   }
   class { '::barbican::keystone::authtoken':
-    auth_url => 'http://localhost:5000',
+    auth_url            => 'http://localhost:5000',
+    project_name        => 'services',
+    user_domain_name    => 'Default',
+    project_domain_name => 'Default',
   }
 
   $bu_name = $::barbican::keystone::auth::auth_name
