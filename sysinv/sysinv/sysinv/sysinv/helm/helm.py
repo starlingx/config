@@ -735,8 +735,39 @@ class HelmOperatorData(HelmOperator):
                 keystone_operator.get_admin_user_domain(),
             'admin_project_domain':
                 keystone_operator.get_admin_project_domain(),
+            'admin_password':
+                keystone_operator.get_admin_password(),
         }
         return auth_data
+
+    @helm_context
+    def get_keystone_endpoint_data(self):
+        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        endpoint_data = {
+            'endpoint_override':
+                'http://keystone.openstack.svc.cluster.local:80',
+            'region_name':
+                keystone_operator.get_region_name(),
+        }
+        return endpoint_data
+
+    @helm_context
+    def get_keystone_oslo_db_data(self):
+        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        endpoints_overrides = keystone_operator.\
+            _get_endpoints_oslo_db_overrides(common.HELM_CHART_KEYSTONE,
+                                             ['keystone'])
+
+        password = endpoints_overrides['keystone']['password']
+        connection = "mysql+pymysql://keystone:%s@" \
+                     "mariadb.openstack.svc.cluster.local:3306/keystone"\
+                     % (password)
+
+        endpoint_data = {
+            'connection':
+                connection,
+        }
+        return endpoint_data
 
     @helm_context
     def get_nova_endpoint_data(self):
@@ -820,5 +851,16 @@ class HelmOperatorData(HelmOperator):
         endpoint_data = {
             'region_name':
                 ceilometer_operator.get_region_name(),
+        }
+        return endpoint_data
+
+    @helm_context
+    def get_dcdbsync_endpoint_data(self):
+        dcdbsync_operator = self.chart_operators[common.HELM_CHART_DCDBSYNC]
+        endpoints_overrides = dcdbsync_operator._get_endpoints_overrides()
+        endpoint_data = {
+            'keystone_password':
+                endpoints_overrides['identity']['auth']['dcdbsync']
+                ['password'],
         }
         return endpoint_data

@@ -5,6 +5,8 @@
 #
 
 from sysinv.common import constants
+from sysinv.common import utils
+from sysinv.helm import helm
 from sysinv.puppet import openstack
 
 
@@ -43,7 +45,7 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
-        return {
+        config = {
             # The region in which the identity server can be found
             'dcdbsync::region_name': self._keystone_region_name(),
 
@@ -71,11 +73,29 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
                 self._to_create_services(),
         }
 
+        if utils.is_openstack_applied(self.dbapi):
+            helm_data = helm.HelmOperatorData(self.dbapi)
+
+            # The dcdbsync instance for openstack is authenticated with
+            # pod based keystone.
+            endpoints_data = helm_data.get_keystone_endpoint_data()
+            service_config = {
+                'dcdbsync::openstack_init::region_name':
+                    endpoints_data['region_name'],
+                'dcdbsync::openstack_api::keystone_auth_uri':
+                    endpoints_data['endpoint_override'],
+                'dcdbsync::openstack_api::keystone_identity_uri':
+                    endpoints_data['endpoint_override'],
+            }
+            config.update(service_config)
+
+        return config
+
     def get_secure_system_config(self):
         dbpass = self._get_database_password(self.IDENTITY_SERVICE_NAME)
         kspass = self._get_service_password(self.SERVICE_NAME)
 
-        return {
+        config = {
             'dcdbsync::database_connection':
                 self._format_database_connection(
                     self.IDENTITY_SERVICE_NAME,
@@ -84,6 +104,24 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
             'dcdbsync::keystone::auth::password': kspass,
             'dcdbsync::api::keystone_password': kspass,
         }
+
+        if utils.is_openstack_applied(self.dbapi):
+            helm_data = helm.HelmOperatorData(self.dbapi)
+
+            # The dcdbsync instance for openstack is authenticated with
+            # pod based keystone.
+            endpoints_data = helm_data.get_dcdbsync_endpoint_data()
+            db_data = helm_data.get_keystone_oslo_db_data()
+
+            service_auth_config = {
+                'dcdbsync::openstack_api::keystone_password':
+                    endpoints_data['keystone_password'],
+                'dcdbsync::openstack_init::database_connection':
+                    db_data['connection'],
+            }
+            config.update(service_auth_config)
+
+        return config
 
     def get_public_url(self):
         return self._format_public_endpoint(self.SERVICE_PORT,
