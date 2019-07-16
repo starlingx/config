@@ -129,6 +129,25 @@ def _validate_read_only(name, value):
         "Parameter '%s' is readonly" % name))
 
 
+def _validate_SAN_list(name, value):
+    """
+    Validate list of Subject Alternative Name for x509 certificates. Each entry
+    must be an IP address or domain name
+    For example:
+      "localhost.localdomain,192.168.204.2,controller"
+    """
+    san_entries = value.split(',')
+    if len(san_entries) == 0:
+        raise wsme.exc.ClientSideError(_(
+            "No values provided for '%s'" % name))
+
+    for entry in san_entries:
+        if not cutils.is_valid_domain_or_ip(entry):
+            raise wsme.exc.ClientSideError(_(
+                "The value provided is not a domain name or IP address. (%s)"
+                % entry))
+
+
 def _get_network_pool_from_ip_address(ip, networks):
     for name in networks:
         try:
@@ -464,6 +483,23 @@ DOCKER_REGISTRY_PARAMETER_RESOURCE = {
         'platform::docker::params::insecure_registry',
 }
 
+KUBERNETES_CERTIFICATES_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST,
+]
+
+KUBERNETES_CERTIFICATES_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST: _validate_SAN_list,
+}
+
+KUBERNETES_CERTIFICATES_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST:
+        'platform::kubernetes::params::apiserver_cert_san',
+}
+
+KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
+}
+
 HTTPD_PORT_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_HTTP_PORT_HTTP,
     constants.SERVICE_PARAM_HTTP_PORT_HTTPS,
@@ -546,6 +582,14 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRY_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRY_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: DOCKER_REGISTRY_PARAMETER_RESOURCE,
+        },
+    },
+    constants.SERVICE_TYPE_KUBERNETES: {
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_CERTIFICATES_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_CERTIFICATES_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_CERTIFICATES_PARAMETER_RESOURCE,
+            SERVICE_PARAM_DATA_FORMAT: KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT,
         },
     },
     constants.SERVICE_TYPE_HTTP: {

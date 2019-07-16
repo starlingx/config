@@ -53,19 +53,21 @@ class KubernetesPuppet(base.BasePuppet):
 
     def get_secure_system_config(self):
         config = {}
-        # This is retrieving the certificates that 'kubeadm init'
-        # generated. We will want to change this to generate the
-        # certificates ourselves, store in hiera and then feed those
-        # back into 'kubeadm init'.
-        if os.path.exists('/etc/kubernetes/pki/ca.crt'):
+        # This retrieves the certificates that were used during the bootstrap
+        # ansible playbook.
+        if os.path.exists(constants.KUBERNETES_PKI_SHARED_DIR):
             # Store required certificates in configuration.
-            with open('/etc/kubernetes/pki/ca.crt', 'r') as f:
+            with open(os.path.join(
+                    constants.KUBERNETES_PKI_SHARED_DIR, 'ca.crt'), 'r') as f:
                 ca_crt = f.read()
-            with open('/etc/kubernetes/pki/ca.key', 'r') as f:
+            with open(os.path.join(
+                    constants.KUBERNETES_PKI_SHARED_DIR, 'ca.key'), 'r') as f:
                 ca_key = f.read()
-            with open('/etc/kubernetes/pki/sa.key', 'r') as f:
+            with open(os.path.join(
+                    constants.KUBERNETES_PKI_SHARED_DIR, 'sa.key'), 'r') as f:
                 sa_key = f.read()
-            with open('/etc/kubernetes/pki/sa.pub', 'r') as f:
+            with open(os.path.join(
+                    constants.KUBERNETES_PKI_SHARED_DIR, 'sa.pub'), 'r') as f:
                 sa_pub = f.read()
             config.update(
                 {'platform::kubernetes::params::ca_crt': ca_crt,
