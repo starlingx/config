@@ -63,9 +63,8 @@ import six
 
 from six.moves.urllib.parse import urlencode
 from six.moves.urllib.request import urlopen
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import jsonutils
-from sysinv.openstack.common import log as logging
+from oslo_log import log as logging
 
 
 LOG = logging.getLogger(__name__)
@@ -391,7 +390,7 @@ def _parse_check(rule):
     try:
         kind, match = rule.split(':', 1)
     except Exception:
-        LOG.exception(_("Failed to understand rule %(rule)s") % locals())
+        LOG.exception("Failed to understand rule %(rule)s" % {'rule': rule})
         # If the rule is invalid, we'll fail closed
         return FalseCheck()
 
@@ -401,7 +400,7 @@ def _parse_check(rule):
     elif None in _checks:
         return _checks[None](kind, match)
     else:
-        LOG.error(_("No handler for matches of kind %s") % kind)
+        LOG.error("No handler for matches of kind %s" % kind)
         return FalseCheck()
 
 
@@ -675,7 +674,7 @@ def _parse_text_rule(rule):
         return state.result
     except ValueError:
         # Couldn't parse the rule
-        LOG.exception(_("Failed to understand rule %(rule)r") % locals())
+        LOG.exception("Failed to understand rule %(rule)r" % {'rule': rule})
 
         # Fail closed
         return FalseCheck()
