@@ -2121,10 +2121,11 @@ class DockerHelper(object):
                     cmd = "/bin/bash -c 'set -o pipefail; armada delete --debug " +\
                           "--manifest " + manifest_delete_file + tiller_host + " | tee " +\
                           logfile + "'"
+                    LOG.info("Armada delete command = %s" % cmd)
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
                         LOG.info("Application charts were successfully "
-                                 "deleted.")
+                                 "deleted with manifest %s." % manifest_delete_file)
                     else:
                         rc = False
                         if exit_code == CONTAINER_ABNORMAL_EXIT_CODE:
