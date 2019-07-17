@@ -248,5 +248,8 @@ class StoragePuppet(base.BasePuppet):
                 config.update({
                     'platform::filesystem::docker::params::lv_size': fs.size
                 })
-
+            elif fs.name == constants.FILESYSTEM_NAME_KUBELET:
+                config.update({
+                    'platform::filesystem::kubelet::params::lv_size': fs.size
+                })
         return config

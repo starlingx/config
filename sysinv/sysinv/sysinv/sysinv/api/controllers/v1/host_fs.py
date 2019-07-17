@@ -274,6 +274,10 @@ class HostFsController(rest.RestController):
 
             modified_fs += [fs_name]
 
+        if not modified_fs:
+            msg = _("HostFs update failed: no filesystems to update")
+            raise wsme.exc.ClientSideError(msg)
+
         host_fs_list_new = []
         for fs in current_host_fs_list:
             replaced = False
@@ -298,28 +302,30 @@ class HostFsController(rest.RestController):
 
         LOG.info("Requested growth in GiB: %s" % requested_growth_gib)
 
-        if utils.is_host_state_valid_for_fs_resize(host):
-            cgtsvg_free_space_gib = utils.get_node_cgtsvg_limit(host)
+        cgtsvg_free_space_gib = utils.get_node_cgtsvg_limit(host)
 
-            if requested_growth_gib > cgtsvg_free_space_gib:
-                msg = _("HostFs update failed: Not enough free space on %s. "
-                        "Current free space %s GiB, "
-                        "requested total increase %s GiB" %
-                        (constants.LVG_CGTS_VG, cgtsvg_free_space_gib, requested_growth_gib))
-                LOG.warning(msg)
-                raise wsme.exc.ClientSideError(msg)
+        if requested_growth_gib > cgtsvg_free_space_gib:
+            msg = _("HostFs update failed: Not enough free space on %s. "
+                    "Current free space %s GiB, "
+                    "requested total increase %s GiB" %
+                    (constants.LVG_CGTS_VG, cgtsvg_free_space_gib, requested_growth_gib))
+            LOG.warning(msg)
+            raise wsme.exc.ClientSideError(msg)
 
-            for fs in host_fs_list_new:
-                if fs.name in modified_fs:
-                    value = {'size': fs.size}
-                    pecan.request.dbapi.host_fs_update(fs.uuid, value)
+        for fs in host_fs_list_new:
+            if fs.name in modified_fs:
+                value = {'size': fs.size}
+                pecan.request.dbapi.host_fs_update(fs.uuid, value)
 
         try:
-            # perform rpc to conductor to perform config apply
-            pecan.request.rpcapi.update_host_filesystem_config(
-                    pecan.request.context,
-                    host=host,
-                    filesystem_list=modified_fs,)
+            if (host.invprovision in [constants.PROVISIONED,
+                                      constants.PROVISIONING]):
+
+                # perform rpc to conductor to perform config apply
+                pecan.request.rpcapi.update_host_filesystem_config(
+                        pecan.request.context,
+                        host=host,
+                        filesystem_list=modified_fs,)
 
         except Exception as e:
             msg = _("Failed to update filesystem size for %s" % host.name)

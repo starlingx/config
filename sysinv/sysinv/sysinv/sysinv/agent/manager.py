@@ -1298,6 +1298,17 @@ class AgentManager(service.PeriodicService):
                         }
                         filesystems.append(data)
 
+                    # check if the kubelet fs is supported for current host
+                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_KUBELET,
+                                                     self._ihost_personality):
+                        data = {
+                            'name': constants.FILESYSTEM_NAME_KUBELET,
+                            'size': constants.KUBELET_STOR_SIZE,
+                            'logical_volume': constants.FILESYSTEM_LV_DICT[
+                                constants.FILESYSTEM_NAME_KUBELET]
+                        }
+                        filesystems.append(data)
+
                     if filesystems:
                         # Create the filesystems if they do not already exist.
                         # This audit does not check if the fs size has changed.

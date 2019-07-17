@@ -5504,10 +5504,6 @@ class ConductorManager(service.PeriodicService):
         LOG.info("update_host_filesystem_config config_uuid=%s" % config_uuid)
 
         if filesystem_list:
-            # apply the manifest at runtime, otherwise a reboot is required
-            if os.path.isfile(CONFIG_CONTROLLER_FINI_FLAG):
-                os.remove(CONFIG_CONTROLLER_FINI_FLAG)
-
             # map the updated file system to the runtime puppet class
             classmap = {
                 constants.FILESYSTEM_NAME_BACKUP:
@@ -5516,11 +5512,11 @@ class ConductorManager(service.PeriodicService):
                     'platform::filesystem::scratch::runtime',
                 constants.FILESYSTEM_NAME_DOCKER:
                     'platform::filesystem::docker::runtime',
+                constants.FILESYSTEM_NAME_KUBELET:
+                    'platform::filesystem::kubelet::runtime',
             }
 
-            puppet_class = None
-            if filesystem_list:
-                puppet_class = [classmap.get(fs) for fs in filesystem_list]
+            puppet_class = [classmap.get(fs) for fs in filesystem_list]
             config_dict = {
                 "personalities": host.personality,
                 "classes": puppet_class,

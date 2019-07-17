@@ -144,6 +144,26 @@ class platform::filesystem::scratch
   }
 }
 
+class platform::filesystem::kubelet::params (
+  $lv_size = '10',
+  $lv_name = 'kubelet-lv',
+  $mountpoint = '/var/lib/kubelet',
+  $devmapper = '/dev/mapper/cgts--vg-kubelet--lv',
+  $fs_type = 'ext4',
+  $fs_options = ' '
+) { }
+
+class platform::filesystem::kubelet
+  inherits ::platform::filesystem::kubelet::params {
+
+  platform::filesystem { $lv_name:
+    lv_name    => $lv_name,
+    lv_size    => $lv_size,
+    mountpoint => $mountpoint,
+    fs_type    => $fs_type,
+    fs_options => $fs_options
+  }
+}
 
 class platform::filesystem::docker::params (
   $lv_size = '1',
@@ -169,8 +189,8 @@ class platform::filesystem::docker
   }
 }
 
-
 class platform::filesystem::storage {
+  include ::platform::filesystem::kubelet
 
   class {'platform::filesystem::docker::params' :
     lv_size => 30
@@ -178,25 +198,26 @@ class platform::filesystem::storage {
   -> class {'platform::filesystem::docker' :
   }
 
-  Class['::platform::lvm::vg::cgts_vg'] -> Class['::platform::filesystem::docker']
+  Class['::platform::lvm::vg::cgts_vg'] -> Class[$name]
 }
 
 
 class platform::filesystem::compute {
-
+  include ::platform::filesystem::kubelet
   class {'platform::filesystem::docker::params' :
     lv_size => 30
   }
   -> class {'platform::filesystem::docker' :
   }
 
-  Class['::platform::lvm::vg::cgts_vg'] -> Class['::platform::filesystem::docker']
+  Class['::platform::lvm::vg::cgts_vg'] -> Class[$name]
 }
 
 class platform::filesystem::controller {
   include ::platform::filesystem::backup
   include ::platform::filesystem::scratch
   include ::platform::filesystem::docker
+  include ::platform::filesystem::kubelet
 }
 
 
@@ -221,6 +242,20 @@ class platform::filesystem::scratch::runtime {
   $lv_name = $::platform::filesystem::scratch::params::lv_name
   $lv_size = $::platform::filesystem::scratch::params::lv_size
   $devmapper = $::platform::filesystem::scratch::params::devmapper
+
+  platform::filesystem::resize { $lv_name:
+    lv_name   => $lv_name,
+    lv_size   => $lv_size,
+    devmapper => $devmapper,
+  }
+}
+
+class platform::filesystem::kubelet::runtime {
+
+  include ::platform::filesystem::kubelet::params
+  $lv_name = $::platform::filesystem::kubelet::params::lv_name
+  $lv_size = $::platform::filesystem::kubelet::params::lv_size
+  $devmapper = $::platform::filesystem::kubelet::params::devmapper
 
   platform::filesystem::resize { $lv_name:
     lv_name   => $lv_name,
