@@ -1164,13 +1164,13 @@ class AgentManager(service.PeriodicService):
                          (', '.join(force_updates)))
 
             self._update_ttys_dcd_status(icontext, self._ihost_uuid)
+            imemory = self._inode_operator.inodes_get_imemory()
+            rpcapi.imemory_update_by_ihost(icontext,
+                                           self._ihost_uuid,
+                                           imemory)
             if self._agent_throttle > 5:
                 # throttle updates
                 self._agent_throttle = 0
-                imemory = self._inode_operator.inodes_get_imemory()
-                rpcapi.imemory_update_by_ihost(icontext,
-                                               self._ihost_uuid,
-                                               imemory)
                 if self._is_config_complete():
                     self.host_lldp_get_and_report(icontext, rpcapi, self._ihost_uuid)
                 else:
