@@ -380,7 +380,16 @@ class HelmOperator(object):
             cmd.extend(['--values', tmpfile.name])
 
         for value_set in set_overrides:
-            cmd.extend(['--set', value_set])
+            keypair = list(value_set.split("="))
+
+            # request user to input with "--set key=value" or
+            # "--set key=", for the second case, the value is assume ""
+            # skip setting like "--set =value", "--set xxxx"
+            if len(keypair) == 2 and keypair[0]:
+                if keypair[1] and keypair[1].isdigit():
+                    cmd.extend(['--set-string', value_set])
+                else:
+                    cmd.extend(['--set', value_set])
 
         env = os.environ.copy()
         env['KUBECONFIG'] = '/etc/kubernetes/admin.conf'
