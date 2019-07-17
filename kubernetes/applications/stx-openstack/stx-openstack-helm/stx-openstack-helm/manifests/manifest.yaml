@@ -509,7 +509,9 @@ data:
   release: openstack-ceph-rgw
   namespace: openstack
   wait:
-    timeout: 1800
+    timeout: 300
+    resources:
+      - type: job
     labels:
       release_group: osh-openstack-ceph-rgw
   test:
