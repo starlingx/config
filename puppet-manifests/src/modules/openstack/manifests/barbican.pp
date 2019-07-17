@@ -40,6 +40,11 @@ class openstack::barbican
       match => '.*workers = .*',
       tag   => 'modify-workers',
     }
+
+    file { '/etc/logrotate.d/barbican-api':
+      ensure  => present,
+      content => template('openstack/barbican-api-logrotate.erb')
+    }
   }
 }
 
