@@ -354,6 +354,22 @@ def _check_host(partition, ihost, idisk):
                                          (idisk.uuid, ihost.hostname))
 
 
+def _check_disk(idisk):
+    """Semantic check for valid disk"""
+    # Check if the disk is not already assigned for storage function"
+    if idisk.istor_uuid:
+        raise wsme.exc.ClientSideError(_(
+            "Cannot create partition on a disk that is assigned as "
+            "a storage volume."))
+
+    # Check if the disk is not assigned as a physical volume to a
+    # volume group.
+    if idisk.ipv_uuid:
+        raise wsme.exc.ClientSideError(_(
+            "Cannot create partition on a disk that is already "
+            "assigned as a physical volume to a volume group."))
+
+
 def _partition_pre_patch_checks(partition_obj, patch_obj, host_obj):
     """Check current vs. updated parameters."""
     # Reject operation if we are upgrading the system.
@@ -478,6 +494,9 @@ def _semantic_checks(operation, partition):
     # Check existing partitions and make sure we don't have any partitions
     # being changed for an existing host/disk pairing. If so => reject request.
     _check_for_outstanding_requests(partition, idisk)
+
+    # Make sure the disk on which we create the partition is valid.
+    _check_disk(idisk)
 
     # Semantic checks based on operation.
     if operation == constants.PARTITION_CMD_CREATE:

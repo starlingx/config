@@ -683,6 +683,15 @@ def _check_device(new_pv, ihost):
             raise wsme.exc.ClientSideError(_("Disk already assigned to a "
                                              "storage volume."))
 
+        # semantic check: Make sure that partitions do not exist on the
+        # disk
+        partitions = pecan.request.dbapi.partition_get_by_idisk(
+            new_pv['disk_or_part_uuid'])
+        if partitions:
+            raise wsme.exc.ClientSideError(_(
+                "Cannot assign disk to a physical volume because disk "
+                "contains other partitions."))
+
         # semantic check: whether idisk_uuid belongs to another host
         if new_pv_device.forihostid != new_pv['forihostid']:
             raise wsme.exc.ClientSideError(_("Disk is attached to a different "
