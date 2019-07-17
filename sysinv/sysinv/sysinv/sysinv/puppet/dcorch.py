@@ -4,9 +4,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.puppet import openstack
-
 from sysinv.common import constants
+from sysinv.common import utils
+
+from sysinv.helm import helm
+from sysinv.puppet import openstack
 
 
 class DCOrchPuppet(openstack.OpenstackBasePuppet):
@@ -65,7 +67,7 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
-        return {
+        config = {
             # The region in which the identity server can be found
             'dcorch::region_name': self._keystone_region_name(),
             'dcorch::keystone::auth::neutron_proxy_internal_url':
@@ -132,12 +134,32 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
                 self._to_create_services(),
         }
 
+        if utils.is_openstack_applied(self.dbapi):
+            helm_data = helm.HelmOperatorData(self.dbapi)
+            endpoints_data = helm_data.get_keystone_endpoint_data()
+            auth_data = helm_data.get_keystone_auth_data()
+
+            app_config = {
+                'dcorch::stx_openstack::'
+                'keystone_identity_uri':
+                    endpoints_data['endpoint_override'],
+                'dcorch::stx_openstack::'
+                'keystone_admin_user':
+                    auth_data['admin_user_name'],
+                'dcorch::stx_openstack::'
+                'keystone_admin_tenant':
+                    auth_data['admin_project_name'],
+            }
+            config.update(app_config)
+
+        return config
+
     def get_secure_system_config(self):
         dbpass = self._get_database_password(self.SERVICE_NAME)
         kspass = self._get_service_password(self.SERVICE_NAME)
         admin_password = self._get_keyring_password(self.ADMIN_SERVICE,
                                                     self.ADMIN_USER)
-        return {
+        config = {
             'dcorch::database_connection':
                 self._format_database_connection(self.SERVICE_NAME),
             'dcorch::db::postgresql::password': dbpass,
@@ -148,6 +170,18 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
 
             'dcorch::api_proxy::keystone_admin_password': admin_password,
         }
+
+        if utils.is_openstack_applied(self.dbapi):
+            helm_data = helm.HelmOperatorData(self.dbapi)
+            auth_data = helm_data.get_keystone_auth_data()
+            app_auth_config = {
+                'dcorch::stx_openstack::'
+                'keystone_admin_password':
+                    auth_data['admin_password'],
+            }
+            config.update(app_auth_config)
+
+        return config
 
     def get_public_url(self):
         pass
