@@ -391,6 +391,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                         constants.CEPH_CONF_PATH + os.path.basename(ceph_ext_obj.ceph_conf)
 
         if remote_storage:
+            default_config.update({'force_raw_images': True})
             libvirt_config.update({'images_type': 'rbd',
                                    'images_rbd_pool': rbd_pool,
                                    'images_rbd_ceph_conf': rbd_ceph_conf})
