@@ -29,11 +29,28 @@ class IngressHelm(base.BaseHelm):
     }
 
     def get_overrides(self, namespace=None):
+        limit_enabled, limit_cpus, limit_mem_mib = self._get_platform_res_limit()
+
         overrides = {
             common.HELM_NS_KUBE_SYSTEM: {
                 'pod': {
                     'replicas': {
                         'error_page': self._num_controllers()
+                    },
+                    'resources': {
+                        'enabled': limit_enabled,
+                        'ingress': {
+                            'limits': {
+                                'cpu': "%d000m" % (limit_cpus),
+                                'memory': "%dMi" % (limit_mem_mib)
+                            }
+                        },
+                        'error_pages': {
+                            'limits': {
+                                'cpu': "%d000m" % (limit_cpus),
+                                'memory': "%dMi" % (limit_mem_mib)
+                            }
+                        }
                     }
                 },
                 'deployment': {
@@ -49,6 +66,21 @@ class IngressHelm(base.BaseHelm):
                     'replicas': {
                         'ingress': self._num_controllers(),
                         'error_page': self._num_controllers()
+                    },
+                    'resources': {
+                        'enabled': limit_enabled,
+                        'ingress': {
+                            'limits': {
+                                'cpu': "%d000m" % (limit_cpus),
+                                'memory': "%dMi" % (limit_mem_mib)
+                            }
+                        },
+                        'error_pages': {
+                            'limits': {
+                                'cpu': "%d000m" % (limit_cpus),
+                                'memory': "%dMi" % (limit_mem_mib)
+                            }
+                        }
                     }
                 }
             }
