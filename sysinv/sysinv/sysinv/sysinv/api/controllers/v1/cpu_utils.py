@@ -24,7 +24,7 @@ VSWITCH_MAX_CORES = 8
 
 
 class CpuProfile(object):
-    class CpuConfigure:
+    class CpuConfigure(object):
         def __init__(self):
             self.platform = 0
             self.vswitch = 0

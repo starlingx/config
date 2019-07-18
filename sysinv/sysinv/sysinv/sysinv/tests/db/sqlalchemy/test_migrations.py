@@ -198,12 +198,10 @@ class BaseMigrationTestCase(test_utils.BaseTestCase):
         super(BaseMigrationTestCase, self).tearDown()
 
     def execute_cmd(self, cmd=None):
-        if six.PY2:
-            import commands
-            status, output = commands.getstatusoutput(cmd)
-        else:
-            import subprocess
-            status, output = subprocess.getstatusoutput(cmd)
+        from future import standard_library
+        standard_library.install_aliases()
+        from subprocess import getstatusoutput
+        status, output = getstatusoutput(cmd)
 
         LOG.debug(output)
         self.assertEqual(0, status,

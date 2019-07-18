@@ -1024,7 +1024,7 @@ class ProfileController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @expose('json')
     def import_profile(self, file):
-        class ProfileObj:
+        class ProfileObj(object):
             display = ""
             proc = None
 
@@ -1129,7 +1129,7 @@ class ProfileController(rest.RestController):
 
 
 def _create_cpu_profile(profile_name, profile_node):
-    class CoreFunction:
+    class CoreFunction(object):
         def __init__(self, p_index, c_index, t_index=0):
             self.processor_index = p_index
             self.core_index = c_index

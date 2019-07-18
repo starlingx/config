@@ -177,7 +177,7 @@ class Neighbour(object):
         return "<Neighbour '%s'>" % str(self)
 
 
-class SysinvLldpPlugin():
+class SysinvLldpPlugin(object):
 
     """Implementation of the Plugin."""
 

@@ -554,7 +554,7 @@ def create_partitions(data, mode, pfile):
             json.dump(json_array, outfile)
 
 
-class fix_global_filter():
+class fix_global_filter(object):
     """ Some drbd metadata processing commands execute LVM commands.
         Therefore, our backing device has to be visible to LVM.
     """

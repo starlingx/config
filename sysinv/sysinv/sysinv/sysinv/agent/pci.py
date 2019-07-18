@@ -81,7 +81,7 @@ IFF_AUTOMEDIA = 1 << 14
 IFF_DYNAMIC = 1 << 15
 
 
-class PCI:
+class PCI(object):
     '''Class to encapsulate PCI data for System Inventory'''
 
     def __init__(self, pciaddr, pclass, pvendor, pdevice, prevision,
@@ -111,7 +111,7 @@ class PCI:
         return "<PCI '%s'>" % str(self)
 
 
-class Port:
+class Port(object):
     '''Class to encapsulate PCI data for System Inventory'''
 
     def __init__(self, ipci, **kwargs):
@@ -140,7 +140,7 @@ class Port:
         return "<Port '%s'>" % str(self)
 
 
-class PCIDevice:
+class PCIDevice(object):
     '''Class to encapsulate extended PCI data for System Inventory'''
 
     def __init__(self, pci, **kwargs):

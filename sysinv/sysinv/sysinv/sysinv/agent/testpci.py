@@ -17,7 +17,7 @@ svendor = 5
 sdevice = 6
 
 
-class Ipci:
+class Ipci(object):
     '''Class to encapsulate PCI data for System Inventory'''
 
     def __init__(self, pciaddr, iclass, vendor, device, revision,
