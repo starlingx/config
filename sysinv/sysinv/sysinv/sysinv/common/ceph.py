@@ -626,13 +626,15 @@ class CephApiOperator(object):
         return True
 
     def get_monitors_status(self, db_api):
-        # first check that the monitors are available in sysinv
-        num_active_monitors = 0
         num_inv_monitors = 0
-        required_monitors = constants.MIN_STOR_MONITORS
+        if cutils.is_aio_system(db_api):
+            required_monitors = constants.MIN_STOR_MONITORS_AIO
+        else:
+            required_monitors = constants.MIN_STOR_MONITORS_MULTINODE
         quorum_names = []
         inventory_monitor_names = []
 
+        # first check that the monitors are available in sysinv
         monitor_list = db_api.ceph_mon_get_list()
         for mon in monitor_list:
             ihost = db_api.ihost_get(mon['forihostid'])
@@ -667,9 +669,16 @@ class CephApiOperator(object):
         # the intersection of the sysinv reported unlocked-available monitor
         # hosts and the monitors reported in the quorum via the ceph API.
         active_monitors = list(set(inventory_monitor_names) & set(quorum_names))
-        LOG.info("Active ceph monitors = %s" % str(active_monitors))
-
         num_active_monitors = len(active_monitors)
+        if (num_inv_monitors and num_active_monitors == 0 and
+                cutils.is_initial_config_complete() and
+                not cutils.is_aio_system(pecan.request.dbapi)):
+            # The active controller always has a monitor.
+            # We are on standard or storage, initial configuration
+            # was completed and Ceph is down so we can't check if
+            # it is working. Assume it is.
+            num_active_monitors = 1
+        LOG.info("Active ceph monitors = %s" % str(active_monitors))
 
         return num_active_monitors, required_monitors, active_monitors
 
