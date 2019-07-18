@@ -68,6 +68,7 @@ TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 DOCKER_REGISTRY_USER = 'admin'
 DOCKER_REGISTRY_SERVICE = 'CGCS'
 DOCKER_REGISTRY_SECRET = 'default-registry-key'
+CHARTS_PENDING_INSTALL_ITERATIONS = 60
 
 ARMADA_HOST_LOG_LOCATION = '/var/log/armada'
 ARMADA_CONTAINER_LOG_LOCATION = '/logs'
@@ -133,6 +134,8 @@ class AppOperator(object):
     """Class to encapsulate Kubernetes App operations for System Inventory"""
 
     APP_OPENSTACK_RESOURCE_CONFIG_MAP = 'ceph-etc'
+    # List of in progress apps and their abort status
+    abort_requested = {}
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
@@ -157,6 +160,7 @@ class AppOperator(object):
                                               lock_name)
         except Exception:
             # Best effort delete
+            LOG.warning("Failed to clear Armada locks.")
             pass
 
     def _clear_stuck_applications(self):
@@ -202,6 +206,31 @@ class AppOperator(object):
         # to a lock related issue.
         self._clear_armada_locks()
 
+    def _register_app_abort(self, app_name):
+        with self._lock:
+            AppOperator.abort_requested[app_name] = False
+        LOG.info("Register the initial abort status of app %s" % app_name)
+
+    def _deregister_app_abort(self, app_name):
+        with self._lock:
+            try:
+                del AppOperator.abort_requested[app_name]
+            except KeyError:
+                pass
+        LOG.info("Deregister the abort status of app %s" % app_name)
+
+    @staticmethod
+    def is_app_aborted(app_name):
+        try:
+            return AppOperator.abort_requested[app_name]
+        except KeyError:
+            return False
+
+    def _set_abort_flag(self, app_name):
+        with self._lock:
+            AppOperator.abort_requested[app_name] = True
+        LOG.info("Abort set for app %s" % app_name)
+
     def _cleanup(self, app, app_dir=True):
         """" Remove application directories and override files """
         try:
@@ -236,17 +265,25 @@ class AppOperator(object):
             app.update_status(new_status, new_progress)
 
     def _abort_operation(self, app, operation,
-                         progress=constants.APP_PROGRESS_ABORTED):
-        if (app.status == constants.APP_UPLOAD_IN_PROGRESS):
+                         progress=constants.APP_PROGRESS_ABORTED,
+                         user_initiated=False):
+        if user_initiated:
+            progress = constants.APP_PROGRESS_ABORTED_BY_USER
+
+        if app.status == constants.APP_UPLOAD_IN_PROGRESS:
             self._update_app_status(app, constants.APP_UPLOAD_FAILURE,
                                     progress)
-        elif (app.status == constants.APP_APPLY_IN_PROGRESS):
+        elif (app.status == constants.APP_APPLY_IN_PROGRESS or
+              app.status == constants.APP_UPDATE_IN_PROGRESS):
             self._update_app_status(app, constants.APP_APPLY_FAILURE,
                                     progress)
-        elif (app.status == constants.APP_REMOVE_IN_PROGRESS):
+        elif app.status == constants.APP_REMOVE_IN_PROGRESS:
             self._update_app_status(app, constants.APP_REMOVE_FAILURE,
                                     progress)
-        LOG.error("Application %s aborted!." % operation)
+        if not user_initiated:
+            LOG.error("Application %s aborted!." % operation)
+        else:
+            LOG.info("Application %s aborted by user!." % operation)
 
     def _download_tarfile(self, app):
         from six.moves.urllib.request import urlopen
@@ -601,17 +638,22 @@ class AppOperator(object):
 
         start = time.time()
         pool = greenpool.GreenPool(size=threads)
-        for tag, rc in pool.imap(self._docker.download_an_image,
-                                images_to_download):
+
+        f = lambda x: self._docker.download_an_image(app.name, x)
+        for tag, rc in pool.imap(f, images_to_download):
             if not rc:
                 failed_downloads.append(tag)
         elapsed = time.time() - start
         failed_count = len(failed_downloads)
         if failed_count > 0:
+            if not AppOperator.is_app_aborted:
+                reason = "failed to download one or more image(s)."
+            else:
+                reason = "operation aborted by user."
             raise exception.KubeAppApplyFailure(
                 name=app.name,
                 version=app.version,
-                reason="failed to download one or more image(s).")
+                reason=reason)
         else:
             LOG.info("All docker images for application %s were successfully "
                      "downloaded in %d seconds" % (app.name, elapsed))
@@ -1360,7 +1402,7 @@ class AppOperator(object):
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
                 constants.APP_PROGRESS_RECOVER_COMPLETED.format(old_app.version) +
                 constants.APP_PROGRESS_CLEANUP_FAILED.format(new_app.version) +
-                'please check logs for detail.')
+                'Please check logs for details.')
             LOG.error(e)
             return
 
@@ -1369,7 +1411,7 @@ class AppOperator(object):
                 old_app, constants.APP_APPLY_SUCCESS,
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
                 constants.APP_PROGRESS_RECOVER_COMPLETED.format(old_app.version) +
-                'please check logs for detail.')
+                'Please check logs for details.')
             LOG.info("Application %s recover to version %s completed."
                      % (old_app.name, old_app.version))
         else:
@@ -1377,7 +1419,7 @@ class AppOperator(object):
                 old_app, constants.APP_APPLY_FAILURE,
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
                 constants.APP_PROGRESS_RECOVER_ABORTED.format(old_app.version) +
-                'please check logs for detail.')
+                'Please check logs for details.')
             LOG.error("Application %s recover to version %s aborted!"
                       % (old_app.name, old_app.version))
 
@@ -1396,6 +1438,9 @@ class AppOperator(object):
         LOG.info("Application %s (%s) rollback started." % (to_app.name, to_app.version))
 
         try:
+            if AppOperator.is_app_aborted(to_app.name):
+                raise exception.KubeAppAbort()
+
             to_db_app = self._dbapi.kube_app_get(to_app.name)
             to_app_releases = \
                 self._dbapi.kube_app_chart_release_get_all(to_db_app.id)
@@ -1408,6 +1453,9 @@ class AppOperator(object):
 
             self._update_app_status(
                 to_app, new_progress=constants.APP_PROGRESS_ROLLBACK_RELEASES)
+
+            if AppOperator.is_app_aborted(to_app.name):
+                raise exception.KubeAppAbort()
 
             charts_sequence = {c.release: c.sequenced for c in to_app.charts}
             charts_labels = {c.release: c.labels for c in to_app.charts}
@@ -1429,6 +1477,9 @@ class AppOperator(object):
                                     to_app_r.namespace, label)
                         LOG.info("Jobs deleted for release %s" % to_app_r.release)
 
+            if AppOperator.is_app_aborted(to_app.name):
+                raise exception.KubeAppAbort()
+
             if self._make_armada_request_with_monitor(to_app,
                                                       constants.APP_ROLLBACK_OP):
                 self._update_app_status(to_app, constants.APP_APPLY_SUCCESS,
@@ -1436,6 +1487,11 @@ class AppOperator(object):
                 LOG.info("Application %s (%s) rollback completed."
                          % (to_app.name, to_app.version))
                 return True
+        except exception.KubeAppAbort:
+            # If the update operation is aborted before Armada request is made,
+            # we don't want to return False which would trigger the recovery
+            # routine with an Armada request.
+            raise
         except Exception as e:
             # unexpected KubeAppNotFound, KubeAppInactiveNotFound, KeyError
             # k8s exception:fail to cleanup release jobs
@@ -1475,6 +1531,7 @@ class AppOperator(object):
             if cutils.is_url(app.tarfile):
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_TARFILE_DOWNLOAD)
+
                 downloaded_tarfile = self._download_tarfile(app)
 
                 if downloaded_tarfile is None:
@@ -1506,6 +1563,7 @@ class AppOperator(object):
 
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_VALIDATE_UPLOAD_CHARTS)
+
             if os.path.isdir(app.charts_dir):
                 self._validate_helm_charts(app)
                 with self._lock:
@@ -1530,7 +1588,7 @@ class AppOperator(object):
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason=e)
 
-    def perform_app_apply(self, rpc_app, mode):
+    def perform_app_apply(self, rpc_app, mode, caller=None):
         """Process application install request
 
         This method processes node labels per configuration and invokes
@@ -1548,11 +1606,18 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param mode: mode to control how to apply application manifest
+        :param caller: internal caller, None if it is an RPC call,
+                       otherwise apply is invoked from update method
         :return boolean: whether application apply was successful
         """
 
         app = AppOperator.Application(rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
+
+        # If apply is called from update method, the app's abort status has
+        # already been registered.
+        if not caller:
+            self._register_app_abort(app.name)
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
         overrides_str = ''
@@ -1560,42 +1625,95 @@ class AppOperator(object):
         try:
             app.charts = self._get_list_of_charts(app.armada_mfile_abs)
             if app.system_app:
+                if AppOperator.is_app_aborted(app.name):
+                    raise exception.KubeAppAbort()
+
                 self._create_local_registry_secrets(app.name)
                 self._create_storage_provisioner_secrets(app.name)
                 self._create_app_specific_resources(app.name)
+
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
+
+            if AppOperator.is_app_aborted(app.name):
+                raise exception.KubeAppAbort()
+
             LOG.info("Generating application overrides...")
             self._helm.generate_helm_application_overrides(
                 app.overrides_dir, app.name, mode, cnamespace=None,
                 armada_format=True, armada_chart_info=app.charts, combined=True)
             (helm_files, armada_files) = self._get_overrides_files(
                 app.overrides_dir, app.charts, app.name, mode)
+
             if helm_files or armada_files:
                 LOG.info("Application overrides generated.")
                 overrides_str = self._generate_armada_overrides_str(
                     app.name, app.version, helm_files, armada_files)
+
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
+
+                if AppOperator.is_app_aborted(app.name):
+                    raise exception.KubeAppAbort()
+
                 self._download_images(app)
             else:
                 ready = False
-        except exception.KubeAppApplyFailure as e:
-            # ex:Image download failure
-            LOG.exception(e)
-            self._abort_operation(app, constants.APP_APPLY_OP, str(e))
-            raise
         except Exception as e:
-            # ex:K8s resource creation failure
             LOG.exception(e)
-            self._abort_operation(app, constants.APP_APPLY_OP)
-            raise exception.KubeAppApplyFailure(
-                name=app.name, version=app.version, reason=e)
+            if AppOperator.is_app_aborted(app.name):
+                self._abort_operation(app, constants.APP_APPLY_OP,
+                                      user_initiated=True)
+            else:
+                self._abort_operation(app, constants.APP_APPLY_OP)
+
+            if not caller:
+                # If apply is not called from update method, deregister the app's
+                # abort status. Otherwise, it will be done in the update method.
+                self._deregister_app_abort(app.name)
+
+            if isinstance(e, exception.KubeAppApplyFailure):
+                # ex:Image download failure
+                raise
+            else:
+                # ex:K8s resource creation failure, user abort
+                raise exception.KubeAppApplyFailure(
+                    name=app.name, version=app.version, reason=e)
 
         try:
             if ready:
+                if app.name == constants.HELM_APP_OPENSTACK:
+                    # For stx-openstack app, if the apply operation was terminated
+                    # (e.g. user aborted, controller swacted, sysinv conductor
+                    # restarted) while compute-kit charts group was being deployed,
+                    # Tiller may still be processing these charts. Issuing another
+                    # manifest apply request while there are pending install of libvirt,
+                    # neutron and/or nova charts will result in reapply failure.
+                    #
+                    # Wait up to 10 minutes for Tiller to finish its transaction
+                    # from previous apply before making a new manifest apply request.
+                    LOG.info("Wait if there are openstack charts in pending install...")
+                    for i in range(CHARTS_PENDING_INSTALL_ITERATIONS):
+                        result = helm_utils.get_openstack_pending_install_charts()
+                        if not result:
+                            break
+
+                        if AppOperator.is_app_aborted(app.name):
+                            raise exception.KubeAppAbort()
+                        greenthread.sleep(10)
+                    if result:
+                        self._abort_operation(app, constants.APP_APPLY_OP)
+                        raise exception.KubeAppApplyFailure(
+                            name=app.name, version=app.version,
+                            reason="Timed out while waiting for some charts that "
+                                   "are still in pending install in previous application "
+                                   "apply to clear. Please try again later.")
+
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_APPLY_MANIFEST)
+
+                if AppOperator.is_app_aborted(app.name):
+                    raise exception.KubeAppAbort()
                 if self._make_armada_request_with_monitor(app,
                                                           constants.APP_APPLY_OP,
                                                           overrides_str):
@@ -1607,11 +1725,20 @@ class AppOperator(object):
                     LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
                     return True
         except Exception as e:
-            # ex: update release version failure
+            # ex: update release version failure, user abort
             LOG.exception(e)
 
         # If it gets here, something went wrong
-        self._abort_operation(app, constants.APP_APPLY_OP)
+        if AppOperator.is_app_aborted(app.name):
+            self._abort_operation(app, constants.APP_APPLY_OP, user_initiated=True)
+        else:
+            self._abort_operation(app, constants.APP_APPLY_OP)
+
+        if not caller:
+            # If apply is not called from update method, deregister the app's abort status.
+            # Otherwise, it will be done in the update method.
+            self._deregister_app_abort(app.name)
+
         return False
 
     def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile, operation):
@@ -1646,6 +1773,8 @@ class AppOperator(object):
             from_rpc_app.get('name') in self._helm.get_helm_applications())
         to_app = AppOperator.Application(to_rpc_app,
             to_rpc_app.get('name') in self._helm.get_helm_applications())
+
+        self._register_app_abort(to_app.name)
         LOG.info("Start updating Application %s from version %s to version %s ..."
                  % (to_app.name, from_app.version, to_app.version))
 
@@ -1657,7 +1786,7 @@ class AppOperator(object):
 
             result = False
             if operation == constants.APP_APPLY_OP:
-                result = self.perform_app_apply(to_rpc_app, mode=None)
+                result = self.perform_app_apply(to_rpc_app, mode=None, caller='update')
             elif operation == constants.APP_ROLLBACK_OP:
                 result = self._perform_app_rollback(from_app, to_app)
 
@@ -1694,7 +1823,8 @@ class AppOperator(object):
             LOG.info("Application %s update from version %s to version "
                      "%s completed." % (to_app.name, from_app.version, to_app.version))
         except (exception.KubeAppUploadFailure,
-                exception.KubeAppApplyFailure):
+                exception.KubeAppApplyFailure,
+                exception.KubeAppAbort):
             # Error occurs during app uploading or applying but before
             # armada apply process...
             # ie.images download/k8s resource creation failure
@@ -1712,6 +1842,9 @@ class AppOperator(object):
                 constants.APP_PROGRESS_CLEANUP_FAILED.format(from_app.version) +
                 'please check logs for detail.')
             LOG.exception(e)
+        finally:
+            self._deregister_app_abort(to_app.name)
+
         return True
 
     def perform_app_remove(self, rpc_app):
@@ -1726,7 +1859,9 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
+        self._register_app_abort(app.name)
         LOG.info("Application (%s) remove started." % app.name)
+        rc = True
 
         app.charts = self._get_list_of_charts(app.armada_mfile_abs)
         app.update_active(False)
@@ -1756,16 +1891,22 @@ class AppOperator(object):
                 except Exception as e:
                     self._abort_operation(app, constants.APP_REMOVE_OP)
                     LOG.exception(e)
+                    self._deregister_app_abort(app.name)
                     return False
 
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
                                     constants.APP_PROGRESS_COMPLETED)
             LOG.info("Application (%s) remove completed." % app.name)
-            return True
         else:
-            self._abort_operation(app, constants.APP_REMOVE_OP)
+            if AppOperator.is_app_aborted(app.name):
+                self._abort_operation(app, constants.APP_REMOVE_OP,
+                                      user_initiated=True)
+            else:
+                self._abort_operation(app, constants.APP_REMOVE_OP)
+            rc = False
 
-        return False
+        self._deregister_app_abort(app.name)
+        return rc
 
     def activate(self, rpc_app):
         app = AppOperator.Application(
@@ -1792,6 +1933,42 @@ class AppOperator(object):
             rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
         return app.active
+
+    def perform_app_abort(self, rpc_app):
+        """Process application abort request
+
+        This method retrieves the latest application status from the
+        database and sets the abort flag if the apply/update/remove
+        operation is still in progress. The corresponding app processing
+        thread will check the flag and abort the operation in the very
+        next opportunity. The method also stops the Armada service and
+        clears locks in case the app processing thread has made a
+        request to Armada.
+
+        :param rpc_app: application object in the RPC request
+        """
+
+        app = AppOperator.Application(rpc_app,
+            rpc_app.get('name') in self._helm.get_helm_applications())
+
+        # Retrieve the latest app status from the database
+        db_app = self._dbapi.kube_app_get(app.name)
+        if db_app.status in [constants.APP_APPLY_IN_PROGRESS,
+                             constants.APP_UPDATE_IN_PROGRESS,
+                             constants.APP_REMOVE_IN_PROGRESS]:
+            # Turn on the abort flag so the processing thread that is
+            # in progress can bail out in the next opportunity.
+            self._set_abort_flag(app.name)
+
+            # Stop the Armada request in case it has reached this far and
+            # remove locks.
+            with self._lock:
+                self._docker.stop_armada_request()
+                self._clear_armada_locks()
+        else:
+            # Either the previous operation has completed or already failed
+            LOG.info("Abort request ignored. The previous operation for app %s "
+                     "has either completed or failed." % app.name)
 
     def perform_app_delete(self, rpc_app):
         """Process application remove request
@@ -2149,6 +2326,21 @@ class DockerHelper(object):
                       (request, manifest_file, e))
         return rc
 
+    def stop_armada_request(self):
+        """A simple way to cancel an on-going manifest apply/rollback/delete
+           request. This logic will be revisited in the future.
+        """
+
+        try:
+            client = docker.from_env(timeout=INSTALLATION_TIMEOUT)
+            container = client.containers.get(ARMADA_CONTAINER_NAME)
+            if container.status == 'running':
+                LOG.info("Stopping Armada service...")
+                container.stop()
+        except Exception as e:
+            # Failed to get a docker client
+            LOG.error("Failed to stop Armada service : %s " % e)
+
     def _get_img_tag_with_registry(self, pub_img_tag):
         registry_name = pub_img_tag[0:1 + pub_img_tag.find('/')]
         img_name = pub_img_tag[1 + pub_img_tag.find('/'):]
@@ -2188,7 +2380,7 @@ class DockerHelper(object):
             else:
                 return pub_img_tag
 
-    def download_an_image(self, img_tag):
+    def download_an_image(self, app_name, img_tag):
 
         rc = True
         # retrieve user specified registries first
@@ -2197,6 +2389,10 @@ class DockerHelper(object):
         start = time.time()
         if img_tag.startswith(constants.DOCKER_REGISTRY_HOST):
             try:
+                if AppOperator.is_app_aborted(app_name):
+                    LOG.info("User aborted. Skipping download of image %s " % img_tag)
+                    return img_tag, False
+
                 LOG.info("Image %s download started from local registry" % img_tag)
                 local_registry_auth = get_local_docker_registry_auth()
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)

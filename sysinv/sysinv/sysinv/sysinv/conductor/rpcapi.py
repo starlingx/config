@@ -1797,6 +1797,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('perform_app_remove',
                                        rpc_app=rpc_app))
 
+    def perform_app_abort(self, context, rpc_app):
+        """Handle application abort request
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        return self.call(context,
+                         self.make_msg('perform_app_abort',
+                                       rpc_app=rpc_app))
+
     def perform_app_delete(self, context, rpc_app):
         """Handle application delete request
 

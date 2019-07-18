@@ -152,6 +152,20 @@ def do_application_remove(cc, args):
 
 
 @utils.arg('name', metavar='<application name>',
+           help='Name of the application, the current operation of which '
+                'is to be aborted.')
+def do_application_abort(cc, args):
+    """Abort the current application operation"""
+    try:
+        cc.app.abort(args.name)
+        print('Application abort request has been accepted. If the '
+              'previous operation has not completed/failed, it will '
+              'be cancelled shortly.')
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Application not found: %s' % args.name)
+
+
+@utils.arg('name', metavar='<application name>',
            help='Name of the application to be deleted')
 def do_application_delete(cc, args):
     """Remove the uninstalled application from the system"""
