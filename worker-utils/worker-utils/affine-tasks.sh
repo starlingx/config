@@ -44,7 +44,7 @@
 #
 ################################################################################
 # Define minimal path
-PATH=/bin:/usr/bin:/usr/local/bin
+PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin
 
 CPUMAP_FUNCTIONS=${CPUMAP_FUNCTIONS:-"/etc/init.d/cpumap_functions.sh"}
 [[ -e ${CPUMAP_FUNCTIONS} ]] && source ${CPUMAP_FUNCTIONS}
@@ -273,6 +273,60 @@ END { printf "%d\n", n; }
     return ${PASS}
 }
 
+# Get number of DRBD resources started.
+# Returns 0 if DRBD not ready.
+function number_drbd_resources_started {
+    local started
+
+    # Number of started DRBD resources
+    started=$(cat /proc/drbd 2>/dev/null | \
+                awk '/cs:/ { n+=1; } END {printf "%d\n", n}')
+    echo "${started}"
+}
+
+# Check criteria for all drbd resources started.
+# i.e., see running DRBD worker threads for each configured resource.
+function all_drbd_resources_started {
+    local PASS=0
+    local FAIL=1
+    local -i started=0
+    local -i resources=0
+
+    # Global variable
+    NOT_READY_REASON=""
+
+    # Number of started DRBD resources
+    started=$(number_drbd_resources_started)
+    if [ ${started} -eq 0 ]; then
+        NOT_READY_REASON="no drbd resources started"
+        return ${FAIL}
+    fi
+
+    # Number of expected DRBD resources
+    resources=$(drbdadm sh-resources | \
+                awk -vFS='[[:space:]]' 'END {print NF}')
+    if [ ${started} -ne ${resources} ]; then
+        NOT_READY_REASON="${started} of ${resources} drbd resources started"
+        return ${FAIL}
+    fi
+
+    return ${PASS}
+}
+
+function affine_drbd_tasks {
+    local CPUS=$1
+    local pidlist
+
+    LOG "Affine drbd tasks, CPUS=${CPUS}"
+
+    # Affine drbd_r_* threads to all cores. The DRBD receiver threads are
+    # particularly CPU intensive. Leave the other DRBD threads alone.
+    pidlist=$(pgrep drbd_r_)
+    for pid in ${pidlist[@]}; do
+        taskset --pid --cpu-list ${CPUS} ${pid} > /dev/null 2>&1
+    done
+}
+
 # Return list of reaffineable pids. This includes all processes, but excludes
 # kernel threads, vSwitch, and anything in K8S or qemu/kvm.
 function reaffineable_pids {
@@ -332,6 +386,9 @@ function affine_tasks_to_platform_cores {
             taskset --pid --cpu-list ${PLATFORM_CPUS} {} > /dev/null 2>&1
     done
 
+    # Reaffine drbd_r_* threads to platform cpus
+    affine_drbd_tasks ${PLATFORM_CPUS}
+
     LOG "Affined ${count} processes to platform cores."
 }
 
@@ -380,6 +437,23 @@ function start {
     if ! is_static_cpu_manager_policy; then
         update_cgroup_cpuset_k8s_infra_all
     fi
+
+    # Wait for all DRBD resources to have started. Affine DRBD tasks
+    # to float on all cores as we find them.
+    until all_drbd_resources_started; do
+        started=$(number_drbd_resources_started)
+        if [ ${started} -gt 0 ]; then
+            affine_drbd_tasks ${NONISOL_CPUS}
+        fi
+        dt=$(( ${SECONDS} - ${t0} ))
+        if [ ${dt} -ge ${PRINT_INTERVAL_SECONDS} ]; then
+            t0=${SECONDS}
+            LOG "Recovery wait, elapsed ${SECONDS} seconds." \
+                "Reason: ${NOT_READY_REASON}"
+        fi
+        sleep ${INIT_INTERVAL_SECONDS}
+    done
+    affine_drbd_tasks ${NONISOL_CPUS}
 
     # Wait until K8s pods have recovered and nova-compute is running
     t0=${SECONDS}
