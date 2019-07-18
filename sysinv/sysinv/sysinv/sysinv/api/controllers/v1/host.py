@@ -2308,7 +2308,7 @@ class HostController(rest.RestController):
         if (personality is not None and
                 personality.find(constants.STORAGE_HOSTNAME) != -1 and
                 not skip_ceph_checks):
-            num_monitors, required_monitors, quorum_names = \
+            num_monitors, required_monitors, __ = \
                     self._ceph.get_monitors_status(pecan.request.dbapi)
             if num_monitors < required_monitors:
                 raise wsme.exc.ClientSideError(_(
@@ -2317,7 +2317,7 @@ class HostController(rest.RestController):
                              "enabled hosts with monitors are required. Please"
                              " ensure hosts with monitors are unlocked and "
                              "enabled.") %
-                             (num_monitors, constants.MIN_STOR_MONITORS))
+                             (num_monitors, required_monitors))
 
             # If it is the last storage node to delete, we need to delete
             # ceph osd pools and update additional tier status to "defined"
@@ -5239,7 +5239,7 @@ class HostController(rest.RestController):
                              "enabled hosts with monitors are required. Please"
                              " ensure hosts with monitors are unlocked and "
                              "enabled.") %
-                             (num_monitors, constants.MIN_STOR_MONITORS))
+                             (num_monitors, required_monitors))
 
         if not force:
             # sm-lock-pre-check
@@ -5468,7 +5468,7 @@ class HostController(rest.RestController):
                 _("Can not unlock a storage node without any Storage Volumes configured"))
 
         ceph_helper = ceph.CephApiOperator()
-        num_monitors, required_monitors, quorum_names = \
+        num_monitors, required_monitors, __ = \
             ceph_helper.get_monitors_status(pecan.request.dbapi)
         if num_monitors < required_monitors:
             raise wsme.exc.ClientSideError(
@@ -5477,7 +5477,7 @@ class HostController(rest.RestController):
                   "enabled hosts with monitors are required. Please"
                   " ensure hosts with monitors are unlocked and "
                   "enabled.") %
-                (num_monitors, constants.MIN_STOR_MONITORS))
+                (num_monitors, required_monitors))
 
         # Check Ceph configuration, if it is wiped out (in the Backup & Restore
         # process) then restore the configuration.
@@ -5773,7 +5773,7 @@ class HostController(rest.RestController):
                              "enabled hosts with monitors are required. Please"
                              " ensure hosts with monitors are unlocked and "
                              "enabled.") %
-                             (num_monitors, constants.MIN_STOR_MONITORS))
+                             (num_monitors, required_monitors))
 
             storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
                 constants.STORAGE)
@@ -5920,7 +5920,7 @@ class HostController(rest.RestController):
                          "enabled hosts with monitors are required. "
                          "Please ensure hosts with monitors are "
                          "unlocked and enabled.") %
-                         (num_monitors, constants.MIN_STOR_MONITORS))
+                         (num_monitors, required_monitors))
 
     def check_unlock_interfaces(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""
