@@ -269,6 +269,17 @@ function get_platform_cpu_list {
 }
 
 ################################################################################
+# Return number of CPUs reserved for platform
+################################################################################
+function get_platform_cpus {
+    local PLATFORM_CPULIST
+    PLATFORM_CPULIST=($(platform_expanded_cpu_list | \
+        perl -pe 's/(\d+)-(\d+)/join(",",$1..$2)/eg'| \
+        sed 's/,/ /g'))
+    echo ${#PLATFORM_CPULIST[@]}
+}
+
+################################################################################
 # Return list of CPUs reserved for vswitch
 ################################################################################
 function get_vswitch_cpu_list {

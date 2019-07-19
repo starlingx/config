@@ -13,6 +13,7 @@ BuildRequires: systemd-devel
 Requires: systemd
 Requires: python
 Requires: /bin/systemctl
+Requires: perl
 
 %description
 Initial worker node resource reservation and misc. utilities
