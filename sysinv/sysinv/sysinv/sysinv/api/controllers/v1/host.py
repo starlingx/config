@@ -1725,7 +1725,7 @@ class HostController(rest.RestController):
         ihost_dict = host.as_dict()
 
         # bm_password is not a part of ihost, so retrieve it from the body
-        body = json.loads(pecan.request.body)
+        body = json.loads(pecan.request.body.decode('utf-8'))
         if 'bm_password' in body:
             ihost_dict['bm_password'] = body['bm_password']
         else:

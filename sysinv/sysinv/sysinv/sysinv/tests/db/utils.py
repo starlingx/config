@@ -101,6 +101,16 @@ def create_test_node(**kw):
     return dbapi.inode_create(node)
 
 
+def post_get_test_ihost(**kw):
+    inv = get_test_ihost(**kw)
+    del inv['bm_mac']
+    del inv['peer_id']
+    del inv['action_state']
+    del inv['recordtype']
+    del inv['uuid']
+    return inv
+
+
 def get_test_ihost(**kw):
     inv = {
             'id': kw.get('id', 123),
@@ -129,7 +139,6 @@ def get_test_ihost(**kw):
             'subfunctions': kw.get('subfunctions', "ihostsubfunctions"),
             'subfunction_oper': kw.get('subfunction_oper', "disabled"),
             'subfunction_avail': kw.get('subfunction_avail', "not-installed"),
-            # 'reservation': None,
             'reserved': kw.get('reserved', None),
             'ihost_action': kw.get('ihost_action', None),
             'action_state': kw.get('action_state', constants.HAS_REINSTALLED),
@@ -145,7 +154,6 @@ def get_test_ihost(**kw):
             'install_output': kw.get('install_output', 'text'),
             'console': kw.get('console', 'ttyS0,115200'),
             'tboot': kw.get('tboot', ''),
-            'vsc_controllers': kw.get('vsc_controllers', "vsccontrollers"),
             'ttys_dcd': kw.get('ttys_dcd', None),
             'updated_at': None,
             'created_at': None,
