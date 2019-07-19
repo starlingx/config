@@ -354,8 +354,7 @@ class platform::config::controller::post
     }
   }
 
-  if ! $::platform::params::controller_upgrade and
-    ! str2bool($::is_restore_in_progress) {
+  if ! $::platform::params::controller_upgrade {
     file { '/etc/platform/.initial_config_complete':
       ensure => present,
     }

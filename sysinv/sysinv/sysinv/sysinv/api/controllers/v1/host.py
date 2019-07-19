@@ -2134,8 +2134,10 @@ class HostController(rest.RestController):
                     ihost_obj['uuid'],
                     ibm_msg_dict)
 
-            # Trigger a system app reapply if the host has been unlocked
-            if (patched_ihost.get('action') in
+            # Trigger a system app reapply if the host has been unlocked.
+            # Only trigger the reapply if it is not during restore.
+            if (not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
+                    patched_ihost.get('action') in
                     [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
                 self._reapply_system_app()
 
@@ -4681,8 +4683,8 @@ class HostController(rest.RestController):
             )
 
             if ihosts:
-                # For storage setup, no change is required.
-                LOG.info("This is a storage setup. No change.")
+                # TODO (Wei) Need to revisit storage setup.
+                LOG.info("This is a storage setup. Will need to revisit.")
                 storage_enabled = 0
                 for ihost in ihosts:
                     if ihost.operational == constants.OPERATIONAL_ENABLED:
@@ -4699,18 +4701,16 @@ class HostController(rest.RestController):
                         raise wsme.exc.ClientSideError(
                             _("Restore Ceph config failed: %s" % e))
             elif cutils.is_aio_system(pecan.request.dbapi):
-                # TODO(wz): Need more work to restore ceph for AIO
-                LOG.info("For an AIO system, Restore crushmap...")
-                try:
-                    if not pecan.request.rpcapi.restore_ceph_config(
-                                pecan.request.context, after_storage_enabled=True):
-                        raise Exception("restore_ceph_config returned false")
-                except Exception as e:
-                    raise wsme.exc.ClientSideError(
-                        _("Restore Ceph config failed: %s" % e))
-
+                # For AIO, ceph config restore is done in puppet when ceph
+                # manifest is applied on first unlock. The
+                # initial_config_complete flag is set after first unlock.
+                # Once one controller is up, ceph cluster should be operational.
+                LOG.info("This is AIO-SX... Ceph backend task is RESTORE")
+                if cutils.is_initial_config_complete():
+                    LOG.info("This is AIO-SX... clear ceph backend task to None")
+                    api.storage_backend_update(backend.uuid, {'task': None})
             else:
-                # TODO(wz): Need more work to restore ceph for 2+2
+                # TODO(Wei): Need more work to restore ceph for 2+2
                 pass
 
     @staticmethod
@@ -5057,11 +5057,12 @@ class HostController(rest.RestController):
         self.check_unlock_patching(hostupdate, force_unlock)
 
         hostupdate.configure_required = True
-        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and
+        if ((os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) or
+             os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG)) and
                 hostupdate.ihost_patch['hostname'] ==
                     constants.CONTROLLER_0_HOSTNAME):
             # For the first unlock of the initial controller bootstrapped by
-            # Ansible, don't notify vim.
+            # Ansible or the first unlock during restore, don't notify vim.
             hostupdate.notify_vim = False
         else:
             hostupdate.notify_vim = True

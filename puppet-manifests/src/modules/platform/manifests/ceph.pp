@@ -250,7 +250,12 @@ class platform::ceph::monitor
         $crushmap_txt = '/etc/sysinv/crushmap-aio-sx.txt'
       }
       $crushmap_bin = '/etc/sysinv/crushmap.bin'
+      $crushmap_bin_backup = '/etc/sysinv/crushmap.bin.backup'
       Ceph::Mon <| |>
+      -> exec { 'Copy crushmap if backup exists':
+        command => "mv -f ${crushmap_bin_backup} ${crushmap_bin}",
+        onlyif  => "test -f ${crushmap_bin_backup}",
+      }
       -> exec { 'Compile crushmap':
         command   => "crushtool -c ${crushmap_txt} -o ${crushmap_bin}",
         onlyif    => "test ! -f ${crushmap_bin}",
