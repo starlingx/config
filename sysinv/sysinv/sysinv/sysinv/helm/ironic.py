@@ -14,25 +14,33 @@ from sysinv.helm import openstack
 class IronicHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the ironic chart"""
 
-    CHART = constants.HELM_CHART_IRONIC
+    CHART = common.HELM_CHART_IRONIC
 
-    SERVICE_NAME = 'ironic'
+    SERVICE_NAME = common.HELM_CHART_IRONIC
     SERVICE_USERS = ['glance']
     AUTH_USERS = ['ironic']
 
-    def execute_manifest_updates(self, operator, app_name=None):
-        if (self._num_controllers() >= 2 and
-                self._is_labeled(common.LABEL_IRONIC, 'enabled')):
-            # If there are fewer than 2 controllers or openstack-ironic
-            # label was not set, ironic chart won't be added to
-            # openstack-compute-kit chartgroup
-            operator.chart_group_chart_insert('openstack-compute-kit',
-                                              'openstack-ironic')
+    def _is_enabled(self, app_name, chart_name, namespace):
+        # First, see if this chart is enabled by the user then adjust based on
+        # system conditions
+        enabled = super(IronicHelm, self)._is_enabled(app_name,
+                                                      chart_name, namespace)
+        if enabled and self._num_controllers() < 2:
+            enabled = False
+        return enabled
+
+    def execute_manifest_updates(self, operator):
+        # On application load, this chart is disabled in the metadata. Insert as
+        # needed.
+        if self._is_enabled(operator.APP,
+                            self.CHART, common.HELM_NS_OPENSTACK):
+            operator.chart_group_chart_insert(
+                operator.CHART_GROUPS_LUT[self.CHART],
+                operator.CHARTS_LUT[self.CHART])
 
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {
-                'manifests': self._get_ironic_manifests(),
                 'pod': {
                     'replicas': {
                         'api': self._num_controllers(),
@@ -51,35 +59,6 @@ class IronicHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
-
-    def _ironic_manifests(self, is_labeled):
-        manifests = {
-            'configmap_bin': is_labeled,
-            'configmap_etc': is_labeled,
-            'deployment_api': is_labeled,
-            'ingress_api': is_labeled,
-            'job_bootstrap': is_labeled,
-            'job_db_init': is_labeled,
-            'job_db_sync': is_labeled,
-            'job_image_repo_sync': is_labeled,
-            'job_ks_endpoints': is_labeled,
-            'job_ks_service': is_labeled,
-            'job_ks_user': is_labeled,
-            'job_manage_cleaning_network': is_labeled,
-            'job_rabbit_init': is_labeled,
-            'pdb_api': is_labeled,
-            'secret_db': is_labeled,
-            'secret_keystone': is_labeled,
-            'secret_rabbitmq': is_labeled,
-            'service_api': is_labeled,
-            'service_ingress_api': is_labeled,
-            'statefulset_conductor': is_labeled
-        }
-        return manifests
-
-    def _get_ironic_manifests(self):
-        ironic_label = self._is_labeled(common.LABEL_IRONIC, 'enabled')
-        return self._ironic_manifests(ironic_label)
 
     def _get_endpoints_overrides(self):
         overrides = {

@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,7 +15,7 @@ LOG = logging.getLogger(__name__)
 class HelmToolkitHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the helm toolkit"""
 
-    CHART = constants.HELM_CHART_HELM_TOOLKIT
+    CHART = common.HELM_CHART_HELM_TOOLKIT
     SUPPORTED_NAMESPACES = [
         common.HELM_NS_HELM_TOOLKIT,
     ]

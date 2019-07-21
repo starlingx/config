@@ -18,6 +18,7 @@ import pwd
 import re
 import ruamel.yaml as yaml
 import shutil
+import six
 import subprocess
 import threading
 import time
@@ -39,7 +40,6 @@ from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.helm import common
 from sysinv.helm import helm
-from sysinv.helm import manifest
 from sysinv.helm import utils as helm_utils
 from sysinv.openstack.common.gettextutils import _
 
@@ -770,28 +770,34 @@ class AppOperator(object):
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason="one or more charts failed validation.")
 
-    def _get_helm_repo_from_metadata(self, app):
-        """Get helm repo from application metadata
+    def _get_chart_data_from_metadata(self, app):
+        """Get chart related data from application metadata
 
         This extracts the helm repo from the application metadata where the
         chart should be loaded.
 
+        This also returns the list of charts that are disabled by default.
+
         :param app: application
         """
         repo = common.HELM_REPO_FOR_APPS
-        lfile = os.path.join(app.path, 'metadata.yaml')
+        disabled_charts = []
+        lfile = os.path.join(app.path, constants.APP_METADATA_FILE)
 
         if os.path.exists(lfile) and os.path.getsize(lfile) > 0:
             with open(lfile, 'r') as f:
                 try:
                     y = yaml.safe_load(f)
-                    repo = y['helm_repo']
+                    repo = y.get('helm_repo', common.HELM_REPO_FOR_APPS)
+                    disabled_charts = y.get('disabled_charts', [])
                 except KeyError:
                     pass
 
         LOG.info("Application %s (%s) will load charts to chart repo %s" % (
             app.name, app.version, repo))
-        return repo
+        LOG.info("Application %s (%s) will disable charts %s by default" % (
+            app.name, app.version, disabled_charts))
+        return (repo, disabled_charts)
 
     def _upload_helm_charts(self, app):
         # Set env path for helm-upload execution
@@ -801,7 +807,7 @@ class AppOperator(object):
                   for r, f in cutils.get_files_matching(app.charts_dir, '.tgz')]
 
         orig_uid, orig_gid = get_app_install_root_path_ownership()
-        helm_repo = self._get_helm_repo_from_metadata(app)
+        (helm_repo, disabled_charts) = self._get_chart_data_from_metadata(app)
         try:
             # Temporarily change /scratch group ownership to sys_protected
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid,
@@ -820,6 +826,37 @@ class AppOperator(object):
                 name=app.name, version=app.version, reason=str(e))
         finally:
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
+
+        # For system applications with plugin support, establish user override
+        # entries and disable charts based on application metadata.
+        db_app = self._dbapi.kube_app_get(app.name)
+        app_ns = self._helm.get_helm_application_namespaces(db_app.name)
+        for chart, namespaces in six.iteritems(app_ns):
+            for namespace in namespaces:
+                try:
+                    db_chart = self._dbapi.helm_override_get(
+                        db_app.id, chart, namespace)
+                except exception.HelmOverrideNotFound:
+                    # Create it
+                    try:
+                        db_chart = self._dbapi.helm_override_create(
+                            {'app_id': db_app.id, 'name': chart,
+                             'namespace': namespace})
+                    except Exception as e:
+                        LOG.exception(e)
+
+                # Since we are uploading a fresh application. Ensure that
+                # charts are disabled based on metadata
+                system_overrides = db_chart.system_overrides
+                system_overrides.update({common.HELM_CHART_ATTR_ENABLED:
+                                         chart not in disabled_charts})
+
+                try:
+                    self._dbapi.helm_override_update(
+                        db_app.id, chart, namespace, {'system_overrides':
+                                                      system_overrides})
+                except exception.HelmOverrideNotFound:
+                    LOG.exception(e)
 
     def _validate_labels(self, labels):
         expr = re.compile(r'[a-z0-9]([-a-z0-9]*[a-z0-9])')
@@ -1185,7 +1222,7 @@ class AppOperator(object):
             return None
 
         # Get the armada manifest overrides files
-        manifest_op = manifest.ArmadaManifestOperator()
+        manifest_op = self._helm.get_armada_manifest_operator(app_name)
         armada_overrides = manifest_op.load_summary(overrides_dir)
 
         return (available_helm_overrides, armada_overrides)

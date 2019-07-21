@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,7 +15,7 @@ LOG = logging.getLogger(__name__)
 class MariadbHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the mariadb chart"""
 
-    CHART = constants.HELM_CHART_MARIADB
+    CHART = common.HELM_CHART_MARIADB
 
     def _num_server_replicas(self):
         return self._num_controllers()

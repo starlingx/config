@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 
 from sysinv.openstack.common import log as logging
@@ -18,7 +17,7 @@ LOG = logging.getLogger(__name__)
 class SwiftHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the swift chart"""
 
-    CHART = constants.HELM_CHART_SWIFT
+    CHART = common.HELM_CHART_SWIFT
 
     SERVICE_NAME = 'swift'
     SERVICE_TYPE = 'object-store'

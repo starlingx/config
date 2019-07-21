@@ -20,9 +20,9 @@ SRIOV_NETWORK_TYPES = [constants.NETWORK_TYPE_PCI_SRIOV]
 class NeutronHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the neutron chart"""
 
-    CHART = constants.HELM_CHART_NEUTRON
+    CHART = common.HELM_CHART_NEUTRON
 
-    SERVICE_NAME = 'neutron'
+    SERVICE_NAME = common.HELM_CHART_NEUTRON
     AUTH_USERS = ['neutron']
     SERVICE_USERS = ['nova']
 

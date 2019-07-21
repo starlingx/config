@@ -16,16 +16,29 @@ LOG = logging.getLogger(__name__)
 class KeystoneApiProxyHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the keystone api proxy chart"""
 
-    CHART = constants.HELM_CHART_KEYSTONE_API_PROXY
+    CHART = common.HELM_CHART_KEYSTONE_API_PROXY
 
-    SERVICE_NAME = constants.HELM_CHART_KEYSTONE_API_PROXY
+    SERVICE_NAME = common.HELM_CHART_KEYSTONE_API_PROXY
     DCORCH_SERVICE_NAME = 'dcorch'
 
-    def execute_manifest_updates(self, operator, app_name=None):
-        if (self._distributed_cloud_role() ==
-                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+    def _is_enabled(self, app_name, chart_name, namespace):
+        # First, see if this chart is enabled by the user then adjust based on
+        # system conditions
+        enabled = super(KeystoneApiProxyHelm, self)._is_enabled(
+            app_name, chart_name, namespace)
+        if enabled and (self._distributed_cloud_role() !=
+                        constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            enabled = False
+        return enabled
+
+    def execute_manifest_updates(self, operator):
+        # This chart group is not included by default in the manifest. Insert as
+        # needed.
+        if self._is_enabled(operator.APP,
+                            self.CHART, common.HELM_NS_OPENSTACK):
             operator.manifest_chart_groups_insert(
-                'armada-manifest', 'openstack-keystone-api-proxy')
+                operator.ARMADA_MANIFEST,
+                operator.CHART_GROUPS_LUT[self.CHART])
 
     def get_overrides(self, namespace=None):
         overrides = {
@@ -71,7 +84,7 @@ class KeystoneApiProxyHelm(openstack.OpenstackBaseHelm):
             'keystone_api_proxy': {
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
-                        constants.HELM_CHART_KEYSTONE_API_PROXY),
+                        common.HELM_CHART_KEYSTONE_API_PROXY),
                 'port': self._get_endpoints_port_api_public_overrides(),
                 'scheme': self._get_endpoints_scheme_public_overrides(),
             }

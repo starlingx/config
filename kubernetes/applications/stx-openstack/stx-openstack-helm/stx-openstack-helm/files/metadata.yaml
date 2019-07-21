@@ -1,0 +1,7 @@
+disabled_charts:
+- aodh
+- barbican
+- ceilometer
+- gnocchi
+- ironic
+- panko

@@ -18,7 +18,7 @@ LOG = logging.getLogger(__name__)
 class RbdProvisionerHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the rbd-provisioner chart"""
 
-    CHART = constants.HELM_CHART_RBD_PROVISIONER
+    CHART = common.HELM_CHART_RBD_PROVISIONER
     SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + \
         [common.HELM_NS_STORAGE_PROVISIONER]
     SUPPORTED_APP_NAMESPACES = {
@@ -26,8 +26,17 @@ class RbdProvisionerHelm(base.BaseHelm):
             base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_STORAGE_PROVISIONER],
     }
 
-    SERVICE_NAME = 'rbd-provisioner'
+    SERVICE_NAME = common.HELM_CHART_RBD_PROVISIONER
     SERVICE_PORT_MON = 6789
+
+    def execute_manifest_updates(self, operator):
+        # On application load this chart is enabled. Only disable if specified
+        # by the user
+        if not self._is_enabled(operator.APP, self.CHART,
+                                common.HELM_NS_STORAGE_PROVISIONER):
+            operator.chart_group_chart_delete(
+                operator.CHART_GROUPS_LUT[self.CHART],
+                operator.CHARTS_LUT[self.CHART])
 
     def get_overrides(self, namespace=None):
 

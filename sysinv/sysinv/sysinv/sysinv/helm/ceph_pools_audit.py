@@ -17,7 +17,7 @@ LOG = logging.getLogger(__name__)
 class CephPoolsAuditHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the ceph-pools-audit chart"""
 
-    CHART = constants.HELM_CHART_CEPH_POOLS_AUDIT
+    CHART = common.HELM_CHART_CEPH_POOLS_AUDIT
     SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + \
         [common.HELM_NS_STORAGE_PROVISIONER]
     SUPPORTED_APP_NAMESPACES = {
@@ -26,6 +26,15 @@ class CephPoolsAuditHelm(base.BaseHelm):
     }
 
     SERVICE_NAME = 'ceph-pools'
+
+    def execute_manifest_updates(self, operator):
+        # On application load this chart is enabled. Only disable if specified
+        # by the user
+        if not self._is_enabled(operator.APP, self.CHART,
+                                common.HELM_NS_STORAGE_PROVISIONER):
+            operator.chart_group_chart_delete(
+                operator.CHART_GROUPS_LUT[self.CHART],
+                operator.CHARTS_LUT[self.CHART])
 
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES

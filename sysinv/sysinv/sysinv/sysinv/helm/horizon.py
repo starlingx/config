@@ -16,9 +16,9 @@ LOG = logging.getLogger(__name__)
 class HorizonHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the horizon chart"""
 
-    CHART = constants.HELM_CHART_HORIZON
+    CHART = common.HELM_CHART_HORIZON
 
-    SERVICE_NAME = 'horizon'
+    SERVICE_NAME = common.HELM_CHART_HORIZON
 
     def get_overrides(self, namespace=None):
         overrides = {
@@ -52,7 +52,7 @@ class HorizonHelm(openstack.OpenstackBaseHelm):
             'dashboard': {
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
-                        constants.HELM_CHART_HORIZON),
+                        common.HELM_CHART_HORIZON),
                 'port': self._get_endpoints_port_api_public_overrides(),
                 'scheme': self._get_endpoints_scheme_public_overrides(),
             },

@@ -31,7 +31,7 @@ class BaseHelm(object):
     SUPPORTED_NAMESPACES = []
     SUPPORTED_APP_NAMESPACES = {}
     SYSTEM_CONTROLLER_SERVICES = [
-        constants.HELM_CHART_KEYSTONE_API_PROXY,
+        common.HELM_CHART_KEYSTONE_API_PROXY,
     ]
 
     def __init__(self, operator):
@@ -200,19 +200,6 @@ class BaseHelm(object):
                 cpus.append(c)
         return cpus
 
-    def _is_labeled(self, k, v):
-        """
-        Check whether the label key value pair are set
-        """
-        if self.dbapi is None:
-            return False
-        label_list = self.dbapi.label_get_all()
-        for label in label_list:
-            if label.label_key == k:
-                if label.label_value == v:
-                    return True
-        return False
-
     def get_namespaces(self):
         """
         Return list of namespaces supported by this chart
@@ -250,7 +237,7 @@ class BaseHelm(object):
         """
         return True
 
-    def execute_manifest_updates(self, operator, app_name=None):
+    def execute_manifest_updates(self, operator):
         """
         Update the elements of the armada manifest.
 
@@ -262,7 +249,26 @@ class BaseHelm(object):
         armada/Manifest/v1, armada/ChartGroup/v1, armada/Chart/v1.
 
         :param operator: an instance of the ArmadaManifestOperator
-        :parameter app_name: application for which the specific actions are
-            taken
         """
         pass
+
+    def _is_enabled(self, app_name, chart_name, namespace):
+        """
+        Check if the chart is enable at an application level
+
+        :param app_name: Application name
+        :param chart_name: Chart supplied with the application
+        :param namespace: Namespace where the chart will be executed
+
+        Returns true by default if an exception occurs as most charts are
+        enabled.
+        """
+        try:
+            db_app = self.dbapi.kube_app_get(app_name)
+            db_chart = self.dbapi.helm_override_get(db_app.id, chart_name, namespace)
+        except exception.KubeAppNotFound:
+            return True
+        except exception.HelmOverrideNotFound:
+            return True
+
+        return db_chart.system_overrides.get(common.HELM_CHART_ATTR_ENABLED, False)

@@ -59,7 +59,7 @@ class HelmManager(base.Manager):
 
         This will return the end-user overrides for the specified chart.
         """
-        body = {'flag': flag, 'values': override_values}
+        body = {'flag': flag, 'values': override_values, 'attributes': {}}
         return self._update(self._path(app) +
                             '?name=' + name +
                             '&namespace=' + namespace, body)
@@ -74,3 +74,20 @@ class HelmManager(base.Manager):
         return self._delete(self._path(app) +
                             '?name=' + name +
                             '&namespace=' + namespace)
+
+    def update_chart(self, app, name, namespace, attributes=None):
+        """Update non-override attributes for a given chart.
+
+        :param app_name: name of application
+        :param name: name of the chart
+        :param namespace: namespace for the chart overrides
+        :param attributes: dict of chart attributes to be updated
+
+        This will return the updated attributes for the specified chart.
+        """
+        if not attributes:
+            attributes = {}
+        body = {'flag': None, 'values': {}, 'attributes': attributes}
+        return self._update(self._path(app) +
+                            '?name=' + name +
+                            '&namespace=' + namespace, body)

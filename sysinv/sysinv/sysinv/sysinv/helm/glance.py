@@ -22,9 +22,9 @@ RBD_STORE_USER = 'images'
 class GlanceHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the glance chart"""
 
-    CHART = constants.HELM_CHART_GLANCE
+    CHART = common.HELM_CHART_GLANCE
 
-    SERVICE_NAME = 'glance'
+    SERVICE_NAME = common.HELM_CHART_GLANCE
     SERVICE_TYPE = 'image'
     AUTH_USERS = ['glance']
 
@@ -65,7 +65,7 @@ class GlanceHelm(openstack.OpenstackBaseHelm):
             'image': {
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
-                        constants.HELM_CHART_GLANCE),
+                        common.HELM_CHART_GLANCE),
                 'scheme': self._get_endpoints_scheme_public_overrides(),
                 'port': self._get_endpoints_port_api_public_overrides(),
             },

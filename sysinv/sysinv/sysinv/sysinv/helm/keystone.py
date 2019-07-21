@@ -22,9 +22,9 @@ OPENSTACK_PASSWORD_RULES_FILE = '/etc/keystone/password-rules.conf'
 class KeystoneHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the keystone chart"""
 
-    CHART = constants.HELM_CHART_KEYSTONE
+    CHART = common.HELM_CHART_KEYSTONE
 
-    SERVICE_NAME = constants.HELM_CHART_KEYSTONE
+    SERVICE_NAME = common.HELM_CHART_KEYSTONE
     SERVICE_PATH = '/v3'
 
     DEFAULT_DOMAIN_NAME = 'default'

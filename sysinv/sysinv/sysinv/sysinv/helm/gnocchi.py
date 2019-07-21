@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,9 +15,9 @@ LOG = logging.getLogger(__name__)
 class GnocchiHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the gnocchi chart"""
 
-    CHART = constants.HELM_CHART_GNOCCHI
+    CHART = common.HELM_CHART_GNOCCHI
 
-    SERVICE_NAME = 'gnocchi'
+    SERVICE_NAME = common.HELM_CHART_GNOCCHI
     AUTH_USERS = ['gnocchi']
 
     def get_overrides(self, namespace=None):

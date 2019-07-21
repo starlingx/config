@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,9 +15,9 @@ LOG = logging.getLogger(__name__)
 class HeatHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the heat chart"""
 
-    CHART = constants.HELM_CHART_HEAT
+    CHART = common.HELM_CHART_HEAT
 
-    SERVICE_NAME = constants.HELM_CHART_HEAT
+    SERVICE_NAME = common.HELM_CHART_HEAT
     AUTH_USERS = ['heat', 'heat_trustee', 'heat_stack_user']
 
     def get_overrides(self, namespace=None):

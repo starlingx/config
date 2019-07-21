@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.helm import common
 from sysinv.helm import openstack
@@ -13,14 +12,9 @@ from sysinv.helm import openstack
 class BarbicanHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the barbican chart"""
 
-    CHART = constants.HELM_CHART_BARBICAN
+    CHART = common.HELM_CHART_BARBICAN
     AUTH_USERS = ['barbican']
-    SERVICE_NAME = constants.HELM_CHART_BARBICAN
-
-    def execute_manifest_updates(self, operator, app_name=None):
-        if not self._is_labeled(common.LABEL_BARBICAN, 'enabled'):
-            operator.manifest_chart_groups_delete(
-                'armada-manifest', 'openstack-barbican')
+    SERVICE_NAME = common.HELM_CHART_BARBICAN
 
     def get_overrides(self, namespace=None):
         overrides = {

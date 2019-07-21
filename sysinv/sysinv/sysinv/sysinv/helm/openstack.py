@@ -70,7 +70,7 @@ class OpenstackBaseHelm(base.BaseHelm):
 
     def _get_admin_user_name(self):
         keystone_operator = self._operator.chart_operators[
-            constants.HELM_CHART_KEYSTONE]
+            common.HELM_CHART_KEYSTONE]
         return keystone_operator.get_admin_user_name()
 
     def _get_identity_password(self, service, user):
@@ -469,3 +469,36 @@ class OpenstackBaseHelm(base.BaseHelm):
             K8RbdProvisioner.get_user_secret_name({
                 'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
         }
+
+    def execute_manifest_updates(self, operator):
+        """
+        Update the elements of the armada manifest.
+
+        This allows a helm chart plugin to use the ArmadaManifestOperator to
+        make dynamic structural changes to the application manifest based on the
+        current conditions in the platform
+
+        Changes include updates to manifest documents for the following schemas:
+        armada/Manifest/v1, armada/ChartGroup/v1, armada/Chart/v1.
+
+        :param operator: an instance of the ArmadaManifestOperator
+        """
+        if not self._is_enabled(operator.APP, self.CHART,
+                                common.HELM_NS_OPENSTACK):
+            operator.chart_group_chart_delete(
+                operator.CHART_GROUPS_LUT[self.CHART],
+                operator.CHARTS_LUT[self.CHART])
+
+    def _is_enabled(self, app_name, chart_name, namespace):
+        """
+        Check if the chart is enable at a system level
+
+        :param app_name: Application name
+        :param chart_name: Chart supplied with the application
+        :param namespace: Namespace where the chart will be executed
+
+        Returns true by default if an exception occurs as most charts are
+        enabled.
+        """
+        return super(OpenstackBaseHelm, self)._is_enabled(
+            app_name, chart_name, namespace)

@@ -17,12 +17,10 @@ import yaml
 
 from six import iteritems
 from stevedore import extension
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
-from sysinv.helm import manifest
 
 
 LOG = logging.getLogger(__name__)
@@ -65,6 +63,32 @@ class HelmOperator(object):
 
         # dict containing sequence of helm charts per app
         self.helm_system_applications = self.get_helm_applications()
+
+        # dict containing Armada manifest operators per app
+        self.armada_manifest_operators = self.load_armada_manifest_operators()
+
+    def load_armada_manifest_operators(self):
+        """Build a dictionary of armada manifest operators"""
+
+        operators_dict = {}
+
+        armada_manifest_operators = extension.ExtensionManager(
+            namespace='systemconfig.armada.manifest_ops',
+            invoke_on_load=True, invoke_args=())
+
+        for op in armada_manifest_operators:
+            operators_dict[op.name] = op.obj
+
+        return operators_dict
+
+    def get_armada_manifest_operator(self, app_name):
+        """Return a manifest operator based on app name"""
+
+        if app_name in self.armada_manifest_operators:
+            manifest_op = self.armada_manifest_operators[app_name]
+        else:
+            manifest_op = self.armada_manifest_operators['generic']
+        return manifest_op
 
     def get_helm_applications(self):
         """Build a dictionary of supported helm applications"""
@@ -482,9 +506,9 @@ class HelmOperator(object):
             LOG.exception("Application %s not found." % app_name)
             raise
 
-        # Get a manifest operator to provide a single point of manipulation for
-        # the chart, chart group and manifest schemas
-        manifest_op = manifest.ArmadaManifestOperator()
+        # Get a manifest operator to provide a single point of
+        # manipulation for the chart, chart group and manifest schemas
+        manifest_op = self.get_armada_manifest_operator(app_name)
 
         # Load the manifest into the operator
         armada_manifest = utils.generate_armada_manifest_filename_abs(
@@ -544,11 +568,10 @@ class HelmOperator(object):
                 # Update manifest docs based on the plugin directives
                 if chart_name in self.chart_operators:
                     self.chart_operators[chart_name].execute_manifest_updates(
-                        manifest_op, app_name)
+                        manifest_op)
 
             # Update the manifest based on platform conditions
-            manifest.platform_mode_manifest_updates(
-                self.dbapi, manifest_op, app_name, mode)
+            manifest_op.platform_mode_manifest_updates(self.dbapi, mode)
 
         else:
             # Generic applications
@@ -686,7 +709,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_keystone_auth_data(self):
-        keystone_operator = self.chart_operators[constants.HELM_CHART_KEYSTONE]
+        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
         auth_data = {
             'admin_user_name':
                 keystone_operator.get_admin_user_name(),
@@ -703,7 +726,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_endpoint_data(self):
-        nova_operator = self.chart_operators[constants.HELM_CHART_NOVA]
+        nova_operator = self.chart_operators[common.HELM_CHART_NOVA]
         endpoint_data = {
             'endpoint_override':
                 'http://nova-api.openstack.svc.cluster.local:8774',
@@ -714,7 +737,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_oslo_messaging_data(self):
-        nova_operator = self.chart_operators[constants.HELM_CHART_NOVA]
+        nova_operator = self.chart_operators[common.HELM_CHART_NOVA]
         endpoints_overrides = nova_operator._get_endpoints_overrides()
         auth_data = {
             'host':
@@ -734,7 +757,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_cinder_endpoint_data(self):
-        cinder_operator = self.chart_operators[constants.HELM_CHART_CINDER]
+        cinder_operator = self.chart_operators[common.HELM_CHART_CINDER]
         endpoint_data = {
             'region_name':
                 cinder_operator.get_region_name(),
@@ -747,7 +770,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_glance_endpoint_data(self):
-        glance_operator = self.chart_operators[constants.HELM_CHART_GLANCE]
+        glance_operator = self.chart_operators[common.HELM_CHART_GLANCE]
         endpoint_data = {
             'region_name':
                 glance_operator.get_region_name(),
@@ -760,7 +783,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_neutron_endpoint_data(self):
-        neutron_operator = self.chart_operators[constants.HELM_CHART_NEUTRON]
+        neutron_operator = self.chart_operators[common.HELM_CHART_NEUTRON]
         endpoint_data = {
             'region_name':
                 neutron_operator.get_region_name(),
@@ -769,7 +792,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_heat_endpoint_data(self):
-        heat_operator = self.chart_operators[constants.HELM_CHART_HEAT]
+        heat_operator = self.chart_operators[common.HELM_CHART_HEAT]
         endpoint_data = {
             'region_name':
                 heat_operator.get_region_name(),
@@ -779,7 +802,7 @@ class HelmOperatorData(HelmOperator):
     @helm_context
     def get_ceilometer_endpoint_data(self):
         ceilometer_operator = \
-            self.chart_operators[constants.HELM_CHART_CEILOMETER]
+            self.chart_operators[common.HELM_CHART_CEILOMETER]
         endpoint_data = {
             'region_name':
                 ceilometer_operator.get_region_name(),

@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.helm import common
 from sysinv.helm import openstack
@@ -13,9 +12,9 @@ from sysinv.helm import openstack
 class PlacementHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the placement chart"""
 
-    CHART = constants.HELM_CHART_PLACEMENT
+    CHART = common.HELM_CHART_PLACEMENT
 
-    SERVICE_NAME = 'placement'
+    SERVICE_NAME = common.HELM_CHART_PLACEMENT
     AUTH_USERS = ['placement']
 
     def get_overrides(self, namespace=None):

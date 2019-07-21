@@ -39,11 +39,21 @@ def _find_overrides(cc, app, chart, namespace):
 @utils.arg('app',
            metavar='<app name>',
            help="Name of the application")
+@utils.arg('-l', '--long',
+           action='store_true',
+           help='List additional fields in output')
 def do_helm_override_list(cc, args):
     """List system helm charts."""
     app = app_utils._find_app(cc, args.app)
     charts = cc.helm.list_charts(app.name)
-    utils.print_list(charts, ['name', 'namespaces'], ['chart name', 'overrides namespaces'], sortby=0)
+
+    keys = ['name', 'namespaces']
+    labels = ['chart name', 'overrides namespaces']
+    if args.long:
+        keys.append('enabled')
+        labels.append('chart enabled')
+
+    utils.print_list(charts, keys, labels, sortby=0)
 
 
 @utils.arg('app',
@@ -141,4 +151,38 @@ def do_helm_override_update(cc, args):
 
     chart = cc.helm.update_overrides(args.app, args.chart, args.namespace,
                                      flag, overrides)
+    _print_helm_chart(chart)
+
+
+@utils.arg('app',
+           metavar='<app name>',
+           help="Name of the application")
+@utils.arg('chart',
+           metavar='<chart name>',
+           help="Name of the chart")
+@utils.arg('namespace',
+           metavar='<namespace>',
+           help="Namespace of the chart")
+@utils.arg('--enabled',
+           metavar='<true/false>',
+           help="Chart enabled.")
+def do_helm_chart_attribute_modify(cc, args):
+    """Modify helm chart attributes.
+
+    This function is provided to modify system behaviorial attributes related to
+    a chart. This does not modify a chart nor does it modify chart overrides
+    which are managed through the helm-override-update command.
+    """
+
+    # Make sure the chart is present
+    app = app_utils._find_app(cc, args.app)
+    chart = _find_overrides(cc, app, args.chart, args.namespace)
+
+    attributes = {}
+    if args.enabled is not None:
+        attributes.update({'enabled': args.enabled})
+
+    chart = cc.helm.update_chart(args.app, args.chart, args.namespace,
+                                 attributes)
+
     _print_helm_chart(chart)

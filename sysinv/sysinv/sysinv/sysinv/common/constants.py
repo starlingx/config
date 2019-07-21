@@ -1302,46 +1302,9 @@ SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS = {
 
 SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS = SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_V1_OPTS
 
-# Helm: Supported charts:
-# These values match the names in the chart package's Chart.yaml
-HELM_CHART_AODH = 'aodh'
-HELM_CHART_BARBICAN = 'barbican'
-HELM_CHART_CEILOMETER = 'ceilometer'
-HELM_CHART_CINDER = 'cinder'
-HELM_CHART_GARBD = 'garbd'
-HELM_CHART_GLANCE = 'glance'
-HELM_CHART_GNOCCHI = 'gnocchi'
-HELM_CHART_HEAT = 'heat'
-HELM_CHART_HORIZON = 'horizon'
-HELM_CHART_INGRESS = 'ingress'
-HELM_CHART_IRONIC = 'ironic'
-HELM_CHART_KEYSTONE = 'keystone'
-HELM_CHART_LIBVIRT = 'libvirt'
-HELM_CHART_MAGNUM = 'magnum'
-HELM_CHART_MARIADB = 'mariadb'
-HELM_CHART_MEMCACHED = 'memcached'
-HELM_CHART_NEUTRON = 'neutron'
-HELM_CHART_NOVA = 'nova'
-HELM_CHART_NOVA_API_PROXY = 'nova-api-proxy'
-HELM_CHART_OPENVSWITCH = 'openvswitch'
-HELM_CHART_PANKO = 'panko'
-HELM_CHART_PLACEMENT = 'placement'
-HELM_CHART_RABBITMQ = 'rabbitmq'
-HELM_CHART_RBD_PROVISIONER = 'rbd-provisioner'
-HELM_CHART_CEPH_POOLS_AUDIT = 'ceph-pools-audit'
-HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
-HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
-HELM_CHART_SWIFT = 'ceph-rgw'
-HELM_CHART_NGINX_PORTS_CONTROL = "nginx-ports-control"
-
 # Helm: Supported application (aka chart bundles)
 HELM_APP_OPENSTACK = 'stx-openstack'
 HELM_APP_PLATFORM = 'platform-integ-apps'
-
-HELM_APPS_SUPPORTED = [
-    HELM_APP_OPENSTACK,
-    HELM_APP_PLATFORM,
-]
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'

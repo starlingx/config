@@ -20,9 +20,9 @@ class GarbdHelm(base.BaseHelm):
     # The service name is used to build the standard docker image location.
     # It is intentionally "mariadb" and not "garbd" as they both use the
     # same docker image.
-    SERVICE_NAME = 'mariadb'
+    SERVICE_NAME = common.HELM_CHART_MARIADB
 
-    CHART = constants.HELM_CHART_GARBD
+    CHART = common.HELM_CHART_GARBD
     SUPPORTED_NAMESPACES = \
         base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
     SUPPORTED_APP_NAMESPACES = {
@@ -30,19 +30,29 @@ class GarbdHelm(base.BaseHelm):
             base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
     }
 
-    def execute_manifest_updates(self, operator, app_name=None):
-        if app_name == constants.HELM_APP_OPENSTACK:
-            if (self._num_controllers() < 2 or
-                    utils.is_aio_duplex_system(self.dbapi) or
-                    (self._distributed_cloud_role() ==
-                        constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)):
-                # If there are fewer than 2 controllers or we're on AIO-DX
-                # or we are on distributed cloud system controller
-                # we'll use a single mariadb server and so we don't want to
-                # run garbd.  This will remove "openstack-garbd" from the
-                # charts in the openstack-mariadb chartgroup.
-                operator.chart_group_chart_delete('openstack-mariadb',
-                                                  'openstack-garbd')
+    def _is_enabled(self, app_name, chart_name, namespace):
+        # First, see if this chart is enabled by the user then adjust based on
+        # system conditions
+        enabled = super(GarbdHelm, self)._is_enabled(
+            app_name, chart_name, namespace)
+
+        # If there are fewer than 2 controllers or we're on AIO-DX or we are on
+        # distributed cloud system controller, we'll use a single mariadb server
+        # and so we don't want to run garbd.
+        if enabled and (self._num_controllers() < 2 or
+                        utils.is_aio_duplex_system(self.dbapi) or
+                        (self._distributed_cloud_role() ==
+                         constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)):
+            enabled = False
+        return enabled
+
+    def execute_manifest_updates(self, operator):
+        # On application load this chart is enabled in the mariadb chart group
+        if not self._is_enabled(operator.APP,
+                                self.CHART, common.HELM_NS_OPENSTACK):
+            operator.chart_group_chart_delete(
+                operator.CHART_GROUPS_LUT[self.CHART],
+                operator.CHARTS_LUT[self.CHART])
 
     def get_overrides(self, namespace=None):
         overrides = {

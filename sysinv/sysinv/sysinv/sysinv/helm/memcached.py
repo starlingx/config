@@ -16,7 +16,7 @@ LOG = logging.getLogger(__name__)
 class MemcachedHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the memcached chart"""
 
-    CHART = constants.HELM_CHART_MEMCACHED
+    CHART = common.HELM_CHART_MEMCACHED
     SUPPORTED_NAMESPACES = \
         base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
     SUPPORTED_APP_NAMESPACES = {

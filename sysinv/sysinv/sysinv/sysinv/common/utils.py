@@ -1914,9 +1914,14 @@ def find_metadata_file(path, metadata_file):
     app_name: <name>
     app_version: <version>
     patch_dependencies:
-      - <patch.1>
-      - <patch.2>
-      ...
+    - <patch.1>
+    - <patch.2>
+    ...
+    repo: <helm repo> - optional: defaults to HELM_REPO_FOR_APPS
+    disabled_charts: - optional: charts default to enabled
+    - <chart name>
+    - <chart name>
+    ...
     """
     app_name = ''
     app_version = ''

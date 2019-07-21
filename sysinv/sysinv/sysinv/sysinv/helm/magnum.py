@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 
 from sysinv.helm import common
@@ -14,9 +13,9 @@ from sysinv.helm import openstack
 class MagnumHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the magnum chart"""
 
-    CHART = constants.HELM_CHART_MAGNUM
+    CHART = common.HELM_CHART_MAGNUM
 
-    SERVICE_NAME = constants.HELM_CHART_MAGNUM
+    SERVICE_NAME = common.HELM_CHART_MAGNUM
 
     def get_overrides(self, namespace=None):
         overrides = {

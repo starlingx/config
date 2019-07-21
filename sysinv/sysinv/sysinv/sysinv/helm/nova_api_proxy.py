@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,9 +15,9 @@ LOG = logging.getLogger(__name__)
 class NovaApiProxyHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the nova chart"""
 
-    CHART = constants.HELM_CHART_NOVA_API_PROXY
+    CHART = common.HELM_CHART_NOVA_API_PROXY
 
-    SERVICE_NAME = 'nova-api-proxy'
+    SERVICE_NAME = common.HELM_CHART_NOVA_API_PROXY
     AUTH_USERS = ['nova']
 
     def get_overrides(self, namespace=None):
@@ -56,7 +55,7 @@ class NovaApiProxyHelm(openstack.OpenstackBaseHelm):
 
     def _get_endpoints_overrides(self):
         nova_service_name = self._operator.chart_operators[
-            constants.HELM_CHART_NOVA].SERVICE_NAME
+            common.HELM_CHART_NOVA].SERVICE_NAME
 
         return {
             'identity': {
@@ -66,7 +65,7 @@ class NovaApiProxyHelm(openstack.OpenstackBaseHelm):
             'compute': {
                 'host_fqdn_override':
                     self._get_endpoints_host_fqdn_overrides(
-                        constants.HELM_CHART_NOVA),
+                        common.HELM_CHART_NOVA),
                 'port': self._get_endpoints_port_api_public_overrides(),
                 'scheme': self._get_endpoints_scheme_public_overrides(),
             },

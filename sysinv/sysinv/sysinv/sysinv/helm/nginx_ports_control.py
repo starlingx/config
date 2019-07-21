@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,7 +15,7 @@ LOG = logging.getLogger(__name__)
 class NginxPortsControlHelm(base.BaseHelm):
     """Class to encapsulate helm operations for nginx-ports-control chart"""
 
-    CHART = constants.HELM_CHART_NGINX_PORTS_CONTROL
+    CHART = common.HELM_CHART_NGINX_PORTS_CONTROL
     SUPPORTED_NAMESPACES = \
         base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
 

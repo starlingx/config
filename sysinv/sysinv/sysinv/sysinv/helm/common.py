@@ -21,6 +21,42 @@ HELM_OVERRIDES_PATH = os.path.join(tsconfig.PLATFORM_PATH, 'helm', tsconfig.SW_V
 HELM_REPO_FOR_APPS = 'starlingx'
 HELM_REPO_FOR_PLATFORM = 'stx-platform'
 
+# Supported chart attributes:
+HELM_CHART_ATTR_ENABLED = 'enabled'
+HELM_CHART_ATTRS = [HELM_CHART_ATTR_ENABLED]
+
+# Helm: Supported charts:
+# These values match the names in the chart package's Chart.yaml
+HELM_CHART_AODH = 'aodh'
+HELM_CHART_BARBICAN = 'barbican'
+HELM_CHART_CEILOMETER = 'ceilometer'
+HELM_CHART_CINDER = 'cinder'
+HELM_CHART_GARBD = 'garbd'
+HELM_CHART_GLANCE = 'glance'
+HELM_CHART_GNOCCHI = 'gnocchi'
+HELM_CHART_HEAT = 'heat'
+HELM_CHART_HORIZON = 'horizon'
+HELM_CHART_INGRESS = 'ingress'
+HELM_CHART_IRONIC = 'ironic'
+HELM_CHART_KEYSTONE = 'keystone'
+HELM_CHART_LIBVIRT = 'libvirt'
+HELM_CHART_MAGNUM = 'magnum'
+HELM_CHART_MARIADB = 'mariadb'
+HELM_CHART_MEMCACHED = 'memcached'
+HELM_CHART_NEUTRON = 'neutron'
+HELM_CHART_NOVA = 'nova'
+HELM_CHART_NOVA_API_PROXY = 'nova-api-proxy'
+HELM_CHART_OPENVSWITCH = 'openvswitch'
+HELM_CHART_PANKO = 'panko'
+HELM_CHART_PLACEMENT = 'placement'
+HELM_CHART_RABBITMQ = 'rabbitmq'
+HELM_CHART_RBD_PROVISIONER = 'rbd-provisioner'
+HELM_CHART_CEPH_POOLS_AUDIT = 'ceph-pools-audit'
+HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
+HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
+HELM_CHART_SWIFT = 'ceph-rgw'
+HELM_CHART_NGINX_PORTS_CONTROL = "nginx-ports-control"
+
 # Namespaces
 HELM_NS_CEPH = 'ceph'
 HELM_NS_DEFAULT = 'default'
@@ -50,9 +86,6 @@ LABEL_CONTROLLER = 'openstack-control-plane'
 LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
-LABEL_IRONIC = 'openstack-ironic'
-LABEL_BARBICAN = 'openstack-barbican'
-LABEL_TELEMETRY = 'openstack-telemetry'
 
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'

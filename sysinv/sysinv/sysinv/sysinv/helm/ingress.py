@@ -16,7 +16,7 @@ LOG = logging.getLogger(__name__)
 class IngressHelm(base.BaseHelm):
     """Class to encapsulate helm operations for the ingress chart"""
 
-    CHART = constants.HELM_CHART_INGRESS
+    CHART = common.HELM_CHART_INGRESS
 
     SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + [
         common.HELM_NS_KUBE_SYSTEM,

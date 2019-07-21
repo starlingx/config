@@ -17,15 +17,10 @@ LOG = logging.getLogger(__name__)
 class CeilometerHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the ceilometer chart"""
 
-    CHART = constants.HELM_CHART_CEILOMETER
+    CHART = common.HELM_CHART_CEILOMETER
 
-    SERVICE_NAME = 'ceilometer'
+    SERVICE_NAME = common.HELM_CHART_CEILOMETER
     AUTH_USERS = ['ceilometer']
-
-    def execute_manifest_updates(self, operator, app_name=None):
-        if not self._is_labeled(common.LABEL_TELEMETRY, 'enabled'):
-            operator.manifest_chart_groups_delete(
-                'armada-manifest', 'openstack-telemetry')
 
     def get_overrides(self, namespace=None):
         overrides = {

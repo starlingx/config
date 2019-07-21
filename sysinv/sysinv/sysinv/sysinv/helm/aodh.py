@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,9 +15,9 @@ LOG = logging.getLogger(__name__)
 class AodhHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the aodh chart"""
 
-    CHART = constants.HELM_CHART_AODH
+    CHART = common.HELM_CHART_AODH
 
-    SERVICE_NAME = 'aodh'
+    SERVICE_NAME = common.HELM_CHART_AODH
     AUTH_USERS = ['aodh']
 
     def get_overrides(self, namespace=None):

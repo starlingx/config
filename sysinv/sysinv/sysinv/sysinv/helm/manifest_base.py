@@ -9,15 +9,15 @@
 
 """ System inventory Armada manifest operator."""
 
+import abc
 import os
 import json
 import ruamel.yaml as yaml
+import six
 import tempfile
 
 from glob import glob
 from six import iteritems
-from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ FILE_SUFFIX = '-meta.yaml'
 SUMMARY_FILE = 'armada-overrides.yaml'
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ArmadaManifestOperator(object):
 
     def __init__(self, manifest_fqpn=None):
@@ -386,6 +387,8 @@ class ArmadaManifestOperator(object):
 
             self.docs[KEY_DATA_CHART_GROUPS][manifest][KEY_DATA][KEY_DATA_CHART_GROUPS] = chart_group_list
 
+            self.updated[KEY_DATA_CHART_GROUPS].update([manifest])
+
         else:
             LOG.error("Cannot set the manifest chart_groups to an empty list")
 
@@ -470,6 +473,8 @@ class ArmadaManifestOperator(object):
 
             self.docs[KEY_DATA_CHART_GROUP][chart_group][KEY_DATA][KEY_DATA_CHART_GROUP] = chart_list
 
+            self.updated[KEY_DATA_CHART_GROUP].update([chart_group])
+
         else:
             LOG.error("Cannot set the chart_group charts to an empty list")
 
@@ -497,68 +502,11 @@ class ArmadaManifestOperator(object):
         # Not implemented... yet.
         pass
 
+    @abc.abstractmethod
+    def platform_mode_manifest_updates(self, dbapi, mode):
+        """ Update the application manifest based on the platform
 
-def platform_mode_manifest_updates(dbapi, manifest_op, app_name, mode):
-    """ Update the application manifest based on the platform
-
-    This is used for
-
-    :param dbapi: DB api object
-    :param manifest_op: ArmadaManifestOperator for updating the application
-        manifest
-    :param app_name: application name
-    :param mode: mode to control how to apply the application manifest
-    """
-
-    if not app_name:
-        LOG.info("App is None. No platform mode based manifest updates taken.")
-
-    elif app_name not in constants.HELM_APP_APPLY_MODES.keys():
-        LOG.info("App %s is not supported. No platform mode based manifest "
-                 "updates taken." % app_name)
-
-    elif app_name == constants.HELM_APP_OPENSTACK:
-
-        if mode == constants.OPENSTACK_RESTORE_DB:
-            # During application restore, first bring up
-            # MariaDB service.
-            manifest_op.manifest_chart_groups_set(
-                'armada-manifest',
-                ['kube-system-ingress',
-                 'openstack-ingress',
-                 'openstack-mariadb'])
-
-        elif mode == constants.OPENSTACK_RESTORE_STORAGE:
-            # After MariaDB data is restored, restore Keystone,
-            # Glance and Cinder.
-            manifest_op.manifest_chart_groups_set(
-                'armada-manifest',
-                ['kube-system-ingress',
-                 'openstack-ingress',
-                 'openstack-mariadb',
-                 'openstack-memcached',
-                 'openstack-rabbitmq',
-                 'openstack-keystone',
-                 'openstack-glance',
-                 'openstack-cinder'])
-
-        else:
-            # When mode is OPENSTACK_RESTORE_NORMAL or None,
-            # bring up all the openstack services.
-            try:
-                system = dbapi.isystem_get_one()
-            except exception.NotFound:
-                LOG.exception("System %s not found.")
-                raise
-
-            if (system.distributed_cloud_role ==
-                    constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-                # remove the chart_groups not needed in this configuration
-                manifest_op.manifest_chart_groups_delete(
-                    'armada-manifest', 'openstack-ceph-rgw')
-                manifest_op.manifest_chart_groups_delete(
-                    'armada-manifest', 'openstack-compute-kit')
-                manifest_op.manifest_chart_groups_delete(
-                    'armada-manifest', 'openstack-heat')
-                manifest_op.manifest_chart_groups_delete(
-                    'armada-manifest', 'openstack-telemetry')
+        :param dbapi: DB api object
+        :param mode: mode to control how to apply the application manifest
+        """
+        pass

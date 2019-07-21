@@ -1,5 +1,6 @@
 %global helm_folder  /usr/lib/helm
 %global armada_folder  /usr/lib/armada
+%global app_folder  /usr/lib/application
 %global toolkit_version 0.1.0
 %global helmchart_version 0.1.0
 
@@ -70,6 +71,8 @@ rm  ./helm-toolkit-%{toolkit_version}.tgz
 
 %install
 # helm_folder is created by openstack-helm-infra
+install -d -m 755 ${RPM_BUILD_ROOT}%{app_folder}
+install -p -D -m 755 files/metadata.yaml ${RPM_BUILD_ROOT}%{app_folder}
 install -d -m 755 ${RPM_BUILD_ROOT}%{helm_folder}
 install -p -D -m 755 *.tgz ${RPM_BUILD_ROOT}%{helm_folder}
 install -d -m 755 ${RPM_BUILD_ROOT}%{armada_folder}
@@ -80,3 +83,4 @@ install -p -D -m 755 manifests/*.yaml ${RPM_BUILD_ROOT}%{armada_folder}
 %defattr(-,root,root,-)
 %{helm_folder}/*
 %{armada_folder}/*
+%{app_folder}/*

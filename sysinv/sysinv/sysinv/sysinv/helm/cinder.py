@@ -18,9 +18,9 @@ LOG = logging.getLogger(__name__)
 class CinderHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the cinder chart"""
 
-    CHART = constants.HELM_CHART_CINDER
+    CHART = common.HELM_CHART_CINDER
 
-    SERVICE_NAME = 'cinder'
+    SERVICE_NAME = common.HELM_CHART_CINDER
     SERVICE_TYPE = 'volume'
     AUTH_USERS = ['cinder']
 

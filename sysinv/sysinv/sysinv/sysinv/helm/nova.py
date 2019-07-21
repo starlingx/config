@@ -43,9 +43,9 @@ DEFAULT_NOVA_PCI_ALIAS = [
 class NovaHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the nova chart"""
 
-    CHART = constants.HELM_CHART_NOVA
+    CHART = common.HELM_CHART_NOVA
 
-    SERVICE_NAME = 'nova'
+    SERVICE_NAME = common.HELM_CHART_NOVA
     AUTH_USERS = ['nova', ]
     SERVICE_USERS = ['neutron', 'ironic', 'placement']
     NOVNCPROXY_SERVICE_NAME = 'novncproxy'
@@ -125,15 +125,14 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         })
         return overrides
 
-    def _compute_ironic_manifests(self, is_labeled):
-        manifests = {
-            'statefulset_compute_ironic': is_labeled
-        }
-        return manifests
-
     def _get_compute_ironic_manifests(self):
-        ironic_label = self._is_labeled(common.LABEL_IRONIC, 'enabled')
-        return self._compute_ironic_manifests(ironic_label)
+        ironic_operator = self._operator.chart_operators[
+            common.HELM_CHART_IRONIC]
+        enabled = ironic_operator._is_enabled(constants.HELM_APP_OPENSTACK,
+                common.HELM_CHART_IRONIC, common.HELM_NS_OPENSTACK)
+        return {
+            'statefulset_compute_ironic': enabled
+        }
 
     def _get_endpoints_overrides(self):
         overrides = {

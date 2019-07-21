@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 from sysinv.helm import common
@@ -16,9 +15,9 @@ LOG = logging.getLogger(__name__)
 class LibvirtHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the libvirt chart"""
 
-    CHART = constants.HELM_CHART_LIBVIRT
+    CHART = common.HELM_CHART_LIBVIRT
 
-    SERVICE_NAME = 'libvirt'
+    SERVICE_NAME = common.HELM_CHART_LIBVIRT
 
     def get_overrides(self, namespace=None):
         overrides = {
