@@ -149,6 +149,7 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                                       tier.name)
 
             conf_backends[bk_name] = {
+                'image_volume_cache_enabled': 'True',
                 'volume_backend_name': bk_name,
                 'volume_driver': 'cinder.volume.drivers.rbd.RBDDriver',
                 'rbd_pool': rbd_pool.encode('utf8', 'strict'),
