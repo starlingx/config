@@ -36,7 +36,6 @@ from webob import exc
 
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
-import eventlet.semaphore
 
 import re
 
@@ -183,47 +182,6 @@ class NoExceptionTracebackHook(hooks.PecanHook):
             # Replace the whole json. Cannot change original one beacause it's
             # generated on the fly.
             state.response.json = json_body
-
-
-class MutexTransactionHook(hooks.TransactionHook):
-    """Custom hook for SysInv transactions.
-       Until transaction based database is enabled, this allows setting mutex
-       on sysinv REST API update operations.
-    """
-
-    SYSINV_API_SEMAPHORE_TIMEOUT = 30
-
-    def __init__(self):
-        super(MutexTransactionHook, self).__init__(
-            start=self.lock,
-            start_ro=self.start_ro,
-            commit=self.unlock,
-            rollback=self.unlock,
-            clear=self.clear)
-
-        self._sysinv_semaphore = eventlet.semaphore.Semaphore(1)
-        LOG.info("_sysinv_semaphore %s" % self._sysinv_semaphore)
-
-    def lock(self):
-        if not self._sysinv_semaphore.acquire(
-           timeout=self.SYSINV_API_SEMAPHORE_TIMEOUT):
-            LOG.warn("WAIT Time initial expire SYSINV sema %s" %
-                     self.SYSINV_API_SEMAPHORE_TIMEOUT)
-            if not self._sysinv_semaphore.acquire(
-               timeout=self.SYSINV_API_SEMAPHORE_TIMEOUT):
-                LOG.error("WAIT Time expired SYSINV sema %s" %
-                          self.SYSINV_API_SEMAPHORE_TIMEOUT)
-                raise exc.HTTPConflict()
-
-    def start_ro(self):
-        return
-
-    def unlock(self):
-        self._sysinv_semaphore.release()
-        LOG.debug("unlock SYSINV sema %s" % self._sysinv_semaphore)
-
-    def clear(self):
-        return
 
 
 class AuditLogging(hooks.PecanHook):

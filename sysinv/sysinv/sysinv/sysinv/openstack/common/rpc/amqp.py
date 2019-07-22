@@ -71,7 +71,7 @@ class Pool(pools.Pool):
         self.reply_proxy = None
 
     # TODO(comstud): Timeout connections not used in a while
-    def create(self):
+    def create(self):  # pylint: disable=method-hidden
         LOG.debug(_('Pool creating new connection'))
         return self.connection_cls(self.conf)
 
