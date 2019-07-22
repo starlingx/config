@@ -30,7 +30,7 @@ class LibvirtHelm(openstack.OpenstackBaseHelm):
                     'qemu': {
                         'user': "root",
                         'group': "root",
-                        'cgroup_controllers': ["cpu", "cpuacct", "cpuset"],
+                        'cgroup_controllers': ["cpu", "cpuacct", "cpuset", "freezer", "net_cls", "perf_event"],
                         'namespaces': [],
                         'clear_emulator_capabilities': 0
                     }
