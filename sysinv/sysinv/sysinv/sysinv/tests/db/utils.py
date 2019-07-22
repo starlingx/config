@@ -222,6 +222,131 @@ def create_test_load(**kw):
     return dbapi.load_create(load)
 
 
+# Create test user object
+def get_test_user(**kw):
+    user = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'forisystemid': kw.get('forisystemid', None)
+    }
+    return user
+
+
+def create_test_user(**kw):
+    user = get_test_user(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del user['id']
+    dbapi = db_api.get_instance()
+    return dbapi.iuser_create(user)
+
+
+# Create test ntp object
+def get_test_ntp(**kw):
+    ntp = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'enabled': kw.get('enabled'),
+        'ntpservers': kw.get('ntpservers'),
+        'forisystemid': kw.get('forisystemid', None)
+    }
+    return ntp
+
+
+def create_test_ntp(**kw):
+    ntp = get_test_ntp(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del ntp['id']
+    dbapi = db_api.get_instance()
+    return dbapi.intp_create(ntp)
+
+
+# Create test ptp object
+def get_test_ptp(**kw):
+    ptp = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'enabled': kw.get('enabled'),
+        'system_id': kw.get('system_id', None),
+        'mode': kw.get('mode'),
+        'transport': kw.get('transport'),
+        'mechanism': kw.get('mechanism')
+    }
+    return ptp
+
+
+def create_test_ptp(**kw):
+    ptp = get_test_ptp(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del ptp['id']
+    dbapi = db_api.get_instance()
+    return dbapi.ptp_create(ptp)
+
+
+# Create test dns object
+def get_test_dns(**kw):
+    dns = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'nameservers': kw.get('nameservers'),
+        'forisystemid': kw.get('forisystemid', None)
+    }
+    return dns
+
+
+def create_test_dns(**kw):
+    dns = get_test_dns(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del dns['id']
+    dbapi = db_api.get_instance()
+    return dbapi.idns_create(dns)
+
+
+# Create test drbd object
+def get_test_drbd(**kw):
+    drbd = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'forisystemid': kw.get('forisystemid', None),
+        'link_util': constants.DRBD_LINK_UTIL_DEFAULT,
+        'num_parallel': constants.DRBD_NUM_PARALLEL_DEFAULT,
+        'rtt_ms': constants.DRBD_RTT_MS_DEFAULT,
+    }
+    return drbd
+
+
+def create_test_drbd(**kw):
+    drbd = get_test_drbd(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del drbd['id']
+    dbapi = db_api.get_instance()
+    return dbapi.drbdconfig_create(drbd)
+
+
+# Create test remotelogging object
+def get_test_remotelogging(**kw):
+    remotelogging = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'enabled': kw.get('enabled'),
+        'system_id': kw.get('system_id', None)
+    }
+    return remotelogging
+
+
+def create_test_remotelogging(**kw):
+    dns = get_test_remotelogging(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del dns['id']
+    dbapi = db_api.get_instance()
+    return dbapi.remotelogging_create(dns)
+
+
 def get_test_address_pool(**kw):
     inv = {
             'id': kw.get('id'),
@@ -335,7 +460,7 @@ def get_test_network(**kw):
 
 def get_test_icpu(**kw):
     inv = {
-            'id': kw.get('id', 1),
+            'id': kw.get('id'),
             'uuid': kw.get('uuid'),
             'cpu': kw.get('cpu', int_uninitialized),
             'forinodeid': kw.get('forinodeid', int_uninitialized),
@@ -354,7 +479,7 @@ def get_test_icpu(**kw):
 
 def get_test_imemory(**kw):
     inv = {
-        'id': kw.get('id', 123),
+        'id': kw.get('id'),
         'uuid': kw.get('uuid'),
 
         'memtotal_mib': kw.get('memtotal_mib', 2528),
@@ -373,7 +498,7 @@ def get_test_imemory(**kw):
         'vm_hugepages_nr_1G_pending': kw.get('vm_hugepages_nr_1G_pending'),
         'vm_hugepages_nr_2M': kw.get('vm_hugepages_nr_2M', 1008),
         'vm_hugepages_avail_2M': kw.get('vm_hugepages_avail_2M', 1264),
-        'vm_hugepages_nr_1G': kw.get('vm_hugepages_nr_1G'),
+        'vm_hugepages_nr_1G': kw.get('vm_hugepages_nr_1G', 0),
         'vm_hugepages_avail_1G': kw.get('vm_hugepages_avail_1G'),
         'vm_hugepages_nr_4K': kw.get('vm_hugepages_nr_4K', 131072),
 

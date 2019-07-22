@@ -5,6 +5,7 @@
 #
 
 import abc
+import binascii
 import os
 import six
 
@@ -51,8 +52,8 @@ class BaseHelm(object):
     @staticmethod
     def _generate_random_password(length=16):
         suffix = "Ti0*"
-        num = (length / 2) - len(suffix) / 2
-        return os.urandom(num).encode('hex') + suffix
+        num = int((length / 2) - len(suffix) / 2)
+        return binascii.hexlify(os.urandom(num)).decode() + suffix
 
     def _get_system(self):
         system = self.context.get('_system', None)

@@ -5,13 +5,11 @@
 
 from __future__ import print_function
 
-import netaddr
 import os
 import uuid
 import yaml
 
 from sysinv.common import constants
-from sysinv.common import utils
 from sysinv.puppet import interface
 from sysinv.puppet import puppet
 from sysinv.puppet import quoted_str
@@ -19,6 +17,7 @@ from sysinv.objects import base as objbase
 
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
+from sysinv.tests.puppet import base
 
 
 NETWORKTYPES_WITH_V4_ADDRESSES = [constants.NETWORK_TYPE_MGMT,
@@ -33,19 +32,19 @@ NETWORKTYPES_WITH_V4_ROUTES = [constants.NETWORK_TYPE_DATA]
 NETWORKTYPES_WITH_V6_ROUTES = [constants.NETWORK_TYPE_DATA]
 
 
-class BaseTestCase(dbbase.DbTestCase):
+class BaseTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
 
     def setUp(self):
         super(BaseTestCase, self).setUp()
-        self.operator = puppet.PuppetOperator(self.dbapi)
-        self.oam_gateway_address = netaddr.IPNetwork('10.10.10.1/24')
-        self.mgmt_gateway_address = netaddr.IPNetwork('192.168.204.1/24')
         self.ports = []
         self.interfaces = []
         self.addresses = []
         self.routes = []
-        self.networks = []
-        self.address_pools = []
+
+    def _setup_configuration(self):
+        # Create a single system and host for basic functional test
+        self._create_test_common()
+        self.host = self._create_test_host(constants.CONTROLLER)
 
     def assertIn(self, needle, haystack, message=''):
         """Custom assertIn that handles object comparison"""
@@ -258,159 +257,6 @@ class BaseTestCase(dbbase.DbTestCase):
         self._setup_address_and_routes(db_interface)
         return db_interface
 
-    def _create_test_networks(self):
-        mgmt_pool = dbutils.create_test_address_pool(
-            network='192.168.204.0',
-            name='management',
-            ranges=[['192.168.204.2', '192.168.204.254']],
-            prefix=24)
-        self.address_pools.append(mgmt_pool)
-
-        pxeboot_pool = dbutils.create_test_address_pool(
-            network='192.168.202.0',
-            name='pxeboot',
-            ranges=[['192.168.202.2', '192.168.202.254']],
-            prefix=24)
-        self.address_pools.append(pxeboot_pool)
-
-        cluster_host_pool = dbutils.create_test_address_pool(
-            network='192.168.206.0',
-            name='cluster-host',
-            ranges=[['192.168.206.2', '192.168.206.254']],
-            prefix=24)
-        self.address_pools.append(cluster_host_pool)
-
-        oam_pool = dbutils.create_test_address_pool(
-            network='10.10.10.0',
-            name='oam',
-            ranges=[['10.10.10.2', '10.10.10.254']],
-            prefix=24)
-        self.address_pools.append(oam_pool)
-
-        self.networks.append(dbutils.create_test_network(
-            type=constants.NETWORK_TYPE_MGMT,
-            link_capacity=constants.LINK_SPEED_10G,
-            vlan_id=2,
-            address_pool_id=mgmt_pool.id))
-
-        self.networks.append(dbutils.create_test_network(
-            type=constants.NETWORK_TYPE_PXEBOOT,
-            link_capacity=constants.LINK_SPEED_1G,
-            vlan_id=None,
-            address_pool_id=pxeboot_pool.id))
-
-        self.networks.append(dbutils.create_test_network(
-            type=constants.NETWORK_TYPE_CLUSTER_HOST,
-            link_capacity=constants.LINK_SPEED_10G,
-            vlan_id=3,
-            address_pool_id=cluster_host_pool.id))
-
-        self.networks.append(dbutils.create_test_network(
-            type=constants.NETWORK_TYPE_OAM,
-            link_capacity=constants.LINK_SPEED_1G,
-            vlan_id=None,
-            address_pool_id=oam_pool.id))
-
-    def _create_test_host_ips(self):
-        name = utils.format_address_name(constants.CONTROLLER_0_HOSTNAME,
-                                         constants.NETWORK_TYPE_OAM)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '10.10.10.3'
-        }
-        dbutils.create_test_address(**address)
-
-        name = utils.format_address_name(constants.CONTROLLER_1_HOSTNAME,
-                                         constants.NETWORK_TYPE_OAM)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '10.10.10.4'
-        }
-        dbutils.create_test_address(**address)
-
-        name = utils.format_address_name(constants.CONTROLLER_0_HOSTNAME,
-                                         constants.NETWORK_TYPE_PXEBOOT)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '192.168.202.3'
-        }
-        dbutils.create_test_address(**address)
-
-        name = utils.format_address_name(constants.CONTROLLER_1_HOSTNAME,
-                                         constants.NETWORK_TYPE_PXEBOOT)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '192.168.202.4'
-        }
-        dbutils.create_test_address(**address)
-
-    def _create_test_floating_ips(self):
-        name = utils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                         constants.NETWORK_TYPE_MGMT)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '192.168.1.2'
-        }
-        dbutils.create_test_address(**address)
-
-        name = utils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                         constants.NETWORK_TYPE_OAM)
-        address = {
-            'name': name,
-            'family': 4,
-            'prefix': 24,
-            'address': '10.10.10.2'
-        }
-        dbutils.create_test_address(**address)
-
-    def _create_test_gateways(self):
-        name = utils.format_address_name(constants.CONTROLLER_GATEWAY,
-                                         constants.NETWORK_TYPE_MGMT)
-        ipaddr = self.mgmt_gateway_address
-        address = {
-            'name': name,
-            'family': ipaddr.version,
-            'prefix': ipaddr.prefixlen,
-            'address': str(ipaddr.ip)
-        }
-        dbutils.create_test_address(**address)
-
-        name = utils.format_address_name(constants.CONTROLLER_GATEWAY,
-                                         constants.NETWORK_TYPE_OAM)
-        ipaddr = self.oam_gateway_address
-        address = {
-            'name': name,
-            'family': ipaddr.version,
-            'prefix': ipaddr.prefixlen,
-            'address': str(ipaddr.ip)
-        }
-        dbutils.create_test_address(**address)
-
-    def _create_test_system(self, system_type=None, system_mode=None):
-        system = {
-            'system_type': system_type,
-            'system_mode': system_mode,
-        }
-        self.system = dbutils.create_test_isystem(**system)
-        self.load = dbutils.create_test_load()
-
-    def _create_test_common(self, system_type=None, system_mode=None):
-        self._create_test_system()
-        self._create_test_networks()
-        self._create_test_gateways()
-        self._create_test_floating_ips()
-        self._create_test_host_ips()
-
     def _create_test_host(self, personality, subfunction=None):
         subfunctions = [personality]
         if subfunction:
@@ -445,6 +291,8 @@ class InterfaceTestCase(BaseTestCase):
         self.port, self.iface = self._create_ethernet_test(
             "mgmt0", constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_MGMT)
+        self.mgmt_gateway_address = self.mgmt_subnet[1]
+        self.oam_gateway_address = self.oam_subnet[1]
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -512,9 +360,9 @@ class InterfaceTestCase(BaseTestCase):
         index = self.operator.interface._get_gateway_index()
         self.assertEqual(len(index), 2)
         self.assertEqual(index[constants.NETWORK_TYPE_MGMT],
-                         str(self.mgmt_gateway_address.ip))
+                         str(self.mgmt_gateway_address))
         self.assertEqual(index[constants.NETWORK_TYPE_OAM],
-                         str(self.oam_gateway_address.ip))
+                         str(self.oam_gateway_address))
 
     def test_is_worker_subfunction_true(self):
         self.host['personality'] = constants.WORKER
@@ -638,7 +486,7 @@ class InterfaceTestCase(BaseTestCase):
             constants.NETWORK_TYPE_OAM)
         gateway = interface.get_interface_gateway_address(
             self.context, constants.NETWORK_TYPE_OAM)
-        expected = str(self.oam_gateway_address.ip)
+        expected = str(self.oam_gateway_address)
         self.assertEqual(gateway, expected)
 
     def test_get_interface_gateway_address_mgmt(self):
@@ -648,7 +496,7 @@ class InterfaceTestCase(BaseTestCase):
             constants.NETWORK_TYPE_MGMT)
         gateway = interface.get_interface_gateway_address(
             self.context, constants.NETWORK_TYPE_MGMT)
-        expected = str(self.mgmt_gateway_address.ip)
+        expected = str(self.mgmt_gateway_address)
         self.assertEqual(gateway, expected)
 
     def test_get_interface_gateway_address_none(self):
