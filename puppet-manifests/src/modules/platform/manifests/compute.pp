@@ -351,6 +351,38 @@ class platform::compute::machine {
   }
 }
 
+class platform::compute::kvm_timer_advance(
+  $enabled = False,
+  $vcpu_pin_set = undef
+) {
+  if $enabled {
+    # include the declaration of the kubelet service
+    include ::platform::kubernetes::worker
+
+    file { '/etc/kvm-timer-advance/kvm-timer-advance.conf':
+      ensure  => 'present',
+      replace => true,
+      content => template('platform/kvm_timer_advance.conf.erb')
+    }
+    -> service { 'kvm_timer_advance_setup':
+      ensure => 'running',
+      enable => true,
+      before => Service['kubelet'],
+    }
+    # A separate enable is required since we have modified the service resource
+    # to never enable/disable services in puppet.
+    -> exec { 'Enable kvm_timer_advance_setup':
+      command => '/usr/bin/systemctl enable kvm_timer_advance_setup.service',
+    }
+  } else {
+    # A disable is required since we have modified the service resource
+    # to never enable/disable services in puppet and stop has no effect.
+    exec { 'Disable kvm_timer_advance_setup':
+      command => '/usr/bin/systemctl disable kvm_timer_advance_setup.service',
+    }
+  }
+}
+
 class platform::compute {
 
   Class[$name] -> Class['::platform::vswitch']
@@ -362,4 +394,5 @@ class platform::compute {
   require ::platform::compute::resctrl
   require ::platform::compute::machine
   require ::platform::compute::config
+  require ::platform::compute::kvm_timer_advance
 }
