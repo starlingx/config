@@ -121,7 +121,7 @@ def load_filters(filters_path):
     return filterlist
 
 
-def match_filter(filter_list, userargs, exec_dirs=[]):
+def match_filter(filter_list, userargs, exec_dirs=None):
     """
     Checks user command and arguments through command filters and
     returns the first matching filter.
@@ -130,6 +130,8 @@ def match_filter(filter_list, userargs, exec_dirs=[]):
     best filter match.
     """
     first_not_executable_filter = None
+    if exec_dirs is None:
+        exec_dirs = []
 
     for f in filter_list:
         if f.match(userargs):

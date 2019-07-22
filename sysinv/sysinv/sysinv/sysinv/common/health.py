@@ -121,11 +121,13 @@ class Health(object):
 
         return success, allowed, affecting
 
-    def get_alarms_degrade(self, context, alarm_ignore_list=[],
+    def get_alarms_degrade(self, context, alarm_ignore_list=None,
             entity_instance_id_filter=""):
         """Return all the alarms that cause the degrade"""
         db_alarms = fmclient(context).alarm.list(include_suppress=True)
         degrade_alarms = []
+        if alarm_ignore_list is None:
+            alarm_ignore_list = []
 
         for db_alarm in db_alarms:
             if isinstance(db_alarm, tuple):
