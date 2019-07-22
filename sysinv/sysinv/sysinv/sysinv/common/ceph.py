@@ -673,7 +673,7 @@ class CephApiOperator(object):
         num_active_monitors = len(active_monitors)
         if (num_inv_monitors and num_active_monitors == 0 and
                 cutils.is_initial_config_complete() and
-                not cutils.is_aio_system(pecan.request.dbapi)):
+                not cutils.is_aio_system(db_api)):
             # The active controller always has a monitor.
             # We are on standard or storage, initial configuration
             # was completed and Ceph is down so we can't check if
