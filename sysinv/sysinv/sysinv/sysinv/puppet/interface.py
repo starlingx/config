@@ -134,6 +134,7 @@ class InterfacePuppet(base.BasePuppet):
             'gateways': self._get_gateway_index(),
             'floatingips': self._get_floating_ip_index(),
             'datanets': self._get_datanetworks(host),
+            'vswitchtype': self._vswitch_type(),
         }
         return context
 
@@ -310,6 +311,15 @@ def is_worker_subfunction(context):
     if context['personality'] == constants.WORKER:
         return True
     if constants.WORKER in context['subfunctions']:
+        return True
+    return False
+
+
+def is_vswitch_type_unaccelerated(context):
+    """
+    Determine if the underlying device vswitch type is unaccelerated.
+    """
+    if context['vswitchtype'] == constants.VSWITCH_TYPE_NONE:
         return True
     return False
 
@@ -615,16 +625,18 @@ def get_interface_address_method(context, iface, network_id=None):
     """
     networktype = find_networktype_by_network_id(context, network_id)
 
-    if not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE \
+    if iface.ifclass == constants.INTERFACE_CLASS_DATA:
+        if is_vswitch_type_unaccelerated(context):
+            return STATIC_METHOD
+        # All data interfaces configured in the kernel because they are not
+        # natively supported in vswitch or need to be shared with the kernel
+        # because of a platform VLAN should be left as manual config
+        return MANUAL_METHOD
+    elif not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE \
             or not networktype:
         # Interfaces that are configured purely as a dependency from other
         # interfaces (i.e., vlan lower interface, bridge member, bond slave)
         # should be left as manual config
-        return MANUAL_METHOD
-    elif iface.ifclass == constants.INTERFACE_CLASS_DATA:
-        # All data interfaces configured in the kernel because they are not
-        # natively supported in vswitch or need to be shared with the kernel
-        # because of a platform VLAN should be left as manual config
         return MANUAL_METHOD
     elif iface.ifclass in PCI_INTERFACE_CLASSES:
         return MANUAL_METHOD
@@ -704,6 +716,10 @@ def needs_interface_config(context, iface):
     elif not is_worker_subfunction(context):
         return False
     elif is_data_interface(context, iface):
+        if is_vswitch_type_unaccelerated(context):
+            # a platform interface configuration will use the host interface when
+            # the vswitch is unaccelerated.
+            return True
         if not is_dpdk_compatible(context, iface):
             # vswitch interfaces for devices that are not natively supported by
             # the DPDK are created as regular Linux devices and then bridged in
