@@ -49,7 +49,7 @@ COMPUTE_MIN_MB = 1600
 COMPUTE_MIN_NON_0_MB = 500
 
 
-class CPU:
+class CPU(object):
     '''Class to encapsulate CPU data for System Inventory'''
 
     def __init__(self, cpu, numa_node, core, thread,
