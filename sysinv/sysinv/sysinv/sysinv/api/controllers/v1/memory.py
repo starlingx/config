@@ -587,17 +587,20 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
         # Check if it is within the total amount of memory
         mem_alloc = 0
         if vm_hugepages_nr_2M_pending:
-            mem_alloc += int(vm_hugepages_nr_2M_pending) * 2
+            mem_alloc += int(vm_hugepages_nr_2M_pending) * constants.MIB_2M
         elif rpc_port['vm_hugepages_nr_2M']:
-            mem_alloc += int(rpc_port['vm_hugepages_nr_2M']) * 2
+            mem_alloc += int(rpc_port['vm_hugepages_nr_2M']) * constants.MIB_2M
         if vm_hugepages_nr_1G_pending:
-            mem_alloc += int(vm_hugepages_nr_1G_pending) * 1000
+            mem_alloc += int(vm_hugepages_nr_1G_pending) * constants.MIB_1G
         elif rpc_port['vm_hugepages_nr_1G']:
-            mem_alloc += int(rpc_port['vm_hugepages_nr_1G']) * 1000
+            mem_alloc += int(rpc_port['vm_hugepages_nr_1G']) * constants.MIB_1G
         LOG.debug("vm total=%s" % (mem_alloc))
 
         vs_hp_nr = 0
-        vs_hp_size = rpc_port['vswitch_hugepages_size_mib']
+        if vswitch_hugepages_size_mib:
+            vs_hp_size = int(vswitch_hugepages_size_mib)
+        else:
+            vs_hp_size = rpc_port['vswitch_hugepages_size_mib']
         if vswitch_hugepages_reqd:
             vs_hp_nr = int(vswitch_hugepages_reqd)
         elif rpc_port['vswitch_hugepages_nr']:
@@ -753,18 +756,6 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         base_mem_mib = int(platform_reserved_mib)
 
     hp_possible_mib = rpc_port['node_memtotal_mib'] - base_mem_mib
-    if vs_hp_size_mib == constants.MIB_2M:
-        agent_hp_possible_mib = int(
-            rpc_port.get('vm_hugepages_possible_2M', 0) +
-            rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
-        if hp_possible_mib > agent_hp_possible_mib:
-            hp_possible_mib = agent_hp_possible_mib
-    elif vs_hp_size_mib == constants.MIB_1G:
-        agent_hp_possible_mib = int(
-                rpc_port.get('vm_hugepages_possible_1G', 0) +
-                rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
-        if hp_possible_mib > agent_hp_possible_mib:
-            hp_possible_mib = agent_hp_possible_mib
 
     # Total requested huge pages
     hp_requested_mib = vm_hp_2M_reqd_mib + vm_hp_1G_reqd_mib + vs_hp_reqd_mib

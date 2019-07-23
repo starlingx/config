@@ -3443,6 +3443,8 @@ class HostController(rest.RestController):
             if m.vm_hugepages_nr_2M_pending is not None:
                 allocated += constants.MIB_2M * m.vm_hugepages_nr_2M_pending
                 pending_2M_memory = True
+            elif m.vm_hugepages_nr_2M:
+                allocated += constants.MIB_2M * m.vm_hugepages_nr_2M
             if m.vm_hugepages_nr_1G_pending is not None:
                 allocated += constants.MIB_1G * m.vm_hugepages_nr_1G_pending
                 pending_1G_memory = True
@@ -3455,9 +3457,7 @@ class HostController(rest.RestController):
                     % (memtotal, allocated,
                         m.vm_hugepages_possible_2M, m.vm_hugepages_nr_2M_pending,
                         m.vm_hugepages_possible_1G, m.vm_hugepages_nr_1G_pending))
-            if (memtotal < allocated or
-                    m.vm_hugepages_possible_2M < m.vm_hugepages_nr_2M_pending or
-                    m.vm_hugepages_possible_1G < m.vm_hugepages_nr_1G_pending):
+            if memtotal < allocated:
                 msg = (_("Rejected: Total allocated memory exceeds the total memory of "
                          "%(host)s numa node %(node)s "
                          ) %
