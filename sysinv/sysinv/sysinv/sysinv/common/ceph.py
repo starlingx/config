@@ -735,9 +735,12 @@ def fix_crushmap(dbapi=None):
 
             # Check if a backup crushmap exists. If it does, that means
             # it is during restore. We need to restore the backup crushmap
-            # instead of generating it. For AIO system, the backup crushmap
-            # is stored in /etc/sysinv. For non-AIO system, it is stored in
-            # /opt/platform/sysinv.
+            # instead of generating it. For non-AIO system, it is stored in
+            # /opt/platform/sysinv which is a drbd fs. For AIO systems because
+            # when unlocking controller-0 for the first time, the crushmap is
+            # set thru ceph puppet when /opt/platform is not mounted yet, we
+            # store the crushmap in /etc/sysinv.
+
             if cutils.is_aio_system(dbapi):
                 backup = os.path.join(constants.CEPH_CRUSH_MAP_BACKUP_DIR_FOR_AIO,
                                       constants.CEPH_CRUSH_MAP_BACKUP)

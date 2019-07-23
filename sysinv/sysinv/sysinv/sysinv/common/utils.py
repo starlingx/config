@@ -2037,6 +2037,11 @@ def is_inventory_config_complete(dbapi, forihostid):
         return False
 
 
+def is_std_system(dbapi):
+    system = dbapi.isystem_get_one()
+    return system.system_type == constants.TIS_STD_BUILD
+
+
 def is_aio_system(dbapi):
     system = dbapi.isystem_get_one()
     return system.system_type == constants.TIS_AIO_BUILD

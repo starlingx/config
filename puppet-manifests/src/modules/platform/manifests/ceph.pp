@@ -1,5 +1,6 @@
 class platform::ceph::params(
   $service_enabled = false,
+  $skip_osds_during_restore = false,
   $cluster_uuid = undef,
   $cluster_name = 'ceph',
   $authentication_type = 'none',
@@ -375,31 +376,36 @@ class platform::ceph::osds(
   $journal_config = {},
 ) inherits ::platform::ceph::params {
 
-  file { '/var/lib/ceph/osd':
-    ensure => 'directory',
-    path   => '/var/lib/ceph/osd',
-    owner  => 'root',
-    group  => 'root',
-    mode   => '0755',
+  # skip_osds_during_restore is set to true when the default primary
+  # ceph backend "ceph-store" has "restore" as its task and it is
+  # not an AIO system.
+  if ! $skip_osds_during_restore {
+    file { '/var/lib/ceph/osd':
+      ensure => 'directory',
+      path   => '/var/lib/ceph/osd',
+      owner  => 'root',
+      group  => 'root',
+      mode   => '0755',
+    }
+
+    # Ensure ceph.conf is complete before configuring OSDs
+    Class['::ceph'] -> Platform_ceph_osd <| |>
+
+    # Journal disks need to be prepared before the OSDs are configured
+    Platform_ceph_journal <| |> -> Platform_ceph_osd <| |>
+    # Crush locations in ceph.conf need to be set before the OSDs are configured
+    Osd_crush_location <| |> -> Platform_ceph_osd <| |>
+
+    # default configuration for all ceph object resources
+    Ceph::Osd {
+      cluster => $cluster_name,
+      cluster_uuid => $cluster_uuid,
+    }
+
+    create_resources('osd_crush_location', $osd_config)
+    create_resources('platform_ceph_osd', $osd_config)
+    create_resources('platform_ceph_journal', $journal_config)
   }
-
-  # Ensure ceph.conf is complete before configuring OSDs
-  Class['::ceph'] -> Platform_ceph_osd <| |>
-
-  # Journal disks need to be prepared before the OSDs are configured
-  Platform_ceph_journal <| |> -> Platform_ceph_osd <| |>
-  # Crush locations in ceph.conf need to be set before the OSDs are configured
-  Osd_crush_location <| |> -> Platform_ceph_osd <| |>
-
-  # default configuration for all ceph object resources
-  Ceph::Osd {
-    cluster => $cluster_name,
-    cluster_uuid => $cluster_uuid,
-  }
-
-  create_resources('osd_crush_location', $osd_config)
-  create_resources('platform_ceph_osd', $osd_config)
-  create_resources('platform_ceph_journal', $journal_config)
 }
 
 class platform::ceph::haproxy

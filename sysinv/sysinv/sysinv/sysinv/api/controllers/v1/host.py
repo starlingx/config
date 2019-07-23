@@ -2202,6 +2202,15 @@ class HostController(rest.RestController):
             LOG.info("Update host memory for (%s)" % ihost_obj['hostname'])
             pecan.request.rpcapi.update_host_memory(pecan.request.context,
                                                     ihost_obj['uuid'])
+
+        # The restore_in_progress flag file is needed to bypass vim and
+        # application re-apply when issuing the first unlock command during
+        # restore. Once the command is accepted by mtce, it can be removed.
+        if (os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
+                patched_ihost.get('action') in
+                [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
+            os.remove(tsc.RESTORE_IN_PROGRESS_FLAG)
+
         return Host.convert_with_links(ihost_obj)
 
     def _vim_host_add(self, ihost):
@@ -4448,8 +4457,7 @@ class HostController(rest.RestController):
         else:
             return False
 
-    @staticmethod
-    def _update_add_ceph_state():
+    def _update_add_ceph_state(self):
         api = pecan.request.dbapi
 
         backend = StorageBackendConfig.get_configuring_backend(api)
@@ -4556,18 +4564,63 @@ class HostController(rest.RestController):
                     except Exception as e:
                         raise wsme.exc.ClientSideError(
                             _("Restore Ceph config failed: %s" % e))
-            elif cutils.is_aio_system(pecan.request.dbapi):
-                # For AIO, ceph config restore is done in puppet when ceph
+            elif cutils.is_aio_simplex_system(pecan.request.dbapi):
+                # For AIO-SX, ceph config restore is done in puppet when ceph
                 # manifest is applied on first unlock. The
                 # initial_config_complete flag is set after first unlock.
-                # Once one controller is up, ceph cluster should be operational.
+                # Once one controller is up, ceph cluster should be fully
+                # operational.
                 LOG.info("This is AIO-SX... Ceph backend task is RESTORE")
                 if cutils.is_initial_config_complete():
                     LOG.info("This is AIO-SX... clear ceph backend task to None")
                     api.storage_backend_update(backend.uuid, {'task': None})
+            elif cutils.is_aio_duplex_system(pecan.request.dbapi):
+                # For AIO-DX, ceph config restore is done in puppet when ceph
+                # manifest is applied on first unlock. The 2nd osd is created
+                # in puppet when controller-1 is unlocked. Once both
+                # controllers are up, Ceph cluster should be fully operational.
+                LOG.info("This is AIO-DX... Ceph backend task is RESTORE")
+                c_hosts = api.ihost_get_by_personality(
+                    constants.CONTROLLER
+                )
+
+                ctlr_enabled = 0
+                for c_host in c_hosts:
+                    if c_host.operational == constants.OPERATIONAL_ENABLED:
+                        ctlr_enabled = ctlr_enabled + 1
+
+                if ctlr_enabled == len(c_hosts):
+                    LOG.info("This is AIO-DX... clear ceph backend task to None")
+                    api.storage_backend_update(backend.uuid, {'task': None})
             else:
-                # TODO(Wei): Need more work to restore ceph for 2+2
-                pass
+                # This is ceph restore for standard non-storage configuration.
+                # Ceph config restore is done via sysinv after both ceph
+                # monitors are available.
+                LOG.info("This is 2+2... Ceph backend task is RESTORE")
+                active_mons, required_mons, __ = \
+                        self._ceph.get_monitors_status(pecan.request.dbapi)
+                if required_mons > active_mons:
+                    LOG.info("Not enough monitors yet to restore ceph config.")
+                else:
+                    # By clearing ceph backend task to None osds will be
+                    # created thru applying runtime manifests.
+                    LOG.info("This is 2+2... clear ceph backend task to None")
+                    api.storage_backend_update(backend.uuid, {'task': None})
+
+                    # Apply runtime manifests to create OSDs on two controller
+                    # nodes.
+                    c_hosts = api.ihost_get_by_personality(
+                        constants.CONTROLLER)
+
+                    runtime_manifests = True
+                    for c_host in c_hosts:
+                        istors = pecan.request.dbapi.istor_get_by_ihost(c_host.uuid)
+                        for stor in istors:
+                            pecan.request.rpcapi.update_ceph_osd_config(
+                                pecan.request.context,
+                                c_host,
+                                stor.uuid,
+                                runtime_manifests)
 
     @staticmethod
     def update_ihost_action(action, hostupdate):
