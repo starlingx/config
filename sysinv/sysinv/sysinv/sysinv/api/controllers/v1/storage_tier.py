@@ -282,6 +282,7 @@ class StorageTierController(rest.RestController):
                                                     tier_uuid)
 
         patch_obj = jsonpatch.JsonPatch(patch)
+        backend = dict(name='*unknown*')
         for p in patch_obj:
             if p['path'] == '/backend_uuid':
                 p['path'] = '/forbackendid'
@@ -327,12 +328,20 @@ class StorageTierController(rest.RestController):
             LOG.info("SYS_I orig    storage_tier: %s " % otier.as_dict())
             LOG.info("SYS_I new     storage_tier: %s " % rpc_tier.as_dict())
 
+            if 'name' in delta:
+                default_tier_name = constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH]
+                if rpc_tier.name == default_tier_name:
+                    raise wsme.exc.ClientSideError(
+                        _("Cannot modify tier '%s'. Name '%s' is used "
+                          "by the default tier" % (otier.name, rpc_tier.name)))
+                self._ceph.crushmap_tier_rename(otier.name, rpc_tier.name)
+
             # Save and return
             rpc_tier.save()
             return StorageTier.convert_with_links(rpc_tier)
-        except exception.HTTPNotFound:
-            msg = _("Storage Tier update failed: backend %s storage tier %s : patch %s"
-                    % (backend['name'], tier['name'], patch))
+        except (exception.HTTPNotFound, exception.CephFailure) as e:
+            msg = _("Storage Tier update failed: backend %s storage tier %s : patch %s. "
+                    " Reason: %s") % (backend['name'], otier['name'], patch, str(e))
             raise wsme.exc.ClientSideError(msg)
 
     @cutils.synchronized(LOCK_NAME)

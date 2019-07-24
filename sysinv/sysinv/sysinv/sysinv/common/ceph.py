@@ -17,9 +17,11 @@ import subprocess
 import os
 import pecan
 import requests
+import tempfile
 
 from cephclient import wrapper as ceph
 from requests.exceptions import ReadTimeout
+from contextlib import contextmanager
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -46,6 +48,12 @@ class CephApiOperator(object):
         if name.endswith(constants.CEPH_CRUSH_TIER_SUFFIX):
             return name
         return name + constants.CEPH_CRUSH_TIER_SUFFIX
+
+    @staticmethod
+    def _format_rule_name(name):
+        return "{0}{1}{2}".format(
+            name, constants.CEPH_CRUSH_TIER_SUFFIX,
+            "-ruleset").replace('-', '_')
 
     def _crush_rule_status(self, tier_name):
         present = False
@@ -456,6 +464,79 @@ class CephApiOperator(object):
                         "%s-%s" % (bucket_name, t.name),
                         ancestor_type,
                         ancestor_name)
+
+    def _crushmap_tier_rename(self, old_name, new_name):
+        old_root_name = self._format_root_name(old_name)
+        new_root_name = self._format_root_name(new_name)
+        response, body = self._ceph_api.osd_crush_dump(body='json')
+        if response.status_code != requests.codes.ok:
+            raise exception.CephFailure(reason=response.reason)
+        # build map of buckets to be renamed
+        rename_map = {}
+        for buck in body['output']['buckets']:
+            name = buck['name']
+            if buck['type_name'] == 'root':
+                if name == old_root_name:
+                    rename_map[name] = new_root_name
+            else:
+                old_suffix = '-{}'.format(old_name)
+                new_suffix = '-{}'.format(new_name)
+                if name.endswith(old_suffix):
+                    rename_map[name] = name[:-len(old_suffix)] + new_suffix
+        conflicts = set(b['name'] for b in body['output']['buckets']) \
+            .intersection(set(rename_map.values()))
+        if conflicts:
+            raise exception.CephCrushTierRenameFailure(
+                tier=old_name, reason=(
+                    "Target buckets already exist: %s"
+                    % ', '.join(conflicts)))
+        old_rule_name = self._format_rule_name(old_name)
+        new_rule_name = self._format_rule_name(new_name)
+        response, body = self._ceph_api.osd_crush_rule_dump(new_rule_name)
+        if response.status_code == requests.codes.ok:
+            raise exception.CephCrushTierRenameFailure(
+                tier=old_name, reason=(
+                    "Target ruleset already exists %s" % new_rule_name))
+        for _from, _to in rename_map.items():
+            LOG.info("Rename bucket from '%s' to '%s'", _from, _to)
+            response, body = self._ceph_api.osd_crush_rename_bucket(_from, _to)
+            if response.status_code != requests.codes.ok:
+                raise exception.CephCrushTierRenameFailure(
+                    tier=old_name, reason=response.reason)
+        LOG.info("Rename crush rule from '%s' to '%s'",
+                 old_rule_name, new_rule_name)
+        response, body = self._ceph_api.osd_crush_rule_rename(
+            old_rule_name, new_rule_name)
+        if response.status_code != requests.codes.ok:
+            raise exception.CephCrushTierRenameFailure(
+                tier=old_name, reason=response.reason)
+
+    def crushmap_tier_rename(self, old_name, new_name):
+        with self.safe_crushmap_update():
+            self._crushmap_tier_rename(old_name, new_name)
+
+    @contextmanager
+    def safe_crushmap_update(self):
+        with open(os.devnull, 'w') as fnull, tempfile.TemporaryFile() as backup:
+            LOG.info("Saving crushmap for safe update")
+            try:
+                subprocess.check_call(
+                    "ceph osd getcrushmap",
+                    stdin=fnull, stdout=backup, stderr=fnull,
+                    shell=True)
+            except subprocess.CalledProcessError as exc:
+                raise exception.CephFailure(
+                    "failed to backup crushmap: %s" % str(exc))
+            try:
+                yield
+            except exception.CephFailure:
+                backup.seek(0, os.SEEK_SET)
+                LOG.warn("Crushmap update failed. Restoring from backup")
+                subprocess.call(
+                    "ceph osd setcrushmap",
+                    stdin=backup, stdout=fnull, stderr=fnull,
+                    shell=True)
+                raise
 
     def ceph_status_ok(self, timeout=10):
         """
