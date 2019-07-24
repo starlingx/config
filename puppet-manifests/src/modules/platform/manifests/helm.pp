@@ -133,7 +133,7 @@ class platform::helm
 
       -> exec { 'initialize helm':
         environment => [ 'KUBECONFIG=/etc/kubernetes/admin.conf', 'HOME=/home/sysadmin' ],
-        command     => "helm init --skip-refresh --service-account tiller --node-selectors \"node-role.kubernetes.io/master\"=\"\" --tiller-image=${gcr_registry}/kubernetes-helm/tiller:v2.13.1", # lint:ignore:140chars
+        command     => "helm init --skip-refresh --service-account tiller --node-selectors \"node-role.kubernetes.io/master\"=\"\" --tiller-image=${gcr_registry}/kubernetes-helm/tiller:v2.13.1  --override spec.template.spec.hostNetwork=true", # lint:ignore:140chars
         logoutput   => true,
         user        => 'sysadmin',
         group       => 'sys_protected',
