@@ -1,5 +1,5 @@
 class platform::network::pxeboot::params(
-  # shared parametes with base class - required for auto hiera parameter lookup
+  # shared parameters with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
   $interface_devices = [],
@@ -20,7 +20,7 @@ class platform::network::pxeboot::params(
 
 
 class platform::network::mgmt::params(
-  # shared parametes with base class - required for auto hiera parameter lookup
+  # shared parameters with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
   $interface_devices = [],
@@ -43,7 +43,7 @@ class platform::network::mgmt::params(
 ) { }
 
 class platform::network::oam::params(
-  # shared parametes with base class - required for auto hiera parameter lookup
+  # shared parameters with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
   $interface_devices = [],
@@ -63,7 +63,27 @@ class platform::network::oam::params(
 ) { }
 
 class platform::network::cluster_host::params(
-  # shared parametes with base class - required for auto hiera parameter lookup
+  # shared parameters with base class - required for auto hiera parameter lookup
+  $interface_name = undef,
+  $interface_address = undef,
+  $interface_devices = [],
+  $subnet_version = undef,
+  $subnet_network = undef,
+  $subnet_network_url = undef,
+  $subnet_prefixlen = undef,
+  $subnet_netmask = undef,
+  $subnet_start = undef,
+  $subnet_end = undef,
+  $gateway_address = undef,
+  $controller_address = undef,  # controller floating
+  $controller_address_url = undef,  # controller floating url address
+  $controller0_address = undef, # controller unit0
+  $controller1_address = undef, # controller unit1
+  $mtu = 1500,
+) { }
+
+class platform::network::ironic::params(
+  # shared parameters with base class - required for auto hiera parameter lookup
   $interface_name = undef,
   $interface_address = undef,
   $interface_devices = [],

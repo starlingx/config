@@ -41,6 +41,11 @@ class platform::sm
   $oam_ip_param_ip               = $::platform::network::oam::params::controller_address
   $oam_ip_param_mask             = $::platform::network::oam::params::subnet_prefixlen
 
+  include ::platform::network::ironic::params
+  $ironic_ip_interface           = $::platform::network::ironic::params::interface_name
+  $ironic_ip_param_ip            = $::platform::network::ironic::params::controller_address
+  $ironic_ip_param_mask          = $::platform::network::ironic::params::subnet_prefixlen
+
   include ::platform::drbd::cgcs::params
   $cgcs_drbd_resource            = $::platform::drbd::cgcs::params::resource_name
   $cgcs_fs_device                = $::platform::drbd::cgcs::params::device
@@ -303,6 +308,19 @@ class platform::sm
   } else {
       exec { 'Configure PXEBoot IP':
           command => "sm-configure service_instance pxeboot-ip pxeboot-ip \"ip=${pxeboot_ip_param_ip},cidr_netmask=${pxeboot_ip_param_mask},nic=${pxeboot_ip_interface},arp_count=7\"",
+      }
+  }
+
+  # Create the Ironic IP service if it is configured
+  if $ironic_ip_interface and $system_mode != 'simplex' {
+      exec { 'Configure Ironic IP service in SM (service-group-member ironic-ip)':
+          command => 'sm-provision service-group-member controller-services ironic-ip',
+      }
+      -> exec { 'Configure Ironic IP service in SM (service ironic-ip)':
+          command => 'sm-provision service ironic-ip',
+      }
+      -> exec { 'Configure Ironic IP':
+          command => "sm-configure service_instance ironic-ip ironic-ip \"ip=${ironic_ip_param_ip},cidr_netmask=${ironic_ip_param_mask},nic=${ironic_ip_interface},arp_count=7\"",
       }
   }
 
