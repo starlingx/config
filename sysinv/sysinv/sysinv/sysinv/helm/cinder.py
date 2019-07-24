@@ -103,17 +103,18 @@ class CinderHelm(openstack.OpenstackBaseHelm):
             },
         }
 
-        # If there are more CEPH backends, we default to the volume type
-        # associated with the primary CEPH tier, which currently has the name
-        # set to 'ceph-store'.
-        if len(backends) > 1:
-            default = next(
-                (b.name for b in backends
-                 if b.name ==
-                 constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]), None)
-            if default:
-                conf_cinder['DEFAULT']['default_volume_type'] = \
-                    default.encode('utf8', 'strict')
+        # Always set the default_volume_type to the volume type associated with the
+        # primary Ceph backend/tier which is available on all StarlingX platform
+        # configurations. This will guarantee that any Cinder API requests for
+        # this value will be fulfilled as part of determining a safe volume type to
+        # use during volume creation. This can be overrides by the user when/if
+        # additional backends are added to the platform.
+        default = next(
+            (b.name for b in backends
+                if b.name == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]), None)
+        if default:
+            conf_cinder['DEFAULT']['default_volume_type'] = \
+                default.encode('utf8', 'strict')
 
         return conf_cinder
 
