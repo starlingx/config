@@ -42,6 +42,7 @@ from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import uuidutils
 
+# pylint: disable=unused-import
 from sysinv.api.controllers.v1 import storage_ceph           # noqa
 from sysinv.api.controllers.v1 import storage_lvm            # noqa
 from sysinv.api.controllers.v1 import storage_file           # noqa
