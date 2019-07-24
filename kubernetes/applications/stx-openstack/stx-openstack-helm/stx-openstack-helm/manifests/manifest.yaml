@@ -1127,6 +1127,11 @@ data:
       tags:
         nova_api_proxy: docker.io/starlingx/stx-nova-api-proxy:master-centos-stable-latest
         ks_endpoints: docker.io/starlingx/stx-heat:master-centos-stable-latest
+    pod:
+      affinity:
+        anti:
+          type:
+            default: requiredDuringSchedulingIgnoredDuringExecution
   source:
     type: tar
     location: http://172.17.0.1/helm_charts/starlingx/nova-api-proxy-0.1.0.tgz
