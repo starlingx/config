@@ -15,10 +15,10 @@ from sysinv.tests.db import base
 from sysinv.tests.db import utils
 
 
-class TestihostObject(base.DbTestCase):
+class TestHostObject(base.DbTestCase):
 
     def setUp(self):
-        super(TestihostObject, self).setUp()
+        super(TestHostObject, self).setUp()
         self.fake_node = utils.get_test_ihost()
         self.obj_node = objects.host.from_db_object(
             self._get_db_node(self.fake_node))
