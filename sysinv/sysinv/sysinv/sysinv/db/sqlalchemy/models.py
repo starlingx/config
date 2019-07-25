@@ -211,6 +211,7 @@ class ihost(Base):
     action = Column(actionEnum, default="none")
     ihost_action = Column(String(255))
     action_state = Column(String(255))
+    inv_state = Column(String(255))
     mtce_info = Column(String(255))
     install_state = Column(String(255))
     install_state_info = Column(String(255))

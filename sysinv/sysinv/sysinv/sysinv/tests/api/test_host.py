@@ -13,6 +13,7 @@ Tests for the API /ihosts/ methods.
 
 import mock
 import webtest.app
+from six.moves import http_client
 
 from sysinv.common import constants
 from sysinv.openstack.common import uuidutils
@@ -622,12 +623,14 @@ class TestListHosts(TestHost):
 
 class TestPatch(TestHost):
 
-    def _patch_host_action(self, hostname, action, user_agent):
+    def _patch_host_action(
+            self, hostname, action, user_agent, expect_errors=False):
         return self.patch_json('/ihosts/%s' % hostname,
                                [{'path': '/action',
                                  'value': action,
                                  'op': 'replace'}],
-                               headers={'User-Agent': user_agent})
+                               headers={'User-Agent': user_agent},
+                               expect_errors=expect_errors)
 
     def test_update_optimizable(self):
         # Create controller-0
@@ -645,7 +648,7 @@ class TestPatch(TestHost):
                                      'op': 'replace'}],
                                    headers={'User-Agent': 'sysinv-test'})
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the host was updated with the specified location
         result = self.get_json('/ihosts/%s' % ndict['hostname'])
@@ -666,7 +669,7 @@ class TestPatch(TestHost):
                                            constants.UNLOCK_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the unlock was sent to the VIM
         self.mock_vim_api_host_action.assert_called_with(
@@ -698,7 +701,7 @@ class TestPatch(TestHost):
                                            constants.FORCE_UNLOCK_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the unlock was sent to the VIM
         self.mock_vim_api_host_action.assert_called_with(
@@ -714,6 +717,26 @@ class TestPatch(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c0_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+
+    def test_unlock_action_controller_inventory_not_complete(self):
+        self._configure_networks()
+        # Create controller-0 without inv_state initial inventory complete
+        c0_host = self._create_controller_0(
+            subfunctions=constants.CONTROLLER,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            inv_state=None)
+
+        # Unlock host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
 
     def test_lock_action_controller(self):
         self._configure_networks()
@@ -739,7 +762,7 @@ class TestPatch(TestHost):
                                            constants.LOCK_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the SM lock pre check was done
         self.mock_sm_api_lock_pre_check.assert_called_with(c1_host['hostname'],
@@ -782,7 +805,7 @@ class TestPatch(TestHost):
                                            constants.FORCE_LOCK_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the SM lock pre check was not done
         self.mock_sm_api_lock_pre_check.assert_not_called()
@@ -832,7 +855,7 @@ class TestPatch(TestHost):
                                            constants.UNLOCK_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the unlock was sent to the VIM
         self.mock_vim_api_host_action.assert_called_with(
@@ -880,7 +903,7 @@ class TestPatch(TestHost):
                                            constants.LOCK_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the SM lock pre check was not done
         self.mock_sm_api_lock_pre_check.assert_not_called()
@@ -932,7 +955,7 @@ class TestPatch(TestHost):
                                            constants.SWACT_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the SM swact pre check was done
         self.mock_sm_api_swact_pre_check.assert_called_with(c1_host['hostname'],
@@ -970,7 +993,7 @@ class TestPatch(TestHost):
                                            constants.FORCE_SWACT_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the SM swact pre check was not done
         self.mock_sm_api_swact_pre_check.assert_not_called()
@@ -1007,7 +1030,7 @@ class TestPatch(TestHost):
                                            constants.RESET_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the reset was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1042,7 +1065,7 @@ class TestPatch(TestHost):
                                            constants.REBOOT_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the reboot was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1077,7 +1100,7 @@ class TestPatch(TestHost):
                                            constants.REINSTALL_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the host config was removed
         self.fake_conductor_api.remove_host_config.assert_called_with(
@@ -1115,7 +1138,7 @@ class TestPatch(TestHost):
                                            constants.POWERON_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the poweron was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1150,7 +1173,7 @@ class TestPatch(TestHost):
                                            constants.POWEROFF_ACTION,
                                            'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the poweroff was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1186,7 +1209,7 @@ class TestPatch(TestHost):
                                            constants.VIM_SERVICES_ENABLED,
                                            'vim')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the services enabled was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1229,7 +1252,7 @@ class TestPatch(TestHost):
                                            constants.VIM_SERVICES_DISABLED,
                                            'vim')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the services disabled was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1273,7 +1296,7 @@ class TestPatch(TestHost):
             constants.VIM_SERVICES_DISABLE_FAILED,
             'vim')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the services disable failed was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1316,7 +1339,7 @@ class TestPatch(TestHost):
             constants.VIM_SERVICES_DISABLE_EXTEND,
             'vim')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the services disable extend was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1358,7 +1381,7 @@ class TestPatch(TestHost):
             constants.VIM_SERVICES_DELETE_FAILED,
             'vim')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the services disable failed was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
@@ -1437,7 +1460,7 @@ class TestPatch(TestHost):
             constants.SUBFUNCTION_CONFIG_ACTION,
             'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Verify that the configure was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()

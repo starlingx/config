@@ -1029,6 +1029,18 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_uuid=ihost_uuid,
                                        imsg_dict=imsg_dict))
 
+    def initial_inventory_completed(self, context, host_uuid):
+        """Notify of initial inventory completion for a host.
+
+        :param context: an admin context
+        :param host_uuid: host unique id
+        """
+
+        return self.call(context,
+                         self.make_msg('initial_inventory_completed',
+                                       host_uuid=host_uuid,
+                                       ))
+
     def iinterface_get_providernets(self,
                                     context,
                                     pn_names=None):
