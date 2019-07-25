@@ -2802,6 +2802,12 @@ class ConductorManager(service.PeriodicService):
                 not force_update:
             LOG.debug("Ignore the host memory audit after the host is locked")
             return
+        # To avoid agent update mem after conductor update mem when unlock action
+        if ihost['administrative'] == constants.ADMIN_LOCKED and \
+            ihost['ihost_action'] in [constants.UNLOCK_ACTION,
+                constants.FORCE_UNLOCK_ACTION]:
+            LOG.debug("Ignore the host memory audit during the host is unlocking")
+            return
 
         forihostid = ihost['id']
         ihost_inodes = self.dbapi.inode_get_by_ihost(ihost_uuid)
