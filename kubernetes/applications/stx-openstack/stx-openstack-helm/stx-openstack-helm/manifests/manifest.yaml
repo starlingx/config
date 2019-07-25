@@ -830,7 +830,6 @@ data:
       ingress_osapi: false
       service_ingress_osapi: false
       cron_job_cell_setup: false
-      cron_job_service_cleaner: false
       statefulset_compute_ironic: false
       deployment_placement: false
       ingress_placement: false
