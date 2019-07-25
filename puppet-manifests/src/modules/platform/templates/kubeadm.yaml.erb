@@ -3,28 +3,32 @@ kind: InitConfiguration
 apiEndpoint:
   advertiseAddress: <%= @apiserver_advertise_address %>
 ---
-apiVersion: kubeadm.k8s.io/v1alpha3
+apiVersion: kubeadm.k8s.io/v1beta1
 kind: ClusterConfiguration
 kubernetesVersion: 1.13.5
+
+apiServer:
+  certSANs:
+<% @apiserver_certsans.each do |item| -%>
+  - <%= item %>
+<% end -%>
+  extraArgs:
+    default-not-ready-toleration-seconds: "30"
+    default-unreachable-toleration-seconds: "30"
+controllerManager:
+  extraArgs:
+    node-monitor-period: "2s"
+    node-monitor-grace-period: "20s"
+    pod-eviction-timeout: "30s"
 etcd:
   external:
     endpoints:
     - <%= @etcd_endpoint %>
-apiServerExtraArgs:
-  default-not-ready-toleration-seconds: "30"
-  default-unreachable-toleration-seconds: "30"
-apiServerCertSANs:
-- "<%= @apiserver_advertise_address %>"
-- "<%= @apiserver_loopback_address %>"
+imageRepository: "<%= @k8s_registry %>"
 networking:
   dnsDomain: <%= @service_domain %>
   podSubnet: <%= @pod_network_cidr %>
   serviceSubnet: <%= @service_network_cidr %>
-controllerManagerExtraArgs:
-  node-monitor-period: "2s"
-  node-monitor-grace-period: "20s"
-  pod-eviction-timeout: "30s"
-imageRepository: "<%= @k8s_registry %>"
 ---
 kind: KubeletConfiguration
 apiVersion: kubelet.config.k8s.io/v1beta1

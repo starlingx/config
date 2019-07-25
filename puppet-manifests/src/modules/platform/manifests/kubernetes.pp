@@ -17,6 +17,7 @@ class platform::kubernetes::params (
   $k8s_nodeset = undef,
   $k8s_reserved_cpus = undef,
   $k8s_reserved_mem = undef,
+  $apiserver_cert_san = []
 
 ) { }
 
@@ -188,6 +189,8 @@ class platform::kubernetes::master::init
     4 => '127.0.0.1',
     6 => '::1',
   }
+
+  $apiserver_certsans = concat($apiserver_cert_san, $apiserver_loopback_address, $apiserver_advertise_address)
 
   # This is used for imageRepository in template kubeadm.yaml.erb
   if $::platform::docker::params::k8s_registry {
