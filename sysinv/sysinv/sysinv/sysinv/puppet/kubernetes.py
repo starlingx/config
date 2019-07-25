@@ -90,10 +90,17 @@ class KubernetesPuppet(base.BasePuppet):
         # Update PCI device plugin parameters for this host
         config.update(self._get_host_pcidp_config(host))
 
+        # Generate the token and join command for this host.
+        config.update(self._get_host_join_command(host))
+
+        return config
+
+    def _get_host_join_command(self, host):
+        config = {}
+
         if host.personality != constants.WORKER:
             return config
 
-        # Generate the token and join command for this host.
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
