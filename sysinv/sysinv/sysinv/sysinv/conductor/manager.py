@@ -10232,6 +10232,15 @@ class ConductorManager(service.PeriodicService):
             self._update_pciirqaffinity_config(context)
         return app_removed
 
+    def perform_app_abort(self, context, rpc_app):
+        """Handling of application abort request (via AppOperator)
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        return self._app.perform_app_abort(rpc_app)
+
     def perform_app_delete(self, context, rpc_app):
         """Handling of application delete request (via AppOperator)
 

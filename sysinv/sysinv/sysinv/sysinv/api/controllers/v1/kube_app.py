@@ -233,9 +233,9 @@ class KubeAppController(rest.RestController):
         """Install/update the specified application
 
         :param name: application name
-        :param directive: either 'apply' (fresh install/update) or 'remove'
+        :param directive: either 'apply' (fresh install/update), 'remove' or 'abort'
         """
-        if directive not in ['apply', 'remove']:
+        if directive not in ['apply', 'remove', 'abort']:
             raise exception.OperationNotPermitted
 
         try:
@@ -278,8 +278,7 @@ class KubeAppController(rest.RestController):
             db_app.save()
             pecan.request.rpcapi.perform_app_apply(pecan.request.context,
                                                    db_app, mode=mode)
-            return KubeApp.convert_with_links(db_app)
-        else:
+        elif directive == 'remove':
             if db_app.status not in [constants.APP_APPLY_SUCCESS,
                                      constants.APP_APPLY_FAILURE,
                                      constants.APP_REMOVE_FAILURE]:
@@ -291,7 +290,16 @@ class KubeAppController(rest.RestController):
             db_app.save()
             pecan.request.rpcapi.perform_app_remove(pecan.request.context,
                                                     db_app)
-            return KubeApp.convert_with_links(db_app)
+        else:
+            if db_app.status not in [constants.APP_APPLY_IN_PROGRESS,
+                                     constants.APP_UPDATE_IN_PROGRESS,
+                                     constants.APP_REMOVE_IN_PROGRESS]:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-abort rejected: operation is not allowed while "
+                    "the current status is {}.".format(db_app.status)))
+            pecan.request.rpcapi.perform_app_abort(pecan.request.context,
+                                                    db_app)
+        return KubeApp.convert_with_links(db_app)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)

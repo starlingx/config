@@ -123,3 +123,13 @@ def delete_helm_release(release):
             reason="Failed to delete release: %s" % e)
     finally:
         timer.cancel()
+
+
+def get_openstack_pending_install_charts():
+    try:
+        return subprocess.check_output(
+            ['helm', '--kubeconfig', '/etc/kubernetes/admin.conf',
+             'list', '--namespace', 'openstack', '--pending'])
+    except Exception as e:
+        raise exception.HelmTillerFailure(
+            reason="Failed to obtain pending charts list: %s" % e)

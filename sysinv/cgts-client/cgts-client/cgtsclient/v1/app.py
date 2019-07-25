@@ -69,6 +69,14 @@ class AppManager(base.Manager):
         return self._update(self._path(app_name) + '?directive=remove',
                             {'values': {}})
 
+    def abort(self, app_name):
+        """Abort the operation that is still in progress for the specified application
+
+        :param name: app_name
+        """
+        return self._update(self._path(app_name) + '?directive=abort',
+                            {'values': {}})
+
     def delete(self, app_name):
         """Delete application data
 

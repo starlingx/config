@@ -244,6 +244,10 @@ class KubeAppDeleteFailure(SysinvException):
     message = _("Delete of application %(name)s (%(version)s) failed: %(reason)s")
 
 
+class KubeAppAbort(SysinvException):
+    message = _("Operation aborted by user.")
+
+
 class HelmTillerFailure(SysinvException):
     message = _("Helm operation failure: %(reason)s")
 
