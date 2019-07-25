@@ -9,12 +9,13 @@ class platform::compute::params (
 
 class platform::compute::config
   inherits ::platform::compute::params {
-
+  include ::platform::collectd::restart
   file { '/etc/platform/worker_reserved.conf':
       ensure  => 'present',
       replace => true,
       content => template('platform/worker_reserved.conf.erb')
   }
+  -> Exec['collectd-restart']
 
   if $::platform::params::system_type != 'All-in-one' {
     file { '/etc/systemd/system.conf.d/platform-cpuaffinity.conf':
