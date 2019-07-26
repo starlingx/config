@@ -425,6 +425,79 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             default_config.update(multistring)
         default_config.update({'reserved_host_memory_mb': reserved_host_memory})
 
+    def _get_interface_numa_nodes(self, context):
+        # Process all ethernet interfaces with physical port and add each port numa_node to
+        # the dict of interface_numa_nodes
+        interface_numa_nodes = {}
+
+        # Update the numa_node of this interface and its all used_by interfaces
+        def update_iface_numa_node(iface, numa_node):
+            if iface['ifname'] in interface_numa_nodes:
+                interface_numa_nodes[iface['ifname']].add(numa_node)
+            else:
+                interface_numa_nodes[iface['ifname']] = set([numa_node])
+            upper_ifnames = iface['used_by'] or []
+            for upper_ifname in upper_ifnames:
+                upper_iface = context['interfaces'][upper_ifname]
+                update_iface_numa_node(upper_iface, numa_node)
+
+        for iface in context['interfaces'].values():
+            if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                port = context['ports'][iface['id']]
+                if port and port.numa_node >= 0:
+                    update_iface_numa_node(iface, port.numa_node)
+
+        return interface_numa_nodes
+
+    def _update_host_neutron_physnet(self, host, neutron_config, per_physnet_numa_config):
+        '''
+        Generate physnets configuration option and dynamically-generate
+        configuration groups to enable nova feature numa-aware-vswitches.
+        '''
+        # obtain interface information specific to this host
+        iface_context = {
+            'ports': interface._get_port_interface_id_index(
+                self.dbapi, host),
+            'interfaces': interface._get_interface_name_index(
+                self.dbapi, host),
+            'interfaces_datanets': interface._get_interface_name_datanets(
+                self.dbapi, host),
+        }
+
+        # find out the numa_nodes of ports which the physnet(datanetwork) is bound with
+        physnet_numa_nodes = {}
+        tunneled_net_numa_nodes = set()
+        interface_numa_nodes = self._get_interface_numa_nodes(iface_context)
+        for iface in iface_context['interfaces'].values():
+            if iface['ifname'] not in interface_numa_nodes:
+                continue
+            # Only the physnets with valid numa_node can be insert into physnet_numa_nodes
+            # or tunneled_net_numa_nodes
+            if_numa_nodes = interface_numa_nodes[iface['ifname']]
+            for datanet in interface.get_interface_datanets(iface_context, iface):
+                if datanet['network_type'] in [constants.DATANETWORK_TYPE_FLAT,
+                                                constants.DATANETWORK_TYPE_VLAN]:
+                    dname = str(datanet['name'])
+                    if dname in physnet_numa_nodes:
+                        physnet_numa_nodes[dname] = if_numa_nodes | physnet_numa_nodes[dname]
+                    else:
+                        physnet_numa_nodes[dname] = if_numa_nodes
+                elif datanet['network_type'] in [constants.DATANETWORK_TYPE_VXLAN]:
+                    tunneled_net_numa_nodes = if_numa_nodes | tunneled_net_numa_nodes
+
+        if physnet_numa_nodes:
+            physnet_names = ','.join(physnet_numa_nodes.keys())
+            neutron_config.update({'physnets': physnet_names})
+            # For L2-type networks, configuration group name must be set with 'neutron_physnet_{datanet.name}'
+            # For L3-type networks, configuration group name must be set with 'neutron_tunneled'
+            for dname in physnet_numa_nodes.keys():
+                group_name = 'neutron_physnet_' + dname
+                numa_nodes = ','.join('%s' % n for n in physnet_numa_nodes[dname])
+                per_physnet_numa_config.update({group_name: {'numa_nodes': numa_nodes}})
+        if tunneled_net_numa_nodes:
+            numa_nodes = ','.join('%s' % n for n in tunneled_net_numa_nodes)
+            per_physnet_numa_config.update({'neutron_tunneled': {'numa_nodes': numa_nodes}})
+
     def _get_per_host_overrides(self):
         host_list = []
         hosts = self.dbapi.ihost_get_list()
@@ -439,12 +512,15 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                     vnc_config = {}
                     libvirt_config = {}
                     pci_config = {}
+                    neutron_config = {}
+                    per_physnet_numa_config = {}
                     self._update_host_cpu_maps(host, default_config)
                     self._update_host_storage(host, default_config, libvirt_config)
                     self._update_host_addresses(host, default_config, vnc_config,
                                                 libvirt_config)
                     self._update_host_pci_whitelist(host, pci_config)
                     self._update_reserved_memory(host, default_config)
+                    self._update_host_neutron_physnet(host, neutron_config, per_physnet_numa_config)
                     host_nova = {
                         'name': hostname,
                         'conf': {
@@ -453,9 +529,11 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                                 'vnc': vnc_config,
                                 'libvirt': libvirt_config,
                                 'pci': pci_config if pci_config else None,
+                                'neutron': neutron_config
                             }
                         }
                     }
+                    host_nova['conf']['nova'].update(per_physnet_numa_config)
                     host_list.append(host_nova)
         return host_list
 
