@@ -10,6 +10,7 @@
 """ System Inventory Kubernetes Application Operator."""
 
 import base64
+import copy
 import docker
 import grp
 import keyring
@@ -38,6 +39,7 @@ from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
+from sysinv.conductor import openstack
 from sysinv.helm import common
 from sysinv.helm import helm
 from sysinv.helm import utils as helm_utils
@@ -729,11 +731,26 @@ class AppOperator(object):
         start = time.time()
         pool = greenpool.GreenPool(size=threads)
 
-        f = lambda x: self._docker.download_an_image(app.name, x)
+        try:
+            local_registry_auth = get_local_docker_registry_auth()
+            with self._lock:
+                self._docker._retrieve_specified_registries()
+        except Exception as e:
+            raise exception.KubeAppApplyFailure(
+                name=app.name,
+                version=app.version,
+                reason=str(e))
+
+        f = lambda x: self._docker.download_an_image(
+            app.name, local_registry_auth, x)
         for tag, rc in pool.imap(f, images_to_download):
             if not rc:
                 failed_downloads.append(tag)
+
+        with self._lock:
+            self._docker._reset_registries_info()
         elapsed = time.time() - start
+
         failed_count = len(failed_downloads)
         if failed_count > 0:
             if not AppOperator.is_app_aborted(app.name):
@@ -2263,37 +2280,117 @@ class DockerHelper(object):
     def __init__(self, dbapi):
         self._dbapi = dbapi
         self._lock = threading.Lock()
-        self.k8s_registry = None
-        self.gcr_registry = None
-        self.quay_registry = None
-        self.docker_registry = None
+        self.registries_info = \
+            copy.deepcopy(constants.DEFAULT_REGISTRIES_INFO)
 
-    def _get_registry_parameters(self):
+    def _parse_barbican_secret(self, secret_ref):
+        """Get the registry credentials from the
+           barbican secret payload
+
+           The format of the credentials stored in
+           barbican secret:
+           username:xxx password:xxx
+
+        :param secret_ref: barbican secret ref/uuid
+        :return: dict of registry credentials
+        """
+        operator = openstack.OpenStackOperator(self._dbapi)
+        payload = operator.get_barbican_secret_payload(secret_ref)
+        if not payload:
+            raise exception.SysinvException(_(
+                "Unable to get the payload of Barbican secret "
+                "%s" % secret_ref))
+
         try:
-            registry = self._dbapi.service_parameter_get_all(
-                service=constants.SERVICE_TYPE_DOCKER,
-                section=constants.SERVICE_PARAM_SECTION_DOCKER_REGISTRY,
-                        )
-            return registry
-        except Exception:
-            return None
+            username, password = payload.split()
+            username = username.split('username:')[1]
+            password = password.split('password:')[1]
+            return dict(username=username, password=password)
+        except Exception as e:
+            LOG.error("Unable to parse the secret payload, "
+                      "unknown format of the registry secret: %s" % e)
+            raise exception.SysinvException(_(
+                "Unable to parse the secret payload"))
 
     def _retrieve_specified_registries(self):
-        registry_params = self._get_registry_parameters()
-        if registry_params:
-            for param in registry_params:
-                if param.name == \
-                        constants.SERVICE_PARAM_NAME_DOCKER_K8S_REGISTRY:
-                    self.k8s_registry = str(param.value)
-                if param.name == \
-                        constants.SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY:
-                    self.gcr_registry = str(param.value)
-                if param.name == \
-                        constants.SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY:
-                    self.quay_registry = str(param.value)
-                if param.name == \
-                        constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY:
-                    self.docker_registry = str(param.value)
+        registries = self._dbapi.service_parameter_get_all(
+            service=constants.SERVICE_TYPE_DOCKER,
+            name=constants.SERVICE_PARAM_NAME_DOCKER_URL)
+
+        if not registries:
+            # return directly if no user specified registries
+            return
+
+        registries_auth_db = self._dbapi.service_parameter_get_all(
+            service=constants.SERVICE_TYPE_DOCKER,
+            name=constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET)
+        registries_auth = {r.section: r.value for r in registries_auth_db}
+
+        for r in registries:
+            try:
+                self.registries_info[r.section]['registry_replaced'] = str(r.value)
+                if r.section in registries_auth:
+                    secret_ref = str(registries_auth[r.section])
+                    if secret_ref != 'None':
+                        # If user specified registry requires the
+                        # authentication, get the registry auth
+                        # from barbican secret
+                        auth = self._parse_barbican_secret(secret_ref)
+                        self.registries_info[r.section]['registry_auth'] = auth
+            except exception.SysinvException:
+                raise exception.SysinvException(_(
+                    "Unable to get the credentials to access "
+                    "registry %s" % str(r.value)))
+            except KeyError:
+                # Unexpected
+                pass
+
+    def _reset_registries_info(self):
+        # Set cached registries information
+        # back to default
+        if self.registries_info != \
+                constants.DEFAULT_REGISTRIES_INFO:
+            self.registries_info = copy.deepcopy(
+                constants.DEFAULT_REGISTRIES_INFO)
+
+    def _get_img_tag_with_registry(self, pub_img_tag):
+        """Regenerate public image tag with user specified registries
+        """
+
+        if self.registries_info == constants.DEFAULT_REGISTRIES_INFO:
+            # return if no user specified registries
+            return pub_img_tag, None
+
+        # An example of passed public image tag:
+        # docker.io/starlingx/stx-keystone:latest
+        # extracted registry_name = docker.io
+        # extracted img_name = starlingx/stx-keystone:latest
+        registry_name = pub_img_tag[0:1 + pub_img_tag.find('/')].replace('/', '')
+        img_name = pub_img_tag[1 + pub_img_tag.find('/'):]
+
+        for registry_info in self.registries_info.values():
+            if registry_name == registry_info['registry_default']:
+                registry = registry_info['registry_replaced']
+                registry_auth = registry_info['registry_auth']
+
+                if registry:
+                    return registry + '/' + img_name, registry_auth
+                return pub_img_tag, registry_auth
+
+        # If extracted registry_name is none of k8s.gcr.io, gcr.io,
+        # quay.io and docker.io or no registry_name specified in image
+        # tag, use user specified docker registry as default
+        registry = self.registries_info[
+            constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY]['registry_replaced']
+        registry_auth = self.registries_info[
+            constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY]['registry_auth']
+
+        if registry:
+            LOG.info("Registry %s not recognized or docker.io repository "
+                     "detected. Pulling from public/private registry"
+                     % registry_name)
+            return registry + '/' + pub_img_tag, registry_auth
+        return pub_img_tag, registry_auth
 
     def _start_armada_service(self, client):
         try:
@@ -2492,50 +2589,9 @@ class DockerHelper(object):
             # Failed to get a docker client
             LOG.error("Failed to stop Armada service : %s " % e)
 
-    def _get_img_tag_with_registry(self, pub_img_tag):
-        registry_name = pub_img_tag[0:1 + pub_img_tag.find('/')]
-        img_name = pub_img_tag[1 + pub_img_tag.find('/'):]
-        if registry_name:
-            if 'k8s.gcr.io' in registry_name:
-                registry = self.k8s_registry
-            elif 'gcr.io' in registry_name:
-                registry = self.gcr_registry
-            elif 'quay.io' in registry_name:
-                registry = self.quay_registry
-            elif 'docker.io' in registry_name:
-                registry = self.docker_registry
-            else:
-                # try docker.io registry as default
-                # if other registries newly added
-                # or docker.io repository detected
-                LOG.info("Registry %s not recognized or docker.io repository "
-                         "detected. Pulling from public/private registry"
-                         % registry_name)
-                registry = self.docker_registry
-                if registry:
-                    return str(registry) + '/' + pub_img_tag
-                else:
-                    return pub_img_tag
-
-            # replace registry
-            if registry:
-                return str(registry) + '/' + img_name
-            else:
-                return pub_img_tag
-        else:
-            # docker.io registry as default
-            # if no registries specified in img tag
-            registry = self.docker_registry
-            if registry:
-                return str(registry) + '/' + pub_img_tag
-            else:
-                return pub_img_tag
-
-    def download_an_image(self, app_name, img_tag):
+    def download_an_image(self, app_name, local_registry_auth, img_tag):
 
         rc = True
-        # retrieve user specified registries first
-        self._retrieve_specified_registries()
 
         start = time.time()
         if img_tag.startswith(constants.DOCKER_REGISTRY_HOST):
@@ -2545,19 +2601,18 @@ class DockerHelper(object):
                     return img_tag, False
 
                 LOG.info("Image %s download started from local registry" % img_tag)
-                local_registry_auth = get_local_docker_registry_auth()
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
                 client.pull(img_tag, auth_config=local_registry_auth)
             except docker.errors.NotFound:
                 try:
-                    # Pull the image from the public registry
+                    # Pull the image from the public/private registry
                     LOG.info("Image %s is not available in local registry, "
                              "download started from public/private registry"
                              % img_tag)
                     pub_img_tag = img_tag.replace(
                         constants.DOCKER_REGISTRY_SERVER + "/", "")
-                    target_img_tag = self._get_img_tag_with_registry(pub_img_tag)
-                    client.pull(target_img_tag)
+                    target_img_tag, registry_auth = self._get_img_tag_with_registry(pub_img_tag)
+                    client.pull(target_img_tag, auth_config=registry_auth)
                 except Exception as e:
                     rc = False
                     LOG.error("Image %s download failed from public/private"
@@ -2579,12 +2634,12 @@ class DockerHelper(object):
             try:
                 LOG.info("Image %s download started from public/private registry" % img_tag)
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
-                target_img_tag = self._get_img_tag_with_registry(img_tag)
-                client.pull(target_img_tag)
+                target_img_tag, registry_auth = self._get_img_tag_with_registry(img_tag)
+                client.pull(target_img_tag, auth_config=registry_auth)
                 client.tag(target_img_tag, img_tag)
             except Exception as e:
                 rc = False
-                LOG.error("Image %s download failed from public registry: %s" % (img_tag, e))
+                LOG.error("Image %s download failed from public/private registry: %s" % (img_tag, e))
 
         elapsed_time = time.time() - start
         if rc:

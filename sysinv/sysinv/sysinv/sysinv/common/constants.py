@@ -963,13 +963,45 @@ SERVICE_PARAM_SECTION_DOCKER_PROXY = 'proxy'
 SERVICE_PARAM_NAME_DOCKER_HTTP_PROXY = 'http_proxy'
 SERVICE_PARAM_NAME_DOCKER_HTTPS_PROXY = 'https_proxy'
 SERVICE_PARAM_NAME_DOCKER_NO_PROXY = 'no_proxy'
+
 SERVICE_PARAM_SECTION_DOCKER_REGISTRY = 'registry'
-SERVICE_PARAM_NAME_DOCKER_K8S_REGISTRY = 'k8s'
-SERVICE_PARAM_NAME_DOCKER_GCR_REGISTRY = 'gcr'
-SERVICE_PARAM_NAME_DOCKER_QUAY_REGISTRY = 'quay'
-SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY = 'docker'
-SERVICE_PARAM_NAME_DOCKER_REGISTRIES = 'registries'
 SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY = 'insecure_registry'
+
+SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY = 'docker-registry'
+SERVICE_PARAM_SECTION_DOCKER_GCR_REGISTRY = 'gcr-registry'
+SERVICE_PARAM_SECTION_DOCKER_K8S_REGISTRY = 'k8s-registry'
+SERVICE_PARAM_SECTION_DOCKER_QUAY_REGISTRY = 'quay-registry'
+SERVICE_PARAM_NAME_DOCKER_URL = 'url'
+SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET = 'auth-secret'
+
+# default docker registries
+DEFAULT_DOCKER_K8S_REGISTRY = 'k8s.gcr.io'
+DEFAULT_DOCKER_GCR_REGISTRY = 'gcr.io'
+DEFAULT_DOCKER_QUAY_REGISTRY = 'quay.io'
+DEFAULT_DOCKER_DOCKER_REGISTRY = 'docker.io'
+
+DEFAULT_REGISTRIES_INFO = {
+    SERVICE_PARAM_SECTION_DOCKER_K8S_REGISTRY: {
+        'registry_default': DEFAULT_DOCKER_K8S_REGISTRY,
+        'registry_replaced': None,
+        'registry_auth': None
+    },
+    SERVICE_PARAM_SECTION_DOCKER_GCR_REGISTRY: {
+        'registry_default': DEFAULT_DOCKER_GCR_REGISTRY,
+        'registry_replaced': None,
+        'registry_auth': None
+    },
+    SERVICE_PARAM_SECTION_DOCKER_QUAY_REGISTRY: {
+        'registry_default': DEFAULT_DOCKER_QUAY_REGISTRY,
+        'registry_replaced': None,
+        'registry_auth': None
+    },
+    SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY: {
+        'registry_default': DEFAULT_DOCKER_DOCKER_REGISTRY,
+        'registry_replaced': None,
+        'registry_auth': None
+    }
+}
 
 # kubernetes parameters
 SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES = 'certificates'
