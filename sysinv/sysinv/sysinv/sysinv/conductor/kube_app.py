@@ -27,6 +27,8 @@ from eventlet import greenpool
 from eventlet import greenthread
 from eventlet import queue
 from eventlet import Timeout
+from fm_api import constants as fm_constants
+from fm_api import fm_api
 from oslo_config import cfg
 from oslo_log import log as logging
 from sysinv.api.controllers.v1 import kube_app
@@ -140,6 +142,7 @@ class AppOperator(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
+        self._fm_api = fm_api.FaultAPIs()
         self._docker = DockerHelper(self._dbapi)
         self._helm = helm.HelmOperator(self._dbapi)
         self._kube = kubernetes.KubeOperator(self._dbapi)
@@ -167,45 +170,74 @@ class AppOperator(object):
     def _clear_stuck_applications(self):
         apps = self._dbapi.kube_app_get_all()
         for app in apps:
-            if (app.status == constants.APP_APPLY_IN_PROGRESS or
-                    app.status == constants.APP_UPDATE_IN_PROGRESS or
-                    app.status == constants.APP_RECOVER_IN_PROGRESS):
-
-                if app.status == constants.APP_APPLY_IN_PROGRESS:
-                    op = 'application-apply'
-                else:
-                    op = 'application-update'
-
-                if app.name in constants.HELM_APPS_PLATFORM_MANAGED:
-                    # For platform core apps, set the new status
-                    # to 'uploaded'. The audit task will kick in with
-                    # all its pre-requisite checks before reapplying.
-                    new_status = constants.APP_UPLOAD_SUCCESS
-                else:
-                    new_status = constants.APP_APPLY_FAILURE
-            elif app.status == constants.APP_REMOVE_IN_PROGRESS:
-                op = 'application-remove'
-                new_status = constants.APP_REMOVE_FAILURE
-            elif app.status == constants.APP_UPLOAD_IN_PROGRESS:
-                op = 'application-upload'
-                new_status = constants.APP_UPLOAD_FAILURE
+            if app.status in [constants.APP_UPLOAD_IN_PROGRESS,
+                              constants.APP_APPLY_IN_PROGRESS,
+                              constants.APP_UPDATE_IN_PROGRESS,
+                              constants.APP_RECOVER_IN_PROGRESS,
+                              constants.APP_REMOVE_IN_PROGRESS]:
+                self._abort_operation(app, app.status, reset_status=True)
             else:
                 continue
-
-            LOG.info("Resetting status of app %s from '%s' to '%s' " %
-                     (app.name, app.status, new_status))
-            error_msg = "Unexpected process termination while " + op +\
-                        " was in progress. The application status " +\
-                        "has changed from \'" + app.status +\
-                        "\' to \'" + new_status + "\'."
-            values = {'progress': error_msg, 'status': new_status}
-            self._dbapi.kube_app_update(app.id, values)
 
         # Delete the Armada locks that might have been acquired previously
         # for a fresh start. This guarantees that a re-apply, re-update or
         # a re-remove attempt following a status reset will not fail due
         # to a lock related issue.
         self._clear_armada_locks()
+
+    def _raise_app_alarm(self, app_name, app_action, alarm_id, severity,
+                         reason_text, alarm_type, repair_action,
+                         service_affecting):
+
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_APPLICATION,
+                                        app_name)
+        app_alarms = self._fm_api.get_faults(entity_instance_id)
+        if app_alarms:
+            if ((app_action == constants.APP_APPLY_FAILURE and
+                 app_alarms[0].alarm_id ==
+                     fm_constants.FM_ALARM_ID_APPLICATION_APPLY_FAILED) or
+                (app_action == constants.APP_UPLOAD_FAILURE and
+                 app_alarms[0].alarm_id ==
+                     fm_constants.FM_ALARM_ID_APPLICATION_UPLOAD_FAILED) or
+                (app_action == constants.APP_REMOVE_FAILURE and
+                 app_alarms[0].alarm_id ==
+                     fm_constants.FM_ALARM_ID_APPLICATION_REMOVE_FAILED) or
+                (app_action == constants.APP_APPLY_IN_PROGRESS and
+                 app_alarms[0].alarm_id ==
+                     fm_constants.FM_ALARM_ID_APPLICATION_APPLYING) or
+                (app_action == constants.APP_UPDATE_IN_PROGRESS and
+                 app_alarms[0].alarm_id ==
+                     fm_constants.FM_ALARM_ID_APPLICATION_UPDATING)):
+                # The same alarm was raised before, will re-raise to set the
+                # latest timestamp.
+                pass
+            else:
+                # Clear existing alarm for this app if it differs than the one to
+                # be raised.
+                self._fm_api.clear_fault(app_alarms[0].alarm_id,
+                                         app_alarms[0].entity_instance_id)
+        fault = fm_api.Fault(
+                alarm_id=alarm_id,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_APPLICATION,
+                entity_instance_id=entity_instance_id,
+                severity=severity,
+                reason_text=reason_text,
+                alarm_type=alarm_type,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_UNKNOWN,
+                proposed_repair_action=repair_action,
+                service_affecting=service_affecting)
+
+        self._fm_api.set_fault(fault)
+
+    def _clear_app_alarm(self, app_name):
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_APPLICATION,
+                                        app_name)
+        app_alarms = self._fm_api.get_faults(entity_instance_id)
+        if app_alarms:
+            # There can only exist one alarm per app
+            self._fm_api.clear_fault(app_alarms[0].alarm_id,
+                                     app_alarms[0].entity_instance_id)
 
     def _register_app_abort(self, app_name):
         with self._lock:
@@ -267,24 +299,81 @@ class AppOperator(object):
 
     def _abort_operation(self, app, operation,
                          progress=constants.APP_PROGRESS_ABORTED,
-                         user_initiated=False):
+                         user_initiated=False, reset_status=False):
         if user_initiated:
             progress = constants.APP_PROGRESS_ABORTED_BY_USER
 
         if app.status == constants.APP_UPLOAD_IN_PROGRESS:
-            self._update_app_status(app, constants.APP_UPLOAD_FAILURE,
-                                    progress)
+            new_status = constants.APP_UPLOAD_FAILURE
+            op = 'application-upload'
+            self._raise_app_alarm(
+                app.name, constants.APP_UPLOAD_FAILURE,
+                fm_constants.FM_ALARM_ID_APPLICATION_UPLOAD_FAILED,
+                fm_constants.FM_ALARM_SEVERITY_WARNING,
+                _("Application Upload Failure"),
+                fm_constants.FM_ALARM_TYPE_3,
+                _("Check system inventory log for cause."),
+                False)
         elif (app.status == constants.APP_APPLY_IN_PROGRESS or
-              app.status == constants.APP_UPDATE_IN_PROGRESS):
-            self._update_app_status(app, constants.APP_APPLY_FAILURE,
-                                    progress)
+              app.status == constants.APP_UPDATE_IN_PROGRESS or
+              app.status == constants.APP_RECOVER_IN_PROGRESS):
+            new_status = constants.APP_APPLY_FAILURE
+            if reset_status:
+                if app.status == constants.APP_APPLY_IN_PROGRESS:
+                    op = 'application-apply'
+                else:
+                    op = 'application-update'
+
+                if app.name in constants.HELM_APPS_PLATFORM_MANAGED:
+                    # For platform core apps, set the new status
+                    # to 'uploaded'. The audit task will kick in with
+                    # all its pre-requisite checks before reapplying.
+                    new_status = constants.APP_UPLOAD_SUCCESS
+                    self._clear_app_alarm(app.name)
+
+            if (not reset_status or
+                    app.name not in constants.HELM_APPS_PLATFORM_MANAGED):
+                self._raise_app_alarm(
+                    app.name, constants.APP_APPLY_FAILURE,
+                    fm_constants.FM_ALARM_ID_APPLICATION_APPLY_FAILED,
+                    fm_constants.FM_ALARM_SEVERITY_MAJOR,
+                    _("Application Apply Failure"),
+                    fm_constants.FM_ALARM_TYPE_3,
+                    _("Retry applying the application. If the issue persists, "
+                      "please check system inventory log for cause."),
+                    True)
         elif app.status == constants.APP_REMOVE_IN_PROGRESS:
-            self._update_app_status(app, constants.APP_REMOVE_FAILURE,
-                                    progress)
-        if not user_initiated:
-            LOG.error("Application %s aborted!." % operation)
+            new_status = constants.APP_REMOVE_FAILURE
+            op = 'application-remove'
+            self._raise_app_alarm(
+                app.name, constants.APP_REMOVE_FAILURE,
+                fm_constants.FM_ALARM_ID_APPLICATION_REMOVE_FAILED,
+                fm_constants.FM_ALARM_SEVERITY_MAJOR,
+                _("Application Remove Failure"),
+                fm_constants.FM_ALARM_TYPE_3,
+                _("Retry removing the application. If the issue persists, "
+                  "please check system inventory log for cause."),
+                True)
         else:
-            LOG.info("Application %s aborted by user!." % operation)
+            # Should not get here, perhaps a new status was introduced?
+            LOG.error("No abort handling code for app status = '%s'!" % app.status)
+            return
+
+        if not reset_status:
+            self._update_app_status(app, new_status, progress)
+            if not user_initiated:
+                LOG.error("Application %s aborted!." % operation)
+            else:
+                LOG.info("Application %s aborted by user!." % operation)
+        else:
+            LOG.info("Resetting status of app %s from '%s' to '%s' " %
+                     (app.name, app.status, new_status))
+            error_msg = "Unexpected process termination while " + op +\
+                        " was in progress. The application status " +\
+                        "has changed from \'" + app.status +\
+                        "\' to \'" + new_status + "\'."
+            values = {'progress': error_msg, 'status': new_status}
+            self._dbapi.kube_app_update(app.id, values)
 
     def _download_tarfile(self, app):
         from six.moves.urllib.request import urlopen
@@ -647,7 +736,7 @@ class AppOperator(object):
         elapsed = time.time() - start
         failed_count = len(failed_downloads)
         if failed_count > 0:
-            if not AppOperator.is_app_aborted:
+            if not AppOperator.is_app_aborted(app.name):
                 reason = "failed to download one or more image(s)."
             else:
                 reason = "operation aborted by user."
@@ -1413,6 +1502,8 @@ class AppOperator(object):
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
                 constants.APP_PROGRESS_RECOVER_COMPLETED.format(old_app.version) +
                 'Please check logs for details.')
+            # Recovery from an app update failure succeeded, clear app alarm
+            self._clear_app_alarm(old_app.name)
             LOG.info("Application %s recover to version %s completed."
                      % (old_app.name, old_app.version))
         else:
@@ -1619,6 +1710,13 @@ class AppOperator(object):
         # already been registered.
         if not caller:
             self._register_app_abort(app.name)
+            self._raise_app_alarm(app.name, constants.APP_APPLY_IN_PROGRESS,
+                                  fm_constants.FM_ALARM_ID_APPLICATION_APPLYING,
+                                  fm_constants.FM_ALARM_SEVERITY_WARNING,
+                                  _("Application Apply In Progress"),
+                                  fm_constants.FM_ALARM_TYPE_0,
+                                  _("No action required."),
+                                  True)
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
         overrides_str = ''
@@ -1723,6 +1821,8 @@ class AppOperator(object):
                                             constants.APP_APPLY_SUCCESS,
                                             constants.APP_PROGRESS_COMPLETED)
                     app.update_active(True)
+                    if not caller:
+                        self._clear_app_alarm(app.name)
                     LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
                     return True
         except Exception as e:
@@ -1776,6 +1876,13 @@ class AppOperator(object):
             to_rpc_app.get('name') in self._helm.get_helm_applications())
 
         self._register_app_abort(to_app.name)
+        self._raise_app_alarm(to_app.name, constants.APP_UPDATE_IN_PROGRESS,
+                              fm_constants.FM_ALARM_ID_APPLICATION_UPDATING,
+                              fm_constants.FM_ALARM_SEVERITY_WARNING,
+                              _("Application Update In Progress"),
+                              fm_constants.FM_ALARM_TYPE_0,
+                              _("No action required."),
+                              True)
         LOG.info("Start updating Application %s from version %s to version %s ..."
                  % (to_app.name, from_app.version, to_app.version))
 
@@ -1846,6 +1953,7 @@ class AppOperator(object):
         finally:
             self._deregister_app_abort(to_app.name)
 
+        self._clear_app_alarm(to_app.name)
         return True
 
     def perform_app_remove(self, rpc_app):
@@ -1897,6 +2005,8 @@ class AppOperator(object):
 
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
                                     constants.APP_PROGRESS_COMPLETED)
+            # In case there is an existing alarm for previous remove failure
+            self._clear_app_alarm(app.name)
             LOG.info("Application (%s) remove completed." % app.name)
         else:
             if AppOperator.is_app_aborted(app.name):
@@ -1987,6 +2097,9 @@ class AppOperator(object):
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
+            # One last check of app alarm, should be no-op unless the
+            # user deletes the application following an upload failure.
+            self._clear_app_alarm(app.name)
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
             msg = None
