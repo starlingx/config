@@ -83,6 +83,10 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
         ksuser = self._get_service_user_name(self.SERVICE_NAME_RGW)
 
+        skip_osds_during_restore = \
+            (utils.is_std_system(self.dbapi) and
+            ceph_backend.task == constants.SB_TASK_RESTORE)
+
         config = {
             'ceph::ms_bind_ipv6': ms_bind_ipv6,
 
@@ -112,6 +116,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_user_domain_name(),
             'platform::ceph::params::rgw_admin_project':
                 self._get_service_tenant_name(),
+            'platform::ceph::params::skip_osds_during_restore':
+                skip_osds_during_restore,
         }
 
         if utils.is_openstack_applied(self.dbapi):
