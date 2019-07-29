@@ -31,7 +31,6 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
     ADMIN_USER = 'admin'
 
     DEFAULT_DOMAIN_NAME = 'Default'
-    SWIFT_DOMAIN_NAME = 'service'
 
     def _region_config(self):
         # A wrapper over the Base region_config check.
@@ -298,9 +297,6 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             if service_config is not None:
                 return service_config.capabilities.get('admin_project_domain')
         return self.DEFAULT_DOMAIN_NAME
-
-    def get_swift_service_user_domain(self):
-        return self.SWIFT_DOMAIN_NAME
 
     def get_service_user_domain(self):
         if self._region_config():

@@ -14,9 +14,7 @@ import wsme
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import utils as cutils
-from sysinv.db import api as db_api
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 
@@ -262,16 +260,10 @@ def _rpm_pkg_is_installed(pkg_name):
     return (sum > 0)
 
 
-def _validate_swift_enabled(name, value):
-    _validate_boolean(name, value)
-    if not value:
-        return
-    dbapi = db_api.get_instance()
-    ceph_backend = StorageBackendConfig.get_backend_conf(
-        dbapi, constants.CINDER_BACKEND_CEPH)
-    if ceph_backend and ceph_backend.object_gateway:
+def _validate_radosgw_enabled(name, value):
+    if not cutils.is_valid_boolstr(value):
         raise wsme.exc.ClientSideError(_(
-            "Swift API is already supported by Ceph Object Gateway."))
+            "Parameter '%s' must be a valid bool string." % name))
 
 
 def _validate_docker_proxy_address(name, value):
@@ -405,28 +397,28 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT: 'platform::mtce::params::mnfa_timeout',
 }
 
-SWIFT_CONFIG_PARAMETER_MANDATORY = [
-    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED,
+RADOSGW_CONFIG_PARAMETER_MANDATORY = [
+    constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED,
 ]
 
-SWIFT_CONFIG_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB,
+RADOSGW_CONFIG_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_RADOSGW_FS_SIZE_MB,
 ]
 
-SWIFT_CONFIG_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED: _validate_swift_enabled,
-    constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB: _validate_integer,
+RADOSGW_CONFIG_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED: _validate_radosgw_enabled,
+    constants.SERVICE_PARAM_NAME_RADOSGW_FS_SIZE_MB: _validate_integer,
 }
 
-SWIFT_CONFIG_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED:
-        'openstack::swift::params::service_enabled',
-    constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB:
-        'openstack::swift::params::fs_size_mb',
+RADOSGW_CONFIG_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED:
+        'openstack::radosgw::params::service_enabled',
+    constants.SERVICE_PARAM_NAME_RADOSGW_FS_SIZE_MB:
+        'openstack::radosgw::params::fs_size_mb',
 }
 
-SWIFT_CONFIG_PARAMETER_DATA_FORMAT = {
-    constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED: SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN,
+RADOSGW_CONFIG_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED: SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN,
 }
 
 DOCKER_PROXY_PARAMETER_OPTIONAL = [
@@ -563,13 +555,13 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_RESOURCE: HORIZON_AUTH_PARAMETER_RESOURCE,
         },
     },
-    constants.SERVICE_TYPE_SWIFT: {
-        constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG: {
-            SERVICE_PARAM_MANDATORY: SWIFT_CONFIG_PARAMETER_MANDATORY,
-            SERVICE_PARAM_OPTIONAL: SWIFT_CONFIG_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: SWIFT_CONFIG_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: SWIFT_CONFIG_PARAMETER_RESOURCE,
-            SERVICE_PARAM_DATA_FORMAT: SWIFT_CONFIG_PARAMETER_DATA_FORMAT,
+    constants.SERVICE_TYPE_RADOSGW: {
+        constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG: {
+            SERVICE_PARAM_MANDATORY: RADOSGW_CONFIG_PARAMETER_MANDATORY,
+            SERVICE_PARAM_OPTIONAL: RADOSGW_CONFIG_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: RADOSGW_CONFIG_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: RADOSGW_CONFIG_PARAMETER_RESOURCE,
+            SERVICE_PARAM_DATA_FORMAT: RADOSGW_CONFIG_PARAMETER_DATA_FORMAT,
         },
     },
     constants.SERVICE_TYPE_DOCKER: {

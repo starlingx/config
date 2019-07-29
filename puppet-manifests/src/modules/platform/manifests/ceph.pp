@@ -22,6 +22,7 @@ class platform::ceph::params(
   $mon_2_host = undef,
   $mon_2_ip = undef,
   $mon_2_addr = undef,
+  $rgw_enabled = false,
   $rgw_client_name = 'radosgw.gateway',
   $rgw_user_name = 'root',
   $rgw_frontend_type = 'civetweb',
@@ -30,10 +31,6 @@ class platform::ceph::params(
   $rgw_service_domain = undef,
   $rgw_service_project = undef,
   $rgw_service_password = undef,
-  $rgw_admin_domain = undef,
-  $rgw_admin_project = undef,
-  $rgw_admin_user = 'swift',
-  $rgw_admin_password = undef,
   $rgw_max_put_size = '53687091200',
   $rgw_gc_max_objs = '977',
   $rgw_gc_obj_min_wait = '600',
@@ -411,7 +408,7 @@ class platform::ceph::osds(
 class platform::ceph::haproxy
   inherits ::platform::ceph::params {
 
-  if $service_enabled {
+  if $rgw_enabled {
     platform::haproxy::proxy { 'ceph-radosgw-restapi':
       server_name  => 's-ceph-radosgw',
       public_port  => $rgw_port,
@@ -420,60 +417,48 @@ class platform::ceph::haproxy
   }
 }
 
-class platform::ceph::rgw::runtime
-  inherits ::platform::ceph::params {
-    if $service_enabled {
-      include ::platform::params
+class platform::ceph::rgw::keystone (
+  $swift_endpts_enabled = false,
+  $rgw_admin_domain = undef,
+  $rgw_admin_project = undef,
+  $rgw_admin_user = 'swift',
+  $rgw_admin_password = undef,
+) inherits ::platform::ceph::params {
+  include ::openstack::keystone::params
+  if $rgw_enabled {
 
-      include ::openstack::keystone::params
-
-      ceph::rgw::keystone { $rgw_client_name:
-        rgw_keystone_admin_token    => '',
-        rgw_keystone_url            => $::openstack::keystone::params::openstack_auth_uri,
-        rgw_keystone_version        => $::openstack::keystone::params::api_version,
-        rgw_keystone_accepted_roles => 'admin,_member_',
-        user                        => $rgw_user_name,
-        use_pki                     => false,
-        rgw_keystone_admin_domain   => $rgw_service_domain,
-        rgw_keystone_admin_project  => $rgw_service_project,
-        rgw_keystone_admin_user     => $rgw_admin_user,
-        rgw_keystone_admin_password => $rgw_service_password,
-      }
-      exec { 'sm-restart-safe service ceph-radosgw':
-        command => 'sm-restart-safe service ceph-radosgw'
-      }
+    if $swift_endpts_enabled {
+      $url = $::openstack::keystone::params::openstack_auth_uri
+    } else {
+      $url = $::openstack::keystone::params::auth_uri
     }
+
+    ceph::rgw::keystone { $rgw_client_name:
+      # keystone admin token is disabled after initial keystone configuration
+      # for security reason. Use keystone service tenant credentials instead.
+      rgw_keystone_admin_token         => '',
+      rgw_keystone_url                 => $url,
+      rgw_keystone_version             => $::openstack::keystone::params::api_version,
+      rgw_keystone_accepted_roles      => 'admin,_member_',
+      user                             => $rgw_user_name,
+      use_pki                          => false,
+      rgw_keystone_revocation_interval => 0,
+      rgw_keystone_token_cache_size    => 0,
+      rgw_keystone_admin_domain        => $rgw_admin_domain,
+      rgw_keystone_admin_project       => $rgw_admin_project,
+      rgw_keystone_admin_user          => $rgw_admin_user,
+      rgw_keystone_admin_password      => $rgw_admin_password,
+    }
+  }
 }
 
-class platform::ceph::rgw::runtime_revert
-  inherits ::platform::ceph::params {
-    if $service_enabled {
-      include ::platform::params
-
-      include ::openstack::keystone::params
-
-      ceph::rgw::keystone { $rgw_client_name:
-        rgw_keystone_admin_token    => '',
-        rgw_keystone_url            => $::openstack::keystone::params::auth_uri,
-        rgw_keystone_version        => $::openstack::keystone::params::api_version,
-        rgw_keystone_accepted_roles => 'admin,_member_',
-        user                        => $rgw_user_name,
-        use_pki                     => false,
-        rgw_keystone_admin_domain   => $rgw_admin_domain,
-        rgw_keystone_admin_project  => $rgw_admin_project,
-        rgw_keystone_admin_user     => $rgw_admin_user,
-        rgw_keystone_admin_password => $rgw_admin_password,
-      }
-      exec { 'sm-restart-safe service ceph-radosgw':
-        command => 'sm-restart-safe service ceph-radosgw'
-      }
-    }
-}
 
 class platform::ceph::rgw
   inherits ::platform::ceph::params {
+  include ::ceph::params
+  include ::ceph::profile::params
 
-  if $service_enabled {
+  if $rgw_enabled {
     include ::platform::params
 
     include ::openstack::keystone::params
@@ -491,19 +476,7 @@ class platform::ceph::rgw
       log_file      => $rgw_log_file,
     }
 
-    ceph::rgw::keystone { $rgw_client_name:
-      # keystone admin token is disabled after initial keystone configuration
-      # for security reason. Use keystone service tenant credentials instead.
-      rgw_keystone_admin_token    => '',
-      rgw_keystone_url            => $::openstack::keystone::params::auth_uri,
-      rgw_keystone_version        => $::openstack::keystone::params::api_version,
-      rgw_keystone_accepted_roles => 'admin,_member_',
-      use_pki                     => false,
-      rgw_keystone_admin_domain   => $rgw_admin_domain,
-      rgw_keystone_admin_project  => $rgw_admin_project,
-      rgw_keystone_admin_user     => $rgw_admin_user,
-      rgw_keystone_admin_password => $rgw_admin_password,
-    }
+    include ::platform::ceph::rgw::keystone
 
     ceph_config {
       # increase limit for single operation uploading to 50G (50*1024*1024*1024)
@@ -599,3 +572,36 @@ class platform::ceph::runtime_osds {
     }
   }
 }
+
+# Used to configure optional radosgw platform service
+class platform::ceph::rgw::runtime
+  inherits ::platform::ceph::params {
+
+  include platform::ceph::rgw
+
+  # Make sure the ceph configuration is complete before sm dynamically
+  # provisions/deprovisions the service
+  Class[$name] -> Class['::platform::sm::rgw::runtime']
+
+  unless $rgw_enabled {
+    # SM's current behavior will not stop the service being de-provisioned, so
+    # stop it when needed
+    exec { 'Stopping ceph-radosgw service':
+      command => '/etc/init.d/ceph-radosgw stop'
+    }
+  }
+}
+
+# Used to configure radosgw keystone info based on containerized swift endpoints
+# being enabled/disabled
+class platform::ceph::rgw::keystone::runtime
+  inherits ::platform::ceph::params {
+
+  include ::platform::ceph::rgw::keystone
+
+  exec { 'sm-restart-safe service ceph-radosgw':
+    command => 'sm-restart-safe service ceph-radosgw'
+  }
+}
+
+

@@ -25,7 +25,6 @@ class BasePuppet(object):
     CONFIG_WORKDIR = '/tmp/config'
     DEFAULT_REGION_NAME = 'RegionOne'
     DEFAULT_SERVICE_PROJECT_NAME = 'services'
-    SWIFT_SERVICE_PROJECT_NAME = 'service'
     DEFAULT_KERNEL_OPTIONS = constants.SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS
 
     SYSTEM_CONTROLLER_SERVICES = [
@@ -126,9 +125,6 @@ class BasePuppet(object):
 
         system = self._get_system()
         return system.region_name
-
-    def _get_swift_service_project_name(self):
-        return self.SWIFT_SERVICE_PROJECT_NAME
 
     def _get_service_project_name(self):
         if self.dbapi is None:

@@ -462,14 +462,14 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT,
          'value': constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_DEFAULT,
          },
-        {'service': constants.SERVICE_TYPE_SWIFT,
-         'section': constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
-         'name': constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED,
+        {'service': constants.SERVICE_TYPE_RADOSGW,
+         'section': constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED,
          'value': False},
-        {'service': constants.SERVICE_TYPE_SWIFT,
-         'section': constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
-         'name': constants.SERVICE_PARAM_NAME_SWIFT_FS_SIZE_MB,
-         'value': constants.SERVICE_PARAM_SWIFT_FS_SIZE_MB_DEFAULT},
+        {'service': constants.SERVICE_TYPE_RADOSGW,
+         'section': constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_RADOSGW_FS_SIZE_MB,
+         'value': constants.SERVICE_PARAM_RADOSGW_FS_SIZE_MB_DEFAULT},
         {'service': constants.SERVICE_TYPE_HTTP,
          'section': constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
          'name': constants.SERVICE_PARAM_HTTP_PORT_HTTP,
@@ -6220,21 +6220,6 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
-    def _revert_cephrgw_config(self, context):
-        """ Revert ceph rgw configuration. """
-        personalities = [constants.CONTROLLER]
-
-        config_uuid = self._config_update_hosts(context, personalities)
-
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::ceph::rgw::runtime_revert']
-        }
-
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid,
-                                            config_dict)
-
     def _update_config_for_stx_openstack(self, context):
         """ Update the runtime configurations that are required
             for stx-openstack application
@@ -6253,15 +6238,15 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
-    def _update_cephrgw_config(self, context):
-        """ Update ceph rgw configuration. """
+    def _update_radosgw_config(self, context):
+        """ Update ceph radosgw configuration. """
         personalities = [constants.CONTROLLER]
 
         config_uuid = self._config_update_hosts(context, personalities)
 
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::ceph::rgw::runtime']
+            "classes": ['platform::ceph::rgw::keystone::runtime']
         }
 
         self._config_apply_runtime_manifest(context,
@@ -7024,11 +7009,13 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-            elif service == constants.SERVICE_TYPE_SWIFT:
+            elif service == constants.SERVICE_TYPE_RADOSGW:
                 personalities = [constants.CONTROLLER]
                 config_dict = {
                     "personalities": personalities,
-                    "classes": ['openstack::swift::runtime']
+                    "classes": ['platform::ceph::rgw::runtime',
+                                'platform::sm::rgw::runtime',
+                                'platform::haproxy::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -10200,11 +10187,14 @@ class ConductorManager(service.PeriodicService):
                 # generate .unlock_ready flag
                 cutils.touch(constants.UNLOCK_READY_FLAG)
             else:
-                self._update_cephrgw_config(context)
                 # apply any runtime configurations that are needed for
                 # stx_openstack application
                 self._update_config_for_stx_openstack(context)
                 self._update_pciirqaffinity_config(context)
+
+            # The radosgw chart may have been enabled/disabled. Regardless of
+            # the prior apply state, update the ceph config
+            self._update_radosgw_config(context)
 
         return app_applied
 
@@ -10240,10 +10230,10 @@ class ConductorManager(service.PeriodicService):
 
         app_removed = self._app.perform_app_remove(rpc_app)
         if constants.HELM_APP_OPENSTACK == appname and app_removed:
-            self._revert_cephrgw_config(context)
             # Update the VIM and PciIrqAffinity configuration.
             self._update_vim_config(context)
             self._update_pciirqaffinity_config(context)
+            self._update_radosgw_config(context)
         return app_removed
 
     def perform_app_abort(self, context, rpc_app):

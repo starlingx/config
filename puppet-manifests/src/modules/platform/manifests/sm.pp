@@ -175,6 +175,7 @@ class platform::sm
   # Ceph-Rados-Gateway
   include ::platform::ceph::params
   $ceph_configured = $::platform::ceph::params::service_enabled
+  $rgw_configured = $::platform::ceph::params::rgw_enabled
 
   if $system_mode == 'simplex' {
     $hostunit = '0'
@@ -818,12 +819,19 @@ class platform::sm
   }
 
   # Ceph-Rados-Gateway
-  if $ceph_configured {
+  if $rgw_configured {
     exec {'Provision Ceph-Rados-Gateway (service-group-member ceph-radosgw)':
       command => 'sm-provision service-group-member storage-monitoring-services ceph-radosgw'
     }
     -> exec { 'Provision Ceph-Rados-Gateway (service ceph-radosgw)':
       command => 'sm-provision service ceph-radosgw',
+    }
+  } else {
+    exec {'Deprovision Ceph-Rados-Gateway (service-group-member ceph-radosgw)':
+      command => 'sm-deprovision service-group-member storage-monitoring-services ceph-radosgw'
+    }
+    -> exec { 'Deprovision Ceph-Rados-Gateway (service ceph-radosgw)':
+      command => 'sm-deprovision service ceph-radosgw',
     }
   }
 
@@ -986,6 +994,20 @@ class platform::sm::stx_openstack::runtime {
     }
     exec { 'deprovision guest-agent service group member':
         command => 'sm-deprovision service-group-member controller-services guest-agent --apply'
+    }
+  }
+}
+
+class platform::sm::rgw::runtime {
+  $rgw_configured = $::platform::ceph::params::rgw_enabled
+
+  if $rgw_configured {
+    exec {'Provision Ceph-Rados-Gateway (service-group-member ceph-radosgw)':
+      command => 'sm-provision service-group-member storage-monitoring-services ceph-radosgw --apply'
+    }
+  } else {
+    exec {'Deprovision Ceph-Rados-Gateway (service-group-member ceph-radosgw)':
+      command => 'sm-deprovision service-group-member storage-monitoring-services ceph-radosgw --apply'
     }
   }
 }

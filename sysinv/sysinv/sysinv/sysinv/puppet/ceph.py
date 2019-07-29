@@ -11,9 +11,13 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.openstack.common import log as logging
 from sysinv.helm import common
+from sysinv.helm import swift
 
 from sysinv.puppet import openstack
+
+LOG = logging.getLogger(__name__)
 
 
 # NOTE: based on openstack service for providing swift object storage services
@@ -81,8 +85,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         ms_bind_ipv6 = (netaddr.IPAddress(mon_0_ip).version ==
                         constants.IPV6_FAMILY)
 
-        ksuser = self._get_service_user_name(self.SERVICE_NAME_RGW)
-
         skip_osds_during_restore = \
             (utils.is_std_system(self.dbapi) and
             ceph_backend.task == constants.SB_TASK_RESTORE)
@@ -110,17 +112,26 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             'platform::ceph::params::mon_1_addr': mon_1_addr,
             'platform::ceph::params::mon_2_addr': mon_2_addr,
 
-            'platform::ceph::params::rgw_admin_user':
-                ksuser,
-            'platform::ceph::params::rgw_admin_domain':
+            'platform::ceph::params::rgw_enabled':
+                self._is_radosgw_enabled(),
+            'platform::ceph::rgw::keystone::swift_endpts_enabled': False,
+            'platform::ceph::rgw::keystone::rgw_admin_user':
+                self._get_service_user_name(self.SERVICE_NAME_RGW),
+            'platform::ceph::rgw::keystone::rgw_admin_password':
+            self._get_service_password(self.SERVICE_NAME_RGW),
+            'platform::ceph::rgw::keystone::rgw_admin_domain':
                 self._get_service_user_domain_name(),
-            'platform::ceph::params::rgw_admin_project':
+            'platform::ceph::rgw::keystone::rgw_admin_project':
                 self._get_service_tenant_name(),
             'platform::ceph::params::skip_osds_during_restore':
                 skip_osds_during_restore,
         }
 
-        if utils.is_openstack_applied(self.dbapi):
+        if (utils.is_openstack_applied(self.dbapi) and
+                utils.is_chart_enabled(self.dbapi,
+                                       constants.HELM_APP_OPENSTACK,
+                                       common.HELM_CHART_SWIFT,
+                                       common.HELM_NS_OPENSTACK)):
             app = self.dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
             override = self.dbapi.helm_override_get(
                         app.id,
@@ -130,13 +141,19 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                         self.SERVICE_NAME_RGW, None)
             if password:
                 swift_auth_password = password.encode('utf8', 'strict')
-                config['platform::ceph::params::rgw_service_password'] = \
-                    swift_auth_password
-
-            config['platform::ceph::params::rgw_service_domain'] = \
-                self._get_swift_service_user_domain_name()
-            config['platform::ceph::params::rgw_service_project'] = \
-                self._get_swift_service_tenant_name()
+                config.update(
+                    {'platform::ceph::rgw::keystone::swift_endpts_enabled':
+                     True})
+                config.pop('platform::ceph::rgw::keystone::rgw_admin_user')
+                config.update({'platform::ceph::rgw::keystone::rgw_admin_password':
+                               swift_auth_password})
+                config.update({'platform::ceph::rgw::keystone::rgw_admin_domain':
+                               swift.RADOSGW_SERVICE_DOMAIN_NAME})
+                config.update({'platform::ceph::rgw::keystone::rgw_admin_project':
+                               swift.RADOSGW_SERVICE_PROJECT_NAME})
+            else:
+                raise exception.SysinvException(
+                    "Unable to retreive containerized swift auth password")
 
         return config
 
@@ -274,3 +291,25 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         if ceph_mons:
             return ceph_mons[0]
         return None
+
+    def _is_radosgw_enabled(self):
+        enabled = False
+        try:
+            radosgw_enabled = self.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_RADOSGW,
+                section=constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
+                name=constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED)
+            if radosgw_enabled and radosgw_enabled.value.lower() == 'true':
+                enabled = True
+        except exception.NotFound:
+            LOG.error("Service parameter not found:  %s/%s/%s" %
+                      (constants.SERVICE_TYPE_RADOSGW,
+                       constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
+                       constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED))
+
+        except exception.MultipleResults:
+            LOG.error("Multiple service parameters found for %s/%s/%s" %
+                      (constants.SERVICE_TYPE_RADOSGW,
+                      constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
+                      constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED))
+        return enabled

@@ -263,12 +263,5 @@ class BaseHelm(object):
         Returns true by default if an exception occurs as most charts are
         enabled.
         """
-        try:
-            db_app = self.dbapi.kube_app_get(app_name)
-            db_chart = self.dbapi.helm_override_get(db_app.id, chart_name, namespace)
-        except exception.KubeAppNotFound:
-            return True
-        except exception.HelmOverrideNotFound:
-            return True
-
-        return db_chart.system_overrides.get(common.HELM_CHART_ATTR_ENABLED, False)
+        return utils.is_chart_enabled(
+            self.dbapi, app_name, chart_name, namespace)

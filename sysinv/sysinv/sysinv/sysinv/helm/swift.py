@@ -13,6 +13,10 @@ from sysinv.helm import openstack
 
 LOG = logging.getLogger(__name__)
 
+# These are set in hiera data and applied via puppet to the radosgw
+RADOSGW_SERVICE_DOMAIN_NAME = 'service'
+RADOSGW_SERVICE_PROJECT_NAME = 'service'
+
 
 class SwiftHelm(openstack.OpenstackBaseHelm):
     """Class to encapsulate helm operations for the swift chart"""
