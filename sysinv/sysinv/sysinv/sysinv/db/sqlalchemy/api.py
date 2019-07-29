@@ -30,29 +30,27 @@ from oslo_db import exception as db_exc
 from oslo_db.sqlalchemy import enginefacade
 from oslo_db.sqlalchemy import utils as db_utils
 
-
-from sqlalchemy import or_
 from sqlalchemy import inspect
+from sqlalchemy import or_
 
-from sqlalchemy.orm.exc import DetachedInstanceError
-from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.orm.exc import MultipleResultsFound
-from sqlalchemy.orm import with_polymorphic
+from sqlalchemy.orm import contains_eager
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import subqueryload
-from sqlalchemy.orm import contains_eager
+from sqlalchemy.orm import with_polymorphic
+from sqlalchemy.orm.exc import DetachedInstanceError
+from sqlalchemy.orm.exc import MultipleResultsFound
+from sqlalchemy.orm.exc import NoResultFound
 
-
+from sysinv import objects
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.db import api
 from sysinv.db.sqlalchemy import models
-from sysinv import objects
-
 
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
+from sysinv.openstack.common.gettextutils import _
 
 CONF = cfg.CONF
 CONF.import_opt('connection',

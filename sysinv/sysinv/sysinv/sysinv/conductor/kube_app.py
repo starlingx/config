@@ -39,6 +39,7 @@ from sysinv.helm import common
 from sysinv.helm import helm
 from sysinv.helm import manifest
 from sysinv.helm import utils as helm_utils
+from sysinv.openstack.common.gettextutils import _
 
 
 # Log and config
