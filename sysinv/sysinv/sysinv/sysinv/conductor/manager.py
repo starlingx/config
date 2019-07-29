@@ -5146,15 +5146,6 @@ class ConductorManager(service.PeriodicService):
         # Not sure yet what the proper response is here
         pass
 
-    def restore_ceph_config(self, context, after_storage_enabled=False):
-        """Restore Ceph configuration during Backup and Restore process.
-
-        :param context: request context.
-        :returns: return True if restore is successful or no need to restore
-        """
-        return self._ceph.restore_ceph_config(
-            after_storage_enabled=after_storage_enabled)
-
     def get_ceph_pool_replication(self, context, ceph_backend=None):
         """Get ceph storage backend pool replication parameters
 
