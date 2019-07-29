@@ -2486,9 +2486,10 @@ class DockerHelper(object):
                             LOG.error("Failed to validate application manifest "
                                       "%s: %s." % (manifest_file, exec_logs))
                 elif request == constants.APP_APPLY_OP:
-                    cmd = "/bin/bash -c 'set -o pipefail; armada apply --debug " +\
-                          manifest_file + overrides_str + tiller_host + " | tee " +\
-                          logfile + "'"
+                    cmd = ("/bin/bash -c 'set -o pipefail; armada apply "
+                           "--enable-chart-cleanup --debug {m} {o} {t} | "
+                           "tee {l}'".format(m=manifest_file, o=overrides_str,
+                                             t=tiller_host, l=logfile))
                     LOG.info("Armada apply command = %s" % cmd)
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:
