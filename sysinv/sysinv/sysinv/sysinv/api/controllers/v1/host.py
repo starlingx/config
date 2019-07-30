@@ -5327,26 +5327,27 @@ class HostController(rest.RestController):
                         raise wsme.exc.ClientSideError(msg)
             else:
                 if cutils.is_aio_duplex_system(pecan.request.dbapi):
-                    host_stors = pecan.request.dbapi.istor_get_by_ihost(ihost['id'])
-                    if not host_stors:
-                        raise wsme.exc.ClientSideError(
-                            _("Can not unlock node until at least one OSD is configured."))
-
-                    tiers = pecan.request.dbapi.storage_tier_get_all()
-                    ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
-                    # On a two-node configuration, both nodes should have at least one OSD
-                    # in each tier. Otherwise, the cluster is remains in an error state.
-                    for tier in ceph_tiers:
-                        stors = tier['stors']
-                        host_has_osd_in_tier = False
-                        for stor in stors:
-                            if stor['forihostid'] == ihost['id']:
-                                host_has_osd_in_tier = True
-
-                        if not host_has_osd_in_tier:
+                    if cutils.host_has_function(ihost, constants.CONTROLLER):
+                        host_stors = pecan.request.dbapi.istor_get_by_ihost(ihost['id'])
+                        if not host_stors:
                             raise wsme.exc.ClientSideError(
-                                "Can not unlock node until every storage tier has at least one OSD "
-                                "configured. Tier \"%s\" has no OSD configured." % tier['name'])
+                                _("Can not unlock node until at least one OSD is configured."))
+
+                        tiers = pecan.request.dbapi.storage_tier_get_all()
+                        ceph_tiers = [t for t in tiers if t.type == constants.SB_TIER_TYPE_CEPH]
+                        # On a two-node configuration, both nodes should have at least one OSD
+                        # in each tier. Otherwise, the cluster is remains in an error state.
+                        for tier in ceph_tiers:
+                            stors = tier['stors']
+                            host_has_osd_in_tier = False
+                            for stor in stors:
+                                if stor['forihostid'] == ihost['id']:
+                                    host_has_osd_in_tier = True
+
+                            if not host_has_osd_in_tier:
+                                raise wsme.exc.ClientSideError(
+                                    "Can not unlock node until every storage tier has at least one OSD "
+                                    "configured. Tier \"%s\" has no OSD configured." % tier['name'])
 
                 else:
                     stor_model = ceph.get_ceph_storage_model()
