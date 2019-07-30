@@ -99,7 +99,6 @@ from sysinv.openstack.common.gettextutils import _
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import helm
-from sysinv.helm import common as helm_common
 from sysinv.helm import utils as helm_utils
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
@@ -9832,9 +9831,8 @@ class ConductorManager(service.PeriodicService):
                                                 config_dict)
 
             # install docker certificate on controllers and workers
-            registry_full_address = self._get_registry_floating_address() + ":" + helm_common.REGISTRY_PORT
             docker_cert_path = os.path.join("/etc/docker/certs.d",
-                                            registry_full_address,
+                                            constants.DOCKER_REGISTRY_SERVER,
                                             "registry-cert.crt")
 
             personalities = [constants.CONTROLLER,
