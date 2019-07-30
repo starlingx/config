@@ -4372,6 +4372,16 @@ class ConductorManager(service.PeriodicService):
         config_uuid = imsg_dict['config_applied']
         self._update_host_config_applied(context, ihost, config_uuid)
 
+    def initial_inventory_completed(self, context, host_uuid):
+        host_uuid.strip()
+        try:
+            self.dbapi.ihost_update(
+                host_uuid,
+                {'inv_state': constants.INV_STATE_INITIAL_INVENTORIED})
+        except exception.ServerNotFound:
+            LOG.error("initial_inventory_completed invalid host_uuid %s" %
+                      host_uuid)
+
     def subfunctions_update_by_ihost(self, context,
                                 ihost_uuid, subfunctions):
         """Update subfunctions for a host.

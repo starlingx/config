@@ -160,6 +160,7 @@ def get_test_ihost(**kw):
             'install_state': kw.get('install_state', None),
             'install_state_info': kw.get('install_state_info', None),
             'iscsi_initiator_name': kw.get('iscsi_initiator_name', None),
+            'inv_state': kw.get('inv_state', 'inventoried'),
              }
     return inv
 

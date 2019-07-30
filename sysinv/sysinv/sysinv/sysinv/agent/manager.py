@@ -130,11 +130,34 @@ class AgentManager(service.PeriodicService):
 
     RPC_API_VERSION = '1.0'
 
+    NUMA = 'numa'
+    CPU = 'cpu'
+    PORT = 'port'
+    PCI_DEVICE = 'pci_device'
+    MEMORY = 'memory'
+    DISK = 'disk'
+    PV = 'pv'
+    LVG = 'lvg'
+    HOST_FILESYSTEMS = 'host_filesystems'
+
+    # Note that this set must be extended when there are
+    # additional inventory required for the initial
+    # inventory complete (to be notified to conductor).
+    INVENTORY_REPORTS_REQUIRED = {
+        NUMA,
+        PORT,
+        PCI_DEVICE,
+        CPU,
+        MEMORY,
+        DISK,
+        PV,
+        LVG,
+        HOST_FILESYSTEMS}
+
     def __init__(self, host, topic):
         serializer = objects_base.SysinvObjectSerializer()
         super(AgentManager, self).__init__(host, topic, serializer=serializer)
 
-        self._report_to_conductor = False
         self._report_to_conductor_iplatform_avail_flag = False
         self._ipci_operator = pci.PCIOperator()
         self._inode_operator = node.NodeOperator()
@@ -161,6 +184,8 @@ class AgentManager(service.PeriodicService):
         self._tpmconfig_rpc_failure = False
         self._tpmconfig_host_first_apply = False
         self._first_grub_update = False
+        self._inventoried_initial = False
+        self._inventory_reported = set()
 
     def start(self):
         super(AgentManager, self).start()
@@ -175,6 +200,22 @@ class AgentManager(service.PeriodicService):
 
         if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             utils.touch(SYSINV_READY_FLAG)
+
+    def _report_to_conductor(self):
+        """ Initial inventory report to conductor required
+
+            returns: True if initial inventory report_to_conductor is required
+        """
+
+        initial_reports_required = \
+                self.INVENTORY_REPORTS_REQUIRED - self._inventory_reported
+        initial_reports_required.discard(self.HOST_FILESYSTEMS)
+        if initial_reports_required:
+            LOG.info("_report_to_conductor initial_reports_required=%s" %
+                 initial_reports_required)
+            return True
+        else:
+            return False
 
     def _report_to_conductor_iplatform_avail(self):
         # First report sent to conductor since boot
@@ -679,18 +720,16 @@ class AgentManager(service.PeriodicService):
             rpcapi.iport_update_by_ihost(context,
                                          host_uuid,
                                          port_list)
+            self._inventory_reported.add(self.PORT)
         except RemoteError as e:
             LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
                       e.exc_type)
-            self._report_to_conductor = False
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating port.")
-            pass
 
         try:
             rpcapi.pci_device_update_by_host(context,
                                              host_uuid,
                                              pci_device_list)
+            self._inventory_reported.add(self.PCI_DEVICE)
         except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating pci_device.")
             pass
@@ -743,7 +782,6 @@ class AgentManager(service.PeriodicService):
                 ipersonality = ihost.get('personality') or ""
 
             if ihost and ipersonality:
-                self._report_to_conductor = True
                 self._ihost_uuid = ihost['uuid']
                 self._ihost_personality = ihost['personality']
                 self._mgmt_ip = ihost['mgmt_ip']
@@ -773,7 +811,7 @@ class AgentManager(service.PeriodicService):
             time.sleep(30)
             slept += 30
 
-        if not self._report_to_conductor:
+        if not self._report_to_conductor():
             # let the audit take care of it instead
             LOG.info("Sysinv no matching ihost found... await Audit")
             return
@@ -807,18 +845,10 @@ class AgentManager(service.PeriodicService):
             rpcapi.inumas_update_by_ihost(icontext,
                                           ihost['uuid'],
                                           inumas)
+            self._inventory_reported.add(self.NUMA)
         except RemoteError as e:
             LOG.error("inumas_update_by_ihost RemoteError exc_type=%s" %
                       e.exc_type)
-            if e.exc_type == 'TimeoutError':
-                self._report_to_conductor = False
-        except Exception as e:
-            LOG.exception("Sysinv Agent exception updating inuma e=%s." % e)
-            self._report_to_conductor = True
-            pass
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent uncaught exception updating inuma.")
-            pass
 
         force_grub_update = self._force_grub_update()
         try:
@@ -827,18 +857,10 @@ class AgentManager(service.PeriodicService):
                                          ihost['uuid'],
                                          icpus,
                                          force_grub_update)
+            self._inventory_reported.add(self.CPU)
         except RemoteError as e:
             LOG.error("icpus_update_by_ihost RemoteError exc_type=%s" %
                       e.exc_type)
-            if e.exc_type == 'TimeoutError':
-                self._report_to_conductor = False
-        except Exception as e:
-            LOG.exception("Sysinv Agent exception updating icpus e=%s." % e)
-            self._report_to_conductor = True
-            pass
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent uncaught exception updating icpus conductor.")
-            pass
 
         imemory = self._inode_operator.inodes_get_imemory()
         if imemory:
@@ -847,6 +869,7 @@ class AgentManager(service.PeriodicService):
                 rpcapi.imemory_update_by_ihost(icontext,
                                                ihost['uuid'],
                                                imemory)
+                self._inventory_reported.add(self.MEMORY)
             except RemoteError as e:
                 LOG.error("imemory_update_by_ihost RemoteError exc_type=%s" %
                           e.exc_type)
@@ -862,6 +885,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.idisk_update_by_ihost(icontext,
                                          ihost['uuid'],
                                          idisk)
+            self._inventory_reported.add(self.DISK)
         except RemoteError as e:
             # TODO (oponcea): Valid for R4->R5, remove in R6.
             # safe to ignore during upgrades
@@ -882,6 +906,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.ipv_update_by_ihost(icontext,
                                        ihost['uuid'],
                                        ipv)
+            self._inventory_reported.add(self.PV)
         except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating ipv conductor.")
             pass
@@ -891,6 +916,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.ilvg_update_by_ihost(icontext,
                                         ihost['uuid'],
                                         ilvg)
+            self._inventory_reported.add(self.LVG)
         except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating ilvg conductor.")
             pass
@@ -958,6 +984,36 @@ class AgentManager(service.PeriodicService):
 
         self._subfunctions_configured = True
         return True
+
+    def notify_initial_inventory_completed(self, context):
+        """Report the inventory completion event for this host to the
+        conductor when the conditions for inventory complete have
+        been met.
+
+        :param context: an admin context
+        """
+        def _conditions_for_inventory_complete_met():
+            # NOTE: condition(s) for inventory complete must be
+            # reviewed for update when additional inventory is posted.
+            reports_required = \
+                self.INVENTORY_REPORTS_REQUIRED - self._inventory_reported
+            if not reports_required:
+                return True
+            else:
+                LOG.info("_conditions_for_inventory_complete_met requires %s" %
+                         reports_required)
+                return False
+
+        if (_conditions_for_inventory_complete_met() and not
+                self._inventoried_initial):
+            LOG.info("Initial inventory completed host %s" %
+                     self._ihost_uuid)
+            rpcapi = conductor_rpcapi.ConductorAPI(
+                topic=conductor_rpcapi.MANAGER_TOPIC)
+
+            rpcapi.initial_inventory_completed(context,
+                                               self._ihost_uuid)
+            self._inventoried_initial = True
 
     def _report_config_applied(self, context):
         """Report the latest configuration applied for this host to the
@@ -1081,7 +1137,7 @@ class AgentManager(service.PeriodicService):
             if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
                 self._report_config_applied(icontext)
 
-        if self._report_to_conductor is False:
+        if self._report_to_conductor():
             LOG.info("Sysinv Agent audit running inv_get_and_report.")
             self.ihost_inv_get_and_report(icontext)
 
@@ -1110,6 +1166,7 @@ class AgentManager(service.PeriodicService):
                         rpcapi.idisk_update_by_ihost(icontext,
                                                      self._ihost_uuid,
                                                      idisk)
+                        self._inventory_reported.add(self.DISK)
                     except RemoteError as e:
                         # TODO (oponcea): Valid for R4->R5, remove in R6.
                         # safe to ignore during upgrades
@@ -1168,6 +1225,7 @@ class AgentManager(service.PeriodicService):
             rpcapi.imemory_update_by_ihost(icontext,
                                            self._ihost_uuid,
                                            imemory)
+            self._inventory_reported.add(self.MEMORY)
             if self._agent_throttle > 5:
                 # throttle updates
                 self._agent_throttle = 0
@@ -1207,6 +1265,7 @@ class AgentManager(service.PeriodicService):
                     rpcapi.idisk_update_by_ihost(icontext,
                                                  self._ihost_uuid,
                                                  idisk)
+                    self._inventory_reported.add(self.DISK)
                 except RemoteError as e:
                     # TODO (oponcea): Valid for R4->R5, remove in R6.
                     # safe to ignore during upgrades
@@ -1234,6 +1293,7 @@ class AgentManager(service.PeriodicService):
                     rpcapi.ipv_update_by_ihost(icontext,
                                                self._ihost_uuid,
                                                ipv)
+                    self._inventory_reported.add(self.PV)
                 except exception.SysinvException:
                     LOG.exception("Sysinv Agent exception updating ipv"
                                   "conductor.")
@@ -1249,6 +1309,7 @@ class AgentManager(service.PeriodicService):
                     rpcapi.ilvg_update_by_ihost(icontext,
                                                 self._ihost_uuid,
                                                 ilvg)
+                    self._inventory_reported.add(self.LVG)
                 except exception.SysinvException:
                     LOG.exception("Sysinv Agent exception updating ilvg"
                                   "conductor.")
@@ -1319,11 +1380,17 @@ class AgentManager(service.PeriodicService):
                                                        filesystems)
                         self._prev_fs = filesystems
 
+                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
                 except Exception as e:
                     LOG.exception(
                         "Sysinv Agent exception creating the host filesystems."
                         " %s" % e)
                     self._prev_fs = None
+
+            # Notify conductor of inventory completion after necessary
+            # inventory reports have been sent to conductor.
+            # This is as defined by _conditions_for_inventory_complete_met().
+            self.notify_initial_inventory_completed(icontext)
 
             self._report_config_applied(icontext)
 
@@ -1931,3 +1998,4 @@ class AgentManager(service.PeriodicService):
                                            self._ihost_uuid,
                                            memory,
                                            force_update=True)
+            self._inventory_reported.add(self.MEMORY)

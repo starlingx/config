@@ -192,6 +192,8 @@ HOST_ACTION_STATE = "action_state"
 HAS_REINSTALLING = "reinstalling"
 HAS_REINSTALLED = "reinstalled"
 
+INV_STATE_INITIAL_INVENTORIED = "inventoried"
+
 # Board Management Region Info
 REGION_PRIMARY = "Internal"
 REGION_SECONDARY = "External"

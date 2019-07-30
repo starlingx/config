@@ -399,6 +399,9 @@ class Host(base.APIBase):
     ihost_action = wtypes.text
     'Represent the current action task in progress'
 
+    inv_state = wtypes.text
+    'Represent the inventory state'
+
     vim_progress_status = wtypes.text
     'Represent the vim progress status'
 
@@ -559,7 +562,8 @@ class Host(base.APIBase):
                           'tboot', 'vsc_controllers', 'ttys_dcd',
                           'software_load', 'target_load', 'peers', 'peer_id',
                           'install_state', 'install_state_info',
-                          'iscsi_initiator_name']
+                          'iscsi_initiator_name',
+                          'inv_state']
 
         fields = minimum_fields if not expand else None
         uhost = Host.from_rpc_object(rpc_ihost, fields)
@@ -2915,6 +2919,7 @@ class HostController(rest.RestController):
                               'invprovision', 'recordtype',
                               'ihost_action',
                               'action_state',
+                              'inv_state',
                               'iconfig_applied',
                               'iconfig_target']
 
@@ -4950,6 +4955,17 @@ class HostController(rest.RestController):
             else:
                 LOG.warn("Allowing force-unlock of host %s "
                          "undergoing reinstall." % hostupdate.displayid)
+
+        if not force_unlock:
+            # Ensure inventory has completed prior to allowing unlock
+            host = pecan.request.dbapi.ihost_get(
+                hostupdate.ihost_orig['uuid'])
+            if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+                raise wsme.exc.ClientSideError(
+                    _("Can not unlock host %s that has not yet been "
+                      "inventoried. Please wait for host to complete "
+                      "initial inventory prior to unlock."
+                      % hostupdate.displayid))
 
         personality = hostupdate.ihost_patch.get('personality')
         if personality == constants.CONTROLLER:

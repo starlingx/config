@@ -65,6 +65,7 @@ class Host(base.SysinvObject):
             'availability': utils.str_or_none,
             'ihost_action': utils.str_or_none,
             'action_state': utils.str_or_none,
+            'inv_state': utils.str_or_none,
             'mtce_info': utils.str_or_none,
             'vim_progress_status': utils.str_or_none,
             'action': utils.str_or_none,

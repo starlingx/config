@@ -2024,15 +2024,11 @@ def is_default_huge_pages_required(host):
 
 def is_inventory_config_complete(dbapi, forihostid):
     """Check if the initial inventory has completed
-
-    Due to lack of host state that signifies the completion of inventory, this
-    function retrieves the list of persistent volumes from the database. If
-    the count is not zero; ports, disks and PVs have been inventoried.
     """
 
     try:
-        pvs = dbapi.ipv_get_by_ihost(forihostid)
-        return len(pvs) > 0
+        host = dbapi.ihost_get(forihostid)
+        return host.inv_state == constants.INV_STATE_INITIAL_INVENTORIED
     except Exception:
         return False
 

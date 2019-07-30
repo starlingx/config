@@ -35,7 +35,7 @@ def _print_ihost_show(ihost):
               'location', 'uptime', 'reserved', 'created_at', 'updated_at',
               'boot_device', 'rootfs_device', 'install_output', 'console',
               'tboot', 'vim_progress_status', 'software_load', 'install_state',
-              'install_state_info']
+              'install_state_info', 'inv_state']
     optional_fields = ['vsc_controllers', 'ttys_dcd']
     if ihost.subfunctions != ihost.personality:
         fields.append('subfunctions')
