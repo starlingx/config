@@ -1853,15 +1853,11 @@ def is_valid_domain_or_ip(url_str):
             # check ipv4 or ipv4 with port
             return is_valid_ipv4(ip_with_port[0])
         else:
-            # check ipv6 with port
+            # check ipv6
             if '[' in url_str:
                 try:
                     bkt_idx = url_str.index(']')
-                    if bkt_idx + 1 == len(url_str):
-                        # brackets without port
-                        return False
-                    else:
-                        return is_valid_ipv6(url_str[1:bkt_idx])
+                    return is_valid_ipv6(url_str[1:bkt_idx])
                 except Exception:
                     return False
             else:
