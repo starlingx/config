@@ -612,16 +612,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('unconfigure_osd_istor',
                                        istor_obj=istor_obj))
 
-    def restore_ceph_config(self, context, after_storage_enabled=False):
-        """Restore Ceph configuration during Backup and Restore process.
-
-        :param context: request context.
-        :returns: return True if restore is successful or no need to restore
-        """
-        return self.call(context,
-                         self.make_msg('restore_ceph_config',
-                                       after_storage_enabled=after_storage_enabled))
-
     def get_ceph_pool_replication(self, context, ceph_backend=None):
         """Get ceph storage backend pool replication parameters
 

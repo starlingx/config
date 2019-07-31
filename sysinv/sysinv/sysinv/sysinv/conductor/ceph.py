@@ -331,68 +331,6 @@ class CephOperator(object):
         LOG.info("osdmap is rebuilt.")
         return True
 
-    def restore_ceph_config(self, after_storage_enabled=False):
-        """Restore Ceph configuration during Backup and Restore process.
-
-        :returns: return True if restore is successful or no need to restore
-        """
-        # Check to make sure that the ceph manager has seen a valid Ceph REST
-        # API response. If not, then we don't have a quorum and attempting to
-        # restore the crushmap is a useless act. On a restore we may have
-        # powered off yet to be installed storage hosts that have an operational
-        # enabled state (i.e. a false positive) which gets us to this restore
-        # function.
-
-        if not self.ceph_manager_sees_cluster_up():
-            LOG.info('Aborting crushmap restore.The cluster has yet to be '
-                     'recognized as operational.')
-            return False
-
-        # TODO (Wei): This function is not invoked during AIO system restore.
-        #             It will be revisited in the non-AIO system restore tasks.
-        try:
-            backup = os.path.join(constants.SYSINV_CONFIG_PATH,
-                                  constants.CEPH_CRUSH_MAP_BACKUP)
-            if os.path.exists(backup):
-                out, err = cutils.trycmd(
-                    'ceph', 'osd', 'setcrushmap',
-                    '-i', backup,
-                    discard_warnings=True)
-                if err != '':
-                    LOG.warn(_('Failed to restore Ceph crush map. '
-                               'Reason: stdout={}, stderr={}').format(out, err))
-                    return False
-                else:
-                    os.unlink(backup)
-                    crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
-                                                      constants.CEPH_CRUSH_MAP_APPLIED)
-                    try:
-                        open(crushmap_flag_file, "w").close()
-                    except IOError as e:
-                        LOG.warn(_('Failed to create flag file: {}. '
-                                   'Reason: {}').format(crushmap_flag_file, e))
-        except OSError as e:
-            LOG.warn(_('Failed to restore Ceph crush map. '
-                       'Reason: {}').format(e))
-            return False
-
-        if after_storage_enabled:
-            StorageBackendConfig.update_backend_states(
-                self._db_api,
-                constants.CINDER_BACKEND_CEPH,
-                task=constants.SB_TASK_NONE
-            )
-            return True
-
-        # check if osdmap is emtpy as an indication for Backup and Restore
-        # case where ceph config needs to be restored.
-        osd_stats = self.get_osd_stats()
-        if int(osd_stats['num_osds']) > 0:
-            return True
-
-        LOG.info("osdmap is empty, restoring Ceph config...")
-        return self.rebuild_osdmap()
-
     # TODO(CephPoolsDecouple): remove
     def _pool_create(self, name, pg_num, pgp_num, ruleset,
                      size, min_size):
@@ -949,6 +887,9 @@ class CephOperator(object):
         else:
             return body["output"]["pools"]
 
+    # TODO(CephPoolsDecouple): remove
+    # This function is only called from audit_osd_quotas_for_tier() which
+    # will be removed by CephPoolsDecouple.
     def get_osd_stats(self, timeout=30):
         try:
             resp, body = self._ceph_api.osd_stat(body='json',

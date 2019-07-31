@@ -4547,47 +4547,45 @@ class HostController(rest.RestController):
             })
 
         elif backend.task == constants.SB_TASK_RESTORE:
-            ihosts = api.ihost_get_by_personality(
-                constants.STORAGE
-            )
+            ihosts = api.ihost_get_by_personality(constants.STORAGE)
 
             if ihosts:
-                # TODO (Wei) Need to revisit storage setup.
-                LOG.info("This is a storage setup. Will need to revisit.")
-                storage_enabled = 0
-                for ihost in ihosts:
-                    if ihost.operational == constants.OPERATIONAL_ENABLED:
-                        storage_enabled = storage_enabled + 1
-
-                if storage_enabled and storage_enabled == len(ihosts):
-                    LOG.info("All storage hosts are %s. Restore crushmap..." %
-                             constants.OPERATIONAL_ENABLED)
-                    try:
-                        if not pecan.request.rpcapi.restore_ceph_config(
-                                pecan.request.context, after_storage_enabled=True):
-                            raise Exception("restore_ceph_config returned false")
-                    except Exception as e:
-                        raise wsme.exc.ClientSideError(
-                            _("Restore Ceph config failed: %s" % e))
+                LOG.info("This is a configuration with dedicated storage nodes. "
+                         "Backend task is RESTORE.")
+                # Check if ceph quorum is formed. If yes, we can clear the restore
+                # task, so that when storage nodes are unlocked, ceph crushmap will
+                # be loaded and osds will be created.
+                active_mons, required_mons, __ = \
+                    self._ceph.get_monitors_status(pecan.request.dbapi)
+                if required_mons > active_mons:
+                    LOG.info("Not enough monitors yet to restore ceph config.")
+                else:
+                    # By clearing ceph backend task to None osds will be
+                    # created by applying runtime manifests when unlocking
+                    # the storage nodes.
+                    LOG.info("Clear ceph backend task to None as part of "
+                             "storage backend restore.")
+                    api.storage_backend_update(backend.uuid, {'task': None})
             elif cutils.is_aio_simplex_system(pecan.request.dbapi):
                 # For AIO-SX, ceph config restore is done in puppet when ceph
                 # manifest is applied on first unlock. The
                 # initial_config_complete flag is set after first unlock.
                 # Once one controller is up, ceph cluster should be fully
                 # operational.
-                LOG.info("This is AIO-SX... Ceph backend task is RESTORE")
+                LOG.info("This is an all-in-one simplex configuration. "
+                         "Ceph backend task is RESTORE.")
                 if cutils.is_initial_config_complete():
-                    LOG.info("This is AIO-SX... clear ceph backend task to None")
+                    LOG.info("Clear ceph backend task to None as part of "
+                             "storage backend restore.")
                     api.storage_backend_update(backend.uuid, {'task': None})
             elif cutils.is_aio_duplex_system(pecan.request.dbapi):
                 # For AIO-DX, ceph config restore is done in puppet when ceph
                 # manifest is applied on first unlock. The 2nd osd is created
                 # in puppet when controller-1 is unlocked. Once both
                 # controllers are up, Ceph cluster should be fully operational.
-                LOG.info("This is AIO-DX... Ceph backend task is RESTORE")
-                c_hosts = api.ihost_get_by_personality(
-                    constants.CONTROLLER
-                )
+                LOG.info("This is an all-in-one duplex configuration. "
+                         "Ceph backend task is RESTORE.")
+                c_hosts = api.ihost_get_by_personality(constants.CONTROLLER)
 
                 ctlr_enabled = 0
                 for c_host in c_hosts:
@@ -4595,13 +4593,15 @@ class HostController(rest.RestController):
                         ctlr_enabled = ctlr_enabled + 1
 
                 if ctlr_enabled == len(c_hosts):
-                    LOG.info("This is AIO-DX... clear ceph backend task to None")
+                    LOG.info("Clear ceph backend task to None as part of "
+                             "storage backend restore.")
                     api.storage_backend_update(backend.uuid, {'task': None})
             else:
                 # This is ceph restore for standard non-storage configuration.
                 # Ceph config restore is done via sysinv after both ceph
                 # monitors are available.
-                LOG.info("This is 2+2... Ceph backend task is RESTORE")
+                LOG.info("This is a standard configuration without dedicated "
+                         "storage nodes. Ceph backend task is RESTORE.")
                 active_mons, required_mons, __ = \
                         self._ceph.get_monitors_status(pecan.request.dbapi)
                 if required_mons > active_mons:
@@ -4609,7 +4609,8 @@ class HostController(rest.RestController):
                 else:
                     # By clearing ceph backend task to None osds will be
                     # created thru applying runtime manifests.
-                    LOG.info("This is 2+2... clear ceph backend task to None")
+                    LOG.info("Clear ceph backend task to None as part of "
+                             "storage backend restore.")
                     api.storage_backend_update(backend.uuid, {'task': None})
 
                     # Apply runtime manifests to create OSDs on two controller
@@ -5406,11 +5407,18 @@ class HostController(rest.RestController):
                   "enabled.") %
                 (num_monitors, required_monitors))
 
-        # Check Ceph configuration, if it is wiped out (in the Backup & Restore
-        # process) then restore the configuration.
         try:
-            if not pecan.request.rpcapi.restore_ceph_config(pecan.request.context):
-                raise Exception()
+            # If osdmap is empty which is the restore case, then create osds.
+            osd_stats = ceph_helper.get_osd_stats()
+            if int(osd_stats['num_osds']) == 0:
+                i_host = pecan.request.dbapi.ihost_get(ihost['uuid'])
+                runtime_manifests = True
+                for stor in istors:
+                    pecan.request.rpcapi.update_ceph_osd_config(
+                        pecan.request.context,
+                        i_host,
+                        stor.uuid,
+                        runtime_manifests)
         except Exception:
             raise wsme.exc.ClientSideError(
                 _("Restore Ceph config failed. Retry unlocking storage node."))

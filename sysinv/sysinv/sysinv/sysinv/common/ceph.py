@@ -19,6 +19,7 @@ import pecan
 import requests
 
 from cephclient import wrapper as ceph
+from requests.exceptions import ReadTimeout
 
 from sysinv.common import constants
 from sysinv.common import exception
@@ -475,6 +476,22 @@ class CephApiOperator(object):
             LOG.warn("ceph status exception: %s " % e)
 
         return rc
+
+    def get_osd_stats(self, timeout=30):
+        try:
+            resp, body = self._ceph_api.osd_stat(body='json',
+                                                 timeout=timeout)
+        except ReadTimeout as e:
+            resp = type('Response', (),
+                        dict(ok=False,
+                             reason=('Ceph API osd_stat() timeout '
+                                     'after {} seconds').format(timeout)))
+        if not resp.ok:
+            e = exception.CephGetOsdStatsFailure(reason=resp.reason)
+            LOG.error(e)
+            raise e
+        else:
+            return body["output"]
 
     def _osd_quorum_names(self, timeout=10):
         quorum_names = []
