@@ -473,6 +473,63 @@ def get_node_cgtsvg_limit(host):
     return cgtsvg_max_free_gib
 
 
+def check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib):
+    """ Check node for ceph_mon growth, include controller/worker/storage node,
+        if check failed, raise error with msg.
+    """
+    if host is not None:
+        ceph_mon = pecan.request.dbapi.ceph_mon_get_by_ihost(host.uuid)
+        hostname = host.hostname
+    else:
+        ceph_mon = pecan.request.dbapi.ceph_mon_get_list()
+        hostname = "controller"
+
+    if ceph_mon:
+        cgtsvg_growth_gib = ceph_mon_gib - ceph_mon[0].ceph_mon_gib
+    else:
+        cgtsvg_growth_gib = ceph_mon_gib
+
+    LOG.info("check_node_ceph_mon_growth hostname: %s, ceph_mon_gib: %s, "
+             "cgtsvg_growth_gib: %s, cgtsvg_max_free_gib: %s"
+             % (hostname, ceph_mon_gib, cgtsvg_growth_gib,
+                cgtsvg_max_free_gib))
+
+    if cgtsvg_growth_gib and (cgtsvg_growth_gib > cgtsvg_max_free_gib):
+        if ceph_mon_gib:
+            msg = _(
+                "Node: %s Total target growth size %s GiB for database "
+                "(doubled for upgrades), glance, "
+                "scratch, backup, extension and ceph-mon exceeds "
+                "growth limit of %s GiB." %
+                (hostname, cgtsvg_growth_gib, cgtsvg_max_free_gib)
+            )
+        else:
+            msg = _(
+                "Node: %s Total target growth size %s GiB for database "
+                "(doubled for upgrades), glance, scratch, "
+                "backup and extension exceeds growth limit of %s GiB." %
+                (hostname, cgtsvg_growth_gib, cgtsvg_max_free_gib)
+            )
+        raise wsme.exc.ClientSideError(msg)
+
+
+def check_all_ceph_mon_growth(ceph_mon_gib, host=None):
+    """ Check all nodes (except controllers) filesystem with growth limitation,
+        host is used only when mon is creating and check current node,
+        when mon update, host is None and check all nodes of mon list.
+    """
+    if host is not None:
+        cgtsvg_max_free_gib = get_node_cgtsvg_limit(host)
+        check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib)
+
+    ceph_mons = pecan.request.dbapi.ceph_mon_get_list()
+    for mon in ceph_mons:
+        ceph_mon_host = pecan.request.dbapi.ihost_get(mon['forihostid'])
+        cgtsvg_max_free_gib = get_node_cgtsvg_limit(ceph_mon_host)
+        check_node_ceph_mon_growth(ceph_mon_host, ceph_mon_gib,
+            cgtsvg_max_free_gib)
+
+
 class SBApiHelper(object):
     """ API Helper Class for manipulating Storage Backends.
 

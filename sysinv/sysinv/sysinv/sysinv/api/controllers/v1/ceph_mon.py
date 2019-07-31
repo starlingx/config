@@ -333,8 +333,9 @@ class CephMonController(rest.RestController):
 
         if is_ceph_mon_gib_changed:
             _check_ceph_mon(cephmon.as_dict(), rpc_cephmon.as_dict())
-            controller_fs_utils._check_controller_fs(
-                ceph_mon_gib_new=cephmon.ceph_mon_gib)
+            controller_fs_utils._check_ceph_mon_growth(
+                cephmon.ceph_mon_gib)
+            utils.check_all_ceph_mon_growth(cephmon.ceph_mon_gib)
 
         for field in objects.ceph_mon.fields:
             if rpc_cephmon[field] != cephmon.as_dict()[field]:
@@ -455,19 +456,19 @@ def _create(ceph_mon):
 
     ceph_mon = _set_defaults(ceph_mon)
 
-    _check_ceph_mon(ceph_mon)
-
-    controller_fs_utils._check_controller_fs(
-        ceph_mon_gib_new=ceph_mon['ceph_mon_gib'])
-
-    pecan.request.rpcapi.reserve_ip_for_first_storage_node(
-        pecan.request.context)
-
     # Size of ceph-mon logical volume must be the same for all
     # monitors so we get the size from any or use default.
     ceph_mons = pecan.request.dbapi.ceph_mon_get_list()
     if ceph_mons:
         ceph_mon['ceph_mon_gib'] = ceph_mons[0]['ceph_mon_gib']
+
+    _check_ceph_mon(ceph_mon)
+
+    controller_fs_utils._check_ceph_mon_growth(ceph_mon['ceph_mon_gib'])
+    utils.check_all_ceph_mon_growth(ceph_mon['ceph_mon_gib'], chost)
+
+    pecan.request.rpcapi.reserve_ip_for_first_storage_node(
+        pecan.request.context)
 
     # In case we add the monitor on a worker node, the state
     # and task must be set properly.
