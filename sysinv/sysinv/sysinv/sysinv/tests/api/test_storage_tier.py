@@ -339,10 +339,12 @@ class StorageTierIndependentTCs(base.FunctionalTest):
                       patch_response.json['error_message'])
 
         # Other Defined: name
-        patch_response = self.patch_dict_json('/storage_tiers/%s' % confirm['uuid'],
-                                              headers={'User-Agent': 'sysinv'},
-                                              name='newname',
-                                              expect_errors=True)
+        with mock.patch.object(ceph_utils.CephApiOperator, 'crushmap_tier_rename'):
+            patch_response = self.patch_dict_json(
+                '/storage_tiers/%s' % confirm['uuid'],
+                headers={'User-Agent': 'sysinv'},
+                name='newname',
+                expect_errors=True)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertEqual('newname',  # Expected
                          self.get_json('/storage_tiers/%s/' % patch_response.json['uuid'])['name'])  # Result

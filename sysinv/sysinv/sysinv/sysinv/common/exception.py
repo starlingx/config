@@ -156,7 +156,7 @@ class CephCrushMapNotApplied(CephFailure):
 
 
 class CephCrushMaxRecursion(CephFailure):
-    message = _("Mirroring crushmap root failed after reaching unexpected recursion "
+    message = _("Processing crushmap failed after reaching unexpected recursion "
                 "level of %(depth)s.")
 
 
@@ -166,6 +166,10 @@ class CephCrushInvalidTierUse(CephFailure):
 
 class CephCrushTierAlreadyExists(CephCrushInvalidTierUse):
     message = _("Tier '%(tier)s' already exists")
+
+
+class CephCrushTierRenameFailure(CephCrushInvalidTierUse):
+    message = _("Tier '%(tier)s' cannot be renamed. %(reason)s")
 
 
 class CephCrushInvalidRuleOperation(CephFailure):
