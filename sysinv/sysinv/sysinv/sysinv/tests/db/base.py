@@ -24,6 +24,7 @@ from sysinv.common import constants
 from sysinv.common import utils
 
 from sysinv.openstack.common import context
+from sysinv.openstack.common import uuidutils
 
 from sysinv.tests import base
 from sysinv.tests.db import utils as dbutils
@@ -63,6 +64,34 @@ class BaseIPv6Mixin(object):
     nameservers = ['2001:4860:4860::8888', '2001:4860:4860::8844']
 
 
+class BaseCephStorageBackendMixin(object):
+
+    def setUp(self):
+        super(BaseCephStorageBackendMixin, self).setUp()
+        self._setup_ceph_backend()
+        # setup one or more storage monitors
+        self.mon_index = 0
+        self._create_storage_mon(self.host.hostname, self.host.id)
+
+    def _setup_ceph_backend(self, **kwargs):
+        kwargs['forisystemid'] = self.system['id']
+        t = dbutils.get_test_storage_tier()
+        kwargs['tier_id'] = t['id']
+        n = dbutils.get_test_ceph_storage_backend(**kwargs)
+        self.dbapi.storage_ceph_create(n)
+
+    def _create_storage_mon(self, hostname, ihost_id):
+        self.mon_index += 1
+        ceph_mon_dict = dbutils.get_test_mon(
+            id=self.mon_index,
+            uuid=uuidutils.generate_uuid(),
+            state=constants.SB_STATE_CONFIGURED,
+            task=constants.SB_TASK_NONE,
+            forihostid=ihost_id,
+            hostname=hostname)
+        return self.dbapi.ceph_mon_create(ceph_mon_dict)
+
+
 @six.add_metaclass(abc.ABCMeta)
 class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     system_type = constants.TIS_STD_BUILD
@@ -72,6 +101,21 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
 
     def setUp(self):
         super(BaseSystemTestCase, self).setUp()
+        self.hosts = []
+        self.address_pools = []
+        self.networks = []
+        self._create_test_common()
+
+    def tearDown(self):
+        super(BaseSystemTestCase, self).tearDown()
+        self.system = None
+        self.load = None
+        self.drbd = None
+        self.remotelogging = None
+        self.user = None
+        self.dns = None
+        self.ntp = None
+        self.ptp = None
         self.hosts = []
         self.address_pools = []
         self.networks = []
@@ -228,6 +272,9 @@ class BaseHostTestCase(BaseSystemTestCase):
     root_disk_device_node = '/dev/sda'
     root_disk_device_type = constants.DEVICE_TYPE_SSD
 
+    def setUp(self):
+        super(BaseHostTestCase, self).setUp()
+
     def _create_test_host(self, personality, subfunction=None, numa_nodes=1):
         subfunctions = [personality]
         if subfunction:
@@ -286,8 +333,7 @@ class ControllerHostTestCase(BaseHostTestCase):
 
     def setUp(self):
         super(ControllerHostTestCase, self).setUp()
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         self._create_test_host_cpus(self.host, platform=16)
 
 
@@ -295,7 +341,6 @@ class WorkerHostTestCase(BaseHostTestCase):
 
     def setUp(self):
         super(WorkerHostTestCase, self).setUp()
-        self._create_test_common()
         self.host = self._create_test_host(constants.WORKER)
         self._create_test_host_cpus(self.host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(self.host)
@@ -305,7 +350,6 @@ class StorageHostTestCase(BaseHostTestCase):
 
     def setUp(self):
         super(StorageHostTestCase, self).setUp()
-        self._create_test_common()
         self.host = self._create_test_host(constants.STORAGE)
         self._create_test_host_cpus(self.host, platform=8)
         self._create_test_host_addresses(self.host)
@@ -317,7 +361,6 @@ class AIOHostTestCase(BaseHostTestCase):
 
     def setUp(self):
         super(AIOHostTestCase, self).setUp()
-        self._create_test_common()
         self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER)
         self._create_test_host_cpus(self.host, platform=2, vswitch=2, application=11)
 
