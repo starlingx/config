@@ -988,6 +988,8 @@ data:
         notifications:
           notification_format: unversioned
         filter_scheduler:
+          build_failure_weight_multiplier: 0.0
+          cpu_weight_multiplier: 0.0
           disk_weight_multiplier: 0.0
           enabled_filters:
             - RetryFilter
@@ -1000,11 +1002,11 @@ data:
             - ServerGroupAffinityFilter
             - ServerGroupAntiAffinityFilter
             - PciPassthroughFilter
-          io_ops_weight_multiplier: -5.0
           pci_weight_multiplier: 0.0
           ram_weight_multiplier: 0.0
-          soft_affinity_weight_multiplier: 0.0
-          soft_anti_affinity_weight_multiplier: 0.0
+          shuffle_best_same_weighed_hosts: true
+          soft_affinity_weight_multiplier: 20.0
+          soft_anti_affinity_weight_multiplier: 20.0
         scheduler:
           workers: 1
           discover_hosts_in_cells_interval: 30
