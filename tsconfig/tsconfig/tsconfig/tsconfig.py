@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014-2018 Wind River Systems, Inc.
+Copyright (c) 2014-2019 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -172,7 +172,6 @@ CONFIG_PATH = PLATFORM_PATH + "/config/" + SW_VERSION + "/"
 PUPPET_PATH = PLATFORM_PATH + "/puppet/" + SW_VERSION + "/"
 ARMADA_PATH = PLATFORM_PATH + "/armada/" + SW_VERSION
 HELM_OVERRIDES_PATH = PLATFORM_PATH + "/helm/" + SW_VERSION
-CGCS_PATH = "/opt/cgcs"
 KEYRING_PATH = PLATFORM_PATH + "/.keyring/" + SW_VERSION
 EXTENSION_PATH = "/opt/extension"
 PLATFORM_CEPH_CONF_PATH = CONFIG_PATH + 'ceph-config'
