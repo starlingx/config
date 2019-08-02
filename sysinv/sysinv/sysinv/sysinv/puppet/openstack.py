@@ -160,9 +160,6 @@ class OpenstackBasePuppet(base.BasePuppet):
 
         return self._region_name()
 
-    def _get_swift_service_tenant_name(self):
-        return self._get_swift_service_project_name()
-
     def _get_service_tenant_name(self):
         return self._get_service_project_name()
 

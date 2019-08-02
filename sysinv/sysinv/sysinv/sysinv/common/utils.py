@@ -2063,3 +2063,29 @@ def generate_armada_manifest_dir(app_name, app_version):
 
 def generate_armada_manifest_filename_abs(armada_mfile_dir, app_name, manifest_filename):
     return os.path.join(armada_mfile_dir, app_name + '-' + manifest_filename)
+
+
+def is_chart_enabled(dbapi, app_name, chart_name, namespace):
+    """
+    Check if the chart is enable at an application level
+
+    :param app_name: Application name
+    :param chart_name: Chart supplied with the application
+    :param namespace: Namespace where the chart will be executed
+
+    Returns true by default if an exception occurs as most charts are
+    enabled.
+    """
+    try:
+        db_app = dbapi.kube_app_get(app_name)
+        db_chart = dbapi.helm_override_get(db_app.id, chart_name, namespace)
+    except exception.KubeAppNotFound:
+        LOG.exception("is_chart_enabled: %s application unknown" % (app_name))
+        return True
+    except exception.HelmOverrideNotFound:
+        LOG.exception("is_chart_enabled: %s/%s/%s overrides missing" % (
+            app_name, chart_name, namespace))
+        return True
+
+    return db_chart.system_overrides.get(helm_common.HELM_CHART_ATTR_ENABLED,
+                                         False)
