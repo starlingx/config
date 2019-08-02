@@ -5463,8 +5463,8 @@ class ConductorManager(service.PeriodicService):
                         'platform::drbd::dockerdistribution::runtime',
                     constants.FILESYSTEM_NAME_DATABASE:
                         'platform::drbd::pgsql::runtime',
-                    constants.FILESYSTEM_NAME_CGCS:
-                        'platform::drbd::cgcs::runtime',
+                    constants.FILESYSTEM_NAME_PLATFORM:
+                        'platform::drbd::platform::runtime',
                     constants.FILESYSTEM_NAME_EXTENSION:
                         'platform::drbd::extension::runtime',
                     constants.FILESYSTEM_NAME_PATCH_VAULT:
@@ -6739,7 +6739,6 @@ class ConductorManager(service.PeriodicService):
             :param rootfs_device: the root disk device
         """
         database_storage = 0
-        cgcs_lv_size = 0
 
         # Add the extension storage
         extension_lv_size = constants.DEFAULT_EXTENSION_STOR_SIZE
@@ -6761,25 +6760,23 @@ class ConductorManager(service.PeriodicService):
             # Min size of the cgts-vg PV is:
             #   202.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   210.0 G - (for DCSC non-AIO)
+            #   198.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
-            #          2 G - cgcs_lv (DRBD bootstrap manifest)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
-            #          2 G - platform_lv (DRBD bootstrap manifest)
+            #         10 G - platform_lv (DRBD bootstrap manifest)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
-            #         25 G - cgts-vg contents when we get to these checks
+            #         31 G - cgts-vg contents when we get to these checks
             #
             #
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
-            #         20 G - /opt/cgcs
             #         40 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
-            #          2 G - /opt/platform
+            #         10 G - /opt/platform
             #          1 G - /opt/extension
             #         50 G - /opt/backup
             #         30 G - /var/lib/docker (--kubernetes)
@@ -6789,17 +6786,17 @@ class ConductorManager(service.PeriodicService):
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for
             #                   Distributed Cloud System Controller non-AIO only)
             #        -----
-            #        210 G (for DCSC non-AIO) or 202
+            #        198 G (for DCSC non-AIO) or 202
             #
             #  The absolute minimum disk size for these default settings:
             #      0.5 G - /boot
             #     20.0 G - /
             #    202.0 G - cgts-vg PV
-            # or 210.0 G - (DCSC non-AIO)
+            # or 198.0 G - (DCSC non-AIO)
             #   -------
             #    222.5 G => ~223G min size disk
             # or
-            #    230.5 G => ~231G min size disk
+            #    218.5 G => ~219G min size disk
             #
             # If required disk is size 500G:
             #   1) Standard controller - will use all free space for the PV
@@ -6815,8 +6812,6 @@ class ConductorManager(service.PeriodicService):
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
-            cgcs_lv_size = constants.DEFAULT_CGCS_STOR_SIZE
-
         elif disk_size >= constants.MINIMUM_DISK_SIZE:
 
             LOG.info("Disk size : %s ... small disk defaults" % disk_size)
@@ -6826,25 +6821,23 @@ class ConductorManager(service.PeriodicService):
             # Min size of the cgts-vg PV is:
             #   170.0 G - PV for cgts-vg (specified in the kickstart)
             # or
-            #   162.0 G - (for DCSC non-AIO)
+            #   168.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
-            #          2 G - cgcs_lv (DRBD bootstrap manifest)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
-            #          2 G - platform_lv (DRBD bootstrap manifest)
+            #         10 G - platform_lv (DRBD bootstrap manifest)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
-            #         25 G - cgts-vg contents when we get to these checks
+            #         31 G - cgts-vg contents when we get to these checks
             #
             #
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
-            #         10 G - /opt/cgcs
             #         20 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
-            #          2 G - /opt/platform
+            #         10 G - /opt/platform
             #          1 G - /opt/extension
             #         40 G - /opt/backup
             #         30 G - /var/lib/docker (--kubernetes)
@@ -6853,18 +6846,18 @@ class ConductorManager(service.PeriodicService):
             #          5 G - /opt/etcd (--kubernetes)
             #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
             #        -----
-            #        170 G (for DCSC non-AIO) or 162 G
+            #        168 G (for DCSC non-AIO) or 170 G
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
             #    20.0 G - /
             #   162.0 G - cgts-vg PV
             # or
-            #   170.0 G - (for DCSC non-AIO)
+            #   168.0 G - (for DCSC non-AIO)
             #   -------
             #   182.5 G => ~183G min size disk
             # or
-            #   190.5 G => ~191G min size disk
+            #   188.5 G => ~189G min size disk
             #
             # If required disk is size 240G:
             #   1) Standard controller - will use all free space for the PV
@@ -6880,17 +6873,15 @@ class ConductorManager(service.PeriodicService):
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
 
-            cgcs_lv_size = constants.DEFAULT_SMALL_CGCS_STOR_SIZE
-
         else:
             LOG.info("Disk size : %s ... disk too small" % disk_size)
             raise exception.SysinvException("Disk size requirements not met.")
 
         data = {
-            'name': constants.FILESYSTEM_NAME_CGCS,
-            'size': cgcs_lv_size,
+            'name': constants.FILESYSTEM_NAME_PLATFORM,
+            'size': constants.DEFAULT_PLATFORM_STOR_SIZE,
             'logical_volume': constants.FILESYSTEM_LV_DICT[
-                constants.FILESYSTEM_NAME_CGCS],
+                constants.FILESYSTEM_NAME_PLATFORM],
             'replicated': True,
         }
         LOG.info("Creating FS:%s:%s %d" % (
@@ -6919,7 +6910,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
-        # ETCD fs added to cgts-lv
+        # ETCD fs added to etcd-lv
         etcd_lv_size = constants.ETCD_STOR_SIZE
 
         data_etcd = {
@@ -7237,8 +7228,8 @@ class ConductorManager(service.PeriodicService):
             # Check PausedSyncS as well as drbd sync is changed to serial
             if "drbd-pgsql" in row and ("SyncSource" in row or "PausedSyncS" in row):
                 fs.append(constants.DRBD_PGSQL)
-            if "drbd-cgcs" in row and ("SyncSource" in row or "PausedSyncS" in row):
-                fs.append(constants.DRBD_CGCS)
+            if "drbd-platform" in row and ("SyncSource" in row or "PausedSyncS" in row):
+                fs.append(constants.DRBD_PLATFORM)
             if "drbd-extension" in row and ("SyncSource" in row or "PausedSyncS" in row):
                 fs.append(constants.DRBD_EXTENSION)
             if "drbd-patch-vault" in row and ("SyncSource" in row or "PausedSyncS" in row):
@@ -7279,8 +7270,8 @@ class ConductorManager(service.PeriodicService):
 
                 if 'drbd-pgsql' in row:
                     drbd_pgsql_size = size
-                if 'drbd-cgcs' in row:
-                    drbd_cgcs_size = size
+                if 'drbd-platform' in row:
+                    drbd_platform_size = size
                 if 'drbd-extension' in row:
                     drbd_extension_size = size
                 if 'drbd-patch-vault' in row:
@@ -7293,8 +7284,8 @@ class ConductorManager(service.PeriodicService):
         lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
         if lvdisplay_dict.get('pgsql-lv', None):
             pgsql_lv_size = float(lvdisplay_dict['pgsql-lv'])
-        if lvdisplay_dict.get('cgcs-lv', None):
-            cgcs_lv_size = float(lvdisplay_dict['cgcs-lv'])
+        if lvdisplay_dict.get('platform-lv', None):
+            platform_lv_size = float(lvdisplay_dict['platform-lv'])
         if lvdisplay_dict.get('extension-lv', None):
             extension_lv_size = float(lvdisplay_dict['extension-lv'])
         if lvdisplay_dict.get('patch-vault-lv', None):
@@ -7304,14 +7295,14 @@ class ConductorManager(service.PeriodicService):
         if lvdisplay_dict.get('dockerdistribution-lv', None):
             dockerdistribution_lv_size = float(lvdisplay_dict['dockerdistribution-lv'])
 
-        LOG.info("drbd-overview: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", drbd_pgsql_size, drbd_cgcs_size, drbd_extension_size, drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
-        LOG.info("lvdisplay: pgsql-%s, cgcs-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", pgsql_lv_size, cgcs_lv_size, extension_lv_size, patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
+        LOG.info("drbd-overview: pgsql-%s, platform-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", drbd_pgsql_size, drbd_platform_size, drbd_extension_size, drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
+        LOG.info("lvdisplay: pgsql-%s, platform-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", pgsql_lv_size, platform_lv_size, extension_lv_size, patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
 
         drbd_fs_updated = []
         if math.ceil(drbd_pgsql_size) < math.ceil(pgsql_lv_size):
             drbd_fs_updated.append(constants.DRBD_PGSQL)
-        if math.ceil(drbd_cgcs_size) < math.ceil(cgcs_lv_size):
-            drbd_fs_updated.append(constants.DRBD_CGCS)
+        if math.ceil(drbd_platform_size) < math.ceil(platform_lv_size):
+            drbd_fs_updated.append(constants.DRBD_PLATFORM)
         if math.ceil(drbd_extension_size) < math.ceil(extension_lv_size):
             drbd_fs_updated.append(constants.DRBD_EXTENSION)
         if math.ceil(drbd_patch_size) < math.ceil(patch_lv_size):
@@ -7347,7 +7338,7 @@ class ConductorManager(service.PeriodicService):
                     cutils.touch(CFS_DRBDADM_RECONFIGURED)
 
                 pgsql_resized = False
-                cgcs_resized = False
+                platform_resized = False
                 extension_resized = False
                 patch_resized = False
                 etcd_resized = False
@@ -7369,16 +7360,16 @@ class ConductorManager(service.PeriodicService):
                                 LOG.info("Performed %s" % progress)
                                 pgsql_resized = True
 
-                        if constants.DRBD_CGCS in drbd_fs_updated:
-                            if (not cgcs_resized and
+                        if constants.DRBD_PLATFORM in drbd_fs_updated:
+                            if (not platform_resized and
                                 (not standby_host or (standby_host and
-                                 constants.DRBD_CGCS in self._drbd_fs_sync()))):
-                                # cgcs_gib /opt/cgcs
-                                progress = "resize2fs drbd3"
-                                cmd = ["resize2fs", "/dev/drbd3"]
+                                 constants.DRBD_PLATFORM in self._drbd_fs_sync()))):
+                                # platform_gib /opt/platform
+                                progress = "resize2fs drbd2"
+                                cmd = ["resize2fs", "/dev/drbd2"]
                                 stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
                                 LOG.info("Performed %s" % progress)
-                                cgcs_resized = True
+                                platform_resized = True
 
                         if constants.DRBD_EXTENSION in drbd_fs_updated:
                             if (not extension_resized and
@@ -7432,7 +7423,7 @@ class ConductorManager(service.PeriodicService):
                         for drbd in drbd_fs_updated:
                             if drbd == constants.DRBD_PGSQL and not pgsql_resized:
                                 all_resized = False
-                            elif drbd == constants.DRBD_CGCS and not cgcs_resized:
+                            elif drbd == constants.DRBD_PLATFORM and not platform_resized:
                                 all_resized = False
                             elif drbd == constants.DRBD_EXTENSION and not extension_resized:
                                 all_resized = False
@@ -9025,7 +9016,7 @@ class ConductorManager(service.PeriodicService):
         lvdisplay_command = 'lvdisplay --columns --options lv_size,lv_name ' \
                             '--units g --noheading --nosuffix ' \
                             '/dev/cgts-vg/pgsql-lv /dev/cgts-vg/backup-lv ' \
-                            '/dev/cgts-vg/cgcs-lv ' \
+                            '/dev/cgts-vg/platform-lv ' \
                             '/dev/cgts-vg/scratch-lv ' \
                             '/dev/cgts-vg/extension-lv ' \
                             '/dev/cgts-vg/docker-lv ' \

@@ -154,7 +154,6 @@ CONTROLLER_0_HOSTNAME = '%s-0' % CONTROLLER_HOSTNAME
 CONTROLLER_1_HOSTNAME = '%s-1' % CONTROLLER_HOSTNAME
 CONTROLLER_GATEWAY = '%s-gateway' % CONTROLLER_HOSTNAME
 CONTROLLER_PLATFORM_NFS = '%s-platform-nfs' % CONTROLLER_HOSTNAME
-CONTROLLER_CGCS_NFS = '%s-nfs' % CONTROLLER_HOSTNAME
 CONTROLLER_CINDER = '%s-cinder' % CONTROLLER_HOSTNAME
 CONTROLLER_0_MGMT = '%s-mgmt' % CONTROLLER_0_HOSTNAME
 
@@ -283,11 +282,10 @@ VSWITCH_TYPE_NUAGE_VRS = "nuage_vrs"
 VSWITCH_TYPE_NONE = "none"
 
 # Partition default sizes
-DEFAULT_CGCS_STOR_SIZE = 20
+DEFAULT_PLATFORM_STOR_SIZE = 10
 DEFAULT_DOCKER_STOR_SIZE = 1
 DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE = 1
 DEFAULT_DATABASE_STOR_SIZE = 20
-DEFAULT_SMALL_CGCS_STOR_SIZE = 10
 DEFAULT_SMALL_DATABASE_STOR_SIZE = 10
 DEFAULT_SMALL_BACKUP_STOR_SIZE = 40
 DEFAULT_VIRTUAL_DATABASE_STOR_SIZE = 5
@@ -300,13 +298,12 @@ DEFAULT_ETCD_STORE_SIZE = 1
 DEFAULT_SMALL_DISK_SIZE = 240
 # The minimum disk size needed to create all partitions
 # Value based on the following calculation:
-# DEFAULT_SMALL_CGCS_STOR_SIZE                         10
 # 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   20 (2*10)
 # DEFAULT_SMALL_BACKUP_STOR_SIZE                       40
 # LOG_VOL_SIZE (reserved in kickstarts)                 8
 # SCRATCH_VOL_SIZE (reserved in kickstarts)             8
 # RABBIT_LV                                             2
-# PLATFORM_LV                                           2
+# PLATFORM_LV                                          10
 # ANCHOR_LV                                             1
 # DEFAULT_EXTENSION_STOR_SIZE                           1
 # KUBERNETES_DOCKER_STOR_SIZE (--kubernetes)           30
@@ -318,8 +315,8 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # boot partition (created in kickstarts)                1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     186
-MINIMUM_DISK_SIZE = 186
+#                                                     184
+MINIMUM_DISK_SIZE = 184
 
 KUBERNETES_DOCKER_STOR_SIZE = 30
 DOCKER_DISTRIBUTION_STOR_SIZE = 16
@@ -431,7 +428,7 @@ SB_TIER_STATUS_IN_USE = 'in-use'
 SB_TYPE_CEPH_CONF_FILENAME = "ceph.conf"
 
 # Glance images path when it is file backended
-GLANCE_IMAGE_PATH = tsc.CGCS_PATH + "/" + SB_SVC_GLANCE + "/images"
+GLANCE_IMAGE_PATH = tsc.PLATFORM_PATH + "/" + SB_SVC_GLANCE + "/images"
 
 # Path for Ceph (internal and external) config files
 CEPH_CONF_PATH = "/etc/ceph/"
@@ -490,8 +487,8 @@ CONTROLLER_FS_RESIZING_IN_PROGRESS = 'drbd_fs_resizing_in_progress'
 CONTROLLER_FS_AVAILABLE = 'available'
 
 # DRBD File Systems
+DRBD_PLATFORM = 'platform'
 DRBD_PGSQL = 'pgsql'
-DRBD_CGCS = 'cgcs'
 DRBD_EXTENSION = 'extension'
 DRBD_PATCH_VAULT = 'patch-vault'
 DRBD_ETCD = 'etcd'
@@ -499,8 +496,7 @@ DRBD_DOCKER_DISTRIBUTION = 'docker-distribution'
 
 # File system names
 FILESYSTEM_NAME_BACKUP = 'backup'
-FILESYSTEM_NAME_CGCS = 'cgcs'
-FILESYSTEM_DISPLAY_NAME_CGCS = 'glance'
+FILESYSTEM_NAME_PLATFORM = 'platform'
 FILESYSTEM_NAME_CINDER = 'cinder'
 FILESYSTEM_NAME_DATABASE = 'database'
 FILESYSTEM_NAME_SCRATCH = 'scratch'
@@ -512,7 +508,7 @@ FILESYSTEM_NAME_PATCH_VAULT = 'patch-vault'
 FILESYSTEM_NAME_KUBELET = 'kubelet'
 
 FILESYSTEM_LV_DICT = {
-    FILESYSTEM_NAME_CGCS: 'cgcs-lv',
+    FILESYSTEM_NAME_PLATFORM: 'platform-lv',
     FILESYSTEM_NAME_BACKUP: 'backup-lv',
     FILESYSTEM_NAME_SCRATCH: 'scratch-lv',
     FILESYSTEM_NAME_DOCKER: 'docker-lv',
@@ -552,7 +548,7 @@ FILESYSTEM_HOSTS_SUPPORTED_LIST_DICT = {
 SUPPORTED_LOGICAL_VOLUME_LIST = FILESYSTEM_LV_DICT.values()
 
 SUPPORTED_REPLICATED_FILEYSTEM_LIST = [
-    FILESYSTEM_NAME_CGCS,
+    FILESYSTEM_NAME_PLATFORM,
     FILESYSTEM_NAME_DATABASE,
     FILESYSTEM_NAME_EXTENSION,
     FILESYSTEM_NAME_PATCH_VAULT,

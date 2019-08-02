@@ -34,9 +34,9 @@ class openstack::keystone (
       $::platform::params::distributed_cloud_role == 'subcloud')  {
     include ::platform::amqp::params
     include ::platform::network::mgmt::params
-    include ::platform::drbd::cgcs::params
+    include ::platform::drbd::platform::params
 
-    $keystone_key_repo_path = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
+    $keystone_key_repo_path = "${::platform::drbd::platform::params::mountpoint}/keystone"
     $eng_workers = $::platform::params::eng_workers
 
     # FIXME(mpeters): binding to wildcard address to allow bootstrap transition
@@ -196,9 +196,9 @@ class openstack::keystone::bootstrap(
 ) {
   include ::platform::params
   include ::platform::amqp::params
-  include ::platform::drbd::cgcs::params
+  include ::platform::drbd::platform::params
 
-  $keystone_key_repo_path = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
+  $keystone_key_repo_path = "${::platform::drbd::platform::params::mountpoint}/keystone"
   $eng_workers = $::platform::params::eng_workers
   $bind_host = '[::]'
 
@@ -223,7 +223,7 @@ class openstack::keystone::bootstrap(
       owner   => 'root',
       group   => 'root',
       mode    => '0755',
-      require => Class['::platform::drbd::cgcs'],
+      require => Class['::platform::drbd::platform'],
     }
     -> file { '/etc/keystone/keystone-extra.conf':
       ensure  => present,
@@ -407,18 +407,18 @@ class openstack::keystone::upgrade (
     include ::platform::params
     include ::platform::amqp::params
     include ::platform::network::mgmt::params
-    include ::platform::drbd::cgcs::params
+    include ::platform::drbd::platform::params
 
     # the unit address is actually the configured default of the loopback address.
     $bind_host = $::platform::network::mgmt::params::controller0_address
     $eng_workers = $::platform::params::eng_workers
 
-    $keystone_key_repo = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
+    $keystone_key_repo = "${::platform::drbd::platform::params::mountpoint}/keystone"
 
     # TODO(aning): For R5->R6 upgrade, a local keystone fernet keys repository may
     # need to be setup for the local keystone instance on standby controller to
     # service specific upgrade operations, since we need to keep the keys repository
-    # in /opt/cgcs/keystone/fernet-keys intact so that service won't fail on active
+    # in /opt/platform/keystone/fernet-keys intact so that service won't fail on active
     # controller during upgrade. Once the upgade finishes, the temparary local
     # fernet keys repository will be deleted.
 

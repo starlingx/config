@@ -197,7 +197,6 @@ class NetworkController(rest.RestController):
         addresses[constants.CONTROLLER_0_HOSTNAME] = None
         addresses[constants.CONTROLLER_1_HOSTNAME] = None
         addresses[constants.CONTROLLER_PLATFORM_NFS] = None
-        addresses[constants.CONTROLLER_CGCS_NFS] = None
 
         if pool.gateway_address is not None:
             if utils.get_distributed_cloud_role() == \

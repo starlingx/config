@@ -698,12 +698,9 @@ def shutdown_file_systems():
     umount("/var/lib/postgresql")
     drbd_stop("drbd-pgsql")
 
+    stop_service("www-pages-helm_charts.mount")
     umount("/opt/platform")
     drbd_stop("drbd-platform")
-
-    stop_service("www-pages-helm_charts.mount")
-    umount("/opt/cgcs")
-    drbd_stop("drbd-cgcs")
 
     umount("/opt/extension")
     drbd_stop("drbd-extension")

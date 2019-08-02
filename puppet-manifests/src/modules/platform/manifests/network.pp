@@ -39,7 +39,6 @@ class platform::network::mgmt::params(
   $mtu = 1500,
   # network type specific parameters
   $platform_nfs_address = undef,
-  $cgcs_nfs_address = undef,
 ) { }
 
 class platform::network::oam::params(
