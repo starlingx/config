@@ -23,6 +23,7 @@ import datetime
 import os
 
 import pecan
+import ssl
 import wsme
 import wsmeext.pecan as wsme_pecan
 from cryptography import x509
@@ -328,6 +329,15 @@ class CertificateController(rest.RestController):
         if msg is not True:
             return dict(success="", error=msg)
 
+        if mode == constants.CERT_MODE_OPENSTACK:
+            domain, msg = _check_endpoint_domain_exists()
+            if domain:
+                msg = _check_cert_dns_name(cert, domain)
+                if msg is not True:
+                    return dict(success="", error=msg.message)
+            elif msg:
+                return dict(success="", error=msg)
+
         if mode == constants.CERT_MODE_TPM:
             try:
                 tpm = pecan.request.dbapi.tpmconfig_get_one()
@@ -410,3 +420,62 @@ class CertificateController(rest.RestController):
 
         return dict(success="", error="", body="",
                     certificates=sp_certificates_dict)
+
+
+def _check_endpoint_domain_exists():
+    # Check that public endpoint FQDN is configured
+    endpoint_domain = None
+    msg = None
+    try:
+        endpoint_domain = pecan.request.dbapi.service_parameter_get_one(
+            constants.SERVICE_TYPE_OPENSTACK,
+            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
+            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN).value
+    except exception.NotFound:
+        msg = _("Service parameter for %s, %s, %s is not provisioned" % (
+            constants.SERVICE_TYPE_OPENSTACK,
+            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
+            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN
+        ))
+        LOG.info(msg)
+    return endpoint_domain, msg
+
+
+def _check_cert_dns_name(cert, endpoint_domain):
+    # Prepend the domain with any service name
+    service_endpoint_domain = 'keystone.' + endpoint_domain
+
+    # Check that the endpoint FQDN matches common name or
+    # the dns names in the subject alternative name section of the certificate
+    try:
+        alt_names = cert.extensions.get_extension_for_oid(
+            x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+    except x509.extensions.ExtensionNotFound:
+        alt_names = None
+        pass
+
+    if alt_names:
+        dns_names = alt_names.value.get_values_for_type(x509.DNSName)
+    if not alt_names or not dns_names:
+        cn = cert.subject.get_attributes_for_oid(
+            x509.oid.NameOID.COMMON_NAME)[0].value
+        LOG.debug("certificate has common name %s" % cn)
+        cert_cn = {'subject': ((('commonName', cn),),)}
+        try:
+            ssl.match_hostname(cert_cn, service_endpoint_domain)
+        except Exception as e:
+            LOG.info("Failed to match CN: %s" % e)
+            return e
+    else:
+        LOG.debug("Certificate contains subject alternative name %s" % dns_names)
+        dns_list = []
+        for name in dns_names:
+            dns_list.append(('DNS', name))
+        cert_san = {'subjectAltName': dns_list}
+        try:
+            ssl.match_hostname(cert_san, service_endpoint_domain)
+        except Exception as e:
+            LOG.info("Failed to match SAN: %s" % e)
+            return e
+
+    return True
