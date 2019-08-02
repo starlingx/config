@@ -129,6 +129,7 @@ class OpenStackOperator(object):
     def __init__(self, dbapi):
         self.dbapi = dbapi
         self.barbican_client = None
+        self.openstack_barbican_client = None
         self.cinder_client = None
         self.keystone_client = None
         self.keystone_session = None
@@ -757,13 +758,39 @@ class OpenStackOperator(object):
     #################
     # Barbican
     #################
-    def _get_barbicanclient(self):
-        if not self.barbican_client:
-            self.barbican_client = barbican_client_v1.Client(
-                session=self._get_keystone_session(PLATFORM_CONFIG),
+    def _get_cached_barbican_client(self, service_config):
+        if service_config == PLATFORM_CONFIG:
+            return self.barbican_client
+        else:
+            return self.openstack_barbican_client
+
+    def _set_cached_barbican_client(self, service_config, client):
+        if service_config == PLATFORM_CONFIG:
+            self.barbican_client = client
+        else:
+            self.openstack_barbican_client = client
+
+    def _get_barbicanclient(self, service_config=PLATFORM_CONFIG):
+        client = self._get_cached_barbican_client(service_config)
+        if not client:
+            client = barbican_client_v1.Client(
+                session=self._get_keystone_session(service_config),
                 interface='internalURL',
                 region_name=cfg.CONF[OPENSTACK_CONFIG].barbican_region_name)
-        return self.barbican_client
+            self._set_cached_barbican_client(service_config, client)
+        return client
+
+    def get_barbican_secret_payload(self, secret_ref):
+        try:
+            client = self._get_barbicanclient(
+                service_config=OPENSTACK_CONFIG)
+            secret = client.secrets.get(secret_ref)
+            payload = secret.payload
+            return payload
+        except Exception:
+            LOG.error("Unable to find Barbican secret %s or secret does not "
+                      "have payload", secret_ref)
+            return None
 
     def get_barbican_secret_by_name(self, context, name):
         try:
