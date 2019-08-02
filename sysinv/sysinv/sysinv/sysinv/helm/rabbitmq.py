@@ -18,11 +18,28 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
     CHART = common.HELM_CHART_RABBITMQ
 
     def get_overrides(self, namespace=None):
+        limit_enabled, limit_cpus, limit_mem_mib = self._get_platform_res_limit()
+
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': {
                     'replicas': {
                         'server': self._num_controllers()
+                    },
+                    'resources': {
+                        'enabled': limit_enabled,
+                        'prometheus_rabbitmq_exporter': {
+                            'limits': {
+                                'cpu': "%d000m" % (limit_cpus),
+                                'memory': "%dMi" % (limit_mem_mib)
+                            }
+                        },
+                        'server': {
+                            'limits': {
+                                'cpu': "%d000m" % (limit_cpus),
+                                'memory': "%dMi" % (limit_mem_mib)
+                            }
+                        }
                     }
                 },
                 'endpoints': self._get_endpoints_overrides(),

@@ -200,6 +200,31 @@ class BaseHelm(object):
                 cpus.append(c)
         return cpus
 
+    def _get_platform_res_limit(self):
+        """
+        On All-In-One, not all CPUs and Mem are used for platform services.
+        It needs to limit the CPU and Mem usage of some services which use too
+        many resources.
+        """
+        limit_enabled = False
+        limit_cpus = 0
+        limit_mem_mib = 0
+        system = self._get_system()
+        if system.system_type == constants.TIS_AIO_BUILD:
+            limit_enabled = True
+
+            controller_0 = self.dbapi.ihost_get_by_hostname(
+                    constants.CONTROLLER_0_HOSTNAME)
+            platform_cpus = self._get_host_cpu_list(
+                    controller_0, function=constants.PLATFORM_FUNCTION, threads=True)
+            limit_cpus = max(len(platform_cpus), 1)
+
+            host_memory = self.dbapi.imemory_get_by_ihost(controller_0.id)
+            for mem in host_memory:
+                limit_mem_mib += mem.platform_reserved_mib
+
+        return limit_enabled, limit_cpus, limit_mem_mib
+
     def get_namespaces(self):
         """
         Return list of namespaces supported by this chart
