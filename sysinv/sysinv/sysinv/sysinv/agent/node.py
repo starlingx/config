@@ -16,7 +16,6 @@ from os import listdir
 from os.path import isfile
 from os.path import join
 import re
-import subprocess
 
 from sysinv.openstack.common import log as logging
 import tsconfig.tsconfig as tsc
@@ -104,19 +103,6 @@ class NodeOperator(object):
         # self._get_total_memory_nodes_mb()
         # self._get_free_memory_mb()
         # self._get_free_memory_nodes_mb()
-
-    def _is_strict(self):
-        with open(os.devnull, "w") as fnull:
-            try:
-                output = subprocess.check_output(
-                    ["cat", "/proc/sys/vm/overcommit_memory"],
-                    stderr=fnull)
-                if int(output) == 2:
-                    return True
-            except subprocess.CalledProcessError as e:
-                LOG.info("Failed to check for overcommit, error (%s)",
-                         e.output)
-        return False
 
     def convert_range_string_to_list(self, s):
         olist = []
@@ -438,22 +424,9 @@ class NodeOperator(object):
                 # silently ignore IO errors (eg. file missing)
                 pass
 
-            # Get the free and total memory from meminfo for this node
+            # Get the total memory from meminfo for this node
             re_node_memtotal = re.compile(r'^Node\s+\d+\s+\MemTotal:\s+(\d+)')
-            re_node_memfree = re.compile(r'^Node\s+\d+\s+\MemFree:\s+(\d+)')
-            re_node_filepages = \
-                re.compile(r'^Node\s+\d+\s+\FilePages:\s+(\d+)')
-            re_node_sreclaim = \
-                re.compile(r'^Node\s+\d+\s+\SReclaimable:\s+(\d+)')
-            re_node_commitlimit = \
-                re.compile(r'^Node\s+\d+\s+\CommitLimit:\s+(\d+)')
-            re_node_committed_as = \
-                re.compile(r'^Node\s+\d+\s+\'Committed_AS:\s+(\d+)')
-
-            free_kb = 0    # Free Memory (KB) available
             total_kb = 0   # Total Memory (KB)
-            limit = 0      # only used in strict accounting
-            committed = 0  # only used in strict accounting
 
             meminfo = "/sys/devices/system/node/node%d/meminfo" % node
             try:
@@ -462,54 +435,13 @@ class NodeOperator(object):
                         match = re_node_memtotal.search(line)
                         if match:
                             total_kb += int(match.group(1))
-                            continue
-                        match = re_node_memfree.search(line)
-                        if match:
-                            free_kb += int(match.group(1))
-                            continue
-                        match = re_node_filepages.search(line)
-                        if match:
-                            free_kb += int(match.group(1))
-                            continue
-                        match = re_node_sreclaim.search(line)
-                        if match:
-                            free_kb += int(match.group(1))
-                            continue
-                        match = re_node_commitlimit.search(line)
-                        if match:
-                            limit = int(match.group(1))
-                            continue
-                        match = re_node_committed_as.search(line)
-                        if match:
-                            committed = int(match.group(1))
-                            continue
-
-                if self._is_strict():
-                    free_kb = limit - committed
+                            break
 
             except IOError:
                 # silently ignore IO errors (eg. file missing)
                 pass
 
-            # Calculate PSS
-            pss_mb = 0
-            if node == 0:
-                cmd = 'cat /proc/*/smaps 2>/dev/null | awk \'/^Pss:/ ' \
-                      '{a += $2;} END {printf "%d\\n", a/1024.0;}\''
-                try:
-                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                            shell=True)
-                    result = proc.stdout.read().strip()
-                    pss_mb = int(result)
-                except subprocess.CalledProcessError as e:
-                    LOG.error("Cannot calculate PSS (%s) (%d)", cmd,
-                              e.returncode)
-                except OSError as e:
-                    LOG.error("Failed to execute (%s) OS error (%d)", cmd,
-                              e.errno)
-
-            # need to multiply total_mb by 1024
-            node_total_kb = total_hp_mb * SIZE_KB + free_kb + pss_mb * SIZE_KB
+            node_total_kb = total_kb
 
             # Read base memory from worker_reserved.conf
             base_mem_mb = 0
@@ -553,7 +485,7 @@ class NodeOperator(object):
                 'memtotal_mib': total_hp_mb,
                 'memavail_mib': free_hp_mb,
                 'hugepages_configured': 'True',
-                'node_memtotal_mib': node_total_kb / 1024,
+                'node_memtotal_mib': node_total_kb / SIZE_KB,
             })
 
             imemory.append(attr)

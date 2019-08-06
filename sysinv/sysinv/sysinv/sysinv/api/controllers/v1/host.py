@@ -3589,20 +3589,12 @@ class HostController(rest.RestController):
                                   m.vswitch_hugepages_size_mib)
                     vm_mem_mib = hp_possible_mib - vs_mem_mib
 
-                    vm_mem_mib_possible = m.vm_hugepages_possible_2M * constants.MIB_2M
-
                     LOG.info("host(%s) node(%d): vm_mem_mib=%d,"
-                            "vm_mem_mib_possible (from agent) = %d"
-                            % (ihost['hostname'], node['id'], vm_mem_mib,
-                                vm_mem_mib_possible))
+                            % (ihost['hostname'], node['id'], vm_mem_mib))
 
                     # vm_mem_mib should not be negative
                     if vm_mem_mib < constants.MIB_2M:
                         vm_mem_mib = 0
-                    # worker_reserved.conf might have different setting
-                    # during upgrading or patching
-                    if vm_mem_mib > vm_mem_mib_possible:
-                        vm_mem_mib = vm_mem_mib_possible
                     # Current value might not be suitable after upgrading or
                     # patching
                     if vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) /
@@ -3618,7 +3610,7 @@ class HostController(rest.RestController):
                             vm_hugepages_nr_1G == 0 and \
                             vm_mem_mib > 0 and \
                             cutils.is_default_huge_pages_required(ihost):
-                        vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) /
+                        vm_hugepages_nr_2M = int((hp_possible_mib * 0.9 - vs_mem_mib) /
                                                  constants.MIB_2M)
                         value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
 

@@ -755,7 +755,8 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                 "Platform memory must be greater than zero"))
         base_mem_mib = int(platform_reserved_mib)
 
-    hp_possible_mib = rpc_port['node_memtotal_mib'] - base_mem_mib
+    # only allow allocating 90% of the possible huge pages memory
+    hp_possible_mib = int((rpc_port['node_memtotal_mib'] - base_mem_mib) * 0.9)
 
     # Total requested huge pages
     hp_requested_mib = vm_hp_2M_reqd_mib + vm_hp_1G_reqd_mib + vs_hp_reqd_mib
