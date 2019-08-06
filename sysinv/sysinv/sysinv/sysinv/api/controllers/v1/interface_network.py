@@ -485,11 +485,12 @@ def _update_host_cluster_address(host, interface):
         updates = {'interface_id': interface['id']}
         pecan.request.dbapi.address_update(address.uuid, updates)
     except exception.AddressNotFoundByName:
-        cluster_host_pool_uuid = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST
-        ).pool_uuid
-        _allocate_pool_address(interface['id'], cluster_host_pool_uuid,
-                               address_name)
+        cluster_host_network = pecan.request.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
+        if cluster_host_network.dynamic:
+            _allocate_pool_address(interface['id'],
+                                   cluster_host_network.pool_uuid,
+                                   address_name)
 
 
 def _update_host_ironic_address(host, interface):

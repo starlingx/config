@@ -356,16 +356,20 @@ class AddressController(rest.RestController):
                 raise exception.DuplicateAddressDetectionRequiredOnIpv6()
 
     def _check_managed_addr(self, host_id, interface_id):
-        # Check that static address alloc is enabled
+        # Check if any of the networks assigned to the interface configured
+        # with static address allocation
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        if interface['networktypelist']:
-            for networktype in interface['networktypelist']:
-                if networktype not in [constants.NETWORK_TYPE_MGMT,
-                                       constants.NETWORK_TYPE_OAM]:
-                    continue
-                network = pecan.request.dbapi.network_get_by_type(networktype)
-                if network.dynamic:
-                    raise exception.StaticAddressNotConfigured()
+        if not any(nt in [constants.NETWORK_TYPE_MGMT,
+                          constants.NETWORK_TYPE_CLUSTER_HOST,
+                          constants.NETWORK_TYPE_OAM]
+                          for nt in interface['networktypelist']):
+            return
+        for networktype in interface['networktypelist']:
+            network = pecan.request.dbapi.network_get_by_type(networktype)
+            if not network.dynamic:
+                break
+        else:
+            raise exception.StaticAddressNotConfigured()
         host = pecan.request.dbapi.ihost_get(host_id)
         if host['personality'] in [constants.STORAGE]:
             raise exception.ManagedIPAddress()
