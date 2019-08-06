@@ -86,6 +86,18 @@ class ManagerTestCase(base.DbTestCase):
         res = self.dbapi.ihost_get_list()
         self.assertEqual(len(res), 0)
 
+    def test_create_ihost_with_invalid_mac(self):
+        ihost_dict = {'mgmt_mac': '52:54:00:59:02:9'}
+
+        self.assertRaises(exception.SysinvException,
+                          self.service.create_ihost,
+                          self.context,
+                          ihost_dict)
+
+        # verify create did not happen
+        res = self.dbapi.ihost_get_list()
+        self.assertEqual(len(res), 0)
+
     def test_create_ihost_without_ip(self):
         ihost_dict = {'mgmt_mac': '00:11:22:33:44:55'}
 
