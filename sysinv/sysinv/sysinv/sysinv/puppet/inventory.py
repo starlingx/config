@@ -45,8 +45,8 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
 
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
-        neutron_region_name = self._operator.neutron.get_region_name()
-        nova_region_name = self._operator.nova.get_region_name()
+        neutron_region_name = self._get_service_region_name(constants.SERVICE_NAME_NEUTRON)
+        nova_region_name = self._get_service_region_name(constants.SERVICE_NAME_NOVA)
         barbican_region_name = self._operator.barbican.get_region_name()
 
         return {

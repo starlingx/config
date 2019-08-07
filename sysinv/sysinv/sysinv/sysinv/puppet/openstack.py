@@ -188,9 +188,6 @@ class OpenstackBasePuppet(base.BasePuppet):
                 return service_config.capabilities.get(stype)
         return None
 
-    def _get_swift_service_user_domain_name(self):
-        return self._operator.keystone.get_swift_service_user_domain()
-
     def _get_service_user_domain_name(self):
         return self._operator.keystone.get_service_user_domain()
 

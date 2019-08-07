@@ -75,25 +75,10 @@ def get_db_credentials(shared_services, from_release):
         {'barbican': {'hiera_user_key': 'barbican::db::postgresql::user',
                       'keyring_password_key': 'barbican',
                       },
-         'heat': {'hiera_user_key': 'heat::db::postgresql::user',
-                  'keyring_password_key': 'heat',
-                  },
-         'nova': {'hiera_user_key': 'nova::db::postgresql::user',
-                  'keyring_password_key': 'nova',
-                  },
-         'nova_api': {'hiera_user_key': 'nova::db::postgresql_api::user',
-                      'keyring_password_key': 'nova-api',
-                      },
          'sysinv': {'hiera_user_key': 'sysinv::db::postgresql::user',
                     'keyring_password_key': 'sysinv',
                     },
          }
-
-    if sysinv_constants.SERVICE_TYPE_VOLUME not in shared_services:
-        db_credential_keys.update(
-            {'cinder': {'hiera_user_key': 'cinder::db::postgresql::user',
-                        'keyring_password_key': 'cinder',
-                        }})
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         db_credential_keys.update(
@@ -509,21 +494,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
 
     # Create minimal config files for each OpenStack service so they can
     # run their database migration.
-    with open("/etc/heat/heat-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'heat'))
-
-    with open("/etc/nova/nova-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'nova'))
-        f.write("[api_database]\n")
-        f.write(get_connection_string(db_credentials, 'nova_api'))
-
-    if sysinv_constants.SERVICE_TYPE_VOLUME not in shared_services:
-        with open("/etc/cinder/cinder-dbsync.conf", "w") as f:
-            f.write("[database]\n")
-            f.write(get_connection_string(db_credentials, 'cinder'))
-
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         with open("/etc/keystone/keystone-dbsync.conf", "w") as f:
             f.write("[database]\n")
@@ -538,25 +508,7 @@ def migrate_databases(from_release, shared_services, db_credentials,
         ('barbican',
          'barbican-manage --config-file /etc/barbican/barbican-dbsync.conf ' +
          'db upgrade'),
-        # Migrate heat
-        ('heat',
-         'heat-manage --config-file /etc/heat/heat-dbsync.conf db_sync'),
-        # Migrate nova
-        ('nova',
-         'nova-manage --config-file /etc/nova/nova-dbsync.conf db sync'),
-        # Migrate nova_api (new in R3)
-        ('nova',
-         'nova-manage --config-file /etc/nova/nova-dbsync.conf api_db sync'),
-
     ]
-
-    if sysinv_constants.SERVICE_TYPE_VOLUME not in shared_services:
-        migrate_commands += [
-            # Migrate cinder to latest version
-            ('cinder',
-             'cinder-manage --config-file /etc/cinder/cinder-dbsync.conf ' +
-             'db sync'),
-        ]
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         # To avoid a deadlock during keystone contract we will use offline
@@ -602,26 +554,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
                           "processing, return code: %d" %
                           (cmd[1], ex.returncode))
             raise
-
-    # We need to run nova's online DB migrations to complete any DB changes.
-    # This needs to be done before the computes are upgraded. In other words
-    # as controller-1 is being upgraded
-    try:
-        output = subprocess.check_output(
-            ['nova-manage', '--config-file', '/etc/nova/nova-dbsync.conf',
-             'db', 'online_data_migrations'])
-        if 'Error' in output:
-            LOG.exception("Error detected running nova "
-                          "online_data_migrations. Output %s", output)
-            raise Exception("Error detected running nova "
-                            "online_data_migrations.")
-        else:
-            LOG.info(
-                "Done running nova online_data_migrations. Output: %s", output)
-    except subprocess.CalledProcessError as e:
-        LOG.exception("Nonzero return value running nova "
-                      "online_data_migrations.  Output: %s", e.output)
-        raise
 
     # The database entry for controller-1 will be set to whatever it was when
     # the sysinv database was dumped on controller-0. Update the state and
@@ -1115,17 +1047,6 @@ def persist_platform_data(staging_dir):
         raise
 
 
-def update_cinder_state():
-    """ The backing store for cinder volumes and snapshots is not
-        restored, so their status must be set to error.
-    """
-    conn = psycopg2.connect("dbname=cinder user=postgres")
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("UPDATE VOLUMES SET STATUS='error';")
-            cur.execute("UPDATE SNAPSHOTS SET STATUS='error';")
-
-
 def get_simplex_metadata(archive, staging_dir):
     """Gets the metadata from the archive"""
 
@@ -1349,8 +1270,6 @@ def upgrade_controller_simplex(backup_file):
     # Execute migration scripts
     utils.execute_migration_scripts(
         from_release, to_release, utils.ACTION_MIGRATE)
-
-    update_cinder_state()
 
     # Generate "regular" manifests
     LOG.info("Generating manifests for %s" %

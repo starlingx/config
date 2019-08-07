@@ -5,9 +5,9 @@
 #
 
 import json
+import re
 
 from sysinv.common import constants
-
 from sysinv.puppet import base
 
 
@@ -24,6 +24,8 @@ class StoragePuppet(base.BasePuppet):
         config.update(self._get_partition_config(host))
         config.update(self._get_lvm_config(host))
         config.update(self._get_host_fs_config(host))
+        if constants.WORKER in host.subfunctions:
+            config.update(self._get_worker_config(host))
         return config
 
     def _get_filesystem_config(self):
@@ -253,3 +255,68 @@ class StoragePuppet(base.BasePuppet):
                     'platform::filesystem::kubelet::params::lv_size': fs.size
                 })
         return config
+
+    def _get_worker_config(self, host):
+        pvs = self.dbapi.ipv_get_by_ihost(host.id)
+
+        final_pvs = []
+        adding_pvs = []
+        removing_pvs = []
+        for pv in pvs:
+            if (pv.lvm_vg_name == constants.LVG_NOVA_LOCAL and
+                    pv.pv_state != constants.PV_ERR):
+                pv_path = pv.disk_or_part_device_path
+                if (pv.pv_type == constants.PV_TYPE_PARTITION and
+                        '-part' not in pv.disk_or_part_device_path and
+                        '-part' not in pv.lvm_vg_name):
+                    # add the disk partition to the disk path
+                    partition_number = re.match('.*?([0-9]+)$',
+                                                pv.lvm_pv_name).group(1)
+                    pv_path += "-part%s" % partition_number
+
+                if (pv.pv_state == constants.PV_ADD):
+                    adding_pvs.append(pv_path)
+                    final_pvs.append(pv_path)
+                elif(pv.pv_state == constants.PV_DEL):
+                    removing_pvs.append(pv_path)
+                else:
+                    final_pvs.append(pv_path)
+
+        global_filter, update_filter = self._get_lvm_global_filter(host)
+
+        values = {
+            'platform::worker::storage::final_pvs': final_pvs,
+            'platform::worker::storage::adding_pvs': adding_pvs,
+            'platform::worker::storage::removing_pvs': removing_pvs,
+            'platform::worker::storage::lvm_global_filter': global_filter,
+            'platform::worker::storage::lvm_update_filter': update_filter}
+
+        return values
+
+    # TODO(oponcea): Make lvm global_filter generic
+    def _get_lvm_global_filter(self, host):
+        # Always include the global LVM devices in the final list of devices
+        filtered_disks = self._operator.storage.get_lvm_devices()
+        removing_disks = []
+
+        # add nova-local filter
+        pvs = self.dbapi.ipv_get_by_ihost(host.id)
+        for pv in pvs:
+            if pv.lvm_vg_name == constants.LVG_NOVA_LOCAL:
+                if pv.pv_state == constants.PV_DEL:
+                    removing_disks.append(pv.disk_or_part_device_path)
+                else:
+                    filtered_disks.append(pv.disk_or_part_device_path)
+            elif pv.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
+                if constants.CINDER_DRBD_DEVICE not in filtered_disks:
+                    filtered_disks.append(constants.CINDER_DRBD_DEVICE)
+
+        # The global filters contain only the final disks, while the update
+        # filter contains the transient list of removing disks as well
+        global_filter = self._operator.storage.format_lvm_filter(
+            list(set(filtered_disks)))
+
+        update_filter = self._operator.storage.format_lvm_filter(
+            list(set(removing_disks + filtered_disks)))
+
+        return global_filter, update_filter
