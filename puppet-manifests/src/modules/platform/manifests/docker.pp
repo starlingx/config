@@ -27,6 +27,11 @@ class platform::docker::config
       mode    => '0644',
       content => template('platform/dockerproxy.conf.erb'),
     }
+    ~> exec { 'perform systemctl daemon reload for docker proxy':
+      command     => 'systemctl daemon-reload',
+      logoutput   => true,
+      refreshonly => true,
+    } ~> Service['docker']
   }
 
   Class['::platform::filesystem::docker'] ~> Class[$name]
