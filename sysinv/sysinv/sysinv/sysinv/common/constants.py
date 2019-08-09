@@ -386,6 +386,10 @@ SB_DEFAULT_NAMES = {
     SB_TYPE_EXTERNAL: 'shared_services'
 }
 
+# Service names
+SERVICE_NAME_NOVA = 'nova'
+SERVICE_NAME_NEUTRON = 'neutron'
+
 # Storage backends services
 SB_SVC_CINDER = 'cinder'
 SB_SVC_GLANCE = 'glance'

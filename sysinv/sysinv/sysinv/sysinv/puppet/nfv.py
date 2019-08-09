@@ -272,7 +272,3 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
 
     def get_admin_url(self):
         return self._format_private_endpoint(self.SERVICE_PORT)
-
-    def _get_nova_endpoint_url(self):
-        return self._format_private_endpoint(
-            self._operator.nova.SERVICE_API_PORT)
