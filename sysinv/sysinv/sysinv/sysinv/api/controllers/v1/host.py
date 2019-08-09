@@ -2213,7 +2213,10 @@ class HostController(rest.RestController):
         if (os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
                 patched_ihost.get('action') in
                 [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
-            os.remove(tsc.RESTORE_IN_PROGRESS_FLAG)
+            # restore_in_progress flag file can only be deleted by root. So
+            # have to send a rpc request to sysinv-conductor to do it.
+            pecan.request.rpcapi.delete_restore_in_progress_flag(
+                pecan.request.context)
 
         return Host.convert_with_links(ihost_obj)
 
