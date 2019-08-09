@@ -3802,11 +3802,9 @@ class HostController(rest.RestController):
                        phost['bm_username'])))
 
         if password_exists and patch_bm_password:
-            if not pecan.request.rpcapi.create_barbican_secret(pecan.request.context,
-                                                               phost['uuid'],
-                                                               patch_bm_password):
-                raise wsme.exc.ClientSideError(
-                    _("%s Rejected: failed to create barbican secret " % phost['hostname']))
+            pecan.request.rpcapi.create_barbican_secret(pecan.request.context,
+                                                        phost['uuid'],
+                                                        patch_bm_password)
 
         LOG.info("%s bm semantic checks for user_agent %s passed" %
                  (phost['hostname'], pecan.request.user_agent))
