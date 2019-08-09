@@ -52,19 +52,11 @@ class NetworkingPuppet(base.BasePuppet):
         except exception.AddressNotFoundByName:
             gateway_address = None
 
-        try:
-            cgcs_nfs_address = self._get_address_by_name(
-                constants.CONTROLLER_CGCS_NFS, networktype).address
-        except exception.AddressNotFoundByName:
-            cgcs_nfs_address = None
-
         config.update({
             'platform::network::%s::params::gateway_address' % networktype:
                 gateway_address,
             'platform::network::%s::params::platform_nfs_address' % networktype:
                 platform_nfs_address,
-            'platform::network::%s::params::cgcs_nfs_address' % networktype:
-                cgcs_nfs_address,
         })
 
         return config

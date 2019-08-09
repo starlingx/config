@@ -39,9 +39,9 @@ class StoragePuppet(base.BasePuppet):
                 config.update({
                     'platform::drbd::pgsql::params::lv_size': pgsql_gib
                 })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_CGCS:
+            elif controller_fs.name == constants.FILESYSTEM_NAME_PLATFORM:
                 config.update({
-                    'platform::drbd::cgcs::params::lv_size': controller_fs.size
+                    'platform::drbd::platform::params::lv_size': controller_fs.size
                 })
             elif controller_fs.name == constants.FILESYSTEM_NAME_EXTENSION:
                 config.update({

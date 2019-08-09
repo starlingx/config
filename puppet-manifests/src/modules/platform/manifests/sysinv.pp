@@ -12,12 +12,12 @@ class platform::sysinv
 
   include ::platform::params
   include ::platform::amqp::params
-  include ::platform::drbd::cgcs::params
+  include ::platform::drbd::platform::params
 
   # sysinv-agent is started on all hosts
   include ::sysinv::agent
 
-  $keystone_key_repo_path = "${::platform::drbd::cgcs::params::mountpoint}/keystone"
+  $keystone_key_repo_path = "${::platform::drbd::platform::params::mountpoint}/keystone"
 
   group { 'sysinv':
     ensure => 'present',

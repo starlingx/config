@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -256,12 +256,12 @@ def abort_upgrade(from_load, to_load, upgrade):
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, to_load),
         os.path.join(utils.RABBIT_PATH, to_load),
-        os.path.join(tsc.CGCS_PATH, "ironic", to_load),
+        os.path.join(tsc.PLATFORM_PATH, "ironic", to_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", to_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", to_load),
         os.path.join(tsc.PLATFORM_PATH, "puppet", to_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", to_load),
-        os.path.join(tsc.CGCS_PATH, "ceilometer", to_load),
+        os.path.join(tsc.PLATFORM_PATH, "ceilometer", to_load),
         os.path.join(tsc.CONFIG_PATH, 'upgrades')
     ]
 
@@ -327,7 +327,7 @@ def complete_upgrade(from_load, to_load):
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, from_load),
         os.path.join(utils.RABBIT_PATH, from_load),
-        os.path.join(tsc.CGCS_PATH, "ironic", from_load),
+        os.path.join(tsc.PLATFORM_PATH, "ironic", from_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", from_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", from_load),
         os.path.join(tsc.PLATFORM_PATH, "puppet", from_load),
@@ -335,7 +335,7 @@ def complete_upgrade(from_load, to_load):
     ]
 
     upgrade_dirs.append(
-        os.path.join(tsc.CGCS_PATH, "ceilometer", from_load))
+        os.path.join(tsc.PLATFORM_PATH, "ceilometer", from_load))
 
     for directory in upgrade_dirs:
         try:

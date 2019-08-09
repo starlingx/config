@@ -41,8 +41,6 @@ from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 
-from sysinv.common.storage_backend_conf import StorageBackendConfig
-
 LOG = log.getLogger(__name__)
 
 
@@ -59,12 +57,6 @@ class ControllerFs(base.APIBase):
     between the internal object model and the API representation of
     a ControllerFs.
 
-    The database GiB of controller_fs - maps to
-          /var/lib/postgresql (pgsql-lv)
-    The image GiB of controller_fs - maps to
-          /opt/cgcs (cgcs-lv)
-    The extension GiB of controller_fs - maps to
-          /opt/extension (extension-lv)
     """
 
     uuid = types.uuid
@@ -121,10 +113,6 @@ class ControllerFs(base.APIBase):
 
         # never expose the isystem_id attribute
         controller_fs.isystem_id = wtypes.Unset
-
-        # we display the cgcs file system as glance to the customer
-        if controller_fs.name == constants.FILESYSTEM_NAME_CGCS:
-            controller_fs.name = constants.FILESYSTEM_DISPLAY_NAME_CGCS
 
         # never expose the isystem_id attribute, allow exposure for now
         # controller_fs.forisystemid = wtypes.Unset
@@ -200,14 +188,14 @@ def _check_relative_controller_multi_fs(controller_fs_new_list):
     :return: None.  Raise Client exception on failure.
     """
 
-    backup_gib_min = constants.BACKUP_OVERHEAD
-
     chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
 
     for chost in chosts:
 
         # Get the current backup size for the controller host
         backup_gib = 0
+        backup_gib_min = constants.BACKUP_OVERHEAD
+
         hostfs_list = pecan.request.dbapi.host_fs_get_by_ihost(chost.uuid)
         for host_fs in hostfs_list:
             if host_fs['name'] == constants.FILESYSTEM_NAME_BACKUP:
@@ -218,8 +206,8 @@ def _check_relative_controller_multi_fs(controller_fs_new_list):
             if fs.name == constants.FILESYSTEM_NAME_DATABASE:
                 database_gib = fs.size
                 backup_gib_min += fs.size
-            elif fs.name == constants.FILESYSTEM_NAME_CGCS:
-                cgcs_gib = fs.size
+            elif fs.name == constants.FILESYSTEM_NAME_PLATFORM:
+                platform_gib = fs.size
                 backup_gib_min += fs.size
 
         LOG.info(
@@ -229,14 +217,14 @@ def _check_relative_controller_multi_fs(controller_fs_new_list):
             raise wsme.exc.ClientSideError(_("backup size of %d is "
                                              "insufficient for host %s. "
                                              "Minimum backup size of %d is "
-                                             "required based upon glance size %d "
+                                             "required based upon platform size %d "
                                              "and database size %d. "
                                              "Rejecting modification "
                                              "request." %
                                              (backup_gib,
                                               chost.hostname,
                                               backup_gib_min,
-                                              cgcs_gib,
+                                              platform_gib,
                                               database_gib
                                               )))
 
@@ -274,7 +262,7 @@ def _check_controller_multi_fs(controller_fs_new_list,
         if ceph_mon_gib_new:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, "
+                "(doubled for upgrades), platform, "
                 "scratch, backup, extension and ceph-mon exceeds "
                 "growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
@@ -282,7 +270,7 @@ def _check_controller_multi_fs(controller_fs_new_list,
         else:
             msg = _(
                 "Total target growth size %s GiB for database "
-                "(doubled for upgrades), glance, scratch, "
+                "(doubled for upgrades), platform, scratch, "
                 "backup and extension exceeds growth limit of %s GiB." %
                 (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
             )
@@ -298,7 +286,7 @@ def _check_relative_controller_fs(controller_fs_new, controller_fs_list):
     """
 
     database_gib = 0
-    cgcs_gib = 0
+    platform_gib = 0
 
     chosts = pecan.request.dbapi.ihost_get_by_personality(
         constants.CONTROLLER)
@@ -316,8 +304,8 @@ def _check_relative_controller_fs(controller_fs_new, controller_fs_list):
             if controller_fs_new and fs['name'] == controller_fs_new['name']:
                 fs['size'] = controller_fs_new['size']
 
-            if fs['name'] == constants.DRBD_CGCS:
-                cgcs_gib = fs['size']
+            if fs['name'] == constants.FILESYSTEM_NAME_PLATFORM:
+                platform_gib = fs['size']
             elif fs['name'] == constants.FILESYSTEM_NAME_DATABASE:
                 database_gib = fs['size']
 
@@ -327,21 +315,21 @@ def _check_relative_controller_fs(controller_fs_new, controller_fs_list):
             return
 
         # Required mininum backup filesystem size
-        backup_gib_min = cgcs_gib + database_gib + constants.BACKUP_OVERHEAD
+        backup_gib_min = platform_gib + database_gib + constants.BACKUP_OVERHEAD
 
         if backup_gib < backup_gib_min:
             raise wsme.exc.ClientSideError(_("backup size of %d is "
                                              "insufficient for host %s. "
                                              "Minimum backup size of %d is "
                                              "required based on upon "
-                                             "glance=%d and database=%d and "
+                                             "platform=%d and database=%d and "
                                              "backup overhead of %d. "
                                              "Rejecting modification "
                                              "request." %
                                              (backup_gib,
                                               chost.hostname,
                                               backup_gib_min,
-                                              cgcs_gib,
+                                              platform_gib,
                                               database_gib,
                                               constants.BACKUP_OVERHEAD
                                               )))
@@ -459,7 +447,7 @@ def _check_controller_multi_fs_data(context, controller_fs_list_new):
     cgtsvg_growth_gib = 0
 
     lvdisplay_keys = [constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_DATABASE],
-                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_CGCS]]
+                      constants.FILESYSTEM_LV_DICT[constants.FILESYSTEM_NAME_PLATFORM]]
 
     lvdisplay_dict = pecan.request.rpcapi.get_controllerfs_lv_sizes(context)
 
@@ -601,57 +589,28 @@ class ControllerFsController(rest.RestController):
 
         reinstall_required = False
         reboot_required = False
-        force_resize = False
         modified_fs = []
-
-        for p_list in patch:
-            p_obj_list = jsonpatch.JsonPatch(p_list)
-
-            for p_obj in p_obj_list:
-                if p_obj['path'] == '/action':
-                    value = p_obj['value']
-                    patch.remove(p_list)
-                    if value == constants.FORCE_ACTION:
-                        force_resize = True
-                        LOG.info("Force action resize selected")
-                        break
 
         for p_list in patch:
             p_obj_list = jsonpatch.JsonPatch(p_list)
             for p_obj in p_obj_list:
                 if p_obj['path'] == '/name':
-                    fs_display_name = p_obj['value']
-                    if fs_display_name == constants.FILESYSTEM_DISPLAY_NAME_CGCS:
-                        fs_name = constants.FILESYSTEM_NAME_CGCS
-                    else:
-                        fs_name = fs_display_name
+                    fs_name = p_obj['value']
                 elif p_obj['path'] == '/size':
                     size = p_obj['value']
 
-            if fs_name not in valid_fs_list.keys() or fs_display_name == constants.FILESYSTEM_NAME_CGCS:
+            if fs_name not in valid_fs_list.keys():
                 msg = _("ControllerFs update failed: invalid filesystem "
-                        "'%s' " % fs_display_name)
+                        "'%s' " % fs_name)
                 raise wsme.exc.ClientSideError(msg)
             elif not cutils.is_int_like(size):
                 msg = _("ControllerFs update failed: filesystem '%s' "
-                        "size must be an integer " % fs_display_name)
+                        "size must be an integer " % fs_name)
                 raise wsme.exc.ClientSideError(msg)
             elif int(size) <= int(valid_fs_list[fs_name]):
                 msg = _("ControllerFs update failed: size for filesystem '%s' "
-                        "should be bigger than %s " % (
-                            fs_display_name, valid_fs_list[fs_name]))
+                        "should be bigger than %s " % (fs_name, valid_fs_list[fs_name]))
                 raise wsme.exc.ClientSideError(msg)
-            elif (fs_name == constants.FILESYSTEM_NAME_CGCS and
-                  StorageBackendConfig.get_backend(pecan.request.dbapi,
-                                                   constants.CINDER_BACKEND_CEPH)):
-                if force_resize:
-                    LOG.warn("Force resize ControllerFs: %s, though Ceph "
-                             "storage backend is configured" % fs_display_name)
-                else:
-                    raise wsme.exc.ClientSideError(
-                        _("ControllerFs %s size is not modifiable as Ceph is "
-                          "configured. Update size via Ceph Storage Pools." %
-                          fs_display_name))
 
             if fs_name in constants.SUPPORTED_REPLICATED_FILEYSTEM_LIST:
                 if utils.is_drbd_fs_resizing():
@@ -668,10 +627,6 @@ class ControllerFsController(rest.RestController):
             for p_list in patch:
                 p_obj_list = jsonpatch.JsonPatch(p_list)
                 for p_obj in p_obj_list:
-                    if p_obj['path'] == '/name':
-                        if p_obj['value'] == constants.FILESYSTEM_DISPLAY_NAME_CGCS:
-                            p_obj['value'] = constants.FILESYSTEM_NAME_CGCS
-
                     if p_obj['value'] == fs['name']:
                         try:
                             controller_fs_list_new += [ControllerFs(

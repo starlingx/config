@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2018 Wind River Systems, Inc.
+# Copyright (c) 2016-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -34,7 +34,6 @@ from tsconfig.tsconfig import SW_VERSION
 from tsconfig.tsconfig import PLATFORM_PATH
 from tsconfig.tsconfig import KEYRING_PATH
 from tsconfig.tsconfig import PLATFORM_CONF_FILE
-from tsconfig.tsconfig import CGCS_PATH
 from tsconfig.tsconfig import CONFIG_PATH
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_FLAG
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_COMPLETE_FLAG
@@ -657,8 +656,6 @@ def upgrade_controller(from_release, to_release):
     # Mount required filesystems from mate controller
     LOG.info("Mounting filesystems")
     nfs_mount_filesystem(PLATFORM_PATH)
-    os.mkdir(CGCS_PATH)
-    nfs_mount_filesystem(CGCS_PATH)
     nfs_mount_filesystem(utils.RABBIT_PATH)
     os.mkdir(POSTGRES_MOUNT_PATH)
     nfs_mount_filesystem(utils.POSTGRES_PATH, POSTGRES_MOUNT_PATH)
@@ -817,7 +814,6 @@ def upgrade_controller(from_release, to_release):
     # Remove mounts
     LOG.info("Removing mounts")
     unmount_filesystem(PLATFORM_PATH)
-    unmount_filesystem(CGCS_PATH)
     unmount_filesystem(utils.RABBIT_PATH)
     unmount_filesystem(POSTGRES_MOUNT_PATH)
     os.rmdir(POSTGRES_MOUNT_PATH)

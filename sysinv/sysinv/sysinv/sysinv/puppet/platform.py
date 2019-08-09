@@ -119,10 +119,6 @@ class PlatformPuppet(base.BasePuppet):
              constants.CONTROLLER_PLATFORM_NFS,
              constants.NETWORK_TYPE_MGMT),
 
-            (constants.CONTROLLER_CGCS_NFS,
-             constants.CONTROLLER_CGCS_NFS,
-             constants.NETWORK_TYPE_MGMT),
-
             # pxeboot network hosts
             (constants.PXECONTROLLER_HOSTNAME,
              constants.CONTROLLER_HOSTNAME,

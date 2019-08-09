@@ -170,7 +170,7 @@ class platform::drbd::rabbit ()
 class platform::drbd::platform::params (
   $device = '/dev/drbd2',
   $lv_name = 'platform-lv',
-  $lv_size = '2',
+  $lv_size = '10',
   $mountpoint = '/opt/platform',
   $port = '7790',
   $vg_name = 'cgts-vg',
@@ -192,31 +192,6 @@ class platform::drbd::platform ()
 }
 
 
-class platform::drbd::cgcs::params (
-  $device = '/dev/drbd3',
-  $lv_name = 'cgcs-lv',
-  $lv_size = '2',
-  $mountpoint = '/opt/cgcs',
-  $port = '7791',
-  $resource_name = 'drbd-cgcs',
-  $vg_name = 'cgts-vg',
-) {}
-
-class platform::drbd::cgcs ()
-  inherits ::platform::drbd::cgcs::params {
-
-  platform::drbd::filesystem { $resource_name:
-    vg_name      => $vg_name,
-    lv_name      => $lv_name,
-    lv_size      => $lv_size,
-    port         => $port,
-    device       => $device,
-    mountpoint   => $mountpoint,
-    resync_after => 'drbd-platform',
-  }
-}
-
-
 class platform::drbd::extension::params (
   $device = '/dev/drbd5',
   $lv_name = 'extension-lv',
@@ -231,10 +206,10 @@ class platform::drbd::extension (
 ) inherits ::platform::drbd::extension::params {
 
   include ::platform::params
-  include ::platform::drbd::cgcs::params
+  include ::platform::drbd::platform::params
 
   if str2bool($::is_primary_disk_rotational) {
-    $resync_after = $::platform::drbd::cgcs::params::resource_name
+    $resync_after = $::platform::drbd::platform::params::resource_name
   } else {
     $resync_after = undef
   }
@@ -499,7 +474,6 @@ class platform::drbd(
   include ::platform::drbd::pgsql
   include ::platform::drbd::rabbit
   include ::platform::drbd::platform
-  include ::platform::drbd::cgcs
   include ::platform::drbd::extension
   include ::platform::drbd::patch_vault
   include ::platform::drbd::etcd
@@ -530,7 +504,6 @@ class platform::drbd::bootstrap {
   include ::platform::drbd::pgsql
   include ::platform::drbd::rabbit
   include ::platform::drbd::platform
-  include ::platform::drbd::cgcs
   include ::platform::drbd::extension
 }
 
@@ -558,10 +531,10 @@ class platform::drbd::pgsql::runtime {
 }
 
 
-class platform::drbd::cgcs::runtime {
+class platform::drbd::platform::runtime {
   include ::platform::drbd::params
   include ::platform::drbd::runtime_service_enable
-  include ::platform::drbd::cgcs
+  include ::platform::drbd::platform
 }
 
 

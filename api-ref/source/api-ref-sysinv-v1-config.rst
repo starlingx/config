@@ -10278,12 +10278,12 @@ itemNotFound (404)
          "replicated": false, "size": 92
       },
       {
-         "logical_volume": "cgcs-lv",
+         "logical_volume": "platform-lv",
          "uuid": "d30cc018-9218-403e-a1c2-9a5691a8bffb",
          "links": [{"href": "http://127.168.204.2:6385/v1/controller_fs/d30cc018-9218-403e-a1c2-9a5691a8bffb", "rel": "self"}, {"href": "http://127.168.204.2:6385/controller_fs/d30cc018-9218-403e-a1c2-9a5691a8bffb", "rel": "bookmark"}],
          "created_at": "2017-09-14T17:54:15.896408+00:00",
          "updated_at": "2017-09-14T20:59:53.114344+00:00",
-         "name": "glance",
+         "name": "platform",
          "state": "available",
          "isystem_uuid": "a5b7f26c-423f-41ed-a660-cd8cff4627eb",
          "replicated": true,
@@ -10501,12 +10501,12 @@ itemNotFound (404)
        "controller_fs":
        [
            {
-               "logical_volume": "cgcs-lv",
+               "logical_volume": "platform-lv",
                "uuid": "d30cc018-9218-403e-a1c2-9a5691a8bffb",
                "links": [{"href": "http://127.168.204.2:6385/v1/controller_fs/d30cc018-9218-403e-a1c2-9a5691a8bffb", "rel": "self"}, {"href": "http://127.168.204.2:6385/controller_fs/d30cc018-9218-403e-a1c2-9a5691a8bffb", "rel": "bookmark"}],
                "created_at": "2017-09-14T17:54:15.896408+00:00",
                "updated_at": "2017-09-14T20:59:53.114344+00:00",
-               "name": "glance",
+               "name": "platform",
                "state": "available",
                "isystem_uuid": "a5b7f26c-423f-41ed-a660-cd8cff4627eb",
                "replicated": true,

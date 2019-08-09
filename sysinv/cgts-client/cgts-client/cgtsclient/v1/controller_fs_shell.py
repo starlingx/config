@@ -40,10 +40,6 @@ def _print_controller_fs_show(controller_fs):
            action='append',
            default=[],
            help="Modify controller filesystem sizes")
-@utils.arg('-f', '--force',
-           action='store_true',
-           default=False,
-           help="Force the resize operation ")
 def do_controllerfs_modify(cc, args):
     """Modify controller filesystem sizes."""
 
@@ -58,14 +54,9 @@ def do_controllerfs_modify(cc, args):
         except ValueError:
             raise exc.CommandError('Attributes must be a list of '
                                    'FS_NAME=SIZE not "%s"' % attr)
-    if args.force is True:
-        patch_list.append([{'op': 'replace',
-                            'path': '/action',
-                            'value': 'force_action'}])
 
     try:
-        controller_fs = cc.controller_fs.update_many(cc.isystem.list()[0].uuid,
-                                                     patch_list)
+        cc.controller_fs.update_many(cc.isystem.list()[0].uuid, patch_list)
     except exc.HTTPNotFound:
         raise exc.CommandError('Failed to modify controller filesystems')
 

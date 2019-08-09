@@ -46,11 +46,6 @@ class platform::sm
   $ironic_ip_param_ip            = $::platform::network::ironic::params::controller_address
   $ironic_ip_param_mask          = $::platform::network::ironic::params::subnet_prefixlen
 
-  include ::platform::drbd::cgcs::params
-  $cgcs_drbd_resource            = $::platform::drbd::cgcs::params::resource_name
-  $cgcs_fs_device                = $::platform::drbd::cgcs::params::device
-  $cgcs_fs_directory             = $::platform::drbd::cgcs::params::mountpoint
-
   include ::platform::drbd::pgsql::params
   $pg_drbd_resource              = $::platform::drbd::pgsql::params::resource_name
   $pg_fs_device                  = $::platform::drbd::pgsql::params::device
@@ -130,18 +125,12 @@ class platform::sm
   $platform_nfs_ip_param_mask  = $::platform::network::mgmt::params::subnet_prefixlen
   $platform_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
 
-  # CGCS NFS network is over the management network
-  $cgcs_nfs_ip_interface = $::platform::network::mgmt::params::interface_name
-  $cgcs_nfs_ip_param_ip = $::platform::network::mgmt::params::cgcs_nfs_address
-  $cgcs_nfs_ip_network_url = $::platform::network::mgmt::params::subnet_network_url
-  $cgcs_nfs_ip_param_mask = $::platform::network::mgmt::params::subnet_prefixlen
 
   $platform_nfs_subnet_url = "${platform_nfs_ip_network_url}/${platform_nfs_ip_param_mask}"
-  $cgcs_nfs_subnet_url = "${cgcs_nfs_ip_network_url}/${cgcs_nfs_ip_param_mask}"
 
   # lint:ignore:140chars
-  $nfs_server_mgmt_exports = "${cgcs_nfs_subnet_url}:${cgcs_fs_directory},${platform_nfs_subnet_url}:${platform_fs_directory},${platform_nfs_subnet_url}:${extension_fs_directory}"
-  $nfs_server_mgmt_mounts  = "${cgcs_fs_device}:${cgcs_fs_directory},${platform_fs_device}:${platform_fs_directory},${extension_fs_device}:${extension_fs_directory}"
+  $nfs_server_mgmt_exports = "${platform_nfs_subnet_url}:${platform_fs_directory},${platform_nfs_subnet_url}:${extension_fs_directory}"
+  $nfs_server_mgmt_mounts  = "${platform_fs_device}:${platform_fs_directory},${extension_fs_device}:${extension_fs_directory}"
   # lint:endignore:140chars
 
   ################## Openstack Parameters ######################
@@ -368,18 +357,6 @@ class platform::sm
     command => "sm-configure service_instance dockerdistribution-fs dockerdistribution-fs \"device=${dockerdistribution_fs_device},directory=${dockerdistribution_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
   }
 
-  exec { 'Configure CGCS DRBD':
-    command => "sm-configure service_instance drbd-cgcs drbd-cgcs:${hostunit} drbd_resource=${cgcs_drbd_resource}",
-  }
-
-  exec { 'Configure CGCS FileSystem':
-    command => "sm-configure service_instance cgcs-fs cgcs-fs \"device=${cgcs_fs_device},directory=${cgcs_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
-  }
-
-  exec { 'Configure CGCS Export FileSystem':
-    command => "sm-configure service_instance cgcs-export-fs cgcs-export-fs \"fsid=1,directory=${cgcs_fs_directory},options=rw,sync,no_root_squash,no_subtree_check,clientspec=${cgcs_nfs_subnet_url},unlock_on_stop=true\"",
-  }
-
   exec { 'Configure Extension DRBD':
     command => "sm-configure service_instance drbd-extension drbd-extension:${hostunit} \"drbd_resource=${extension_drbd_resource}\"",
   }
@@ -419,16 +396,6 @@ class platform::sm
 
   exec { 'Configure ETCD DRBD FileSystem':
     command => "sm-configure service_instance etcd-fs etcd-fs \"device=${etcd_fs_device},directory=${etcd_fs_directory},options=noatime,nodiratime,fstype=ext4,check_level=20\"",
-  }
-
-  if $system_mode == 'duplex-direct' or $system_mode == 'simplex' {
-      exec { 'Configure CGCS NFS':
-        command => "sm-configure service_instance cgcs-nfs-ip cgcs-nfs-ip \"ip=${cgcs_nfs_ip_param_ip},cidr_netmask=${cgcs_nfs_ip_param_mask},nic=${cgcs_nfs_ip_interface},arp_count=7,dc=yes\"",
-      }
-  } else {
-      exec { 'Configure CGCS NFS':
-        command => "sm-configure service_instance cgcs-nfs-ip cgcs-nfs-ip \"ip=${cgcs_nfs_ip_param_ip},cidr_netmask=${cgcs_nfs_ip_param_mask},nic=${cgcs_nfs_ip_interface},arp_count=7\"",
-      }
   }
 
   # TODO: region code needs to be revisited

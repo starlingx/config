@@ -1660,8 +1660,8 @@ def get_default_controller_fs_backup_size(rootfs_device):
 
         database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
-        cgcs_lv_size = constants.DEFAULT_CGCS_STOR_SIZE
-        backup_lv_size = database_storage + cgcs_lv_size + \
+        platform_lv_size = constants.DEFAULT_PLATFORM_STOR_SIZE
+        backup_lv_size = database_storage + platform_lv_size + \
             constants.BACKUP_OVERHEAD
 
     elif disk_size >= constants.MINIMUM_DISK_SIZE:
@@ -1670,7 +1670,7 @@ def get_default_controller_fs_backup_size(rootfs_device):
                  (rootfs_device, disk_size))
 
         # Due to the small size of the disk we can't provide the
-        # proper amount of backup space which is (database + cgcs_lv
+        # proper amount of backup space which is (database + platform_lv
         # + BACKUP_OVERHEAD) so we are using a smaller default.
         backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
 
