@@ -99,7 +99,7 @@ class CinderHelm(openstack.OpenstackBaseHelm):
         conf_cinder = {
             'DEFAULT': {
                 'enabled_backends': ','.join(
-                    b.name.encode('utf8', 'strict') for b in backends)
+                    str(b.name.encode('utf8', 'strict').decode('utf-8')) for b in backends)
             },
         }
 
