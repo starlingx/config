@@ -32,19 +32,10 @@ NETWORKTYPES_WITH_V4_ROUTES = [constants.NETWORK_TYPE_DATA]
 NETWORKTYPES_WITH_V6_ROUTES = [constants.NETWORK_TYPE_DATA]
 
 
-class BaseTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
-
-    def setUp(self):
-        super(BaseTestCase, self).setUp()
-        self.ports = []
-        self.interfaces = []
-        self.addresses = []
-        self.routes = []
-
-    def _setup_configuration(self):
-        # Create a single system and host for basic functional test
-        self._create_test_common()
-        self.host = self._create_test_host(constants.CONTROLLER)
+class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
+    """ This InterfaceTestCaseMixin needs to be used with a subclass
+        of BaseHostTestCase
+    """
 
     def assertIn(self, needle, haystack, message=''):
         """Custom assertIn that handles object comparison"""
@@ -52,7 +43,7 @@ class BaseTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
             # compare objects based on unique DB identifier
             needle = needle.id
             haystack = [o.id for o in haystack]
-        super(BaseTestCase, self).assertIn(needle, haystack, message)
+        super(InterfaceTestCaseMixin, self).assertIn(needle, haystack, message)
 
     def assertEqual(self, expected, observed, message=''):
         """Custom assertEqual that handles object comparison"""
@@ -60,7 +51,7 @@ class BaseTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
                 isinstance(observed, objbase.SysinvObject)):
             expected = expected.id
             observed = observed.id
-        super(BaseTestCase, self).assertEqual(expected, observed, message)
+        super(InterfaceTestCaseMixin, self).assertEqual(expected, observed, message)
 
     def _setup_address_and_routes(self, iface):
         if not iface['ifclass'] or iface['ifclass'] == constants.INTERFACE_CLASS_NONE:
@@ -267,8 +258,7 @@ class BaseTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
                 'forisystemid': self.system.id,
                 'subfunctions': ",".join(subfunctions)}
 
-        self.host = dbutils.create_test_ihost(**host)
-        return host
+        return dbutils.create_test_ihost(**host)
 
     @puppet.puppet_context
     def _update_context(self):
@@ -279,15 +269,26 @@ class BaseTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
         self.operator.context.update(self.context)
 
     def _setup_context(self):
+        self.ports = []
+        self.interfaces = []
+        self.addresses = []
+        self.routes = []
         self._setup_configuration()
         self._update_context()
 
+    def _setup_configuration(self):
+        pass
 
-class InterfaceTestCase(BaseTestCase):
+
+class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
+
+    def setUp(self):
+        super(InterfaceTestCase, self).setUp()
+        self._setup_context()
+
     def _setup_configuration(self):
         # Create a single port/interface for basic function testing
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         self.port, self.iface = self._create_ethernet_test(
             "mgmt0", constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_MGMT)
@@ -301,10 +302,6 @@ class InterfaceTestCase(BaseTestCase):
         self.port.save(self.admin_context)
         self.iface.save(self.admin_context)
         super(InterfaceTestCase, self)._update_context()
-
-    def setUp(self):
-        super(InterfaceTestCase, self).setUp()
-        self._setup_context()
 
     def test_is_platform_network_type_true(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -1365,18 +1362,7 @@ class InterfaceTestCase(BaseTestCase):
         return port, iface
 
 
-class InterfaceHostTestCase(BaseTestCase):
-    def _setup_configuration(self):
-        # Personality is set to worker to avoid issues due to missing OAM
-        # interface in this empty/dummy configuration
-        self._create_test_common()
-        self._create_test_host(constants.WORKER)
-
-    def _update_context(self):
-        # ensure DB entries are updated prior to updating the context which
-        # will re-read the entries from the DB.
-        self.host.save(self.admin_context)
-        super(InterfaceHostTestCase, self)._update_context()
+class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def setUp(self):
         super(InterfaceHostTestCase, self).setUp()
@@ -1389,6 +1375,17 @@ class InterfaceHostTestCase(BaseTestCase):
         self.expected_slave_interfaces = []
         self.expected_mlx_interfaces = []
         self.expected_bmc_interface = None
+
+    def _setup_configuration(self):
+        # Personality is set to worker to avoid issues due to missing OAM
+        # interface in this empty/dummy configuration
+        self.host = self._create_test_host(constants.WORKER)
+
+    def _update_context(self):
+        # ensure DB entries are updated prior to updating the context which
+        # will re-read the entries from the DB.
+        self.host.save(self.admin_context)
+        super(InterfaceHostTestCase, self)._update_context()
 
     def _create_hieradata_directory(self):
         hiera_path = os.path.join(os.environ['VIRTUAL_ENV'], 'hieradata')
@@ -1503,8 +1500,7 @@ class InterfaceControllerEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where all platform interfaces are
         # ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         self._create_ethernet_test('oam', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_OAM)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
@@ -1523,8 +1519,7 @@ class InterfaceControllerBond(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where all platform interfaces are
         # aggregated ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         self._create_bond_test('oam', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_OAM)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
@@ -1547,8 +1542,7 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where all platform interfaces are
         # vlan interfaces over aggregated ethernet interfaces
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         bond = self._create_bond_test('pxeboot',
                                       constants.INTERFACE_CLASS_PLATFORM,
                                       constants.NETWORK_TYPE_PXEBOOT)
@@ -1573,8 +1567,7 @@ class InterfaceControllerVlanOverEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where all platform interfaces are
         # vlan interfaces over ethernet interfaces
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         port, iface = self._create_ethernet_test(
             'pxeboot', constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_PXEBOOT)
@@ -1597,8 +1590,7 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.WORKER)
+        self.host = self._create_test_host(constants.WORKER)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_MGMT)
         self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
@@ -1639,8 +1631,7 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are vlan interfaces over ethernet
         # interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.WORKER)
+        self.host = self._create_test_host(constants.WORKER)
         port, iface = self._create_ethernet_test(
             'pxeboot', constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_PXEBOOT)
@@ -1667,9 +1658,8 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
 class InterfaceComputeBond(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        self._create_test_common()
         # worker and all interfaces are aggregated ethernet interfaces.
-        self._create_test_host(constants.WORKER)
+        self.host = self._create_test_host(constants.WORKER)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT)
         self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
@@ -1701,8 +1691,7 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are vlan interfaces over ethernet
         # interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.WORKER)
+        self.host = self._create_test_host(constants.WORKER)
         bond = self._create_bond_test('pxeboot',
                                       constants.INTERFACE_CLASS_PLATFORM,
                                       constants.NETWORK_TYPE_PXEBOOT)
@@ -1739,8 +1728,7 @@ class InterfaceCpeEthernet(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a controller subfunction and all interfaces are
         # ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         self._create_ethernet_test('oam', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_OAM)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
@@ -1784,8 +1772,7 @@ class InterfaceCpeVlanOverEthernet(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a controller subfunction and all interfaces are
         # vlan interfaces over ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         port, iface = self._create_ethernet_test(
             'pxeboot', constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_PXEBOOT)
@@ -1816,8 +1803,7 @@ class InterfaceCpeBond(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a controller subfunction and all interfaces are
         # aggregated ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         self._create_bond_test('oam', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_OAM)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
@@ -1849,8 +1835,7 @@ class InterfaceCpeVlanOverBond(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a controller subfunction and all interfaces are
         # vlan interfaces over aggregated ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER)
+        self.host = self._create_test_host(constants.CONTROLLER)
         bond = self._create_bond_test('pxeboot', constants.INTERFACE_CLASS_PLATFORM,
                                       constants.NETWORK_TYPE_PXEBOOT)
         self._create_vlan_test('oam', constants.INTERFACE_CLASS_PLATFORM,
@@ -1883,8 +1868,7 @@ class InterfaceCpeComputeEthernet(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a worker subfunction and all interfaces are
         # ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.WORKER)
+        self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER)
         self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
                                    constants.NETWORK_TYPE_DATA)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -1928,8 +1912,7 @@ class InterfaceCpeComputeVlanOverEthernet(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a worker subfunction and all interfaces are
         # vlan interfaces over ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.WORKER)
+        self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER)
         port, iface = self._create_ethernet_test(
             'pxeboot', constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_PXEBOOT)
@@ -1960,8 +1943,7 @@ class InterfaceCpeComputeBond(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a worker subfunction and all interfaces are
         # aggregated ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.WORKER)
+        self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER)
         self._create_bond_test('oam', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_OAM)
         self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
@@ -1993,8 +1975,7 @@ class InterfaceCpeComputeVlanOverBond(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # controller with a worker subfunction and all interfaces are
         # vlan interfaces over aggregated ethernet interfaces.
-        self._create_test_common()
-        self._create_test_host(constants.CONTROLLER, constants.WORKER)
+        self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER)
         bond = self._create_bond_test('pxeboot',
                                       constants.INTERFACE_CLASS_PLATFORM,
                                       constants.NETWORK_TYPE_PXEBOOT)

@@ -3,18 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
-
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.puppet import base
 
 
-class PuppetOperatorTestCase(base.PuppetTestCaseMixin,
-                             dbbase.BaseHostTestCase):
-
-    def setUp(self):
-        super(PuppetOperatorTestCase, self).setUp()
-        self._create_test_common()
+class PuppetOperatorTestSuite(base.PuppetTestCaseMixin):
+    """When PuppetOperatorTestSuite is added as a Mixin
+       to a testcase which is a subclass of BaseHostTestCase
+       these testcases are added to it
+    """
 
     def test_create_static_config(self):
         self.operator.create_static_config()
@@ -33,50 +30,67 @@ class PuppetOperatorTestCase(base.PuppetTestCaseMixin,
         assert self.mock_write_config.called
 
     def test_update_host_config(self):
-        host = self._create_test_host(constants.CONTROLLER)
-        self.operator.update_host_config(host)
+        self.operator.update_host_config(self.host)
         assert self.mock_write_config.called
 
 
-class PlatformIPv4ControllerHostTestCase(base.PuppetTestCaseMixin,
+#  ============= IPv4 environment tests ==============
+# Tests all puppet operations for a Controller (defaults to IPv4)
+class PlatformIPv4ControllerHostTestCase(PuppetOperatorTestSuite,
                                          dbbase.ControllerHostTestCase):
     pass
 
 
-class PlatformIPv4WorkerHostTestCase(base.PuppetTestCaseMixin,
+# Tests all puppet operations for a Worker (defaults to IPv4)
+class PlatformIPv4WorkerHostTestCase(PuppetOperatorTestSuite,
                                      dbbase.WorkerHostTestCase):
     pass
 
 
-class PlatformIPv4StorageHostTestCase(base.PuppetTestCaseMixin,
+# Tests all puppet operations for a Storage Host (defaults to IPv4)
+class PlatformIPv4StorageHostTestCase(PuppetOperatorTestSuite,
                                       dbbase.StorageHostTestCase):
     pass
 
 
-class PlatformIPv4AIOHostTestCase(base.PuppetTestCaseMixin,
+# Tests all puppet operations for an AIO Host (defaults to IPv4)
+class PlatformIPv4AIOHostTestCase(PuppetOperatorTestSuite,
                                   dbbase.AIOHostTestCase):
     pass
 
 
-class PlatformIPv6ControllerHostTestCase(base.PuppetTestCaseMixin,
+#  ============= IPv6 environment tests ==============
+# Tests all puppet operations for a Controller using IPv6
+class PlatformIPv6ControllerHostTestCase(PuppetOperatorTestSuite,
                                          dbbase.BaseIPv6Mixin,
                                          dbbase.ControllerHostTestCase):
     pass
 
 
-class PlatformIPv6WorkerHostTestCase(base.PuppetTestCaseMixin,
+# Tests all puppet operations for a Worker using IPv6
+class PlatformIPv6WorkerHostTestCase(PuppetOperatorTestSuite,
                                      dbbase.BaseIPv6Mixin,
                                      dbbase.WorkerHostTestCase):
     pass
 
 
-class PlatformIPv6StorageHostTestCase(base.PuppetTestCaseMixin,
+# Tests all puppet operations for a Storage Host using IPv6
+class PlatformIPv6StorageHostTestCase(PuppetOperatorTestSuite,
                                       dbbase.BaseIPv6Mixin,
                                       dbbase.StorageHostTestCase):
     pass
 
 
-class PlatformIPv6AIOHostTestCase(base.PuppetTestCaseMixin,
+# Tests all puppet operations for an AIO Host using IPv6
+class PlatformIPv6AIOHostTestCase(PuppetOperatorTestSuite,
                                   dbbase.BaseIPv6Mixin,
                                   dbbase.AIOHostTestCase):
+    pass
+
+
+#  ============= Ceph Backend environment tests ==============
+# Tests all puppet operations for an AIO Host using IPv4 and Ceph Backend
+class PlatformCephBackendAIOHostTestCase(PuppetOperatorTestSuite,
+                                         dbbase.BaseCephStorageBackendMixin,
+                                         dbbase.AIOHostTestCase):
     pass
