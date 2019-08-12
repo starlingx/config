@@ -697,7 +697,8 @@ def get_bridge_interface_name(context, iface):
         bridge = None
         if (iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET and
                 is_data_interface(context, iface) and
-                not is_dpdk_compatible(context, iface)):
+                not is_dpdk_compatible(context, iface) and
+                not is_vswitch_type_unaccelerated(context)):
             bridge = 'br-' + get_interface_os_ifname(context, iface)
         iface['_bridge'] = bridge  # cache the result
         return iface['_bridge']
