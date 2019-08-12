@@ -5336,6 +5336,18 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    def delete_restore_in_progress_flag(self, context):
+        """delete restore_in_progress flag file.
+
+        :param context: an admin context.
+        """
+        try:
+            os.remove(tsc.RESTORE_IN_PROGRESS_FLAG)
+        except OSError:
+            LOG.error("Failed to delete %s flag."
+                     % tsc.RESTORE_IN_PROGRESS_FLAG)
+            pass
+
     def update_route_config(self, context):
         """add or remove a static route
 

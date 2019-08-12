@@ -519,6 +519,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                   " system_timezone to conductor")
         return self.call(context, self.make_msg('configure_system_timezone'))
 
+    def delete_restore_in_progress_flag(self, context):
+        """Synchronously, have a conductor to delete restore_in_progress flag.
+
+        :param context: request context.
+        """
+        LOG.debug("ConductorApi.delete_restore_in_progress_flag: sending"
+                  " delete_restore_in_progress_flag to conductor")
+        return self.call(context,
+                         self.make_msg('delete_restore_in_progress_flag'))
+
     def update_route_config(self, context):
         """Synchronously, have a conductor configure static route.
 
