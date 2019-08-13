@@ -2408,9 +2408,9 @@ class DockerHelper(object):
         # quay.io and docker.io or no registry_name specified in image
         # tag, use user specified docker registry as default
         registry = self.registries_info[
-            constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY]['registry_replaced']
+            constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_replaced']
         registry_auth = self.registries_info[
-            constants.SERVICE_PARAM_NAME_DOCKER_DOCKER_REGISTRY]['registry_auth']
+            constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_auth']
 
         if registry:
             LOG.info("Registry %s not recognized or docker.io repository "
