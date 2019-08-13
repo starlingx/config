@@ -10104,6 +10104,25 @@ itemNotFound (404)
                "updated_at": "2015-03-11T02:50:57.361006+00:00",
                "ihost_uuid": "1ef159f8-0192-4879-a08e-f60328486e34",
            }
+           {
+               "name": "kubelet"
+               "logical_volume": "kubelet-lv",
+               "size": "10"
+               "uuid": "321ac374-1e35-4700-bfaa-cee2f2d44888",
+               "links": [
+                   {
+                       "href": "http://10.10.10.2:6385/v1/host_fs/321ac374-1e35-4700-bfaa-cee2f2d44888",
+                       "rel": "self"
+                   },
+                   {
+                       "href": "http://10.10.10.2:6385/host_fs/321ac374-1e35-4700-bfaa-cee2f2d44888",
+                       "rel": "bookmark"
+                   }
+               ],
+               "created_at": "2015-03-11T02:46:55.730611+00:00",
+               "updated_at": "2015-03-11T02:50:57.361006+00:00",
+               "ihost_uuid": "1ef159f8-0192-4879-a08e-f60328486e34",
+           }
        ]
    }
 
