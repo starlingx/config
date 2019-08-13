@@ -5399,22 +5399,6 @@ class HostController(rest.RestController):
                   "enabled.") %
                 (num_monitors, required_monitors))
 
-        try:
-            # If osdmap is empty which is the restore case, then create osds.
-            osd_stats = ceph_helper.get_osd_stats()
-            if int(osd_stats['num_osds']) == 0:
-                i_host = pecan.request.dbapi.ihost_get(ihost['uuid'])
-                runtime_manifests = True
-                for stor in istors:
-                    pecan.request.rpcapi.update_ceph_osd_config(
-                        pecan.request.context,
-                        i_host,
-                        stor.uuid,
-                        runtime_manifests)
-        except Exception:
-            raise wsme.exc.ClientSideError(
-                _("Restore Ceph config failed. Retry unlocking storage node."))
-
     @staticmethod
     def check_updates_while_unlocked(hostupdate, delta):
         """Check semantics host-update of an unlocked host."""
