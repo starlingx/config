@@ -152,6 +152,9 @@ spec:
           - |
             #!/bin/bash
             sed "s|__KUBERNETES_NODE_NAME__|${KUBERNETES_NODE_NAME}|g" /tmp/multus-conf/05-multus.conf > /usr/src/multus-cni/images/05-multus.conf
+            <%- if @pod_network_ipversion == 6 -%>
+            sed -i 's#//\${KUBERNETES_SERVICE_HOST}#//\[\${KUBERNETES_SERVICE_HOST}\]#' /entrypoint.sh
+            <%- end -%>
             /entrypoint.sh --multus-conf-file=/usr/src/multus-cni/images/05-multus.conf
         resources:
           requests:
