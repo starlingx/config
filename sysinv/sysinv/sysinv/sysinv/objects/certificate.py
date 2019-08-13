@@ -31,4 +31,5 @@ class Certificate(base.SysinvObject):
         return cls.dbapi.certificate_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.certificate_update(self.uuid, updates)
+        self.dbapi.certificate_update(self.uuid,  # pylint: disable=no-member
+                                      updates)

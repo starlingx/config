@@ -130,7 +130,7 @@ class BaseHelm(object):
         return self._count_hosts_by_label(common.LABEL_CONTROLLER)
 
     def _num_computes(self):
-        return self._count_hosts_by_label(common.LABEL_COMPUTE)
+        return self._count_hosts_by_label(common.LABEL_COMPUTE_LABEL)
 
     def _num_controllers_by_personality(self):
         return int(self.dbapi.count_hosts_by_personality(

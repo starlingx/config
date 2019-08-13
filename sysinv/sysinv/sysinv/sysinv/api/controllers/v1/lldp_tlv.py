@@ -200,9 +200,6 @@ class LLDPTLVController(rest.RestController):
     @wsme_pecan.wsexpose(LLDPTLV, int)
     def get_one(self, id):
         """Retrieve information about the given lldp tlv."""
-        if self._from_ihosts:
-            raise exception.OperationNotPermitted
-
         rpc_lldp_tlv = objects.lldp_tlv.get_by_id(
             pecan.request.context, id)
         return LLDPTLV.convert_with_links(rpc_lldp_tlv)

@@ -42,11 +42,11 @@ from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import uuidutils
 
-# pylint: disable=unused-import
-from sysinv.api.controllers.v1 import storage_ceph           # noqa
-from sysinv.api.controllers.v1 import storage_lvm            # noqa
-from sysinv.api.controllers.v1 import storage_file           # noqa
-from sysinv.api.controllers.v1 import storage_ceph_external  # noqa
+# The following four imports implicitly pull in constants and functionality
+from sysinv.api.controllers.v1 import storage_ceph  # noqa: F401 pylint: disable=unused-import
+from sysinv.api.controllers.v1 import storage_lvm  # noqa: F401 pylint: disable=unused-import
+from sysinv.api.controllers.v1 import storage_file  # noqa: F401 pylint: disable=unused-import
+from sysinv.api.controllers.v1 import storage_ceph_external  # noqa: F401 pylint: disable=unused-import
 
 LOG = log.getLogger(__name__)
 

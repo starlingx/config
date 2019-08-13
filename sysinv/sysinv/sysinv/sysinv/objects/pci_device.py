@@ -50,4 +50,5 @@ class PCIDevice(base.SysinvObject):
         return cls.dbapi.pci_device_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.pci_device_update(self.uuid, updates)
+        self.dbapi.pci_device_update(self.uuid,  # pylint: disable=no-member
+                                     updates)

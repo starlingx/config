@@ -287,6 +287,7 @@ class CephOperator(object):
                 reason=response.reason)
         return response, body
 
+    # TODO(rchurch): remove this method and just use get_osd_pool_quota
     def osd_get_pool_quota(self, pool_name):
         """Get the quota for an OSD pool
         :param pool_name:
@@ -299,8 +300,8 @@ class CephOperator(object):
         else:
             LOG.error("Getting the quota for %(name)s pool failed:%(reason)s)"
                       % {"name": pool_name, "reason": resp.reason})
-            raise exception.CephPoolGetFailure(pool=pool_name,
-                                               reason=resp.reason)
+            raise exception.CephPoolGetQuotaFailure(pool=pool_name,
+                                                    reason=resp.reason)
 
     def osd_create(self, stor_uuid, **kwargs):
         """ Create osd via ceph api
@@ -522,8 +523,8 @@ class CephOperator(object):
 
         resp, quota = self._ceph_api.osd_get_pool_quota(pool_name, body='json')
         if not resp.ok:
-            e = exception.CephPoolGetQuotaFailure(
-                pool=pool_name, reason=resp.reason)
+            e = exception.CephPoolGetQuotaFailure(pool=pool_name,
+                                                  reason=resp.reason)
             LOG.error(e)
             raise e
         else:
@@ -1444,9 +1445,8 @@ class CephOperator(object):
                 if t.uuid == self.primary_tier_uuid:
 
                     # Query ceph to get rgw object pool name.
-                    # To be safe let configure_osd_pools() be the only place that can
-                    # update the object pool name in CEPH_POOLS, so we make a local
-                    # copy of CEPH_POOLS here.
+                    # a local copy of CEPH_POOLS here is wasteful.
+                    # Nothing changes it anymore.
                     pools_snapshot = copy.deepcopy(CEPH_POOLS)
                     for pool in pools_snapshot:
                         if pool['pool_name'] == constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL:

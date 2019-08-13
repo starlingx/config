@@ -115,4 +115,5 @@ class Storage(base.SysinvObject):
         return cls.dbapi.istor_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.istor_update(self.uuid, updates)
+        self.dbapi.istor_update(self.uuid,  # pylint: disable=no-member
+                                updates)

@@ -32,4 +32,5 @@ class ServiceParameter(base.SysinvObject):
         return cls.dbapi.service_parameter_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.service_parameter_update(self.uuid, updates)
+        self.dbapi.service_parameter_update(self.uuid,  # pylint: disable=no-member
+                                            updates)

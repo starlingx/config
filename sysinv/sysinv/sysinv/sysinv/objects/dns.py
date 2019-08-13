@@ -36,4 +36,5 @@ class DNS(base.SysinvObject):
         return cls.dbapi.idns_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.idns_update(self.uuid, updates)
+        self.dbapi.idns_update(self.uuid,  # pylint: disable=no-member
+                               updates)

@@ -21,6 +21,12 @@ class ElasticBaseHelm(base.BaseHelm):
             base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_MONITOR]
     }
 
+    @property
+    def CHART(self):
+        # subclasses must define the property: CHART='name of chart'
+        # if an author of a new chart forgets this, NotImplementedError is raised
+        raise NotImplementedError
+
     def get_namespaces(self):
         return self.SUPPORTED_NAMESPACES
 

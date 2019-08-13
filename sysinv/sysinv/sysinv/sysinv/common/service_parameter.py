@@ -9,7 +9,6 @@
 
 import netaddr
 import pecan
-import rpm
 import wsme
 
 from sysinv.common import constants
@@ -248,16 +247,6 @@ def _validate_mac_address(name, value):
                 name))
     except netaddr.core.NotRegisteredError:
         pass  # allow any OUI value regardless of registration
-
-
-def _rpm_pkg_is_installed(pkg_name):
-    ts = rpm.TransactionSet()
-    mi = ts.dbMatch()
-    mi.pattern('name', rpm.RPMMIRE_GLOB, pkg_name)
-    sum = 0
-    for h in mi:
-        sum += 1
-    return (sum > 0)
 
 
 def _validate_radosgw_enabled(name, value):

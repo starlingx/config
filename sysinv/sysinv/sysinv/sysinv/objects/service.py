@@ -30,4 +30,5 @@ class Service(base.SysinvObject):
         return cls.dbapi.service_get(name)
 
     def save_changes(self, context, updates):
-        self.dbapi.service_update(self.name, updates)
+        self.dbapi.service_update(self.name,  # pylint: disable=no-member
+                                  updates)

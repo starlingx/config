@@ -41,4 +41,5 @@ class CephMon(base.SysinvObject):
         return cls.dbapi.ceph_mon_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.ceph_mon_update(self.uuid, updates)
+        self.dbapi.ceph_mon_update(self.uuid,  # pylint: disable=no-member
+                                   updates)

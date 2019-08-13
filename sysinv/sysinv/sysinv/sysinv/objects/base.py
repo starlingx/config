@@ -377,7 +377,10 @@ class SysinvObject(object):
     @remotable
     def refresh(self, context):
         """Refresh the object fields from the persistent store"""
-        current = self.__class__.get_by_uuid(context, uuid=self.uuid)
+        # todo(jkung)  uuid is not declared in this baseclass
+        # which means every subclass MUST declare it unless this is refactored
+        current = self.__class__.get_by_uuid(context,
+                                             uuid=self.uuid)  # pylint: disable=no-member
         for field in self.fields:
             if (hasattr(self, get_attrname(field)) and
                     self[field] != current[field]):
@@ -508,7 +511,7 @@ class ObjectListBase(object):
             new_obj = self.__class__()
             new_obj.objects = self.objects[index]
             # NOTE(danms): We must be mixed in with an SysinvObject!
-            new_obj.obj_reset_changes()
+            new_obj.obj_reset_changes()  # pylint: disable=no-member
             new_obj._context = self._context
             return new_obj
         return self.objects[index]

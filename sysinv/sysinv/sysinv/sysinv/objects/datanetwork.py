@@ -39,4 +39,5 @@ class DataNetwork(base.SysinvObject):
         return cls.dbapi.datanetwork_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.datanetwork_update(self.uuid, updates)
+        self.dbapi.datanetwork_update(self.uuid,  # pylint: disable=no-member
+                                      updates)

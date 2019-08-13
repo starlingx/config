@@ -51,4 +51,5 @@ class SensorGroupDiscrete(base.SysinvObject):
         return cls.dbapi.isensorgroup_discrete_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.isensorgroup_discrete_update(self.uuid, updates)
+        self.dbapi.isensorgroup_discrete_update(self.uuid,  # pylint: disable=no-member
+                                                updates)

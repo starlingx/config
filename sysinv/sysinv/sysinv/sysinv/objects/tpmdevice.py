@@ -34,4 +34,5 @@ class TPMDevice(base.SysinvObject):
         return cls.dbapi.tpmdevice_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.tpmdevice_update(self.uuid, updates)
+        self.dbapi.tpmdevice_update(self.uuid,  # pylint: disable=no-member
+                                    updates)

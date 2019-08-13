@@ -98,7 +98,7 @@ class OAMNetwork(base.SysinvObject):
 
         :param context: Security context
         """
-        network = self.dbapi._network_get(self.uuid)
+        network = self.dbapi._network_get(self.uuid)  # pylint: disable=no-member
         address_pool = network.address_pool
         addresses = OAMNetwork._get_pool_addresses(address_pool)
 

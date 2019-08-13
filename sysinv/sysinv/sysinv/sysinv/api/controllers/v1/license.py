@@ -133,6 +133,6 @@ class LicenseController(rest.RestController):
         try:
             pecan.request.rpcapi.install_license_file(pecan.request.context, contents)
         except Exception as e:
-            return dict(success="", error=e.value)
+            return dict(success="", error=str(e))
 
         return dict(success="Success: new license installed", error="")

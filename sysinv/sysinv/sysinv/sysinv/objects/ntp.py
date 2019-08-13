@@ -37,4 +37,5 @@ class NTP(base.SysinvObject):
         return cls.dbapi.intp_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.intp_update(self.uuid, updates)
+        self.dbapi.intp_update(self.uuid,  # pylint: disable=no-member
+                               updates)

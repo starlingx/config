@@ -30,4 +30,5 @@ class Journal(base.SysinvObject):
         return cls.dbapi.journal_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.journal_update(self.uuid, updates)
+        self.dbapi.journal_update(self.uuid,  # pylint: disable=no-member
+                                  updates)

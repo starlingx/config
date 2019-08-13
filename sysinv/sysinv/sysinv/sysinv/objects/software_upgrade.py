@@ -37,4 +37,5 @@ class SoftwareUpgrade(base.SysinvObject):
         return cls.dbapi.software_upgrade_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.software_upgrade_update(self.uuid, updates)
+        self.dbapi.software_upgrade_update(self.uuid,  # pylint: disable=no-member
+                                           updates)

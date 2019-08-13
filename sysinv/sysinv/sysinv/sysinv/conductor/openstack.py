@@ -315,7 +315,7 @@ class OpenStackOperator(object):
 
                     nhosts = []
                     if hasattr(metadata, 'hosts'):
-                        nhosts = metadata.hosts or []
+                        nhosts = metadata.hosts or []  # pylint: disable=no-member
 
                     if ihost.hostname in nhosts:
                         LOG.warn("host=%s in already in aggregate id=%s" %
@@ -485,10 +485,10 @@ class OpenStackOperator(object):
             region1_name = get_region_name('region_1_name')
             if region1_name is None:
                 region1_name = 'RegionOne'
-            service_list = self._get_keystoneclient(OPENSTACK_CONFIG).services.list()
+            service_list = self._get_keystone_client(OPENSTACK_CONFIG).services.list()
             for s in service_list:
                 if s.name.find(constants.SERVICE_TYPE_CINDER) != -1:
-                    endpoint_list += self._get_keystoneclient(OPENSTACK_CONFIG).endpoints.list(
+                    endpoint_list += self._get_keystone_client(OPENSTACK_CONFIG).endpoints.list(
                                      service=s, region=region1_name)
         except Exception:
             LOG.error("Failed to get keystone endpoints for cinder.")
@@ -610,7 +610,7 @@ class OpenStackOperator(object):
         region1_name = get_region_name('region_1_name')
         if region1_name is None:
             region1_name = 'RegionOne'
-        auth_ref = self._get_keystoneclient(PLATFORM_CONFIG).auth_ref
+        auth_ref = self._get_keystone_client(PLATFORM_CONFIG).auth_ref
         if auth_ref is None:
             raise exception.SysinvException(_("Unable to get auth ref "
                                             "from keystone client"))

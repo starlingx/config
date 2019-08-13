@@ -101,7 +101,8 @@ class Host(base.SysinvObject):
         return cls.dbapi.ihost_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.ihost_update(self.uuid, updates)
+        self.dbapi.ihost_update(self.uuid,  # pylint: disable=no-member
+                                updates)
 
 
 class ihost(Host):

@@ -198,10 +198,10 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         return self._get_rgw_public_url()
 
     def get_internal_url(self):
-        return self.get_rgw_internal_url()
+        return self._get_rgw_internal_url()
 
     def get_admin_url(self):
-        return self.get_rgw_admin_url()
+        return self._get_rgw_admin_url()
 
     def _get_rgw_region_name(self):
         return self._get_service_region_name(self.SERVICE_NAME_RGW)

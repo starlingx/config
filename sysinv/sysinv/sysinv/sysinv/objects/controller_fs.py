@@ -41,4 +41,5 @@ class ControllerFS(base.SysinvObject):
         return cls.dbapi.controller_fs_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.controller_fs_update(self.uuid, updates)
+        self.dbapi.controller_fs_update(self.uuid,  # pylint: disable=no-member
+                                        updates)

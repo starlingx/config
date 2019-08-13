@@ -1547,18 +1547,6 @@ class ConductorManager(service.PeriodicService):
         if host['hostname'] == constants.STORAGE_0_HOSTNAME:
             self._ceph_mon_create(host)
 
-    # TODO(CephPoolsDecouple): remove
-    def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
-        """Configure or update configuration of the OSD pools.
-        If none of the optionals are provided then all pools are updated based on DB configuration.
-
-        :param context: an admin context.
-        :param ceph_backend: Optional ceph backend object of a tier
-        :param new_pool_size: Optional override for replication number.
-        :param new_pool_min_size: Optional override for minimum replication number.
-        """
-        self._ceph.configure_osd_pools(ceph_backend, new_pool_size, new_pool_min_size)
-
     def remove_host_config(self, context, host_uuid):
         """Remove configuration files for a host.
 
@@ -6498,7 +6486,7 @@ class ConductorManager(service.PeriodicService):
         # self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
         #                                   constants.SB_TYPE_EXTERNAL)
 
-    def report_exernal_config_failure(self, host_uuid, error):
+    def report_external_config_failure(self, host_uuid, error):
         """
            Callback for Sysinv Agent
 
@@ -7109,9 +7097,6 @@ class ConductorManager(service.PeriodicService):
         """Update the service parameter configuration"""
 
         LOG.info("Updating parameters configuration for service: %s" % service)
-
-        if service == constants.SERVICE_TYPE_CEPH:
-            return self._ceph.update_service_config(do_apply)
 
         # On service parameter add just update the host profile
         # for personalities pertinent to that service

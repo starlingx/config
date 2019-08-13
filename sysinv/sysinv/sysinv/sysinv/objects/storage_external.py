@@ -24,4 +24,5 @@ class StorageExternal(storage_backend.StorageBackend):
         return cls.dbapi.storage_external_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.storage_external_update(self.uuid, updates)
+        self.dbapi.storage_external_update(self.uuid,  # pylint: disable=no-member
+                                           updates)

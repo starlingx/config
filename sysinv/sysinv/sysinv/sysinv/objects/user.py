@@ -39,4 +39,5 @@ class User(base.SysinvObject):
         return cls.dbapi.iuser_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.iuser_update(self.uuid, updates)
+        self.dbapi.iuser_update(self.uuid,  # pylint: disable=no-member
+                                updates)

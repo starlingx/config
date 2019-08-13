@@ -34,7 +34,7 @@ class Collection(base.APIBase):
 
     @property
     def collection(self):
-        return getattr(self, self._type)
+        return getattr(self, self._type)  # pylint: disable=no-member
 
     def has_next(self, limit):
         """Return whether collection has more items."""
@@ -45,7 +45,7 @@ class Collection(base.APIBase):
         if not self.has_next(limit):
             return wtypes.Unset
 
-        resource_url = url or self._type
+        resource_url = url or self._type  # pylint: disable=no-member
         q_args = ''.join(['%s=%s&' % (key, kwargs[key]) for key in kwargs])
         next_args = '?%(args)slimit=%(limit)d&marker=%(marker)s' % {
                                             'args': q_args, 'limit': limit,

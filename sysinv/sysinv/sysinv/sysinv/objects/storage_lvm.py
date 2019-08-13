@@ -24,4 +24,5 @@ class StorageLVM(storage_backend.StorageBackend):
         return cls.dbapi.storage_lvm_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.storage_lvm_update(self.uuid, updates)
+        self.dbapi.storage_lvm_update(self.uuid,  # pylint: disable=no-member
+                                      updates)

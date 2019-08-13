@@ -48,4 +48,5 @@ class Peer(base.SysinvObject):
         return cls.dbapi.peer_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.peer_update(self.uuid, updates)
+        self.dbapi.peer_update(self.uuid,  # pylint: disable=no-member
+                               updates)

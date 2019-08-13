@@ -438,8 +438,8 @@ def add_port_filter_by_numa_node(query, nodeid):
     if utils.is_int_like(nodeid):
         #
         # Should not need join due to polymorphic ports table
-        # query = query.join(models.ports,
-        #                    models.EthernetPorts.id == models.ports.id)
+        # query = query.join(models.Ports,
+        #                    models.EthernetPorts.id == models.Ports.id)
         #
         # Query of ethernet_ports table should return data from
         # corresponding ports table entry so should be able to
@@ -475,8 +475,8 @@ def add_port_filter_by_host(query, hostid):
     if utils.is_int_like(hostid):
         #
         # Should not need join due to polymorphic ports table
-        # query = query.join(models.ports,
-        #                    models.EthernetPorts.id == models.ports.id)
+        # query = query.join(models.Ports,
+        #                    models.EthernetPorts.id == models.Ports.id)
         #
         # Query of ethernet_ports table should return data from
         # corresponding ports table entry so should be able to
@@ -989,9 +989,9 @@ def add_sensor_filter_by_ihost_sensorgroup(query, hostid, sensorgroupid):
 
     elif utils.is_uuid_like(hostid) and utils.is_uuid_like(sensorgroupid):
         query = query.join(models.ihost,
-                           models.isensorgroup)
+                           models.SensorGroups)
         return query.filter(models.ihost.uuid == hostid,
-                            models.isensorgroup.uuid == sensorgroupid)
+                            models.SensorGroups.uuid == sensorgroupid)
 
     LOG.debug("sensor_filter_by_host_isensorgroup: "
               "No match for supplied filter ids (%s, %s)"
@@ -2514,7 +2514,7 @@ class Connection(api.Connection):
                                       values)
 
     def virtual_interface_destroy(self, interface_id):
-        return self._interface_destroy(models.VirtuaInterfaces, interface_id)
+        return self._interface_destroy(models.VirtualInterfaces, interface_id)
 
     def _disk_get(self, disk_id, forihostid=None):
         query = model_query(models.idisk)
@@ -6738,7 +6738,7 @@ class Connection(api.Connection):
             port = self.port_get(int(portid))
         elif utils.is_uuid_like(portid):
             port = self.port_get(portid.strip())
-        elif isinstance(portid, models.port):
+        elif isinstance(portid, models.Ports):
             port = portid
         else:
             raise exception.PortNotFound(port=portid)
@@ -6884,7 +6884,7 @@ class Connection(api.Connection):
                 agent = self.lldp_agent_get(int(agentid))
             elif utils.is_uuid_like(agentid):
                 agent = self.lldp_agent_get(agentid.strip())
-            elif isinstance(agentid, models.lldp_agents):
+            elif isinstance(agentid, models.LldpAgents):
                 agent = agentid
             else:
                 raise exception.LldpAgentNotFound(agent=agentid)
@@ -6894,7 +6894,7 @@ class Connection(api.Connection):
                 neighbour = self.lldp_neighbour_get(int(neighbourid))
             elif utils.is_uuid_like(neighbourid):
                 neighbour = self.lldp_neighbour_get(neighbourid.strip())
-            elif isinstance(neighbourid, models.lldp_neighbours):
+            elif isinstance(neighbourid, models.LldpNeighbours):
                 neighbour = neighbourid
             else:
                 raise exception.LldpNeighbourNotFound(neighbour=neighbourid)
@@ -6930,7 +6930,7 @@ class Connection(api.Connection):
                 agent = self.lldp_agent_get(int(agentid))
             elif utils.is_uuid_like(agentid):
                 agent = self.lldp_agent_get(agentid.strip())
-            elif isinstance(agentid, models.lldp_agents):
+            elif isinstance(agentid, models.LldpAgents):
                 agent = agentid
             else:
                 raise exception.LldpAgentNotFound(agent=agentid)
@@ -6940,7 +6940,7 @@ class Connection(api.Connection):
                 neighbour = self.lldp_neighbour_get(int(neighbourid))
             elif utils.is_uuid_like(neighbourid):
                 neighbour = self.lldp_neighbour_get(neighbourid.strip())
-            elif isinstance(neighbourid, models.lldp_neighbours):
+            elif isinstance(neighbourid, models.LldpNeighbours):
                 neighbour = neighbourid
             else:
                 raise exception.LldpNeighbourNotFound(neighbour=neighbourid)

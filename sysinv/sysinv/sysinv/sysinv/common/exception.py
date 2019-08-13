@@ -606,6 +606,10 @@ class MultipleResults(SysinvException):
     message = _("More than one result found.")
 
 
+class NTPNotFound(NotFound):
+    message = _("No NTP with id %(intp_id)s found.")
+
+
 class PTPNotFound(NotFound):
     message = _("No PTP with id %(uuid)s found.")
 
@@ -810,6 +814,10 @@ class AddressPoolRequired(Conflict):
 
 class AddressPoolNotFound(NotFound):
     message = _("Address pool %(address_pool_uuid)s not found")
+
+
+class AddressPoolNotFoundByID(NotFound):
+    message = _("Address pool %(address_pool_id)s not found")
 
 
 class AddressPoolNotFoundByName(NotFound):

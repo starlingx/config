@@ -334,7 +334,7 @@ class ServiceParameterController(rest.RestController):
 
         if len(parameters) > 1:
             msg = _("Cannot specify multiple parameters with custom resource.")
-            raise wsme.exc.CommandError(msg)
+            raise wsme.exc.ClientSideError(msg)
 
         for name, value in parameters.items():
             new_record = {

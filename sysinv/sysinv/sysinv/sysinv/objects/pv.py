@@ -50,4 +50,5 @@ class PV(base.SysinvObject):
         return cls.dbapi.ipv_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.ipv_update(self.uuid, updates)
+        self.dbapi.ipv_update(self.uuid,  # pylint: disable=no-member
+                              updates)

@@ -370,8 +370,8 @@ class StorageController(rest.RestController):
                 p['value'] = ihost.id
             elif p['path'] == '/tier_uuid':
                 p['path'] = '/fortierid'
-                tier = objects.tier.get_by_uuid(pecan.request.context,
-                                                p['value'])
+                tier = objects.storage_tier.get_by_uuid(pecan.request.context,
+                                                        p['value'])
                 p['value'] = tier.id
 
         try:

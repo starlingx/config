@@ -31,4 +31,5 @@ class SDNController(base.SysinvObject):
         return cls.dbapi.sdn_controller_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.sdn_controller_update(self.uuid, updates)
+        self.dbapi.sdn_controller_update(self.uuid,  # pylint: disable=no-member
+                                         updates)

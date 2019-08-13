@@ -29,5 +29,7 @@ class HelmOverrides(base.SysinvObject):
         return cls.dbapi.helm_override_get(app_id, name, namespace)
 
     def save_changes(self, context, updates):
-        self.dbapi.helm_override_update(self.app_id, self.name,
-                                        self.namespace, updates)
+        self.dbapi.helm_override_update(self.app_id,  # pylint: disable=no-member
+                                        self.name,  # pylint: disable=no-member
+                                        self.namespace,  # pylint: disable=no-member
+                                        updates)

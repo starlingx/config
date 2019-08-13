@@ -49,4 +49,5 @@ class DRBDConfig(base.SysinvObject):
         return cls.dbapi.drbdconfig_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.drbdconfig_update(self.uuid, updates)
+        self.dbapi.drbdconfig_update(self.uuid,  # pylint: disable=no-member
+                                     updates)

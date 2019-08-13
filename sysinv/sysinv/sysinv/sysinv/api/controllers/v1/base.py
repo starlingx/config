@@ -26,7 +26,7 @@ class APIBase(wtypes.Base):
     def as_dict(self):
         """Render this object as a dict of its fields."""
         return dict((k, getattr(self, k))
-                    for k in self.fields
+                    for k in self.fields  # pylint: disable=no-member
                     if hasattr(self, k) and
                     getattr(self, k) != wsme.Unset)
 

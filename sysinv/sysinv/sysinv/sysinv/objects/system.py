@@ -42,4 +42,5 @@ class System(base.SysinvObject):
         return cls.dbapi.isystem_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.isystem_update(self.uuid, updates)
+        self.dbapi.isystem_update(self.uuid,  # pylint: disable=no-member
+                                  updates)

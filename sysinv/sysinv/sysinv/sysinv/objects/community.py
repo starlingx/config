@@ -34,4 +34,5 @@ class Community(base.SysinvObject):
         return cls.dbapi.icommunity_get_by_name(name)
 
     def save_changes(self, context, updates):
-        self.dbapi.icommunity_update(self.uuid, updates)
+        self.dbapi.icommunity_update(self.uuid,  # pylint: disable=no-member
+                                     updates)

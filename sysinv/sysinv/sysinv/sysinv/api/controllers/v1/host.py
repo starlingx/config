@@ -802,8 +802,8 @@ class Host(base.APIBase):
             uhost.vsc_controllers = wtypes.Unset
 
         uhost.peers = None
-        if uhost.peer_id:
-            ipeers = pecan.request.dbapi.peer_get(uhost.peer_id)
+        if uhost.peer_id:  # pylint: disable=no-member
+            ipeers = pecan.request.dbapi.peer_get(uhost.peer_id)  # pylint: disable=no-member
             uhost.peers = {'name': ipeers.name, 'hosts': ipeers.hosts}
 
         return uhost

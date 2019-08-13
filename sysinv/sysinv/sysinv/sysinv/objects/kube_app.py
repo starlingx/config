@@ -37,4 +37,5 @@ class KubeApp(base.SysinvObject):
         return cls.dbapi.kube_app_get_inactive_by_name_version(name, version)
 
     def save_changes(self, context, updates):
-        self.dbapi.kube_app_update(self.id, updates)
+        self.dbapi.kube_app_update(self.id,  # pylint: disable=no-member
+                                   updates)

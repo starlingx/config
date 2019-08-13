@@ -40,4 +40,5 @@ class StorageCeph(storage_backend.StorageBackend):
         return cls.dbapi.storage_ceph_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.storage_ceph_update(self.uuid, updates)
+        self.dbapi.storage_ceph_update(self.uuid,  # pylint: disable=no-member
+                                       updates)

@@ -157,12 +157,12 @@ class PeriodicTasks(object):
     def run_periodic_tasks(self, context, raise_on_error=False):
         """Tasks to be run at a periodic interval."""
         idle_for = DEFAULT_INTERVAL
-        for task_name, task in self._periodic_tasks:
+        for task_name, task in self._periodic_tasks:  # pylint: disable=no-member
             full_task_name = '.'.join([self.__class__.__name__, task_name])
 
             now = timeutils.utcnow()
-            spacing = self._periodic_spacing[task_name]
-            last_run = self._periodic_last_run[task_name]
+            spacing = self._periodic_spacing[task_name]  # pylint: disable=no-member
+            last_run = self._periodic_last_run[task_name]  # pylint: disable=no-member
 
             # If a periodic task is _nearly_ due, then we'll run it early
             if spacing is not None and last_run is not None:
@@ -176,7 +176,7 @@ class PeriodicTasks(object):
 
             LOG.debug(_("Running periodic task %(full_task_name)s"),
                       {"full_task_name": full_task_name})
-            self._periodic_last_run[task_name] = timeutils.utcnow()
+            self._periodic_last_run[task_name] = timeutils.utcnow()  # pylint: disable=no-member
 
             try:
                 task(self, context)

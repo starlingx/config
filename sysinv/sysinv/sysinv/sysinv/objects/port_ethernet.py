@@ -30,4 +30,5 @@ class EthernetPort(port.Port):
         return cls.dbapi.ethernet_port_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.ethernet_port_update(self.uuid, updates)
+        self.dbapi.ethernet_port_update(self.uuid,  # pylint: disable=no-member
+                                        updates)

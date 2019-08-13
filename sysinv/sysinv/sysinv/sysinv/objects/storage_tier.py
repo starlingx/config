@@ -105,4 +105,5 @@ class StorageTier(base.SysinvObject):
         return cls.dbapi.storage_tier_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.storage_tier_update(self.uuid, updates)
+        self.dbapi.storage_tier_update(self.uuid,  # pylint: disable=no-member
+                                       updates)

@@ -354,7 +354,7 @@ def cleanup():
     global _ENGINE, _MAKER
 
     if _MAKER:
-        _MAKER.close_all()
+        _MAKER.close_all()   # pylint: disable=no-member
         _MAKER = None
     if _ENGINE:
         _ENGINE.dispose()

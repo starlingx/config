@@ -44,4 +44,5 @@ class CPU(base.SysinvObject):
         return cls.dbapi.icpu_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.icpu_update(self.uuid, updates)
+        self.dbapi.icpu_update(self.uuid,  # pylint: disable=no-member
+                               updates)

@@ -33,4 +33,5 @@ class Load(base.SysinvObject):
         return self.dbapi.load_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.load_update(self.uuid, updates)
+        self.dbapi.load_update(self.uuid,  # pylint: disable=no-member
+                               updates)

@@ -23,6 +23,7 @@ Utilities with minimum-depends for use in setup.py
 from __future__ import print_function
 
 import email
+import email.errors
 import os
 import re
 import subprocess
@@ -336,7 +337,7 @@ def _get_version_from_pkg_info(package_name):
         return None
     try:
         pkg_info = email.message_from_file(pkg_info_file)
-    except email.MessageError:
+    except email.errors.MessageError:
         return None
     # Check to make sure we're in our own dir
     if pkg_info.get('Name', None) != package_name:

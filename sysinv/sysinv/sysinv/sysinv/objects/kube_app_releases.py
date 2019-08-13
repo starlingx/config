@@ -32,5 +32,7 @@ class KubeAppReleases(base.SysinvObject):
         return cls.dbapi.kube_app_chart_release_get(app_id, release, namespace)
 
     def save_changes(self, context, updates):
-        self.dbapi.kube_app_chart_release_update(self.app_id, self.release,
-                                                 self.namespace, updates)
+        self.dbapi.kube_app_chart_release_update(self.app_id,  # pylint: disable=no-member
+                                                 self.release,  # pylint: disable=no-member
+                                                 self.namespace,  # pylint: disable=no-member
+                                                 updates)

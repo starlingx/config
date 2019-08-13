@@ -25,4 +25,5 @@ class EthernetInterface(interface_base.InterfaceBase):
         return cls.dbapi.ethernet_interface_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.ethernet_interface_update(self.uuid, updates)
+        self.dbapi.ethernet_interface_update(self.uuid,  # pylint: disable=no-member
+                                             updates)

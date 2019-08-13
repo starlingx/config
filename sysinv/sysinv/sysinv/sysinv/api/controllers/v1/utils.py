@@ -722,9 +722,9 @@ class SBApiHelper(object):
     def check_swift_enabled():
         try:
             swift_enabled = pecan.request.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_SWIFT,
-                section=constants.SERVICE_PARAM_SECTION_SWIFT_CONFIG,
-                name=constants.SERVICE_PARAM_NAME_SWIFT_SERVICE_ENABLED)
+                service=constants.SERVICE_TYPE_RADOSGW,
+                section=constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
+                name=constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED)
             if swift_enabled and swift_enabled.value.lower() == 'true':
                 raise wsme.exc.ClientSideError(
                     "Swift is already enabled through service parameter.")

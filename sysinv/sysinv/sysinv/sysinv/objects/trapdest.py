@@ -36,4 +36,5 @@ class TrapDest(base.SysinvObject):
         return cls.dbapi.itrapdest_get_by_ip(ip)
 
     def save_changes(self, context, updates):
-        self.dbapi.itrapdest_update(self.uuid, updates)
+        self.dbapi.itrapdest_update(self.uuid,  # pylint: disable=no-member
+                                    updates)

@@ -369,9 +369,9 @@ class CertificateController(rest.RestController):
                 config_dict)
 
         except Exception as e:
-            msg = "Exception occured e={}".format(e)
+            msg = "Exception occurred e={}".format(e)
             LOG.info(msg)
-            return dict(success="", error=e.value, body="", certificates={})
+            return dict(success="", error=str(e), body="", certificates={})
 
         # Update with installed certificate information
         values = {

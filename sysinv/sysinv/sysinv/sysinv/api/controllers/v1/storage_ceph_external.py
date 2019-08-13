@@ -289,9 +289,7 @@ class StorageCephExternalController(rest.RestController):
                 pecan.request.context, file_content, ceph_conf_fn)
         except Exception as e:
             LOG.exception(e)
-            return dict(
-                    success="",
-                    error=e.value)
+            return dict(success="", error=str(e))
 
         return dict(success="Success: ceph config file is uploaded", error="")
 

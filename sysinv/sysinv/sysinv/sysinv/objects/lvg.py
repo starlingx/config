@@ -46,7 +46,8 @@ class LVG(base.SysinvObject):
         return cls.dbapi.ilvg_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.ilvg_update(self.uuid, updates)
+        self.dbapi.ilvg_update(self.uuid,  # pylint: disable=no-member
+                               updates)
 
 
 class ilvg(LVG):

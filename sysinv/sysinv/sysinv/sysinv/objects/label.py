@@ -36,4 +36,5 @@ class Label(base.SysinvObject):
         return cls.dbapi.label_get_by_host(host_id)
 
     def save_changes(self, context, updates):
-        self.dbapi.label_update(self.uuid, updates)
+        self.dbapi.label_update(self.uuid,  # pylint: disable=no-member
+                                updates)

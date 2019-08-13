@@ -34,6 +34,12 @@ class OpenstackBaseHelm(base.BaseHelm):
             base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_OPENSTACK]
     }
 
+    @property
+    def CHART(self):
+        # subclasses must define the property: CHART='name of chart'
+        # if an author of a new chart forgets this, NotImplementedError is raised
+        raise NotImplementedError
+
     def _get_service_config(self, service):
         configs = self.context.setdefault('_service_configs', {})
         if service not in configs:

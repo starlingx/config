@@ -35,4 +35,5 @@ class LLDPTLV(base.SysinvObject):
         return cls.dbapi.lldp_tlv_get_by_id(id)
 
     def save_changes(self, context, updates):
-        self.dbapi.lldp_tlv_update(self.id, updates)
+        self.dbapi.lldp_tlv_update(self.id,  # pylint: disable=no-member
+                                   updates)

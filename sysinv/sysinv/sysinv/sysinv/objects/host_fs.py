@@ -35,4 +35,5 @@ class HostFS(base.SysinvObject):
         return cls.dbapi.host_fs_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.host_fs_update(self.uuid, updates)
+        self.dbapi.host_fs_update(self.uuid,  # pylint: disable=no-member
+                                  updates)

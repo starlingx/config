@@ -37,4 +37,5 @@ class PTP(base.SysinvObject):
         return cls.dbapi.ptp_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.ptp_update(self.uuid, updates)
+        self.dbapi.ptp_update(self.uuid,  # pylint: disable=no-member
+                              updates)

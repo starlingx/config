@@ -34,4 +34,5 @@ class HostUpgrade(base.SysinvObject):
         return cls.dbapi.host_upgrade_get_by_host(host_id)
 
     def save_changes(self, context, updates):
-        self.dbapi.host_upgrade_update(self.id, updates)
+        self.dbapi.host_upgrade_update(self.id,  # pylint: disable=no-member
+                                       updates)

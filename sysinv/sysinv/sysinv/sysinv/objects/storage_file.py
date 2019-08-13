@@ -24,4 +24,5 @@ class StorageFile(storage_backend.StorageBackend):
         return cls.dbapi.storage_file_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.storage_file_update(self.uuid, updates)
+        self.dbapi.storage_file_update(self.uuid,  # pylint: disable=no-member
+                                       updates)

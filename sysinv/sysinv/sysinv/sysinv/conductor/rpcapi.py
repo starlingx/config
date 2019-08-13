@@ -116,22 +116,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        host=host,
                                        do_worker_apply=do_worker_apply))
 
-    # TODO(CephPoolsDecouple): remove
-    def configure_osd_pools(self, context, ceph_backend=None, new_pool_size=None, new_pool_min_size=None):
-        """Configure or update configuration of the OSD pools.
-        If none of the optionals are provided then all pools are updated based on DB configuration.
-
-        :param context: an admin context.
-        :param ceph_backend: Optional ceph backend object of a tier
-        :param new_pool_size: Optional override for replication number.
-        :param new_pool_min_size: Optional override for minimum replication number.
-        """
-        return self.call(context,
-                 self.make_msg('configure_osd_pools',
-                               ceph_backend=ceph_backend,
-                               new_pool_size=new_pool_size,
-                               new_pool_min_size=new_pool_min_size))
-
     def remove_host_config(self, context, host_uuid):
         """Synchronously, have a conductor remove configuration for a host.
 

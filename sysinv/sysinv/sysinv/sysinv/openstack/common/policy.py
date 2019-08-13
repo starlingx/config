@@ -570,7 +570,7 @@ class ParseState(object):
         reductions.
         """
 
-        for reduction, methname in self.reducers:
+        for reduction, methname in self.reducers:  # pylint: disable=no-member
             if (len(self.tokens) >= len(reduction) and
                     self.tokens[-len(reduction):] == reduction):
                 # Get the reduction method

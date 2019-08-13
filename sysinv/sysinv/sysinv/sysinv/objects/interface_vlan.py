@@ -25,4 +25,5 @@ class VLANInterface(interface_ethernet.EthernetInterface):
         return cls.dbapi.vlan_interface_get(uuid)
 
     def save_changes(self, context, updates):
-        self.dbapi.vlan_interface_update(self.uuid, updates)
+        self.dbapi.vlan_interface_update(self.uuid,  # pylint: disable=no-member
+                                         updates)

@@ -303,7 +303,7 @@ class UserController(rest.RestController):
             msg = _("User sysadmin update failed: system %s user %s : patch %s"
                     % (isystem['systemname'], user, patch))
             raise wsme.exc.ClientSideError(msg)
-        except exception.KeyError:
+        except KeyError:
             msg = _("Cannot retrieve shadow entry for sysadmin: system %s : patch %s"
                     % (isystem['systemname'], patch))
             raise wsme.exc.ClientSideError(msg)
