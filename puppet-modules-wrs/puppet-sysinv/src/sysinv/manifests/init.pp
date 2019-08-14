@@ -222,7 +222,7 @@ class sysinv (
       $quay_registry = 'quay.io'
     }
 
-    $armada_img_tag = "${quay_registry}/airshipit/armada:dd2e56c473549fd16f94212b553ed58c48d1f51b-ubuntu_bionic"
+    $armada_img_tag = "${quay_registry}/airshipit/armada:8a1638098f88d92bf799ef4934abe569789b885e-ubuntu_bionic"
     sysinv_config {
       'DEFAULT/armada_image_tag':    value =>  $armada_img_tag;
     }

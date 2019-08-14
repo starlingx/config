@@ -51,7 +51,7 @@ LOG = logging.getLogger(__name__)
 kube_app_opts = [
     cfg.StrOpt('armada_image_tag',
                default=('quay.io/airshipit/armada:'
-                        'dd2e56c473549fd16f94212b553ed58c48d1f51b-ubuntu_bionic'),
+                        '8a1638098f88d92bf799ef4934abe569789b885e-ubuntu_bionic'),
                help='Docker image tag of Armada.'),
                 ]
 CONF = cfg.CONF
