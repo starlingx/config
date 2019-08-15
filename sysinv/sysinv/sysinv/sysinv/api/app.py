@@ -44,8 +44,7 @@ def get_pecan_config():
 def setup_app(pecan_config=None, extra_hooks=None):
     policy.init()
 
-    #            hooks.DBTransactionHook(),
-    #            hooks.MutexTransactionHook(),
+    #            hooks.DBTransactionHook()
     app_hooks = [hooks.ConfigHook(),
                  hooks.DBHook(),
                  hooks.ContextHook(pecan_config.app.acl_public_routes),

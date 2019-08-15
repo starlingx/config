@@ -481,7 +481,7 @@ class Connection(object):
                      "%(hostname)s:%(port)d") % params)
             try:
                 self.connection.release()
-            except self.connection_errors:
+            except self.connection.connection_errors:
                 pass
             # Setting this in case the next statement fails, though
             # it shouldn't be doing any network operations, yet.

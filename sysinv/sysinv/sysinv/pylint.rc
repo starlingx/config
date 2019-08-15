@@ -67,8 +67,6 @@ load-plugins=
 # W1401: anomalous-backslash-in-string
 # W1505: deprecated-method
 # All these errors should be fixed:
-# E0202: method-hidden
-# E0203: access-member-before-definition
 # E0213: no-self-argument
 # E0401: import-error
 # E0604: invalid-all-object
