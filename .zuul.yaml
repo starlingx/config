@@ -6,7 +6,6 @@
       jobs:
         - build-openstack-api-ref
         - build-openstack-releasenotes
-        - flock-devstack-config
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py35
@@ -24,7 +23,6 @@
       jobs:
         - build-openstack-api-ref
         - build-openstack-releasenotes
-        - flock-devstack-config
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py35
