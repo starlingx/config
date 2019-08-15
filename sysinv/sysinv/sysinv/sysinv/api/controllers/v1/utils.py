@@ -146,9 +146,9 @@ class ValidTypes(wsme.types.UserType):
                 value = value.decode()
             if isinstance(value, t):
                 return value
-        else:
-            raise ValueError("Wrong type. Expected '%s', got '%s'" % (
-                             self.types, type(value)))
+
+        raise ValueError("Wrong type. Expected '%s', got '%s'" % (
+                         self.types, type(value)))
 
 
 def is_valid_subnet(subnet, ip_version=None):
