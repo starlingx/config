@@ -741,6 +741,19 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         vs_hp_size_mib = constants.MIB_2M
     vs_hp_reqd_mib = new_vs_pages * vs_hp_size_mib
 
+    if new_2M_pages != 0 or new_1G_pages != 0:
+        if utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE:
+            if vs_hp_size_mib == constants.MIB_1G:
+                if new_2M_pages != 0:
+                    raise wsme.exc.ClientSideError(_(
+                        "Only 1G huge page allocation is supported"))
+            elif new_1G_pages != 0:
+                raise wsme.exc.ClientSideError(_(
+                    "Only 2M huge page allocation is supported"))
+        elif new_2M_pages != 0 and new_1G_pages != 0:
+            raise wsme.exc.ClientSideError(_(
+                "Host only supports single huge page size."))
+
     # The size of possible hugepages is the node mem total - platform reserved
     base_mem_mib = rpc_port['platform_reserved_mib']
     if platform_reserved_mib:

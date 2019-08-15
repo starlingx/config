@@ -1,2 +1,2 @@
 # Overrides config file for kubelet
-KUBELET_EXTRA_ARGS=--node-ip=<%= @node_ip %> --feature-gates=HugePages=<%= @k8s_hugepage %> <%= @k8s_cpu_manager_opts %>
+KUBELET_EXTRA_ARGS=--node-ip=<%= @node_ip %> <%= @k8s_cpu_manager_opts %>

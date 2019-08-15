@@ -3486,9 +3486,9 @@ class HostController(rest.RestController):
                 pending_2M_memory, pending_1G_memory)
 
     @staticmethod
-    def _check_memory_for_non_openstack(ihost):
+    def _check_memory_for_single_size(ihost):
         """
-        Perform memory semantic checks on a non openstack worker.
+        Perform memory semantic checks on a worker node.
         It restricts the huge page allocation to either a 2M or 1G
         pool.
         """
@@ -3606,16 +3606,16 @@ class HostController(rest.RestController):
                                                  constants.MIB_2M)
                         value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
 
-                    # calculate 90% 2M pages if the huge pages have not been
+                    # calculate 90% 1G pages if the huge pages have not been
                     # allocated and the compute label is set
                     if cutils.has_openstack_compute(labels) and \
                             vm_hugepages_nr_2M == 0 and \
                             vm_hugepages_nr_1G == 0 and \
                             vm_mem_mib > 0 and \
                             cutils.is_default_huge_pages_required(ihost):
-                        vm_hugepages_nr_2M = int((hp_possible_mib * 0.9 - vs_mem_mib) /
-                                                 constants.MIB_2M)
-                        value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
+                        vm_hugepages_nr_1G = int((hp_possible_mib * 0.9 - vs_mem_mib) /
+                                                 constants.MIB_1G)
+                        value.update({'vm_hugepages_nr_1G': vm_hugepages_nr_1G})
 
                     vm_hugepages_4K = vm_mem_mib
                     vm_hugepages_4K -= \
@@ -5221,10 +5221,8 @@ class HostController(rest.RestController):
         # Check if cpu assignments are valid
         self._semantic_check_worker_cpu_assignments(ihost)
 
-        # for non-openstack worker node, only allow allocating huge pages
-        # for a single size
-        if not utils.is_openstack_compute(ihost):
-            self._check_memory_for_non_openstack(ihost)
+        # only allow allocating huge pages for a single size
+        self._check_memory_for_single_size(ihost)
 
         # check if the platform reserved memory is valid
         ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
