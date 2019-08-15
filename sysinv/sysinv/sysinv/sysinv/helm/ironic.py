@@ -108,14 +108,11 @@ class IronicHelm(openstack.OpenstackBaseHelm):
         if self.dbapi is None:
             return ironic_port
         # find the first interface with ironic network type
-        networks = self.dbapi.networks_get_by_type(
-                constants.NETWORK_TYPE_IRONIC)
-        for network in networks:
-            interface = self.dbapi.iinterface_get_by_network(network.name)
-            if interface:
-                # get first interface as ironic port
-                ironic_port = self._get_interface_port_name(interface[0])
-                if ironic_port:
+        interfaces = self.dbapi.iinterface_get_all()
+        for iface in interfaces:
+            for net_type in iface.networktypelist:
+                if net_type == constants.NETWORK_TYPE_IRONIC:
+                    ironic_port = self._get_interface_port_name(iface)
                     break
         return ironic_port
 
