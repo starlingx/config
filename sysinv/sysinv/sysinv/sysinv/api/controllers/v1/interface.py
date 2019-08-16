@@ -52,7 +52,6 @@ from sysinv import objects
 from sysinv.objects import utils as object_utils
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.rpc import common as rpc_common
 from sysinv.openstack.common.gettextutils import _
 from fm_api import constants as fm_constants
 from fm_api import fm_api
@@ -583,15 +582,6 @@ class InterfaceController(rest.RestController):
             if _is_ipv6_address_mode_updated(interface, rpc_interface):
                 _update_ipv6_address_mode(interface)
 
-        # Commit operation with neutron
-        if (interface['ifclass'] and
-                interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
-            _neutron_bind_interface(ihost, interface)
-        if (rpc_interface['ifclass'] and
-                rpc_interface['ifclass'] in NEUTRON_INTERFACE_CLASS and
-                interface['ifclass'] not in NEUTRON_INTERFACE_CLASS):
-            _neutron_unbind_interface(ihost, rpc_interface)
-
         saved_interface = copy.deepcopy(rpc_interface)
 
         try:
@@ -618,8 +608,6 @@ class InterfaceController(rest.RestController):
                 for ifname in removed_members:
                     _update_interface_mtu(ifname, ihost, DEFAULT_MTU)
 
-            # Update shared data interface bindings, if required
-            _update_shared_interface_neutron_bindings(ihost, new_interface)
             if sriov_update:
                 pecan.request.rpcapi.update_sriov_config(
                     pecan.request.context,
@@ -630,13 +618,6 @@ class InterfaceController(rest.RestController):
             LOG.exception(e)
             msg = _("Interface update failed: host %s if %s : patch %s"
                     % (ihost['hostname'], interface['ifname'], patch))
-            if (saved_interface['ifclass'] and
-                    saved_interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
-                # Restore Neutron bindings
-                _neutron_bind_interface(ihost, saved_interface)
-
-            # Update shared data interface bindings, if required
-            _update_shared_interface_neutron_bindings(ihost, saved_interface)
 
             raise wsme.exc.ClientSideError(msg)
 
@@ -1442,89 +1423,6 @@ def _update_interface_mtu(ifname, host, mtu):
     pecan.request.dbapi.iinterface_update(interface['uuid'], values)
 
 
-def _get_shared_data_interfaces(ihost, interface):
-    """
-    Retrieve a list of data interfaces, if any, that are dependent on
-    this interface (used_by) as well as the data interface(s) that
-    this interface depends on (uses).
-    """
-    used_by = []
-    shared_data_interfaces = []
-    uses = interface['uses']
-    if uses:
-        for ifname in uses:
-            parent = pecan.request.dbapi.iinterface_get(ifname, ihost['uuid'])
-            used_by.extend(parent['used_by'])
-            interface_class = parent.get('ifclass', None)
-            if interface_class:
-                # This should only match 'data' interface class since that
-                # is the only type that can be shared on multiple interfaces.
-                if interface_class == constants.INTERFACE_CLASS_DATA:
-                    shared_data_interfaces.append(parent)
-    else:
-        used_by = interface['used_by']
-
-    for ifname in used_by:
-        child = pecan.request.dbapi.iinterface_get(ifname, ihost['uuid'])
-        interface_class = child.get('ifclass', None)
-        if interface_class:
-            # This should only match 'data' interface class since that
-            # is the only type that can be shared on multiple interfaces.
-            if interface_class == constants.INTERFACE_CLASS_DATA:
-                shared_data_interfaces.append(child)
-
-    return shared_data_interfaces
-
-
-def _neutron_host_extension_supported():
-    """
-    Reports whether the neutron "host" extension is supported or not.  This
-    indicator is used to determine whether certain neutron operations are
-    necessary or not.  If it is not supported then this is an indication that
-    we are running against a vanilla openstack installation.
-    """
-    return True
-    # TODO: This should be looking at the neutron extension list, but because
-    # our config file is not setup properly to have a different region on a per
-    # service basis we cannot.
-    #
-    # The code should like something like this:
-    #
-    # extensions = pecan.request.rpcapi.neutron_extension_list(
-    #     pecan.request.context)
-    # return bool(constants.NEUTRON_HOST_ALIAS in extensions)
-
-
-def _neutron_providernet_extension_supported():
-    """
-    Reports whether the neutron "wrs-provider" extension is supported or not.
-    This indicator is used to determine whether certain neutron operations are
-    necessary or not.  If it is not supported then this is an indication that
-    we are running against a vanilla openstack installation.
-    """
-    # In the case of a kubernetes config, neutron may not be running, and
-    # sysinv should not rely on talking to containerized neutron.
-    return False
-
-
-def _neutron_providernet_list():
-    pnets = {}
-    if _neutron_providernet_extension_supported():
-        pnets = pecan.request.rpcapi.iinterface_get_providernets(
-            pecan.request.context)
-    return pnets
-
-
-def _update_shared_interface_neutron_bindings(ihost, interface, test=False):
-    if not _neutron_host_extension_supported():
-        # No action required if neutron does not support the host extension
-        return
-    shared_data_interfaces = _get_shared_data_interfaces(ihost, interface)
-    for shared_interface in shared_data_interfaces:
-        if shared_interface['uuid'] != interface['uuid']:
-            _neutron_bind_interface(ihost, shared_interface, test)
-
-
 def _datanetworks_get_by_interface(interface_uuid):
     ifdatanets = pecan.request.dbapi.interface_datanetwork_get_by_interface(
         interface_uuid)
@@ -1555,77 +1453,6 @@ def _datanetworks_get_by_interface(interface_uuid):
         datanetworks_list.append(datanetwork_dict)
 
     return datanetworks_names_list, datanetworks_list
-
-
-def _neutron_bind_interface(ihost, interface, test=False):
-    """
-    Send a request to neutron to bind the interface to the specified
-    providernetworks and perform validation against a subset of the interface
-    attributes.
-    """
-    ihost_uuid = ihost['uuid']
-    recordtype = ihost['recordtype']
-    if recordtype in ['profile']:
-        # No action required if we are operating on a profile record
-        return
-    if not _neutron_providernet_extension_supported():
-        # No action required if neutron does not support the pnet extension
-        return
-    if not _neutron_host_extension_supported():
-        # No action required if neutron does not support the host extension
-        return
-
-    if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
-        networktype = constants.NETWORK_TYPE_DATA
-    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
-        networktype = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-    elif interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV:
-        networktype = constants.NETWORK_TYPE_PCI_SRIOV
-    else:
-        msg = _("Invalid interface class %s: " % interface['ifclass'])
-        raise wsme.exc.ClientSideError(msg)
-
-    interface_uuid = interface['uuid']
-    datanetworks_names_list, _dl = \
-        _datanetworks_get_by_interface(interface_uuid)
-
-    providernetworks = ",".join([str(x) for x in datanetworks_names_list])
-    LOG.info("_neutron_bind_interface uuid=%s datanetworks_names=%s" %
-             (interface_uuid, providernetworks))
-
-    vlans = _get_interface_vlans(ihost_uuid, interface)
-    try:
-        # Send the request to neutron
-        pecan.request.rpcapi.neutron_bind_interface(
-            pecan.request.context,
-            ihost_uuid, interface_uuid, networktype, providernetworks,
-            interface['imtu'], vlans=vlans, test=test)
-    except rpc_common.RemoteError as e:
-        raise wsme.exc.ClientSideError(str(e.value))
-
-
-def _neutron_unbind_interface(ihost, interface):
-    """
-    Send a request to neutron to unbind the interface from all provider
-    networks.
-    """
-    ihost_uuid = ihost['uuid']
-    recordtype = ihost['recordtype']
-    if recordtype in ['profile']:
-        # No action required if we are operating on a profile record
-        return
-    if not _neutron_providernet_extension_supported():
-        # No action required if neutron does not support the pnet extension
-        return
-    if not _neutron_host_extension_supported():
-        # No action required if neutron does not support the host extension
-        return
-    try:
-        # Send the request to neutron
-        pecan.request.rpcapi.neutron_unbind_interface(
-            pecan.request.context, ihost_uuid, interface['uuid'])
-    except rpc_common.RemoteError as e:
-        raise wsme.exc.ClientSideError(str(e.value))
 
 
 def _get_boot_interface(ihost):
@@ -1783,28 +1610,6 @@ def _create(interface, from_profile=False):
         pecan.request.dbapi.iinterface_destroy(new_interface.as_dict()['uuid'])
         raise e
 
-    try:
-        if (interface['ifclass'] and
-                interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
-            _neutron_bind_interface(ihost, new_interface.as_dict())
-    except Exception as e:
-        LOG.exception("Failed to update neutron bindings: "
-                      "new_interface={} interface={}".format(
-                          new_interface.as_dict(), interface))
-        pecan.request.dbapi.iinterface_destroy(new_interface.as_dict()['uuid'])
-        raise e
-
-    try:
-        _update_shared_interface_neutron_bindings(ihost, new_interface.as_dict())
-    except Exception as e:
-        LOG.exception("Failed to update neutron bindings for shared "
-                      "interfaces: new_interface={} interface={}".format(
-                          new_interface.as_dict(), interface))
-        pecan.request.dbapi.iinterface_destroy(interface['uuid'])
-        _neutron_unbind_interface(ihost, new_interface.as_dict())
-        _update_shared_interface_neutron_bindings(ihost, new_interface.as_dict())
-        raise e
-
     # Update ports
     if ports:
         try:
@@ -1813,9 +1618,6 @@ def _create(interface, from_profile=False):
             LOG.exception("Failed to update ports for interface "
                           "interfaces: new_interface={} ports={}".format(
                               new_interface.as_dict(), ports))
-            if (interface['ifclass'] and
-                    interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
-                _neutron_unbind_interface(ihost, new_interface.as_dict())
             pecan.request.dbapi.iinterface_destroy(new_interface.as_dict()['uuid'])
             raise e
 
@@ -1996,12 +1798,6 @@ def _delete(interface, from_profile=False):
                         interface['id']
                     )
         pecan.request.dbapi.iinterface_destroy(interface['uuid'])
-        if (interface['ifclass'] and
-                    interface['ifclass'] in NEUTRON_INTERFACE_CLASS):
-            # Unbind the interface in neutron
-            _neutron_unbind_interface(ihost, interface)
-        # Update shared data interface bindings, if required
-        _update_shared_interface_neutron_bindings(ihost, interface)
         # Clear outstanding alarms that were raised by the neutron vswitch
         # agent against interface
         _clear_interface_state_fault(ihost['hostname'], interface['uuid'])

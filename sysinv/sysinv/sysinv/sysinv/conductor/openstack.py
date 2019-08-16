@@ -19,7 +19,6 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log as logging
 from novaclient.v2 import client as nova_client_v2
-from neutronclient.v2_0 import client as neutron_client_v2_0
 from oslo_config import cfg
 from keystoneclient.v3 import client as keystone_client
 from keystoneclient.auth.identity import v3
@@ -136,8 +135,6 @@ class OpenStackOperator(object):
         self.openstack_keystone_client = None
         self.openstack_keystone_session = None
         self.nova_client = None
-        self.neutron_client = None
-        self._neutron_extension_list = []
         self._auth_url = cfg.CONF[PLATFORM_CONFIG].auth_url + "/v3"
         self._openstack_auth_url = cfg.CONF[OPENSTACK_CONFIG].auth_url + "/v3"
 
@@ -151,92 +148,6 @@ class OpenStackOperator(object):
                       "service_config=%s" % (service_config))
             raise exception.InvalidParameterValue(
                 _("Unrecognized keystone service_config."))
-
-    #################
-    # NEUTRON
-    #################
-
-    def _get_neutronclient(self):
-        if not self.neutron_client:  # should not cache this forever
-            # neutronclient doesn't yet support v3 keystone auth
-            # use keystoneauth.session
-            self.neutron_client = neutron_client_v2_0.Client(
-                session=self._get_keystone_session(OPENSTACK_CONFIG),
-                auth_url=self._get_auth_url(OPENSTACK_CONFIG),
-                endpoint_type='internalURL',
-                region_name=cfg.CONF[OPENSTACK_CONFIG].neutron_region_name)
-        return self.neutron_client
-
-    def get_providernetworksdict(self, pn_names=None, quiet=False):
-        """
-        Returns names and MTU values of neutron's providernetworks
-        """
-        pn_dict = {}
-
-        # Call neutron
-        try:
-            pn_list = self._get_neutronclient().list_providernets().get('providernets', [])
-        except Exception as e:
-            if not quiet:
-                LOG.error("Failed to access Neutron client")
-                LOG.error(e)
-            return pn_dict
-
-        # Get dict
-        # If no names specified, will add all providenets to dict
-        for pn in pn_list:
-            if pn_names and pn['name'] not in pn_names:
-                continue
-            else:
-                pn_dict.update({pn['name']: pn})
-
-        return pn_dict
-
-    def neutron_extension_list(self, context):
-        """
-        Send a request to neutron to query the supported extension list.
-        """
-        if not self._neutron_extension_list:
-            client = self._get_neutronclient()
-            extensions = client.list_extensions().get('extensions', [])
-            self._neutron_extension_list = [e['alias'] for e in extensions]
-        return self._neutron_extension_list
-
-    def bind_interface(self, context, host_uuid, interface_uuid,
-                       network_type, providernets, mtu,
-                       vlans=None, test=False):
-        """
-        Send a request to neutron to bind an interface to a set of provider
-        networks, and inform neutron of some key attributes of the interface
-        for semantic checking purposes.
-
-        Any remote exceptions from neutron are allowed to pass-through and are
-        expected to be handled by the caller.
-        """
-        client = self._get_neutronclient()
-        body = {'interface': {'uuid': interface_uuid,
-                              'providernets': providernets,
-                              'network_type': network_type,
-                              'mtu': mtu}}
-        if vlans:
-            body['interface']['vlans'] = vlans
-        if test:
-            body['interface']['test'] = True
-        client.host_bind_interface(host_uuid, body=body)
-        return True
-
-    def unbind_interface(self, context, host_uuid, interface_uuid):
-        """
-        Send a request to neutron to unbind an interface from a set of
-        provider networks.
-
-        Any remote exceptions from neutron are allowed to pass-through and are
-        expected to be handled by the caller.
-        """
-        client = self._get_neutronclient()
-        body = {'interface': {'uuid': interface_uuid}}
-        client.host_unbind_interface(host_uuid, body=body)
-        return True
 
     #################
     # NOVA

@@ -1041,24 +1041,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        host_uuid=host_uuid,
                                        ))
 
-    def iinterface_get_providernets(self,
-                                    context,
-                                    pn_names=None):
-        """Call neutron to get PN MTUs based on PN names
-
-        This method does not update any records in the db
-
-        :param context: an admin context
-        :param pn_names: a list of providenet names
-        :returns: pass or fail
-        """
-
-        pn_dict = self.call(context,
-                            self.make_msg('iinterface_get_providernets',
-                                          pn_names=pn_names))
-
-        return pn_dict
-
     def mgmt_ip_set_by_ihost(self,
                              context,
                              ihost_uuid,
@@ -1079,40 +1061,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_uuid=ihost_uuid,
                                        interface_id=interface_id,
                                        mgmt_ip=mgmt_ip))
-
-    def neutron_extension_list(self, context):
-        """
-        Send a request to neutron to query the supported extension list.
-        """
-        return self.call(context, self.make_msg('neutron_extension_list'))
-
-    def neutron_bind_interface(self, context, host_uuid, interface_uuid,
-                               network_type, providernets, mtu,
-                               vlans=None, test=False):
-        """
-        Send a request to neutron to bind an interface to a set of provider
-        networks, and inform neutron of some key attributes of the interface
-        for semantic checking purposes.
-        """
-        return self.call(context,
-                         self.make_msg('neutron_bind_interface',
-                                       host_uuid=host_uuid,
-                                       interface_uuid=interface_uuid,
-                                       network_type=network_type,
-                                       providernets=providernets,
-                                       mtu=mtu,
-                                       vlans=vlans,
-                                       test=test))
-
-    def neutron_unbind_interface(self, context, host_uuid, interface_uuid):
-        """
-        Send a request to neutron to unbind an interface from a set of
-        provider networks.
-        """
-        return self.call(context,
-                         self.make_msg('neutron_unbind_interface',
-                                       host_uuid=host_uuid,
-                                       interface_uuid=interface_uuid))
 
     def vim_host_add(self, context, api_token, ihost_uuid,
                      hostname, subfunctions, administrative,

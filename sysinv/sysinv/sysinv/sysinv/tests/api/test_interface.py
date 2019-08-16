@@ -12,17 +12,13 @@ Tests for the API /interfaces/ methods.
 """
 
 import mock
-import testtools
 from six.moves import http_client
 
 from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
-from sysinv.conductor import rpcapi
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as db_api
-from sysinv.db.sqlalchemy import api as dbsql_api
-from sysinv.openstack.common.rpc import common as rpc_common
 
 
 providernet_list = {
@@ -153,13 +149,6 @@ class InterfaceTestCase(base.FunctionalTest):
         self.mock_lower_macs.return_value = {'enp0s18': '08:00:27:8a:87:48',
                                              'enp0s19': '08:00:27:ea:93:8e'}
         self.addCleanup(p.stop)
-
-        p = mock.patch.object(rpcapi.ConductorAPI,
-                              'iinterface_get_providernets')
-        self.mock_iinterface_get_providernets = p.start()
-        self.mock_iinterface_get_providernets.return_value = providernet_list
-        self.addCleanup(p.stop)
-
         self._setup_context()
 
     def _get_path(self, path=None):
@@ -1706,32 +1695,6 @@ class TestCpePost(InterfaceTestCase):
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
 
-    @testtools.skip("deprecate neutron bind interface")
-    @mock.patch.object(dbsql_api.Connection, 'iinterface_destroy')
-    @mock.patch.object(rpcapi.ConductorAPI, 'neutron_bind_interface')
-    def test_create_neutron_bind_failed(self, mock_neutron_bind_interface,
-                                        mock_iinterface_destroy):
-        self._create_ethernet('enp0s9', constants.NETWORK_TYPE_NONE)
-        mock_neutron_bind_interface.side_effect = [
-            None,
-            rpc_common.RemoteError(
-                mock.Mock(status=404), 'not found')
-        ]
-        ndict = dbutils.post_get_test_interface(
-            forihostid=self.controller.id,
-            ihost_uuid=self.controller.uuid,
-            datanetworks='group0-ext1',
-            ifname='data1',
-            networktype=constants.NETWORK_TYPE_DATA,
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            uses=['enp0s9'])
-        self._post_and_check_failure(ndict)
-        mock_neutron_bind_interface.assert_called_with(
-            mock.ANY, mock.ANY, mock.ANY, constants.NETWORK_TYPE_DATA,
-            mock.ANY, mock.ANY, vlans=mock.ANY, test=mock.ANY)
-        mock_iinterface_destroy.assert_called_once_with(mock.ANY)
-
     # Expected error: Data interface data0 is already attached to this
     # Data Network: group0-data0.
     def test_create_invalid_data_network_used(self):
@@ -1807,27 +1770,6 @@ class TestCpePatch(InterfaceTestCase):
         self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
-
-    @testtools.skip("deprecate neutron bind interface")
-    @mock.patch.object(rpcapi.ConductorAPI, 'neutron_bind_interface')
-    def test_patch_neutron_bind_failed(self, mock_neutron_bind_interface):
-        port, interface = self._create_ethernet(
-            'data0', networktype=constants.NETWORK_TYPE_DATA,
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            datanetworks='group0-data0')
-
-        mock_neutron_bind_interface.side_effect = [
-            None,
-            rpc_common.RemoteError(
-                mock.Mock(return_value={'status': 404}), 'not found'),
-            None]
-
-        patch_result = self.patch_dict_json(
-            '%s' % self._get_path(interface['uuid']),
-            imtu=2000, expect_errors=True)
-        self.assertEqual(http_client.BAD_REQUEST, patch_result.status_int)
-        self.assertEqual('application/json', patch_result.content_type)
-        self.assertTrue(patch_result.json['error_message'])
 
     # Expected error: Value for number of SR-IOV VFs must be > 0.
     def test_invalid_sriov_numvfs(self):

@@ -28,7 +28,6 @@ class OVSPuppet(base.BasePuppet):
             config.update(self._get_memory_config(host))
             config.update(self._get_port_config(host))
             config.update(self._get_virtual_config(host))
-            config.update(self._get_neutron_config(host))
             config.update(self._get_lldp_config(host))
         return config
 
@@ -377,47 +376,6 @@ class OVSPuppet(base.BasePuppet):
 
     def _is_vxlan_datanet(self, datanet):
         return datanet.get('network_type') == constants.DATANETWORK_TYPE_VXLAN
-
-    def _get_neutron_config(self, host):
-        local_ip = None
-        tunnel_types = set()
-        bridge_mappings = []
-        for iface in self.context['interfaces'].values():
-            if interface.is_data_network_type(iface):
-                # obtain the assigned bridge for interface
-                brname = iface.get('_ovs_bridge')
-                if brname:
-                    datanets = interface.get_interface_datanets(
-                        self.context, iface)
-                    for datanet in datanets:
-                        if self._is_vxlan_datanet(datanet):
-                            address = \
-                                interface.get_interface_primary_address(
-                                    self.context, iface)
-                            if address:
-                                local_ip = address['address']
-                            tunnel_types.add(
-                                constants.DATANETWORK_TYPE_VXLAN)
-                        else:
-                            bridge_mappings.append('%s:%s' %
-                                                   (datanet['name'], brname))
-
-        neutron_dict = {
-            'neutron::agents::ml2::ovs::local_ip': local_ip,
-            'neutron::agents::ml2::ovs::tunnel_types': list(tunnel_types),
-            'neutron::agents::ml2::ovs::bridge_mappings': bridge_mappings
-        }
-        LOG.debug("OVS get_neutron_config neutron_dict=%s" % neutron_dict)
-
-        return neutron_dict
-
-    def _get_providernet_type(self, name):
-        if name in self.context['providernets']:
-            return self.context['providernets'][name]['type']
-
-    def _is_vxlan_providernet(self, name):
-        providernet_type = self._get_providernet_type(name)
-        return bool(providernet_type == constants.NEUTRON_PROVIDERNET_VXLAN)
 
     def _get_lldp_config(self, host):
         driver_list = self.context['_lldp_drivers']

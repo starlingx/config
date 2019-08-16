@@ -8097,17 +8097,6 @@ class ConductorManager(service.PeriodicService):
         pv_dict = {'disk_or_part_device_path': idisk.device_path}
         self.dbapi.ipv_update(ipv['uuid'], pv_dict)
 
-    def iinterface_get_providernets(self, context, pn_names=None):
-        """
-        Gets names and MTUs for providernets in neutron
-
-        If param 'pn_names' is provided, returns dict for
-        only specified providernets, else: returns all
-        providernets in neutron
-
-        """
-        return self._openstack.get_providernetworksdict(pn_names)
-
     def iinterfaces_get_by_ihost_nettype(self,
                                          context,
                                          ihost_uuid,
@@ -8188,35 +8177,6 @@ class ConductorManager(service.PeriodicService):
                                                  constants.NETWORK_TYPE_MGMT,
                                                  interface_id)
         return address
-
-    def neutron_extension_list(self, context):
-        """
-        Send a request to neutron to query the supported extension list.
-        """
-        response = self._openstack.neutron_extension_list(context)
-        return response
-
-    def neutron_bind_interface(self, context, host_uuid, interface_uuid,
-                               network_type, providernets, mtu,
-                               vlans=None, test=False):
-        """
-        Send a request to neutron to bind an interface to a set of provider
-        networks, and inform neutron of some key attributes of the interface
-        for semantic checking purposes.
-        """
-        response = self._openstack.bind_interface(
-            context, host_uuid, interface_uuid, network_type,
-            providernets, mtu, vlans=vlans, test=test)
-        return response
-
-    def neutron_unbind_interface(self, context, host_uuid, interface_uuid):
-        """
-        Send a request to neutron to unbind an interface from a set of
-        provider networks.
-        """
-        response = self._openstack.unbind_interface(
-            context, host_uuid, interface_uuid)
-        return response
 
     def vim_host_add(self, context, api_token, ihost_uuid,
                      hostname, subfunctions, administrative,
