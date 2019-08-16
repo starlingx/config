@@ -11,14 +11,14 @@ import testtools
 
 class TsConfigTestCase(testtools.TestCase):
 
-    mock_19_01_build = u"""
+    mock_19_09_build = u"""
 ###
 ### StarlingX
-###     Release 19.01
+###     Release 19.09
 ###
 
 OS="centos"
-SW_VERSION="19.01"
+SW_VERSION="19.09"
 BUILD_TARGET="Host Installer"
 BUILD_TYPE="Formal"
 BUILD_ID="f/stein"
@@ -33,7 +33,7 @@ BUILD_DATE="2019-02-22 19:18:29 +0000"
     mock_malformed_build = u"""
 ###
 ### StarlingX
-###     Release 19.01
+###     Release 19.09
 nodetype=
 """
 
@@ -59,7 +59,7 @@ cluster_host_interface=enp0s4
 sdn_enabled=no
 region_config=no
 system_mode=duplex
-sw_version=19.01
+sw_version=19.09
 security_feature="nopti nospectre_v2"
 vswitch_type=ovs-dpdk
 """
@@ -81,7 +81,7 @@ region_1_name=Region1
 region_2_name=Region2
 distributed_cloud_role=CloudRole
 system_mode=duplex
-sw_version=19.01
+sw_version=19.09
 security_feature="nopti nospectre_v2"
 vswitch_type=ovs-dpdk
 """
@@ -128,7 +128,7 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.return_value = io.StringIO(self.mock_19_01_build)
+        mock_open.return_value = io.StringIO(self.mock_19_09_build)
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
 
@@ -143,7 +143,7 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_19_01_build),
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf_empty)]
         from tsconfig import tsconfig  # pylint: disable=unused-variable
         mock_logging_exception.assert_called_once()
@@ -155,7 +155,7 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_19_01_build),
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf_minimal)]
         from tsconfig import tsconfig
         val = tsconfig.nodetype
@@ -169,11 +169,11 @@ vswitch_type=ovs-dpdk
         # two files are opened by tsconfig.
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
-        mock_open.side_effect = [io.StringIO(self.mock_19_01_build),
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf)]
         from tsconfig import tsconfig
         ver = tsconfig.SW_VERSION
-        self.assertEqual(ver, "19.01")
+        self.assertEqual(ver, "19.09")
 
     @mock.patch('six.moves.builtins.open')
     @mock.patch('os.path.isfile', return_value=True)
@@ -182,9 +182,9 @@ vswitch_type=ovs-dpdk
         # 1st: /etc/build.info
         # 2nd: /etc/platform/platform.conf
         # Next two files are loaded as part of reload
-        mock_open.side_effect = [io.StringIO(self.mock_19_01_build),
+        mock_open.side_effect = [io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf),
-                                 io.StringIO(self.mock_19_01_build),
+                                 io.StringIO(self.mock_19_09_build),
                                  io.StringIO(self.mock_platform_conf_regions)]
         from tsconfig import tsconfig
         # Initial platform.conf has no region names
