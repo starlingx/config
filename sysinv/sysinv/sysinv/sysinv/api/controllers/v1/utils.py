@@ -494,12 +494,11 @@ def check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib):
         if check failed, raise error with msg.
     """
     if host is not None:
-        ceph_mon = pecan.request.dbapi.ceph_mon_get_by_ihost(host.uuid)
         hostname = host.hostname
     else:
-        ceph_mon = pecan.request.dbapi.ceph_mon_get_list()
         hostname = "controller"
 
+    ceph_mon = pecan.request.dbapi.ceph_mon_get_list()
     if ceph_mon:
         cgtsvg_growth_gib = ceph_mon_gib - ceph_mon[0].ceph_mon_gib
     else:
