@@ -117,7 +117,7 @@ class platform::helm
 
       # TODO(tngo): If and when tiller image is upversioned, please ensure armada compatibility as part of the test
       -> exec { 'load armada docker image':
-        command   => "docker image pull ${quay_registry}/airshipit/armada:dd2e56c473549fd16f94212b553ed58c48d1f51b-ubuntu_bionic",
+        command   => "docker image pull ${quay_registry}/airshipit/armada:8a1638098f88d92bf799ef4934abe569789b885e-ubuntu_bionic",
         logoutput => true,
       }
 
