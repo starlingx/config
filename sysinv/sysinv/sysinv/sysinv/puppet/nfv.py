@@ -78,11 +78,6 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
             'nfv::vim::vim_webserver_ip': self._get_oam_address(),
             'nfv::vim::instance_single_hypervisor': single_hypervisor,
             'nfv::vim::sw_mgmt_single_controller': single_controller,
-            # This flag is used to disable raising alarm to containerized fm
-            # and will be removed in future.
-            'nfv::alarm::fault_management_pod_disabled': True,
-            'nfv::event_log::fault_management_pod_disabled': True,
-            'nfv::vim::fault_management_pod_disabled': True,
 
             'platform::nfv::params::service_create':
                 self._to_create_services(),
