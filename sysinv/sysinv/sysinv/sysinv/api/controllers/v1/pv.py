@@ -334,7 +334,7 @@ class PVController(rest.RestController):
             raise exception.PatchError(patch=patch, reason=e)
 
         # Semantic Checks
-        _check("modify", pv)
+        _check("modify", pv.as_dict())
         try:
             # Update only the fields that have changed
             for field in objects.pv.fields:
@@ -346,7 +346,7 @@ class PVController(rest.RestController):
             return PV.convert_with_links(rpc_pv)
         except exception.HTTPNotFound:
             msg = _("PV update failed: host %s pv %s : patch %s"
-                    % (ihost['hostname'], pv['lvm_pv_name'], patch))
+                    % (ihost['hostname'], pv.lvm_pv_name, patch))
             raise wsme.exc.ClientSideError(msg)
 
     @cutils.synchronized(LOCK_NAME)

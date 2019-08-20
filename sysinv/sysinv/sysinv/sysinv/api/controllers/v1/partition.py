@@ -181,6 +181,7 @@ class PartitionController(rest.RestController):
                                         pecan.request.context,
                                         marker)
 
+        partitions = []
         if self._from_ihosts and self._from_idisk:
             partitions = pecan.request.dbapi.partition_get_by_idisk(
                 disk_uuid,
@@ -301,7 +302,7 @@ class PartitionController(rest.RestController):
             return Partition.convert_with_links(rpc_partition)
         except exception.HTTPNotFound:
             msg = _("Partition update failed: host %s partition %s : patch %s"
-                    % (ihost['hostname'], partition['device_path'], patch))
+                    % (ihost['hostname'], partition.device_path, patch))
             raise wsme.exc.ClientSideError(msg)
 
     @cutils.synchronized(LOCK_NAME)
@@ -379,15 +380,15 @@ def _partition_pre_patch_checks(partition_obj, patch_obj, host_obj):
             if not cutils.is_int_like(p['value']):
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be an integer "
-                      "greater than 0: %s GiB") % p['value'] / 1024)
+                      "greater than 0: %s ") % p['value'])
             if int(p['value']) <= 0:
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be an integer "
-                      "greater than 0: %s GiB") % p['value'] / 1024)
+                      "greater than 0: %s GiB") % (int(p['value']) / 1024))
             if int(p['value']) <= partition_obj.size_mib:
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be larger than current "
-                      "size: %s GiB <= %s GiB") % (p['value'] / 1024,
+                      "size: %s GiB <= %s GiB") % (int(p['value']) / 1024,
                       math.floor(float(partition_obj.size_mib) / 1024 * 1000) / 1000.0))
 
 

@@ -19,6 +19,7 @@
 #
 
 """Sysinv test utilities."""
+import uuid
 
 from sysinv.common import constants
 from sysinv.openstack.common import jsonutils as json
@@ -539,6 +540,7 @@ def get_test_idisk(**kw):
         'forihostid': kw.get('forihostid', 2),
         'foristorid': kw.get('foristorid', 2),
         'foripvid': kw.get('foripvid', 2),
+        'available_mib': kw.get('available_mib', 100),
         'updated_at': None,
         'created_at': None,
     }
@@ -601,17 +603,57 @@ def get_test_lvg(**kw):
     return lvg
 
 
+def create_test_lvg(**kw):
+    """Create test lvg entry in DB and return LogicalVolumeGroup DB object.
+    Function to be used to create test objects in the database.
+    :param kw: kwargs with overriding values for attributes.
+    kw requires: lvm_vg_name
+    :returns: Test LogicalVolumeGroup DB object.
+    """
+    lvg = get_test_lvg(**kw)
+    if 'uuid' not in kw:
+        del lvg['uuid']
+    dbapi = db_api.get_instance()
+    forihostid = lvg['forihostid']
+    return dbapi.ilvg_create(forihostid, lvg)
+
+
 def get_test_pv(**kw):
     pv = {
         'id': kw.get('id', 2),
         'uuid': kw.get('uuid'),
         'lvm_vg_name': kw.get('lvm_vg_name'),
-        'disk_or_part_uuid': kw.get('disk_or_part_uuid', 2),
+        'disk_or_part_uuid': kw.get('disk_or_part_uuid', str(uuid.uuid4())),
         'disk_or_part_device_path': kw.get('disk_or_part_device_path',
             '/dev/disk/by-path/pci-0000:00:0d.0-ata-3.0'),
         'forihostid': kw.get('forihostid', 2),
         'forilvgid': kw.get('forilvgid', 2),
     }
+    return pv
+
+
+def create_test_pv(**kw):
+    """Create test pv entry in DB and return PV DB object.
+    Function to be used to create test PV objects in the database.
+    :param kw: kwargs with overriding values for pv's attributes.
+    kw typically requires forihostid, forilvgid
+    :returns: Test PV DB object.
+    """
+    pv = get_test_pv(**kw)
+    if 'uuid' not in kw:
+        del pv['uuid']
+    dbapi = db_api.get_instance()
+    forihostid = pv['forihostid']
+    return dbapi.ipv_create(forihostid, pv)
+
+
+def post_get_test_pv(**kw):
+    pv = get_test_pv(**kw)
+
+    # When invoking a POST the following fields should not be populated:
+    del pv['uuid']
+    del pv['id']
+
     return pv
 
 
@@ -919,6 +961,53 @@ def post_get_test_interface_network(**kw):
         'network_uuid': kw.get('network_uuid'),
     }
     return inv
+
+
+def get_test_partition(**kw):
+    """get_test_partition will fail unless
+       forihostid is provided
+       disk_id is provided
+       size_mib must be a valid number
+    """
+    partition = {
+        'uuid': kw.get('uuid'),
+        'start_mib': kw.get('start_mib'),
+        'end_mib': kw.get('end_mib'),
+        'size_mib': kw.get('size_mib'),
+        'device_path': kw.get('device_path'),
+        'device_node': kw.get('device_node'),
+        'forihostid': kw.get('forihostid'),
+        'idisk_id': kw.get('idisk_id'),
+        'idisk_uuid': kw.get('idisk_uuid'),
+        'type_guid': kw.get('type_guid'),
+        'status': kw.get('status',
+                         constants.PARTITION_CREATE_ON_UNLOCK_STATUS),
+    }
+    return partition
+
+
+def create_test_partition(**kw):
+    """Create test partition entry in DB and return Partition DB
+    object. Function to be used to create test Partition objects in the database.
+    :param kw: kwargs with overriding values for partition's attributes.
+    :returns: Test Partition DB object.
+    """
+    partition = get_test_partition(**kw)
+    if 'uuid' not in kw:
+        del partition['uuid']
+    dbapi = db_api.get_instance()
+    forihostid = partition['forihostid']
+    return dbapi.partition_create(forihostid, partition)
+
+
+def post_get_test_partition(**kw):
+    partition = get_test_partition(**kw)
+
+    # When invoking a POST the following fields should not be populated:
+    del partition['uuid']
+    del partition['status']
+
+    return partition
 
 
 def get_test_interface_datanetwork(**kw):
