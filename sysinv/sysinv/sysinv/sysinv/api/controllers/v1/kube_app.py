@@ -275,6 +275,7 @@ class KubeAppController(rest.RestController):
                     "while the current status is {}.".format(db_app.status)))
             db_app.status = constants.APP_APPLY_IN_PROGRESS
             db_app.progress = None
+            db_app.recovery_attempts = 0
             db_app.save()
             pecan.request.rpcapi.perform_app_apply(pecan.request.context,
                                                    db_app, mode=mode)

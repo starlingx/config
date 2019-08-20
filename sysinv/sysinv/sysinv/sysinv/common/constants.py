@@ -1409,6 +1409,7 @@ APP_PROGRESS_APPLY_MANIFEST = 'applying application manifest'
 APP_PROGRESS_COMPLETED = 'completed'
 APP_PROGRESS_DELETE_MANIFEST = 'deleting application manifest'
 APP_PROGRESS_DOWNLOAD_IMAGES = 'retrieving docker images'
+APP_PROGRESS_IMAGES_DOWNLOAD_FAILED = 'failed to download one or more image(s).'
 APP_PROGRESS_EXTRACT_TARFILE = 'extracting application tar file'
 APP_PROGRESS_GENERATE_OVERRIDES = 'generating application overrides'
 APP_PROGRESS_TARFILE_DOWNLOAD = 'downloading tarfile'
@@ -1422,6 +1423,9 @@ APP_PROGRESS_RECOVER_COMPLETED = 'Application recover to version {} completed. '
 APP_PROGRESS_CLEANUP_FAILED = 'Application files/helm release cleanup for version {} failed.'
 APP_PROGRESS_RECOVER_IN_PROGRESS = 'recovering version {} '
 APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
+
+# Auto-recovery limits
+APP_AUTO_RECOVERY_MAX_COUNT = 5
 
 # Node label operation constants
 LABEL_ASSIGN_OP = 'assign'

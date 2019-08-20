@@ -13,6 +13,7 @@ import base64
 import copy
 import docker
 import grp
+import functools
 import keyring
 import os
 import pwd
@@ -68,6 +69,8 @@ DELETE_SEARCH_PATTERN = 'Deleting release'
 ROLLBACK_SEARCH_PATTERN = 'Helm rollback of release'
 INSTALLATION_TIMEOUT = 3600
 MAX_DOWNLOAD_THREAD = 5
+MAX_DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_WAIT_BEFORE_RETRY = 30
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 DOCKER_REGISTRY_USER = 'admin'
@@ -726,11 +729,8 @@ class AppOperator(object):
 
         total_count = len(images_to_download)
         threads = min(MAX_DOWNLOAD_THREAD, total_count)
-        failed_downloads = []
 
         start = time.time()
-        pool = greenpool.GreenPool(size=threads)
-
         try:
             local_registry_auth = get_local_docker_registry_auth()
             with self._lock:
@@ -740,30 +740,39 @@ class AppOperator(object):
                 name=app.name,
                 version=app.version,
                 reason=str(e))
-
-        f = lambda x: self._docker.download_an_image(
-            app.name, local_registry_auth, x)
-        for tag, rc in pool.imap(f, images_to_download):
-            if not rc:
-                failed_downloads.append(tag)
-
-        with self._lock:
-            self._docker._reset_registries_info()
-        elapsed = time.time() - start
-
-        failed_count = len(failed_downloads)
-        if failed_count > 0:
-            if not AppOperator.is_app_aborted(app.name):
-                reason = "failed to download one or more image(s)."
+        for idx in reversed(range(MAX_DOWNLOAD_ATTEMPTS)):
+            pool = greenpool.GreenPool(size=threads)
+            for tag, success in pool.imap(
+                    functools.partial(self._docker.download_an_image,
+                                      app.name, local_registry_auth),
+                    images_to_download):
+                if success:
+                    continue
+                if AppOperator.is_app_aborted(app.name):
+                    raise exception.KubeAppApplyFailure(
+                        name=app.name,
+                        version=app.version,
+                        reason="operation aborted by user.")
+                else:
+                    LOG.info("Failed to download image: %s", tag)
+                    break
             else:
-                reason = "operation aborted by user."
+                with self._lock:
+                    self._docker._reset_registries_info()
+                elapsed = time.time() - start
+                LOG.info("All docker images for application %s were successfully "
+                         "downloaded in %d seconds", app.name, elapsed)
+                break
+            # don't sleep after last download attempt
+            if idx:
+                LOG.info("Retry docker images download for application %s "
+                         "after %d seconds", app.name, DOWNLOAD_WAIT_BEFORE_RETRY)
+                time.sleep(DOWNLOAD_WAIT_BEFORE_RETRY)
+        else:
             raise exception.KubeAppApplyFailure(
                 name=app.name,
                 version=app.version,
-                reason=reason)
-        else:
-            LOG.info("All docker images for application %s were successfully "
-                     "downloaded in %d seconds" % (app.name, elapsed))
+                reason=constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED)
 
     def _validate_helm_charts(self, app):
         failed_charts = []
@@ -1818,7 +1827,7 @@ class AppOperator(object):
                 self._abort_operation(app, constants.APP_APPLY_OP,
                                       user_initiated=True)
             else:
-                self._abort_operation(app, constants.APP_APPLY_OP)
+                self._abort_operation(app, constants.APP_APPLY_OP, str(e))
 
             if not caller:
                 # If apply is not called from update method, deregister the app's
@@ -2224,6 +2233,10 @@ class AppOperator(object):
         @property
         def active(self):
             return self._kube_app.get('active')
+
+        @property
+        def recovery_attempts(self):
+            return self._kube_app.get('recovery_attempts')
 
         def update_status(self, new_status, new_progress):
             self._kube_app.status = new_status
