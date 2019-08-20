@@ -336,9 +336,11 @@ class ClusterController(rest.RestController):
 
     @wsme_pecan.wsexpose(ClusterCollection, [Query], types.uuid, types.uuid,
                          int, wtypes.text, wtypes.text)
-    def get_all(self, q=[], parent_uuid=None,
+    def get_all(self, q=None, parent_uuid=None,
                 marker=None, limit=None, sort_key='id', sort_dir='asc'):
         """Retrieve a list of Clusters."""
+        if q is None:
+            q = []
         return self._get_cluster_collection(parent_uuid, marker, limit,
                                             sort_key, sort_dir, q=q)
 

@@ -409,7 +409,7 @@ class OpenstackBaseHelm(base.BaseHelm):
 
         return newprivatekey, newpublickey
 
-    def _oslo_multistring_override(self, name=None, values=[]):
+    def _oslo_multistring_override(self, name=None, values=None):
         """
         Generate helm multistring dictionary override for specified option
         name with multiple values.

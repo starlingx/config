@@ -55,7 +55,9 @@ class PeriodicService(rpc_service.Service, periodic_task.PeriodicTasks):
                           context=admin_context)
 
 
-def prepare_service(argv=[]):
+def prepare_service(argv=None):
+    if argv is None:
+        argv = []
     rpc.set_defaults(control_exchange='sysinv')
     cfg.set_defaults(log.log_opts,
                      default_log_levels=['amqplib=WARN',

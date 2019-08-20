@@ -741,7 +741,9 @@ class ConductorManager(service.PeriodicService):
         return line
 
     def _dnsmasq_addn_host_entry_to_string(self, ip_addr, hostname,
-                                           aliases=[]):
+                                           aliases=None):
+        if aliases is None:
+            aliases = []
         line = "%s %s" % (ip_addr, hostname)
         for alias in aliases:
             line = "%s %s" % (line, alias)
@@ -10109,7 +10111,7 @@ class ConductorManager(service.PeriodicService):
         """
         return self._helm.get_helm_application_overrides(app_name, cnamespace)
 
-    def merge_overrides(self, context, file_overrides=[], set_overrides=[]):
+    def merge_overrides(self, context, file_overrides=None, set_overrides=None):
         """Merge the file and set overrides into a single chart overrides.
 
         :param context: request context.

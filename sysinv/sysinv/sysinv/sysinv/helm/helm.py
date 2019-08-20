@@ -377,7 +377,7 @@ class HelmOperator(object):
         LOG.debug("Chart %s can be found in repo: %s" % (chart_name, repo))
         return metadata_name, repo, chart_tarfile
 
-    def merge_overrides(self, file_overrides=[], set_overrides=[]):
+    def merge_overrides(self, file_overrides=None, set_overrides=None):
         """ Merge helm overrides together.
 
         :param values: A dict of different types of user override values,
@@ -385,6 +385,10 @@ class HelmOperator(object):
                        'set' (which generally specify one override).
         """
 
+        if file_overrides is None:
+            file_overrides = []
+        if set_overrides is None:
+            set_overrides = []
         # At this point we have potentially two separate types of overrides
         # specified by system or user, values from files and values passed in
         # via --set .  We need to ensure that we call helm using the same

@@ -57,7 +57,7 @@ class ActivatedExtensionManager(enabled.EnabledExtensionManager):
     """
 
     def __init__(self, namespace, enabled_names, invoke_on_load=True,
-                 invoke_args=(), invoke_kwds={}):
+                 invoke_args=(), invoke_kwds=None):
 
         def local_check_func(ext):
             return should_use_extension(namespace, ext, enabled_names)
@@ -67,5 +67,5 @@ class ActivatedExtensionManager(enabled.EnabledExtensionManager):
             check_func=local_check_func,
             invoke_on_load=invoke_on_load,
             invoke_args=invoke_args,
-            invoke_kwds=invoke_kwds,
+            invoke_kwds=invoke_kwds if invoke_kwds is not None else {},
         )

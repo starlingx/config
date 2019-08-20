@@ -2462,10 +2462,13 @@ class DockerHelper(object):
             return None
 
     def make_armada_request(self, request, manifest_file='', overrides_str='',
-                            app_releases=[], logfile=None):
+                            app_releases=None, logfile=None):
 
         if logfile is None:
             logfile = request + '.log'
+
+        if app_releases is None:
+            app_releases = []
 
         rc = True
 

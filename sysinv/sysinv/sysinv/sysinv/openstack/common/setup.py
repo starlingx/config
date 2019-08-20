@@ -68,9 +68,10 @@ def get_reqs_from_files(requirements_files):
     return []
 
 
-def parse_requirements(requirements_files=['requirements.txt',
-                                           'tools/pip-requires']):
+def parse_requirements(requirements_files=None):
     requirements = []
+    if requirements_files is None:
+        requirements_files = ['requirements.txt', 'tools/pip-requires']
     for line in get_reqs_from_files(requirements_files):
         # For the requirements list, we need to inject only the portion
         # after egg= so that distutils knows the package it's looking for
@@ -97,8 +98,9 @@ def parse_requirements(requirements_files=['requirements.txt',
     return requirements
 
 
-def parse_dependency_links(requirements_files=['requirements.txt',
-                                               'tools/pip-requires']):
+def parse_dependency_links(requirements_files=None):
+    if requirements_files is None:
+        requirements_files = ['requirements.txt', 'tools/pip-requires']
     dependency_links = []
     # dependency_links inject alternate locations to find packages listed
     # in requirements

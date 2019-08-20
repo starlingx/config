@@ -198,9 +198,11 @@ class ServiceParameterController(rest.RestController):
     @wsme_pecan.wsexpose(ServiceParameterCollection, [Query],
                          types.uuid, wtypes.text,
                          wtypes.text, wtypes.text, wtypes.text)
-    def get_all(self, q=[], marker=None, limit=None,
+    def get_all(self, q=None, marker=None, limit=None,
                 sort_key='id', sort_dir='asc'):
         """Retrieve a list of service parameters."""
+        if q is None:
+            q = []
         sort_key = ['section', 'name']
         return self._get_service_parameter_collection(marker, limit,
                                                       sort_key,

@@ -1692,7 +1692,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        app_name=app_name,
                                        cnamespace=cnamespace))
 
-    def merge_overrides(self, context, file_overrides=[], set_overrides=[]):
+    def merge_overrides(self, context, file_overrides=None, set_overrides=None):
         """Merge the file and set overrides into a single chart overrides.
 
         :param context: request context.
@@ -1701,6 +1701,10 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :returns: merged overrides string
 
         """
+        if file_overrides is None:
+            file_overrides = []
+        if set_overrides is None:
+            set_overrides = []
         return self.call(context,
                          self.make_msg('merge_overrides',
                                        file_overrides=file_overrides,

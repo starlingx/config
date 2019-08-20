@@ -455,7 +455,9 @@ class KubeAppHelper(object):
                 "state of the patch(es)."))
         return response
 
-    def _patch_report_app_dependencies(self, name, patches=[]):
+    def _patch_report_app_dependencies(self, name, patches=None):
+        if patches is None:
+            patches = []
         try:
             system = self._dbapi.isystem_get_one()
             patch_api.patch_report_app_dependencies(
