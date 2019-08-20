@@ -8,16 +8,18 @@ import keyring
 import os
 import subprocess
 
-from Crypto.PublicKey import RSA
-from sysinv.helm import base
-from sysinv.helm import common
-
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from oslo_log import log
 from oslo_serialization import jsonutils
+from sqlalchemy.orm.exc import NoResultFound
+
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
-from sqlalchemy.orm.exc import NoResultFound
+from sysinv.helm import base
+from sysinv.helm import common
 
 LOG = log.getLogger(__name__)
 
@@ -387,11 +389,18 @@ class OpenstackBaseHelm(base.BaseHelm):
             # No inactive app or no overrides for the inactive app
             pass
 
-        if not newprivatekey or not newprivatekey:
-            key = RSA.generate(2048)
-            pubkey = key.publickey()
-            newprivatekey = key.exportKey('PEM')
-            newpublickey = pubkey.exportKey('OpenSSH')
+        if not newprivatekey or not newpublickey:
+            private_key = rsa.generate_private_key(public_exponent=65537,
+                                                   key_size=2048,
+                                                   backend=default_backend())
+            public_key = private_key.public_key()
+            newprivatekey = str(private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption()).decode('utf-8'))
+            newpublickey = str(public_key.public_bytes(
+                serialization.Encoding.OpenSSH,
+                serialization.PublicFormat.OpenSSH).decode('utf-8'))
         values = {'system_overrides': override.system_overrides}
         values['system_overrides'].update({'privatekey': newprivatekey,
                                            'publickey': newpublickey})

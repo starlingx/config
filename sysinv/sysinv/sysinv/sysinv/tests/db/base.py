@@ -68,15 +68,24 @@ class BaseCephStorageBackendMixin(object):
 
     def setUp(self):
         super(BaseCephStorageBackendMixin, self).setUp()
+        self.backend_id = '54321'
+        self.tier = self._setup_ceph_storage_tier()
         self._setup_ceph_backend()
         # setup one or more storage monitors
         self.mon_index = 0
         self._create_storage_mon(self.host.hostname, self.host.id)
 
+    def tearDown(self):
+        super(BaseCephStorageBackendMixin, self).tearDown()
+
+    def _setup_ceph_storage_tier(self, **kwargs):
+        kwargs['forbackendid'] = self.backend_id
+        return dbutils.create_test_storage_tier(**kwargs)
+
     def _setup_ceph_backend(self, **kwargs):
         kwargs['forisystemid'] = self.system['id']
-        t = dbutils.get_test_storage_tier()
-        kwargs['tier_id'] = t['id']
+        kwargs['tier_id'] = self.tier['id']
+        kwargs['id'] = self.backend_id
         n = dbutils.get_test_ceph_storage_backend(**kwargs)
         self.dbapi.storage_ceph_create(n)
 

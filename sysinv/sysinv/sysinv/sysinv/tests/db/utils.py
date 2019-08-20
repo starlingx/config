@@ -195,6 +195,7 @@ def get_test_isystem(**kw):
             'contact': kw.get('contact', 'isystemcontact'),
             'system_type': kw.get('system_type', constants.TIS_STD_BUILD),
             'system_mode': kw.get('system_mode', constants.SYSTEM_MODE_DUPLEX),
+            'region_name': kw.get('region_name', constants.REGION_ONE_NAME),
             'location': kw.get('location', 'isystemlocation'),
             'services': kw.get('services', 72),
             'software_version': kw.get('software_version', SW_VERSION)
@@ -638,7 +639,7 @@ def get_test_ceph_storage_backend(**kw):
         'task': kw.get('task', None),
         'services': kw.get('services', None),
         'tier_id': kw.get('tier_id'),
-        'capabilities': kw.get('capabilities', {}),
+        'capabilities': kw.get('capabilities', constants.CEPH_BACKEND_CAP_DEFAULT),
         'forisystemid': kw.get('forisystemid', None),
         'cinder_pool_gib': kw.get('cinder_pool_gib', 80),
         'glance_pool_gib': kw.get('glance_pool_gib', 10),
@@ -1009,3 +1010,32 @@ def create_test_cluster(**kw):
         del cluster['id']
     dbapi = db_api.get_instance()
     return dbapi.cluster_create(cluster)
+
+
+def get_test_app(**kw):
+    app_data = {
+        'id': kw.get('id', 90210),
+        'name': kw.get('name', 'stx-openstack'),
+        'app_version': kw.get('app_version',
+                              constants.APP_VERSION_PLACEHOLDER),
+        'manifest_name': kw.get('manifest_name',
+                                constants.APP_MANIFEST_NAME_PLACEHOLDER),
+        'manifest_file': kw.get('manifest_file',
+                                constants.APP_TARFILE_NAME_PLACEHOLDER),
+        'status': kw.get('status', constants.APP_UPLOAD_IN_PROGRESS),
+    }
+    return app_data
+
+
+def create_test_app(**kw):
+    """Create test application entry in DB and return Application DB object.
+    Function to be used to create test application objects in the database.
+    :param kw: kwargs with overriding values for application attributes.
+    :returns: Test Application DB object.
+    """
+    app_data = get_test_app(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del app_data['id']
+    dbapi = db_api.get_instance()
+    return dbapi.kube_app_create(app_data)
