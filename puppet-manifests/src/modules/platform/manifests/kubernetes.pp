@@ -115,11 +115,10 @@ class platform::kubernetes::kubeadm {
     $k8s_registry = 'k8s.gcr.io'
   }
 
-  # Configure kubelet hugepage and cpumanager options
+  # Configure kubelet cpumanager options
   if str2bool($::is_worker_subfunction)
     and !('openstack-compute-node'
           in $host_labels) {
-    $k8s_hugepage = true
     $k8s_cpu_manager_opts = join([
       '--cpu-manager-policy=static',
       '--system-reserved-cgroup=/system.slice',
@@ -129,12 +128,11 @@ class platform::kubernetes::kubeadm {
         "memory=${k8s_reserved_mem}Mi"])
       ], ' ')
   } else {
-    $k8s_hugepage = false
     $k8s_cpu_manager_opts = '--cpu-manager-policy=none'
   }
 
   # Enable kubelet extra parameters that are node specific such as
-  # hugepages and cpumanager
+  # cpumanager
   file { '/etc/sysconfig/kubelet':
     ensure  => file,
     content => template('platform/kubelet.conf.erb'),
