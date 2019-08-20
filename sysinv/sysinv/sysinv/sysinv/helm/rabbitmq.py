@@ -20,6 +20,13 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
     def get_overrides(self, namespace=None):
         limit_enabled, limit_cpus, limit_mem_mib = self._get_platform_res_limit()
 
+        # Refer to: https://github.com/rabbitmq/rabbitmq-common/commit/4f9ef33cf9ba52197ff210ffcdf6629c1b7a6e9e
+        io_thread_pool_size = limit_cpus * 16
+        if io_thread_pool_size < 64:
+            io_thread_pool_size = 64
+        elif io_thread_pool_size > 1024:
+            io_thread_pool_size = 1024
+
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': {
@@ -41,6 +48,10 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
                             }
                         }
                     }
+                },
+                'io_thread_pool': {
+                    'enabled': limit_enabled,
+                    'size': "%d" % (io_thread_pool_size)
                 },
                 'endpoints': self._get_endpoints_overrides(),
             }
