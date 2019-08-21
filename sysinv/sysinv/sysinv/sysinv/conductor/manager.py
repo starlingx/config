@@ -33,6 +33,7 @@ import errno
 import filecmp
 import fnmatch
 import glob
+import hashlib
 import math
 import os
 import re
@@ -5085,7 +5086,74 @@ class ConductorManager(service.PeriodicService):
 
                 pass
 
+        if os.path.isfile(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG):
+            if self.check_nodes_stable():
+                LOG.info("Nodes are stable, beginning stx-openstack app "
+                         "automated re-apply")
+                self.reapply_openstack_app(context)
+            else:
+                LOG.info("stx-openstack requires a re-apply but there are "
+                         "currently node(s) in an unstable state. Will "
+                         "retry on next audit")
+        else:
+            # Clear any stuck re-apply alarm
+            app_alarms = self.fm_api.get_faults_by_id(
+                fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING)
+            if app_alarms:
+                self.fm_api.clear_fault(app_alarms[0].alarm_id,
+                                        app_alarms[0].entity_instance_id)
+
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
+
+    def check_nodes_stable(self):
+        hosts = self.dbapi.ihost_get_list()
+        if (utils.is_host_simplex_controller(hosts[0]) and
+                not hosts[0].vim_progress_status.startswith(
+                constants.VIM_SERVICES_ENABLED)):
+            # If the apply is triggered too early on AIO-SX, tiller will not
+            # be up and cause the re-apply to fail, so wait for services
+            # to enable
+            return False
+        for host in hosts:
+            if host.availability == constants.AVAILABILITY_INTEST:
+                return False
+            task_str = host.task or ""
+            if (task_str.startswith(constants.TASK_BOOTING) or
+                    task_str.startswith(constants.TASK_TESTING) or
+                    task_str.startswith(constants.TASK_UNLOCKING) or
+                    task_str.startswith(constants.LOCKING) or
+                    task_str.startswith(constants.FORCE_LOCKING)):
+                return False
+        return True
+
+    def reapply_openstack_app(self, context):
+        # Consume the reapply flag
+        os.remove(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG)
+
+        # Clear the pending automatic reapply alarm
+        app_alarms = self.fm_api.get_faults_by_id(
+            fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING)
+        if app_alarms:
+            self.fm_api.clear_fault(app_alarms[0].alarm_id,
+                                    app_alarms[0].entity_instance_id)
+
+        try:
+            app = kubeapp_obj.get_by_name(context, constants.HELM_APP_OPENSTACK)
+
+            if app.status == constants.APP_APPLY_SUCCESS:
+                LOG.info(
+                    "Reapplying the %s app" % constants.HELM_APP_OPENSTACK)
+                app.status = constants.APP_APPLY_IN_PROGRESS
+                app.save()
+
+                greenthread.spawn(self._app.perform_app_apply, app, None)
+            else:
+                LOG.info("%s app is present but not applied, "
+                         "skipping re-apply" % constants.HELM_APP_OPENSTACK)
+        except exception.KubeAppNotFound:
+            LOG.info(
+                "%s app not present, skipping re-apply" %
+                constants.HELM_APP_OPENSTACK)
 
     def get_k8s_namespaces(self, context):
         """ Get Kubernetes namespaces
@@ -6001,12 +6069,14 @@ class ConductorManager(service.PeriodicService):
             return
 
         # Identify the executed set of manifests executed
+        success = False
         if reported_cfg == puppet_common.REPORT_DISK_PARTITON_CONFIG:
             partition_uuid = iconfig['partition_uuid']
             host_uuid = iconfig['host_uuid']
             idisk_uuid = iconfig['idisk_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_partition_mgmt_success(host_uuid, idisk_uuid,
                                                    partition_uuid)
             elif status == puppet_common.REPORT_FAILURE:
@@ -6017,6 +6087,7 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_lvm_cinder_config_success(context, host_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
@@ -6030,6 +6101,7 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_ceph_config_success(context, host_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
@@ -6043,6 +6115,7 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_ceph_external_config_success(context, host_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
@@ -6056,6 +6129,7 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_external_config_success(host_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
@@ -6069,6 +6143,7 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_ceph_services_config_success(host_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
@@ -6082,6 +6157,7 @@ class ConductorManager(service.PeriodicService):
             host_uuid = iconfig['host_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_ceph_base_config_success(host_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
@@ -6096,6 +6172,7 @@ class ConductorManager(service.PeriodicService):
             stor_uuid = iconfig['stor_uuid']
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
+                success = True
                 self.report_ceph_osd_config_success(host_uuid, stor_uuid)
             elif status == puppet_common.REPORT_FAILURE:
                 # Configuration has failed
@@ -6105,10 +6182,25 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("No match for sysinv-agent manifest application reported! "
                           "reported_cfg: %(cfg)s status: %(status)s "
                           "iconfig: %(iconfig)s" % args)
+        elif reported_cfg == puppet_common.REPORT_CEPH_RADOSGW_CONFIG:
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                success = True
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
                       {'iconfig': iconfig, 'cfg': reported_cfg})
+
+        if success and \
+                os.path.isfile(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG):
+            if self.check_nodes_stable():
+                self.reapply_openstack_app(context)
+            else:
+                LOG.warning(
+                    "stx-openstack requires a re-apply but could not trigger"
+                    "during successful config report because there are "
+                    "node(s) in an unstable state. Will be reapplied during "
+                    "audit instead.")
 
     def report_partition_mgmt_success(self, host_uuid, idisk_uuid,
                                       partition_uuid):
@@ -6287,7 +6379,10 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::ceph::rgw::keystone::runtime']
+            "classes": ['platform::ceph::rgw::keystone::runtime'],
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_CEPH_RADOSGW_CONFIG
+
         }
 
         self._config_apply_runtime_manifest(context,
@@ -7047,7 +7142,9 @@ class ConductorManager(service.PeriodicService):
                     "personalities": personalities,
                     "classes": ['platform::ceph::rgw::runtime',
                                 'platform::sm::rgw::runtime',
-                                'platform::haproxy::runtime']
+                                'platform::haproxy::runtime'],
+                    puppet_common.REPORT_STATUS_CFG:
+                        puppet_common.REPORT_CEPH_RADOSGW_CONFIG
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -7980,6 +8077,8 @@ class ConductorManager(service.PeriodicService):
                                    config_dict,
                                    host_uuids=host_uuids,
                                    force=force)
+
+        self.evaluate_app_reapply(context)
 
         # Remove reboot required flag in case it's present. Runtime manifests
         # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
@@ -10182,15 +10281,77 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
-    def remove_unlock_ready_flag(self, context):
-        """Remove the unlock ready flag if it exists
+    def evaluate_app_reapply(self, context):
+        """Synchronously, determine whether an stx-openstack application
+        re-apply is needed, and if so, raise the re-apply flag.
 
           :param context: request context.
           """
         try:
-            os.remove(constants.UNLOCK_READY_FLAG)
-        except OSError:
-            pass
+            app = kubeapp_obj.get_by_name(context,
+                                          constants.HELM_APP_OPENSTACK)
+            app = self._app.Application(app, True)
+        except exception.KubeAppNotFound:
+            app = None
+        if app and app.status == constants.APP_APPLY_SUCCESS:
+            # Hash the existing overrides
+            # TODO these hashes can be stored in the db to reduce overhead,
+            # as well as removing the writing to disk of the new overrides
+            old_hash = {}
+            app.charts = self._app._get_list_of_charts(app.armada_mfile_abs)
+            (helm_files, armada_files) = self._app._get_overrides_files(
+                app.overrides_dir, app.charts, app.name, None)
+            for f in helm_files + armada_files:
+                with open(f, 'rb') as file:
+                    old_hash[f] = hashlib.md5(file.read()).hexdigest()
+
+            # Regenerate overrides and compute new hash
+            new_hash = {}
+            app.charts = self._app._get_list_of_charts(app.armada_mfile_abs)
+            self._helm.generate_helm_application_overrides(
+                app.overrides_dir, app.name, None, cnamespace=None,
+                armada_format=True, armada_chart_info=app.charts, combined=True)
+            (helm_files, armada_files) = self._app._get_overrides_files(
+                app.overrides_dir, app.charts, app.name, None)
+            for f in helm_files + armada_files:
+                with open(f, 'rb') as file:
+                    new_hash[f] = hashlib.md5(file.read()).hexdigest()
+
+            if cmp(old_hash, new_hash) != 0:
+                LOG.info("There has been an overrides change, setting up "
+                         "stx-openstack app reapply")
+                self._setup_delayed_reapply()
+            else:
+                LOG.info("No override change after configuration action, "
+                         "skipping re-apply")
+        else:
+            LOG.info("stx-openstack app status does not "
+                     "warrant app re-apply")
+
+    def _setup_delayed_reapply(self):
+        open(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG, "w").close()
+
+        # Raise the pending automatic reapply alarm
+        entity_instance_id = "%s=%s" % \
+                             (fm_constants.FM_ENTITY_TYPE_APPLICATION,
+                              constants.HELM_APP_OPENSTACK)
+        fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_APPLICATION,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_WARNING,
+                reason_text=_(
+                    "A configuration change requires a reapply of "
+                    "the %s application.") % constants.HELM_APP_OPENSTACK,
+                alarm_type=fm_constants.FM_ALARM_TYPE_0,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_UNKNOWN,
+                proposed_repair_action=_(
+                    "Ensure all hosts are either locked or unlocked.  When "
+                    "the system is stable the application will be "
+                    "automatically reapplied."),
+                service_affecting=False)
+        self.fm_api.set_fault(fault)
 
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handling of application upload request (via AppOperator)
@@ -10212,17 +10373,12 @@ class ConductorManager(service.PeriodicService):
         was_applied = self._app.is_app_active(rpc_app)
         app_applied = self._app.perform_app_apply(rpc_app, mode)
         appname = self._app.get_appname(rpc_app)
-        if constants.HELM_APP_OPENSTACK == appname and app_applied:
-            if was_applied:
-                # stx-openstack application was applied, this is a
-                # reapply action
-                # generate .unlock_ready flag
-                cutils.touch(constants.UNLOCK_READY_FLAG)
-            else:
-                # apply any runtime configurations that are needed for
-                # stx_openstack application
-                self._update_config_for_stx_openstack(context)
-                self._update_pciirqaffinity_config(context)
+        if constants.HELM_APP_OPENSTACK == appname and app_applied \
+                and not was_applied:
+            # apply any runtime configurations that are needed for
+            # stx_openstack application
+            self._update_config_for_stx_openstack(context)
+            self._update_pciirqaffinity_config(context)
 
             # The radosgw chart may have been enabled/disabled. Regardless of
             # the prior apply state, update the ceph config

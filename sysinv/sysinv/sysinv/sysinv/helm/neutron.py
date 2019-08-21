@@ -79,9 +79,13 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         hosts = self.dbapi.ihost_get_list()
 
         for host in hosts:
+            host_labels = self.dbapi.label_get_by_host(host.id)
             if (host.invprovision in [constants.PROVISIONED,
-                                      constants.PROVISIONING]):
-                if constants.WORKER in utils.get_personalities(host):
+                                      constants.PROVISIONING] or
+                    host.ihost_action in [constants.UNLOCK_ACTION,
+                                          constants.FORCE_UNLOCK_ACTION]):
+                if (constants.WORKER in utils.get_personalities(host) and
+                        utils.has_openstack_compute(host_labels)):
 
                     hostname = str(host.hostname)
                     host_neutron = {

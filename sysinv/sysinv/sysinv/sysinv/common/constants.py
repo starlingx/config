@@ -186,6 +186,9 @@ CONFIG_STATUS_REINSTALL = "Reinstall required"
 
 # when reinstall starts, mtc update the db with task = 'Reinstalling'
 TASK_REINSTALLING = "Reinstalling"
+TASK_BOOTING = "Booting"
+TASK_UNLOCKING = "Unlocking"
+TASK_TESTING = "Testing"
 
 HOST_ACTION_STATE = "action_state"
 HAS_REINSTALLING = "reinstalling"
@@ -1379,6 +1382,8 @@ APP_INSTALL_ROOT_PATH = '/scratch'
 APP_INSTALL_PATH = APP_INSTALL_ROOT_PATH + '/apps'
 APP_SYNCED_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
 APP_METADATA_FILE = 'metadata.yaml'
+APP_OPENSTACK_PENDING_REAPPLY_FLAG = os.path.join(
+    tsc.ARMADA_PATH, ".openstack_app_reapply")
 
 # State constants
 APP_NOT_PRESENT = 'missing'
