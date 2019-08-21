@@ -1,11 +1,11 @@
 ---
 - project:
     templates:
-      - build-openstack-docs-pti
+      - publish-stx-docs
+      - stx-api-ref-jobs
+      - stx-release-notes-jobs
     check:
       jobs:
-        - build-openstack-api-ref
-        - build-openstack-releasenotes
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py35
@@ -21,8 +21,6 @@
         - puppet-modules-wrs-lint
     gate:
       jobs:
-        - build-openstack-api-ref
-        - build-openstack-releasenotes
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py35
@@ -36,11 +34,6 @@
         - cgtsclient-tox-pylint
         - puppet-manifests-lint
         - puppet-modules-wrs-lint
-    post:
-      jobs:
-        - publish-stx-api-ref
-        - publish-stx-tox
-        - publish-stx-releasenotes
 
 - job:
     name: sysinv-tox-py27
