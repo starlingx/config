@@ -1258,6 +1258,7 @@ class ConductorManager(service.PeriodicService):
         """
         hostname = host.hostname
         self._unallocate_address(hostname, constants.NETWORK_TYPE_MGMT)
+        self._unallocate_address(hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
         if host.personality == constants.CONTROLLER:
             self._unallocate_address(hostname, constants.NETWORK_TYPE_OAM)
             self._unallocate_address(hostname, constants.NETWORK_TYPE_PXEBOOT)
