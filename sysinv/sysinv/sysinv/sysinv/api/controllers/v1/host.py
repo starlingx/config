@@ -2029,6 +2029,16 @@ class HostController(rest.RestController):
             ihost_ret = pecan.request.rpcapi.configure_ihost(
                 pecan.request.context, ihost_obj)
 
+            # Trigger a system app reapply if the host has been unlocked.
+            # Only trigger the reapply if it is not during restore and the
+            # openstack app is applied
+            if (cutils.is_openstack_applied(pecan.request.dbapi) and
+                    not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
+                    patched_ihost.get('action') in
+                    [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
+                pecan.request.rpcapi.evaluate_app_reapply(
+                    pecan.request.context)
+
             pecan.request.dbapi.ihost_update(
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
 
@@ -2075,15 +2085,6 @@ class HostController(rest.RestController):
                         new_ihost_mtc,
                         constants.MTC_DEFAULT_TIMEOUT_IN_SECS)
                 elif new_ihost_mtc['operation'] == 'modify':
-                    if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-                        if new_ihost_mtc['action'] == constants.UNLOCK_ACTION:
-                            if cutils.is_openstack_applied(pecan.request.dbapi):
-                                # Unlock action on a simplex with stx-openstack
-                                # applied, should remove the unlock ready flag
-                                # because the application should be reapplied
-                                # before unlock
-                                LOG.info("Remove unlock ready flag")
-                                self._remove_unlock_ready_flag()
                     mtc_response = mtce_api.host_modify(
                         self._api_token, self._mtc_address, self._mtc_port,
                         new_ihost_mtc,
@@ -2135,13 +2136,6 @@ class HostController(rest.RestController):
                     pecan.request.context,
                     ihost_obj['uuid'],
                     ibm_msg_dict)
-
-            # Trigger a system app reapply if the host has been unlocked.
-            # Only trigger the reapply if it is not during restore.
-            if (not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
-                    patched_ihost.get('action') in
-                    [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
-                self._reapply_system_app()
 
         elif mtc_response['status'] is None:
             raise wsme.exc.ClientSideError(
@@ -2497,35 +2491,10 @@ class HostController(rest.RestController):
 
         pecan.request.dbapi.ihost_destroy(ihost_id)
 
-        # If the host being removed was an openstack worker node, trigger
-        # a reapply
+        # If the host being removed was an openstack worker node, check to see
+        # if a reapply is needed
         if openstack_worker:
-            self._reapply_system_app()
-
-    def _remove_unlock_ready_flag(self):
-        pecan.request.rpcapi.remove_unlock_ready_flag(
-            pecan.request.context)
-
-    def _reapply_system_app(self):
-        try:
-            db_app = objects.kube_app.get_by_name(
-                pecan.request.context, constants.HELM_APP_OPENSTACK)
-
-            if db_app.status == constants.APP_APPLY_SUCCESS:
-                LOG.info(
-                    "Reapplying the %s app" % constants.HELM_APP_OPENSTACK)
-                db_app.status = constants.APP_APPLY_IN_PROGRESS
-                db_app.progress = None
-                db_app.save()
-                pecan.request.rpcapi.perform_app_apply(
-                    pecan.request.context, db_app, mode=None)
-            else:
-                LOG.info("%s system app is present but not applied, "
-                         "skipping re-apply" % constants.HELM_APP_OPENSTACK)
-        except exception.KubeAppNotFound:
-            LOG.info(
-                "%s system app not present, skipping re-apply" %
-                constants.HELM_APP_OPENSTACK)
+            pecan.request.rpcapi.evaluate_app_reapply(pecan.request.context)
 
     def _check_upgrade_provision_order(self, personality, hostname):
         LOG.info("_check_upgrade_provision_order personality=%s, hostname=%s" %
