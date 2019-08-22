@@ -1337,6 +1337,7 @@ SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS = SYSTEM_SECURITY_FEATURE_
 # Helm: Supported application (aka chart bundles)
 HELM_APP_OPENSTACK = 'stx-openstack'
 HELM_APP_PLATFORM = 'platform-integ-apps'
+HELM_APP_MONITOR = 'stx-monitor'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'

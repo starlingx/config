@@ -1,0 +1,5 @@
+This directory contains all StarlingX charts that need to be built for this
+application. Some charts are common across applications. These common charts
+reside in the stx-config/kubernetes/helm-charts directory. To include these in
+this application update the build_srpm.data file and use the COPY_LIST_TO_TAR
+mechanism to populate these common charts.
