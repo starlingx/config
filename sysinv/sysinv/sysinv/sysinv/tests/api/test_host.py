@@ -32,6 +32,7 @@ class FakeConductorAPI(object):
         self.remove_host_config = mock.MagicMock()
         self.delete_barbican_secret = mock.MagicMock()
         self.iplatform_update_by_ihost = mock.MagicMock()
+        self.evaluate_app_reapply = mock.MagicMock()
 
     def create_ihost(self, context, values):
         # Create the host in the DB as the code under test expects this
@@ -716,6 +717,8 @@ class TestPatch(TestHost):
             mock.ANY)
         # Verify that the host was configured
         self.fake_conductor_api.configure_ihost.assert_called_once()
+        # Verify that the app reapply was checked
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was added to maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -748,6 +751,8 @@ class TestPatch(TestHost):
             mock.ANY)
         # Verify that the host was configured
         self.fake_conductor_api.configure_ihost.assert_called_once()
+        # Verify that the app reapply was checked
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -812,6 +817,8 @@ class TestPatch(TestHost):
             mock.ANY)
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host action was cleared
@@ -902,6 +909,8 @@ class TestPatch(TestHost):
             mock.ANY)
         # Verify that the host was configured
         self.fake_conductor_api.configure_ihost.assert_called_once()
+        # Verify that the app reapply was checked
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was added to maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -952,6 +961,8 @@ class TestPatch(TestHost):
             mock.ANY)
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host action was cleared
@@ -1000,6 +1011,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1037,6 +1050,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1072,6 +1087,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1107,6 +1124,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1143,6 +1162,8 @@ class TestPatch(TestHost):
             mock.ANY, c1_host['uuid'])
         # Verify that the reinstall was not sent to the VIM
         self.mock_vim_api_host_action.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was configured
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the host was modified in maintenance
@@ -1180,6 +1201,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1215,6 +1238,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1251,6 +1276,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host was updated
@@ -1294,6 +1321,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host was updated
@@ -1338,6 +1367,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host was not updated
@@ -1381,6 +1412,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host was not updated
@@ -1423,6 +1456,8 @@ class TestPatch(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the host was not configured
         self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the app reapply evaluate was not configured
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host was not updated

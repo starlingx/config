@@ -1837,6 +1837,20 @@ class AppOperator(object):
                                   fm_constants.FM_ALARM_TYPE_0,
                                   _("No action required."),
                                   True)
+
+        # Remove the pending auto re-apply if it is being triggered manually
+        if (app.name == constants.HELM_APP_OPENSTACK and
+                os.path.isfile(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG)):
+            # Consume the reapply flag
+            os.remove(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG)
+
+            # Clear the pending automatic reapply alarm
+            app_alarms = self._fm_api.get_faults_by_id(
+                fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING)
+            if app_alarms:
+                self._fm_api.clear_fault(app_alarms[0].alarm_id,
+                                         app_alarms[0].entity_instance_id)
+
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
         overrides_str = ''
