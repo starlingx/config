@@ -165,7 +165,7 @@ ephemeral_pools:
 images:
   tags:
     rbd_provisioner: quay.io/external_storage/rbd-provisioner:v2.1.1-k8s1.11
-    rbd_provisioner_storage_init: docker.io/port/ceph-config-helper:v1.10.3
+    rbd_provisioner_storage_init: docker.io/starlingx/ceph-config-helper:v1.15.0
   pull_policy: "IfNotPresent"
   local_registry:
     active: false

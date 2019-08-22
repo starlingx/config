@@ -1,11 +1,10 @@
-apiVersion: kubeadm.k8s.io/v1alpha3
+apiVersion: kubeadm.k8s.io/v1beta2
 kind: InitConfiguration
-apiEndpoint:
+localAPIEndpoint:
   advertiseAddress: <%= @apiserver_advertise_address %>
 ---
-apiVersion: kubeadm.k8s.io/v1beta1
+apiVersion: kubeadm.k8s.io/v1beta2
 kind: ClusterConfiguration
-kubernetesVersion: 1.13.5
 
 apiServer:
   certSANs:
@@ -29,6 +28,7 @@ etcd:
     endpoints:
     - <%= @etcd_endpoint %>
 imageRepository: "<%= @k8s_registry %>"
+kubernetesVersion: v1.15.3
 networking:
   dnsDomain: <%= @service_domain %>
   podSubnet: <%= @pod_network_cidr %>
@@ -36,9 +36,6 @@ networking:
 ---
 kind: KubeletConfiguration
 apiVersion: kubelet.config.k8s.io/v1beta1
-# Workaround for the following issue:
-# https://github.com/kubernetes/kubernetes/issues/74412
-configMapAndSecretChangeDetectionStrategy: Cache
 nodeStatusUpdateFrequency: "4s"
 failSwapOn: false
 cgroupRoot: "/k8s-infra"
