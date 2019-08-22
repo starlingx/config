@@ -1314,6 +1314,17 @@ class HostController(rest.RestController):
         else:
             self._validate_hostname(ihost_dict['hostname'], personality)
 
+        mgmt_mac = ihost_dict.get('mgmt_mac')
+        if not mgmt_mac:
+            raise wsme.exc.ClientSideError(_(
+                "Host-add Rejected: Must provide MAC Address of "
+                "the host mgmt interface"))
+        else:
+            if not cutils.is_valid_mac(mgmt_mac):
+                raise wsme.exc.ClientSideError(_(
+                    "Host-add Rejected: Must provide a valid format "
+                    "of a MAC Address"))
+
         HostController._personality_license_check(personality)
 
     def _do_post(self, ihost_dict):

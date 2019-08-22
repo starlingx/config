@@ -464,6 +464,42 @@ class TestPost(TestHost):
                           self.post_json, '/ihosts', ndict,
                           headers={'User-Agent': 'sysinv-test'})
 
+    def test_create_ihost_missing_mgmt_mac(self):
+        # Test creation of a second node with missing management MAC
+        self._configure_networks()
+        # Create controller-0
+        self._create_controller_0()
+
+        ndict = dbutils.post_get_test_ihost(hostname='controller-1',
+                                            personality='controller',
+                                            subfunctions=None,
+                                            mgmt_mac=None,
+                                            mgmt_ip=None,
+                                            serialid='serial2',
+                                            bm_ip="128.224.150.195")
+
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_create_ihost_invalid_mgmt_mac_format(self):
+        # Test creation of a second node with an invalid management MAC format
+        self._configure_networks()
+        # Create controller-0
+        self._create_controller_0()
+
+        ndict = dbutils.post_get_test_ihost(hostname='controller-1',
+                                            personality='controller',
+                                            subfunctions=None,
+                                            mgmt_mac='52:54:00:59:02:9',
+                                            mgmt_ip=None,
+                                            serialid='serial2',
+                                            bm_ip="128.224.150.195")
+
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
 
 class TestDelete(TestHost):
 
