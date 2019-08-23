@@ -4929,6 +4929,12 @@ class HostController(rest.RestController):
                       "initial inventory prior to unlock."
                       % hostupdate.displayid))
 
+        # To unlock, ensure no app is being applied/reapplied, updated or recovered
+        # as this could at best delay the in-progress app operation or at worst result
+        # in failure due to timeout waiting for the host and its pods to recover from
+        # the unlock.
+        self.check_unlock_application(hostupdate, force_unlock)
+
         personality = hostupdate.ihost_patch.get('personality')
         if personality == constants.CONTROLLER:
             self.check_unlock_controller(hostupdate, force_unlock)
@@ -5155,6 +5161,27 @@ class HostController(rest.RestController):
                 elif "0" != error_code:
                     raise wsme.exc.ClientSideError(
                         _("%s" % response['error_details']))
+
+    def check_unlock_application(self, hostupdate, force_unlock=False):
+        LOG.info("%s ihost check_unlock_application" % hostupdate.displayid)
+        apps = pecan.request.dbapi.kube_app_get_all()
+
+        for app in apps:
+            if app.status in [constants.APP_APPLY_IN_PROGRESS,
+                              constants.APP_UPDATE_IN_PROGRESS,
+                              constants.APP_RECOVER_IN_PROGRESS]:
+                if not force_unlock:
+                    raise wsme.exc.ClientSideError(
+                        _("Rejected: Can not unlock host %s while an application is being "
+                          "applied, updated or recovered. Please try again later."
+                          % hostupdate.displayid))
+                else:
+                    LOG.warn("Allowing force-unlock of host %s while application "
+                             "%s status = '%s'"
+                             % (hostupdate.displayid, app.name,
+                                app.status))
+                    # Could break here, but it is harmless getting a stat of
+                    # simultaneous app ops.
 
     def check_unlock_controller(self, hostupdate, force_unlock=False):
         """Pre unlock semantic checks for controller"""
