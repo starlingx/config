@@ -291,6 +291,13 @@ def _validate_docker_registry_address(name, value):
             "Parameter '%s' must be a valid address." % name))
 
 
+def _validate_docker_registry_auth_secret(name, value):
+    """Check if registry auth secret is a valid UUID"""
+    if not cutils.is_uuid_like(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid UUID." % name))
+
+
 def _validate_docker_insecure_registry_bool(name, value):
     """Check if insecure registry is a valid bool"""
     if not cutils.is_valid_boolstr(value):
@@ -462,26 +469,35 @@ DOCKER_REGISTRIES_PARAMETER_OPTIONAL = [
 
 DOCKER_REGISTRIES_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL: _validate_docker_registry_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET: _validate_docker_registry_auth_secret
 }
 
 DOCKER_DOCKER_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
         'platform::docker::params::docker_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
+        'platform::docker::params::docker_registry_secret'
 }
 
 DOCKER_GCR_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
-        'platform::docker::params::gcr_registry'
+        'platform::docker::params::gcr_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
+        'platform::docker::params::gcr_registry_secret'
 }
 
 DOCKER_K8S_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
-        'platform::docker::params::k8s_registry'
+        'platform::docker::params::k8s_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
+        'platform::docker::params::k8s_registry_secret'
 }
 
 DOCKER_QUAY_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
-        'platform::docker::params::quay_registry'
+        'platform::docker::params::quay_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
+        'platform::docker::params::quay_registry_secret'
 }
 
 KUBERNETES_CERTIFICATES_PARAMETER_OPTIONAL = [
