@@ -906,10 +906,14 @@ def get_ceph_storage_model(dbapi=None):
             # 3rd monitor is on storage-0, so OSDs are also on storage nodes
             is_storage_model = True
 
+    # Check any storage nodes are provisioned
+    if not is_storage_model:
+        if dbapi.ihost_get_by_personality(constants.STORAGE):
+            is_storage_model = True
+
     # There are cases where we delete the monitor on worker node and have not
     # yet assigned it to another worker. In this case check if any OSDs have
     # been configured on controller nodes.
-
     if not is_storage_model:
         controller_hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
         for chost in controller_hosts:
