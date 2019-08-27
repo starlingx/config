@@ -16,6 +16,7 @@ from sysinv.helm.aodh import AodhHelm
 from sysinv.helm.barbican import BarbicanHelm
 from sysinv.helm.ceilometer import CeilometerHelm
 from sysinv.helm.cinder import CinderHelm
+from sysinv.helm.fm_rest_api import FmRestApiHelm
 from sysinv.helm.garbd import GarbdHelm
 from sysinv.helm.glance import GlanceHelm
 from sysinv.helm.gnocchi import GnocchiHelm
@@ -61,6 +62,7 @@ class OpenstackArmadaManifestOperator(base.ArmadaManifestOperator):
     CHART_GROUP_GLANCE = 'openstack-glance'
     CHART_GROUP_SWIFT = 'openstack-ceph-rgw'
     CHART_GROUP_CINDER = 'openstack-cinder'
+    CHART_GROUP_FM_REST_API = 'openstack-fm-rest-api'
     CHART_GROUP_COMPUTE_KIT = 'openstack-compute-kit'
     CHART_GROUP_HEAT = 'openstack-heat'
     CHART_GROUP_HORIZON = 'openstack-horizon'
@@ -71,6 +73,7 @@ class OpenstackArmadaManifestOperator(base.ArmadaManifestOperator):
         BarbicanHelm.CHART: CHART_GROUP_BARBICAN,
         CeilometerHelm.CHART: CHART_GROUP_TELEMETRY,
         CinderHelm.CHART: CHART_GROUP_CINDER,
+        FmRestApiHelm.CHART: CHART_GROUP_FM_REST_API,
         GarbdHelm.CHART: CHART_GROUP_MARIADB,
         GlanceHelm.CHART: CHART_GROUP_GLANCE,
         GnocchiHelm.CHART: CHART_GROUP_TELEMETRY,
@@ -101,6 +104,7 @@ class OpenstackArmadaManifestOperator(base.ArmadaManifestOperator):
         CeilometerHelm.CHART: 'openstack-ceilometer',
         CinderHelm.CHART: 'openstack-cinder',
         GarbdHelm.CHART: 'openstack-garbd',
+        FmRestApiHelm.CHART: 'openstack-fm-rest-api',
         GlanceHelm.CHART: 'openstack-glance',
         GnocchiHelm.CHART: 'openstack-gnocchi',
         HeatHelm.CHART: 'openstack-heat',
