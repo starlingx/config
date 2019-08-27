@@ -99,6 +99,7 @@ from sysinv.openstack.common import uuidutils
 from sysinv.openstack.common.gettextutils import _
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
+from sysinv.helm import common as helm_common
 from sysinv.helm import helm
 from sysinv.helm import utils as helm_utils
 
@@ -6216,6 +6217,20 @@ class ConductorManager(service.PeriodicService):
             LOG.error("PART Unexpected Error.")
             self.dbapi.partition_update(partition_data['uuid'], part_updates)
 
+    def _update_config_for_stx_monitor(self, context):
+        """ Update config applicable to stx-monitor app. """
+        personalities = [constants.CONTROLLER, constants.WORKER]
+
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::collectd::restart']
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
     def _update_vim_config(self, context):
         """ Update the VIM's configuration. """
         personalities = [constants.CONTROLLER]
@@ -10228,6 +10243,14 @@ class ConductorManager(service.PeriodicService):
             # the prior apply state, update the ceph config
             self._update_radosgw_config(context)
 
+        if constants.HELM_APP_MONITOR == appname and app_applied:
+            logstash_active = cutils.is_chart_enabled(self.dbapi, constants.HELM_APP_MONITOR,
+                                                      helm_common.HELM_CHART_LOGSTASH,
+                                                      helm_common.HELM_NS_MONITOR)
+
+            if logstash_active:
+                self._update_config_for_stx_monitor(context)
+
         return app_applied
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile, operation):
@@ -10266,6 +10289,15 @@ class ConductorManager(service.PeriodicService):
             self._update_vim_config(context)
             self._update_pciirqaffinity_config(context)
             self._update_radosgw_config(context)
+
+        if constants.HELM_APP_MONITOR == appname and app_removed:
+            logstash_active = cutils.is_chart_enabled(self.dbapi, constants.HELM_APP_MONITOR,
+                                                      helm_common.HELM_CHART_LOGSTASH,
+                                                      helm_common.HELM_NS_MONITOR)
+
+            if logstash_active:
+                self._update_config_for_stx_monitor(context)
+
         return app_removed
 
     def perform_app_abort(self, context, rpc_app):

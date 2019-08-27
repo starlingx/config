@@ -1821,6 +1821,15 @@ def is_openstack_applied(dbapi):
         return False
 
 
+def is_monitor_applied(dbapi):
+    """ Checks whether the Monitor application is applied successfully. """
+    try:
+        monitor_app = dbapi.kube_app_get(constants.HELM_APP_MONITOR)
+        return monitor_app.active
+    except exception.KubeAppNotFound:
+        return False
+
+
 def is_url(url_str):
     try:
         URLValidator()(url_str)
