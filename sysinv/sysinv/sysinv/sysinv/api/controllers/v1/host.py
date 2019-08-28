@@ -3417,6 +3417,27 @@ class HostController(rest.RestController):
         return None
 
     @staticmethod
+    def _check_vswitch_memory(inodes):
+        """
+        Perform vswitch memory semantic checks on inodes.
+        """
+        vswitch_hp_size = None
+        for node in inodes:
+            mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
+            for m in mems:
+                if not vswitch_hp_size:
+                    vswitch_hp_size = m.vswitch_hugepages_size_mib
+                else:
+                    if m.vswitch_hugepages_size_mib != vswitch_hp_size:
+                        raise wsme.exc.ClientSideError(_(
+                            "Mismatched vSwitch socket memory hugepage size."))
+                if (m.vswitch_hugepages_nr == 0 and
+                            m.vswitch_hugepages_reqd is None):
+                    raise wsme.exc.ClientSideError(_(
+                        "vSwitch socket memory must be allocated for numa node"
+                        " (%s).") % node['numa_node'])
+
+    @staticmethod
     def _semantic_check_memory_for_node(ihost, node):
         """
         Perform memory semantic checks on a specific numa node.
@@ -3544,21 +3565,12 @@ class HostController(rest.RestController):
         """
         ihost_inodes = pecan.request.dbapi.inode_get_by_ihost(ihost['uuid'])
 
-        labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
-        vswitch_type = utils.get_vswitch_type()
         for node in ihost_inodes:
             mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
             for m in mems:
                 if m.hugepages_configured:
                     value = {}
                     vs_hugepages_nr = m.vswitch_hugepages_nr
-                    # allocate the default vswitch huge pages if required
-                    if vswitch_type != constants.VSWITCH_TYPE_NONE and \
-                       vs_hugepages_nr == 0:
-                        vs_hugepages_nr = constants.VSWITCH_MEMORY_MB \
-                                      // m.vswitch_hugepages_size_mib
-                        value.update({'vswitch_hugepages_nr': vs_hugepages_nr})
-
                     vm_hugepages_nr_2M = m.vm_hugepages_nr_2M_pending \
                         if m.vm_hugepages_nr_2M_pending is not None \
                         else m.vm_hugepages_nr_2M
@@ -3585,17 +3597,6 @@ class HostController(rest.RestController):
                         vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) /
                                                  constants.MIB_2M)
                         value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
-
-                    # calculate 90% 1G pages if the huge pages have not been
-                    # allocated and the compute label is set
-                    if cutils.has_openstack_compute(labels) and \
-                            vm_hugepages_nr_2M == 0 and \
-                            vm_hugepages_nr_1G == 0 and \
-                            vm_mem_mib > 0 and \
-                            cutils.is_default_huge_pages_required(ihost):
-                        vm_hugepages_nr_1G = int((hp_possible_mib * 0.9 - vs_mem_mib) /
-                                                 constants.MIB_1G)
-                        value.update({'vm_hugepages_nr_1G': vm_hugepages_nr_1G})
 
                     vm_hugepages_4K = vm_mem_mib
                     vm_hugepages_4K -= \
@@ -5237,7 +5238,10 @@ class HostController(rest.RestController):
         mib_reserved_disk_io = 0
         align_2M_memory = False
         align_1G_memory = False
-        vswitch_hp_size = None
+
+        # semantic check vswitch memory if required
+        if utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE:
+            self._check_vswitch_memory(ihost_inodes)
 
         for node in ihost_inodes:
             # If the reserved memory has changed (eg, due to patch that
@@ -5247,15 +5251,6 @@ class HostController(rest.RestController):
             # incremented value to be brought back down as there is no record
             # of the original setting.
             self._auto_adjust_memory_for_node(ihost, node)
-
-            mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
-            for m in mems:
-                if not vswitch_hp_size:
-                    vswitch_hp_size = m.vswitch_hugepages_size_mib
-                else:
-                    if m.vswitch_hugepages_size_mib != vswitch_hp_size:
-                        raise wsme.exc.ClientSideError(_(
-                            "Mismatched vswitch socket memory hugepage size."))
 
             # check whether the pending hugepages changes and the current
             # platform reserved memory fit within the total memory available
