@@ -335,6 +335,15 @@ define platform_ceph_osd(
   $tier_name,
 ) {
 
+  # If journal path is substring of disk path, it is collocated journal,
+  # otherwise it is external journal. In external journal case, class ceph::osd
+  # request journal path as argument for ceph osd initializaiton
+  if $disk_path in $journal_path {
+    $journal = ''
+  } else {
+    $journal = $journal_path
+  }
+
   Anchor['platform::networking']  # Make sure networking is up before running ceph commands
   -> file { "/var/lib/ceph/osd/ceph-${osd_id}":
     ensure => 'directory',
@@ -347,8 +356,9 @@ define platform_ceph_osd(
     command   => template('platform/ceph.osd.create.erb'),
   }
   -> ceph::osd { $disk_path:
-    uuid  => $osd_uuid,
-    osdid => $osd_id,
+    uuid    => $osd_uuid,
+    osdid   => $osd_id,
+    journal => $journal,
   }
   -> exec { "configure journal location ${name}":
     logoutput => true,
