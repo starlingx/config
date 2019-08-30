@@ -58,6 +58,7 @@ import netaddr
 
 from oslo_config import cfg
 
+from fm_api import constants as fm_constants
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.helm import common as helm_common
@@ -1812,11 +1813,11 @@ def extract_tarfile(target_dir, tarfile, demote_user=False):
             return False
 
 
-def is_openstack_applied(dbapi):
-    """ Checks whether the OpenStack application is applied successfully. """
+def is_app_applied(dbapi, app_name):
+    """ Checks whether the application is applied successfully.
+    """
     try:
-        openstack_app = dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
-        return openstack_app.active
+        return dbapi.kube_app_get(app_name).active
     except exception.KubeAppNotFound:
         return False
 
@@ -1828,6 +1829,11 @@ def is_monitor_applied(dbapi):
         return monitor_app.active
     except exception.KubeAppNotFound:
         return False
+
+
+def is_openstack_applied(dbapi):
+    """ Checks whether the OpenStack application is applied successfully. """
+    return is_app_applied(dbapi, constants.HELM_APP_OPENSTACK)
 
 
 def is_url(url_str):
@@ -2098,3 +2104,15 @@ def is_chart_enabled(dbapi, app_name, chart_name, namespace):
 
     return db_chart.system_overrides.get(helm_common.HELM_CHART_ATTR_ENABLED,
                                          False)
+
+
+def app_reapply_flag_file(app_name):
+    return "%s.%s" % (
+        constants.APP_PENDING_REAPPLY_FLAG,
+        app_name)
+
+
+def app_reapply_pending_fault_entity(app_name):
+    return "%s=%s" % (
+        fm_constants.FM_ENTITY_TYPE_APPLICATION,
+        app_name)

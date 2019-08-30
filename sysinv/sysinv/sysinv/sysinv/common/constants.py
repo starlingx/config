@@ -1362,6 +1362,14 @@ HELM_APPS_PLATFORM_MANAGED = [
     HELM_APP_PLATFORM,
 ]
 
+# The order in which apps are listed here is important.
+# They will be applied as listed below: first platform-integ-apps
+# then stx-openstack.
+HELM_APPS_WITH_REAPPLY_SUPPORT = \
+    HELM_APPS_PLATFORM_MANAGED + [
+        HELM_APP_OPENSTACK
+    ]
+
 HELM_APP_ISO_INSTALL_PATH = '/usr/local/share/applications/helm'
 
 # RBD Provisioner Ceph backend capabilities fields
@@ -1383,8 +1391,8 @@ APP_INSTALL_ROOT_PATH = '/scratch'
 APP_INSTALL_PATH = APP_INSTALL_ROOT_PATH + '/apps'
 APP_SYNCED_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
 APP_METADATA_FILE = 'metadata.yaml'
-APP_OPENSTACK_PENDING_REAPPLY_FLAG = os.path.join(
-    tsc.ARMADA_PATH, ".openstack_app_reapply")
+APP_PENDING_REAPPLY_FLAG = os.path.join(
+    tsc.ARMADA_PATH, ".app_reapply")
 
 # State constants
 APP_NOT_PRESENT = 'missing'

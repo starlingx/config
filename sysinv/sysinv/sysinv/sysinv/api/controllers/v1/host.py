@@ -2054,7 +2054,8 @@ class HostController(rest.RestController):
                     patched_ihost.get('action') in
                     [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
                 pecan.request.rpcapi.evaluate_app_reapply(
-                    pecan.request.context)
+                    pecan.request.context,
+                    constants.HELM_APP_OPENSTACK)
 
             pecan.request.dbapi.ihost_update(
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
@@ -2511,10 +2512,19 @@ class HostController(rest.RestController):
 
         pecan.request.dbapi.ihost_destroy(ihost_id)
 
+        # Check if platform apps need to be reapplied
+        if personality == constants.CONTROLLER:
+            for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
+                if cutils.is_app_applied(pecan.request.dbapi, app_name):
+                    pecan.request.rpcapi.evaluate_app_reapply(
+                        pecan.request.context, app_name)
+
         # If the host being removed was an openstack worker node, check to see
         # if a reapply is needed
-        if openstack_worker:
-            pecan.request.rpcapi.evaluate_app_reapply(pecan.request.context)
+        if openstack_worker and cutils.is_app_applied(
+                pecan.request.dbapi, constants.HELM_APP_OPENSTACK):
+            pecan.request.rpcapi.evaluate_app_reapply(
+                pecan.request.context, constants.HELM_APP_OPENSTACK)
 
     def _check_upgrade_provision_order(self, personality, hostname):
         LOG.info("_check_upgrade_provision_order personality=%s, hostname=%s" %

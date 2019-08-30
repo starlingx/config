@@ -4353,6 +4353,17 @@ class ConductorManager(service.PeriodicService):
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
+        # Check if platform apps need to be re-applied when
+        # host services are available (after unlock),
+        # or hosts become unavailable (e.g. deleted) but only
+        # if system restore is not in progress
+        if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) \
+           and availability in [constants.VIM_SERVICES_ENABLED,
+                                constants.AVAILABILITY_OFFLINE]:
+            for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
+                if cutils.is_app_applied(self.dbapi, app_name):
+                    self.evaluate_app_reapply(context, app_name)
+
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):
         """Update applied iconfig for an ihost with the supplied data.
@@ -5078,24 +5089,32 @@ class ConductorManager(service.PeriodicService):
 
                 pass
 
-        if os.path.isfile(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG):
-            if self.check_nodes_stable():
-                LOG.info("Nodes are stable, beginning stx-openstack app "
-                         "automated re-apply")
-                self.reapply_openstack_app(context)
-            else:
-                LOG.info("stx-openstack requires a re-apply but there are "
-                         "currently node(s) in an unstable state. Will "
-                         "retry on next audit")
-        else:
-            # Clear any stuck re-apply alarm
-            app_alarms = self.fm_api.get_faults_by_id(
-                fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING)
-            if app_alarms:
-                self.fm_api.clear_fault(app_alarms[0].alarm_id,
-                                        app_alarms[0].entity_instance_id)
-
+        self.check_pending_app_reapply(context)
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
+
+    def check_pending_app_reapply(self, context):
+        # Pick first app that needs to be re-applied
+        for index, app_name in enumerate(
+                constants.HELM_APPS_WITH_REAPPLY_SUPPORT):
+            if self._app.needs_reapply(app_name):
+                break
+        else:
+            # No app needs reapply
+            return
+        if not self.check_nodes_stable():
+            LOG.info("%s requires re-apply but there are "
+                     "currently node(s) in an unstable state. Will "
+                     "retry on next audit", app_name)
+            return
+        # Check no other app apply is in progress
+        for other_app in self.dbapi.kube_app_get_all():
+            if other_app.status == constants.APP_APPLY_IN_PROGRESS:
+                LOG.info("%s requires re-apply but %s "
+                            "apply is in progress. "
+                            "Will retry on next audit",
+                         app_name, other_app.name)
+                return
+        self.reapply_app(context, app_name)
 
     def check_nodes_stable(self):
         hosts = self.dbapi.ihost_get_list()
@@ -5109,43 +5128,24 @@ class ConductorManager(service.PeriodicService):
         for host in hosts:
             if host.availability == constants.AVAILABILITY_INTEST:
                 return False
-            task_str = host.task or ""
-            if (task_str.startswith(constants.TASK_BOOTING) or
-                    task_str.startswith(constants.TASK_TESTING) or
-                    task_str.startswith(constants.TASK_UNLOCKING) or
-                    task_str.startswith(constants.LOCKING) or
-                    task_str.startswith(constants.FORCE_LOCKING)):
+            if host.task:
                 return False
         return True
 
-    def reapply_openstack_app(self, context):
-        # Consume the reapply flag
-        os.remove(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG)
-
-        # Clear the pending automatic reapply alarm
-        app_alarms = self.fm_api.get_faults_by_id(
-            fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING)
-        if app_alarms:
-            self.fm_api.clear_fault(app_alarms[0].alarm_id,
-                                    app_alarms[0].entity_instance_id)
-
+    def reapply_app(self, context, app_name):
         try:
-            app = kubeapp_obj.get_by_name(context, constants.HELM_APP_OPENSTACK)
-
+            app = kubeapp_obj.get_by_name(context, app_name)
             if app.status == constants.APP_APPLY_SUCCESS:
-                LOG.info(
-                    "Reapplying the %s app" % constants.HELM_APP_OPENSTACK)
+                LOG.info("Reapplying %s app" % app_name)
                 app.status = constants.APP_APPLY_IN_PROGRESS
                 app.save()
 
                 greenthread.spawn(self._app.perform_app_apply, app, None)
             else:
                 LOG.info("%s app is present but not applied, "
-                         "skipping re-apply" % constants.HELM_APP_OPENSTACK)
+                         "skipping re-apply" % app_name)
         except exception.KubeAppNotFound:
-            LOG.info(
-                "%s app not present, skipping re-apply" %
-                constants.HELM_APP_OPENSTACK)
+            LOG.info("%s app not present, skipping re-apply" % app_name)
 
     def get_k8s_namespaces(self, context):
         """ Get Kubernetes namespaces
@@ -6183,16 +6183,8 @@ class ConductorManager(service.PeriodicService):
                       " report_config_status! iconfig: %(iconfig)s" %
                       {'iconfig': iconfig, 'cfg': reported_cfg})
 
-        if success and \
-                os.path.isfile(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG):
-            if self.check_nodes_stable():
-                self.reapply_openstack_app(context)
-            else:
-                LOG.warning(
-                    "stx-openstack requires a re-apply but could not trigger"
-                    "during successful config report because there are "
-                    "node(s) in an unstable state. Will be reapplied during "
-                    "audit instead.")
+        if success:
+            self.check_pending_app_reapply(context)
 
     def report_partition_mgmt_success(self, host_uuid, idisk_uuid,
                                       partition_uuid):
@@ -8087,7 +8079,8 @@ class ConductorManager(service.PeriodicService):
                                    host_uuids=host_uuids,
                                    force=force)
 
-        self.evaluate_app_reapply(context)
+        for app_name in constants.HELM_APPS_WITH_REAPPLY_SUPPORT:
+            self.evaluate_app_reapply(context, app_name)
 
         # Remove reboot required flag in case it's present. Runtime manifests
         # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
@@ -10250,19 +10243,19 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
-    def evaluate_app_reapply(self, context):
-        """Synchronously, determine whether an stx-openstack application
+    def evaluate_app_reapply(self, context, app_name):
+        """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
 
           :param context: request context.
+          :param app_name: application to be checked
           """
         try:
-            app = kubeapp_obj.get_by_name(context,
-                                          constants.HELM_APP_OPENSTACK)
+            app = kubeapp_obj.get_by_name(context, app_name)
             app = self._app.Application(app, True)
         except exception.KubeAppNotFound:
-            app = None
-        if app and app.status == constants.APP_APPLY_SUCCESS:
+            return
+        if app.status == constants.APP_APPLY_SUCCESS:
             # Hash the existing overrides
             # TODO these hashes can be stored in the db to reduce overhead,
             # as well as removing the writing to disk of the new overrides
@@ -10288,39 +10281,13 @@ class ConductorManager(service.PeriodicService):
 
             if cmp(old_hash, new_hash) != 0:
                 LOG.info("There has been an overrides change, setting up "
-                         "stx-openstack app reapply")
-                self._setup_delayed_reapply()
+                         "reapply of %s", app.name)
+                self._app.set_reapply(app.name)
             else:
                 LOG.info("No override change after configuration action, "
-                         "skipping re-apply")
+                         "skipping re-apply of %s", app.name)
         else:
-            LOG.info("stx-openstack app status does not "
-                     "warrant app re-apply")
-
-    def _setup_delayed_reapply(self):
-        open(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG, "w").close()
-
-        # Raise the pending automatic reapply alarm
-        entity_instance_id = "%s=%s" % \
-                             (fm_constants.FM_ENTITY_TYPE_APPLICATION,
-                              constants.HELM_APP_OPENSTACK)
-        fault = fm_api.Fault(
-                alarm_id=fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING,
-                alarm_state=fm_constants.FM_ALARM_STATE_SET,
-                entity_type_id=fm_constants.FM_ENTITY_TYPE_APPLICATION,
-                entity_instance_id=entity_instance_id,
-                severity=fm_constants.FM_ALARM_SEVERITY_WARNING,
-                reason_text=_(
-                    "A configuration change requires a reapply of "
-                    "the %s application.") % constants.HELM_APP_OPENSTACK,
-                alarm_type=fm_constants.FM_ALARM_TYPE_0,
-                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_UNKNOWN,
-                proposed_repair_action=_(
-                    "Ensure all hosts are either locked or unlocked.  When "
-                    "the system is stable the application will be "
-                    "automatically reapplied."),
-                service_affecting=False)
-        self.fm_api.set_fault(fault)
+            LOG.info("%s app status does not warrant re-apply", app.name)
 
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handling of application upload request (via AppOperator)

@@ -86,6 +86,8 @@ ARMADA_LOCK_NAMESPACE = 'kube-system'
 ARMADA_LOCK_PLURAL = 'locks'
 ARMADA_LOCK_NAME = 'lock'
 
+LOCK_NAME_APP_REAPPLY = 'app_reapply'
+
 
 # Helper functions
 def generate_armada_manifest_filename(app_name, app_version, manifest_filename):
@@ -1800,6 +1802,82 @@ class AppOperator(object):
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason=e)
 
+    def set_reapply(self, app_name):
+        lock_name = "%s_%s" % (LOCK_NAME_APP_REAPPLY, app_name)
+
+        @cutils.synchronized(lock_name, external=False)
+        def _sync_set_reapply(app_name):
+            return self._unsafe_set_reapply(app_name)
+        return _sync_set_reapply(app_name)
+
+    def _unsafe_set_reapply(self, app_name):
+        # Create app reapply flag
+        reapply_flag = cutils.app_reapply_flag_file(app_name)
+        open(reapply_flag, "w").close()
+
+        # Raise the pending automatic reapply alarm
+        entity = cutils.app_reapply_pending_fault_entity(app_name)
+        fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_APPLICATION,
+                entity_instance_id=entity,
+                severity=fm_constants.FM_ALARM_SEVERITY_WARNING,
+                reason_text=_(
+                    "A configuration change requires a reapply of "
+                    "the %s application.") % app_name,
+                alarm_type=fm_constants.FM_ALARM_TYPE_0,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_UNKNOWN,
+                proposed_repair_action=_(
+                    "The application will be automatically reapplied."),
+                service_affecting=False)
+        self._fm_api.set_fault(fault)
+
+    def clear_reapply(self, app_name):
+        lock_name = "%s_%s" % (LOCK_NAME_APP_REAPPLY, app_name)
+
+        @cutils.synchronized(lock_name, external=False)
+        def _sync_clear_reapply(app_name):
+            return self._unsafe_clear_reapply(app_name)
+        return _sync_clear_reapply(app_name)
+
+    def _unsafe_clear_reapply(self, app_name):
+        # Remove app reapply flag
+        try:
+            reapply_flag = cutils.app_reapply_flag_file(app_name)
+            os.remove(reapply_flag)
+        except OSError:
+            pass
+
+        # Clear the pending automatic reapply alarm
+        target_entity = cutils.app_reapply_pending_fault_entity(app_name)
+        for alarm in self._fm_api.get_faults_by_id(
+                fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING) or []:
+            if alarm.entity_instance_id == target_entity:
+                self._fm_api.clear_fault(alarm.id,
+                                         alarm.entity_instance_id)
+
+    def needs_reapply(self, app_name):
+        lock_name = "%s_%s" % (LOCK_NAME_APP_REAPPLY, app_name)
+
+        @cutils.synchronized(lock_name, external=False)
+        def _sync_needs_reapply(app_name):
+            return self._unsafe_needs_reapply(app_name)
+        return _sync_needs_reapply(app_name)
+
+    def _unsafe_needs_reapply(self, app_name):
+        reapply_flag = cutils.app_reapply_flag_file(app_name)
+        flag_exists = os.path.isfile(reapply_flag)
+        if not flag_exists:
+            # Clear any stuck reapply alarm
+            target_entity = cutils.app_reapply_pending_fault_entity(app_name)
+            for alarm in self._fm_api.get_faults_by_id(
+                    fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING) or []:
+                if alarm.entity_instance_id == target_entity:
+                    self._fm_api.clear_fault(alarm.id,
+                                             alarm.entity_instance_id)
+        return flag_exists
+
     def perform_app_apply(self, rpc_app, mode, caller=None):
         """Process application install request
 
@@ -1838,18 +1916,7 @@ class AppOperator(object):
                                   _("No action required."),
                                   True)
 
-        # Remove the pending auto re-apply if it is being triggered manually
-        if (app.name == constants.HELM_APP_OPENSTACK and
-                os.path.isfile(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG)):
-            # Consume the reapply flag
-            os.remove(constants.APP_OPENSTACK_PENDING_REAPPLY_FLAG)
-
-            # Clear the pending automatic reapply alarm
-            app_alarms = self._fm_api.get_faults_by_id(
-                fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING)
-            if app_alarms:
-                self._fm_api.clear_fault(app_alarms[0].alarm_id,
-                                         app_alarms[0].entity_instance_id)
+        self.clear_reapply(app.name)
 
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
@@ -2103,6 +2170,8 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app,
             rpc_app.get('name') in self._helm.get_helm_applications())
         self._register_app_abort(app.name)
+
+        self.clear_reapply(app.name)
         LOG.info("Application (%s) remove started." % app.name)
         rc = True
 
