@@ -1299,10 +1299,38 @@ class Connection(api.Connection):
         return _paginate_query(models.ihost, limit, marker,
                                sort_key, sort_dir, query)
 
-    def count_hosts_by_personality(self, personality):
+    def count_hosts_matching_criteria(
+            self, personality=None, administrative=None,
+            operational=None, availability=None, vim_progress_status=None):
         query = model_query(models.ihost)
         query = add_host_options(query)
-        query = query.filter_by(personality=personality, recordtype="standard")
+        query = query.filter_by(recordtype="standard")
+        if personality:
+            if isinstance(personality, list):
+                query = query.filter(models.ihost.personality.in_(personality))
+            else:
+                query = query.filter_by(personality=personality)
+        if administrative:
+            if isinstance(administrative, list):
+                query = query.filter(models.ihost.administrative.in_(administrative))
+            else:
+                query = query.filter_by(administrative=administrative)
+        if operational:
+            if isinstance(operational, list):
+                query = query.filter(models.ihost.operational.in_(operational))
+            else:
+                query = query.filter_by(operational=operational)
+        if availability:
+            if isinstance(availability, list):
+                query = query.filter(models.ihost.availability.in_(availability))
+            else:
+                query = query.filter_by(availability=availability)
+        if vim_progress_status:
+            if isinstance(vim_progress_status, list):
+                query = query.filter(
+                    models.ihost.vim_progress_status.in_(vim_progress_status))
+            else:
+                query = query.filter_by(vim_progress_status=vim_progress_status)
         return query.count()
 
     @objects.objectify(objects.host)

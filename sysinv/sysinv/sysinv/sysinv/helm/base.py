@@ -132,9 +132,15 @@ class BaseHelm(object):
     def _num_computes(self):
         return self._count_hosts_by_label(common.LABEL_COMPUTE_LABEL)
 
-    def _num_controllers_by_personality(self):
-        return int(self.dbapi.count_hosts_by_personality(
-            constants.CONTROLLER))
+    def _num_controllers_matching_criteria(
+            self, administrative=None, operational=None,
+            availability=None, vim_progress_status=None):
+        return int(self.dbapi.count_hosts_matching_criteria(
+            personality=constants.CONTROLLER,
+            administrative=administrative,
+            operational=operational,
+            availability=availability,
+            vim_progress_status=vim_progress_status))
 
     def _get_address_by_name(self, name, networktype):
         """
