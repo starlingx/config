@@ -25,6 +25,8 @@ class LogstashHelm(elastic.ElasticBaseHelm):
                 'persistence': {
                     'storageClass': 'general',
                     'size': "20Gi"},
+                'config': {
+                    'elasticsearch.path': ""},
             }
         }
 

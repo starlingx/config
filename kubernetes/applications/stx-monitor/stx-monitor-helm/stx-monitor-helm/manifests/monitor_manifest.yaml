@@ -107,6 +107,13 @@ data:
         path: /stx-elasticsearch-client(/|$)(.*)
         hosts:
           - ""
+    master:
+      updateStrategy:
+        type: "RollingUpdate"
+    data:
+      terminationGracePeriodSeconds: 240
+      updateStrategy:
+        type: "RollingUpdate"
   source:
     type: tar
     location: http://172.17.0.1:8080/helm_charts/starlingx/elasticsearch-1.24.0.tgz
@@ -407,6 +414,8 @@ data:
       elastic-controller: "enabled"
     elasticsearch:
       host: stx-elasticsearch-client
+    config:
+      elasticsearch.path: ""
     outputs:
       main: |-
         output {
@@ -414,14 +423,14 @@ data:
           #stdout { codec => rubydebug }
           if [type] == "collectd" {
             elasticsearch {
-              hosts => ["${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}"]
+              hosts => ["${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}${ELASTICSEARCH_PATH}"]
               manage_template => false
               index => "collectd"
             }
           }
           if [type] == "beats" {
             elasticsearch {
-              hosts => ["${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}"]
+              hosts => ["${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}${ELASTICSEARCH_PATH}"]
               manage_template => false
               index => "%{[@metadata][beat]}-%{[@metadata][version]}"
             }
