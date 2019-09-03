@@ -2615,7 +2615,8 @@ def ifprofile_apply_to_host(host, profile):
                 if interface_found is False:
                     hinterface = interface_api._create(data, from_profile=True)
                     if interface.ifclass == constants.INTERFACE_CLASS_PLATFORM:
-                        interface_networks = pecan.request.dbapi.interface_network_get_by_interface(interface.id)
+                        interface_networks = \
+                            pecan.request.dbapi.interface_network_get_by_interface(interface.id)
                         for ifnet in interface_networks:
                             ifnetdict = {}
                             ifnetdict['interface_id'] = hinterface.id
@@ -2624,7 +2625,8 @@ def ifprofile_apply_to_host(host, profile):
                             network = pecan.request.dbapi.network_get_by_id(ifnet.network_id)
                             ifnet_api._update_host_address(host, hinterface, network.type)
                     else:
-                        interface_datanetworks = pecan.request.dbapi.interface_datanetwork_get_by_interface(interface.id)
+                        interface_datanetworks = \
+                            pecan.request.dbapi.interface_datanetwork_get_by_interface(interface.id)
                         for ifdn in interface_datanetworks:
                             ifdndict = {}
                             ifdndict['interface_id'] = hinterface.id

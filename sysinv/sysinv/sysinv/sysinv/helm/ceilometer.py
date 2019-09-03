@@ -105,7 +105,8 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
         messaging_urls = []
         for rabbit_path in rabbit_paths:
             messaging_urls += \
-                ['rabbit://%s:%s@rabbitmq.openstack.svc.cluster.local:5672%s' % (rabbit_user, rabbit_pass, rabbit_path)]
+                ['rabbit://%s:%s@rabbitmq.openstack.svc.cluster.local:5672%s' %
+                 (rabbit_user, rabbit_pass, rabbit_path)]
 
         return messaging_urls
 

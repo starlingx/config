@@ -211,7 +211,8 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         return retval
 
-    # TODO(oponcea) Evaluate if we need to delete PV's from sysinv-agent in the future - may be needed for AIO SX disk cinder-volumes disk replacement.
+    # TODO(oponcea) Evaluate if we need to delete PV's from sysinv-agent in the
+    # future - may be needed for AIO SX disk cinder-volumes disk replacement.
     def delete_pv(self, context, host_uuid, ipv_dict):
         """Synchronously, delete an LVM physical volume
 

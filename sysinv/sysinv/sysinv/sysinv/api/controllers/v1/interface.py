@@ -1152,8 +1152,11 @@ def _check_interface_data(op, interface, ihost, existing_interface,
     # Make sure network type 'oam' or 'cluster-host', with if type 'ae',
     # can only be in ae mode 'active_standby' or 'balanced' or '802.3ad'
     if interface['networktypelist'] is not None:
-        if (any(network in [constants.NETWORK_TYPE_OAM, constants.NETWORK_TYPE_CLUSTER_HOST] for network in interface['networktypelist']) and
-                iftype == constants.INTERFACE_TYPE_AE and (aemode not in constants.VALID_AEMODE_LIST)):
+        if (any(network in [constants.NETWORK_TYPE_OAM,
+                            constants.NETWORK_TYPE_CLUSTER_HOST]
+                for network in interface['networktypelist']) and
+                iftype == constants.INTERFACE_TYPE_AE and
+                (aemode not in constants.VALID_AEMODE_LIST)):
             msg = _("Device interface with network type '%s', and interface "
                     "type 'aggregated ethernet' must be in mode 'active_standby' "
                     "or 'balanced' or '802.3ad'." % (str(interface['networktypelist'])))

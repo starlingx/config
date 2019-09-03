@@ -264,7 +264,8 @@ class DiskOperator(object):
                 model_num = ''
                 serial_id = ''
 
-                # Can merge all try/except in one block but this allows at least attributes with no exception to be filled
+                # Can merge all try/except in one block but this allows at
+                # least attributes with no exception to be filled
                 try:
                     size_mib = utils.get_disk_capacity_mib(device.device_node)
                 except Exception as e:

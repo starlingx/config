@@ -140,10 +140,15 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
         return password_rule
 
     def _get_conf_keystone_security_compliance_overrides(self):
+        rgx = '^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()<>{}+=_\\\[\]\-?|~`,.;:]).{7,}$'
         overrides = {
             'unique_last_password_count': 2,  # static controller.yaml
-            'password_regex': self.quoted_str('^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()<>{}+=_\\\[\]\-?|~`,.;:]).{7,}$'),
-            'password_regex_description': self.quoted_str('Password must have a minimum length of 7 characters, and must contain at least 1 upper case, 1 lower case, 1 digit, and 1 special character'),
+            'password_regex': self.quoted_str(rgx),
+            'password_regex_description':
+                self.quoted_str('Password must have a minimum length of 7'
+                                ' characters, and must contain at least 1'
+                                ' upper case, 1 lower case, 1 digit, and 1'
+                                ' special character'),
         }
         overrides.update(self._get_password_rule())
         return overrides
@@ -198,7 +203,8 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
             "identity:delete_service": "rule:admin_required and not rule:protected_services",
             "identity:delete_domain": "rule:admin_required and not rule:protected_domains",
             "identity:delete_project": "rule:admin_required and not rule:protected_projects",
-            "identity:delete_user": "rule:admin_required and not (rule:protected_admins or rule:protected_services)",
+            "identity:delete_user":
+                "rule:admin_required and not (rule:protected_admins or rule:protected_services)",
             "identity:change_password": "rule:admin_or_owner and not rule:protected_services",
             "identity:delete_role": "rule:admin_required and not rule:protected_roles",
         }

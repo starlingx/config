@@ -1753,9 +1753,9 @@ def get_disk_capacity_mib(device_node):
     second_half = fdisk_output.split(',')[1]
     size_bytes = second_half.split()[0].strip()
 
-    # Convert bytes to MiB (1 MiB = 1024*1024 bytes)
+    # Convert bytes to MiB (1 MiB = 1024 * 1024 bytes)
     int_size = int(size_bytes)
-    size_mib = int_size / (1024**2)
+    size_mib = int_size / (1024 ** 2)
 
     return int(size_mib)
 
