@@ -1681,7 +1681,9 @@ class HostController(rest.RestController):
                                 for ihost in pecan.request.dbapi.ihost_get_list()
                                 if ihost['mgmt_mac'] in my_macs]
                     if len(ihost_obj) != 1:
-                        raise Exception("Unexpected: no/more_than_one host(s) contain(s) a management mac address from local network adapters")
+                        raise Exception("Unexpected: no/more_than_one host(s)"
+                                        " contain(s) a management mac address"
+                                        " from local network adapters")
 
                     self._patch(ihost_obj[0]['uuid'],
                         changed_paths, None)
@@ -1689,9 +1691,13 @@ class HostController(rest.RestController):
                     self._do_post(new_host)
 
                 if new_host['power_on'] is not None and new_host['bm_type'] is None:
-                    success_str = "%s\n %s Warning: Ignoring <power_on> due to insufficient board management (bm) data." % (success_str, new_host['hostname'])
+                    success_str = "%s\n %s Warning: Ignoring <power_on> due" \
+                                  " to insufficient board management (bm)" \
+                                  " data." % (success_str,
+                                              new_host['hostname'])
                 else:
-                    success_str = "%s\n %s" % (success_str, new_host['hostname'])
+                    success_str = "%s\n %s" % (success_str,
+                                               new_host['hostname'])
             except Exception as ex:
                 LOG.exception(ex)
                 error_str += " " + (new_host.get('hostname') or
@@ -3905,11 +3911,11 @@ class HostController(rest.RestController):
                 elif pv.pv_type == constants.PV_TYPE_PARTITION:
                     part_info = pecan.request.dbapi.partition_get_by_ipv(pv['uuid'])
                     standby_controller_allocated_space += int(
-                        part_info[0].size_mib) * (1024**2)
+                        part_info[0].size_mib) * (1024 ** 2)
                 elif pv.pv_type == constants.PV_TYPE_DISK:
                     disk_info = pecan.request.dbapi.idisk_get_by_ipv(pv['uuid'])
                     standby_controller_allocated_space += int(
-                        disk_info[0].size_mib) * (1024**2)
+                        disk_info[0].size_mib) * (1024 ** 2)
 
         LOG.info("Active controller filesystem space used: %s" %
                  str(active_controller_used))

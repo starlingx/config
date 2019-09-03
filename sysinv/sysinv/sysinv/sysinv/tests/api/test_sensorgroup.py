@@ -30,7 +30,8 @@ class sensorgroupTestCase(base.FunctionalTest):
 
         # Test post_json worked properly
         self.assertEqual('defaultSensorGroupName',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['sensorgroupname'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['sensorgroupname'])  # Result
 
         # Create sensor
         sensorVals = {
@@ -46,11 +47,15 @@ class sensorgroupTestCase(base.FunctionalTest):
 
         # Assert sensorgroup/sensor created properly in DB
         self.assertEqual('defaultSensorGroupName',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['sensorgroupname'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['sensorgroupname'])  # Result
         self.assertEqual('defaultSensorName',  # Expected
-                         self.get_json('/isensors/%s/' % sensor.json['uuid'])['sensorname'])  # Result
-        self.assertEqual(self.get_json('/isensors/%s/' % sensor.json['uuid'])['sensorgroup_uuid'],
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['uuid'])
+                         self.get_json('/isensors/%s/' %
+                                       sensor.json['uuid'])['sensorname'])  # Result
+        self.assertEqual(self.get_json('/isensors/%s/' %
+                                       sensor.json['uuid'])['sensorgroup_uuid'],
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['uuid'])
 
         # Set values in sensorgroup
         self.patch_dict_json('/isensorgroups/%s/' % sensorgroup.json['uuid'],
@@ -63,27 +68,37 @@ class sensorgroupTestCase(base.FunctionalTest):
 
         # Assert values got set properly in sensorgroup
         self.assertEqual(42,  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['audit_interval_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['audit_interval_group'])  # Result
         self.assertEqual('action minor',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['actions_minor_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['actions_minor_group'])  # Result
         self.assertEqual('action major',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['actions_major_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['actions_major_group'])  # Result
         self.assertEqual('action critical',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['actions_critical_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['actions_critical_group'])  # Result
         self.assertEqual('False',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['suppress'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['suppress'])  # Result
 
         # Assert values got propagated to sensor
         self.assertEqual(42,  # Expected
-                         self.get_json('/isensors/%s/' % sensor.json['uuid'])['audit_interval'])  # Result
+                         self.get_json('/isensors/%s/' %
+                                       sensor.json['uuid'])['audit_interval'])  # Result
         self.assertEqual('action minor',  # Expected
-                         self.get_json('/isensors/%s/' % sensor.json['uuid'])['actions_minor'])  # Result
+                         self.get_json('/isensors/%s/' %
+                                       sensor.json['uuid'])['actions_minor'])  # Result
         self.assertEqual('action major',  # Expected
-                         self.get_json('/isensors/%s/' % sensor.json['uuid'])['actions_major'])  # Result
+                         self.get_json('/isensors/%s/' %
+                                       sensor.json['uuid'])['actions_major'])  # Result
         self.assertEqual('action critical',  # Expected
-                         self.get_json('/isensors/%s/' % sensor.json['uuid'])['actions_critical'])  # Result
+                         self.get_json('/isensors/%s/' %
+                                       sensor.json['uuid'])['actions_critical'])  # Result
         self.assertEqual('False',  # Expected
-                         self.get_json('/isensors/%s/' % sensor.json['uuid'])['suppress'])  # Result
+                         self.get_json('/isensors/%s/' %
+                                       sensor.json['uuid'])['suppress'])  # Result
 
         # delete sensorgroup and assert sensorgroup/sensor got deleted
         self.delete('/isensorgroups/%s/' % sensorgroup.json['uuid'])
@@ -105,7 +120,8 @@ class sensorgroupTestCase(base.FunctionalTest):
 
         # Test post_json worked properly
         self.assertEqual('testsensorgroupname',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['sensorgroupname'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['sensorgroupname'])  # Result
 
         # Create sensors
         numOfSensors = 10
@@ -125,9 +141,11 @@ class sensorgroupTestCase(base.FunctionalTest):
         # Assert sensors created properly in DB
         for i in range(numOfSensors):
             self.assertEqual('defaultSensorName',  # Expected
-                             self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['sensorname'])  # Result
+                             self.get_json('/isensors/%s/' %
+                                           sensor[i].json['uuid'])['sensorname'])  # Result
             self.assertEqual(sensorgroup.json['uuid'],  # Expected
-                             self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['sensorgroup_uuid'])  # Result
+                             self.get_json('/isensors/%s/' %
+                                           sensor[i].json['uuid'])['sensorgroup_uuid'])  # Result
 
         # Set values in sensorgroup, then propagate to sensors
         self.patch_dict_json('/isensorgroups/%s/' % (sensorgroup.json['uuid']),
@@ -140,28 +158,38 @@ class sensorgroupTestCase(base.FunctionalTest):
 
         # Assert values got set properly in sensorgroup
         self.assertEqual(42,  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['audit_interval_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['audit_interval_group'])  # Result
         self.assertEqual('action minor',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['actions_minor_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['actions_minor_group'])  # Result
         self.assertEqual('action major',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['actions_major_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['actions_major_group'])  # Result
         self.assertEqual('action critical',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['actions_critical_group'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['actions_critical_group'])  # Result
         self.assertEqual('False',  # Expected
-                         self.get_json('/isensorgroups/%s/' % sensorgroup.json['uuid'])['suppress'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       sensorgroup.json['uuid'])['suppress'])  # Result
 
         # Assert values got propagated to sensor
         for i in range(numOfSensors):
             self.assertEqual(42,  # Expected
-                             self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['audit_interval'])  # Result
+                             self.get_json('/isensors/%s/' %
+                                           sensor[i].json['uuid'])['audit_interval'])  # Result
             self.assertEqual('action minor',  # Expected
-                             self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['actions_minor'])  # Result
+                             self.get_json('/isensors/%s/' %
+                                           sensor[i].json['uuid'])['actions_minor'])  # Result
             self.assertEqual('action major',  # Expected
-                             self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['actions_major'])  # Result
+                             self.get_json('/isensors/%s/' %
+                                           sensor[i].json['uuid'])['actions_major'])  # Result
             self.assertEqual('action critical',  # Expected
-                             self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['actions_critical'])  # Result
+                             self.get_json('/isensors/%s/' %
+                                           sensor[i].json['uuid'])['actions_critical'])  # Result
             self.assertEqual('False',  # Expected
-                             self.get_json('/isensors/%s/' % sensor[i].json['uuid'])['suppress'])  # Result
+                             self.get_json('/isensors/%s/' %
+                                           sensor[i].json['uuid'])['suppress'])  # Result
 
         # Delete sensorgroup and sensors
         self.delete('/isensorgroups/%s/' % sensorgroup.json['uuid'])
@@ -182,7 +210,8 @@ class sensorgroupTestCase(base.FunctionalTest):
         }
         response = self.post_json('/isensorgroups', sensorgroupVals)
         self.assertEqual('testsensorgroupname',  # Expected
-                         self.get_json('/isensorgroups/%s/' % response.json['uuid'])['sensorgroupname'])  # Result
+                         self.get_json('/isensorgroups/%s/' %
+                                       response.json['uuid'])['sensorgroupname'])  # Result
 
         self.delete('/isensorgroups/%s/' % response.json['uuid'])
         self.assertDeleted('/isensorgroups/%s/' % response.json['uuid'])
@@ -196,7 +225,8 @@ class sensorgroupTestCase(base.FunctionalTest):
         }
         response = self.post_json('/isensors', sensorVals)
         self.assertEqual('testsensorname',  # Expected
-                         self.get_json('/isensors/%s/' % response.json['uuid'])['sensorname'])  # Result
+                         self.get_json('/isensors/%s/' %
+                                       response.json['uuid'])['sensorname'])  # Result
         self.delete('/isensors/%s/' % response.json['uuid'])
         self.assertDeleted('/isensors/%s/' % response.json['uuid'])
 

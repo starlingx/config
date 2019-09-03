@@ -3049,7 +3049,9 @@ class ConductorManager(service.PeriodicService):
                                      i.get('serial_id'))
                             # If the clone label is in the serial id, this is
                             # install-from-clone scenario. Skip gpt formatting.
-                            if ((constants.CLONE_ISO_DISK_SID + ihost['hostname'] + i.get('device_node')) == idisk.serial_id):
+                            if ((constants.CLONE_ISO_DISK_SID +
+                                 ihost['hostname'] +
+                                 i.get('device_node')) == idisk.serial_id):
                                 LOG.info("Install from clone. Update disk serial"
                                          " id for disk %s. Skip gpt formatting."
                                          % idisk.uuid)
@@ -3362,7 +3364,7 @@ class ConductorManager(service.PeriodicService):
 
         partitions = self.dbapi.partition_get_by_ihost(host.id)
         partition4 = next((p for p in partitions if p.device_node == pv4_name), None)
-        part_size_mib = float(pv_cgts_vg.lvm_pv_size) / (1024**2) - int(partition4.size_mib)
+        part_size_mib = float(pv_cgts_vg.lvm_pv_size) / (1024 ** 2) - int(partition4.size_mib)
         if part_size_mib > 0:
             LOG.info("%s is not enough for R4 cgts-vg" % pv4_name)
         else:
@@ -7429,8 +7431,14 @@ class ConductorManager(service.PeriodicService):
         if lvdisplay_dict.get('dockerdistribution-lv', None):
             dockerdistribution_lv_size = float(lvdisplay_dict['dockerdistribution-lv'])
 
-        LOG.info("drbd-overview: pgsql-%s, platform-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", drbd_pgsql_size, drbd_platform_size, drbd_extension_size, drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
-        LOG.info("lvdisplay: pgsql-%s, platform-%s, extension-%s, patch-vault-%s, etcd-%s, dockerdistribution-%s", pgsql_lv_size, platform_lv_size, extension_lv_size, patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
+        LOG.info("drbd-overview: pgsql-%s, platform-%s, extension-%s,"
+                 " patch-vault-%s, etcd-%s, dockerdistribution-%s",
+                 drbd_pgsql_size, drbd_platform_size, drbd_extension_size,
+                 drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
+        LOG.info("lvdisplay: pgsql-%s, platform-%s, extension-%s,"
+                 " patch-vault-%s, etcd-%s, dockerdistribution-%s",
+                 pgsql_lv_size, platform_lv_size, extension_lv_size,
+                 patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
 
         drbd_fs_updated = []
         if math.ceil(drbd_pgsql_size) < math.ceil(pgsql_lv_size):

@@ -174,7 +174,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_backend/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -182,7 +183,8 @@ class StorageBackendTestCases(base.FunctionalTest):
                                               expect_errors=True)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertEqual({'test_bparam1': 'bar'},  # Expected
-                         self.get_json('/storage_backend/%s/' % patch_response.json['uuid'])['capabilities'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       patch_response.json['uuid'])['capabilities'])  # Result
 
     def test_post_file_with_valid_svc_some_svc_param_and_confirm(self):
         vals = {
@@ -291,12 +293,14 @@ class StorageBackendTestCases(base.FunctionalTest):
                                               expect_errors=False)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertEqual(constants.SB_SVC_GLANCE,  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['services'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['services'])  # Result
 
         self.assertEqual({'test_bparam1': 'foo',
                           'test_gparam1': 'bar',
                           'test_gparam2': 'far'},  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['capabilities'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['capabilities'])  # Result
 
     def test_post_file_and_list(self):
         vals = {
@@ -307,8 +311,10 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend/', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
-        self.assertEqual(constants.SB_TYPE_FILE, self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_TYPE_FILE,
+                         self.get_json('/storage_backend')['storage_backends'][0]['backend'])
 
     #
     # StorageBackend API: LVM
@@ -497,7 +503,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('lvm',  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_backend/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -507,10 +514,12 @@ class StorageBackendTestCases(base.FunctionalTest):
                                               expect_errors=False)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertEqual(constants.SB_SVC_CINDER,  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['services'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['services'])  # Result
         self.assertEqual({'test_cparam1': 'bar2',
                           'test_cparam2': 'far2'},  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['capabilities'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['capabilities'])  # Result
 
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
@@ -525,8 +534,10 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend/', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_LVM,  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
-        self.assertEqual(constants.SB_TYPE_LVM, self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_TYPE_LVM,
+                         self.get_json('/storage_backend')['storage_backends'][0]['backend'])
 
     #
     # StorageBackend API: Ceph
@@ -571,7 +582,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     def test_post_ceph_with_invalid_svc_and_confirm(self, mock_mon_ip):
@@ -591,7 +603,10 @@ class StorageBackendTestCases(base.FunctionalTest):
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._discover_and_validate_cinder_capabilities')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
-    def test_post_ceph_with_valid_svc_no_svc_param_and_confirm(self, mock_apply, mock_validate, mock_mon_ip):
+    def test_post_ceph_with_valid_svc_no_svc_param_and_confirm(self,
+                                                               mock_apply,
+                                                               mock_validate,
+                                                               mock_mon_ip):
         # Test skipped. Fix later.
         self.skipTest("Skipping to prevent failure notification on Jenkins")
         vals = {
@@ -610,7 +625,10 @@ class StorageBackendTestCases(base.FunctionalTest):
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._discover_and_validate_cinder_capabilities')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
-    def test_post_ceph_with_valid_svc_some_svc_param_and_confirm(self, mock_apply, mock_validate, mock_mon_ip):
+    def test_post_ceph_with_valid_svc_some_svc_param_and_confirm(self,
+                                                                 mock_apply,
+                                                                 mock_validate,
+                                                                 mock_mon_ip):
         # Test skipped. Fix later.
         self.skipTest("Skipping to prevent failure notification on Jenkins")
         vals = {
@@ -630,7 +648,10 @@ class StorageBackendTestCases(base.FunctionalTest):
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._discover_and_validate_cinder_capabilities')
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
-    def test_post_ceph_with_valid_svc_all_svc_param_and_confirm(self, mock_apply, mock_validate, mock_mon_ip):
+    def test_post_ceph_with_valid_svc_all_svc_param_and_confirm(self,
+                                                                mock_apply,
+                                                                mock_validate,
+                                                                mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'services': (',').join([constants.SB_SVC_CINDER, constants.SB_SVC_GLANCE]),
@@ -642,7 +663,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
@@ -657,7 +679,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_backend/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -685,7 +708,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_backend/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -702,8 +726,11 @@ class StorageBackendTestCases(base.FunctionalTest):
     @mock.patch('sysinv.api.controllers.v1.storage_ceph._apply_backend_changes')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                side_effect=set_backend_state_configured)
-    def test_post_ceph_and_confirm_modify_with_svc_missing_some_params(self, mock_set_backend_data, mock_apply,
-                                                                       mock_validate, mock_mon_ip):
+    def test_post_ceph_and_confirm_modify_with_svc_missing_some_params(self,
+                                                                       mock_set_backend_data,
+                                                                       mock_apply,
+                                                                       mock_validate,
+                                                                       mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -712,7 +739,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_backend/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -744,7 +772,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual('ceph',  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_backend/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -753,12 +782,14 @@ class StorageBackendTestCases(base.FunctionalTest):
                                                                             'test_gparam3': 'too'}),
                                               expect_errors=False)
         self.assertEqual(http_client.OK, patch_response.status_int)
-        json_result = self.get_json('/storage_backend/%s/' % response.json['uuid'])['services']
+        json_result = self.get_json('/storage_backend/%s/' %
+                                    response.json['uuid'])['services']
         self.assertTrue(services_string == json_result or services_string2 == json_result)
         self.assertEqual({'test_bparam3': 'foo',
                           'test_cparam3': 'bar',
                           'test_gparam3': 'too'},  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['capabilities'])  # Result
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['capabilities'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     def test_post_ceph_and_list(self, mock_mon_ip):
@@ -770,8 +801,10 @@ class StorageBackendTestCases(base.FunctionalTest):
         response = self.post_json('/storage_backend/', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_CEPH,  # Expected
-                         self.get_json('/storage_backend/%s/' % response.json['uuid'])['backend'])  # Result
-        self.assertEqual(constants.SB_TYPE_CEPH, self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_TYPE_CEPH,
+                         self.get_json('/storage_backend')['storage_backends'][0]['backend'])
 
 
 class StorageFileTestCases(base.FunctionalTest):
@@ -823,7 +856,8 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
     def test_post_with_invalid_svc_and_confirm(self):
         vals = {
@@ -862,7 +896,8 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_file/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -870,7 +905,8 @@ class StorageFileTestCases(base.FunctionalTest):
                                               expect_errors=True)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertEqual({'test_bparam1': 'bar'},  # Expected
-                         self.get_json('/storage_file/%s/' % patch_response.json['uuid'])['capabilities'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       patch_response.json['uuid'])['capabilities'])  # Result
 
     def test_post_with_valid_svc_some_svc_param_and_confirm(self):
         vals = {
@@ -899,7 +935,8 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
     @mock.patch.object(SBApiHelper, 'set_backend_data',
            side_effect=set_backend_state_configured)
@@ -912,7 +949,8 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_file/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -921,7 +959,8 @@ class StorageFileTestCases(base.FunctionalTest):
         self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
         self.assertEqual('application/json', patch_response.content_type)
         self.assertTrue(patch_response.json['error_message'])
-        self.assertIn('Service cinder is not supported', patch_response.json['error_message'])
+        self.assertIn('Service cinder is not supported',
+                      patch_response.json['error_message'])
 
     def test_post_and_confirm_modify_with_svc_missing_params(self):
         vals = {
@@ -932,7 +971,8 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_file/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -941,7 +981,8 @@ class StorageFileTestCases(base.FunctionalTest):
         self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
         self.assertEqual('application/json', patch_response.content_type)
         self.assertTrue(patch_response.json['error_message'])
-        self.assertIn('Missing required glance service parameter', patch_response.json['error_message'])
+        self.assertIn('Missing required glance service parameter',
+                      patch_response.json['error_message'])
 
     def test_post_and_confirm_modify_with_svc_missing_some_params(self):
         vals = {
@@ -952,7 +993,8 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_file/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -962,7 +1004,8 @@ class StorageFileTestCases(base.FunctionalTest):
         self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
         self.assertEqual('application/json', patch_response.content_type)
         self.assertTrue(patch_response.json['error_message'])
-        self.assertIn('Missing required glance service parameter', patch_response.json['error_message'])
+        self.assertIn('Missing required glance service parameter',
+                      patch_response.json['error_message'])
 
     def test_post_and_confirm_modify_with_svc_with_params(self):
         # Test skipped. Fix later.
@@ -975,7 +1018,8 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_file/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -985,12 +1029,14 @@ class StorageFileTestCases(base.FunctionalTest):
                                               expect_errors=False)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertEqual(constants.SB_SVC_GLANCE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['services'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['services'])  # Result
 
         self.assertEqual({'test_bparam1': 'foo',
                           'test_gparam1': 'bar',
                           'test_gparam2': 'far'},  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['capabilities'])  # Result
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['capabilities'])  # Result
 
     def test_post_and_list(self):
         vals = {
@@ -1001,8 +1047,10 @@ class StorageFileTestCases(base.FunctionalTest):
         response = self.post_json('/storage_file/', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_FILE,  # Expected
-                         self.get_json('/storage_file/%s/' % response.json['uuid'])['backend'])  # Result
-        self.assertEqual(constants.SB_TYPE_FILE, self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+                         self.get_json('/storage_file/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_TYPE_FILE,
+                         self.get_json('/storage_backend')['storage_backends'][0]['backend'])
 
 
 class StorageLvmTestCases(base.FunctionalTest):
@@ -1051,7 +1099,8 @@ class StorageLvmTestCases(base.FunctionalTest):
         response = self.post_json('/storage_lvm', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_LVM,  # Expected
-                         self.get_json('/storage_lvm/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_lvm/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._discover_and_validate_cinder_hiera_data')
     @mock.patch('sysinv.api.controllers.v1.storage_lvm._apply_backend_changes')
@@ -1132,7 +1181,8 @@ class StorageLvmTestCases(base.FunctionalTest):
         response = self.post_json('/storage_lvm', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_LVM,  # Expected
-                         self.get_json('/storage_lvm/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_lvm/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_lvm/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -1157,8 +1207,10 @@ class StorageLvmTestCases(base.FunctionalTest):
         response = self.post_json('/storage_lvm/', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_LVM,  # Expected
-                         self.get_json('/storage_lvm/%s/' % response.json['uuid'])['backend'])  # Result
-        self.assertEqual(constants.SB_TYPE_LVM, self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+                         self.get_json('/storage_lvm/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_TYPE_LVM,
+                         self.get_json('/storage_backend')['storage_backends'][0]['backend'])
 
 
 class StorageCephTestCases(base.FunctionalTest):
@@ -1203,7 +1255,8 @@ class StorageCephTestCases(base.FunctionalTest):
         response = self.post_json('/storage_ceph', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_CEPH,  # Expected
-                         self.get_json('/storage_ceph/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_ceph/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     def test_post_with_invalid_svc_and_confirm(self, mock_mon_ip):
@@ -1232,12 +1285,15 @@ class StorageCephTestCases(base.FunctionalTest):
         response = self.post_json('/storage_ceph', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_CEPH,  # Expected
-                         self.get_json('/storage_ceph/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_ceph/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     @mock.patch.object(SBApiHelper, 'set_backend_data',
                        side_effect=set_backend_state_configured)
-    def test_post_and_confirm_modify_with_invalid_svc(self, mock_set_backend_data, mock_mon_ip):
+    def test_post_and_confirm_modify_with_invalid_svc(self,
+                                                      mock_set_backend_data,
+                                                      mock_mon_ip):
         vals = {
             'backend': constants.SB_TYPE_CEPH,
             'capabilities': {'test_bparam3': 'foo'},
@@ -1246,7 +1302,8 @@ class StorageCephTestCases(base.FunctionalTest):
         response = self.post_json('/storage_ceph', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_CEPH,  # Expected
-                         self.get_json('/storage_ceph/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_ceph/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_ceph/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -1255,7 +1312,8 @@ class StorageCephTestCases(base.FunctionalTest):
         self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
         self.assertEqual('application/json', patch_response.content_type)
         self.assertTrue(patch_response.json['error_message'])
-        self.assertIn('Service invalid_svc is not supported', patch_response.json['error_message'])
+        self.assertIn('Service invalid_svc is not supported',
+                      patch_response.json['error_message'])
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     def test_post_and_confirm_modify_with_svc_with_params(self, mock_mon_ip):
@@ -1269,7 +1327,8 @@ class StorageCephTestCases(base.FunctionalTest):
         response = self.post_json('/storage_ceph', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_CEPH,  # Expected
-                         self.get_json('/storage_ceph/%s/' % response.json['uuid'])['backend'])  # Result
+                         self.get_json('/storage_ceph/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
 
         patch_response = self.patch_dict_json('/storage_ceph/%s' % response.json['uuid'],
                                               headers={'User-Agent': 'sysinv'},
@@ -1278,10 +1337,12 @@ class StorageCephTestCases(base.FunctionalTest):
                                               expect_errors=False)
         self.assertEqual(http_client.OK, patch_response.status_int)
         self.assertEqual(constants.SB_SVC_SWIFT,  # Expected
-                         self.get_json('/storage_ceph/%s/' % response.json['uuid'])['services'])  # Result
+                         self.get_json('/storage_ceph/%s/' %
+                                       response.json['uuid'])['services'])  # Result
         self.assertEqual({'test_bparam3': 'foo',
                           'test_sparam1': 'bar'},  # Expected
-                         self.get_json('/storage_ceph/%s/' % response.json['uuid'])['capabilities'])  # Result
+                         self.get_json('/storage_ceph/%s/' %
+                                       response.json['uuid'])['capabilities'])  # Result
 
     @mock.patch.object(StorageBackendConfig, 'get_ceph_mon_ip_addresses')
     def test_post_and_list(self, mock_mon_ip):
@@ -1293,5 +1354,7 @@ class StorageCephTestCases(base.FunctionalTest):
         response = self.post_json('/storage_ceph/', vals, expect_errors=False)
         self.assertEqual(http_client.OK, response.status_int)
         self.assertEqual(constants.SB_TYPE_CEPH,  # Expected
-                         self.get_json('/storage_ceph/%s/' % response.json['uuid'])['backend'])  # Result
-        self.assertEqual(constants.SB_TYPE_CEPH, self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+                         self.get_json('/storage_ceph/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_TYPE_CEPH,
+                         self.get_json('/storage_backend')['storage_backends'][0]['backend'])

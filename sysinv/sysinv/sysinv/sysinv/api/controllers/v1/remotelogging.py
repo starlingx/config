@@ -301,7 +301,8 @@ class RemoteLoggingController(rest.RestController):
 
             if action == constants.APPLY_ACTION:
                 # perform rpc to conductor to perform config apply
-                pecan.request.rpcapi.update_remotelogging_config(pecan.request.context, timeout=REMOTELOGGING_RPC_TIMEOUT)
+                pecan.request.rpcapi.update_remotelogging_config(pecan.request.context,
+                                                                 timeout=REMOTELOGGING_RPC_TIMEOUT)
 
             return RemoteLogging.convert_with_links(rpc_remotelogging)
 

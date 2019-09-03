@@ -226,7 +226,8 @@ class AuditLogging(hooks.PecanHook):
                                '',
                                json_post_data(state))
 
-        log_data = "{} \"{} {} {}\" status: {} len: {} time: {}{} host:{} agent:{} user: {} tenant: {} domain: {}".format(
+        log_data = "{} \"{} {} {}\" status: {} len: {} time: {}{} host:{}" \
+                   " agent:{} user: {} tenant: {} domain: {}".format(
                                                       state.request.remote_addr,
                                                       state.request.method,
                                                       url_path,

@@ -408,11 +408,11 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         for cell in host_memory:
             reserved_4K_pages = 'node:%d,size:4,count:%d' % (
                                 cell.numa_node,
-                                cell.platform_reserved_mib*constants.NUM_4K_PER_MiB)
+                                cell.platform_reserved_mib * constants.NUM_4K_PER_MiB)
             reserved_pages.append(reserved_4K_pages)
             # vswitch pages will be either 2M or 1G
             reserved_vswitch_pages = 'node:%d,size:%d,count:%d' % (cell.numa_node,
-                                     cell.vswitch_hugepages_size_mib*constants.Ki,
+                                     cell.vswitch_hugepages_size_mib * constants.Ki,
                                      cell.vswitch_hugepages_nr)
             reserved_pages.append(reserved_vswitch_pages)
             reserved_host_memory += cell.platform_reserved_mib
