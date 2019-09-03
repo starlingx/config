@@ -31,7 +31,6 @@ from sysinv.common import utils as cutils
 from sysinv.openstack.common import log
 from sysinv.openstack.common import excutils
 from sysinv.openstack.common.gettextutils import _
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.openstack.common.rpc import common as rpc_common
 
 LOG = log.getLogger(__name__)
@@ -160,11 +159,6 @@ class ServiceParameterController(rest.RestController):
             kwargs['sort_key'] = sort_key
             kwargs['sort_dir'] = sort_dir
             parms = pecan.request.dbapi.service_parameter_get_all(**kwargs)
-
-        # filter out desired and applied parameters; they are used to keep
-        # track of updates between two consecutive apply actions
-        parms = [p for p in parms if not
-                 p.service == constants.SERVICE_TYPE_CEPH]
 
         # Before we can return the service parameter collection,
         # we need to ensure that the list does not contain any
@@ -326,12 +320,6 @@ class ServiceParameterController(rest.RestController):
         if not parameters:
             raise wsme.exc.ClientSideError(_("Unspecified parameters."))
 
-        if service == constants.SERVICE_TYPE_CEPH:
-            if not StorageBackendConfig.has_backend_configured(
-                    pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
-                msg = _("Ceph backend is required.")
-                raise wsme.exc.ClientSideError(msg)
-
         if len(parameters) > 1:
             msg = _("Cannot specify multiple parameters with custom resource.")
             raise wsme.exc.ClientSideError(msg)
@@ -427,12 +415,6 @@ class ServiceParameterController(rest.RestController):
         parameters = body.get('parameters')
         if not parameters:
             raise wsme.exc.ClientSideError(_("Unspecified parameters."))
-
-        if service == constants.SERVICE_TYPE_CEPH:
-            if not StorageBackendConfig.has_backend_configured(
-                    pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
-                msg = _("Ceph backend is required.")
-                raise wsme.exc.ClientSideError(msg)
 
         for name, value in parameters.items():
             new_record = {
@@ -537,12 +519,6 @@ class ServiceParameterController(rest.RestController):
 
         parameter = objects.service_parameter.get_by_uuid(
             pecan.request.context, uuid)
-        if parameter.service == constants.SERVICE_TYPE_CEPH:
-            if not StorageBackendConfig.has_backend_configured(
-                    pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
-                msg = _("Ceph backend is required.")
-                raise wsme.exc.ClientSideError(msg)
-
         if parameter.personality is not None or parameter.resource is not None:
             return self.patch_custom_resource(uuid,
                                               patch,
@@ -596,12 +572,6 @@ class ServiceParameterController(rest.RestController):
     def delete(self, uuid):
         """Delete a Service Parameter instance."""
         parameter = objects.service_parameter.get_by_uuid(pecan.request.context, uuid)
-
-        if parameter.service == constants.SERVICE_TYPE_CEPH:
-            if not StorageBackendConfig.has_backend_configured(
-                    pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
-                msg = _("Ceph backend is required.")
-                raise wsme.exc.ClientSideError(msg)
 
         if parameter.section == \
                 constants.SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE:
