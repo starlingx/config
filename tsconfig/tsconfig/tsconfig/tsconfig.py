@@ -196,9 +196,6 @@ INITIAL_WORKER_CONFIG_COMPLETE = os.path.join(
 # Set after each application of worker manifests
 VOLATILE_WORKER_CONFIG_COMPLETE = os.path.join(
     VOLATILE_PATH, ".worker_config_complete")
-# Set to prevent starting worker services (used in combined node upgrade)
-VOLATILE_DISABLE_WORKER_SERVICES = os.path.join(
-    VOLATILE_PATH, ".disable_worker_services")
 
 # Storage configuration flags
 
