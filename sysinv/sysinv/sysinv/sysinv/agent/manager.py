@@ -1544,12 +1544,12 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.error("report_inventory unknown request=%s" % inventory_update)
 
-    def _retry_on_missing_mgmt_ip(ex):
+    def _retry_on_missing_inventory_info(ex):
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
-        return isinstance(ex, exception.LocalManagementIpNotFound)
+        return isinstance(ex, exception.AgentInventoryInfoNotFound)
 
     @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
-                    retry_on_exception=_retry_on_missing_mgmt_ip)
+                    retry_on_exception=_retry_on_missing_inventory_info)
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def config_apply_runtime_manifest(self, context, config_uuid, config_dict):
         """Asynchronously, have the agent apply the runtime manifest with the
@@ -1577,6 +1577,21 @@ class AgentManager(service.PeriodicService):
                 not os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG)):
             return
 
+        # The conductor may send requests to this function, before the
+        # agent finished its first inventory.
+        # We raise the exception in case any of the needed information is
+        # missing and the retry decorator will run this function again.
+        # NOTE: usually all these parameters are set at the same time
+        # during the first inventory, but just to be safe we are
+        # checking that all of them are set.
+        if (not self._mgmt_ip or
+                not self._ihost_uuid or
+                not self._ihost_personality):
+            raise exception.AgentInventoryInfoNotFound(
+                config_uuid=config_uuid, config_dict=config_dict,
+                host_personality=self._ihost_personality,
+                host_uuid=self._ihost_uuid, mgmt_ip=self._mgmt_ip)
+
         personalities = config_dict.get('personalities')
         host_uuids = config_dict.get('host_uuids')
 
@@ -1591,11 +1606,6 @@ class AgentManager(service.PeriodicService):
                     break
             else:
                 return
-
-        if not self._mgmt_ip:
-            raise exception.LocalManagementIpNotFound(
-                config_uuid=config_uuid, config_dict=config_dict,
-                host_personality=self._ihost_personality)
 
         LOG.info("config_apply_runtime_manifest: %s %s %s" % (
             config_uuid, config_dict, self._ihost_personality))

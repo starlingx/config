@@ -1314,10 +1314,11 @@ class LocalManagementPersonalityNotFound(NotFound):
                 "host_personality=%(host_personality)s")
 
 
-class LocalManagementIpNotFound(NotFound):
-    message = _("Local management IP not found: "
+class AgentInventoryInfoNotFound(NotFound):
+    message = _("Agent inventory information not found: "
                 "config_uuid=%(config_uuid)s, config_dict=%(config_dict)s, "
-                "host_personality=%(host_personality)s")
+                "host_personality=%(host_personality)s, host_uuid=%(host_uuid)s, "
+                "mgmt_ip=%(mgmt_ip)s")
 
 
 class LocalHostUUIDNotFound(NotFound):
