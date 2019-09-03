@@ -6,6 +6,7 @@ class platform::client::params (
   $admin_user_domain = 'Default',
   $admin_project_domain = 'Default',
   $admin_project_name = 'admin',
+  $admin_password = undef,
   $keystone_identity_region = 'RegionOne',
 ) { }
 

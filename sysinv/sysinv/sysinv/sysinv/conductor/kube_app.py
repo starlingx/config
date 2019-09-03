@@ -2513,6 +2513,25 @@ class DockerHelper(object):
                     overrides_dir: {'bind': '/overrides', 'mode': 'ro'},
                     logs_dir: {'bind': ARMADA_CONTAINER_LOG_LOCATION, 'mode': 'rw'}}
 
+                armada_image = client.images.list(CONF.armada_image_tag)
+                # Pull Armada image if it's not available
+                if not armada_image:
+                    LOG.info("Downloading Armada image %s ..." % CONF.armada_image_tag)
+
+                    quay_registry_secret = self._dbapi.service_parameter_get_all(
+                        service=constants.SERVICE_TYPE_DOCKER,
+                        section=constants.SERVICE_PARAM_SECTION_DOCKER_QUAY_REGISTRY,
+                        name=constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET)
+                    if quay_registry_secret:
+                        quay_registry_auth = self._parse_barbican_secret(
+                            quay_registry_secret[0].value)
+                    else:
+                        quay_registry_auth = None
+
+                    client.images.pull(CONF.armada_image_tag,
+                                       auth_config=quay_registry_auth)
+                    LOG.info("Armada image %s downloaded!" % CONF.armada_image_tag)
+
                 container = client.containers.run(
                     CONF.armada_image_tag,
                     name=ARMADA_CONTAINER_NAME,

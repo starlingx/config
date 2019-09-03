@@ -77,6 +77,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'keystone::db::postgresql::password': dbpass,
 
             'keystone::roles::admin::password': admin_password,
+            'platform::client::params::admin_password': admin_password,
         }
 
     def get_system_config(self):
@@ -145,6 +146,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'keystone::admin_password': admin_password,
             'keystone::roles::admin::password': admin_password,
             'keystone::database_connection': db_connection,
+            'platform::client::params::admin_password': admin_password,
         }
         return config
 

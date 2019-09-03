@@ -109,12 +109,6 @@ class platform::kubernetes::kubeadm {
   $iptables_file = "net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1"
 
-  if $::platform::docker::params::k8s_registry {
-    $k8s_registry = $::platform::docker::params::k8s_registry
-  } else {
-    $k8s_registry = 'k8s.gcr.io'
-  }
-
   # Configure kubelet cpumanager options
   if str2bool($::is_worker_subfunction)
     and !('openstack-compute-node'
@@ -335,6 +329,27 @@ class platform::kubernetes::master::init
       #   This flag is created by Ansible on controller-0;
       # - Ansible replay is not impacted by flag creation.
 
+      # If alternative k8s registry requires the authentication,
+      # kubeadm required images need to be pre-pulled on controller
+      if $k8s_registry != 'k8s.gcr.io' and $::platform::docker::params::k8s_registry_secret != undef {
+        File['/etc/kubernetes/kubeadm.yaml']
+        -> platform::docker::login_registry { 'login k8s registry':
+          registry_url    => $k8s_registry,
+          registry_secret => $::platform::docker::params::k8s_registry_secret
+        }
+
+        -> exec { 'kubeadm to pre pull images':
+          command   => 'kubeadm config images pull --config /etc/kubernetes/kubeadm.yaml',
+          logoutput => true,
+          before    => Exec['configure master node']
+        }
+
+        -> exec { 'logout k8s registry':
+          command   => "docker logout ${k8s_registry}",
+          logoutput => true,
+        }
+      }
+
       # Create necessary certificate files
       file { '/etc/kubernetes/pki':
         ensure => directory,
@@ -466,6 +481,44 @@ class platform::kubernetes::worker::init
   inherits ::platform::kubernetes::worker::params {
 
   Class['::platform::docker::config'] -> Class[$name]
+
+  if str2bool($::is_initial_config) {
+    include ::platform::params
+
+    if $::platform::docker::params::k8s_registry {
+      $k8s_registry = $::platform::docker::params::k8s_registry
+    } else {
+      $k8s_registry = 'k8s.gcr.io'
+    }
+
+    # If alternative k8s registry requires the authentication,
+    # k8s pause image needs to be pre-pulled on worker nodes
+    if $k8s_registry != 'k8s.gcr.io' and $::platform::docker::params::k8s_registry_secret != undef {
+      # Get the pause image tag from kubeadm required images
+      # list and replace with alternative k8s registry
+      $get_k8s_pause_img = "kubeadm config images list 2>/dev/null |\
+        awk '/^k8s.gcr.io\\/pause:/{print \$1}' | sed 's/k8s.gcr.io/${k8s_registry}/'"
+      $k8s_pause_img = generate('/bin/sh', '-c', $get_k8s_pause_img)
+
+      if k8s_pause_img {
+        platform::docker::login_registry { 'login k8s registry':
+          registry_url    => $k8s_registry,
+          registry_secret => $::platform::docker::params::k8s_registry_secret
+        }
+
+        -> exec { 'load k8s pause image':
+          command   => "docker image pull ${k8s_pause_img}",
+          logoutput => true,
+          before    => Exec['configure worker node']
+        }
+
+        -> exec { 'logout k8s registry':
+          command   => "docker logout ${k8s_registry}",
+          logoutput => true,
+        }
+      }
+    }
+  }
 
   # Configure the worker node. Only do this once, so check whether the
   # kubelet.conf file has already been created (by the join).

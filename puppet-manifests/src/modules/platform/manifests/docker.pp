@@ -7,6 +7,10 @@ class platform::docker::params (
   $gcr_registry    = undef,
   $quay_registry   = undef,
   $docker_registry = undef,
+  $k8s_registry_secret    = undef,
+  $gcr_registry_secret    = undef,
+  $quay_registry_secret   = undef,
+  $docker_registry_secret = undef,
   $insecure_registry    = undef,
 ) { }
 
@@ -84,4 +88,43 @@ class platform::docker::bootstrap
 {
   include ::platform::docker::install
   include ::platform::docker::config::bootstrap
+}
+
+define platform::docker::login_registry (
+  $registry_url,
+  $registry_secret,
+) {
+  include ::platform::client::params
+
+  $auth_url = $::platform::client::params::identity_auth_url
+  $username = $::platform::client::params::admin_username
+  $user_domain = $::platform::client::params::admin_user_domain
+  $project_name = $::platform::client::params::admin_project_name
+  $project_domain = $::platform::client::params::admin_project_domain
+  $region_name = $::platform::client::params::keystone_identity_region
+  $password = $::platform::client::params::admin_password
+  $interface = 'internal'
+
+  # Registry credentials have been stored in Barbican secret at Ansible
+  # bootstrap time, retrieve Barbican secret to get the payload
+  notice("Get payload of Barbican secret ${registry_secret}")
+  $secret_payload = generate(
+    '/bin/sh', '-c', template('platform/get-secret-payload.erb'))
+
+  if $secret_payload {
+    # Parse Barbican secret payload to get the registry username and password
+    $secret_payload_array = split($secret_payload, ' ')
+    $registry_username = split($secret_payload_array[0], 'username:')[1]
+    $registry_password = split($secret_payload_array[1], 'password:')[1]
+
+    # Login to authenticated registry
+    if $registry_username and $registry_password {
+      exec { 'Login registry':
+        command   => "docker login ${registry_url} -u ${registry_username} -p ${registry_password}",
+        logoutput => true,
+      }
+    } else {
+      notice('Registry username or/and password NOT FOUND')
+    }
+  }
 }
