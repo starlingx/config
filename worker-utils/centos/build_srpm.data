@@ -1,3 +1,0 @@
-SRC_DIR="worker-utils"
-COPY_LIST="$SRC_DIR/LICENSE"
-TIS_PATCH_VER=4
