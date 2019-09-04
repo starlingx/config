@@ -6,15 +6,4 @@ sysinv/cgts-client
 sysinv/sysinv-agent
 sysinv/sysinv
 config-gate
-puppet-manifests
-puppet-modules-wrs/puppet-mtce
-puppet-modules-wrs/puppet-sshd
-puppet-modules-wrs/puppet-nfv
-puppet-modules-wrs/puppet-patching
-puppet-modules-wrs/puppet-sysinv
-puppet-modules-wrs/puppet-dcorch
-puppet-modules-wrs/puppet-dcmanager
-puppet-modules-wrs/puppet-smapi
-puppet-modules-wrs/puppet-fm
-puppet-modules-wrs/puppet-dcdbsync
 tsconfig

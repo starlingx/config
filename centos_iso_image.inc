@@ -27,8 +27,6 @@ sysinv
 config-gate
 config-gate-worker
 
-# puppet-manifests
-puppet-manifests
 
 # Platform helm charts
 stx-platform-helm
