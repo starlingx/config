@@ -1,5 +1,4 @@
 kubernetes/platform/stx-platform/stx-platform-helm
-worker-utils
 workerconfig
 controllerconfig
 storageconfig
@@ -18,4 +17,3 @@ puppet-modules-wrs/puppet-dcmanager
 puppet-modules-wrs/puppet-smapi
 puppet-modules-wrs/puppet-fm
 puppet-modules-wrs/puppet-dcdbsync
-pm-qos-mgr

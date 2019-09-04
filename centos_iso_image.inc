@@ -2,8 +2,6 @@
 # If these have dependencies, they will be pulled in automatically
 #
 
-# worker-utils
-worker-utils
 
 # workerconfig
 workerconfig
@@ -36,4 +34,3 @@ puppet-manifests
 stx-platform-helm
 
 # PM QoS cpu latency manager
-pm-qos-mgr
