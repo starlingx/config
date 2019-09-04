@@ -1,4 +1,3 @@
-kubernetes/platform/stx-platform/stx-platform-helm
 workerconfig
 controllerconfig
 storageconfig
