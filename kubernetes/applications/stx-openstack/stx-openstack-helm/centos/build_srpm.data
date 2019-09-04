@@ -1,8 +1,0 @@
-SRC_DIR="stx-openstack-helm"
-COPY_LIST_TO_TAR="$PKG_BASE/../../../helm-charts/garbd \
-    $PKG_BASE/../../../helm-charts/nginx-ports-control"
-# This version is used as a component of the stx-openstack application
-# version. Any change to this version must also be reflected in the
-# SUPPORTED_VERSIONS list in sysinv/helm/openstack_version_check.py
-#
-TIS_PATCH_VER=18
