@@ -1,6 +1,0 @@
-SRC_DIR="stx-monitor-helm"
-# This version is used as a component of the stx-monitor application
-# version. Any change to this version must also be reflected in the
-# SUPPORTED_VERSIONS list in sysinv/helm/monitor_version_check.py
-#
-TIS_PATCH_VER=1
