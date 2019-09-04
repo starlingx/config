@@ -1,7 +1,0 @@
-# delete manager
-ovs-vsctl -t ovsdb-server --no-wait del-manager
-
-# delete all bridges
-for bridge in $(ovs-vsctl -t ovsdb-server --timeout 10 list-br); do
-    ovs-vsctl -t ovsdb-server --timeout 10 --no-wait del-br $bridge
-done

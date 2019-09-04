@@ -1,6 +1,0 @@
-DAEMON_ARGS=<%- @options.each do |option| -%>
- <%= option['option'] -%>
-<%- if option.has_key? 'arguments' -%>
- <%= option['arguments'] -%>
-<%- end -%>
-<%- end -%>

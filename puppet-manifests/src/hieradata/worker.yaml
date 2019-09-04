@@ -1,5 +1,0 @@
-# worker specific configuration data
----
-
-# vswitch
-vswitch::dpdk::memory_channels: 4

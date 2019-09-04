@@ -1,7 +1,0 @@
-[Unit]
-# Add a dependency to kubelet on config so it doesn't enter a bad state on subsequent boots
-After=config.service
-
-[Service]
-# pmond monitors kubelet.service
-Restart=no

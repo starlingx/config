@@ -1,3 +1,0 @@
-<%- @vf_addrs.each_with_index do |addr, idx| -%>
-/usr/share/openvswitch/scripts/dpdk-devbind.py --bind=<%= @vf_driver -%> <%= addr %>
-<%- end -%>

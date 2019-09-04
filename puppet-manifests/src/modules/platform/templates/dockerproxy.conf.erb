@@ -1,8 +1,0 @@
-[Service]
-<%- if @http_proxy -%>
-Environment="HTTP_PROXY=<%= @http_proxy %>"
-<%- end -%>
-<%- if @https_proxy -%>
-Environment="HTTPS_PROXY=<%= @https_proxy %>"
-<%- end -%>
-Environment="NO_PROXY=<%= @no_proxy %>"

@@ -1,4 +1,0 @@
-dn: uid=operator,ou=People,dc=cgcs,dc=local
-changetype: modify
-replace: loginShell
-loginShell: /usr/local/bin/cgcs_cli

@@ -1,9 +1,0 @@
-ovs-ofctl add-flow <%= @bridge -%>
- <%- @attributes.each_with_index do |attrib, idx| -%>
-<% if idx == 0 %> <% else -%>,<% end -%>
-<%= attrib[0] -%>=<%= attrib[1] -%>
-<%- end -%>
-,actions=<%- @actions.each_with_index do |action, idx| -%>
-<%- if idx > 0 -%>,<%- end -%>
-<%= action['type'] -%>:<%= action['value'] -%>
-<%- end -%>

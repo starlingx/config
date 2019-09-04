@@ -1,5 +1,0 @@
-# Disable DPDK initialization in ovsdb
-# ovs-vsctl is not used here as it can fail after the initial start of ovsdb
-# (even though the dpdk-init parameter actually gets applied).
-ovsdb-client -v transact '["Open_vSwitch", {"op" : "mutate", "table": "Open_vSwitch", "where": [], "mutations" : [["other_config","delete", ["map",[["dpdk-init", "true"]]]]]}]'
-ovsdb-client -v transact '["Open_vSwitch", {"op" : "mutate", "table": "Open_vSwitch", "where": [], "mutations" : [["other_config","insert", ["map",[["dpdk-init", "false"]]]]]}]'

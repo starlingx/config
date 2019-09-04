@@ -1,6 +1,0 @@
-ovs-vsctl --timeout 10 -- --may-exist add-br <%= @name -%>
- -- set bridge <%= @name -%>
-<%- @attributes.each do |attribute| -%>
- <%= attribute -%>
-<%- end -%>
- datapath_type=<%= @datapath_type -%>

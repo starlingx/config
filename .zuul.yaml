@@ -17,8 +17,6 @@
         - cgtsclient-tox-py27
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
-        - puppet-manifests-lint
-        - puppet-modules-wrs-lint
     gate:
       jobs:
         - openstack-tox-linters
@@ -32,8 +30,6 @@
         - cgtsclient-tox-py27
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
-        - puppet-manifests-lint
-        - puppet-modules-wrs-lint
 
 - job:
     name: sysinv-tox-py27
@@ -213,27 +209,3 @@
         STX_PREFIX: ''
       tox_envlist: pylint
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
-
-- job:
-    name: puppet-manifests-lint
-    parent: tox
-    description: |
-      Run puppetlint test for puppet-manifests
-    files:
-      - puppet-manifests/*
-    pre-run: playbooks/tox-puppet-lint/pre.yaml
-    vars:
-      tox_envlist: puppetlint
-      tox_extra_args: -c puppet-manifests/tox.ini
-
-- job:
-    name: puppet-modules-wrs-lint
-    parent: tox
-    description: |
-      Run puppetlint test for puppet-modules-wrs
-    files:
-      - puppet-modules-wrs/*
-    pre-run: playbooks/tox-puppet-lint/pre.yaml
-    vars:
-      tox_envlist: puppetlint
-      tox_extra_args: -c puppet-modules-wrs/tox.ini

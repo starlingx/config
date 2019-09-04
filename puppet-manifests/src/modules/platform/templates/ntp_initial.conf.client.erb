@@ -1,5 +1,0 @@
-# This config file is used for the initial ntpd execution that will be used
-# to set the time when a node is first booted.
-<%- scope['platform::ntp::servers'].each do |server| -%>
-server <%= server %>
-<%- end -%>
