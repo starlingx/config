@@ -34,3 +34,6 @@ puppet-manifests
 stx-platform-helm
 
 # PM QoS cpu latency manager
+
+# tsconfig
+tsconfig
