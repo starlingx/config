@@ -38,14 +38,12 @@
       Run py27 test for sysinv
     nodeset: ubuntu-xenial
     required-projects:
-      - starlingx/update
       - starlingx/fault
-      - starlingx/integ
+      - starlingx/update
+      - starlingx/utilities
     files:
       - sysinv/sysinv/*
     vars:
-      tox_environment:
-        STX_PREFIX: ''
       tox_envlist: py27
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
@@ -56,14 +54,12 @@
       Run py35 test for sysinv
     nodeset: ubuntu-xenial
     required-projects:
-      - starlingx/update
       - starlingx/fault
-      - starlingx/integ
+      - starlingx/update
+      - starlingx/utilities
     files:
       - sysinv/sysinv/*
     vars:
-      tox_environment:
-        STX_PREFIX: ''
       tox_envlist: py35
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
@@ -75,8 +71,6 @@
     files:
       - sysinv/sysinv/*
     vars:
-      tox_environment:
-        STX_PREFIX: ''
       tox_envlist: flake8
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
@@ -86,14 +80,12 @@
     description: |
       Run pylint test for sysinv
     required-projects:
-      - starlingx/update
       - starlingx/fault
-      - starlingx/integ
+      - starlingx/update
+      - starlingx/utilities
     files:
       - sysinv/sysinv/*
     vars:
-      tox_environment:
-        STX_PREFIX: ''
       tox_envlist: pylint
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
@@ -144,8 +136,8 @@
     parent: flock-devstack-base
     required-projects:
       - starlingx/fault
-      - starlingx/integ
       - starlingx/update
+      - starlingx/utilities
     vars:
       tox_envlist: functional
       devstack_services:
