@@ -9,6 +9,7 @@
 .*.swp
 .coverage
 .installed.cfg
+.stestr
 .testrepository
 .tox
 .venv
