@@ -42,16 +42,8 @@ class ElasticsearchHelm(elastic.ElasticBaseHelm):
                     'EXPECTED_MASTER_NODES': "1",
                     'RECOVER_AFTER_MASTER_NODES': "1"}
 
-        if utils.is_aio_simplex_system(self.dbapi):
-            cluster_initial_master_nodes = ['stx-elasticsearch-master-0']
-        else:
-            cluster_initial_master_nodes = ['stx-elasticsearch-master-0',
-                                            'stx-elasticsearch-master-1']
-
         conf = {
             'env': env_vars,
-            'config': {
-                'cluster.initial_master_nodes': cluster_initial_master_nodes},
         }
         return conf
 

@@ -124,7 +124,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                     "period": period,
                     "host": "${NODE_NAME}",
                     "hosts": [
-                        "stx-kube-state-metrics.monitor.svc.cluster.local:8080"
+                        "${KUBE_STATE_METRICS_HOST}:8080"
                     ]
                 }
             ]
