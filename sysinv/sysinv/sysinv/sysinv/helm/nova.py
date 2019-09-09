@@ -49,6 +49,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
     AUTH_USERS = ['nova', ]
     SERVICE_USERS = ['neutron', 'ironic', 'placement']
     NOVNCPROXY_SERVICE_NAME = 'novncproxy'
+    NOVNCPROXY_NODE_PORT = '30680'
 
     def get_overrides(self, namespace=None):
 
@@ -98,6 +99,11 @@ class NovaHelm(openstack.OpenstackBaseHelm):
                 'network': {
                     'sshd': {
                         'from_subnet': self._get_ssh_subnet(),
+                    },
+                    'novncproxy': {
+                        'node_port': {
+                            'enabled': self._get_network_node_port_overrides()
+                        }
                     }
                 },
                 'ceph_client': self._get_ceph_client_overrides(),
@@ -196,9 +202,8 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             location = "%s.%s" % (self.NOVNCPROXY_SERVICE_NAME,
                                   str(endpoint_domain.value).lower())
         else:
-            location = self._get_service_default_dns_name(
-                self.NOVNCPROXY_SERVICE_NAME)
-
+            location = "%s:%s" % (self._get_oam_address(),
+                                  self.NOVNCPROXY_NODE_PORT)
         url = "%s://%s/vnc_auto.html" % (self._get_public_protocol(),
                                          location)
         return url
@@ -576,3 +581,15 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         }
 
         return ephemeral_storage_conf
+
+    def _get_network_node_port_overrides(self):
+        # If openstack endpoint FQDN is configured, disable node_port 30680
+        # which will enable the Ingress for the novncproxy service
+        endpoint_fqdn = self._get_service_parameter(
+            constants.SERVICE_TYPE_OPENSTACK,
+            constants.SERVICE_PARAM_SECTION_OPENSTACK_HELM,
+            constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN)
+        if endpoint_fqdn:
+            return False
+        else:
+            return True
