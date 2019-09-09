@@ -1,0 +1,9 @@
+-------------------------------------------------------------------
+Wed Jun 12 08:03:51 UTC 2019 - Marcela Rosales <marcelarosalesj@gmail.com>
+
+- Add BuildArch and %config macro to specfile
+
+-------------------------------------------------------------------
+Mon Jun 10 12:10:39 UTC 2019 - Marcela Rosales <marcelarosalesj@gmail.com>
+
+- Initial Commit
