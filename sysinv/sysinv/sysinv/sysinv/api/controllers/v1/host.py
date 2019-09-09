@@ -5065,12 +5065,15 @@ class HostController(rest.RestController):
 
         LOG.info("%s ihost check_lock_controller" % hostupdate.displayid)
 
-        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
+        # Prevent locking active controller, but allow it when it is in a
+        # simplex state.
+        if (utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX and
+                not utils.is_host_simplex_controller(hostupdate.ihost_orig)):
             active = utils.is_host_active_controller(hostupdate.ihost_orig)
             if active:
                 raise wsme.exc.ClientSideError(
                     _("%s : Rejected: Can not lock an active "
-                        "controller.") % hostupdate.ihost_orig['hostname'])
+                      "controller.") % hostupdate.ihost_orig['hostname'])
 
         # Reject lock while Ceph OSD storage devices are configuring
         if not force:
@@ -5857,12 +5860,21 @@ class HostController(rest.RestController):
                 if (iif.networktypelist and
                         constants.NETWORK_TYPE_MGMT in iif.networktypelist):
                     mgmt_interface_configured = True
+                    break
 
             if not mgmt_interface_configured:
                 msg = _("Cannot unlock host %s "
                         "without configuring a management interface."
                         % hostupdate.displayid)
                 raise wsme.exc.ClientSideError(msg)
+            else:
+                if (iif.iftype == constants.INTERFACE_TYPE_VIRTUAL and
+                        not cutils.is_aio_simplex_system(pecan.request.dbapi)):
+                    msg = _("Cannot unlock host %s "
+                            "when management interface is configured on "
+                            "a virtual interface."
+                            % hostupdate.displayid)
+                    raise wsme.exc.ClientSideError(msg)
 
             # Check if there is a cluster-host interface on
             # controller/worker/storage
@@ -5871,6 +5883,13 @@ class HostController(rest.RestController):
             for iif in host_interfaces:
                 if (iif.networktypelist and
                         constants.NETWORK_TYPE_CLUSTER_HOST in iif.networktypelist):
+                    if (iif.iftype == constants.INTERFACE_TYPE_VIRTUAL and
+                            not cutils.is_aio_simplex_system(pecan.request.dbapi)):
+                        msg = _("Cannot unlock host %s "
+                                "when cluster-host interface is configured on "
+                                "a virtual interface."
+                                % hostupdate.displayid)
+                        raise wsme.exc.ClientSideError(msg)
                     break
             else:
                 msg = _("Cannot unlock host %s "
