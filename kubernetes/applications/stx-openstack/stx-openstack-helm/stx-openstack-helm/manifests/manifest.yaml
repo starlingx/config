@@ -910,6 +910,8 @@ data:
       # here.
       mandatory_access_control:
         type: null
+      useHostNetwork:
+        novncproxy: false
       replicas:
         api_metadata: 1
         osapi: 1
