@@ -610,12 +610,14 @@ class AppOperator(object):
                     if key not in images_overrides:
                         if key not in images_manifest:
                             images_manifest.update({key: images_charts[key]})
-                        if not re.match(r'^.+:.+/', images_manifest[key]):
-                            images_manifest.update(
-                                {key: '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
-                                                     images_manifest[key])})
-                            chart_image_tags_updated = True
-                        image_tags.append(images_manifest[key])
+                        # If the image is tagged as null, do not download
+                        if images_manifest[key]:
+                            if not re.match(r'^.+:.+/', images_manifest[key]):
+                                images_manifest.update({key:
+                                    '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
+                                                   images_manifest[key])})
+                                chart_image_tags_updated = True
+                            image_tags.append(images_manifest[key])
                     else:
                         if not re.match(r'^.+:.+/', images_overrides[key]):
                             images_overrides.update(
