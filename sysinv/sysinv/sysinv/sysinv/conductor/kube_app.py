@@ -2580,8 +2580,7 @@ class AppOperator(object):
             # with applications. A system app can be determined if it has any
             # installed plugins after being uploaded.
             return ((self.name == constants.HELM_APP_OPENSTACK or
-                     self.name == constants.HELM_APP_MONITOR or
-                     self.name == constants.HELM_APP_PLATFORM) or
+                     self.name == constants.HELM_APP_MONITOR) or
                     (True if (os.path.exists(self.sync_plugins_dir) and
                               os.listdir(self.sync_plugins_dir)) else False))
 
