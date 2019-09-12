@@ -12,9 +12,10 @@
 import ruamel.yaml as yaml
 from oslo_log import log as logging
 import subprocess
+from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import exception
+from sysinv.openstack.common import context
 import threading
-import os
 
 LOG = logging.getLogger(__name__)
 
@@ -23,21 +24,15 @@ def refresh_helm_repo_information():
     """Refresh the helm chart repository information.
 
     Ensure that the local repository information maintained in key user home
-    directories are updated. Run this when the conductor is initialized and
-    after application uploads.
+    directories are updated. Run this after application uploads.
 
     This handles scenarios where an upload occurs on the active controller
     followed by a swact. The newly actvated controller needs to make sure that
     the local repository cache reflect any changes.
     """
-    with open(os.devnull, "w") as fnull:
-        try:
-            subprocess.check_call(['sudo', '-u', 'sysadmin',
-                                   'helm', 'repo', 'update'],
-                                  stdout=fnull, stderr=fnull)
-        except subprocess.CalledProcessError:
-            # Just log an error. Don't stop any callers from further execution.
-            LOG.error("Failed to update helm repo data for user sysadmin.")
+    LOG.debug("refresh_helm_repo_information: sending command to agent(s)")
+    rpcapi = agent_rpcapi.AgentAPI()
+    rpcapi.refresh_helm_repo_information(context.get_admin_context())
 
 
 def retrieve_helm_releases():

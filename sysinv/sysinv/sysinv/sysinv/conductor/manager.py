@@ -102,7 +102,6 @@ from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import common as helm_common
 from sysinv.helm import helm
-from sysinv.helm import utils as helm_utils
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -224,8 +223,6 @@ class ConductorManager(service.PeriodicService):
         self._upgrade_init_actions()
 
         self._handle_restore_in_progress()
-
-        helm_utils.refresh_helm_repo_information()
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
