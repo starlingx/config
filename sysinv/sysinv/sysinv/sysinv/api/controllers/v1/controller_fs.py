@@ -590,12 +590,18 @@ class ControllerFsController(rest.RestController):
         reinstall_required = False
         reboot_required = False
         modified_fs = []
-
+        update_fs_list = []
         for p_list in patch:
             p_obj_list = jsonpatch.JsonPatch(p_list)
             for p_obj in p_obj_list:
                 if p_obj['path'] == '/name':
                     fs_name = p_obj['value']
+                    if fs_name in update_fs_list:
+                        msg = _("Duplicate fs_name "
+                                "'%s' in parameter list" % fs_name)
+                        raise wsme.exc.ClientSideError(msg)
+                    else:
+                        update_fs_list.append(fs_name)
                 elif p_obj['path'] == '/size':
                     size = p_obj['value']
 
