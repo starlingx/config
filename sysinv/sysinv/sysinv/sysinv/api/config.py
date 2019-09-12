@@ -28,6 +28,7 @@ app = {
     'debug': False,
     'enable_acl': True,
     'acl_public_routes': ['/', '/v1', '/v1/isystems/mgmtvlan',
+                          '/v1/ihosts/wipe_osds',
                           '/v1/ihosts/.+/install_progress',
                           '/v1/ihosts/[a-z0-9\-]+/icpus/platform_cpu_list',
                           '/v1/ihosts/[a-z0-9\-]+/icpus/vswitch_cpu_list',
