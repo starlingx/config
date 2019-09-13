@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -35,7 +35,7 @@ def _print_ihost_show(ihost):
               'location', 'uptime', 'reserved', 'created_at', 'updated_at',
               'boot_device', 'rootfs_device', 'install_output', 'console',
               'tboot', 'vim_progress_status', 'software_load', 'install_state',
-              'install_state_info', 'inv_state']
+              'install_state_info', 'inv_state', 'clock_synchronization']
     optional_fields = ['vsc_controllers', 'ttys_dcd']
     if ihost.subfunctions != ihost.personality:
         fields.append('subfunctions')
@@ -141,13 +141,18 @@ def do_host_upgrade_list(cc, args):
 @utils.arg('-D', '--ttys_dcd',
            metavar='<true/false>',
            help='Enable/disable serial console data carrier detection')
+@utils.arg('-C', '--clock_synchronization',
+           metavar='<clock_synchronization>',
+           choices=['ntp', 'ptp'],
+           help='Clock synchronization, ntp or ptp. Default: ntp')
 def do_host_add(cc, args):
     """Add a new host."""
     field_list = ['hostname', 'personality', 'subfunctions',
                   'mgmt_mac', 'mgmt_ip',
                   'bm_ip', 'bm_type', 'bm_username', 'bm_password',
                   'boot_device', 'rootfs_device', 'install_output', 'console',
-                  'vsc_controllers', 'location', 'ttys_dcd']
+                  'vsc_controllers', 'location', 'ttys_dcd',
+                  'clock_synchronization']
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
 

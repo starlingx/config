@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -162,6 +162,7 @@ def get_test_ihost(**kw):
             'install_state_info': kw.get('install_state_info', None),
             'iscsi_initiator_name': kw.get('iscsi_initiator_name', None),
             'inv_state': kw.get('inv_state', 'inventoried'),
+            'clock_synchronization': kw.get('clock_synchronization', constants.NTP),
              }
     return inv
 

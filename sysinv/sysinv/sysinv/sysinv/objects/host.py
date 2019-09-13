@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -75,6 +75,7 @@ class Host(base.SysinvObject):
             'config_applied': utils.str_or_none,
             'config_target': utils.str_or_none,
             'capabilities': utils.dict_or_none,
+            'clock_synchronization': utils.str_or_none,
 
             'boot_device': utils.str_or_none,
             'rootfs_device': utils.str_or_none,

@@ -1621,7 +1621,7 @@ class ConductorManager(service.PeriodicService):
         :param do_worker_apply: configure the worker subfunctions of the host.
         """
 
-        LOG.debug("configure_ihost %s" % host.hostname)
+        LOG.info("configure_ihost %s" % host.hostname)
 
         # Generate system configuration files
         # TODO(mpeters): remove this once all system reconfigurations properly
@@ -5385,14 +5385,17 @@ class ConductorManager(service.PeriodicService):
         config_uuid = self._config_update_hosts(context, personalities)
         self._update_resolv_file(context, config_uuid, personalities)
 
-    def update_ntp_config(self, context, service_change=False):
+    def update_clock_synchronization_config(self, context, host):
+        """Update clock_synchronization configuration of a host"""
+        personalities = [host.get('personality')]
+        self._config_update_hosts(context, personalities, [host.get('uuid')],
+                                  reboot=True)
+
+    def update_ntp_config(self, context):
         """Update the NTP configuration"""
-        if service_change:
-            personalities = [constants.CONTROLLER,
-                             constants.WORKER,
-                             constants.STORAGE]
-        else:
-            personalities = [constants.CONTROLLER]
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER,
+                         constants.STORAGE]
         self._config_update_hosts(context, personalities, reboot=True)
 
     def update_ptp_config(self, context):

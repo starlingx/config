@@ -223,6 +223,8 @@ class ihost(Base):
     config_applied = Column(String(255))
     config_target = Column(String(255))
 
+    clock_synchronization = Column(String(32), default=constants.NTP)
+
     boot_device = Column(String(255), default="/dev/sda")
     rootfs_device = Column(String(255), default="/dev/sda")
     install_output = Column(String(255), default="text")
@@ -777,7 +779,6 @@ class intp(Base):
     id = Column(Integer, primary_key=True)
     uuid = Column(String(36))
 
-    enabled = Column(Boolean, default=True)
     ntpservers = Column(String(255))  # csv list of ntp servers
 
     forisystemid = Column(Integer,
@@ -792,13 +793,12 @@ class PTP(Base):
     id = Column(Integer, primary_key=True)
     uuid = Column(String(36))
 
-    enabled = Column(Boolean, default=False)
     mode = Column(String(16), default='hardware')
     transport = Column(String(4), default='l2')
     mechanism = Column(String(4), default='e2e')
 
     system_id = Column(Integer,
-                      ForeignKey('i_system.id', ondelete='CASCADE'))
+                       ForeignKey('i_system.id', ondelete='CASCADE'))
 
     system = relationship("isystem", lazy="joined", join_depth=1)
 

@@ -1,6 +1,6 @@
 ########################################################################
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -48,9 +48,6 @@ class PTP(base.APIBase):
     uuid = types.uuid
     "Unique UUID for this ptp"
 
-    enabled = types.boolean
-    "Represent the status of the ptp."
-
     mode = wtypes.Enum(str, 'hardware', 'software', 'legacy')
     "Time stamping mode used by ptp."
 
@@ -80,7 +77,6 @@ class PTP(base.APIBase):
         ptp = PTP(**rpc_ptp.as_dict())
         if not expand:
             ptp.unset_fields_except(['uuid',
-                                     'enabled',
                                      'mode',
                                      'transport',
                                      'mechanism',
@@ -116,21 +112,6 @@ class ptpCollection(collection.Collection):
                             for p in rpc_ptps]
         collection.next = collection.get_next(limit, url=url, **kwargs)
         return collection
-
-
-##############
-# UTILS
-##############
-def _check_ptp_data(op, ptp):
-    enabled = ptp['enabled']
-    ntp_list = pecan.request.dbapi.intp_get_by_isystem(ptp['isystem_uuid'])
-    if ntp_list:
-        if hasattr(ntp_list[0], 'enabled'):
-            if ntp_list[0].enabled is True and enabled is True:
-                    raise wsme.exc.ClientSideError(_(
-                        "PTP cannot be configured alongside with NTP."
-                        " Please disable NTP before enabling PTP."))
-    return ptp
 
 
 LOCK_NAME = 'PTPController'
@@ -223,7 +204,7 @@ class PTPController(rest.RestController):
         except utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
 
-        ptp = _check_ptp_data("modify", ptp.as_dict())
+        ptp = ptp.as_dict()
 
         try:
             # Update only the fields that have changed
@@ -242,9 +223,8 @@ class PTPController(rest.RestController):
             return PTP.convert_with_links(rpc_ptp)
 
         except exception.HTTPNotFound:
-            msg = _("PTP update failed: enabled %s : %s %s %s : patch %s"
-                        % (ptp['enabled'], ptp['mode'], ptp['transport'],
-                           ptp['mechanism'], patch))
+            msg = _("PTP update failed: %s %s %s : patch %s" %
+                    (ptp['mode'], ptp['transport'], ptp['mechanism'], patch))
             raise wsme.exc.ClientSideError(msg)
 
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)

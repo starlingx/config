@@ -1,6 +1,6 @@
 ########################################################################
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,7 +19,6 @@ class PTP(base.SysinvObject):
             'id': int,
             'uuid': utils.str_or_none,
 
-            'enabled': utils.bool_or_none,
             'mode': utils.str_or_none,
             'transport': utils.str_or_none,
             'mechanism': utils.str_or_none,

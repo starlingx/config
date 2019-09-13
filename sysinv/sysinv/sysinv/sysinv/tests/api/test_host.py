@@ -33,6 +33,7 @@ class FakeConductorAPI(object):
         self.delete_barbican_secret = mock.MagicMock()
         self.iplatform_update_by_ihost = mock.MagicMock()
         self.evaluate_app_reapply = mock.MagicMock()
+        self.update_clock_synchronization_config = mock.MagicMock()
 
     def create_ihost(self, context, values):
         # Create the host in the DB as the code under test expects this
@@ -691,6 +692,38 @@ class TestPatch(TestHost):
         result = self.get_json('/ihosts/%s' % ndict['hostname'])
         self.assertEqual(new_location, result['location'])
 
+    def test_update_clock_synchronization(self):
+        # Create controller-0
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            mgmt_ip=None,
+                                            serialid='serial1')
+        self.post_json('/ihosts', ndict,
+                       headers={'User-Agent': 'sysinv-test'})
+
+        # Update clock_synchronization
+
+        response = self.patch_json('/ihosts/%s' % ndict['hostname'],
+                                   [{'path': '/clock_synchronization',
+                                     'value': constants.PTP,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'})
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that the host was configured
+        self.fake_conductor_api.configure_ihost.assert_called_once()
+
+        # Verify that the app reapply was checked
+        self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+
+        # Verify that update_clock_synchronization_config was called
+        self.fake_conductor_api.update_clock_synchronization_config.\
+            assert_called_once()
+
+        # Verify that the host was updated with the new clock_synchronization
+        result = self.get_json('/ihosts/%s' % ndict['hostname'])
+        self.assertEqual(constants.PTP, result['clock_synchronization'])
+
     def test_unlock_action_controller(self):
         self._configure_networks()
         # Create controller-0
@@ -768,7 +801,7 @@ class TestPatch(TestHost):
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
-            inv_state=None)
+            inv_state=None, clock_synchronization=constants.NTP)
 
         # Unlock host
         response = self._patch_host_action(c0_host['hostname'],

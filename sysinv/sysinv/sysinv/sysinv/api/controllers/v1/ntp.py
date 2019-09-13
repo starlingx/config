@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 
@@ -66,9 +66,6 @@ class NTP(base.APIBase):
     uuid = types.uuid
     "Unique UUID for this ntp"
 
-    enabled = types.boolean
-    "Represent the status of the intp."
-
     ntpservers = wtypes.text
     "Represent the ntpservers of the intp. csv list."
 
@@ -105,7 +102,6 @@ class NTP(base.APIBase):
         ntp = NTP(**rpc_ntp.as_dict())
         if not expand:
             ntp.unset_fields_except(['uuid',
-                                     'enabled',
                                      'ntpservers',
                                      'isystem_uuid',
                                      'created_at',
@@ -152,22 +148,11 @@ class intpCollection(collection.Collection):
 ##############
 def _check_ntp_data(op, ntp):
     # Get data
-    enabled = ntp['enabled']
     ntpservers = ntp['ntpservers']
     intp_ntpservers_list = []
-    ntp_ntpservers = ""
     idns_nameservers_list = []
 
     MAX_S = 3
-
-    ptp_list = pecan.request.dbapi.ptp_get_by_isystem(ntp['forisystemid'])
-
-    if ptp_list:
-        if hasattr(ptp_list[0], 'enabled'):
-            if ptp_list[0].enabled is True and enabled is True:
-                    raise wsme.exc.ClientSideError(_(
-                        "NTP cannot be configured alongside with PTP."
-                        " Please disable PTP before enabling NTP."))
 
     dns_list = pecan.request.dbapi.idns_get_by_isystem(ntp['forisystemid'])
 
@@ -184,7 +169,8 @@ def _check_ntp_data(op, ntp):
 
             except (AddrFormatError, ValueError):
                 if utils.is_valid_hostname(ntpserver):
-                    # If server address in FQDN, and no DNS servers, raise error
+                    # If server address in FQDN, and no DNS servers,
+                    # raise error
                     if len(idns_nameservers_list) == 0 and ntpserver != 'NC':
                         raise wsme.exc.ClientSideError(_(
                             "A DNS server must be configured prior to "
@@ -200,9 +186,9 @@ def _check_ntp_data(op, ntp):
                     raise wsme.exc.ClientSideError(_(
                         "Invalid NTP server %s "
                         "Please configure a valid NTP "
-                        "IP address or hostname.") % (ntpserver))
+                        "IP address or hostname.") % ntpserver)
 
-    if len(intp_ntpservers_list) == 0 and enabled is None:
+    if len(intp_ntpservers_list) == 0:
         raise wsme.exc.ClientSideError(_("No NTP parameters provided."))
 
     if len(intp_ntpservers_list) > MAX_S:
@@ -270,7 +256,7 @@ class NTPController(rest.RestController):
         """Retrieve a list of ntps. Only one per system"""
 
         return self._get_ntps_collection(isystem_uuid, marker, limit,
-                                          sort_key, sort_dir)
+                                         sort_key, sort_dir)
 
     @wsme_pecan.wsexpose(intpCollection, types.uuid, types.uuid, int,
                          wtypes.text, wtypes.text)
@@ -359,18 +345,13 @@ class NTPController(rest.RestController):
                     rpc_ntp[field] = ntp[field]
 
             delta = rpc_ntp.obj_what_changed()
-            delta_handle = list(delta)
             if delta:
                 rpc_ntp.save()
 
-                if 'enabled' in delta_handle:
-                    service_change = True
-                else:
-                    service_change = False
                 if action == constants.APPLY_ACTION:
                     # perform rpc to conductor to perform config apply
-                    pecan.request.rpcapi.update_ntp_config(pecan.request.context,
-                                                           service_change)
+                    pecan.request.rpcapi.update_ntp_config(
+                        pecan.request.context)
             else:
                 LOG.info("No NTP config changes")
 

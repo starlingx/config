@@ -422,6 +422,9 @@ class Host(base.APIBase):
     config_target = wtypes.text
     "Represent the configuration which needs to be applied to this ihost."
 
+    clock_synchronization = wtypes.text
+    "Represent the clock synchronization type of this ihost."
+
     # Host uptime
     uptime = int
 
@@ -563,7 +566,7 @@ class Host(base.APIBase):
                           'software_load', 'target_load', 'peers', 'peer_id',
                           'install_state', 'install_state_info',
                           'iscsi_initiator_name',
-                          'inv_state']
+                          'inv_state', 'clock_synchronization']
 
         fields = minimum_fields if not expand else None
         uhost = Host.from_rpc_object(rpc_ihost, fields)
@@ -1867,6 +1870,14 @@ class HostController(rest.RestController):
             LOG.exception(e)
             raise wsme.exc.ClientSideError(_("Patching Error: %s") % e)
 
+        if patched_ihost['clock_synchronization'] not in \
+                constants.CLOCK_SYNCHRONIZATION:
+            msg = _("Host update failed: clock_synchronization: "
+                    "invalid choice: '%s', choose from %s" %
+                    (patched_ihost['clock_synchronization'],
+                     constants.CLOCK_SYNCHRONIZATION))
+            raise wsme.exc.ClientSideError(msg)
+
         self._validate_capabilities(
             ihost_dict['capabilities'], patched_ihost['capabilities'])
 
@@ -2203,6 +2214,11 @@ class HostController(rest.RestController):
             self._handle_ttys_dcd_change(hostupdate.ihost_orig,
                                          hostupdate.ihost_patch['ttys_dcd'])
 
+        if 'clock_synchronization' in hostupdate.delta:
+            # perform rpc to conductor to perform config apply
+            pecan.request.rpcapi.update_clock_synchronization_config(
+                pecan.request.context, patched_ihost)
+
         log_end = cutils.timestamped("ihost_patch_end")
         if uptime_update:
             LOG.debug("host %s %s patch" % (ihost_obj.hostname,
@@ -2212,8 +2228,8 @@ class HostController(rest.RestController):
                                            log_end))
 
         if ('administrative' in hostupdate.delta and
-                    hostupdate.ihost_patch['administrative'] ==
-                    constants.ADMIN_LOCKED):
+                hostupdate.ihost_patch['administrative'] ==
+                constants.ADMIN_LOCKED):
             LOG.info("Update host memory for (%s)" % ihost_obj['hostname'])
             pecan.request.rpcapi.update_host_memory(pecan.request.context,
                                                     ihost_obj['uuid'])
