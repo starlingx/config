@@ -607,8 +607,6 @@ class PlatformPuppet(base.BasePuppet):
             vm_2M_pages = []
             vm_1G_pages = []
 
-            vs_pages_updated = False
-
             for node, memory_list in memory_numa_list.items():
 
                 memory = memory_list[0]
@@ -624,9 +622,6 @@ class PlatformPuppet(base.BasePuppet):
                 vswitch_pages = memory.vswitch_hugepages_reqd \
                     if memory.vswitch_hugepages_reqd is not None \
                     else memory.vswitch_hugepages_nr
-
-                if vswitch_pages == 0:
-                    vswitch_pages = memory.vswitch_hugepages_nr
 
                 vswitch_node = "\"node%d:%dkB:%d\"" % (
                         node, vswitch_size * 1024, vswitch_pages)
@@ -665,10 +660,6 @@ class PlatformPuppet(base.BasePuppet):
                 vm_2M_pages.append(vm_hugepages_nr_2M)
                 vm_1G_pages.append(vm_hugepages_nr_1G)
 
-                if (memory.vswitch_hugepages_reqd and
-                        vswitch_pages != memory.vswitch_hugepages_nr):
-                    vs_pages_updated = True
-
             platform_reserved_memory = "(%s)" % ' '.join(platform_nodes)
             vswitch_reserved_memory = "(%s)" % ' '.join(vswitch_nodes)
 
@@ -701,17 +692,25 @@ class PlatformPuppet(base.BasePuppet):
                 'platform::compute::hugepage::params::vm_1G_pages':
                     vm_1G,
             })
-            if vs_pages_updated:
+
+            default_pgsz = 'default_hugepagesz=2M'
+            if sum(vswitch_1G_pages) != 0 or sum(vm_1G_pages) != 0:
+                default_pgsz = 'default_hugepagesz=1G'
                 grub_hugepages_1G = "hugepagesz=1G hugepages=%d" % (
                     sum(vswitch_1G_pages) + sum(vm_1G_pages))
                 config.update({
                     'platform::compute::grub::params::g_hugepages':
-                    grub_hugepages_1G,
+                        grub_hugepages_1G,
                 })
-                if sum(vswitch_2M_pages) > 0:
-                    config.update({
-                        'platform::vswitch::params::hugepage_dir': '/mnt/huge-2048kB'
-                    })
+            config.update({
+                'platform::compute::grub::params::default_pgsz':
+                    default_pgsz,
+            })
+
+            if sum(vswitch_2M_pages) > 0:
+                config.update({
+                    'platform::vswitch::params::hugepage_dir':
+                        '/mnt/huge-2048kB'})
 
         return config
 
