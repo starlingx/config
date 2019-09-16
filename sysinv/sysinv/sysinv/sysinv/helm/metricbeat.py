@@ -18,6 +18,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
     CHART = common.HELM_CHART_METRICBEAT
 
     def get_overrides(self, namespace=None):
+        system_fields, system_name_for_index = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
                 'daemonset': {
@@ -25,13 +26,16 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                         'system': self._get_metric_system(),
                         'kubernetes': self._get_metric_kubernetes(),
                     },
+                    'config': self._get_config_overrides(system_fields),
                 },
                 'deployment': {
                     'modules': {
                         'kubernetes':
                             self._get_metric_deployment_kubernetes()
-                    }
-                }
+                    },
+                    'config': self._get_config_overrides(system_fields),
+                },
+                'systemNameForIndex': system_name_for_index,
             }
         }
 
@@ -42,6 +46,14 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_config_overrides(self, system_fields):
+        conf = {
+            'fields': {
+                "system": system_fields
+            }
+        }
+        return conf
 
     def _get_metric_system(self):
         conf = {

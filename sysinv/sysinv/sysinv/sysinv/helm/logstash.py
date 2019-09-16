@@ -18,6 +18,7 @@ class LogstashHelm(elastic.ElasticBaseHelm):
     CHART = common.HELM_CHART_LOGSTASH
 
     def get_overrides(self, namespace=None):
+        system_fields, system_name_for_index = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
                 'replicaCount': self._count_hosts_by_label(
@@ -27,6 +28,7 @@ class LogstashHelm(elastic.ElasticBaseHelm):
                     'size': "20Gi"},
                 'config': {
                     'elasticsearch.path': ""},
+                'systemNameForIndex': system_name_for_index
             }
         }
 
