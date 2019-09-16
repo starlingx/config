@@ -2009,3 +2009,20 @@ class AgentManager(service.PeriodicService):
                                            memory,
                                            force_update=True)
             self._inventory_reported.add(self.MEMORY)
+
+    def refresh_helm_repo_information(self, context):
+        """Refresh the helm chart repository information.
+
+        :param context: an admin context
+        :return: None
+        """
+        if self._ihost_personality == constants.CONTROLLER:
+            LOG.debug("AgentManager.refresh_helm_repo_information")
+            with open(os.devnull, "w") as fnull:
+                try:
+                    subprocess.check_call(['sudo', '-u', 'sysadmin',
+                                           'helm', 'repo', 'update'],
+                                          stdout=fnull, stderr=fnull)
+                except subprocess.CalledProcessError:
+                    # Just log an error. Don't stop any callers from further execution.
+                    LOG.warn("Failed to update helm repo data for user sysadmin.")

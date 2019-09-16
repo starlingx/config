@@ -301,3 +301,18 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.fanout_cast(context,
                                 self.make_msg('update_host_memory',
                                               host_uuid=host_uuid))
+
+    def refresh_helm_repo_information(self, context):
+        """Asynchronously, refresh helm chart repository information
+
+        :param context: request context.
+        :returns: none ... uses asynchronous cast().
+        """
+        # fanout / broadcast message to all inventory agents
+        LOG.debug("AgentApi.refresh_helm_repo_information: fanout_cast: "
+                  "sending refresh_helm_repo_information to agent")
+        retval = self.fanout_cast(context,
+                                  self.make_msg(
+                                      'refresh_helm_repo_information'))
+
+        return retval
