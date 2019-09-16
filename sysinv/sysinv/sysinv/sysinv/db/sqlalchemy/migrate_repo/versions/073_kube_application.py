@@ -8,12 +8,8 @@
 from sqlalchemy import DateTime, String, Integer, Boolean
 from sqlalchemy import Column, MetaData, Table
 
-from sysinv.openstack.common import log
-
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'
-
-LOG = log.getLogger(__name__)
 
 
 def upgrade(migrate_engine):

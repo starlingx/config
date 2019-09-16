@@ -8,9 +8,6 @@
 from sqlalchemy import Column, MetaData, Table
 from sqlalchemy import String
 from sqlalchemy import Integer
-from sysinv.openstack.common import log
-
-LOG = log.getLogger(__name__)
 
 
 def upgrade(migrate_engine):
