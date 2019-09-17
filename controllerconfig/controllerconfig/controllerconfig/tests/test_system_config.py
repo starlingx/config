@@ -233,14 +233,6 @@ def test_system_config_validation():
     # Test detection of an invalid PXEBOOT_CIDR
     system_config = cr.parse_system_config(lag_vlan_systemfile)
     system_config.set('PXEBOOT_NETWORK', 'PXEBOOT_CIDR',
-                      '192.168.1.4/24')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, system_config, None, None, None, 0,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(system_config, DEFAULT_CONFIG, None, False)
-
-    system_config.set('PXEBOOT_NETWORK', 'PXEBOOT_CIDR',
                       'FD00::0000/64')
     with pytest.raises(exceptions.ConfigFail):
         cr.create_cgcs_config_file(None, system_config, None, None, None, 0,

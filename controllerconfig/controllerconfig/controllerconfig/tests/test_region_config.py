@@ -626,14 +626,6 @@ def test_region_config_validation():
     # Test detection of an invalid PXEBOOT_CIDR
     region_config = cr.parse_system_config(lag_vlan_regionfile)
     region_config.set('REGION2_PXEBOOT_NETWORK', 'PXEBOOT_CIDR',
-                      '192.168.1.4/24')
-    with pytest.raises(exceptions.ConfigFail):
-        cr.create_cgcs_config_file(None, region_config, None, None, None,
-                                   validate_only=True)
-    with pytest.raises(exceptions.ConfigFail):
-        validate(region_config, REGION_CONFIG, None, False)
-
-    region_config.set('REGION2_PXEBOOT_NETWORK', 'PXEBOOT_CIDR',
                       'FD00::0000/64')
     with pytest.raises(exceptions.ConfigFail):
         cr.create_cgcs_config_file(None, region_config, None, None, None,
