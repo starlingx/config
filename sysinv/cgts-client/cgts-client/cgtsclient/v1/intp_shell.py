@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,8 +14,7 @@ from cgtsclient import exc
 
 
 def _print_intp_show(intp):
-    fields = ['uuid', 'enabled', 'ntpservers',
-              'isystem_uuid', 'created_at', 'updated_at']
+    fields = ['uuid', 'ntpservers', 'isystem_uuid', 'created_at', 'updated_at']
     data = [(f, getattr(intp, f, '')) for f in fields]
     utils.print_tuple_list(data)
 
@@ -34,8 +33,8 @@ def donot_config_ntp_list(cc, args):
 
     intps = cc.intp.list()
 
-    field_labels = ['uuid', 'enabled', 'ntpservers']
-    fields = ['uuid', 'enabled', 'ntpservers']
+    field_labels = ['uuid', 'ntpservers']
+    fields = ['uuid', 'ntpservers']
     utils.print_list(intps, fields, field_labels, sortby=1)
 
 
@@ -70,9 +69,6 @@ def donot_ntp_add(cc, args):
     _print_intp_show(intp)
 
 
-@utils.arg('--enabled',
-           metavar='<true/false>',
-           help="NTP service enabled.")
 @utils.arg('attributes',
            metavar='<path=value>',
            nargs='*',
@@ -85,9 +81,6 @@ def do_ntp_modify(cc, args):
     intps = cc.intp.list()
     intp = intps[0]
     op = "replace"
-
-    if args.enabled is not None:
-        args.attributes[0].append('enabled=%s' % args.enabled)
 
     for attribute in args.attributes:
         if 'ntpservers=' in attribute:

@@ -411,8 +411,13 @@ class PlatformPuppet(base.BasePuppet):
         else:
             ntpdate_timeout = "30"
 
+        if host.clock_synchronization == constants.NTP:
+            ntp_enabled = True
+        else:
+            ntp_enabled = False
+
         return {
-            'platform::ntp::enabled': ntp.enabled,
+            'platform::ntp::enabled': ntp_enabled,
             'platform::ntp::servers': servers,
             'platform::ntp::ntpdate_timeout': ntpdate_timeout,
         }
@@ -420,9 +425,14 @@ class PlatformPuppet(base.BasePuppet):
     def _get_host_ptp_config(self, host):
         ptp = self.dbapi.ptp_get_one()
 
+        if host.clock_synchronization == constants.PTP:
+            ptp_enabled = True
+        else:
+            ptp_enabled = False
+
         return {
             'platform::ptp::enabled':
-                ptp.enabled,
+                ptp_enabled,
             'platform::ptp::mode':
                 ptp.mode,
             'platform::ptp::transport':

@@ -4311,6 +4311,162 @@ badMediaType (415)
       "uuid":"81321749-5092-4faf-94ba-6a6853440725"
    }
 
+
+----
+PTP
+----
+
+The PTP is the Precision Time Protocol entity for the system.
+
+************************************
+Shows attributes of the PTP object
+************************************
+
+.. rest_method:: GET /v1/ptp
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "mode (Optional)", "plain", "xsd:string", "PTP time stamping mode."
+   "transport (Optional)", "plain", "xsd:string", "PTP transport protocol."
+   "mechanism (Optional)", "plain", "xsd:string", "PTP delay mechanism."
+   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the PTP belongs to."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   {
+      "ptp":[
+         {
+            "links":[
+               {
+                  "href":"http://192.168.204.2:6385/v1/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
+                  "rel":"self"
+               },
+               {
+                  "href":"http://192.168.204.2:6385/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
+                  "rel":"bookmark"
+               }
+            ],
+            "created_at":"2019-09-30T14:42:16.693209+00:00",
+            "updated_at":"2019-10-01T17:33:43.169595+00:00",
+            "mechanism":"e2e",
+            "mode":"hardware",
+            "transport":"l2",
+            "isystem_uuid":"ce178041-2b2c-405d-bf87-f19334a35582",
+            "uuid":"70649b44-b462-445a-9fa5-9233a1b5842d"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+***************************************
+Modifies attributes of the PTP object
+***************************************
+
+.. rest_method:: PATCH /v1/ptp/​{ptp_id}​
+
+The attributes of the PTP object that are configurable are:
+
+-  mode
+-  transport
+-  mechanism
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_id", "URI", "csapi:UUID", "The unique identifier of the PTP for this system."
+   "mode (Optional)", "plain", "xsd:string", "PTP time stamping mode. Valid values are (is): ``hardware``, ``software`` or ``legacy``"
+   "transport (Optional)", "plain", "xsd:string", "PTP transport protocol. Valid values are (is): ``udp`` or ``l2``"
+   "mechanism (Optional)", "plain", "xsd:string", "PTP delay mechanism. Valid values are (is): ``e2e`` or ``p2p``"
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "mode (Optional)", "plain", "xsd:string", "PTP time stamping mode."
+   "transport (Optional)", "plain", "xsd:string", "PTP transport protocol."
+   "mechanism (Optional)", "plain", "xsd:string", "PTP delay mechanism."
+   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the NTP belongs to."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+
+::
+
+   [
+      {
+         "path": "/mode",
+         "value": "legacy",
+         "op": "replace"
+      },
+      {
+         "path": "/transport",
+         "value": "udp",
+         "op": "replace"
+      },
+      {
+         "path": "/mechanism",
+         "value": "p2p",
+         "op": "replace"
+      }
+   ]
+
+
+::
+
+   {
+      "links":[
+         {
+            "href":"http://192.168.204.2:6385/v1/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
+            "rel":"self"
+         },
+         {
+            "href":"http://192.168.204.2:6385/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
+            "rel":"bookmark"
+         }
+      ],
+      "created_at":"2014-09-30T14:42:16.693209+00:00",
+      "updated_at":"2014-10-01T17:35:43.162472+00:00",
+      "mechanism": "p2p"
+      "mode": "legacy"
+      "transport": "udp"
+      "isystem_uuid":"ce178041-2b2c-405d-bf87-f19334a35582",
+      "forisystemid":1,
+      "uuid":"70649b44-b462-445a-9fa5-9233a1b5842d"
+   }
+
 -------------
 External OAM
 -------------

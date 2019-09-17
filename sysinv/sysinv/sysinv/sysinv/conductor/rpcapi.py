@@ -726,13 +726,23 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_dns_config'))
 
-    def update_ntp_config(self, context, service_change=False):
+    def update_clock_synchronization_config(self, context, host):
+        """Synchronously, have the conductor update the
+        clock_synchronization configuration of a host.
+
+        :param context: request context.
+        :param host: the host to be modified.
+        """
+        return self.call(context,
+                         self.make_msg('update_clock_synchronization_config',
+                                       host=host))
+
+    def update_ntp_config(self, context):
         """Synchronously, have the conductor update the NTP configuration.
 
         :param context: request context.
         """
-        return self.call(context, self.make_msg('update_ntp_config',
-                         service_change=service_change))
+        return self.call(context, self.make_msg('update_ntp_config'))
 
     def update_ptp_config(self, context):
         """Synchronously, have the conductor update the PTP configuration.

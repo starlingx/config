@@ -1,6 +1,6 @@
 ########################################################################
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,7 +11,7 @@ from cgtsclient import exc
 
 
 def _print_ptp_show(ptp):
-    fields = ['uuid', 'enabled', 'mode', 'transport', 'mechanism',
+    fields = ['uuid', 'mode', 'transport', 'mechanism',
               'isystem_uuid', 'created_at', 'updated_at']
     data = [(f, getattr(ptp, f, '')) for f in fields]
     utils.print_tuple_list(data)
@@ -30,14 +30,11 @@ def donot_config_ptp_list(cc, args):
 
     ptps = cc.ptp.list()
 
-    field_labels = ['uuid', 'enabled', 'mode', 'transport', 'mechanism']
-    fields = ['uuid', 'enabled', 'mode', 'transport', 'mechanism']
+    field_labels = ['uuid', 'mode', 'transport', 'mechanism']
+    fields = ['uuid', 'mode', 'transport', 'mechanism']
     utils.print_list(ptps, fields, field_labels, sortby=1)
 
 
-@utils.arg('--enabled',
-           metavar='<true/false>',
-           help="PTP service enabled.")
 @utils.arg('--mode',
            metavar='<mode>',
            default=None,
@@ -58,8 +55,7 @@ def do_ptp_modify(cc, args):
     op = "replace"
 
     attributes = []
-    if args.enabled is not None:
-        attributes.append('enabled=%s' % args.enabled)
+
     if args.mode is not None:
         attributes.append('mode=%s' % args.mode)
     if args.transport is not None:

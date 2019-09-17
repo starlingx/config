@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,7 +20,7 @@ CREATION_ATTRIBUTES = ['hostname', 'personality', 'subfunctions',
                        'boot_device', 'rootfs_device', 'install_output',
                        'console', 'tboot', 'vsc_controllers', 'ttys_dcd',
                        'administrative', 'operational', 'availability',
-                       'invprovision']
+                       'invprovision', 'clock_synchronization']
 
 
 class ihost(base.Resource):
