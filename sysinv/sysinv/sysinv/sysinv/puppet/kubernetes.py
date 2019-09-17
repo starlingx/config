@@ -182,8 +182,19 @@ class KubernetesPuppet(base.BasePuppet):
         platform_cpuset = set([c.cpu for c in platform_cpus])
         platform_nodeset = set([c.numa_node for c in platform_cpus])
 
+        vswitch_cpus = self._get_host_cpu_list(
+            host, function=constants.VSWITCH_FUNCTION, threads=True)
+        vswitch_cpuset = set([c.cpu for c in vswitch_cpus])
+
+        # determine set of isolcpus logical cpus and nodes
+        isol_cpus = self._get_host_cpu_list(
+            host, function=constants.ISOLATED_FUNCTION, threads=True)
+        isol_cpuset = set([c.cpu for c in isol_cpus])
+
         # determine platform reserved number of logical cpus
         k8s_reserved_cpus = len(platform_cpuset)
+
+        k8s_isol_cpus = len(vswitch_cpuset) + len(isol_cpuset)
 
         # determine platform reserved memory
         k8s_reserved_mem = 0
@@ -229,6 +240,8 @@ class KubernetesPuppet(base.BasePuppet):
              "\"%s\"" % k8s_nodeset,
              'platform::kubernetes::params::k8s_reserved_cpus':
              k8s_reserved_cpus,
+             'platform::kubernetes::params::k8s_isol_cpus':
+             k8s_isol_cpus,
              'platform::kubernetes::params::k8s_reserved_mem':
              k8s_reserved_mem,
              })

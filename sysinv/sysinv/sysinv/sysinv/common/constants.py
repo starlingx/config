@@ -115,6 +115,7 @@ PLATFORM_FUNCTION = "Platform"
 VSWITCH_FUNCTION = "Vswitch"
 SHARED_FUNCTION = "Shared"
 APPLICATION_FUNCTION = "Applications"
+ISOLATED_FUNCTION = "Isolated"
 NO_FUNCTION = "None"
 
 # Host Personality Sub-Types

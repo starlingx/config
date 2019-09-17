@@ -236,10 +236,12 @@ class HostStatesController(rest.RestController):
                 rank = 1
             elif function.lower() == constants.VSWITCH_FUNCTION.lower():
                 rank = 2
-            elif function.lower() == constants.APPLICATION_FUNCTION.lower():
+            elif function.lower() == constants.ISOLATED_FUNCTION.lower():
                 rank = 3
-            else:
+            elif function.lower() == constants.APPLICATION_FUNCTION.lower():
                 rank = 4
+            else:
+                rank = 5
             return rank
 
         specified_function = None
@@ -302,6 +304,10 @@ class HostStatesController(rest.RestController):
                 cpu_counts = cpu_api._update_platform_cpu_counts(ihost, None,
                                                                  cpu_counts,
                                                                  capability)
+            elif (specified_function.lower() ==
+                      constants.ISOLATED_FUNCTION.lower()):
+                cpu_counts = cpu_api._update_isolated_cpu_counts(
+                    ihost, None, cpu_counts, capability)
 
             # Semantic check to ensure the minimum/maximum values are enforced
             error_msg = cpu_utils.check_core_allocations(ihost, cpu_counts,

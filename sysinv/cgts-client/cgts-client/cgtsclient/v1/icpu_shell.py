@@ -88,7 +88,7 @@ def do_host_cpu_list(cc, args):
            help="Name or ID of host")
 @utils.arg('-f', '--function',
            metavar='<function>',
-           choices=['vswitch', 'shared', 'platform'],
+           choices=['vswitch', 'shared', 'platform', 'isolated'],
            required=True,
            help='The Core Function.')
 @utils.arg('-p0', '--num_cores_on_processor0',
@@ -109,7 +109,6 @@ def do_host_cpu_list(cc, args):
            help='Number of cores on Processor 3.')
 def do_host_cpu_modify(cc, args):
     """Modify cpu core assignments."""
-    function_list = ['platform', 'vswitch', 'shared']
     field_list = ['function', 'allocated_function',
                   'num_cores_on_processor0', 'num_cores_on_processor1',
                   'num_cores_on_processor2', 'num_cores_on_processor3']
