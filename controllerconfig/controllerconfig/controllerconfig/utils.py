@@ -952,9 +952,7 @@ def validate_network_str(network_str, minimum_size,
     """Determine whether a network is valid."""
     try:
         network = netaddr.IPNetwork(network_str)
-        if network.ip != network.network:
-            raise ValidateFail("Invalid network address")
-        elif network.size < minimum_size:
+        if network.size < minimum_size:
             raise ValidateFail("Subnet too small - must have at least %d "
                                "addresses" % minimum_size)
         elif network.version == 6 and network.prefixlen < 64:
