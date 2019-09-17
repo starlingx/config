@@ -117,7 +117,7 @@ class OpenstackBaseHelm(base.BaseHelm):
             service_config = self._get_service_config(service)
             if (service_config is not None and
                     service_config.region_name is not None):
-                return service_config.region_name
+                return service_config.region_name.encode('utf8', 'strict')
 
         if (self._distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and

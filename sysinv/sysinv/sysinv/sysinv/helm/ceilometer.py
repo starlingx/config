@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
@@ -57,7 +56,6 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
     def _get_conf_overrides(self):
         return {
             'ceilometer': {
-                'DEFAULT': self._get_conf_ceilometer_default_overrides(),
                 'notification': {
                     'messaging_urls': {
                         'values': self._get_notification_messaging_urls()
@@ -68,34 +66,6 @@ class CeilometerHelm(openstack.OpenstackBaseHelm):
                 }
             }
         }
-
-    def _get_conf_ceilometer_default_overrides(self):
-        default_overrides = {
-            'region_name_for_services': self._get_service_region_name(self.SERVICE_NAME)
-        }
-
-        if self._region_config():
-            region_1_name = self._get_service_region_name(constants.SERVICE_TYPE_KEYSTONE)
-            shared_services_types = self._get_shared_services_types()
-            default_overrides.update(
-                {'region_name_for_shared_services': region_1_name,
-                 'shared_services_types': shared_services_types})
-
-        return default_overrides
-
-    def _get_shared_services_types(self):
-        shared_services_types = []
-
-        shared_services = self._get_shared_services()
-        if constants.SERVICE_TYPE_IMAGE in shared_services:
-            shared_services_types += [constants.SERVICE_TYPE_IMAGE]
-
-        if constants.SERVICE_TYPE_VOLUME in shared_services:
-            shared_services_types += [constants.SERVICE_TYPE_VOLUME,
-                                      constants.SERVICE_TYPE_VOLUME + 'v2',
-                                      constants.SERVICE_TYPE_VOLUME + 'v3']
-
-        return shared_services_types
 
     def _get_notification_messaging_urls(self):
         rabbit_user = 'rabbitmq-admin'
