@@ -5,7 +5,7 @@ Release: 2
 License: Apache-2.0
 Group: System/Base
 URL: https://www.starlingx.io
-Source0: config-1.0.tar.gz
+Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: python-setuptools
 BuildRequires: python-pbr
@@ -28,7 +28,7 @@ System Client and command line interface
 %define debug_package %{nil}
 
 %prep
-%setup -n config/sysinv/cgts-client/cgts-client
+%setup -n %{name}-%{version}/%{name}
 
 # Remove bundled egg-info
 rm -rf *.egg-info
