@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import re
 from sysinv.helm import base
 from sysinv.helm import common
 
@@ -52,3 +53,32 @@ class ElasticBaseHelm(base.BaseHelm):
             operator.chart_group_chart_delete(
                 operator.CHART_GROUPS_LUT[self.CHART],
                 operator.CHARTS_LUT[self.CHART])
+
+    def get_system_info_overrides(self):
+        # Get the system name and system uuid from the database
+        # for use in setting overrides.  Also returns a massaged
+        # version of the system name for use in elasticsearch index,
+        # and beats templates.
+        #
+        # Since the system_name_for_index is used as the index name
+        # in elasticsearch, in the beats templates, and in also in the url
+        # setting up the templates, we must be fairly restrictive here.
+        # The Helm Chart repeats this same regular expression substitution,
+        # but we perform it here as well so the user can see what is being used
+        # when looking at the overrides.
+
+        system = self.dbapi.isystem_get_one()
+
+        system_name = system.name.encode('utf8', 'strict')
+        system_uuid = system.uuid.encode('utf8', 'strict')
+        system_name_for_index = re.sub('[^A-Za-z0-9-]+', '', system_name.lower())
+
+        # fields must be set to a non-empty value.
+        if not system_name:
+            system_name = "None"
+        system_fields = {
+            "name": system_name,
+            "uid": system_uuid,
+        }
+
+        return system_fields, system_name_for_index

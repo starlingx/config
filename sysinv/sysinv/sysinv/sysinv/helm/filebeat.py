@@ -18,9 +18,11 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
     CHART = common.HELM_CHART_FILEBEAT
 
     def get_overrides(self, namespace=None):
+        system_fields, system_name_for_index = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
-                'config': self._get_config_overrides(),
+                'config': self._get_config_overrides(system_fields),
+                'systemNameForIndex': system_name_for_index,
             }
         }
 
@@ -32,15 +34,15 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
         else:
             return overrides
 
-    def _get_config_overrides(self):
+    def _get_config_overrides(self, system_fields):
         conf = {
             'processors': [{'add_kubernetes_metadata': {'in_cluster': True}}],
-
             'filebeat.inputs': [
                 {
                     'enabled': True,
                     'fields': {
                         "hostname": "${NODE_NAME}",
+                        "system": system_fields
                     },
                     'paths': [
                         "/var/log/*.log",
