@@ -1106,6 +1106,7 @@ class HostController(rest.RestController):
         'upgrade': ['POST'],
         'downgrade': ['POST'],
         'install_progress': ['POST'],
+        'wipe_osds': ['GET']
     }
 
     def __init__(self, from_isystem=False):
@@ -1218,6 +1219,13 @@ class HostController(rest.RestController):
                                          {'install_state': install_state,
                                          'install_state_info':
                                           install_state_info})
+
+    @wsme_pecan.wsexpose(wtypes.text)
+    def wipe_osds(self):
+        LOG.debug("Checking if host OSDs need to be wiped.")
+        if (os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING)):
+            return False
+        return True
 
     @wsme_pecan.wsexpose(HostCollection, six.text_type, six.text_type, int, six.text_type,
                          six.text_type, six.text_type)
@@ -2240,10 +2248,24 @@ class HostController(rest.RestController):
         if (os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
                 patched_ihost.get('action') in
                 [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
-            # restore_in_progress flag file can only be deleted by root. So
+            # flag file can only be deleted by root. So
             # have to send a rpc request to sysinv-conductor to do it.
-            pecan.request.rpcapi.delete_restore_in_progress_flag(
-                pecan.request.context)
+            pecan.request.rpcapi.delete_flag_file(
+                pecan.request.context, tsc.RESTORE_IN_PROGRESS_FLAG)
+
+        # Once controller-1 is installed and unlocked we no longer need to
+        # skip wiping OSDs. Skipping OSD wipe is needed on B&R restore
+        # operation when installing controller-1 on both DX and Standard
+        # with controller storage.
+        # Flag file is created by ansible restore platfom procedure.
+        if (ihost_obj['hostname'] == constants.CONTROLLER_1_HOSTNAME and
+                os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING) and
+                patched_ihost.get('action') in
+                [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
+            # flag file can only be deleted by root. So
+            # have to send a rpc request to sysinv-conductor to do it.
+            pecan.request.rpcapi.delete_flag_file(
+                pecan.request.context, tsc.SKIP_CEPH_OSD_WIPING)
 
         return Host.convert_with_links(ihost_obj)
 

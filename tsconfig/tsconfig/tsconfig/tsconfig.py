@@ -239,6 +239,9 @@ BACKUP_IN_PROGRESS_FLAG = os.path.join(
 # Set while a restore is running to prevent another restore being started
 RESTORE_IN_PROGRESS_FLAG = os.path.join(
     PLATFORM_CONF_PATH, '.restore_in_progress')
+# Set while a restore is running to skip wiping OSD data
+SKIP_CEPH_OSD_WIPING = os.path.join(
+    PLATFORM_CONF_PATH, '.skip_ceph_osds_wipe')
 # Mark that restore_system was run on controller-0. Will be deleted
 # once controller-0 is restored completely
 RESTORE_SYSTEM_FLAG = os.path.join(
