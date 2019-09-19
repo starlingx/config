@@ -9,11 +9,8 @@ from sqlalchemy import Column, MetaData, Table
 from sqlalchemy import Integer
 from sysinv.common import constants
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log
 from sysinv.api.controllers.v1 import address_pool
 from tsconfig.tsconfig import system_mode
-
-LOG = log.getLogger(__name__)
 
 
 def _populate_address_fields(address_pool_table, addresses_table, networks_table):

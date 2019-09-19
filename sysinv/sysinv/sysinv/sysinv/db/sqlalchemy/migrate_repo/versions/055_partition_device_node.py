@@ -9,12 +9,8 @@ from sqlalchemy import String
 from sqlalchemy import Column, MetaData, Table
 from migrate.changeset import UniqueConstraint
 
-from sysinv.openstack.common import log
-
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'
-
-LOG = log.getLogger(__name__)
 
 
 def upgrade(migrate_engine):

@@ -7,14 +7,11 @@
 
 from sqlalchemy import Column, MetaData, String, Table
 
-from sysinv.openstack.common import log
 from sysinv.common import constants
 
 
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'
-
-LOG = log.getLogger(__name__)
 
 
 def _populate_rpm_type(idisk_table):
