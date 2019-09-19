@@ -67,10 +67,10 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         else:
             mon_2_host = None
 
-        mon_0_ip = ceph_mon_ips['ceph-mon-0-ip']
-        mon_1_ip = ceph_mon_ips['ceph-mon-1-ip']
-        mon_2_ip = ceph_mon_ips.get('ceph-mon-2-ip', None)
-        floating_mon_ip = ceph_mon_ips['ceph-floating-mon-ip']
+        mon_0_ip = ceph_mon_ips[constants.CEPH_MON_0]
+        mon_1_ip = ceph_mon_ips[constants.CEPH_MON_1]
+        mon_2_ip = ceph_mon_ips.get(constants.CEPH_MON_2, None)
+        floating_mon_ip = ceph_mon_ips[constants.CEPH_FLOATING_MON]
 
         mon_0_addr = self._format_ceph_mon_address(mon_0_ip)
         mon_1_addr = self._format_ceph_mon_address(mon_1_ip)

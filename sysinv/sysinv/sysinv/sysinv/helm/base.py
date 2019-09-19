@@ -157,17 +157,23 @@ class BaseHelm(object):
     def _system_mode(self):
         return self.dbapi.isystem_get_one().system_mode
 
-    def _get_ceph_monitor_ips(self):
+    def _get_ceph_monitor_ips(self, name_filter=None):
         if self._system_mode() == constants.SYSTEM_MODE_SIMPLEX:
             monitors = [self._get_controller_0_management_address()]
+        elif name_filter:
+            monitors = []
+            for name, addr in StorageBackendConfig.get_ceph_mon_ip_addresses(
+                    self.dbapi).items():
+                if name_filter(name):
+                    monitors.append(addr)
         else:
             monitors = StorageBackendConfig.get_ceph_mon_ip_addresses(
                 self.dbapi).values()
         return monitors
 
-    def _get_formatted_ceph_monitor_ips(self):
+    def _get_formatted_ceph_monitor_ips(self, name_filter=None):
         port = self.CEPH_MON_SERVICE_PORT
-        monitor_ips = self._get_ceph_monitor_ips()
+        monitor_ips = self._get_ceph_monitor_ips(name_filter)
         formatted_monitor_ips = [
             utils.format_ceph_mon_address(mon, port) for mon in monitor_ips
         ]

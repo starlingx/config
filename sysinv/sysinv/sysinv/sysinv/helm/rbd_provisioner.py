@@ -46,8 +46,12 @@ class RbdProvisionerHelm(base.BaseHelm):
         if not ceph_bks:
             return {}  # ceph is not configured
 
+        def _skip_ceph_mon_2(name):
+            return name != constants.CEPH_MON_2
+
         classdefaults = {
-            "monitors": self._get_formatted_ceph_monitor_ips(),
+            "monitors": self._get_formatted_ceph_monitor_ips(
+                name_filter=_skip_ceph_mon_2),
             "adminId": constants.K8S_RBD_PROV_USER_NAME,
             "adminSecretName": constants.K8S_RBD_PROV_ADMIN_SECRET_NAME
         }
