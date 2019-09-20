@@ -10423,21 +10423,21 @@ class ConductorManager(service.PeriodicService):
             # TODO these hashes can be stored in the db to reduce overhead,
             # as well as removing the writing to disk of the new overrides
             old_hash = {}
-            app.charts = self._app._get_list_of_charts(app.armada_mfile_abs)
+            app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
             (helm_files, armada_files) = self._app._get_overrides_files(
-                app.overrides_dir, app.charts, app.name, None)
+                app.sync_overrides_dir, app.charts, app.name, None)
             for f in helm_files + armada_files:
                 with open(f, 'rb') as file:
                     old_hash[f] = hashlib.md5(file.read()).hexdigest()
 
             # Regenerate overrides and compute new hash
             new_hash = {}
-            app.charts = self._app._get_list_of_charts(app.armada_mfile_abs)
+            app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
             self._helm.generate_helm_application_overrides(
-                app.overrides_dir, app.name, None, cnamespace=None,
+                app.sync_overrides_dir, app.name, None, cnamespace=None,
                 armada_format=True, armada_chart_info=app.charts, combined=True)
             (helm_files, armada_files) = self._app._get_overrides_files(
-                app.overrides_dir, app.charts, app.name, None)
+                app.sync_overrides_dir, app.charts, app.name, None)
             for f in helm_files + armada_files:
                 with open(f, 'rb') as file:
                     new_hash[f] = hashlib.md5(file.read()).hexdigest()

@@ -2089,12 +2089,14 @@ def is_aio_duplex_system(dbapi):
              system.system_mode == constants.SYSTEM_MODE_DUPLEX_DIRECT))
 
 
-def generate_armada_manifest_dir(app_name, app_version):
-    return os.path.join(constants.APP_SYNCED_DATA_PATH, app_name, app_version)
+def generate_synced_armada_dir(app_name, app_version):
+    return os.path.join(constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version)
 
 
-def generate_armada_manifest_filename_abs(armada_mfile_dir, app_name, manifest_filename):
-    return os.path.join(armada_mfile_dir, app_name + '-' + manifest_filename)
+def generate_synced_armada_manifest_fqpn(app_name, app_version, manifest_filename):
+    return os.path.join(
+        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
+        app_name + '-' + manifest_filename)
 
 
 def is_chart_enabled(dbapi, app_name, chart_name, namespace):

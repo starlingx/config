@@ -1417,7 +1417,7 @@ K8S_RBD_PROV_STOR_CLASS_NAME = 'general'
 # Working paths
 APP_INSTALL_ROOT_PATH = '/scratch'
 APP_INSTALL_PATH = APP_INSTALL_ROOT_PATH + '/apps'
-APP_SYNCED_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
+APP_SYNCED_ARMADA_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
 APP_METADATA_FILE = 'metadata.yaml'
 APP_PENDING_REAPPLY_FLAG = os.path.join(
     tsc.ARMADA_PATH, ".app_reapply")
