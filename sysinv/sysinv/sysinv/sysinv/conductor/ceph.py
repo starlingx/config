@@ -36,8 +36,6 @@ from sysinv.openstack.common.rpc.common import CommonRpcContext
 LOG = logging.getLogger(__name__)
 CEPH_POOLS = copy.deepcopy(constants.CEPH_POOLS)
 
-SERVICE_TYPE_CEPH = constants.SERVICE_TYPE_CEPH
-
 
 class CephOperator(object):
     """Class to encapsulate Ceph operations for System Inventory
@@ -439,54 +437,6 @@ class CephOperator(object):
 
         # Create the pool if not present
         self._pool_create(pool_name, pg_num, pgp_num, ruleset, size, min_size)
-
-    def service_parameter_get_all(self, section, name=None):
-        return self._db_api.service_parameter_get_all(
-            service=constants.SERVICE_TYPE_CEPH,
-            section=section, name=name)
-
-    def service_parameter_get_one(self, service, section, name):
-        return self._db_api.service_parameter_get_one(service,
-                                                      section,
-                                                      name)
-
-    def service_parameter_create_or_update(self, name, value,
-                                           section, uuid=None):
-        if uuid:
-            self.service_parameter_update(uuid, name, value, section)
-        else:
-            try:
-                self.service_parameter_create(name, value, section)
-            except exception.ServiceParameterAlreadyExists:
-                service = constants.SERVICE_TYPE_CEPH
-                param = self._db_api.service_parameter_get_one(service,
-                                                               section,
-                                                               name)
-                uuid = param.uuid
-                self.service_parameter_update(uuid, name, value, section)
-
-    def service_parameter_create(self, name, value, section):
-        self._db_api.service_parameter_create({
-            'service': constants.SERVICE_TYPE_CEPH,
-            'section': section,
-            'name': name,
-            'value': value})
-
-    def service_parameter_destroy_uuid(self, _uuid):
-        self._db_api.service_parameter_destroy_uuid(_uuid)
-
-    def service_parameter_destroy(self, name, section):
-        self._db_api.service_parameter_destroy(name,
-                                               constants.SERVICE_TYPE_CEPH,
-                                               section)
-
-    def service_parameter_update(self, _uuid, name, value, section):
-        self._db_api.service_parameter_update(
-            _uuid,
-            {'service': constants.SERVICE_TYPE_CEPH,
-             'section': section,
-             'name': name,
-             'value': value})
 
     def delete_osd_pool(self, pool_name):
         """Delete an osd pool
