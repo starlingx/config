@@ -99,6 +99,12 @@ def generate_synced_helm_overrides_dir(app_name, app_version):
     return os.path.join(common.HELM_OVERRIDES_PATH, app_name, app_version)
 
 
+def generate_synced_app_plugins_dir(app_name, app_version):
+    return os.path.join(
+        generate_synced_helm_overrides_dir(app_name, app_version),
+        'plugins')
+
+
 def create_app_path(path):
     uid = pwd.getpwnam(constants.SYSINV_USERNAME).pw_uid
     gid = os.getgid()
@@ -2514,6 +2520,7 @@ class AppOperator(object):
                                      self._kube_app.get('app_version'))
             self.inst_charts_dir = os.path.join(self.inst_path, 'charts')
             self.inst_images_dir = os.path.join(self.inst_path, 'images')
+            self.inst_plugins_dir = os.path.join(self.inst_path, 'plugins')
 
             # Files: Installation specific, local to a controller. Not synced
             self.inst_armada_mfile = generate_install_manifest_fqpn(
@@ -2523,6 +2530,9 @@ class AppOperator(object):
 
             # Directories: DRBD Synced between controllers
             self.sync_overrides_dir = generate_synced_helm_overrides_dir(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
+            self.sync_plugins_dir = generate_synced_app_plugins_dir(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
             self.sync_armada_mfile_dir = cutils.generate_synced_armada_dir(
