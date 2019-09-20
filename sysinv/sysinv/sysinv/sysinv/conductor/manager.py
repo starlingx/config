@@ -242,9 +242,9 @@ class ConductorManager(service.PeriodicService):
         # brought up during bootstrap manifest apply and is not restarted
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
-        self._app = kube_app.AppOperator(self.dbapi)
-        self._docker = kube_app.DockerHelper(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
+        self._app = kube_app.AppOperator(self.dbapi, self._helm)
+        self._docker = kube_app.DockerHelper(self.dbapi)
         self._kube = kubernetes.KubeOperator()
         self._kube_pod = kube_pod.K8sPodOperator(self._kube)
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
