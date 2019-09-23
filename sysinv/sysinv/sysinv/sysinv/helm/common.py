@@ -98,6 +98,7 @@ LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
 
 LABEL_MONITOR_CONTROLLER = 'elastic-controller'
+LABEL_MONITOR_MASTER = 'elastic-master'
 LABEL_MONITOR_DATA = 'elastic-data'
 LABEL_MONITOR_CLIENT = 'elastic-client'
 

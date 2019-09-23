@@ -6,6 +6,7 @@
 
 from oslo_log import log as logging
 from sysinv.common import exception
+from sysinv.common import utils
 from sysinv.helm import common
 from sysinv.helm import elastic
 
@@ -19,10 +20,14 @@ class LogstashHelm(elastic.ElasticBaseHelm):
 
     def get_overrides(self, namespace=None):
         system_fields, system_name_for_index = self.get_system_info_overrides()
+        if utils.is_aio_simplex_system(self.dbapi):
+            replicas = 1
+        else:
+            replicas = 2
+
         overrides = {
             common.HELM_NS_MONITOR: {
-                'replicaCount': self._count_hosts_by_label(
-                    common.LABEL_MONITOR_CONTROLLER),
+                'replicaCount': replicas,
                 'persistence': {
                     'storageClass': 'general',
                     'size': "20Gi"},
