@@ -5,11 +5,8 @@
 #
 
 from sysinv.common import exception
-from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 from sysinv.helm import openstack
-
-LOG = logging.getLogger(__name__)
 
 
 class AodhHelm(openstack.OpenstackBaseHelm):

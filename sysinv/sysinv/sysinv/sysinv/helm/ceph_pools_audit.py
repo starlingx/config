@@ -6,12 +6,9 @@
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.openstack.common import log as logging
 
 from sysinv.helm import base
 from sysinv.helm import common
-
-LOG = logging.getLogger(__name__)
 
 
 class CephPoolsAuditHelm(base.BaseHelm):

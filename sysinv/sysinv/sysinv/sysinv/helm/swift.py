@@ -6,12 +6,9 @@
 
 from sysinv.common import exception
 
-from sysinv.openstack.common import log as logging
-
 from sysinv.helm import common
 from sysinv.helm import openstack
 
-LOG = logging.getLogger(__name__)
 
 # These are set in hiera data and applied via puppet to the radosgw
 RADOSGW_SERVICE_DOMAIN_NAME = 'service'

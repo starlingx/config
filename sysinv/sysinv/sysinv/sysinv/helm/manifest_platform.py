@@ -13,9 +13,6 @@ from sysinv.common import constants
 from sysinv.helm import manifest_base as base
 from sysinv.helm.ceph_pools_audit import CephPoolsAuditHelm
 from sysinv.helm.rbd_provisioner import RbdProvisionerHelm
-from sysinv.openstack.common import log as logging
-
-LOG = logging.getLogger(__name__)
 
 
 class PlatformArmadaManifestOperator(base.ArmadaManifestOperator):
