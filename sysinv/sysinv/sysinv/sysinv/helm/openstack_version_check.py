@@ -7,9 +7,9 @@
 from sysinv.helm import base
 
 SUPPORTED_VERSIONS = {
-    '1.0-18-centos-stable-versioned',
-    '1.0-18-centos-stable-latest',
-    '1.0-18',
+    '1.0-19-centos-stable-versioned',
+    '1.0-19-centos-stable-latest',
+    '1.0-19',
 }
 
 
