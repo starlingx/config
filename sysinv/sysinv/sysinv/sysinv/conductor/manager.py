@@ -5553,8 +5553,13 @@ class ConductorManager(service.PeriodicService):
                               filesystem_list=None):
 
         """Update the storage configuration"""
+        host_uuid_list = []
         if update_storage:
-            personalities = [constants.CONTROLLER, constants.STORAGE]
+            personalities = [constants.CONTROLLER, constants.STORAGE,
+                constants.WORKER]
+            ceph_mons = self.dbapi.ceph_mon_get_list()
+            for mon in ceph_mons:
+                host_uuid_list.append(mon['ihost_uuid'])
         else:
             personalities = [constants.CONTROLLER]
 
@@ -5563,6 +5568,7 @@ class ConductorManager(service.PeriodicService):
         else:
             config_uuid = self._config_update_hosts(context,
                                                     personalities,
+                                                    host_uuids=host_uuid_list,
                                                     reboot=reboot_required)
 
             if not reboot_required and filesystem_list:
