@@ -88,7 +88,8 @@ class KubeApp(base.APIBase):
         app = KubeApp(**rpc_app.as_dict())
         if not expand:
             app.unset_fields_except(['name', 'app_version', 'manifest_name',
-                                     'manifest_file', 'status', 'progress'])
+                                     'manifest_file', 'status', 'progress',
+                                     'active'])
 
         # skip the id
         app.id = wtypes.Unset
