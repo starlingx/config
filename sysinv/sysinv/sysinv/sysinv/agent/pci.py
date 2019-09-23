@@ -16,6 +16,7 @@ import os
 import shlex
 import subprocess
 
+from oslo_utils._i18n import _
 from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging
@@ -128,6 +129,7 @@ class Port(object):
         self.sriov_numvfs = kwargs.get('sriov_numvfs')
         self.sriov_vfs_pci_address = kwargs.get('sriov_vfs_pci_address')
         self.sriov_vf_driver = kwargs.get('sriov_vf_driver')
+        self.sriov_vf_pdevice_id = kwargs.get('sriov_vf_pdevice_id')
         self.driver = kwargs.get('driver')
         self.dpdksupport = kwargs.get('dpdksupport')
 
@@ -235,6 +237,31 @@ class PCIOperator(object):
         LOG.debug("sriov_vfs_pci_address: %s" % sriov_vfs_pci_address)
         return sriov_vfs_pci_address
 
+    def get_pci_sriov_vf_device_id(self, pciaddr, sriov_vfs_pci_address):
+        vf_device_id = None
+        for addr in sriov_vfs_pci_address:
+            fdevice = '/sys/bus/pci/devices/' + addr + '/device'
+
+            try:
+                with open(fdevice, 'r') as f:
+                    # Device id is a 16 bit hex value.  Strip off the hex
+                    # identifier and trailing whitespace
+                    vf_device_id = hex(int(f.readline().rstrip(), 16))[2:]
+                    if len(vf_device_id) <= 4:
+                        # Should never happen
+                        raise ValueError(_(
+                            "Device Id must be a 16 bit hex value"))
+                    LOG.debug("ATTR sriov_vf_device_id: %s " % vf_device_id)
+            except Exception:
+                LOG.debug("ATTR sriov_vf_device_id unknown for: %s " % pciaddr)
+                pass
+
+            # All VFs have the same device id per device.
+            if vf_device_id:
+                break
+
+        return vf_device_id
+
     def get_pci_sriov_vf_driver_name(self, pciaddr, sriov_vfs_pci_address):
         vf_driver = None
         for addr in sriov_vfs_pci_address:
@@ -306,7 +333,7 @@ class PCIOperator(object):
 
     def inics_get(self):
 
-        p = subprocess.Popen(["lspci", "-Dm"], stdout=subprocess.PIPE)
+        p = subprocess.Popen(["lspci", "-Dmnn"], stdout=subprocess.PIPE)
 
         pci_inics = []
         for line in p.stdout:
@@ -470,6 +497,7 @@ class PCIOperator(object):
                 sriov_numvfs = self.get_pci_sriov_numvfs(a)
                 sriov_vfs_pci_address = self.get_pci_sriov_vfs_pci_address(a, sriov_numvfs)
                 sriov_vf_driver = self.get_pci_sriov_vf_driver_name(a, sriov_vfs_pci_address)
+                sriov_vf_pdevice_id = self.get_pci_sriov_vf_device_id(a, sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
                 # Determine DPDK support
@@ -625,6 +653,7 @@ class PCIOperator(object):
                         "sriov_vfs_pci_address":
                             ','.join(str(x) for x in sriov_vfs_pci_address),
                         "sriov_vf_driver": sriov_vf_driver,
+                        "sriov_vf_pdevice_id": sriov_vf_pdevice_id,
                         "driver": driver,
                         "pci_address": a,
                         "mac": mac,

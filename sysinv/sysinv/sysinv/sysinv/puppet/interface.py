@@ -44,12 +44,6 @@ ACTIVE_STANDBY_AE_MODES = ['active_backup', 'active-backup', 'active_standby']
 BALANCED_AE_MODES = ['balanced', 'balanced-xor']
 LACP_AE_MODES = ['802.3ad']
 
-DRIVER_MLX_CX3 = 'mlx4_core'
-DRIVER_MLX_CX4 = 'mlx5_core'
-
-MELLANOX_DRIVERS = [DRIVER_MLX_CX3,
-                    DRIVER_MLX_CX4]
-
 LOOPBACK_IFNAME = 'lo'
 LOOPBACK_METHOD = 'loopback'
 STATIC_METHOD = 'static'
@@ -424,7 +418,7 @@ def is_a_mellanox_device(context, iface):
         # devices.
         return False
     port = get_interface_port(context, iface)
-    if port['driver'] in MELLANOX_DRIVERS:
+    if port['driver'] in constants.MELLANOX_DRIVERS:
         return True
     return False
 
@@ -438,7 +432,7 @@ def is_a_mellanox_cx3_device(context, iface):
         # devices.
         return False
     port = get_interface_port(context, iface)
-    if port['driver'] == DRIVER_MLX_CX3:
+    if port['driver'] == constants.DRIVER_MLX_CX3:
         return True
     return False
 
@@ -983,9 +977,9 @@ def get_sriov_config(context, iface):
         return {}
 
     if vf_driver:
-        if "vfio" in vf_driver:
-            vf_driver = "vfio-pci"
-        elif "netdevice" in vf_driver:
+        if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
+            vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
+        elif constants.SRIOV_DRIVER_TYPE_NETDEVICE in vf_driver:
             if port['sriov_vf_driver'] is not None:
                 vf_driver = port['sriov_vf_driver']
             else:
@@ -1264,7 +1258,7 @@ def build_mlx4_num_vfs_options(context):
     modprobe conf file in which VF is set and reload the mlx4_core
     kernel module
     """
-    ifaces = find_sriov_interfaces_by_driver(context, DRIVER_MLX_CX3)
+    ifaces = find_sriov_interfaces_by_driver(context, constants.DRIVER_MLX_CX3)
     if not ifaces:
         return ""
 

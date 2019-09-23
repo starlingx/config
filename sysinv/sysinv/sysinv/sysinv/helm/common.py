@@ -98,6 +98,7 @@ LABEL_CONTROLLER = 'openstack-control-plane'
 LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
+LABEL_SRIOVDP = 'sriovdp'
 
 LABEL_MONITOR_CONTROLLER = 'elastic-controller'
 LABEL_MONITOR_MASTER = 'elastic-master'

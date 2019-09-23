@@ -1912,3 +1912,15 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in ports_col.items():
             self.assertTrue(isinstance(ports.c[col].type,
                             getattr(sqlalchemy.types, coltype)))
+
+    def _check_094(self, engine, data):
+        # 094_sriov_vf_device.py
+
+        # Assert data types for new columns in table "ports"
+        ports = db_utils.get_table(engine, 'ports')
+        ports_col = {
+            'sriov_vf_pdevice_id': 'String',
+        }
+        for col, coltype in ports_col.items():
+            self.assertTrue(isinstance(ports.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))

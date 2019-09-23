@@ -657,6 +657,7 @@ class AgentManager(service.PeriodicService):
                          'sriov_numvfs': port.sriov_numvfs,
                          'sriov_vfs_pci_address': port.sriov_vfs_pci_address,
                          'sriov_vf_driver': port.sriov_vf_driver,
+                         'sriov_vf_pdevice_id': port.sriov_vf_pdevice_id,
                          'driver': port.driver,
                          'mac': port.mac,
                          'mtu': port.mtu,

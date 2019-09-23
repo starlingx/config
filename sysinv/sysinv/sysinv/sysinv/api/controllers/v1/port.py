@@ -104,6 +104,9 @@ class Port(base.APIBase):
     sriov_vf_driver = wtypes.text
     "The SR-IOV VF driver for this device"
 
+    sriov_vf_pdevice_id = wtypes.text
+    "The SR-IOV VF PCI device id for this device"
+
     driver = wtypes.text
     "The kernel driver for this device"
 
@@ -154,6 +157,7 @@ class Port(base.APIBase):
                                       'psvendor', 'psdevice', 'numa_node',
                                       'sriov_totalvfs', 'sriov_numvfs',
                                       'sriov_vfs_pci_address', 'sriov_vf_driver',
+                                      'sriov_vf_pdevice_id',
                                       'driver', 'capabilities',
                                       'host_uuid', 'interface_uuid',
                                       'node_uuid', 'dpdksupport',

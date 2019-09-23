@@ -7,6 +7,7 @@
 from __future__ import absolute_import
 import netaddr
 import os
+import re
 import json
 import subprocess
 
@@ -276,6 +277,39 @@ class KubernetesPuppet(base.BasePuppet):
                 interfaces.append(iface)
         return interfaces
 
+    def _get_pcidp_vendor_id(self, port):
+        vendor = None
+        # The vendor id can be found by inspecting the '[xxxx]' at the
+        # end of the port's pvendor field
+        vendor = re.search(r'\[([0-9a-fA-F]{1,4})\]$', port['pvendor'])
+        if vendor:
+            vendor = vendor.group(1)
+        return vendor
+
+    def _get_pcidp_device_id(self, port, ifclass):
+        device = None
+        if ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+            device = port['sriov_vf_pdevice_id']
+        else:
+            # The device id can be found by inspecting the '[xxxx]' at the
+            # end of the port's pdevice field
+            device = re.search(r'\[([0-9a-fA-F]{1,4})\]$', port['pdevice'])
+            if device:
+                device = device.group(1)
+        return device
+
+    def _get_pcidp_driver(self, port, iface, ifclass):
+        if ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+            sriov_vf_driver = iface.get('sriov_vf_driver', None)
+            if (sriov_vf_driver and
+                    constants.SRIOV_DRIVER_TYPE_VFIO in sriov_vf_driver):
+                driver = constants.SRIOV_DRIVER_VFIO_PCI
+            else:
+                driver = port['sriov_vf_driver']
+        else:
+            driver = port['driver']
+        return driver
+
     def _get_pcidp_network_resources_by_ifclass(self, ifclass):
         resources = {}
 
@@ -286,24 +320,54 @@ class KubernetesPuppet(base.BasePuppet):
             for datanet in datanets:
                 dn_name = datanet['name'].strip()
                 resource = resources.get(dn_name, None)
-                if resource:
-                    # Add to the list of pci addreses for this data network
-                    resource['rootDevices'].append(port['pciaddr'])
-                else:
-                    device_type = iface.get('sriov_vf_driver', None)
-                    if not device_type:
-                        device_type = constants.SRIOV_DRIVER_TYPE_NETDEVICE
-
-                    # PCI addresses don't exist for this data network yet
-                    resource = {dn_name: {
+                if not resource:
+                    resource = {
                         "resourceName": "{}_net_{}".format(
                             ifclass, dn_name).replace("-", "_"),
-                        "deviceType": device_type,
-                        "rootDevices": [port['pciaddr']],
-                        "sriovMode":
-                            ifclass == constants.INTERFACE_CLASS_PCI_SRIOV
-                    }}
-                    resources.update(resource)
+                        "selectors": {
+                            "vendors": [],
+                            "devices": [],
+                            "drivers": [],
+                            "pfNames": []
+                        }
+                    }
+
+                vendor = self._get_pcidp_vendor_id(port)
+                if not vendor:
+                    LOG.error("Failed to get vendor id for pci device %s", port['pciaddr'])
+                    continue
+
+                device = self._get_pcidp_device_id(port, ifclass)
+                if not device:
+                    LOG.error("Failed to get device id for pci device %s", port['pciaddr'])
+                    continue
+
+                driver = self._get_pcidp_driver(port, iface, ifclass)
+                if not device:
+                    LOG.error("Failed to get driver for pci device %s", port['pciaddr'])
+                    continue
+
+                vendor_list = resource['selectors']['vendors']
+                if vendor not in vendor_list:
+                    vendor_list.append(vendor)
+
+                device_list = resource['selectors']['devices']
+                if device not in device_list:
+                    device_list.append(device)
+
+                driver_list = resource['selectors']['drivers']
+                if driver not in driver_list:
+                    driver_list.append(driver)
+
+                pf_name_list = resource['selectors']['pfNames']
+                if port['name'] not in pf_name_list:
+                    pf_name_list.append(port['name'])
+
+                if interface.is_a_mellanox_device(self.context, iface):
+                    resource['isRdma'] = True
+
+                resources[dn_name] = resource
+
         return list(resources.values())
 
     def _get_pcidp_network_resources(self):

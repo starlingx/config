@@ -2023,6 +2023,20 @@ def has_openstack_compute(labels):
     return False
 
 
+def has_sriovdp_enabled(labels):
+    """Returns true if the sriovdp=enabled label is set """
+    if not labels:
+        return False
+
+    for label in labels:
+        if (label.label_key == helm_common.LABEL_SRIOVDP and
+                label.label_value):
+            return helm_common.LABEL_VALUE_ENABLED == label.label_value.lower()
+
+    # We haven't found the sriovdp node key. Return False
+    return False
+
+
 def get_vswitch_type(dbapi):
     system = dbapi.isystem_get_one()
     return system.capabilities.get('vswitch_type', None)

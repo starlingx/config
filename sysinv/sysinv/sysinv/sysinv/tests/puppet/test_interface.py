@@ -170,6 +170,7 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                                       '0000:00:00.' + str(port_id + 1)),
                 'dev_id': kwargs.get('dev_id', 0),
                 'sriov_vf_driver': kwargs.get('sriov_vf_driver', None),
+                'sriov_vf_pdevice_id': kwargs.get('sriov_vf_pdevice_id', None),
                 'sriov_vfs_pci_address': kwargs.get('sriov_vfs_pci_address', '')}
         db_port = dbutils.create_test_ethernet_port(**port)
         self.ports.append(db_port)
@@ -791,7 +792,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
-        self.port['driver'] = interface.DRIVER_MLX_CX3
+        self.port['driver'] = constants.DRIVER_MLX_CX3
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
@@ -800,7 +801,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
-        self.port['driver'] = interface.DRIVER_MLX_CX4
+        self.port['driver'] = constants.DRIVER_MLX_CX4
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
@@ -818,7 +819,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.WORKER
-        self.port['driver'] = interface.DRIVER_MLX_CX3
+        self.port['driver'] = constants.DRIVER_MLX_CX3
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
@@ -827,7 +828,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.WORKER
-        self.port['driver'] = interface.DRIVER_MLX_CX4
+        self.port['driver'] = constants.DRIVER_MLX_CX4
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
@@ -873,7 +874,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.WORKER
-        self.port['driver'] = interface.DRIVER_MLX_CX3
+        self.port['driver'] = constants.DRIVER_MLX_CX3
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
@@ -883,7 +884,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.WORKER
-        self.port['driver'] = interface.DRIVER_MLX_CX4
+        self.port['driver'] = constants.DRIVER_MLX_CX4
         self._update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
@@ -953,7 +954,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'options': 'metric ' + str(metric)}
         return config
 
-    def _get_sriov_config(self, ifname='default', vf_driver='vfio',
+    def _get_sriov_config(self, ifname='default',
+                          vf_driver=constants.SRIOV_DRIVER_TYPE_VFIO,
                           vf_addrs=[""]):
         config = {'ifname': ifname,
                   'vf_driver': vf_driver,
@@ -1279,14 +1281,14 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             interface.is_a_mellanox_cx3_device(self.context, self.iface))
 
     def test_is_a_mellanox_cx3_device_true(self):
-        self.port['driver'] = interface.DRIVER_MLX_CX3
+        self.port['driver'] = constants.DRIVER_MLX_CX3
         self._update_context()
         self.assertTrue(
             interface.is_a_mellanox_cx3_device(self.context, self.iface))
 
     def test_find_sriov_interfaces_by_driver_none(self):
         ifaces = interface.find_sriov_interfaces_by_driver(
-            self.context, interface.DRIVER_MLX_CX3)
+            self.context, constants.DRIVER_MLX_CX3)
         self.assertTrue(not ifaces)
 
     def test_find_sriov_interfaces_by_driver_one(self):
@@ -1298,7 +1300,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
 
         ifaces = interface.find_sriov_interfaces_by_driver(
-            self.context, interface.DRIVER_MLX_CX3)
+            self.context, constants.DRIVER_MLX_CX3)
 
         results = [iface['ifname'] for iface in ifaces]
         self.assertEqual(sorted(results), sorted(expected))
@@ -1312,7 +1314,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
 
         ifaces = interface.find_sriov_interfaces_by_driver(
-            self.context, interface.DRIVER_MLX_CX3)
+            self.context, constants.DRIVER_MLX_CX3)
 
         results = [iface['ifname'] for iface in ifaces]
         self.assertEqual(sorted(results), sorted(expected))
@@ -1371,7 +1373,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         port, iface = self._create_ethernet_test(
             name, constants.INTERFACE_CLASS_PCI_SRIOV,
             constants.NETWORK_TYPE_PCI_SRIOV,
-            driver=interface.DRIVER_MLX_CX3, sriov_numvfs=vf_num, **kwargs)
+            driver=constants.DRIVER_MLX_CX3, sriov_numvfs=vf_num, **kwargs)
         return port, iface
 
 
@@ -1620,11 +1622,11 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         port, iface = (
             self._create_ethernet_test('mlx4', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       driver=interface.DRIVER_MLX_CX3))
+                                       driver=constants.DRIVER_MLX_CX3))
         port, iface = (
             self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       driver=interface.DRIVER_MLX_CX4))
+                                       driver=constants.DRIVER_MLX_CX4))
         self._create_ethernet_test('none')
 
     def setUp(self):
@@ -1761,11 +1763,11 @@ class InterfaceCpeEthernet(InterfaceHostTestCase):
         port, iface = (
             self._create_ethernet_test('mlx4', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       driver=interface.DRIVER_MLX_CX3))
+                                       driver=constants.DRIVER_MLX_CX3))
         port, iface = (
             self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       driver=interface.DRIVER_MLX_CX4))
+                                       driver=constants.DRIVER_MLX_CX4))
         self._create_ethernet_test('none')
 
     def setUp(self):
@@ -1901,11 +1903,11 @@ class InterfaceCpeComputeEthernet(InterfaceHostTestCase):
         port, iface = (
             self._create_ethernet_test('mlx4', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       driver=interface.DRIVER_MLX_CX3))
+                                       driver=constants.DRIVER_MLX_CX3))
         port, iface = (
             self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       driver=interface.DRIVER_MLX_CX4))
+                                       driver=constants.DRIVER_MLX_CX4))
         self._create_ethernet_test('none')
 
     def setUp(self):

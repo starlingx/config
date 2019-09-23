@@ -649,6 +649,7 @@ PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
 
 SRIOV_DRIVER_TYPE_VFIO = 'vfio'
 SRIOV_DRIVER_TYPE_NETDEVICE = 'netdevice'
+SRIOV_DRIVER_VFIO_PCI = 'vfio-pci'
 SRIOV_DRIVER_TYPES = [SRIOV_DRIVER_TYPE_VFIO,
                       SRIOV_DRIVER_TYPE_NETDEVICE]
 
@@ -1509,3 +1510,10 @@ CEPH_MON_0 = 'ceph-mon-0-ip'
 CEPH_MON_1 = 'ceph-mon-1-ip'
 CEPH_MON_2 = 'ceph-mon-2-ip'
 CEPH_FLOATING_MON = 'ceph-floating-mon-ip'
+
+# Mellanox interface definitions
+DRIVER_MLX_CX3 = 'mlx4_core'
+DRIVER_MLX_CX4 = 'mlx5_core'
+
+MELLANOX_DRIVERS = [DRIVER_MLX_CX3,
+                    DRIVER_MLX_CX4]

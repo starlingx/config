@@ -1110,10 +1110,11 @@ class TestPatch(InterfaceTestCase):
             self.assertEqual(vf_driver, response.json['sriov_vf_driver'])
 
     def test_create_sriov_vf_driver_netdevice_valid(self):
-        self._create_sriov_vf_driver_valid('netdevice')
+        self._create_sriov_vf_driver_valid(
+            constants.SRIOV_DRIVER_TYPE_NETDEVICE)
 
     def test_create_sriov_vf_driver_vfio_valid(self):
-        self._create_sriov_vf_driver_valid('vfio')
+        self._create_sriov_vf_driver_valid(constants.SRIOV_DRIVER_TYPE_VFIO)
 
     def test_create_sriov_vf_driver_invalid(self):
         self._create_sriov_vf_driver_valid('bad_driver', expect_errors=True)

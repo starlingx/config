@@ -455,6 +455,7 @@ class Ports(Base):
     sriov_totalvfs = Column(Integer)
     sriov_numvfs = Column(Integer)
     sriov_vf_driver = Column(String(255))
+    sriov_vf_pdevice_id = Column(String(4))
     # Each PCI Address is 12 char, 1020 char is enough for 64 devices
     sriov_vfs_pci_address = Column(String(1020))
     driver = Column(String(255))

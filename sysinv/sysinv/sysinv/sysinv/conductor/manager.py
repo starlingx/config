@@ -1977,6 +1977,8 @@ class ConductorManager(service.PeriodicService):
                                 inic['sriov_vfs_pci_address'],
                             'sriov_vf_driver':
                                 inic['sriov_vf_driver'],
+                            'sriov_vf_pdevice_id':
+                                inic['sriov_vf_pdevice_id'],
                             'driver': inic['driver'],
                             'dpdksupport': inic['dpdksupport'],
                             'speed': inic['speed'],

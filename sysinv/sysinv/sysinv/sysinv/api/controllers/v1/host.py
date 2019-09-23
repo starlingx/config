@@ -3192,7 +3192,77 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
-    def _semantic_check_sriov_interface(host, interface, force_unlock=False):
+    def _check_sriovdp_interface_datanets(iface):
+        """
+        Perform SR-IOV device plugin semantic checks on a specific interface.
+        """
+        ihost_uuid = iface.ihost_uuid
+        dbapi = pecan.request.dbapi
+
+        host_labels = dbapi.label_get_by_host(ihost_uuid)
+        if not cutils.has_sriovdp_enabled(host_labels):
+            return
+
+        if (iface.ifclass != constants.INTERFACE_CLASS_PCI_SRIOV and
+                iface.ifclass != constants.INTERFACE_CLASS_PCI_PASSTHROUGH):
+            return
+
+        iface_dn, x = interface_api._datanetworks_get_by_interface(
+            iface.uuid)
+
+        # Collect all datanets and interfaces for the host to ensure
+        # they are compatible with the interface being checked
+        host_ifaces = dbapi.iinterface_get_by_ihost(ihost_uuid)
+        for host_iface in host_ifaces:
+            if host_iface.ifclass != iface.ifclass:
+                # Only interfaces of the same class need to be checked
+                # for compatibility
+                continue
+            if host_iface.uuid == iface.uuid:
+                # Ignore the current interface
+                continue
+
+            host_iface_dn, x = interface_api._datanetworks_get_by_interface(
+                host_iface.uuid)
+
+            shared_dn = [dn for dn in host_iface_dn if dn in iface_dn]
+            if not shared_dn:
+                continue
+
+            # SR-IOV interfaces on the same data network must not have a
+            # mix of vfio / netdevice devices
+            if iface.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+                netdevice_driver = constants.SRIOV_DRIVER_TYPE_NETDEVICE
+                driver1 = iface.sriov_vf_driver or netdevice_driver
+                driver2 = host_iface.sriov_vf_driver or netdevice_driver
+                if driver1 != driver2:
+                    msg = (_("VF driver (%s) for interface (%s) conflicts "
+                             "with VF driver (%s) for interface (%s) "
+                             "on data network(s) (%s). "
+                             "Consider choosing another data network" %
+                             (driver1, iface.ifname, driver2,
+                              host_iface.ifname, shared_dn)))
+                    raise wsme.exc.ClientSideError(msg)
+
+            # SR-IOV interfaces on the same data network must not have a
+            # mix of Mellanox / Intel devices
+            iports = dbapi.ethernet_port_get_by_interface(iface.uuid)
+            hports = dbapi.ethernet_port_get_by_interface(host_iface.uuid)
+            hport_drivers = [h['driver'] for h in hports]
+            iport_drivers = [i['driver'] for i in iports]
+            mlx_drivers = constants.MELLANOX_DRIVERS
+
+            if (len(set(hport_drivers) & set(mlx_drivers)) !=
+                    len(set(iport_drivers) & set(mlx_drivers))):
+                msg = (_("PF driver(s) (%s) for interface (%s) conflict with "
+                         "PF driver(s) (%s) for interface (%s) "
+                         "on data network(s) (%s). "
+                         "Consider choosing another data network" %
+                         (iport_drivers, iface.ifname, hport_drivers,
+                          host_iface.ifname, shared_dn)))
+                raise wsme.exc.ClientSideError(msg)
+
+    def _semantic_check_sriov_interface(self, host, interface, force_unlock=False):
         """
         Perform semantic checks on an SRIOV interface.
         """
@@ -3228,10 +3298,23 @@ class HostController(rest.RestController):
         for p in ports:
             if (interface.sriov_vf_driver == constants.SRIOV_DRIVER_TYPE_NETDEVICE and
                     p.sriov_vf_driver is None):
-                msg = (_("Value for SR-IOV VF driver is 'netdevice', but "
-                         "corresponding port has an invalid driver"))
+                msg = (_("Value for SR-IOV VF driver is %s, but "
+                         "corresponding port has an invalid driver" %
+                         constants.SRIOV_DRIVER_TYPE_NETDEVICE))
                 LOG.info(msg)
                 raise wsme.exc.ClientSideError(msg)
+
+        self._check_sriovdp_interface_datanets(interface)
+
+    def _semantic_check_pcipt_interface(self, host, interface, force_unlock=False):
+        """
+        Perform semantic checks on an PCI-PASSTHROUGH interface.
+        """
+        if (force_unlock or
+                interface.ifclass != constants.INTERFACE_CLASS_PCI_PASSTHROUGH):
+            return
+
+        self._check_sriovdp_interface_datanets(interface)
 
     def _semantic_check_unlock_upgrade(self, ihost, force_unlock=False):
         """
@@ -3367,6 +3450,7 @@ class HostController(rest.RestController):
             if not iif.ifclass:
                 continue
             self._semantic_check_sriov_interface(ihost, iif, force_unlock)
+            self._semantic_check_pcipt_interface(ihost, iif, force_unlock)
 
     @staticmethod
     def _auto_adjust_memory_for_node(ihost, node):
