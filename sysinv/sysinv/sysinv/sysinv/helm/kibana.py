@@ -4,12 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from oslo_log import log as logging
 from sysinv.common import exception
 from sysinv.helm import common
 from sysinv.helm import elastic
-
-LOG = logging.getLogger(__name__)
 
 
 class KibanaHelm(elastic.ElasticBaseHelm):

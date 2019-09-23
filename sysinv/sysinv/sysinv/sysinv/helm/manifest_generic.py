@@ -10,9 +10,6 @@
 """ System inventory Armada manifest operator."""
 
 from sysinv.helm import manifest_base as base
-from sysinv.openstack.common import log as logging
-
-LOG = logging.getLogger(__name__)
 
 
 class GenericArmadaManifestOperator(base.ArmadaManifestOperator):

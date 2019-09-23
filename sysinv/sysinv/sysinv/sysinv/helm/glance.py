@@ -8,12 +8,9 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
-from sysinv.openstack.common import log as logging
-
 from sysinv.helm import common
 from sysinv.helm import openstack
 
-LOG = logging.getLogger(__name__)
 
 # Info used in the Glance Helm chart.
 RBD_STORE_USER = 'images'

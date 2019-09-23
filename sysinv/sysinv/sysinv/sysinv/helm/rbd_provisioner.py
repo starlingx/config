@@ -7,12 +7,9 @@
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
-from sysinv.openstack.common import log as logging
 
 from sysinv.helm import base
 from sysinv.helm import common
-
-LOG = logging.getLogger(__name__)
 
 
 class RbdProvisionerHelm(base.BaseHelm):

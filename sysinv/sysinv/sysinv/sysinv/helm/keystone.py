@@ -9,11 +9,8 @@ import os
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 from sysinv.helm import openstack
-
-LOG = logging.getLogger(__name__)
 
 
 OPENSTACK_PASSWORD_RULES_FILE = '/etc/keystone/password-rules.conf'
