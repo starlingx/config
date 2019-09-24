@@ -14,9 +14,6 @@ from sysinv.objects import utils
 
 from sqlalchemy.orm import exc
 
-from sysinv.openstack.common import log
-
-LOG = log.getLogger(__name__)
 
 dbapi = db_api.get_instance()
 

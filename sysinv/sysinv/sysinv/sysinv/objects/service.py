@@ -8,9 +8,6 @@ from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
 
-from sysinv.openstack.common import log
-LOG = log.getLogger(__name__)
-
 
 class Service(base.SysinvObject):
 

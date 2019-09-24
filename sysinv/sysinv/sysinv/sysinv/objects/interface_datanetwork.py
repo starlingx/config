@@ -12,10 +12,6 @@ from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
 
-from oslo_log import log
-
-LOG = log.getLogger(__name__)
-
 
 def _get_mtu(field, db_object):
     mtu = None
