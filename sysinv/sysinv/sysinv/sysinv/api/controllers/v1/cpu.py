@@ -438,7 +438,7 @@ class CPUController(rest.RestController):
 
             if action == constants.APPLY_ACTION:
                 # perform rpc to conductor to perform config apply
-                pecan.request.rpcapi.update_cpu_config(
+                pecan.request.rpcapi.update_grub_config(
                     pecan.request.context)
 
             return CPU.convert_with_links(rpc_port)

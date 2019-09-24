@@ -239,7 +239,7 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :returns: none ... uses asynchronous cast().
         """
         # fanout / broadcast message to all inventory agents
-        LOG.debug("AgentApi.update_cpu_config: fanout_cast: sending "
+        LOG.debug("AgentApi.execute_command: fanout_cast: sending "
                   "host uuid: (%s) " % host_uuid)
         retval = self.fanout_cast(
             context, self.make_msg(
