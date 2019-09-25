@@ -469,6 +469,9 @@ class MemoryController(rest.RestController):
                 rpc_port[field] = getattr(memory, field)
 
         rpc_port.save()
+
+        pecan.request.rpcapi.update_grub_config(
+            pecan.request.context, host_id['uuid'], force=True)
         return Memory.convert_with_links(rpc_port)
 
     @cutils.synchronized(LOCK_NAME)

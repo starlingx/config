@@ -2706,7 +2706,7 @@ class ConductorManager(service.PeriodicService):
                                         reference='current (unchanged)',
                                         sockets=cs, cores=cc, threads=ct)
                 if ihost.administrative == constants.ADMIN_LOCKED:
-                    self.update_cpu_config(context, ihost_uuid, force_grub_update)
+                    self.update_grub_config(context, ihost_uuid, force_grub_update)
                 return
 
             self.print_cpu_topology(hostname=ihost.get('hostname'),
@@ -2769,7 +2769,7 @@ class ConductorManager(service.PeriodicService):
                  ihost.administrative == constants.ADMIN_LOCKED)):
             LOG.info("Update CPU grub config, host_uuid (%s), name (%s)"
                      % (ihost_uuid, ihost.get('hostname')))
-            self.update_cpu_config(context, ihost_uuid, force_grub_update)
+            self.update_grub_config(context, ihost_uuid, force_grub_update)
 
         return
 
@@ -7293,15 +7293,15 @@ class ConductorManager(service.PeriodicService):
             # discard temporary file
             os.remove(hosts_file_temp)
 
-    def update_cpu_config(self, context, host_uuid, force_grub_update=False):
-        """Update the cpu assignment configuration on a host"""
+    def update_grub_config(self, context, host_uuid, force_grub_update=False):
+        """Update the grub configuration on a host"""
 
         # only apply the manifest on the host that has worker sub function
         host = self.dbapi.ihost_get(host_uuid)
         if constants.WORKER in host.subfunctions:
             force = (not utils.is_host_simplex_controller(host) or
                      force_grub_update)
-            LOG.info("update_cpu_config, host uuid: (%s), force: (%s)",
+            LOG.info("update_grub_config, host uuid: (%s), force: (%s)",
                      host_uuid, str(force))
             personalities = [constants.CONTROLLER, constants.WORKER]
             config_uuid = self._config_update_hosts(context,

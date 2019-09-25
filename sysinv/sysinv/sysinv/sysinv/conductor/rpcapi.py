@@ -998,15 +998,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        status=status,
                                        error=error))
 
-    def update_cpu_config(self, context, host_uuid):
-        """Synchronously, have the conductor update the cpu
+    def update_grub_config(self, context, host_uuid, force=False):
+        """Synchronously, have the conductor update the grub
         configuration.
 
         :param context: request context.
         :param host_uuid: host unique uuid
+        :param force: whether force an update
         """
-        return self.call(context, self.make_msg('update_cpu_config',
-                                                host_uuid=host_uuid))
+        return self.call(context, self.make_msg('update_grub_config',
+                                                host_uuid=host_uuid,
+                                                force_grub_update=force))
 
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):

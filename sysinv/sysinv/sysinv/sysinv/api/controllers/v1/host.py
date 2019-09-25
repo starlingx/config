@@ -325,8 +325,8 @@ class HostStatesController(rest.RestController):
                     pecan.request.dbapi.icpu_update(cpu.uuid, values)
 
         # perform inservice apply
-        pecan.request.rpcapi.update_cpu_config(pecan.request.context,
-                                               host_uuid)
+        pecan.request.rpcapi.update_grub_config(pecan.request.context,
+                                                host_uuid)
 
         return self._get_host_cpus_collection(ihost.uuid)
 
