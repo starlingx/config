@@ -193,13 +193,24 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def count_hosts_by_personality(self, personality):
-        """Return the number of hosts for a provided personality.
+    def count_hosts_matching_criteria(
+            self, personality=None, administrative=None,
+            operational=None, availability=None, vim_progress_status=None):
+        """Return the number of hosts matching provided criteria
 
-        :param personality: The personality of the server
-            e.g. controller or worker
-        returns: The number of hosts matching the personality
-            parameter.
+        :param personality: Host personality to match.
+            Can be a string like "controller" or a
+            list of strings like ["controller", "worker"]
+        :param administrative: Host administrative state
+            to match. Can be a string like "locked" or a list.
+        :param operational: Host operational state to match.
+            Can be a string like "disabled" or a list.
+        :param availability: Host availability to match.
+            Can be a string like "available" or a
+            list of strings like ["available", "online"]
+        :param vim_progress_status: VIM status to match.
+            Can be a string like "services-enabled" or a list.
+        returns: The number of hosts matching criteria
         """
 
     @abc.abstractmethod
