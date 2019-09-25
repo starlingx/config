@@ -107,22 +107,23 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         return retval
 
-    def iconfig_update_install_uuid(self, context, host_uuid, install_uuid):
+    def iconfig_update_install_uuid(self, context, host_uuids, install_uuid):
         """Asynchronously, have the agent update install_uuid in
            /etc/platform/platform.conf
 
         :param context: request context.
-        :param host_uuid: The host uuid to update the install_uuid
+        :param host_uuids: The host uuid or list of host uuids to update
+                           the install_uuid
         :param install_uuid: The updated install_uuid that will be
         :                    written into /etc/platform/platform.conf
         """
 
         LOG.debug("AgentApi.iconfig_update_install_uuid: fanout_cast: sending"
-                  " install_uuid %s to agent" % install_uuid)
+                  " install_uuid %s to agents: %s" % (install_uuid, host_uuids))
 
         retval = self.fanout_cast(context, self.make_msg(
                            'iconfig_update_install_uuid',
-                           host_uuid=host_uuid,
+                           host_uuids=host_uuids,
                            install_uuid=install_uuid))
 
         return retval
