@@ -1698,13 +1698,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
 
-    def evaluate_app_reapply(self, context):
-        """Synchronously, determine whether an stx-openstack application
+    def evaluate_app_reapply(self, context, app_name):
+        """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
 
         :param context: request context.
+        :param app_name: application name
         """
-        return self.call(context, self.make_msg('evaluate_app_reapply'))
+        return self.call(context, self.make_msg('evaluate_app_reapply',
+                                                app_name=app_name))
 
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handle application upload request
