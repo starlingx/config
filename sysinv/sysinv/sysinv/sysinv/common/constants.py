@@ -1475,3 +1475,9 @@ CLOCK_SYNCHRONIZATION = [
     NTP,
     PTP
 ]
+
+# ceph-mon IP placeholders (keys)
+CEPH_MON_0 = 'ceph-mon-0-ip'
+CEPH_MON_1 = 'ceph-mon-1-ip'
+CEPH_MON_2 = 'ceph-mon-2-ip'
+CEPH_FLOATING_MON = 'ceph-floating-mon-ip'

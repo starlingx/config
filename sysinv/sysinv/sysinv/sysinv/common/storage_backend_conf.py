@@ -197,38 +197,29 @@ class StorageBackendConfig(object):
 
     @staticmethod
     def get_ceph_mon_ip_addresses(dbapi):
-        network_type = constants.NETWORK_TYPE_MGMT
-        floating_network_name = constants.CONTROLLER_HOSTNAME
-
-        targets = {
-            '%s-%s' % (floating_network_name,
-                       network_type): 'ceph-floating-mon-ip',
-            '%s-%s' % (constants.CONTROLLER_0_HOSTNAME,
-                       network_type): 'ceph-mon-0-ip',
-            '%s-%s' % (constants.CONTROLLER_1_HOSTNAME,
-                       network_type): 'ceph-mon-1-ip',
+        # map hostname to ceph-mon ip placeholder
+        host2ph = {
+            constants.CONTROLLER_HOSTNAME: constants.CEPH_FLOATING_MON,
+            constants.CONTROLLER_0_HOSTNAME: constants.CEPH_MON_0,
+            constants.CONTROLLER_1_HOSTNAME: constants.CEPH_MON_1,
         }
-
-        ceph_mons = dbapi.ceph_mon_get_list()
-        ceph_mon = None
-        for ceph_mon in ceph_mons:
-            if ceph_mon['hostname'] == constants.CONTROLLER_0_HOSTNAME:
-                targets.update({'%s-%s' % (constants.CONTROLLER_0_HOSTNAME,
-                                network_type): 'ceph-mon-0-ip'})
-            elif ceph_mon['hostname'] == constants.CONTROLLER_1_HOSTNAME:
-                targets.update({'%s-%s' % (constants.CONTROLLER_1_HOSTNAME,
-                                network_type): 'ceph-mon-1-ip'})
-            else:
-                targets.update({'%s-%s' % (ceph_mon['hostname'],
-                                           network_type): 'ceph-mon-2-ip'})
-
-        results = {}
-        addrs = dbapi.addresses_get_all()
-        for addr in addrs:
-            if addr.name in targets:
-                results[targets[addr.name]] = addr.address
-
-        return results
+        # find 3rd ceph-mon host name (if any)
+        for mon in dbapi.ceph_mon_get_list():
+            host = mon['hostname']
+            if host not in host2ph:
+                host2ph[host] = constants.CEPH_MON_2
+        # map host interface to ceph-mon ip placeholder
+        hostif2ph = {}
+        for host, ph in host2ph.items():
+            hostif = '%s-%s' % (host, constants.NETWORK_TYPE_MGMT)
+            hostif2ph[hostif] = ph
+        # map placeholder to ceph-mon ip address
+        ph2ipaddr = {}
+        for addr in dbapi.addresses_get_all():
+            if addr.name in hostif2ph:
+                ph = hostif2ph[addr.name]
+                ph2ipaddr[ph] = addr.address
+        return ph2ipaddr
 
     @staticmethod
     def is_ceph_backend_ready(api):
