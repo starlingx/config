@@ -11,6 +11,7 @@ BuildRequires: python-setuptools
 BuildRequires: python-pbr
 BuildRequires: python2-pip
 BuildRequires: systemd
+Requires: python-boto3
 Requires: python-parted
 Requires: python2-docker
 Requires: python2-eventlet

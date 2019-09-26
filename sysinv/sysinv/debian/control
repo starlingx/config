@@ -15,6 +15,7 @@ Package: sysinv
 Architecture: all
 Depends: ${misc:Depends},
          ${python:Depends},
+         python-boto3,
          python-django,
          python-docker,
          python-parted,

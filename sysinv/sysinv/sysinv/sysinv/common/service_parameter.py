@@ -306,6 +306,16 @@ def _validate_docker_registry_auth_secret(name, value):
             "Parameter '%s' must be a valid UUID." % name))
 
 
+def _validate_docker_registry_type(name, value):
+    """Check if registry type is supported or not"""
+    if value not in [constants.DOCKER_REGISTRY_TYPE_DOCKER,
+                     constants.DOCKER_REGISTRY_TYPE_AWS_ECR]:
+        raise wsme.exc.ClientSideError(_(
+            "%s is not supported. Parameter %s must be one of %s or %s") %
+            (value, constants.DOCKER_REGISTRY_TYPE_DOCKER,
+             constants.DOCKER_REGISTRY_TYPE_AWS_ECR))
+
+
 def _validate_docker_insecure_registry_bool(name, value):
     """Check if insecure registry is a valid bool"""
     if not cutils.is_valid_boolstr(value):
@@ -481,11 +491,15 @@ DOCKER_REGISTRY_PARAMETER_RESOURCE = {
 DOCKER_REGISTRIES_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_DOCKER_URL,
     constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET,
+    constants.SERVICE_PARAM_NAME_DOCKER_TYPE,
+    constants.SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES
 ]
 
 DOCKER_REGISTRIES_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL: _validate_docker_registry_address,
-    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET: _validate_docker_registry_auth_secret
+    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET: _validate_docker_registry_auth_secret,
+    constants.SERVICE_PARAM_NAME_DOCKER_TYPE: _validate_docker_registry_type,
+    constants.SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES: _validate_docker_registry_address
 }
 
 DOCKER_DOCKER_REGISTRY_PARAMETER_RESOURCE = {
@@ -635,6 +649,10 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRIES_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRIES_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: DOCKER_QUAY_REGISTRY_PARAMETER_RESOURCE
+        },
+        constants.SERVICE_PARAM_SECTION_DOCKER_ELASTIC_REGISTRY: {
+            SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRIES_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRIES_PARAMETER_VALIDATOR
         }
     },
     constants.SERVICE_TYPE_KUBERNETES: {
