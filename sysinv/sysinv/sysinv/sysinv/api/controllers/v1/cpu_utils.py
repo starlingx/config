@@ -16,6 +16,7 @@ CORE_FUNCTIONS = [
     constants.VSWITCH_FUNCTION,
     constants.SHARED_FUNCTION,
     constants.APPLICATION_FUNCTION,
+    constants.ISOLATED_FUNCTION,
     constants.NO_FUNCTION
 ]
 
@@ -251,18 +252,22 @@ def check_core_allocations(host, cpu_counts, func):
     total_platform_cores = 0
     total_vswitch_cores = 0
     total_shared_cores = 0
+    total_isolated_cores = 0
     for s in range(0, len(host.nodes)):
         available_cores = len(host.cpu_lists[s])
         platform_cores = cpu_counts[s][constants.PLATFORM_FUNCTION]
         vswitch_cores = cpu_counts[s][constants.VSWITCH_FUNCTION]
         shared_cores = cpu_counts[s][constants.SHARED_FUNCTION]
-        requested_cores = platform_cores + vswitch_cores + shared_cores
+        isolated_cores = cpu_counts[s][constants.ISOLATED_FUNCTION]
+        requested_cores = \
+            platform_cores + vswitch_cores + shared_cores + isolated_cores
         if requested_cores > available_cores:
             return ("More total logical cores requested than present on "
                     "'Processor %s' (%s cores)." % (s, available_cores))
         total_platform_cores += platform_cores
         total_vswitch_cores += vswitch_cores
         total_shared_cores += shared_cores
+        total_isolated_cores += isolated_cores
     if func.lower() == constants.PLATFORM_FUNCTION.lower():
         if ((constants.CONTROLLER in host.subfunctions) and
                 (constants.WORKER in host.subfunctions)):
@@ -272,6 +277,10 @@ def check_core_allocations(host, cpu_counts, func):
         elif total_platform_cores == 0:
             return "%s must have at least one core." % \
                    constants.PLATFORM_FUNCTION
+        for s in range(0, len(host.nodes)):
+            if s > 0 and cpu_counts[s][constants.PLATFORM_FUNCTION] > 0:
+                return "%s cores can only be allocated on Processor 0" % \
+                       constants.PLATFORM_FUNCTION
     if constants.WORKER in (host.subfunctions or host.personality):
         if func.lower() == constants.VSWITCH_FUNCTION.lower():
             if host.hyperthreading:
@@ -284,6 +293,32 @@ def check_core_allocations(host, cpu_counts, func):
             elif total_physical_cores > VSWITCH_MAX_CORES:
                 return ("The %s function can only be assigned up to %s cores." %
                         (constants.VSWITCH_FUNCTION.lower(), VSWITCH_MAX_CORES))
+
+        # Validate Isolated cores
+        # We can allocate platform cores on numa 0, otherwise all isolated
+        # cores must in a contiguous block after the platform cores.
+        if total_isolated_cores > 0:
+            if total_vswitch_cores != 0 or total_shared_cores != 0:
+                return "%s cores can only be configured with %s and %s core " \
+                       "types." % (constants.ISOLATED_FUNCTION,
+                                   constants.PLATFORM_FUNCTION,
+                                   constants.APPLICATION_FUNCTION)
+            has_application_cpus = False
+            for s in range(0, len(host.nodes)):
+                numa_counts = cpu_counts[s]
+                isolated_cores_requested = \
+                    numa_counts[constants.ISOLATED_FUNCTION]
+                if has_application_cpus and isolated_cores_requested:
+                    return "%s cpus must be contiguous" % \
+                           constants.ISOLATED_FUNCTION
+                platform_cores_requested = \
+                    numa_counts[constants.PLATFORM_FUNCTION]
+                available_cores = len(host.cpu_lists[s])
+
+                if platform_cores_requested + isolated_cores_requested \
+                        != available_cores:
+                    has_application_cpus = True
+
         reserved_for_vms = len(host.cpus) - total_platform_cores - total_vswitch_cores
         if reserved_for_vms <= 0:
             return "There must be at least one unused core for %s." % \
@@ -315,6 +350,9 @@ def update_core_allocations(host, cpu_counts):
         # Reserve for the shared next
         for i in range(0, cpu_counts[s][constants.SHARED_FUNCTION]):
             host.cpu_functions[s][constants.SHARED_FUNCTION].append(
+                cpu_list.pop(0))
+        for i in range(0, cpu_counts[s][constants.ISOLATED_FUNCTION]):
+            host.cpu_functions[s][constants.ISOLATED_FUNCTION].append(
                 cpu_list.pop(0))
         # Assign the remaining cpus to the default function for this host
         host.cpu_functions[s][get_default_function(host)] += cpu_list

@@ -583,6 +583,35 @@ def _update_platform_cpu_counts(host, cpu, counts, capabilities=None):
     return counts
 
 
+def _update_isolated_cpu_counts(host, cpu, counts, capabilities=None):
+    """Update the isolated cpu counts based on the requested number of cores
+    per processor.
+    """
+    for s in range(0, len(host.nodes)):
+        if capabilities:
+            count = capabilities.get('num_cores_on_processor%d' % s, None)
+        else:
+            count = getattr(cpu, 'num_cores_on_processor%d' % s, None)
+        if count is None:
+            continue
+        count = int(count)
+        if count < 0:
+            raise wsme.exc.ClientSideError(
+                _('Isolated cpus must be non-negative.'))
+        if host.hyperthreading:
+            # the data structures track the number of logical cpus and the
+            # API expects the requested count to refer to the number
+            # of physical cores requested therefore if HT is enabled then
+            # multiply the requested number by 2 so that we always reserve a
+            # full physical core
+            count *= 2
+        counts[s][constants.ISOLATED_FUNCTION] = count
+        # let the remaining values grow/shrink dynamically
+        counts[s][constants.APPLICATION_FUNCTION] = 0
+        counts[s][constants.NO_FUNCTION] = 0
+    return counts
+
+
 def _check_cpu(cpu, ihost):
     if cpu.function:
         func = cpu_utils.lookup_function(cpu.function)
@@ -615,6 +644,8 @@ def _check_cpu(cpu, ihost):
         cpu_counts = _update_shared_cpu_counts(ihost, cpu, cpu_counts)
     if (func.lower() == constants.PLATFORM_FUNCTION.lower()):
         cpu_counts = _update_platform_cpu_counts(ihost, cpu, cpu_counts)
+    if (func.lower() == constants.ISOLATED_FUNCTION.lower()):
+        cpu_counts = _update_isolated_cpu_counts(ihost, cpu, cpu_counts)
 
     # Semantic check to ensure the minimum/maximum values are enforced
     error_string = cpu_utils.check_core_allocations(ihost, cpu_counts, func)
