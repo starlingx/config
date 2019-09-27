@@ -10415,7 +10415,8 @@ class ConductorManager(service.PeriodicService):
           """
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
-            app = self._app.Application(app, True)
+            app = self._app.Application(app)
+
         except exception.KubeAppNotFound:
             return
         if app.status == constants.APP_APPLY_SUCCESS:
