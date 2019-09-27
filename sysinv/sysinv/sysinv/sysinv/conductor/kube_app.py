@@ -2591,13 +2591,10 @@ class AppOperator(object):
 
         @property
         def system_app(self):
-
-            # TODO(rchurch): This will be refactored as plugins become bundled
-            # with applications. A system app can be determined if it has any
-            # installed plugins after being uploaded.
-            return ((self.name == constants.HELM_APP_MONITOR) or
-                    (True if (os.path.exists(self.sync_plugins_dir) and
-                              os.listdir(self.sync_plugins_dir)) else False))
+            if (os.path.exists(self.sync_plugins_dir) and
+                    os.listdir(self.sync_plugins_dir)):
+                return True
+            return False
 
         @property
         def name(self):

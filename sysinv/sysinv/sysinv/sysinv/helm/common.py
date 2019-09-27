@@ -25,21 +25,19 @@ HELM_REPO_FOR_PLATFORM = 'stx-platform'
 HELM_CHART_ATTR_ENABLED = 'enabled'
 HELM_CHART_ATTRS = [HELM_CHART_ATTR_ENABLED]
 
-# Helm: Supported charts:
+# Chart defs needed for platform integration
 # These values match the names in the chart package's Chart.yaml
 HELM_CHART_DEX = 'dex'
 HELM_CHART_OIDC_CLIENT = 'oidc-client'
 HELM_CHART_CERT_MANAGER = 'cert-manager'
 
+# TODO(rchurch): These are still needed for _check_monitor_labels(). This method
+# should migrated to the monitor application with the application framework
+# providing a hook to call for app specific label checking.
 HELM_CHART_ELASTICSEARCH_MASTER = 'elasticsearch-master'
 HELM_CHART_ELASTICSEARCH_DATA = 'elasticsearch-data'
 HELM_CHART_ELASTICSEARCH_CLIENT = 'elasticsearch-client'
 HELM_CHART_ELASTICSEARCH_CURATOR = 'elasticsearch-curator'
-HELM_CHART_KIBANA = 'kibana'
-HELM_CHART_FILEBEAT = 'filebeat'
-HELM_CHART_METRICBEAT = 'metricbeat'
-HELM_CHART_KUBESTATEMETRICS = 'kube-state-metrics'
-HELM_CHART_NGINX_INGRESS = 'nginx-ingress'
 HELM_CHART_LOGSTASH = 'logstash'
 
 # Namespaces
