@@ -253,6 +253,15 @@ start()
         rm -f $VOLATILE_CONFIG_PASS
     fi
 
+    if [ -e $CONFIG_DIR/.license ]
+    then
+        cp $CONFIG_DIR/.license /etc/platform/.license
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/.license"
+        fi
+    fi
+
     if [ -e $CONFIG_DIR/server-cert.pem ]
     then
         cp $CONFIG_DIR/server-cert.pem /etc/ssl/private/server-cert.pem

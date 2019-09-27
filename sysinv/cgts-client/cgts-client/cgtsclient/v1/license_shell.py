@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,21 +13,15 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 
 
-@utils.arg('-a', '--all',
-           action='store_true',
-           help='List all licenses information')
-def do_license_list(cc, args):
-    """List all licenses"""
-    labels = ['name', 'status', 'expiry_date']
-    fields = ['name', 'status', 'expiry_date']
-
-    licenses = cc.license.list()
-    for license in licenses[:]:
-        if not args.all:
-            if license.status == 'Not-installed':
-                licenses.remove(license)
-
-    utils.print_list(licenses, fields, labels, sortby=0)
+def do_license_show(cc, args):
+    """Show license file content"""
+    response = cc.license.show()
+    error = response.get('error')
+    content = response.get('content')
+    if error != "":
+        print("Error: %s" % error + "\n")
+    else:
+        print(content + "\n")
 
 
 @utils.arg('license_file_path',
