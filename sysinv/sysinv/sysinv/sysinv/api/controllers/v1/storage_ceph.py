@@ -970,8 +970,9 @@ def _check_replication_number(new_cap, orig_cap):
 
         # Changing ceph replication to a smaller factor
         # than previously configured is not supported.
-        if int(new_cap[constants.CEPH_BACKEND_REPLICATION_CAP]) < \
-             int(orig_cap[constants.CEPH_BACKEND_REPLICATION_CAP]):
+        if constants.CEPH_BACKEND_REPLICATION_CAP in new_cap and \
+            int(new_cap[constants.CEPH_BACKEND_REPLICATION_CAP]) < \
+              int(orig_cap[constants.CEPH_BACKEND_REPLICATION_CAP]):
             raise wsme.exc.ClientSideError(
                 _("Can not modify ceph replication factor from %s to "
                   "a smaller value %s. This operation is not supported." %
