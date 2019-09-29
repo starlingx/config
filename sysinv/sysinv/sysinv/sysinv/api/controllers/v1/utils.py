@@ -468,8 +468,8 @@ def get_node_cgtsvg_limit(host):
 
     cgtsvg_max_free_gib = cgtsvg_free_mib / 1024
 
-    LOG.info(
-        "get_node_cgtsvg_limit cgtsvg_max_free_gib=%s" % cgtsvg_max_free_gib)
+    LOG.info("get_node_cgtsvg_limit host=%s, cgtsvg_max_free_gib=%s"
+        % (host.hostname, cgtsvg_max_free_gib))
     return cgtsvg_max_free_gib
 
 
@@ -483,10 +483,14 @@ def check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib):
         hostname = "controller"
 
     ceph_mon = pecan.request.dbapi.ceph_mon_get_list()
-    if ceph_mon:
-        cgtsvg_growth_gib = ceph_mon_gib - ceph_mon[0].ceph_mon_gib
-    else:
-        cgtsvg_growth_gib = ceph_mon_gib
+    cgtsvg_growth_gib = None
+    for mon in ceph_mon:
+        if mon.hostname == hostname:
+            cgtsvg_growth_gib = ceph_mon_gib - mon.ceph_mon_gib
+            break
+    # When new mon is creating, growth should minus ceph-mon-lv reserve gib
+    if cgtsvg_growth_gib is None:
+        cgtsvg_growth_gib = ceph_mon_gib - constants.SB_CEPH_MON_GIB
 
     LOG.info("check_node_ceph_mon_growth hostname: %s, ceph_mon_gib: %s, "
              "cgtsvg_growth_gib: %s, cgtsvg_max_free_gib: %s"
