@@ -787,24 +787,46 @@ def get_bridge_network_config(context, iface):
     return config
 
 
-def get_duplex_direct_network_config(context, iface, config, network_id=None):
+def is_disable_dad_required(context, iface, config, network_id=None):
     """
-    Disable dad on duplex-direct interfaces
+    Determine whether DAD is required to be disabled.
+    If mgmt and cluster-host are separate vlans, the vlan has DAD disabled.
+    If the vlans are shared between networks, the DAD is disabled
+       on the parent vlan interface, not the alias interfaces.
+    If mgmt and cluster-host are not vlan, the interfaces have DAD disabled.
     """
     networktype = find_networktype_by_network_id(context, network_id)
-    if (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
-                                        constants.NETWORK_TYPE_CLUSTER_HOST]):
-        if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-            sysctl_ifname = config['ifname'].replace('.', '/')
-        else:
-            sysctl_ifname = iface['ifname']
-        new_pre_up = "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
-        old_pre_up = config['options'].get('pre_up')
-        if old_pre_up:
-            new_pre_up = "%s ; %s" % (old_pre_up, new_pre_up)
-        options = {'pre_up': new_pre_up}
-        config['options'].update(options)
+    if len(iface.networktypelist) > 1:
+        if (iface['iftype'] == constants.INTERFACE_TYPE_VLAN and
+                network_id is None):
+            return True
+    elif (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
+                                          constants.NETWORK_TYPE_CLUSTER_HOST]):
+        return True
+    return False
 
+
+def get_interface_sysctl_ifname(context, iface):
+    """
+    Get the interface name that is used for sysctl commands
+    """
+    if (iface['iftype'] == constants.INTERFACE_TYPE_VLAN):
+        os_ifname = get_interface_os_ifname(context, iface)
+        return os_ifname.replace('.', '/')
+    else:
+        return iface['ifname']
+
+
+def get_duplex_direct_network_config(context, iface, config, sysctl_ifname):
+    """
+    Disable dad on the specified interface for duplex-direct config
+    """
+    new_pre_up = "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
+    old_pre_up = config['options'].get('pre_up')
+    if old_pre_up:
+        new_pre_up = "%s ; %s" % (old_pre_up, new_pre_up)
+    options = {'pre_up': new_pre_up}
+    config['options'].update(options)
     return config
 
 
@@ -1012,6 +1034,20 @@ def get_common_network_config(context, iface, config, network_id=None):
     return config
 
 
+def get_final_network_config(context, iface, config, network_id=None):
+    """
+    Augments a basic config dictionary with the attribute that must be
+    appended to an attribute that is already configured (e.g. pre_up)
+    """
+    # add duplex_direct specific network config
+    if context['system_mode'] == constants.SYSTEM_MODE_DUPLEX_DIRECT:
+        if is_disable_dad_required(context, iface, config, network_id):
+            dd_ifname = get_interface_sysctl_ifname(context, iface)
+            config = get_duplex_direct_network_config(context, iface, config,
+                                                      dd_ifname)
+    return config
+
+
 def get_interface_network_config(context, iface, network_id=None):
     """
     Builds a network_config resource dictionary for a given interface
@@ -1049,10 +1085,8 @@ def get_interface_network_config(context, iface, network_id=None):
     else:
         config = get_ethernet_network_config(context, iface, config)
 
-    # add duplex_direct
-    if context['system_mode'] == constants.SYSTEM_MODE_DUPLEX_DIRECT:
-        config = get_duplex_direct_network_config(context, iface, config,
-                                                  network_id)
+    # Add final options
+    config = get_final_network_config(context, iface, config, network_id)
 
     return config
 
