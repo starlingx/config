@@ -986,7 +986,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
-        options = {'LINKDELAY': '20'}
+        options = {'IPV6_AUTOCONF': 'no',
+                   'LINKDELAY': '20'}
         expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500, gateway='10.10.10.1',
             options=options)
@@ -1004,7 +1005,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
-        options = {'LINKDELAY': '20',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'LINKDELAY': '20',
                    'post_up':
                        '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
                        (self.port['name'], constants.NETWORK_TYPE_MGMT,
@@ -1027,7 +1029,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_CLUSTER_HOST)
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
-        options = {'LINKDELAY': '20'}
+        options = {'IPV6_AUTOCONF': 'no',
+                   'LINKDELAY': '20'}
         expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500,
             options=options)
@@ -1040,7 +1043,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         iface = self.context['interfaces'][bond['uses'][0]]
         port = self.context['ports'][iface['id']]
         config = interface.get_interface_network_config(self.context, iface)
-        options = {'SLAVE': 'yes',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'SLAVE': 'yes',
                    'PROMISC': 'yes',
                    'MASTER': 'bond0',
                    'LINKDELAY': '20'}
@@ -1053,7 +1057,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         bond = self._create_bond_test("bond0")
         self._update_context()
         config = interface.get_interface_network_config(self.context, bond)
-        options = {'up': 'sleep 10',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'up': 'sleep 10',
                    'MACADDR': bond['imac'],
                    'BONDING_OPTS':
                        'mode=balance-xor xmit_hash_policy=layer2 miimon=100'}
@@ -1067,7 +1072,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         bond['aemode'] = '802.3ad'
         self._update_context()
         config = interface.get_interface_network_config(self.context, bond)
-        options = {'up': 'sleep 10',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'up': 'sleep 10',
                    'MACADDR': bond['imac'],
                    'BONDING_OPTS':
                        'mode=802.3ad lacp_rate=fast '
@@ -1082,7 +1088,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         bond['aemode'] = 'active_standby'
         self._update_context()
         config = interface.get_interface_network_config(self.context, bond)
-        options = {'up': 'sleep 10',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'up': 'sleep 10',
                    'MACADDR': bond['imac'],
                    'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1'}
         expected = self._get_network_config(
@@ -1094,7 +1101,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vlan = self._create_vlan_test("vlan1", None, None, 1, self.iface)
         self._update_context()
         config = interface.get_interface_network_config(self.context, vlan)
-        options = {'VLAN': 'yes',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'VLAN': 'yes',
                    'pre_up': '/sbin/modprobe -q 8021q'}
         expected = self._get_network_config(
             ifname=self.port['name'] + ".1", mtu=1500, method='manual',
@@ -1107,7 +1115,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vlan = self._create_vlan_test("vlan1", None, None, 1, bond)
         self._update_context()
         config = interface.get_interface_network_config(self.context, vlan)
-        options = {'VLAN': 'yes',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'VLAN': 'yes',
                    'pre_up': '/sbin/modprobe -q 8021q'}
         expected = self._get_network_config(
             ifname=bond['ifname'] + ".1", mtu=1500, method='manual',
@@ -1127,7 +1136,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
-        options = {'LINKDELAY': '20',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'LINKDELAY': '20',
                    'post_up':
                        '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
                        (self.port['name'], constants.NETWORK_TYPE_MGMT,
@@ -1150,7 +1160,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_CLUSTER_HOST)
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
-        options = {'LINKDELAY': '20'}
+        options = {'IPV6_AUTOCONF': 'no',
+                   'LINKDELAY': '20'}
         expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500, options=options)
         print(expected)
@@ -1163,7 +1174,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
-        options = {'LINKDELAY': '20',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'LINKDELAY': '20',
                    'pre_up':
                        'echo 0 > /sys/class/net/eth0/device/sriov_numvfs; '
                        'echo 0 > /sys/class/net/eth0/device/sriov_numvfs'}
@@ -1180,7 +1192,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         config = interface.get_interface_network_config(
             self.context, self.iface)
-        options = {'LINKDELAY': '20',
+        options = {'IPV6_AUTOCONF': 'no',
+                   'LINKDELAY': '20',
                    'pre_up':
                        'if [ -f  /sys/class/net/eth0/device/sriov_numvfs ]; then'
                        ' echo 0 > /sys/class/net/eth0/device/sriov_numvfs; fi'}

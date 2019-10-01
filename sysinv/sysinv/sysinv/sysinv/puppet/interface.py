@@ -1054,6 +1054,9 @@ def get_interface_network_config(context, iface, network_id=None):
         config = get_duplex_direct_network_config(context, iface, config,
                                                   network_id)
 
+    # disable ipv6 autoconfig
+    config['options'].update({'IPV6_AUTOCONF': 'no'})
+
     return config
 
 
