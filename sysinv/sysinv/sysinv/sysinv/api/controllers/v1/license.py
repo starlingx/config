@@ -16,87 +16,20 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 
 import os
 import pecan
 from pecan import expose
 from pecan import rest
-from platform_util.license import license
 
-from wsme import types as wtypes
-import wsmeext.pecan as wsme_pecan
-
-from sysinv.api.controllers.v1 import base
-from sysinv.api.controllers.v1 import collection
-from sysinv.api.controllers.v1 import link
-from sysinv.api.controllers.v1 import utils
 from sysinv.common import utils as cutils
-
 from sysinv.openstack.common import log
+from sysinv.openstack.common.rpc.common import RemoteError
+from tsconfig import tsconfig
 
 LOG = log.getLogger(__name__)
-
-
-class License(base.APIBase):
-    """API representation of a license.
-
-    This class enforces type checking and value constraints, and converts
-    between the internal object model and the API representation of
-    a license.
-    """
-
-    name = wtypes.text
-    "Name of the license"
-
-    status = wtypes.text
-    "Status of the license"
-
-    expiry_date = wtypes.text
-    "Expiry date of the license"
-
-    links = [link.Link]
-    "A list containing a self link and associated license links"
-
-    def __init__(self, **kwargs):
-        self.fields = []
-
-        # they are all an API-only attribute
-        for fp in ['name', 'status', 'expiry_date']:
-            self.fields.append(fp)
-            setattr(self, fp, kwargs.get(fp, None))
-
-    @classmethod
-    def convert_with_links(cls, rpc_license, expand=True):
-
-        license = License(**rpc_license)
-        if not expand:
-            license.unset_fields_except(['name', 'status',
-                                         'expiry_date'])
-
-        return license
-
-
-class LicenseCollection(collection.Collection):
-    """API representation of a collection of licenses."""
-
-    licenses = [License]
-    "A list containing License objects"
-
-    def __init__(self, **kwargs):
-        self._type = "licenses"
-
-    @classmethod
-    def convert_with_links(cls, rpc_license, limit, url=None,
-                           expand=False, **kwargs):
-        collection = LicenseCollection()
-        collection.licenses = [License.convert_with_links(n, expand)
-                               for n in rpc_license]
-        collection.next = collection.get_next(limit, url=url, **kwargs)
-        return collection
-
-
 LOCK_NAME = 'LicenseController'
 
 
@@ -105,21 +38,24 @@ class LicenseController(rest.RestController):
 
     _custom_actions = {
         'install_license': ['POST'],
+        'get_license_file': ['GET']
     }
 
-    def _get_license_collection(self, marker, limit, sort_key, sort_dir, expand=False, resource_url=None):
-
-        limit = utils.validate_limit(limit)
-        sort_dir = utils.validate_sort_dir(sort_dir)
-        licenses = license.get_licenses_info()
-
-        return LicenseCollection.convert_with_links(
-            licenses, limit, url=resource_url, expand=expand,
-            sort_key=sort_key, sort_dir=sort_dir)
-
-    @wsme_pecan.wsexpose(LicenseCollection, wtypes.text, int, wtypes.text, wtypes.text)
-    def get_all(self, marker=None, limit=None, sort_key='id', sort_dir='asc'):
-        return self._get_license_collection(marker, limit, sort_key, sort_dir)
+    @expose('json')
+    def get_license_file(self):
+        license_file = tsconfig.PLATFORM_CONF_PATH + "/.license"
+        content = ''
+        error = ''
+        if not os.path.isfile(license_file):
+            error = "License file not found. " \
+                    "A license may not have been installed."
+        else:
+            try:
+                with open(license_file, 'r') as f:
+                    content = f.read()
+            except Exception:
+                error = "Failed to read the license file"
+        return dict(content=content, error=error)
 
     @expose('json')
     @cutils.synchronized(LOCK_NAME)
@@ -132,7 +68,9 @@ class LicenseController(rest.RestController):
         contents = file.file.read()
         try:
             pecan.request.rpcapi.install_license_file(pecan.request.context, contents)
-        except Exception as e:
-            return dict(success="", error=str(e))
+        except RemoteError as e:
+            return dict(success="", error=e.value)
+        except Exception as ex:
+            return dict(success="", error=str(ex))
 
         return dict(success="Success: new license installed", error="")

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -16,14 +16,13 @@ class License(base.Resource):
 
 
 class LicenseManager(base.Manager):
-    resource_class = License
-
     @staticmethod
     def _path(id=None):
         return '/v1/license/%s' % id if id else '/v1/license'
 
-    def list(self):
-        return self._list(self._path(), "licenses")
+    def show(self):
+        path = "get_license_file"
+        return self._json_get(self._path(path))
 
     def install_license(self, file):
         path = self._path("install_license")
