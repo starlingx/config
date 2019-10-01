@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -82,6 +82,23 @@ class KubeOperator(object):
             return api_response.items
         except Exception as e:
             LOG.error("Kubernetes exception in kube_get_nodes: %s" % e)
+            raise
+
+    def kube_get_image_by_selector(self, template_name, namespace, container_name):
+        LOG.debug("kube_get_image_by_selector template_name=%s, namespace=%s" %
+                  (template_name, namespace))
+        try:
+            # Retrieve the named pod.
+            api_response = self._get_kubernetesclient_core().list_namespaced_pod(
+                namespace, label_selector="name=%s" % template_name)
+            for pod in api_response.items:
+                if template_name in pod.metadata.name:
+                    for container in pod.spec.containers:
+                        if container.name == container_name:
+                            return container.image
+            return None
+        except ApiException as e:
+            LOG.error("Kubernetes exception in list_namespaced_pod: %s" % e)
             raise
 
     def kube_create_namespace(self, namespace):

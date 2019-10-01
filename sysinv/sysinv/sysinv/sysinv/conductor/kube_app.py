@@ -32,12 +32,12 @@ from eventlet import queue
 from eventlet import Timeout
 from fm_api import constants as fm_constants
 from fm_api import fm_api
-from oslo_config import cfg
 from oslo_log import log as logging
 from sysinv.api.controllers.v1 import kube_app
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common import image_versions
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.conductor import openstack
@@ -49,15 +49,6 @@ from sysinv.openstack.common.gettextutils import _
 
 # Log and config
 LOG = logging.getLogger(__name__)
-kube_app_opts = [
-    cfg.StrOpt('armada_image_tag',
-               default=('quay.io/airshipit/armada:'
-                        '8a1638098f88d92bf799ef4934abe569789b885e-ubuntu_bionic'),
-               help='Docker image tag of Armada.'),
-                ]
-CONF = cfg.CONF
-CONF.register_opts(kube_app_opts)
-
 
 # Constants
 APPLY_SEARCH_PATTERN = 'Processing Chart,'
@@ -2532,6 +2523,9 @@ class DockerHelper(object):
                 if registry:
                     return registry + '/' + img_name, registry_auth
                 return pub_img_tag, registry_auth
+            elif registry_name == registry_info['registry_replaced']:
+                registry_auth = registry_info['registry_auth']
+                return pub_img_tag, registry_auth
 
         # If extracted registry_name is none of k8s.gcr.io, gcr.io,
         # quay.io and docker.io or no registry_name specified in image
@@ -2584,10 +2578,25 @@ class DockerHelper(object):
                     overrides_dir: {'bind': '/overrides', 'mode': 'ro'},
                     logs_dir: {'bind': ARMADA_CONTAINER_LOG_LOCATION, 'mode': 'rw'}}
 
-                armada_image = client.images.list(CONF.armada_image_tag)
+                quay_registry_url = self._dbapi.service_parameter_get_all(
+                    service=constants.SERVICE_TYPE_DOCKER,
+                    section=constants.SERVICE_PARAM_SECTION_DOCKER_QUAY_REGISTRY,
+                    name=constants.SERVICE_PARAM_NAME_DOCKER_URL)
+
+                if quay_registry_url:
+                    quay_url = quay_registry_url[0].value
+                else:
+                    quay_url = constants.DEFAULT_DOCKER_QUAY_REGISTRY
+
+                armada_image_tag = quay_url + \
+                    image_versions.ARMADA_IMAGE_NAME + ":" + \
+                    image_versions.ARMADA_IMAGE_VERSION
+
+                armada_image = client.images.list(armada_image_tag)
+
                 # Pull Armada image if it's not available
                 if not armada_image:
-                    LOG.info("Downloading Armada image %s ..." % CONF.armada_image_tag)
+                    LOG.info("Downloading Armada image %s ..." % armada_image_tag)
 
                     quay_registry_secret = self._dbapi.service_parameter_get_all(
                         service=constants.SERVICE_TYPE_DOCKER,
@@ -2599,12 +2608,12 @@ class DockerHelper(object):
                     else:
                         quay_registry_auth = None
 
-                    client.images.pull(CONF.armada_image_tag,
+                    client.images.pull(armada_image_tag,
                                        auth_config=quay_registry_auth)
-                    LOG.info("Armada image %s downloaded!" % CONF.armada_image_tag)
+                    LOG.info("Armada image %s downloaded!" % armada_image_tag)
 
                 container = client.containers.run(
-                    CONF.armada_image_tag,
+                    armada_image_tag,
                     name=ARMADA_CONTAINER_NAME,
                     detach=True,
                     volumes=binds,

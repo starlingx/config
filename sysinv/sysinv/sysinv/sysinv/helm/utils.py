@@ -128,3 +128,31 @@ def get_openstack_pending_install_charts():
     except Exception as e:
         raise exception.HelmTillerFailure(
             reason="Failed to obtain pending charts list: %s" % e)
+
+
+def helm_upgrade_tiller(image):
+    LOG.info("Attempt to update image to %s" % image)
+    try:
+
+        # Adding temporary workaround using helm init command with
+        # sed command until helm and tiller provide a fix for
+        # https://github.com/helm/helm/issues/6374
+        workaround = '| sed "s@apiVersion: extensions/v1beta1@apiVersion: apps/v1@" ' \
+                     '| kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -'
+
+        cmd = '{} {} {}'.format(
+            'helm init --upgrade --kubeconfig /etc/kubernetes/admin.conf --tiller-image',
+            image,
+            workaround)
+
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+        out, err = proc.communicate()
+        if err:
+            raise exception.HelmTillerFailure(
+                reason="Failed to upgrade/downgrade image: %s" % err)
+
+        LOG.info("Image was updated to %s" % image)
+
+    except Exception as e:
+        raise exception.HelmTillerFailure(
+            reason="Failed to upgrade/downgrade image: %s" % e)

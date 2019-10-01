@@ -74,6 +74,7 @@ from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
 from sysinv.common import exception
+from sysinv.common import image_versions
 from sysinv.common import fm
 from sysinv.common import fernet
 from sysinv.common import health
@@ -102,6 +103,7 @@ from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import common as helm_common
 from sysinv.helm import helm
+from sysinv.helm import utils as helm_utils
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -213,6 +215,7 @@ class ConductorManager(service.PeriodicService):
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
         self._app = kube_app.AppOperator(self.dbapi)
+        self._docker = kube_app.DockerHelper(self.dbapi)
         self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
         self._kube = kubernetes.KubeOperator(self.dbapi)
@@ -223,6 +226,9 @@ class ConductorManager(service.PeriodicService):
         self._upgrade_init_actions()
 
         self._handle_restore_in_progress()
+
+        # Upgrade/Downgrade tiller if required
+        greenthread.spawn(self._upgrade_downgrade_tiller())
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
@@ -5117,6 +5123,76 @@ class ConductorManager(service.PeriodicService):
                          app_name, other_app.name)
                 return
         self.reapply_app(context, app_name)
+
+    def _upgrade_downgrade_tiller(self):
+        """Check if tiller needs to be upgraded or downgraded"""
+        LOG.info("_upgrade_downgrade_tiller")
+
+        FIVE_MIN_IN_SECS = 300
+
+        try:
+            running_image = self._kube.kube_get_image_by_selector(
+                image_versions.TILLER_SELECTOR_NAME,
+                helm_common.HELM_NS_KUBE_SYSTEM,
+                image_versions.TILLER_CONTAINER_NAME)
+
+            if running_image is None:
+                LOG.warning("Failed to get tiller image")
+                return
+
+            LOG.info("Running tiller image: %s" % running_image)
+
+            # Grab the version from the image name. Version is preceded
+            # by a ":" e.g.
+            #    gcr.io/kubernetes-helm/tiller:v2.13.0
+            running_image_name = running_image.split(":")[0]
+            running_version = running_image.split(":")[1]
+            if not running_version:
+                LOG.warning("Failed to get version from tiller image")
+                return
+
+            # Verify the tiller version running
+            if running_version != image_versions.TILLER_IMAGE_VERSION:
+
+                LOG.info("Running version of tiller does not match patching version of %s. "
+                         "Upgrade in progress."
+                         % image_versions.TILLER_IMAGE_VERSION)
+                download_image = running_image_name + ":" + image_versions.TILLER_IMAGE_VERSION
+                local_registry_auth = kube_app.get_local_docker_registry_auth()
+                self._docker._retrieve_specified_registries()
+
+                # download the image, retry if it fails
+                while True:
+                    try:
+                        ret = self._docker.download_an_image("helm",
+                                                             local_registry_auth,
+                                                             download_image)
+                        if not ret:
+                            raise Exception
+                    except Exception as e:
+                        LOG.warning(
+                            "Failed to download image '%s'. %s" %
+                            (download_image, e))
+                        greenthread.sleep(FIVE_MIN_IN_SECS)
+                        continue
+                    break
+
+                # reset the cached registries
+                self._docker._reset_registries_info()
+
+                # Update the new image, retry if it fails
+                while True:
+                    try:
+                        helm_utils.helm_upgrade_tiller(download_image)
+
+                    except Exception as e:
+                        LOG.warning("Failed to update the new image: %s" % e)
+                        greenthread.sleep(FIVE_MIN_IN_SECS)
+                        continue
+                    break
+
+        except Exception as e:
+            LOG.error("{}. Failed to upgrade/downgrade tiller.".format(e))
 
     def check_nodes_stable(self):
         hosts = self.dbapi.ihost_get_list()
