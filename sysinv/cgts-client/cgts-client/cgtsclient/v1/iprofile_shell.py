@@ -182,6 +182,7 @@ def get_cpuprofile_data(cc, iprofile):
     iprofile.vswitch_cores = get_core_list_str(iprofile, icpu_utils.VSWITCH_CPU_TYPE)
     iprofile.shared_cores = get_core_list_str(iprofile, icpu_utils.SHARED_CPU_TYPE)
     iprofile.vms_cores = get_core_list_str(iprofile, icpu_utils.APPLICATION_CPU_TYPE)
+    iprofile.isolated_cores = get_core_list_str(iprofile, icpu_utils.ISOLATED_CPU_TYPE)
 
 
 def get_core_list_str(iprofile, function):
@@ -209,23 +210,29 @@ def do_cpuprofile_list(cc, args):
                                                  icpu_utils.SHARED_CPU_TYPE)
         profile.vms_cores = get_core_list_str(profile,
                                               icpu_utils.APPLICATION_CPU_TYPE)
+        profile.isolated_cores = get_core_list_str(profile,
+                                                   icpu_utils.ISOLATED_CPU_TYPE)
 
     field_labels = ['uuid', 'name',
                     'processors', 'phy cores per proc', 'hyperthreading',
-                    'platform cores', 'vswitch cores', 'shared cores', 'vm cores']
+                    'platform cores', 'vswitch cores', 'shared cores',
+                    'vm cores', 'isolated_cores']
     fields = ['uuid', 'profilename',
               'sockets', 'physical_cores', 'hyperthreading',
-              'platform_cores', 'vswitch_cores', 'shared_cores', 'vms_cores']
+              'platform_cores', 'vswitch_cores', 'shared_cores', 'vms_cores',
+              'isolated_cores']
     utils.print_list(profiles, fields, field_labels, sortby=0)
 
 
 def _print_cpuprofile_show(cpuprofile):
     labels = ['uuid', 'name',
               'processors', 'phy cores per proc', 'hyperthreading',
-              'platform cores', 'vswitch cores', 'shared cores', 'vm cores', 'created_at', 'updated_at']
+              'platform cores', 'vswitch cores', 'shared cores', 'vm cores',
+              'isolated_cores', 'created_at', 'updated_at']
     fields = ['uuid', 'profilename',
               'sockets', 'physical_cores', 'hyperthreading',
-              'platform_cores', 'vswitch_cores', 'shared_cores', 'vms_cores', 'created_at', 'updated_at']
+              'platform_cores', 'vswitch_cores', 'shared_cores', 'vms_cores',
+              'isolated_cores', 'created_at', 'updated_at']
     data = [(f, getattr(cpuprofile, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)
 

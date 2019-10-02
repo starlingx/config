@@ -227,30 +227,6 @@ class HostStatesController(rest.RestController):
                       {'function': 'vswitch', 'sockets': [{'0': 2}]},
                       {'function': 'shared', 'sockets': [{'0': 1}, {'1': 1}]}]
         """
-
-        def cpu_function_sort_key(capability):
-            function = capability.get('function', '')
-            if function.lower() == constants.PLATFORM_FUNCTION.lower():
-                rank = 0
-            elif function.lower() == constants.SHARED_FUNCTION.lower():
-                rank = 1
-            elif function.lower() == constants.VSWITCH_FUNCTION.lower():
-                rank = 2
-            elif function.lower() == constants.ISOLATED_FUNCTION.lower():
-                rank = 3
-            elif function.lower() == constants.APPLICATION_FUNCTION.lower():
-                rank = 4
-            else:
-                rank = 5
-            return rank
-
-        specified_function = None
-        # patch_obj = jsonpatch.JsonPatch(patch)
-        # for p in patch_obj:
-        #     if p['path'] == '/capabilities':
-        #         capabilities = p['value']
-        #         break
-
         LOG.info("host_cpus_modify host_uuid=%s capabilities=%s" %
                  (host_uuid, capabilities))
 
@@ -260,9 +236,8 @@ class HostStatesController(rest.RestController):
         ihost.nodes = pecan.request.dbapi.inode_get_by_ihost(ihost.uuid)
         num_nodes = len(ihost.nodes)
 
-        # Perform allocation in platform, shared, vswitch order
-        sorted_capabilities = sorted(capabilities, key=cpu_function_sort_key)
-        for icap in sorted_capabilities:
+        # Perform basic sanity on the input
+        for icap in capabilities:
             specified_function = icap.get('function', None)
             specified_sockets = icap.get('sockets', None)
             if not specified_function or not specified_sockets:
@@ -271,64 +246,57 @@ class HostStatesController(rest.RestController):
                       'for host %s.') % (host_uuid,
                                          specified_function,
                                          specified_sockets))
-            capability = {}
             for specified_socket in specified_sockets:
                 socket, value = specified_socket.items()[0]
                 if int(socket) >= num_nodes:
                     raise wsme.exc.ClientSideError(
                         _('There is no Processor (Socket) '
                            '%s on this host.') % socket)
-                capability.update({'num_cores_on_processor%s' % socket:
-                                   int(value)})
+                if int(value) < 0:
+                    raise wsme.exc.ClientSideError(
+                        _('Specified cpu values must be non-negative.'))
 
-            LOG.debug("host_cpus_modify capability=%s" % capability)
-            # Query the database to get the current set of CPUs and then
-            # organize the data by socket and function for convenience.
-            ihost.cpus = pecan.request.dbapi.icpu_get_by_ihost(ihost.uuid)
-            cpu_utils.restructure_host_cpu_data(ihost)
+        # Query the database to get the current set of CPUs and then
+        # organize the data by socket and function for convenience.
+        ihost.cpus = pecan.request.dbapi.icpu_get_by_ihost(ihost.uuid)
+        cpu_utils.restructure_host_cpu_data(ihost)
 
-            # Get the CPU counts for each socket and function for this host
-            cpu_counts = cpu_utils.get_cpu_counts(ihost)
+        # Get the CPU counts for each socket and function for this host
+        cpu_counts = cpu_utils.get_cpu_counts(ihost)
 
-            # Update the CPU counts for each socket and function for this host based
-            # on the incoming requested core counts
-            if (specified_function.lower() == constants.VSWITCH_FUNCTION.lower()):
-                cpu_counts = cpu_api._update_vswitch_cpu_counts(ihost, None,
-                                                                cpu_counts,
-                                                                capability)
-            elif (specified_function.lower() == constants.SHARED_FUNCTION.lower()):
-                cpu_counts = cpu_api._update_shared_cpu_counts(ihost, None,
-                                                               cpu_counts,
-                                                               capability)
-            elif (specified_function.lower() == constants.PLATFORM_FUNCTION.lower()):
-                cpu_counts = cpu_api._update_platform_cpu_counts(ihost, None,
-                                                                 cpu_counts,
-                                                                 capability)
-            elif (specified_function.lower() ==
-                      constants.ISOLATED_FUNCTION.lower()):
-                cpu_counts = cpu_api._update_isolated_cpu_counts(
-                    ihost, None, cpu_counts, capability)
+        # Update the CPU counts based on the provided values
+        for cap in capabilities:
+            function = cap.get('function', None)
+            # Normalize the function input
+            for const_function in constants.CPU_FUNCTIONS:
+                if const_function.lower() == function.lower():
+                    function = const_function
+            sockets = cap.get('sockets', None)
+            for numa in sockets:
+                numa_node, value = numa.items()[0]
+                numa_node = int(numa_node)
+                value = int(value)
+                if ihost.hyperthreading:
+                    value *= 2
+                cpu_counts[numa_node][function] = value
 
-            # Semantic check to ensure the minimum/maximum values are enforced
-            error_msg = cpu_utils.check_core_allocations(ihost, cpu_counts,
-                                                         specified_function)
-            if error_msg:
-                raise wsme.exc.ClientSideError(_(error_msg))
+        # Semantic check to ensure the minimum/maximum values are enforced
+        cpu_utils.check_core_allocations(ihost, cpu_counts)
 
-            # Update cpu assignments to new values
-            cpu_utils.update_core_allocations(ihost, cpu_counts)
+        # Update cpu assignments to new values
+        cpu_utils.update_core_allocations(ihost, cpu_counts)
 
-            for cpu in ihost.cpus:
-                function = cpu_utils.get_cpu_function(ihost, cpu)
-                if function == constants.NO_FUNCTION:
-                    raise wsme.exc.ClientSideError(_('Could not determine '
-                        'assigned function for CPU %d' % cpu.cpu))
-                if (not cpu.allocated_function or
-                   cpu.allocated_function.lower() != function.lower()):
-                    values = {'allocated_function': function}
-                    LOG.info("icpu_update uuid=%s value=%s" %
-                             (cpu.uuid, values))
-                    pecan.request.dbapi.icpu_update(cpu.uuid, values)
+        for cpu in ihost.cpus:
+            function = cpu_utils.get_cpu_function(ihost, cpu)
+            if function == constants.NO_FUNCTION:
+                raise wsme.exc.ClientSideError(_('Could not determine '
+                    'assigned function for CPU %d' % cpu.cpu))
+            if (not cpu.allocated_function or
+               cpu.allocated_function.lower() != function.lower()):
+                values = {'allocated_function': function}
+                LOG.info("icpu_update uuid=%s value=%s" %
+                         (cpu.uuid, values))
+                pecan.request.dbapi.icpu_update(cpu.uuid, values)
 
         # perform inservice apply
         pecan.request.rpcapi.update_grub_config(pecan.request.context,

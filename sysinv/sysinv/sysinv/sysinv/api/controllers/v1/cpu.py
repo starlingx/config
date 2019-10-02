@@ -648,9 +648,7 @@ def _check_cpu(cpu, ihost):
         cpu_counts = _update_isolated_cpu_counts(ihost, cpu, cpu_counts)
 
     # Semantic check to ensure the minimum/maximum values are enforced
-    error_string = cpu_utils.check_core_allocations(ihost, cpu_counts, func)
-    if error_string:
-        raise wsme.exc.ClientSideError(_(error_string))
+    cpu_utils.check_core_allocations(ihost, cpu_counts, func)
 
     # Update cpu assignments to new values
     cpu_utils.update_core_allocations(ihost, cpu_counts)

@@ -118,6 +118,15 @@ APPLICATION_FUNCTION = "Applications"
 ISOLATED_FUNCTION = "Isolated"
 NO_FUNCTION = "None"
 
+CPU_FUNCTIONS = [
+    PLATFORM_FUNCTION,
+    VSWITCH_FUNCTION,
+    SHARED_FUNCTION,
+    APPLICATION_FUNCTION,
+    ISOLATED_FUNCTION,
+    NO_FUNCTION
+]
+
 # Host Personality Sub-Types
 HOST_ADD = 'host_add'  # for personality sub-type validation
 HOST_DELETE = 'host_delete'  # for personality sub-type validation

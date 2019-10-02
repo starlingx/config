@@ -83,6 +83,10 @@ class ProfileTestCase(base.FunctionalTest):
             dbutils.get_test_icpu(id=5, cpu=3,
                                   forinodeid=self.compnode.id,
                                   forihostid=self.worker.id))
+        self.compcpuapp = self.dbapi.icpu_create(
+            self.worker.id,
+            dbutils.get_test_icpu(id=6, cpu=4, forinodeid=self.compnode.id, forihostid=self.worker.id,
+                                  allocated_function=constants.APPLICATION_FUNCTION))
         self.compmemory = self.dbapi.imemory_create(
             self.worker.id,
             dbutils.get_test_imemory(id=2, Hugepagesize=constants.MIB_1G,
@@ -285,11 +289,12 @@ class ProfileApplyTestCase(ProfileTestCase):
 
     def test_apply_cpu_success(self):
         self.profile["profiletype"] = constants.PROFILE_TYPE_CPU
+        self.profile["ihost_uuid"] = self.worker.uuid
         response = self.post_json('%s' % self._get_path(), self.profile)
         self.assertEqual(http_client.OK, response.status_int)
         list_data = self.get_json('%s' % self._get_path())
         profile_uuid = list_data['iprofiles'][0]['uuid']
-        result = self.patch_dict_json('/ihosts/%s' % self.controller.id,
+        result = self.patch_dict_json('/ihosts/%s' % self.worker.id,
                                       headers=HEADER,
                                       action=constants.APPLY_PROFILE_ACTION,
                                       iprofile_uuid=profile_uuid)
