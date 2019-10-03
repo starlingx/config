@@ -1477,6 +1477,9 @@ CLOCK_SYNCHRONIZATION = [
     PTP
 ]
 
+# Backup & Restore
+FIX_INSTALL_UUID_INTERVAL_SECS = 30
+
 # ceph-mon IP placeholders (keys)
 CEPH_MON_0 = 'ceph-mon-0-ip'
 CEPH_MON_1 = 'ceph-mon-1-ip'

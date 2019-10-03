@@ -92,6 +92,7 @@ from sysinv.conductor import docker_registry
 from sysinv.db import api as dbapi
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
+from sysinv.openstack.common import context as ctx
 from sysinv.openstack.common import excutils
 from sysinv.openstack.common import jsonutils
 from sysinv.openstack.common import log
@@ -338,6 +339,10 @@ class ConductorManager(service.PeriodicService):
         self._upgrade_default_service_parameter()
 
     def _handle_restore_in_progress(self):
+        if os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING):
+            LOG.info("Starting thread to fix storage nodes install uuid.")
+            greenthread.spawn(self._fix_storage_install_uuid)
+
         if os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG):
             if StorageBackendConfig.has_backend(
                     self.dbapi,
@@ -4168,6 +4173,30 @@ class ConductorManager(service.PeriodicService):
 
         return
 
+    def _fix_storage_install_uuid(self):
+        """
+        Fixes install_uuid for storage nodes during a restore procedure
+        in which customer wants to recover its Ceph data by keeping
+        cluster intact. During this procedure storage nodes are kept
+        powered on (available) and do not get to be reinstalled yet
+        controller-0 gets reinstalled.
+
+        Since we do not know when sysinv-agents from storage nodes
+        connect to rabbitmq and are ready to process requests, we
+        periodically send messages to fix install_uuid.
+        We stop doing it once restore procedure finishes.
+        """
+        admin_context = ctx.RequestContext('admin', 'admin', is_admin=True)
+        while os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING):
+            # Update install UUID for storage nodes
+            stor_nodes = self.dbapi.ihost_get_by_personality(constants.STORAGE)
+            stor_nodes_uuids = [n.uuid for n in stor_nodes]
+            if stor_nodes_uuids:
+                self.update_install_uuid(admin_context,
+                                         stor_nodes_uuids,
+                                         tsc.install_uuid)
+            greenthread.sleep(constants.FIX_INSTALL_UUID_INTERVAL_SECS)
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _agent_update_request(self, context):
         """
@@ -5882,13 +5911,13 @@ class ConductorManager(service.PeriodicService):
                       'capabilities': capabilities}
             self.dbapi.service_update(cinder_service.name, values)
 
-    def update_install_uuid(self, context, host_uuid, install_uuid):
-        """ Update install_uuid on the specified host """
+    def update_install_uuid(self, context, host_uuids, install_uuid):
+        """ Update install_uuid on the specified host or hosts """
 
-        LOG.info("update_install_uuid host_uuid=%s install_uuid=%s "
-                 % (host_uuid, install_uuid))
+        LOG.debug("update_install_uuid host_uuids=%s install_uuid=%s "
+                  % (host_uuids, install_uuid))
         rpcapi = agent_rpcapi.AgentAPI()
-        rpcapi.iconfig_update_install_uuid(context, host_uuid, install_uuid)
+        rpcapi.iconfig_update_install_uuid(context, host_uuids, install_uuid)
 
     def update_ceph_config(self, context, sb_uuid, services):
         """Update the manifests for Ceph backend and services"""

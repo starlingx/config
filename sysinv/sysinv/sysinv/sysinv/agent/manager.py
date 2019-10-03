@@ -1438,19 +1438,19 @@ class AgentManager(service.PeriodicService):
 
         return
 
-    def iconfig_update_install_uuid(self, context, host_uuid, install_uuid):
+    def iconfig_update_install_uuid(self, context, host_uuids, install_uuid):
         """Update install_uuid in /etc/platform/platform.conf
 
         :param context: request context.
-        :param host_uuid: The host uuid to update the install_uuid
+        :param host_uuids: The host uuid or list of host uuids to update
+                           the install_uuid
         :param install_uuid: The updated install_uuid that will be
         :                    written into /etc/platform/platform.conf
         """
 
-        LOG.debug("iconfig_update_install_uuid "
-                  "host_uuid=%s install_uuid=%s" % (host_uuid, install_uuid))
-
-        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+        if (self._ihost_uuid and self._ihost_uuid in host_uuids and
+                tsc.install_uuid != install_uuid):
+            LOG.info("Updating install_uuid to %s." % install_uuid)
             temp_platform_conf_file = os.path.join(tsc.PLATFORM_CONF_PATH,
                                                    'platform.conf.temp')
             shutil.copyfile(tsc.PLATFORM_CONF_FILE, temp_platform_conf_file)
@@ -1461,6 +1461,9 @@ class AgentManager(service.PeriodicService):
                     print(line, end='')
             fileinput.close()
             os.rename(temp_platform_conf_file, tsc.PLATFORM_CONF_FILE)
+
+            # Set the install_uuid to the value we just configured.
+            tsc.install_uuid = install_uuid
 
     def _retry_on_personality_is_none(ex):
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
