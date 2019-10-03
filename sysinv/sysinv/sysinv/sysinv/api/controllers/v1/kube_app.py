@@ -195,72 +195,129 @@ class KubeAppController(rest.RestController):
         return self._get_one(app_name)
 
     @staticmethod
-    def _check_controller_labels(chosts):
-        def _check_monitor_controller_labels(host_uuid, hostname):
-            labels = pecan.request.dbapi.label_get_by_host(host_uuid)
+    def _check_monitor_labels(hosts):
 
-            required_labels = {
-                helm_common.LABEL_MONITOR_CONTROLLER:
-                    helm_common.LABEL_VALUE_ENABLED,
-                helm_common.LABEL_MONITOR_DATA:
-                    helm_common.LABEL_VALUE_ENABLED,
-                helm_common.LABEL_MONITOR_CLIENT:
-                    helm_common.LABEL_VALUE_ENABLED}
+        logstash_active = cutils.is_chart_enabled(
+            pecan.request.dbapi,
+            constants.HELM_APP_MONITOR,
+            helm_common.HELM_CHART_LOGSTASH,
+            helm_common.HELM_NS_MONITOR)
 
-            assigned_labels = {}
+        elasticsearch_active = cutils.is_chart_enabled(
+            pecan.request.dbapi,
+            constants.HELM_APP_MONITOR,
+            helm_common.HELM_CHART_ELASTICSEARCH,
+            helm_common.HELM_NS_MONITOR)
+
+        if not elasticsearch_active and not logstash_active:
+            # Nothing to check, exit
+            return
+
+        # The required counts of labelled
+        # and unlocked-enabled hosts.
+        required_label_counts = dict()
+
+        # The counts of labelled hosts.
+        label_counts = dict()
+
+        # The counts of labelled hosts
+        # that are also unlocked and enabled.
+        good_label_counts = dict()
+
+        is_aio_simplex = cutils.is_aio_simplex_system(pecan.request.dbapi)
+
+        if elasticsearch_active:
+            label_counts = {
+                helm_common.LABEL_MONITOR_MASTER: 0,
+                helm_common.LABEL_MONITOR_DATA: 0,
+                helm_common.LABEL_MONITOR_CLIENT: 0}
+
+            good_label_counts = {
+                helm_common.LABEL_MONITOR_MASTER: 0,
+                helm_common.LABEL_MONITOR_DATA: 0,
+                helm_common.LABEL_MONITOR_CLIENT: 0}
+
+            if is_aio_simplex:
+                # AIO simplex means one of every label.
+                required_label_counts = {
+                    helm_common.LABEL_MONITOR_MASTER: 1,
+                    helm_common.LABEL_MONITOR_DATA: 1,
+                    helm_common.LABEL_MONITOR_CLIENT: 1}
+            else:
+                # For dual controller configs, we require the below.
+                required_label_counts = {
+                    helm_common.LABEL_MONITOR_DATA: 2,
+                    helm_common.LABEL_MONITOR_CLIENT: 2}
+
+                if cutils.is_aio_duplex_system(pecan.request.dbapi):
+                    required_label_counts[
+                        helm_common.LABEL_MONITOR_MASTER] = 2
+                else:
+                    required_label_counts[
+                        helm_common.LABEL_MONITOR_MASTER] = 3
+
+        if logstash_active:
+            good_label_counts[
+                helm_common.LABEL_MONITOR_CONTROLLER] = 0
+            label_counts[
+                helm_common.LABEL_MONITOR_CONTROLLER] = 0
+
+            if is_aio_simplex:
+                required_label_counts[
+                    helm_common.LABEL_MONITOR_CONTROLLER] = 1
+            else:
+                required_label_counts[
+                    helm_common.LABEL_MONITOR_CONTROLLER] = 2
+
+        # Examine all the required labels on the given hosts
+        # and build up our actual and good label counts.
+        for host in hosts:
+            labels = pecan.request.dbapi.label_get_by_host(host.uuid)
+
+            host_good = (host.administrative == constants.ADMIN_UNLOCKED
+                and host.operational == constants.OPERATIONAL_ENABLED)
+
             for label in labels:
-                if label.label_key in required_labels:
-                    if label.label_value == required_labels[label.label_key]:
-                        assigned_labels.update(
-                            {label.label_key: label.label_value})
+                if label.label_key in required_label_counts:
+                    if label.label_value == helm_common.LABEL_VALUE_ENABLED:
+                        label_counts[label.label_key] = \
+                            label_counts[label.label_key] + 1
 
-            missing_labels = {k: required_labels[k] for k in
-                              set(required_labels) - set(assigned_labels)}
+                        if host_good:
+                            good_label_counts[label.label_key] = \
+                                good_label_counts[label.label_key] + 1
 
-            msg = ""
-            if missing_labels:
-                for k, v in missing_labels.items():
-                    msg += "%s=%s " % (k, v)
-            if msg:
-                msg = " 'system host-label-assign {} {}'".format(
-                    hostname, msg)
-            return msg
+        # If we are short of labels on unlocked and enabled hosts
+        # inform the user with a detailed message.
+        msg = ""
+        for k, v in required_label_counts.items():
+            if good_label_counts[k] < required_label_counts[k]:
+                msg += (", label:%s=%s, required=%d, labelled=%d,"
+                        " labelled and unlocked-enabled=%d" %
+                        (k, helm_common.LABEL_VALUE_ENABLED, v,
+                         label_counts[k], good_label_counts[k]))
 
-        client_msg = ""
-        for chost in chosts:
-            msg = _check_monitor_controller_labels(
-                chost.uuid, chost.hostname)
-            if msg:
-                client_msg += msg
-
-        if client_msg:
+        if msg:
             raise wsme.exc.ClientSideError(
                 _("Operation rejected: application stx-monitor "
-                  "requires labels on controllers. {}".format(client_msg)))
+                  "does not have required unlocked-enabled and "
+                  "labelled hosts{}".format(msg)))
 
     def _semantic_check(self, db_app):
         """Semantic check for application deployment
         """
 
         if db_app.name == constants.HELM_APP_MONITOR:
-            chosts = pecan.request.dbapi.ihost_get_by_personality(
+
+            hosts_to_label_check = pecan.request.dbapi.ihost_get_by_personality(
                 constants.CONTROLLER)
 
-            if not cutils.is_aio_simplex_system(pecan.request.dbapi):
-                if chosts and len(chosts) < 2:
-                    raise wsme.exc.ClientSideError(_(
-                        "Operation rejected: application {} requires 2 "
-                        "controllers".format(db_app.name)))
+            if not cutils.is_aio_system(pecan.request.dbapi):
+                whosts = pecan.request.dbapi.ihost_get_by_personality(
+                    constants.WORKER)
+                hosts_to_label_check.extend(whosts)
 
-            self._check_controller_labels(chosts)
-
-            for chost in chosts:
-                if (chost.administrative != constants.ADMIN_UNLOCKED or
-                        chost.operational != constants.OPERATIONAL_ENABLED):
-                    raise wsme.exc.ClientSideError(_(
-                        "Operation rejected: application {} requires {} to be "
-                        "unlocked-enabled".format(
-                            db_app.name, chost.hostname)))
+            self._check_monitor_labels(hosts_to_label_check)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
