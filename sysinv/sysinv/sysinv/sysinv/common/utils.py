@@ -24,6 +24,7 @@
 
 """Utilities and helper functions."""
 
+import boto3
 import collections
 import contextlib
 import datetime
@@ -35,6 +36,7 @@ import grp
 import hashlib
 import itertools as it
 import json
+import keyring
 import math
 import os
 import pwd
@@ -2116,3 +2118,39 @@ def app_reapply_pending_fault_entity(app_name):
     return "%s=%s" % (
         fm_constants.FM_ENTITY_TYPE_APPLICATION,
         app_name)
+
+
+def get_local_docker_registry_auth():
+    registry_password = keyring.get_password(
+        constants.DOCKER_REGISTRY_SERVICE, constants.DOCKER_REGISTRY_USER)
+
+    if not registry_password:
+        raise exception.DockerRegistryCredentialNotFound(
+            name=constants.DOCKER_REGISTRY_USER)
+
+    return dict(username=constants.DOCKER_REGISTRY_USER,
+                password=registry_password)
+
+
+def get_aws_ecr_registry_credentials(registry, username, password):
+    region = re.compile("[0-9]*.dkr.ecr.(.*).amazonaws.com.*").match(registry)
+    if region:
+        ecr_region = region.groups()[0]
+    else:
+        ecr_region = 'us-west-2'
+
+    try:
+        client = boto3.client(
+            'ecr',
+            region_name=ecr_region,
+            aws_access_key_id=username,
+            aws_secret_access_key=password)
+
+        response = client.get_authorization_token()
+        token = response['authorizationData'][0]['authorizationToken']
+        username, password = token.decode('base64').split(':')
+    except Exception as e:
+        raise exception.SysinvException(_(
+            "Failed to get AWS ECR credentials: %s" % e))
+
+    return dict(username=username, password=password)

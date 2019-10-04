@@ -14,7 +14,6 @@ import copy
 import docker
 import grp
 import functools
-import keyring
 import os
 import pwd
 import re
@@ -64,8 +63,6 @@ MAX_DOWNLOAD_ATTEMPTS = 3
 DOWNLOAD_WAIT_BEFORE_RETRY = 30
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
-DOCKER_REGISTRY_USER = 'admin'
-DOCKER_REGISTRY_SERVICE = 'CGCS'
 DOCKER_REGISTRY_SECRET = 'default-registry-key'
 CHARTS_PENDING_INSTALL_ITERATIONS = 60
 
@@ -115,17 +112,6 @@ def get_app_install_root_path_ownership():
     uid = os.stat(constants.APP_INSTALL_ROOT_PATH).st_uid
     gid = os.stat(constants.APP_INSTALL_ROOT_PATH).st_gid
     return (uid, gid)
-
-
-def get_local_docker_registry_auth():
-    registry_password = keyring.get_password(
-        DOCKER_REGISTRY_SERVICE, DOCKER_REGISTRY_USER)
-    if not registry_password:
-        raise exception.DockerRegistryCredentialNotFound(
-            name=DOCKER_REGISTRY_USER)
-
-    return dict(username=DOCKER_REGISTRY_USER,
-                password=registry_password)
 
 
 Chart = namedtuple('Chart', 'metadata_name name namespace location release labels sequenced')
@@ -765,7 +751,7 @@ class AppOperator(object):
 
         start = time.time()
         try:
-            local_registry_auth = get_local_docker_registry_auth()
+            local_registry_auth = cutils.get_local_docker_registry_auth()
             with self._lock:
                 self._docker._retrieve_specified_registries()
         except Exception as e:
@@ -1064,7 +1050,7 @@ class AppOperator(object):
                 continue
 
             try:
-                local_registry_auth = get_local_docker_registry_auth()
+                local_registry_auth = cutils.get_local_docker_registry_auth()
 
                 auth = '{0}:{1}'.format(local_registry_auth['username'],
                                         local_registry_auth['password'])
@@ -2460,34 +2446,51 @@ class DockerHelper(object):
                 "Unable to parse the secret payload"))
 
     def _retrieve_specified_registries(self):
-        registries = self._dbapi.service_parameter_get_all(
-            service=constants.SERVICE_TYPE_DOCKER,
-            name=constants.SERVICE_PARAM_NAME_DOCKER_URL)
+        registries_url = {}
+        registries_type = {}
+        registries_auth = {}
+        registries_overrides = {}
 
-        if not registries:
+        registries = self._dbapi.service_parameter_get_all(
+            service=constants.SERVICE_TYPE_DOCKER)
+        for r in registries:
+            if r.name == constants.SERVICE_PARAM_NAME_DOCKER_URL:
+                registries_url.update({r.section: str(r.value)})
+            elif r.name == constants.SERVICE_PARAM_NAME_DOCKER_TYPE:
+                registries_type.update({r.section: str(r.value)})
+            elif r.name == constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
+                registries_auth.update({r.section: str(r.value)})
+            elif r.name == constants.SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES:
+                registries_overrides.update({r.section: str(r.value)})
+
+        if not registries_url:
             # return directly if no user specified registries
             return
 
-        registries_auth_db = self._dbapi.service_parameter_get_all(
-            service=constants.SERVICE_TYPE_DOCKER,
-            name=constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET)
-        registries_auth = {r.section: r.value for r in registries_auth_db}
-
-        for r in registries:
+        for section, url in registries_url.items():
             try:
-                self.registries_info[r.section]['registry_replaced'] = str(r.value)
-                if r.section in registries_auth:
-                    secret_ref = str(registries_auth[r.section])
+                self.registries_info[section]['registry_replaced'] = str(url)
+
+                if section in registries_overrides:
+                    self.registries_info[section]['registry_default'] = \
+                        registries_overrides[section]
+
+                if section in registries_auth:
+                    secret_ref = registries_auth[section]
                     if secret_ref != 'None':
                         # If user specified registry requires the
                         # authentication, get the registry auth
                         # from barbican secret
                         auth = self._parse_barbican_secret(secret_ref)
-                        self.registries_info[r.section]['registry_auth'] = auth
+                        if (section in registries_type and
+                                registries_type[section] == constants.DOCKER_REGISTRY_TYPE_AWS_ECR):
+                            auth = cutils.get_aws_ecr_registry_credentials(
+                                url, auth['username'], auth['password'])
+                        self.registries_info[section]['registry_auth'] = auth
             except exception.SysinvException:
                 raise exception.SysinvException(_(
                     "Unable to get the credentials to access "
-                    "registry %s" % str(r.value)))
+                    "registry %s" % url))
             except KeyError:
                 # Unexpected
                 pass
@@ -2502,38 +2505,39 @@ class DockerHelper(object):
 
     def _get_img_tag_with_registry(self, pub_img_tag):
         """Regenerate public image tag with user specified registries
+
+           An example of passed public image reference:
+           docker.io/starlingx/stx-keystone:latest
         """
 
         if self.registries_info == constants.DEFAULT_REGISTRIES_INFO:
             # return if no user specified registries
             return pub_img_tag, None
 
-        # An example of passed public image tag:
-        # docker.io/starlingx/stx-keystone:latest
-        # extracted registry_name = docker.io
-        # extracted img_name = starlingx/stx-keystone:latest
-        registry_name = pub_img_tag[0:1 + pub_img_tag.find('/')].replace('/', '')
-        img_name = pub_img_tag[1 + pub_img_tag.find('/'):]
-
         for registry_info in self.registries_info.values():
-            if registry_name == registry_info['registry_default']:
+            registry_auth = registry_info['registry_auth']
+
+            if pub_img_tag.startswith(registry_info['registry_default']):
                 registry = registry_info['registry_replaced']
-                registry_auth = registry_info['registry_auth']
 
                 if registry:
-                    return registry + '/' + img_name, registry_auth
-                return pub_img_tag, registry_auth
-            elif registry_name == registry_info['registry_replaced']:
-                registry_auth = registry_info['registry_auth']
+                    img_name = pub_img_tag.split(
+                        registry_info['registry_default'])[1]
+                    return registry + img_name, registry_auth
                 return pub_img_tag, registry_auth
 
-        # If extracted registry_name is none of k8s.gcr.io, gcr.io,
-        # quay.io and docker.io or no registry_name specified in image
-        # tag, use user specified docker registry as default
+            elif pub_img_tag.startswith(registry_info['registry_replaced']):
+                return pub_img_tag, registry_auth
+
+        # If the image is not from any of the known registries
+        # (ie..k8s.gcr.io, gcr.io, quay.io, docker.io. docker.elastic.co)
+        # or no registry name specified in image tag, use user specified
+        # docker registry as default
         registry = self.registries_info[
             constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_replaced']
         registry_auth = self.registries_info[
             constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_auth']
+        registry_name = pub_img_tag[:pub_img_tag.find('/')]
 
         if registry:
             LOG.info("Registry %s not recognized or docker.io repository "
@@ -2588,28 +2592,17 @@ class DockerHelper(object):
                 else:
                     quay_url = constants.DEFAULT_DOCKER_QUAY_REGISTRY
 
-                armada_image_tag = quay_url + \
+                armada_image_tag = constants.DOCKER_REGISTRY_SERVER + '/' + quay_url + \
                     image_versions.ARMADA_IMAGE_NAME + ":" + \
                     image_versions.ARMADA_IMAGE_VERSION
 
                 armada_image = client.images.list(armada_image_tag)
-
                 # Pull Armada image if it's not available
                 if not armada_image:
                     LOG.info("Downloading Armada image %s ..." % armada_image_tag)
-
-                    quay_registry_secret = self._dbapi.service_parameter_get_all(
-                        service=constants.SERVICE_TYPE_DOCKER,
-                        section=constants.SERVICE_PARAM_SECTION_DOCKER_QUAY_REGISTRY,
-                        name=constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET)
-                    if quay_registry_secret:
-                        quay_registry_auth = self._parse_barbican_secret(
-                            quay_registry_secret[0].value)
-                    else:
-                        quay_registry_auth = None
-
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
                     client.images.pull(armada_image_tag,
-                                       auth_config=quay_registry_auth)
+                                       auth_config=local_registry_auth)
                     LOG.info("Armada image %s downloaded!" % armada_image_tag)
 
                 container = client.containers.run(

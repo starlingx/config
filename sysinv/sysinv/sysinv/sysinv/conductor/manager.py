@@ -5173,9 +5173,8 @@ class ConductorManager(service.PeriodicService):
 
             # Grab the version from the image name. Version is preceded
             # by a ":" e.g.
-            #    gcr.io/kubernetes-helm/tiller:v2.13.0
-            running_image_name = running_image.split(":")[0]
-            running_version = running_image.split(":")[1]
+            #    registry.local:9001/gcr.io/kubernetes-helm/tiller:v2.13.0
+            running_image_name, running_version = running_image.rsplit(":", 1)
             if not running_version:
                 LOG.warning("Failed to get version from tiller image")
                 return
@@ -5187,7 +5186,7 @@ class ConductorManager(service.PeriodicService):
                          "Upgrade in progress."
                          % image_versions.TILLER_IMAGE_VERSION)
                 download_image = running_image_name + ":" + image_versions.TILLER_IMAGE_VERSION
-                local_registry_auth = kube_app.get_local_docker_registry_auth()
+                local_registry_auth = cutils.get_local_docker_registry_auth()
                 self._docker._retrieve_specified_registries()
 
                 # download the image, retry if it fails

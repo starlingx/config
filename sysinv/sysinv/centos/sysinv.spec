@@ -14,6 +14,7 @@ BuildRequires: python2-pip
 BuildRequires: python2-wheel
 BuildRequires: systemd
 Requires: pyparted
+Requires: python-boto3
 Requires: python-docker
 Requires: python-eventlet
 Requires: python-ipaddr

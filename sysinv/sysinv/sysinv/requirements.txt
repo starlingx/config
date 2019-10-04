@@ -3,6 +3,7 @@ SQLAlchemy
 amqplib>=0.6.1
 anyjson>=0.3.3
 argparse
+boto3
 cryptography!=2.0  # BSD/Apache-2.0
 eventlet==0.20.0
 greenlet>=0.3.2 # MIT
