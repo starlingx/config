@@ -30,7 +30,7 @@ class InterfaceBase(base.SysinvObject):
             'forihostid': utils.int_or_none,
             'iftype': utils.str_or_none,
             'ifname': utils.str_or_none,
-            'networktype': utils.str_or_none,
+            'ifclass': utils.str_or_none,
             'ifcapabilities': utils.dict_or_none,
             'farend': utils.dict_or_none,
             'uses': utils.list_of_strings_or_none,

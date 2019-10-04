@@ -1026,6 +1026,12 @@ def _check_interface_data(op, interface, ihost, existing_interface,
             msg = _("VLAN interfaces cannot be created over existing "
                     "VLAN interfaces")
             raise wsme.exc.ClientSideError(msg)
+        if (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM):
+            vlans = _get_platform_interface_vlans(ihost_uuid)
+            if op != "modify" and str(vlan_id) in vlans:
+                msg = _("VLAN id %s already in use on another platform "
+                        "interface" % str(vlan_id))
+                raise wsme.exc.ClientSideError(msg)
         vlans = _get_interface_vlans(ihost_uuid, lower_iface)
         if op != "modify" and str(vlan_id) in vlans.split(","):
             msg = _("VLAN id %s already in use on interface %s" %
@@ -1402,6 +1408,18 @@ def _get_interface_vlans(ihost_uuid, interface):
         if vlan_id:
             vlans.append(str(vlan_id))
     return ','.join(vlans)
+
+
+def _get_platform_interface_vlans(ihost_uuid):
+    """
+    Retrieve the VLAN id values (if any) of platform interfaces on this host.
+    """
+    vlans = []
+    ifaces = pecan.request.dbapi.vlan_interface_get_by_ihost(ihost_uuid)
+    for iface in ifaces:
+        if iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+            vlans.append(str(iface['vlan_id']))
+    return vlans
 
 
 def _get_interface_mtus(ihost_uuid, interface):
