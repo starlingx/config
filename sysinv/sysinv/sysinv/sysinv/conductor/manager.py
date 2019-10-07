@@ -228,8 +228,8 @@ class ConductorManager(service.PeriodicService):
 
         self._handle_restore_in_progress()
 
-        # Upgrade/Downgrade tiller if required
-        greenthread.spawn(self._upgrade_downgrade_tiller())
+        # Upgrade/Downgrade kubernetes components
+        greenthread.spawn(self._upgrade_downgrade_kube_components())
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
@@ -5153,12 +5153,42 @@ class ConductorManager(service.PeriodicService):
                 return
         self.reapply_app(context, app_name)
 
+    def _upgrade_downgrade_kube_components(self):
+        self._upgrade_downgrade_tiller()
+        self._upgrade_downgrade_kube_networking()
+
     def _upgrade_downgrade_tiller(self):
         """Check if tiller needs to be upgraded or downgraded"""
         LOG.info("_upgrade_downgrade_tiller")
 
         FIVE_MIN_IN_SECS = 300
+        in_progress_statuses = [constants.APP_APPLY_IN_PROGRESS,
+                                constants.APP_UPLOAD_IN_PROGRESS,
+                                constants.APP_REMOVE_IN_PROGRESS,
+                                constants.APP_UPDATE_IN_PROGRESS,
+                                constants.APP_RECOVER_IN_PROGRESS]
 
+        # Check if we are in the middle of an application apply. If so wait
+        # 5 minutes and retry.
+        while True:
+            try:
+                in_progress = False
+                for app in self.dbapi.kube_app_get_all():
+                    if app.status in in_progress_statuses:
+                        LOG.info("_upgrade_downgrade_tiller kubernetes application "
+                                 "'%s' in progress, status is '%s'" %
+                                 (app.name, app.status))
+                        in_progress = True
+                        break
+                if in_progress:
+                    greenthread.sleep(FIVE_MIN_IN_SECS)
+                    continue
+
+            except Exception as e:
+                LOG.error("{}. Failed to get kubernetes application list.".format(e))
+            break
+
+        # Upgrade or downgrade the tiller image
         try:
             running_image = self._kube.kube_get_image_by_selector(
                 image_versions.TILLER_SELECTOR_NAME,
@@ -5221,6 +5251,26 @@ class ConductorManager(service.PeriodicService):
 
         except Exception as e:
             LOG.error("{}. Failed to upgrade/downgrade tiller.".format(e))
+
+    def _upgrade_downgrade_kube_networking(self):
+        try:
+            LOG.info(
+                "_upgrade_downgrade_kube_networking executing playbook: %s " %
+                constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK)
+
+            proc = subprocess.Popen(
+                ['ansible-playbook',
+                 constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
+                stdout=subprocess.PIPE)
+            out, _ = proc.communicate()
+
+            LOG.info("ansible-playbook: %s." % out)
+
+            if proc.returncode:
+                raise Exception("ansible-playbook returned an error: %s" % proc.returncode)
+        except Exception as e:
+            LOG.error("Failed to upgrade/downgrade kubernetes "
+                      "networking images: {}".format(e))
 
     def check_nodes_stable(self):
         hosts = self.dbapi.ihost_get_list()
