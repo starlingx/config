@@ -206,7 +206,7 @@ class KubeAppController(rest.RestController):
         elasticsearch_active = cutils.is_chart_enabled(
             pecan.request.dbapi,
             constants.HELM_APP_MONITOR,
-            helm_common.HELM_CHART_ELASTICSEARCH,
+            helm_common.HELM_CHART_ELASTICSEARCH_MASTER,
             helm_common.HELM_NS_MONITOR)
 
         if not elasticsearch_active and not logstash_active:
@@ -244,17 +244,19 @@ class KubeAppController(rest.RestController):
                     helm_common.LABEL_MONITOR_DATA: 1,
                     helm_common.LABEL_MONITOR_CLIENT: 1}
             else:
-                # For dual controller configs, we require the below.
+                # Dual controller configs
                 required_label_counts = {
                     helm_common.LABEL_MONITOR_DATA: 2,
-                    helm_common.LABEL_MONITOR_CLIENT: 2}
+                    helm_common.LABEL_MONITOR_CLIENT: 2,
+                    helm_common.LABEL_MONITOR_MASTER: 3}
 
-                if cutils.is_aio_duplex_system(pecan.request.dbapi):
+                # For AIO-DX without worker nodes, we only need 2
+                # hosts labelled as master.
+                if (cutils.is_aio_duplex_system(pecan.request.dbapi) and
+                        (pecan.request.dbapi.count_hosts_by_label(
+                            helm_common.LABEL_MONITOR_MASTER) < 3)):
                     required_label_counts[
                         helm_common.LABEL_MONITOR_MASTER] = 2
-                else:
-                    required_label_counts[
-                        helm_common.LABEL_MONITOR_MASTER] = 3
 
         if logstash_active:
             good_label_counts[
@@ -280,12 +282,9 @@ class KubeAppController(rest.RestController):
             for label in labels:
                 if label.label_key in required_label_counts:
                     if label.label_value == helm_common.LABEL_VALUE_ENABLED:
-                        label_counts[label.label_key] = \
-                            label_counts[label.label_key] + 1
-
+                        label_counts[label.label_key] += 1
                         if host_good:
-                            good_label_counts[label.label_key] = \
-                                good_label_counts[label.label_key] + 1
+                            good_label_counts[label.label_key] += 1
 
         # If we are short of labels on unlocked and enabled hosts
         # inform the user with a detailed message.
@@ -312,7 +311,7 @@ class KubeAppController(rest.RestController):
             hosts_to_label_check = pecan.request.dbapi.ihost_get_by_personality(
                 constants.CONTROLLER)
 
-            if not cutils.is_aio_system(pecan.request.dbapi):
+            if not cutils.is_aio_simplex_system(pecan.request.dbapi):
                 whosts = pecan.request.dbapi.ihost_get_by_personality(
                     constants.WORKER)
                 hosts_to_label_check.extend(whosts)

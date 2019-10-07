@@ -491,6 +491,7 @@ class AppOperator(object):
             for r, f in cutils.get_files_matching(path, 'values.yaml'):
                 with open(os.path.join(r, f), 'r') as value_f:
                     try_image_tag_repo_format = False
+                    try_image_imagetag_format = False
                     y = yaml.safe_load(value_f)
                     try:
                         ids = y["images"]["tags"].values()
@@ -503,7 +504,17 @@ class AppOperator(object):
                             y_image_tag = y_image['repository'] + ":" + y_image['tag']
                             ids = [y_image_tag]
                         except (AttributeError, TypeError, KeyError):
+                            try_image_imagetag_format = True
                             pass
+
+                    if try_image_imagetag_format:
+                        try:
+                            y_image_tag = \
+                                y_image['image'] + ":" + y_image['imageTag']
+                            ids = [y_image_tag]
+                        except (AttributeError, TypeError, KeyError):
+                            pass
+
                 image_tags.extend(ids)
             return image_tags
 
@@ -563,6 +574,7 @@ class AppOperator(object):
 
                 # Get the image tags from the armada manifest file
                 try_image_tag_repo_format = False
+                try_image_imagetag_format = False
                 try:
                     images_manifest = chart_data['values']['images']['tags']
                 except (TypeError, KeyError, AttributeError):
@@ -576,6 +588,16 @@ class AppOperator(object):
                         y_image = chart_data['values']['image']
                         y_image_tag = \
                             y_image['repository'] + ":" + y_image['tag']
+                        images_manifest = {chart_name: y_image_tag}
+                    except (AttributeError, TypeError, KeyError):
+                        try_image_imagetag_format = True
+                        pass
+
+                if try_image_imagetag_format:
+                    try:
+                        y_image = chart_data['values']
+                        y_image_tag = \
+                            y_image['image'] + ":" + y_image['imageTag']
                         images_manifest = {chart_name: y_image_tag}
                     except (AttributeError, TypeError, KeyError):
                         pass
@@ -685,15 +707,38 @@ class AppOperator(object):
                            default_flow_style=False)
 
     def _save_images_list_by_charts(self, app):
+        from six.moves.urllib.parse import urlparse
+
         # Mine the images from values.yaml files in the charts directory.
         # The list of images for each chart are saved to the images file.
         images_by_charts = {}
         for chart in app.charts:
             images = {}
             chart_name = os.path.join(app.charts_dir, chart.name)
+
+            if not os.path.exists(chart_name):
+                # If the helm chart name is not the same as the armada
+                # chart name in the manifest, try using the source
+                # to find the chart directory.
+                try:
+                    # helm charts should be of the standard format:
+                    # <chartname>-X.X.X.tgz
+                    url_path = os.path.basename(urlparse(chart.location).path)
+                    # strip the .tgz
+                    chart_and_version = re.sub('\.tgz$', '', url_path)
+                    # strip the version
+                    chart_name_no_version = re.sub('-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)',
+                        '', chart_and_version)
+                    chart_name = os.path.join(app.charts_dir, chart_name_no_version)
+                except Exception as e:
+                    LOG.info("Cannot parse chart path: %s" % e)
+                    pass
+
             chart_path = os.path.join(chart_name, 'values.yaml')
 
             try_image_tag_repo_format = False
+            try_image_imagetag_format = False
+
             if os.path.exists(chart_path):
                 with open(chart_path, 'r') as f:
                     y = yaml.safe_load(f)
@@ -711,6 +756,16 @@ class AppOperator(object):
                             images = {chart.name: y_image_tag}
                         except (AttributeError, TypeError, KeyError):
                             LOG.info("Chart %s has no image tags" % chart_name)
+                            try_image_imagetag_format = True
+                            pass
+
+                    if try_image_imagetag_format:
+                        try:
+                            y_image_tag = \
+                                y['image'] + ":" + y['imageTag']
+                            images = {chart.name: y_image_tag}
+                        except (AttributeError, TypeError, KeyError):
+                            LOG.info("Chart %s has no imageTag tags" % chart_name)
                             pass
 
             if images:

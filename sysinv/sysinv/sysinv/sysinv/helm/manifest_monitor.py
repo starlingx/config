@@ -13,7 +13,9 @@ from sysinv.common import constants
 from sysinv.helm import manifest_base as base
 from sysinv.helm.logstash import LogstashHelm
 from sysinv.helm.kibana import KibanaHelm
-from sysinv.helm.elasticsearch import ElasticsearchHelm
+from sysinv.helm.elasticsearch_master import ElasticsearchMasterHelm
+from sysinv.helm.elasticsearch_client import ElasticsearchClientHelm
+from sysinv.helm.elasticsearch_data import ElasticsearchDataHelm
 from sysinv.helm.filebeat import FilebeatHelm
 from sysinv.helm.metricbeat import MetricbeatHelm
 from sysinv.helm.nginx_ingress import NginxIngressHelm
@@ -35,7 +37,9 @@ class MonitorArmadaManifestOperator(base.ArmadaManifestOperator):
     CHART_GROUPS_LUT = {
         NginxIngressHelm.CHART: CHART_GROUP_NGINX,
         KibanaHelm.CHART: CHART_GROUP_KIBANA,
-        ElasticsearchHelm.CHART: CHART_GROUP_ELASTICSEARCH,
+        ElasticsearchMasterHelm.CHART: CHART_GROUP_ELASTICSEARCH,
+        ElasticsearchClientHelm.CHART: CHART_GROUP_ELASTICSEARCH,
+        ElasticsearchDataHelm.CHART: CHART_GROUP_ELASTICSEARCH,
         LogstashHelm.CHART: CHART_GROUP_LOGSTASH,
         FilebeatHelm.CHART: CHART_GROUP_FILEBEAT,
         MetricbeatHelm.CHART: CHART_GROUP_METRICBEAT,
@@ -45,7 +49,9 @@ class MonitorArmadaManifestOperator(base.ArmadaManifestOperator):
     CHARTS_LUT = {
         NginxIngressHelm.CHART: 'nginx-ingress',
         KibanaHelm.CHART: 'kibana',
-        ElasticsearchHelm.CHART: 'elasticsearch',
+        ElasticsearchMasterHelm.CHART: 'elasticsearch-master',
+        ElasticsearchClientHelm.CHART: 'elasticsearch-client',
+        ElasticsearchDataHelm.CHART: 'elasticsearch-data',
         LogstashHelm.CHART: 'logstash',
         FilebeatHelm.CHART: 'filebeat',
         MetricbeatHelm.CHART: 'metricbeat',
