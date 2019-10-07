@@ -4434,3 +4434,111 @@ class Connection(object):
 
         :param fs_id: The id or uuid of a filesystem.
         """
+
+    @abc.abstractmethod
+    def kube_host_upgrade_create(self, forhostid, values):
+        """Create a new kube_host_upgrade for a host.
+
+        :param forhostid: uuid or id of an ihost
+        :param values: A dict containing several items used to identify
+                       and track the kube_host_upgrade.
+        :returns: A kube_host_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_host_upgrade_get(self, host_upgrade_id):
+        """Return kube_host_upgrade.
+
+        :param host_upgrade_id: The id or uuid of a kube_host_upgrade.
+        :returns: A kube_host_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_host_upgrade_get_list(self, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        """Return a list of kube_host_upgrade.
+
+        :param limit: Maximum number of kube_host_upgrade to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def kube_host_upgrade_get_by_host(self, host_id):
+        """List all the kube_host_upgrade for a given ihost.
+
+        :param host_id: The id or uuid of an ihost.
+        :returns: A list of kube_host_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_host_upgrade_update(self, host_upgrade_id, values):
+        """Update properties of a kube_host_upgrade.
+
+        :param host_upgrade_id: The id or uuid of a kube_host_upgrade.
+        :param values: Dict of values to update. May be a partial list.
+        :returns: A kube_host_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_host_upgrade_destroy(self, host_upgrade_id):
+        """Destroy a kube_host_upgrade.
+
+        :param host_upgrade_id: The id or uuid of a kube_host_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_upgrade_create(self, values):
+        """Create a new kube_upgrade for an isystem.
+
+        :param values: A dict containing several items used to identify
+                       and track the kube_upgrade settings.
+        :returns: A kube_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_upgrade_get(self, upgrade_id):
+        """Return an kube_upgrade.
+
+        :param upgrade_id: The id or uuid of an kube_upgrade.
+        :returns: A kube_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_upgrade_get_one(self):
+        """Return exactly one kube_upgrade.
+
+        :returns: A kube_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_upgrade_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+        """Return a list of kube_upgrade.
+
+        :param limit: Maximum number of kube_upgrade to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def kube_upgrade_update(self, upgrade_id, values):
+        """Update properties of an kube_upgrade.
+
+        :param upgrade_id: The id or uuid of a kube_upgrade.
+        :param values: Dict of values to update.
+        :returns: A kube_upgrade.
+        """
+
+    @abc.abstractmethod
+    def kube_upgrade_destroy(self, upgrade_id):
+        """Destroy an kube_upgrade.
+
+        :param upgrade_id: The id or uuid of a kube_upgrade.
+        """

@@ -26,6 +26,8 @@ from sysinv.openstack.common import jsonutils as json
 from sysinv.db import api as db_api
 
 
+from sysinv.openstack.common import uuidutils
+
 fake_info = {"foo": "bar"}
 
 ipmi_info = json.dumps(
@@ -232,6 +234,68 @@ def create_test_load(**kw):
     load = get_test_load(**kw)
     dbapi = db_api.get_instance()
     return dbapi.load_create(load)
+
+
+def get_test_kube_upgrade():
+    upgrade = {
+        'id': 1,
+        'uuid': uuidutils.generate_uuid(),
+        "from_version": 1,
+        "to_version": 2,
+        "state": "tbd",
+        "reserved_1": "res1",
+        "reserved_2": "res2",
+        "reserved_3": "res3",
+        "reserved_4": "res4",
+    }
+    return upgrade
+
+
+def get_test_kube_host_upgrade():
+    upgrade = {
+        'id': 1,
+        'uuid': uuidutils.generate_uuid(),
+        "target_version": 2,
+        "status": "tbd",
+        "reserved_1": "",
+        "reserved_2": "",
+        "reserved_3": "",
+        "reserved_4": "",
+        "host_id": 1,
+    }
+    return upgrade
+
+
+def create_test_kube_upgrade():
+    upgrade = get_test_kube_upgrade()
+
+    # Let DB generate ID and uuid
+    if 'id' in upgrade:
+        del upgrade['id']
+
+    if 'uuid' in upgrade:
+        del upgrade['uuid']
+
+    dbapi = db_api.get_instance()
+    return dbapi.kube_upgrade_create(upgrade)
+
+
+def create_test_kube_host_upgrade():
+    upgrade = get_test_kube_upgrade()
+
+    # Let DB generate ID, uuid and host_id
+    if 'id' in upgrade:
+        del upgrade['id']
+
+    if 'uuid' in upgrade:
+        del upgrade['uuid']
+
+    if 'host_id' in upgrade:
+        del upgrade['host_id']
+
+    dbapi = db_api.get_instance()
+    hostid = 1
+    return dbapi.kube_host_upgrade_create(hostid, upgrade)
 
 
 # Create test user object

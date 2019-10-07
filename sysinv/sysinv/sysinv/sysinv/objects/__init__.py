@@ -38,6 +38,8 @@ from sysinv.objects import host
 from sysinv.objects import host_upgrade
 from sysinv.objects import kube_app
 from sysinv.objects import kube_app_releases
+from sysinv.objects import kube_host_upgrade
+from sysinv.objects import kube_upgrade
 from sysinv.objects import interface
 from sysinv.objects import interface_ae
 from sysinv.objects import interface_ethernet
@@ -185,6 +187,8 @@ helm_overrides = helm_overrides.HelmOverrides
 label = label.Label
 kube_app = kube_app.KubeApp
 kube_app_releases = kube_app_releases.KubeAppReleases
+kube_host_upgrade = kube_host_upgrade.KubeHostUpgrade
+kube_upgrade = kube_upgrade.KubeUpgrade
 datanetwork = datanetwork.DataNetwork
 host_fs = host_fs.HostFS
 
@@ -254,6 +258,8 @@ __all__ = (system,
            helm_overrides,
            kube_app,
            kube_app_releases,
+           kube_host_upgrade,
+           kube_upgrade,
            datanetwork,
            interface_network,
            host_fs,
