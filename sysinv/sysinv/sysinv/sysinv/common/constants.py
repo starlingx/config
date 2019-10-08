@@ -227,9 +227,6 @@ COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND = 7000
 # Max number of physical cores in a xeon-d cpu
 NUMBER_CORES_XEOND = 8
 
-# Max number of workers that can be added to an AIO duplex system
-AIO_DUPLEX_MAX_WORKERS = 4
-
 # Network overhead for DHCP or vrouter, assume 100 networks * 40 MB each
 NETWORK_METADATA_OVERHEAD_MIB = 4000
 NETWORK_METADATA_OVERHEAD_MIB_VBOX = 0
