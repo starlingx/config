@@ -4390,13 +4390,11 @@ class ConductorManager(service.PeriodicService):
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
-        # Check if platform apps need to be re-applied when
-        # host services are available (after unlock),
-        # or hosts become unavailable (e.g. deleted) but only
-        # if system restore is not in progress
+        # Check if platform apps need to be re-applied when host services are
+        # available (after unlock), but only if system restore is not in
+        # progress
         if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) \
-           and availability in [constants.VIM_SERVICES_ENABLED,
-                                constants.AVAILABILITY_OFFLINE]:
+           and availability in [constants.VIM_SERVICES_ENABLED]:
             for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
                 if cutils.is_app_applied(self.dbapi, app_name):
                     self.evaluate_app_reapply(context, app_name)
