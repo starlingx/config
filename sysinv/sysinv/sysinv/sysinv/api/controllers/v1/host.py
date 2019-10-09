@@ -1342,7 +1342,7 @@ class HostController(rest.RestController):
                     "Host-add Rejected: Must provide a valid format "
                     "of a MAC Address"))
 
-        HostController._personality_license_check(personality)
+        HostController._personality_check(personality)
 
     def _do_post(self, ihost_dict):
         """Create a new ihost based off a dictionary of attributes """
@@ -4831,24 +4831,29 @@ class HostController(rest.RestController):
                 self._validate_hostname(hostname, personality)
 
         if 'personality' in delta:
-            HostController._personality_license_check(
+            HostController._personality_check(
                 hostupdate.ihost_patch['personality'])
 
     @staticmethod
-    def _personality_license_check(personality):
+    def _personality_check(personality):
+        """
+        Verify if a specified personality is suitable to the system configuration.
+         controller is suitable in any systems
+         additionally AIO-DX can have nothing but worker nodes
+         defer the check if personality is not specified
+        :param personality:
+        :return: nothing if check pass, exception will be raised otherwise
+        """
+
         if personality == constants.CONTROLLER:
             return
 
         if not personality:
             return
 
-        if personality == constants.WORKER and cutils.is_aio_duplex_system(pecan.request.dbapi):
-            if utils.get_worker_count() >= constants.AIO_DUPLEX_MAX_WORKERS:
-                msg = _("All-in-one Duplex is restricted to "
-                        "%s workers.") % constants.AIO_DUPLEX_MAX_WORKERS
-                raise wsme.exc.ClientSideError(msg)
-            else:
-                return
+        if personality == constants.WORKER and \
+                cutils.is_aio_duplex_system(pecan.request.dbapi):
+            return
 
         if (utils.SystemHelper.get_product_build() ==
                     constants.TIS_AIO_BUILD):
