@@ -137,14 +137,24 @@ def helm_upgrade_tiller(image):
         # Adding temporary workaround using helm init command with
         # sed command until helm and tiller provide a fix for
         # https://github.com/helm/helm/issues/6374
-        workaround = '| sed "s@apiVersion: extensions/v1beta1@apiVersion: apps/v1@" ' \
-                     '| kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -'
+        workaround_part1 = '--skip-refresh ' \
+                      '--service-account tiller ' \
+                      '--node-selectors "node-role.kubernetes.io/master"="" ' \
+                      '--override spec.template.spec.hostNetwork=true ' \
+                      '--override spec.selector.matchLabels.app=helm ' \
+                      '--override spec.selector.matchLabels.name=tiller ' \
+                      '--output yaml'
+        workaround_part2 = \
+            '| sed "s@apiVersion: extensions/v1beta1@apiVersion: apps/v1@" ' \
+            '| kubectl --kubeconfig /etc/kubernetes/admin.conf replace --force -f -'
 
-        cmd = '{} {} {}'.format(
+        cmd = '{} {} {} {}'.format(
             'helm init --upgrade --kubeconfig /etc/kubernetes/admin.conf --tiller-image',
             image,
-            workaround)
+            workaround_part1,
+            workaround_part2)
 
+        LOG.info("Execute command: %s" % cmd)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
         out, err = proc.communicate()
         if err:
