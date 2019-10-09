@@ -1388,4 +1388,21 @@ class FilesystemAlreadyExists(Conflict):
 
 
 class FilesystemNotFound(NotFound):
-    message = _("No Host FS with id %(fs_id)s not found")
+    message = _("Host FS with id %(fs_id)s not found")
+
+
+class KubeHostUpgradeAlreadyExists(Conflict):
+    message = _("A Kube Host Upgrade with id %(host_upgrade_id)s already exists.")
+
+
+class KubeHostUpgradeNotFound(NotFound):
+    message = _("Kube Host Upgrade with id %(host_upgrade_id)s not found")
+
+
+class KubeUpgradeAlreadyExists(Conflict):
+    message = _(
+        "A Kube Upgrade with id %(upgrade_id)s already exists.")
+
+
+class KubeUpgradeNotFound(NotFound):
+    message = _("Kube Upgrade with id %(upgrade_id)s not found")

@@ -132,6 +132,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _create_test_common(self):
         self._create_test_system()
         self._create_test_load()
+        self._create_test_kube_upgrades()
         self._create_test_drbd()
         self._create_test_remotelogging()
         self._create_test_user()
@@ -177,6 +178,29 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _create_test_ptp(self):
         self.ptp = dbutils.create_test_ptp(
             system_id=self.system.id)
+
+    def _create_test_kube_upgrades(self):
+        # Test kube_upgrade and kube_host_upgrade table creation
+        upgrade = dbutils.create_test_kube_upgrade()
+        host_upgrade = dbutils.create_test_kube_host_upgrade()
+
+        # Test updating state in kube_upgrade table
+        old_state = upgrade['state']
+        new_state = 'upgrading'
+        self.assertNotEqual(old_state, new_state)
+
+        res = self.dbapi.kube_upgrade_update(
+            upgrade['id'], {'state': new_state})
+        self.assertEqual(new_state, res['state'])
+
+        # Test updating status in kube_host_upgrade table
+        old_status = host_upgrade['status']
+        new_status = new_state
+        self.assertNotEqual(old_status, new_status)
+
+        res = self.dbapi.kube_host_upgrade_update(
+            host_upgrade['uuid'], {'status': new_status})
+        self.assertEqual(new_status, res['status'])
 
     def _create_test_network(self, name, nettype, subnet, ranges=None):
         if not ranges:

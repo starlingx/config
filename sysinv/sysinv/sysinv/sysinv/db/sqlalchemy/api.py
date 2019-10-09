@@ -1132,6 +1132,25 @@ def add_host_fs_filter(query, value):
     return add_identity_filter(query, value, use_fsname=True)
 
 
+def add_kube_host_upgrade_filter_by_host(query, value):
+    if utils.is_int_like(value):
+        return query.filter_by(host_id=value)
+    else:
+        query = query.join(models.ihost,
+                           models.KubeHostUpgrade.host_id == models.ihost.id)
+        return query.filter(models.ihost.uuid == value)
+
+
+def add_kube_host_upgrade_filter(query, value):
+    """Adds an upgrade-specific filter to a query.
+
+    :param query: Initial query to add filter to.
+    :param value: Value for filtering results by.
+    :return: Modified query.
+    """
+    return add_identity_filter(query, value)
+
+
 def add_host_fs_filter_by_ihost(query, value):
     if utils.is_int_like(value):
         return query.filter_by(forihostid=value)
@@ -8061,3 +8080,140 @@ class Connection(api.Connection):
                 model_query(models.HostFs, read_deleted="no").\
                     filter_by(id=fs_id).\
                     delete()
+
+    def _kube_host_upgrade_get(self, host_upgrade_id):
+        query = model_query(models.KubeHostUpgrade)
+        query = add_identity_filter(query, host_upgrade_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.KubeHostUpgradeNotFound(
+                host_upgrade_id=host_upgrade_id)
+
+        return result
+
+    @objects.objectify(objects.kube_host_upgrade)
+    def kube_host_upgrade_create(self, host_id, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        values['host_id'] = int(host_id)
+        upgrade = models.KubeHostUpgrade()
+        upgrade.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(upgrade)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.KubeHostUpgradeAlreadyExists(
+                    uuid=values['uuid'], host=host_id)
+
+            return self._kube_host_upgrade_get(values['uuid'])
+
+    @objects.objectify(objects.kube_host_upgrade)
+    def kube_host_upgrade_get(self, host_upgrade_id):
+        return self._kube_host_upgrade_get(host_upgrade_id)
+
+    @objects.objectify(objects.kube_host_upgrade)
+    def kube_host_upgrade_get_list(self, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        return _paginate_query(models.KubeHostUpgrade, limit, marker,
+                               sort_key, sort_dir)
+
+    @objects.objectify(objects.kube_host_upgrade)
+    def kube_host_upgrade_get_by_host(self, host_id):
+        query = model_query(models.KubeHostUpgrade)
+        query = add_kube_host_upgrade_filter_by_host(query, host_id)
+        return query.one()
+
+    @objects.objectify(objects.kube_host_upgrade)
+    def kube_host_upgrade_update(self, host_upgrade_id, values):
+        with _session_for_write() as session:
+            query = model_query(models.KubeHostUpgrade, read_deleted="no",
+                                session=session)
+            query = add_kube_host_upgrade_filter(query, host_upgrade_id)
+
+            count = query.update(values, synchronize_session='fetch')
+
+            if count != 1:
+                raise exception.KubeHostUpgradeNotFound(
+                    host_upgrade_id=host_upgrade_id)
+            return query.one()
+
+    def kube_host_upgrade_destroy(self, host_upgrade_id):
+        with _session_for_write() as session:
+            # Delete physically since it has unique columns
+            if uuidutils.is_uuid_like(host_upgrade_id):
+                model_query(models.KubeHostUpgrade,
+                            read_deleted="no", session=session).filter_by(
+                    uuid=host_upgrade_id).delete()
+            else:
+                model_query(models.KubeHostUpgrade, read_deleted="no").\
+                    filter_by(id=host_upgrade_id).delete()
+
+    def _kube_upgrade_get(self, upgrade_id):
+        query = model_query(models.KubeUpgrade)
+        query = add_identity_filter(query, upgrade_id)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.KubeUpgradeNotFound(upgrade_id=upgrade_id)
+
+    @objects.objectify(objects.kube_upgrade)
+    def kube_upgrade_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        kube_upgrade = models.KubeUpgrade()
+        kube_upgrade.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(kube_upgrade)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.KubeUpgradeAlreadyExists(uuid=values['uuid'])
+            return self._kube_upgrade_get(values['uuid'])
+
+    @objects.objectify(objects.kube_upgrade)
+    def kube_upgrade_get(self, server):
+        return self._kube_upgrade_get(server)
+
+    @objects.objectify(objects.kube_upgrade)
+    def kube_upgrade_get_one(self):
+        query = model_query(models.KubeUpgrade)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.kube_upgrade)
+    def kube_upgrade_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+
+        query = model_query(models.KubeUpgrade)
+
+        return _paginate_query(models.KubeUpgrade, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.kube_upgrade)
+    def kube_upgrade_update(self, upgrade_id, values):
+        with _session_for_write() as session:
+            query = model_query(models.KubeUpgrade, session=session)
+            query = add_identity_filter(query, upgrade_id)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.KubeUpgradeNotFound(upgrade_id=upgrade_id)
+            return query.one()
+
+    def kube_upgrade_destroy(self, upgrade_id):
+        with _session_for_write() as session:
+            query = model_query(models.KubeUpgrade, session=session)
+            query = add_identity_filter(query, upgrade_id)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.KubeUpgradeNotFound(upgrade_id=upgrade_id)
+            query.delete()

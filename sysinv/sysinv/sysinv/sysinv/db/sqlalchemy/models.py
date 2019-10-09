@@ -242,6 +242,7 @@ class ihost(Base):
     system = relationship("isystem")
 
     host_upgrade = relationship("HostUpgrade", uselist=False)
+    kube_host_upgrade = relationship("KubeHostUpgrade", uselist=False)
 
 
 class inode(Base):
@@ -1723,6 +1724,39 @@ class KubeAppReleases(Base):
     app_id = Column(Integer, ForeignKey('kube_app.id', ondelete='CASCADE'))
     kube_app = relationship("KubeApp", lazy="joined", join_depth=1)
     UniqueConstraint('release', 'namespace', 'app_id', name='u_app_release_namespace')
+
+
+class KubeHostUpgrade(Base):
+    __tablename__ = 'kube_host_upgrade'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+
+    target_version = Column(String(255), nullable=False)
+    status = Column(String(128), nullable=False)
+    reserved_1 = Column(String(255))
+    reserved_2 = Column(String(255))
+    reserved_3 = Column(String(255))
+    reserved_4 = Column(String(255))
+
+    host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
+
+    host = relationship("ihost", lazy="joined", join_depth=1)
+
+
+class KubeUpgrade(Base):
+    __tablename__ = 'kube_upgrade'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+
+    from_version = Column(String(255), nullable=False)
+    to_version = Column(String(255), nullable=False)
+    state = Column(String(128), nullable=False)
+    reserved_1 = Column(String(255))
+    reserved_2 = Column(String(255))
+    reserved_3 = Column(String(255))
+    reserved_4 = Column(String(255))
 
 
 class HostFs(Base):
