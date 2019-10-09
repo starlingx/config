@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 # Copyright (c) 2015-2016 Wind River Systems, Inc.
 #
