@@ -3565,7 +3565,7 @@ class HostController(rest.RestController):
         for m in mems:
             memtotal = m.node_memtotal_mib
             allocated = m.platform_reserved_mib
-            if m.hugepages_configured:
+            if m.hugepages_configured == "True":
                 if m.vswitch_hugepages_reqd is not None:
                     allocated += m.vswitch_hugepages_reqd * m.vswitch_hugepages_size_mib
                 else:
@@ -3680,7 +3680,7 @@ class HostController(rest.RestController):
         for node in ihost_inodes:
             mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
             for m in mems:
-                if m.hugepages_configured:
+                if m.hugepages_configured == "True":
                     value = {}
                     vs_hugepages_nr = m.vswitch_hugepages_nr
                     vm_hugepages_nr_2M = m.vm_hugepages_nr_2M_pending \
