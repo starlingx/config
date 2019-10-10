@@ -2426,58 +2426,48 @@ def apply_profile(host_id, profile_id):
 
 @cutils.synchronized(cpu_api.LOCK_NAME)
 def cpuprofile_apply_to_host(host, profile):
-    host.cpus = pecan.request.dbapi.icpu_get_by_ihost(host.uuid, sort_key=['forinodeid', 'core', 'thread'])
-    host.nodes = pecan.request.dbapi.inode_get_by_ihost(host.uuid, sort_key='numa_node')
+
+    cpu_api._check_host(host)
+
+    # Populate the host and profile CPU data, order by logical core
+    host.cpus = pecan.request.dbapi.icpu_get_by_ihost(
+        host.uuid, sort_key='cpu')
+    host.nodes = pecan.request.dbapi.inode_get_by_ihost(host.uuid)
     if not host.cpus or not host.nodes:
         raise wsme.exc.ClientSideError("Host (%s) has no processors "
                                        "or cores." % host.hostname)
 
-    profile.cpus = pecan.request.dbapi.icpu_get_by_ihost(profile.uuid, sort_key=['forinodeid', 'core', 'thread'])
-    profile.nodes = pecan.request.dbapi.inode_get_by_ihost(profile.uuid, sort_key='numa_node')
+    profile.cpus = pecan.request.dbapi.icpu_get_by_ihost(
+        profile.uuid, sort_key='cpu')
+    profile.nodes = pecan.request.dbapi.inode_get_by_ihost(profile.uuid)
     if not profile.cpus or not profile.nodes:
         raise wsme.exc.ClientSideError("Profile (%s) has no processors "
                                        "or cores." % profile.hostname)
 
-    h_struct = cpu_utils.HostCpuProfile(host.subfunctions, host.cpus, host.nodes)
-    cpu_profile = cpu_utils.CpuProfile(profile.cpus, profile.nodes)
+    if len(profile.nodes) != len(host.nodes) or len(profile.cpus) != \
+            len(host.cpus):
+        raise wsme.exc.ClientSideError(
+            "Profile (%s) does not match CPU structure of host (%s)" %
+            (profile.hostname, host.hostname))
 
-    errorstring = h_struct.profile_applicable(cpu_profile)
+    # Reorganize the profile cpu data for convenience
+    cpu_utils.restructure_host_cpu_data(profile)
 
-    if errorstring:
-        raise wsme.exc.ClientSideError(errorstring)
+    # Get the CPU counts for each socket and function for this host
+    cpu_counts = cpu_utils.get_cpu_counts(profile)
 
-    numa_node_idx = -1
-    core_idx = 0
-    cur_numa_node = None
-    cur_core = None
-    for hcpu in host.cpus:
-        if hcpu.numa_node != cur_numa_node:
-            cur_numa_node = hcpu.numa_node
-            numa_node_idx += 1
-            core_idx = 0
-            cur_core = hcpu.core
-            p_processor = cpu_profile.processors[numa_node_idx]
-            vswitch_core_start = p_processor.platform
-            shared_core_start = p_processor.vswitch + vswitch_core_start
-            vm_core_start = p_processor.shared + shared_core_start
-            vm_core_end = p_processor.vms + vm_core_start
-        else:
-            if hcpu.core != cur_core:
-                core_idx += 1
-                cur_core = hcpu.core
+    # Semantic check to ensure the minimum/maximum values are enforced
+    cpu_utils.check_core_allocations(profile, cpu_counts)
 
-        if core_idx < vswitch_core_start:
-            new_func = constants.PLATFORM_FUNCTION
-        elif core_idx < shared_core_start:
-            new_func = constants.VSWITCH_FUNCTION
-        elif core_idx < vm_core_start:
-            new_func = constants.SHARED_FUNCTION
-        elif core_idx < vm_core_end:
-            new_func = constants.APPLICATION_FUNCTION
-
-        if new_func != hcpu.allocated_function:
-            values = {'allocated_function': new_func}
-            cpu_api._update(hcpu.uuid, values, from_profile=True)
+    # Update the host cpu allocations as required
+    for index in range(len(profile.cpus)):
+        host_cpu = host.cpus[index]
+        profile_cpu = profile.cpus[index]
+        if (not host_cpu.allocated_function or
+                    host_cpu.allocated_function.lower() !=
+                    profile_cpu.allocated_function.lower()):
+            values = {'allocated_function': profile_cpu.allocated_function}
+            pecan.request.dbapi.icpu_update(host_cpu.uuid, values)
 
 
 def ifprofile_applicable(host, profile):
