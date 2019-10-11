@@ -804,11 +804,11 @@ def get_interface_sysctl_ifname(context, iface):
     """
     Get the interface name that is used for sysctl commands
     """
+    os_ifname = get_interface_os_ifname(context, iface)
     if (iface['iftype'] == constants.INTERFACE_TYPE_VLAN):
-        os_ifname = get_interface_os_ifname(context, iface)
         return os_ifname.replace('.', '/')
     else:
-        return iface['ifname']
+        return os_ifname
 
 
 def get_duplex_direct_network_config(context, iface, config, sysctl_ifname):
