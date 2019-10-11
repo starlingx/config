@@ -2589,6 +2589,8 @@ class DockerHelper(object):
 
                 if quay_registry_url:
                     quay_url = quay_registry_url[0].value
+                    # If registry url has a port, strip it out
+                    quay_url = re.sub(r':[0-9]+', '', quay_url)
                 else:
                     quay_url = constants.DEFAULT_DOCKER_QUAY_REGISTRY
 
