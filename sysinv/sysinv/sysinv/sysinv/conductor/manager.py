@@ -9248,8 +9248,8 @@ class ConductorManager(service.PeriodicService):
         :param name: secret name
         :param payload: secret payload
         """
-        self._openstack.create_barbican_secret(context=context,
-                                               name=name, payload=payload)
+        return self._openstack.create_barbican_secret(context=context,
+                                                      name=name, payload=payload)
 
     def delete_barbican_secret(self, context, name):
         """Calls Barbican API to delete a secret
