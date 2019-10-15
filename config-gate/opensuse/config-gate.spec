@@ -34,9 +34,7 @@ General configuration for the initialization gate
 make install SBINDIR=%{buildroot}%{_sbindir} SYSTEMDDIR=%{buildroot}%{local_etc_systemd}
 
 %post
-%service_add_post sysinv-agent.service sysinv-agent.target
-
-/bin/systemctl enable config.service
+%service_add_post config.service config.target
 
 %post -n %{name}-worker
 systemctl enable worker-config-gate.service
