@@ -1,6 +1,6 @@
 Summary: StarlingX Config Info
 Name: tsconfig
-Version: 1.0
+Version: 1.0.0
 Release: %{tis_patch_ver}%{?_tis_dist}
 License: Apache-2.0
 Group: Development/Languages/Python
@@ -44,7 +44,7 @@ rm -rf $RPM_BUILD_ROOT
 %{local_bindir}/*
 %dir %{pythonroot}/%{name}
 %{pythonroot}/%{name}/*
-%dir %{pythonroot}/%{name}-%{version}.0-py2.7.egg-info
-%{pythonroot}/%{name}-%{version}.0-py2.7.egg-info/*
+%dir %{pythonroot}/%{name}-%{version}-py2.7.egg-info
+%{pythonroot}/%{name}-%{version}-py2.7.egg-info/*
 
 %changelog

@@ -1,6 +1,6 @@
 Summary: System Client and CLI
 Name: cgts-client
-Version: 1.0
+Version: 1.0.0
 Release: 2
 License: Apache-2.0
 Group: System/Base
