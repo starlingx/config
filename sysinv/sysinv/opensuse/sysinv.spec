@@ -11,12 +11,20 @@ BuildRequires: python-setuptools
 BuildRequires: python-pbr
 BuildRequires: python2-pip
 BuildRequires: systemd
+
+Requires: cgcs-patch
+Requires: controllerconfig
+Requires: platform-utils
 Requires: python-boto3
+Requires: python-cephclient
+Requires: python-fmclient
 Requires: python-parted
+Requires: python2-coverage
 Requires: python2-docker
 Requires: python2-eventlet
 Requires: python2-ipaddr
 Requires: python2-keyring
+Requires: python2-keystonemiddleware
 Requires: python2-kubernetes
 Requires: python2-netaddr
 Requires: python2-pyudev
@@ -32,6 +40,7 @@ Requires: python2-oslo.log
 Requires: python2-oslo.utils
 Requires: python2-pecan
 Requires: tsconfig
+
 
 %description
 StarlingX System Inventory
