@@ -201,6 +201,8 @@ class LabelController(rest.RestController):
 
         _check_host_locked(host, body.keys())
 
+        _semantic_check_worker_labels(body)
+
         try:
             pecan.request.rpcapi.update_kubernetes_label(
                 pecan.request.context,
@@ -297,7 +299,9 @@ def _check_host_locked(host, host_labels):
              common.LABEL_COMPUTE_LABEL,
              common.LABEL_OPENVSWITCH,
              common.LABEL_REMOTE_STORAGE,
-             common.LABEL_SRIOVDP]
+             common.LABEL_SRIOVDP,
+             constants.KUBE_TOPOLOGY_MANAGER_LABEL,
+             constants.KUBE_CPU_MANAGER_LABEL]
 
         lock_required_labels = [x for x in host_labels
                                 if x in labels_requiring_lock]
@@ -306,3 +310,20 @@ def _check_host_locked(host, host_labels):
             raise wsme.exc.ClientSideError(
                 "Host %s must be locked for label(s)=%s." %
                 (host.hostname, lock_required_labels))
+
+
+def _semantic_check_worker_labels(body):
+    """
+    Perform semantic checks to ensure the worker labels are valid.
+    """
+    for label_key, label_value in body.items():
+        if label_key == constants.KUBE_TOPOLOGY_MANAGER_LABEL:
+            if label_value not in constants.KUBE_TOPOLOGY_MANAGER_VALUES:
+                raise wsme.exc.ClientSideError(
+                    _(
+                        "Invalid value for %s label." % constants.KUBE_TOPOLOGY_MANAGER_LABEL))
+        elif label_key == constants.KUBE_CPU_MANAGER_LABEL:
+            if label_value not in constants.KUBE_CPU_MANAGER_VALUES:
+                raise wsme.exc.ClientSideError(
+                    _(
+                        "Invalid value for %s label." % constants.KUBE_CPU_MANAGER_LABEL))

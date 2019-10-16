@@ -234,6 +234,14 @@ class KubernetesPuppet(base.BasePuppet):
         LOG.debug('host:%s, k8s_cpuset:%s, k8s_nodeset:%s',
                   host.hostname, k8s_cpuset, k8s_nodeset)
 
+        # determine cpu/topology mgr policies
+        labels = self.dbapi.label_get_by_host(host.uuid)
+        for label in labels:
+            if label.label_key == constants.KUBE_TOPOLOGY_MANAGER_LABEL:
+                config.update({'platform::kubernetes::params::k8s_topology_mgr_policy': label.label_value})
+            elif label.label_key == constants.KUBE_CPU_MANAGER_LABEL:
+                config.update({'platform::kubernetes::params::k8s_cpu_mgr_policy': label.label_value})
+
         config.update(
             {'platform::kubernetes::params::k8s_cpuset':
              "\"%s\"" % k8s_cpuset,

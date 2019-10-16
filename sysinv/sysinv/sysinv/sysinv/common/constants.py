@@ -1480,7 +1480,20 @@ COMPUTE_NODE_LABEL = 'openstack-compute-node=enabled'
 OPENVSWITCH_LABEL = 'openvswitch=enabled'
 SRIOV_LABEL = 'sriov=enabled'
 SRIOVDP_LABEL = 'sriovdp=enabled'
+KUBE_TOPOLOGY_MANAGER_LABEL = 'kube-topology-mgr-policy'
+KUBE_CPU_MANAGER_LABEL = 'kube-cpu-mgr-policy'
 
+# Accepted label values
+KUBE_TOPOLOGY_MANAGER_VALUES = [
+    'none',
+    'best-effort',
+    'restricted',
+    'single-numa-node'
+]
+KUBE_CPU_MANAGER_VALUES = [
+    'none',
+    'static'
+]
 # Default DNS service domain
 DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
 
