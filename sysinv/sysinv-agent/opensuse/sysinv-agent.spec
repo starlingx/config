@@ -9,6 +9,10 @@ Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: systemd-devel
 
+Requires: python-django
+Requires: python-oslo.messaging
+Requires: python-retrying
+
 BuildArch: noarch
 
 %description
@@ -32,9 +36,6 @@ install -p -D -m 755 sysinv-agent %{buildroot}%{local_etc_initd}/sysinv-agent
 install -d -m 755 %{buildroot}%{local_etc_pmond}
 install -p -D -m 644 sysinv-agent.conf %{buildroot}%{local_etc_pmond}/sysinv-agent.conf
 install -p -D -m 644 sysinv-agent.service %{buildroot}%{_unitdir}/sysinv-agent.service
-
-#%%post
-#/usr/bin/systemctl enable sysinv-agent.service >/dev/null 2>&1
 
 %clean
 rm -rf $RPM_BUILD_ROOT
