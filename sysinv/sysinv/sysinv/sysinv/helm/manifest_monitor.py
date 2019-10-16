@@ -15,6 +15,7 @@ from sysinv.helm.logstash import LogstashHelm
 from sysinv.helm.kibana import KibanaHelm
 from sysinv.helm.elasticsearch_master import ElasticsearchMasterHelm
 from sysinv.helm.elasticsearch_client import ElasticsearchClientHelm
+from sysinv.helm.elasticsearch_curator import ElasticsearchCuratorHelm
 from sysinv.helm.elasticsearch_data import ElasticsearchDataHelm
 from sysinv.helm.filebeat import FilebeatHelm
 from sysinv.helm.metricbeat import MetricbeatHelm
@@ -30,6 +31,7 @@ class MonitorArmadaManifestOperator(base.ArmadaManifestOperator):
     CHART_GROUP_NGINX = 'nginx-ingress'
     CHART_GROUP_KIBANA = 'kibana'
     CHART_GROUP_ELASTICSEARCH = 'elasticsearch'
+    CHART_GROUP_ELASTICSEARCH_CURATOR = 'elasticsearch-curator'
     CHART_GROUP_LOGSTASH = 'logstash'
     CHART_GROUP_FILEBEAT = 'filebeat'
     CHART_GROUP_METRICBEAT = 'metricbeat'
@@ -40,6 +42,7 @@ class MonitorArmadaManifestOperator(base.ArmadaManifestOperator):
         ElasticsearchMasterHelm.CHART: CHART_GROUP_ELASTICSEARCH,
         ElasticsearchClientHelm.CHART: CHART_GROUP_ELASTICSEARCH,
         ElasticsearchDataHelm.CHART: CHART_GROUP_ELASTICSEARCH,
+        ElasticsearchCuratorHelm.CHART: CHART_GROUP_ELASTICSEARCH_CURATOR,
         LogstashHelm.CHART: CHART_GROUP_LOGSTASH,
         FilebeatHelm.CHART: CHART_GROUP_FILEBEAT,
         MetricbeatHelm.CHART: CHART_GROUP_METRICBEAT,
@@ -52,6 +55,7 @@ class MonitorArmadaManifestOperator(base.ArmadaManifestOperator):
         ElasticsearchMasterHelm.CHART: 'elasticsearch-master',
         ElasticsearchClientHelm.CHART: 'elasticsearch-client',
         ElasticsearchDataHelm.CHART: 'elasticsearch-data',
+        ElasticsearchCuratorHelm.CHART: 'elasticsearch-curator',
         LogstashHelm.CHART: 'logstash',
         FilebeatHelm.CHART: 'filebeat',
         MetricbeatHelm.CHART: 'metricbeat',

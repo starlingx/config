@@ -61,6 +61,7 @@ HELM_CHART_NGINX_PORTS_CONTROL = "nginx-ports-control"
 HELM_CHART_ELASTICSEARCH_MASTER = 'elasticsearch-master'
 HELM_CHART_ELASTICSEARCH_DATA = 'elasticsearch-data'
 HELM_CHART_ELASTICSEARCH_CLIENT = 'elasticsearch-client'
+HELM_CHART_ELASTICSEARCH_CURATOR = 'elasticsearch-curator'
 HELM_CHART_KIBANA = 'kibana'
 HELM_CHART_FILEBEAT = 'filebeat'
 HELM_CHART_METRICBEAT = 'metricbeat'
