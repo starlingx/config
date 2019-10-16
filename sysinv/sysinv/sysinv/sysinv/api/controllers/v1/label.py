@@ -16,6 +16,7 @@ from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.helm import common
 from sysinv.openstack.common import excutils
 from sysinv.openstack.common import log
 from sysinv.openstack.common.gettextutils import _
@@ -198,7 +199,7 @@ class LabelController(rest.RestController):
         LOG.info("patch_data: %s" % body)
         host = objects.host.get_by_uuid(pecan.request.context, uuid)
 
-        _check_host_locked(host)
+        _check_host_locked(host, body.keys())
 
         try:
             pecan.request.rpcapi.update_kubernetes_label(
@@ -250,9 +251,10 @@ class LabelController(rest.RestController):
 
         lbl_obj = objects.label.get_by_uuid(pecan.request.context, uuid)
         host = objects.host.get_by_uuid(pecan.request.context, lbl_obj.host_id)
-        label_dict = {lbl_obj.label_key: None}
 
-        _check_host_locked(host)
+        _check_host_locked(host, [lbl_obj.label_key])
+
+        label_dict = {lbl_obj.label_key: None}
 
         try:
             pecan.request.rpcapi.update_kubernetes_label(
@@ -287,6 +289,20 @@ class LabelController(rest.RestController):
 ###########
 # UTILS
 ###########
-def _check_host_locked(host):
+def _check_host_locked(host, host_labels):
     if host.administrative != constants.ADMIN_LOCKED:
-        raise wsme.exc.ClientSideError(_("Host must be locked."))
+        # check if host has any labels which require host-lock
+        labels_requiring_lock = \
+            [common.LABEL_CONTROLLER,
+             common.LABEL_COMPUTE_LABEL,
+             common.LABEL_OPENVSWITCH,
+             common.LABEL_REMOTE_STORAGE,
+             common.LABEL_SRIOVDP]
+
+        lock_required_labels = [x for x in host_labels
+                                if x in labels_requiring_lock]
+
+        if lock_required_labels:
+            raise wsme.exc.ClientSideError(
+                "Host %s must be locked for label(s)=%s." %
+                (host.hostname, lock_required_labels))

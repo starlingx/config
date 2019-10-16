@@ -23,7 +23,8 @@ class KibanaHelm(elastic.ElasticBaseHelm):
                     "externalPort": self.SERVICE_PORT,
                     "internalPort": self.SERVICE_PORT,
                     "portName": self.SERVICE_NAME
-                }
+                },
+                "resources": self._get_resources_overrides(),
             }
         }
 
@@ -34,3 +35,20 @@ class KibanaHelm(elastic.ElasticBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    @staticmethod
+    def _get_resources_overrides():
+
+        cpu_requests = "100m"
+        memory_size = "256Mi"
+        # cpu_limits = "500m"
+        cpu_limits = "1"
+        memory_limits = "512Mi"
+
+        return {'requests': {
+                    'cpu': cpu_requests,
+                    'memory': memory_size},
+                'limits': {
+                    'cpu': cpu_limits,
+                    'memory': memory_limits},
+                }

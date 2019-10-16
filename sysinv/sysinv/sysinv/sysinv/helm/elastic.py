@@ -23,7 +23,7 @@ class ElasticBaseHelm(base.BaseHelm):
     }
 
     # Size of elasticsearch data volume.
-    DATA_VOLUME_SIZE_GB = 100
+    DATA_VOLUME_SIZE_GB = 150
 
     @property
     def CHART(self):

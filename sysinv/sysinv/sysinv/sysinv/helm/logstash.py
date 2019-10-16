@@ -28,12 +28,11 @@ class LogstashHelm(elastic.ElasticBaseHelm):
         overrides = {
             common.HELM_NS_MONITOR: {
                 'replicaCount': replicas,
-                'persistence': {
-                    'storageClass': 'general',
-                    'size': "20Gi"},
+                'resources': self._get_resources_overrides(),
                 'config': {
-                    'elasticsearch.path': ""},
-                'systemNameForIndex': system_name_for_index
+                    'elasticsearch.path': "",
+                },
+                'systemNameForIndex': system_name_for_index,
             }
         }
 
@@ -44,3 +43,17 @@ class LogstashHelm(elastic.ElasticBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_resources_overrides(self):
+
+        if utils.is_aio_system(self.dbapi):
+            cpu_limits = "500m"
+            memory_limits = "1024Mi"
+        else:
+            cpu_limits = "500m"
+            memory_limits = "2048Mi"
+
+        return {'limits': {
+                    'cpu': cpu_limits,
+                    'memory': memory_limits},
+                }
