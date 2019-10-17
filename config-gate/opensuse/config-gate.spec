@@ -1,6 +1,6 @@
 Summary: General config initialization gate
 Name: config-gate
-Version: 1.0
+Version: 1.0.0
 Release: 1
 License: Apache-2.0
 Group: Development/Tools/Other

@@ -1,6 +1,6 @@
 Summary: StarlingX Host Inventory Init Package
 Name: sysinv-agent
-Version: 1.0
+Version: 1.0.0
 Release: %{tis_patch_ver}%{?_tis_dist}
 License: Apache-2.0
 Group: Development/Tools/Other

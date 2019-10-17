@@ -3,7 +3,7 @@
 %define debug_package %{nil}
 
 Name:           storageconfig
-Version:	1.0
+Version:	1.0.0
 Release:	1
 License:	Apache-2.0
 Summary:	Initial Storage Node Configuration
