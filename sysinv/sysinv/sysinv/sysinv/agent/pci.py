@@ -168,6 +168,33 @@ class PCIDevice(object):
         return "<PCIDevice '%s'>" % str(self)
 
 
+class DevicePlugin(object):
+    '''Class to record specific information of each k8s device plugins'''
+    def __init__(self):
+        return
+
+    def get_label(pci_device_list):
+        return None
+
+
+class IntelGPUdp(DevicePlugin):
+    def __init__(self):
+        return
+
+    def get_label(self, pci_device_list):
+
+        for device in pci_device_list:
+            if "VGA" in device['pclass'] and device['driver'] is not None:
+                if "i915" in device['driver']:
+                    label = {}
+                    label.update({'label_key': 'intelgpu'})
+                    label.update({'label_value': 'enabled'})
+                    return label
+
+
+DEVICE_PLUGIN_LIST = [IntelGPUdp()]
+
+
 class PCIOperator(object):
     '''Class to encapsulate PCI operations for System Inventory'''
 
@@ -667,3 +694,13 @@ class PCIOperator(object):
                     pci_attrs_array.append(attrs)
 
         return pci_attrs_array
+
+    def get_support_dp_labels(self, pci_device_list):
+
+        labels = []
+        for device in DEVICE_PLUGIN_LIST:
+            label = device.get_label(pci_device_list)
+            if label is not None:
+                labels.append(label)
+
+        return labels

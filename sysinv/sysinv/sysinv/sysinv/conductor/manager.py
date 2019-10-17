@@ -34,6 +34,7 @@ import filecmp
 import fnmatch
 import glob
 import hashlib
+import json
 import math
 import os
 import re
@@ -4198,6 +4199,56 @@ class ConductorManager(service.PeriodicService):
                                          stor_nodes_uuids,
                                          tsc.install_uuid)
             greenthread.sleep(constants.FIX_INSTALL_UUID_INTERVAL_SECS)
+
+    def _get_kube_plugin_labels(self):
+
+        # this file will be generated after initial config process if the
+        # kubernetes device plugin list is not empty.
+        if not os.path.isfile('/etc/platform/enabled_kube_plugins'):
+            return None
+
+        try:
+            file_object = open('/etc/platform/enabled_kube_plugins')
+            plugins = json.loads(file_object.read())
+            labels = list(plugins.values())
+            return labels
+        except Exception as e:
+            LOG.error("failed to get kube_plugin list from file. \
+                       exception: %s" % str(e))
+            return None
+
+    def device_plugin_labels_update_by_ihost(self, context,
+                                             host_uuid, device_plugin_labels):
+
+        """Assign device plugin labels to an ihost with the supplied data.
+
+        :param context: an admin context
+        :param host_uuid: host uuid unique id
+        :param device_plugin_labels: kubernetes labels request to assign
+        """
+        enabled_kube_labels = self._get_kube_plugin_labels()
+        if enabled_kube_labels is None:
+            LOG.info("Vendor k8s device plugin list is empty. \
+                     Set parameters in ansible override file if required.")
+            return
+
+        host_uuid.strip()
+        try:
+            ihost = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            LOG.exception("Invalid host_uuid %s" % host_uuid)
+            return
+
+        for label in device_plugin_labels:
+            kube_label = label['label_key'] + "=" + label['label_value']
+            if kube_label not in enabled_kube_labels:
+                continue
+
+            label.update({'host_id': ihost.id})
+            try:
+                self.dbapi.label_create(host_uuid, label)
+            except exception.HostLabelAlreadyExists:
+                pass
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _agent_update_request(self, context):
