@@ -57,7 +57,7 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
                 'volumeClaimTemplate': {
                     'accessModes': ["ReadWriteOnce"],
                     'resources': {
-                        'requests': {'storage': '100Gi'}
+                        'requests': {'storage': str(self.DATA_VOLUME_SIZE_GB) + 'Gi'}
                     },
                     'storageClass': 'general'
                 },

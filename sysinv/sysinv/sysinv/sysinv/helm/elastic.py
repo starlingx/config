@@ -22,6 +22,9 @@ class ElasticBaseHelm(base.BaseHelm):
             base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_MONITOR]
     }
 
+    # Size of elasticsearch data volume.
+    DATA_VOLUME_SIZE_GB = 100
+
     @property
     def CHART(self):
         # subclasses must define the property: CHART='name of chart'

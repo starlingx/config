@@ -203,11 +203,48 @@ class KubeAppController(rest.RestController):
             helm_common.HELM_CHART_LOGSTASH,
             helm_common.HELM_NS_MONITOR)
 
-        elasticsearch_active = cutils.is_chart_enabled(
+        elasticsearch_client_active = cutils.is_chart_enabled(
+            pecan.request.dbapi,
+            constants.HELM_APP_MONITOR,
+            helm_common.HELM_CHART_ELASTICSEARCH_CLIENT,
+            helm_common.HELM_NS_MONITOR)
+
+        elasticsearch_data_active = cutils.is_chart_enabled(
+            pecan.request.dbapi,
+            constants.HELM_APP_MONITOR,
+            helm_common.HELM_CHART_ELASTICSEARCH_DATA,
+            helm_common.HELM_NS_MONITOR)
+
+        elasticsearch_master_active = cutils.is_chart_enabled(
             pecan.request.dbapi,
             constants.HELM_APP_MONITOR,
             helm_common.HELM_CHART_ELASTICSEARCH_MASTER,
             helm_common.HELM_NS_MONITOR)
+
+        elasticsearch_active = (elasticsearch_client_active and
+            elasticsearch_data_active and elasticsearch_master_active)
+
+        # elasticsearch charts must either all be active or
+        # all inactive
+        if (not elasticsearch_active and (elasticsearch_client_active or
+                elasticsearch_data_active or elasticsearch_master_active)):
+            raise wsme.exc.ClientSideError(
+                _("Operation rejected: application stx-monitor "
+                  "requires charts: elasticsearch-master, "
+                  "elasticsearch-client and elasticsearch-data either all "
+                  "enabled, or all disabled"))
+
+        curator_active = cutils.is_chart_enabled(
+            pecan.request.dbapi,
+            constants.HELM_APP_MONITOR,
+            helm_common.HELM_CHART_ELASTICSEARCH_CURATOR,
+            helm_common.HELM_NS_MONITOR)
+
+        if (not elasticsearch_active) and curator_active:
+            raise wsme.exc.ClientSideError(
+                _("Operation rejected: application stx-monitor "
+                  "does not allow elasticsearch-curator chart enabled "
+                  "without the elasticsearch charts also enabled"))
 
         if not elasticsearch_active and not logstash_active:
             # Nothing to check, exit
