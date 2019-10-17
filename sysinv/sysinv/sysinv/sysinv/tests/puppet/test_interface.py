@@ -431,7 +431,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
         self._update_context()
         value = interface.get_interface_os_ifname(self.context, vlan)
-        self.assertEqual(value, self.port['name'] + ".1")
+        self.assertEqual(value, "vlan1")
 
     def test_get_interface_os_ifname_vlan_over_bond(self):
         bond = self._create_bond_test("none")
@@ -440,7 +440,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_CLUSTER_HOST, 1, bond)
         self._update_context()
         value = interface.get_interface_os_ifname(self.context, vlan)
-        self.assertEqual(value, bond['ifname'] + ".1")
+        self.assertEqual(value, "vlan1")
 
     def test_get_interface_primary_address(self):
         address = interface.get_interface_primary_address(
@@ -1104,6 +1104,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         config = interface.get_interface_network_config(self.context, vlan)
         options = {'IPV6_AUTOCONF': 'no',
+                   'PHYSDEV': self.port['name'],
                    'VLAN': 'yes',
                    'pre_up': '/sbin/modprobe -q 8021q'}
         expected = self._get_network_config(
@@ -1118,6 +1119,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         config = interface.get_interface_network_config(self.context, vlan)
         options = {'IPV6_AUTOCONF': 'no',
+                   'PHYSDEV': bond['ifname'],
                    'VLAN': 'yes',
                    'pre_up': '/sbin/modprobe -q 8021q'}
         expected = self._get_network_config(

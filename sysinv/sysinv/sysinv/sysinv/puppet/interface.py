@@ -537,8 +537,11 @@ def get_interface_os_ifname(context, iface):
         if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
             os_ifname = get_interface_port_name(context, iface)
         elif iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-            lower_os_ifname = get_lower_interface_os_ifname(context, iface)
-            os_ifname = lower_os_ifname + "." + str(iface['vlan_id'])
+            if iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+                os_ifname = "vlan" + str(iface['vlan_id'])
+            else:
+                lower_os_ifname = get_lower_interface_os_ifname(context, iface)
+                os_ifname = lower_os_ifname + "." + str(iface['vlan_id'])
         elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
             os_ifname = iface['ifname']
         iface['_os_ifname'] = os_ifname  # cache the result
@@ -829,7 +832,9 @@ def get_vlan_network_config(context, iface, config):
     Augments a basic config dictionary with the attributes specific to a VLAN
     interface.
     """
+    lower_os_ifname = get_lower_interface_os_ifname(context, iface)
     options = {'VLAN': 'yes',
+               'PHYSDEV': lower_os_ifname,
                'pre_up': '/sbin/modprobe -q 8021q'}
     config['options'].update(options)
     return config
