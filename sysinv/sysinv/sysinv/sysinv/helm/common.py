@@ -57,6 +57,7 @@ HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
 HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
 HELM_CHART_SWIFT = 'ceph-rgw'
 HELM_CHART_NGINX_PORTS_CONTROL = "nginx-ports-control"
+HELM_CHART_DCDBSYNC = 'dcdbsync'
 
 HELM_CHART_ELASTICSEARCH_MASTER = 'elasticsearch-master'
 HELM_CHART_ELASTICSEARCH_DATA = 'elasticsearch-data'

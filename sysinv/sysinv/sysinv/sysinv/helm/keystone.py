@@ -268,3 +268,12 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
             if service_config is not None:
                 return service_config.capabilities.get('admin_project_domain')
         return self.DEFAULT_DOMAIN_NAME
+
+    def get_admin_password(self):
+        o_user = self.get_admin_user_name()
+        o_service = common.SERVICE_ADMIN
+
+        return self._get_identity_password(o_service, o_user)
+
+    def get_region_name(self):
+        return self._get_service_region_name(self.SERVICE_NAME)

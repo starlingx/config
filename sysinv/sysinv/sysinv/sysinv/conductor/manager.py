@@ -6510,7 +6510,8 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::sm::stx_openstack::runtime']
+            "classes": ['platform::sm::stx_openstack::runtime',
+                        'platform::dcdbsync::stx_openstack::runtime']
         }
 
         self._config_apply_runtime_manifest(context,
@@ -6528,6 +6529,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::nfv::runtime',
+                        'platform::dcdbsync::stx_openstack::runtime',
                         'platform::sm::stx_openstack::runtime']
         }
 

@@ -16,6 +16,7 @@ from sysinv.helm.aodh import AodhHelm
 from sysinv.helm.barbican import BarbicanHelm
 from sysinv.helm.ceilometer import CeilometerHelm
 from sysinv.helm.cinder import CinderHelm
+from sysinv.helm.dcdbsync import DcdbsyncHelm
 from sysinv.helm.fm_rest_api import FmRestApiHelm
 from sysinv.helm.garbd import GarbdHelm
 from sysinv.helm.glance import GlanceHelm
@@ -67,6 +68,7 @@ class OpenstackArmadaManifestOperator(base.ArmadaManifestOperator):
     CHART_GROUP_HEAT = 'openstack-heat'
     CHART_GROUP_HORIZON = 'openstack-horizon'
     CHART_GROUP_TELEMETRY = 'openstack-telemetry'
+    CHART_GROUP_DCDBSYNC = 'openstack-dcdbsync'
 
     CHART_GROUPS_LUT = {
         AodhHelm.CHART: CHART_GROUP_TELEMETRY,
@@ -96,6 +98,7 @@ class OpenstackArmadaManifestOperator(base.ArmadaManifestOperator):
         PlacementHelm.CHART: CHART_GROUP_COMPUTE_KIT,
         RabbitmqHelm.CHART: CHART_GROUP_RABBITMQ,
         SwiftHelm.CHART: CHART_GROUP_SWIFT,
+        DcdbsyncHelm.CHART: CHART_GROUP_DCDBSYNC,
     }
 
     CHARTS_LUT = {
@@ -126,6 +129,7 @@ class OpenstackArmadaManifestOperator(base.ArmadaManifestOperator):
         PlacementHelm.CHART: 'openstack-placement',
         RabbitmqHelm.CHART: 'openstack-rabbitmq',
         SwiftHelm.CHART: 'openstack-ceph-rgw',
+        DcdbsyncHelm.CHART: 'openstack-dcdbsync',
     }
 
     def platform_mode_manifest_updates(self, dbapi, mode):
