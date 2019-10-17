@@ -22,8 +22,9 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
         combined_data_and_master = False
         replicas = 2
         if utils.is_aio_system(self.dbapi):
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx512m -Xms512m"
-            memory_size = "512Mi"
+            # esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx512m -Xms512m"
+            # memory_size = "512Mi"
+            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx1536m -Xms1536m"
 
             if (utils.is_aio_duplex_system(self.dbapi) and
                     self._count_hosts_by_label(
@@ -37,23 +38,14 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
             if utils.is_aio_simplex_system(self.dbapi):
                 replicas = 1
         else:
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx1536m -Xms1536m"
-            memory_size = "1536Mi"
+            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx2048m -Xms2048m"
 
         overrides = {
             common.HELM_NS_MONITOR: {
                 'nodeGroup': 'data',
                 'replicas': replicas,
                 'esJavaOpts': esJavaOpts,
-                'resources': {
-                    'limits': {
-                        'cpu': "1"
-                    },
-                    'requests': {
-                        'cpu': "25m",
-                        'memory': memory_size,
-                    },
-                },
+                'resources': self._get_data_resources_overrides(),
                 'volumeClaimTemplate': {
                     'accessModes': ["ReadWriteOnce"],
                     'resources': {
@@ -77,3 +69,25 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_data_resources_overrides(self):
+        # Default values based upon AIO+4 and Standard+20 system test
+
+        if utils.is_aio_system(self.dbapi):
+            cpu_requests = "200m"
+            cpu_limits = "1"
+            memory_size = "4096Mi"
+        else:
+            cpu_requests = "500m"
+            cpu_limits = "2"
+            memory_size = "4096Mi"
+
+        resources = {
+            'requests': {
+                'cpu': cpu_requests,
+                'memory': memory_size},
+            'limits': {
+                'cpu': cpu_limits,
+                'memory': memory_size}
+        }
+        return resources

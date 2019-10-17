@@ -18,6 +18,8 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
         system_fields, system_name_for_index = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
+                'systemName': '',
+                'resources': self._get_resources_overrides(),
                 'daemonset': {
                     'modules': {
                         'system': self._get_metric_system(),
@@ -67,27 +69,46 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             "network",
             "process",
             "process_summary",
-            "core",
-            "diskio"]
-        period = "60s"
+            "diskio",
+        ]
+        period = "15s"
+
+        metricsets_filesystem = [
+            "filesystem",
+            "fsstat",
+        ]
+        period_fs = "60s"
         conf = [
             {"module": "system",
              "period": period,
              "metricsets": metricsets,
              "processes": [
-                 ".*"
-             ],
-             "process.include_top_n": None,
-             "by_cpu": 5,
-             "by_memory": 5
-             }
+                 ".*"],
+             "process.include_top_n": {
+                 "by_cpu": 15,
+                 "by_memory": 15},
+             },
+
+            {"module": "system",
+             "period": period_fs,
+             "metricsets": metricsets_filesystem,
+             "processes": [
+                 ".*"],
+             "processors": [
+                 {
+                     "drop_event.when.regexp": {
+                         "system.filesystem.mount_point":
+                             "^/(sys|cgroup|proc|dev|etc|host|lib)($|/)"
+                     }
+                 }],
+             },
         ]
         return conf
 
     def _get_metric_kubernetes(self):
         metricsets = [
             "node", "system", "pod", "container", "volume"]
-        period = "60s"
+        period = "15s"
         conf = {
             "enabled": True,
             "config": [
@@ -121,7 +142,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             "state_container",
             "event"
         ]
-        period = "60s"
+        period = "15s"
         conf = {
             "enabled": True,
             "config": [
@@ -139,3 +160,17 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             ]
         }
         return conf
+
+    @staticmethod
+    def _get_resources_overrides():
+
+        cpu_request = "50m"
+        cpu_limit = "180m"   # overload at 150m
+        memory_limit = "512Mi"
+
+        return {'requests': {
+                    'cpu': cpu_request},
+                'limits': {
+                    'cpu': cpu_limit,
+                    'memory': memory_limit},
+                }

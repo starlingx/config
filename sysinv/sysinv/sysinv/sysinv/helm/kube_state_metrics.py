@@ -16,7 +16,9 @@ class KubeStateMetricsHelm(elastic.ElasticBaseHelm):
 
     def get_overrides(self, namespace=None):
         overrides = {
-            common.HELM_NS_MONITOR: {}
+            common.HELM_NS_MONITOR: {
+                'resources': self._get_resources_overrides(),
+            }
         }
 
         if namespace in self.SUPPORTED_NAMESPACES:
@@ -26,3 +28,16 @@ class KubeStateMetricsHelm(elastic.ElasticBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_resources_overrides(self):
+
+        cpu_request = "50m"
+        cpu_limit = "100m"
+        memory_size = "256Mi"
+
+        return {'requests': {
+                    'cpu': cpu_request},
+                'limits': {
+                    'cpu': cpu_limit,
+                    'memory': memory_size},
+                }

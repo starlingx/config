@@ -40,15 +40,7 @@ class ElasticsearchMasterHelm(elastic.ElasticBaseHelm):
                 'esJavaOpts': esJavaOpts,
                 'minimumMasterNodes': minimumMasterNodes,
                 'nodeSelector': {common.LABEL_MONITOR_MASTER: "enabled"},
-                'resources': {
-                    'limits': {
-                        'cpu': "1"
-                    },
-                    'requests': {
-                        'cpu': "25m",
-                        'memory': "512Mi",
-                    },
-                },
+                'resources': self._get_master_resource_overrides(),
                 'volumeClaimTemplate': {
                     'accessModes': ["ReadWriteOnce"],
                     'resources': {
@@ -66,3 +58,23 @@ class ElasticsearchMasterHelm(elastic.ElasticBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_master_resource_overrides(self):
+        if utils.is_aio_system(self.dbapi):
+            cpu_requests = "200m"
+            memory_size = "256Mi"
+        else:
+            cpu_requests = "500m"
+            memory_size = "512Mi"
+
+        resources = {
+            'requests': {
+                'cpu': cpu_requests,
+                'memory': memory_size
+            },
+            'limits': {
+                'cpu': "1",
+                'memory': "1024Mi"
+            },
+        }
+        return resources

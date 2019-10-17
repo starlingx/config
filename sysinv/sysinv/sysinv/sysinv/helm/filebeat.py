@@ -20,6 +20,7 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
             common.HELM_NS_MONITOR: {
                 'config': self._get_config_overrides(system_fields),
                 'systemNameForIndex': system_name_for_index,
+                'resources': self._get_resources_overrides(),
             }
         }
 
@@ -54,3 +55,16 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
         }
 
         return conf
+
+    @staticmethod
+    def _get_resources_overrides():
+        cpu_request = "40m"
+        cpu_limit = "80m"
+        memory_size = "256Mi"
+
+        return {'requests': {
+                    'cpu': cpu_request},
+                'limits': {
+                    'cpu': cpu_limit,
+                    'memory': memory_size},
+                }

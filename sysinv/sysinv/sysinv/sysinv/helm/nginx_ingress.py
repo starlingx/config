@@ -16,7 +16,14 @@ class NginxIngressHelm(elastic.ElasticBaseHelm):
 
     def get_overrides(self, namespace=None):
         overrides = {
-            common.HELM_NS_MONITOR: {}}
+            common.HELM_NS_MONITOR: {
+                "controller": {
+                    "resources": self._get_controller_resources_overrides(),
+                },
+                "defaultBackend": {
+                    "resources": self._get_backend_resources_overrides()}
+                 }
+        }
 
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]
@@ -25,3 +32,25 @@ class NginxIngressHelm(elastic.ElasticBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    @staticmethod
+    def _get_controller_resources_overrides():
+
+        cpu_limits = "200m"
+        memory_limits = "256Mi"
+
+        return {'limits': {
+                    'cpu': cpu_limits,
+                    'memory': memory_limits},
+                }
+
+    @staticmethod
+    def _get_backend_resources_overrides():
+
+        cpu_limits = "100m"
+        memory_limits = "128Mi"
+
+        return {'limits': {
+                    'cpu': cpu_limits,
+                    'memory': memory_limits},
+                }
