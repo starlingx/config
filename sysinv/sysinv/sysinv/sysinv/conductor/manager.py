@@ -6510,7 +6510,8 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::sm::stx_openstack::runtime',
+            "classes": ['platform::dcorch::stx_openstack::runtime',
+                        'platform::sm::stx_openstack::runtime',
                         'platform::dcdbsync::stx_openstack::runtime']
         }
 
@@ -6530,6 +6531,7 @@ class ConductorManager(service.PeriodicService):
             "personalities": personalities,
             "classes": ['platform::nfv::runtime',
                         'platform::dcdbsync::stx_openstack::runtime',
+                        'platform::dcorch::stx_openstack::runtime',
                         'platform::sm::stx_openstack::runtime']
         }
 
