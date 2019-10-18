@@ -17,10 +17,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
 """Test class for Sysinv ManagerService."""
+
+import mock
 
 from sysinv.common import exception
 from sysinv.conductor import manager
@@ -32,6 +34,9 @@ from sysinv.tests.db import utils
 
 class ManagerTestCase(base.DbTestCase):
 
+    upgrade_downgrade_kube_components_patcher = mock.patch.object(
+        manager.ConductorManager, '_upgrade_downgrade_kube_components')
+
     def setUp(self):
         super(ManagerTestCase, self).setUp()
         self.service = manager.ConductorManager('test-host', 'test-topic')
@@ -40,6 +45,12 @@ class ManagerTestCase(base.DbTestCase):
         self.dbapi = dbapi.get_instance()
         self.system = utils.create_test_isystem()
         self.load = utils.create_test_load()
+
+        self.mock_upgrade_downgrade_kube_components = self.upgrade_downgrade_kube_components_patcher.start()
+
+    def tearDown(self):
+        super(ManagerTestCase, self).tearDown()
+        self.upgrade_downgrade_kube_components_patcher.stop()
 
     def _create_test_ihost(self, **kwargs):
         # ensure the system ID for proper association
