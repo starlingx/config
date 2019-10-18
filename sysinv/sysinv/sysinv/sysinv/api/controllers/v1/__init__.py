@@ -39,6 +39,7 @@ from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
 from sysinv.api.controllers.v1 import kube_app
+from sysinv.api.controllers.v1 import kube_version
 from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import interface
 from sysinv.api.controllers.v1 import interface_network
@@ -248,6 +249,9 @@ class V1(base.APIBase):
 
     host_fs = [link.Link]
     "Links to the host_fs resource"
+
+    kube_versions = [link.Link]
+    "Links to the kube_version resource"
 
     @classmethod
     def convert(self):
@@ -775,6 +779,13 @@ class V1(base.APIBase):
                                           'host_fs', '',
                                           bookmark=True)]
 
+        v1.kube_versions = [link.Link.make_link('self', pecan.request.host_url,
+                                               'kube_versions', ''),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'kube_versions', '',
+                                                bookmark=True)]
+
         return v1
 
 
@@ -843,6 +854,7 @@ class Controller(rest.RestController):
     datanetworks = datanetwork.DataNetworkController()
     interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController()
     host_fs = host_fs.HostFsController()
+    kube_versions = kube_version.KubeVersionController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

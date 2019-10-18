@@ -12,6 +12,7 @@
 """ System Inventory Kubernetes Utilities and helper functions."""
 
 from __future__ import absolute_import
+from distutils.version import LooseVersion
 import json
 
 from kubernetes import config
@@ -19,16 +20,41 @@ from kubernetes import client
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
 from six.moves import http_client as httplib
+
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 
+# Possible states for each supported kubernetes version
+KUBE_STATE_AVAILABLE = 'available'
+KUBE_STATE_ACTIVE = 'active'
+KUBE_STATE_PARTIAL = 'partial'
+
+# Kubernetes namespaces
+NAMESPACE_KUBE_SYSTEM = 'kube-system'
+
+# Kubernetes control plane components
+KUBE_APISERVER = 'kube-apiserver'
+KUBE_CONTROLLER_MANAGER = 'kube-controller-manager'
+KUBE_SCHEDULER = 'kube-scheduler'
+
+
+def get_kube_versions():
+    """Provides a list of supported kubernetes versions."""
+    return [
+        {'version': 'v1.16.2',
+         'upgrade_from': [],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
+    ]
+
 
 class KubeOperator(object):
 
-    def __init__(self, dbapi):
-        self._dbapi = dbapi
+    def __init__(self):
         self._kube_client_batch = None
         self._kube_client_core = None
         self._kube_client_custom_objects = None
@@ -68,7 +94,7 @@ class KubeOperator(object):
                 reason = json.loads(e.body).get('message', "")
                 raise exception.HostLabelInvalid(reason=reason)
             elif e.status == httplib.NOT_FOUND:
-                raise exception.K8sNodeNotFound(name=name)
+                raise exception.KubeNodeNotFound(name=name)
             else:
                 raise
         except Exception as e:
@@ -96,6 +122,33 @@ class KubeOperator(object):
                     for container in pod.spec.containers:
                         if container.name == container_name:
                             return container.image
+            return None
+        except ApiException as e:
+            LOG.error("Kubernetes exception in list_namespaced_pod: %s" % e)
+            raise
+
+    def kube_get_image_by_pod_name(self, pod_name, namespace, container_name):
+        """Returns the image for the specified container."""
+        LOG.debug("kube_get_image_by_pod_name pod_name=%s, namespace=%s, "
+                  "container_name=%s" % (pod_name, namespace, container_name))
+        try:
+            # Retrieve the named pod
+            api_response = \
+                self._get_kubernetesclient_core().list_namespaced_pod(
+                    namespace, field_selector="metadata.name=%s" % pod_name)
+            # We expect only one pod with this name
+            if len(api_response.items) != 1:
+                LOG.warn("Expected one pod with pod_name=%s, namespace=%s, "
+                         "container_name=%s but found %d" %
+                         (pod_name, namespace, container_name,
+                          len(api_response.items)))
+            # Use the first pod
+            if len(api_response.items) >= 1:
+                pod = api_response.items[0]
+                for container in pod.spec.containers:
+                    if container.name == container_name:
+                        return container.image
+
             return None
         except ApiException as e:
             LOG.error("Kubernetes exception in list_namespaced_pod: %s" % e)
@@ -303,3 +356,93 @@ class KubeOperator(object):
             LOG.error("Failed to delete custom object, Namespace %s: %s"
                       % (namespace, e))
             raise
+
+    def kube_get_control_plane_versions(self):
+        """Returns the lowest control plane component version on each
+        master node."""
+        c = self._get_kubernetesclient_core()
+
+        # First get a list of master nodes
+        master_nodes = list()
+        api_response = c.list_node(
+            label_selector="node-role.kubernetes.io/master")
+        for node in api_response.items:
+            master_nodes.append(node.metadata.name)
+
+        node_versions = dict()
+        for node_name in master_nodes:
+            versions = dict()
+            for component in [KUBE_APISERVER,
+                              KUBE_CONTROLLER_MANAGER,
+                              KUBE_SCHEDULER]:
+                # Control plane pods are named by component and node.
+                # E.g. kube-apiserver-controller-0
+                pod_name = component + '-' + node_name
+                image = self.kube_get_image_by_pod_name(
+                    pod_name, NAMESPACE_KUBE_SYSTEM, component)
+                versions[component] = image.rsplit(':')[-1]
+
+            # Calculate the lowest version
+            lowest_version = min(
+                LooseVersion(versions[KUBE_APISERVER]),
+                LooseVersion(versions[KUBE_CONTROLLER_MANAGER]),
+                LooseVersion(versions[KUBE_SCHEDULER]))
+            node_versions[node_name] = str(lowest_version)
+
+        return node_versions
+
+    def kube_get_kubelet_versions(self):
+        """Returns the kubelet version on each node."""
+        c = self._get_kubernetesclient_core()
+
+        kubelet_versions = dict()
+
+        api_response = c.list_node()
+        for node in api_response.items:
+            kubelet_versions[node.metadata.name] = \
+                node.status.node_info.kubelet_version
+
+        return kubelet_versions
+
+    def kube_get_version_states(self):
+        """Returns the state of each known kubernetes version."""
+
+        # Set counts to 0
+        version_counts = dict()
+        for version in get_kube_versions():
+            version_counts[version['version']] = 0
+
+        # Count versions running on control plane
+        cp_versions = self.kube_get_control_plane_versions()
+        for cp_version in cp_versions.values():
+            if cp_version in version_counts:
+                version_counts[cp_version] += 1
+            else:
+                LOG.error("Unknown control plane version %s running." %
+                          cp_version)
+
+        # Count versions running on kubelets
+        kubelet_versions = self.kube_get_kubelet_versions()
+        for kubelet_version in kubelet_versions.values():
+            if kubelet_version in version_counts:
+                version_counts[kubelet_version] += 1
+            else:
+                LOG.error("Unknown kubelet version %s running." %
+                          kubelet_version)
+
+        version_states = dict()
+        active_candidates = list()
+        for version, count in version_counts.items():
+            if count > 0:
+                # This version is at least partially running
+                version_states[version] = KUBE_STATE_PARTIAL
+                active_candidates.append(version)
+            else:
+                # This version is not running anywhere
+                version_states[version] = KUBE_STATE_AVAILABLE
+
+        # If only a single version is running, then mark it as active
+        if len(active_candidates) == 1:
+            version_states[active_candidates[0]] = KUBE_STATE_ACTIVE
+
+        return version_states

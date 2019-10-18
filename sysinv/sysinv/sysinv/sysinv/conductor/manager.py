@@ -227,7 +227,7 @@ class ConductorManager(service.PeriodicService):
         self._docker = kube_app.DockerHelper(self.dbapi)
         self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
-        self._kube = kubernetes.KubeOperator(self.dbapi)
+        self._kube = kubernetes.KubeOperator()
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
@@ -10446,7 +10446,7 @@ class ConductorManager(service.PeriodicService):
         body['metadata']['labels'].update(label_dict)
         try:
             self._kube.kube_patch_node(host.hostname, body)
-        except exception.K8sNodeNotFound:
+        except exception.KubeNodeNotFound:
             LOG.info("Host %s does not exist in kubernetes yet, label will "
                      "be added after node's unlock by audit" % host.hostname)
 

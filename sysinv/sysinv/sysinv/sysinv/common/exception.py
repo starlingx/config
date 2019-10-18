@@ -236,26 +236,6 @@ class CephPoolSetParamFailure(CephFailure):
                 "Reason: %(reason)s")
 
 
-class KubeAppUploadFailure(SysinvException):
-    message = _("Upload of application %(name)s (%(version)s) failed: %(reason)s")
-
-
-class KubeAppApplyFailure(SysinvException):
-    message = _("Deployment of application %(name)s (%(version)s) failed: %(reason)s")
-
-
-class KubeAppDeleteFailure(SysinvException):
-    message = _("Delete of application %(name)s (%(version)s) failed: %(reason)s")
-
-
-class KubeAppAbort(SysinvException):
-    message = _("Operation aborted by user.")
-
-
-class HelmTillerFailure(SysinvException):
-    message = _("Helm operation failure: %(reason)s")
-
-
 class InvalidCPUInfo(Invalid):
     message = _("Unacceptable CPU info") + ": %(reason)s"
 
@@ -563,20 +543,6 @@ class TPMDeviceAlreadyExists(Conflict):
 
 class CertificateAlreadyExists(Conflict):
     message = _("A Certificate with uuid %(uuid)s already exists.")
-
-
-class HelmOverrideAlreadyExists(Conflict):
-    message = _("A HelmOverride with name %(name)s and namespace "
-                "%(namespace)s already exists.")
-
-
-class KubeAppAlreadyExists(Conflict):
-    message = _("An application with name %(name)s %(version)s already exists.")
-
-
-class KubeAppChartReleaseAlreadyExists(Conflict):
-    message = _("A chart release with name %(name)s and namespace "
-                "%(namespace)s for application %(app_id)s already exists.")
 
 
 class InstanceDeployFailure(Invalid):
@@ -911,30 +877,8 @@ class CertificateNotFound(NotFound):
     message = _("No certificate with uuid %(uuid)s")
 
 
-class HelmOverrideNotFound(NotFound):
-    message = _("No helm override with name %(name)s and namespace "
-                "%(namespace)s")
-
-
 class CertificateTypeNotFound(NotFound):
     message = _("No certificate type of %(certtype)s")
-
-
-class KubeAppNotFound(NotFound):
-    message = _("No application with name %(name)s.")
-
-
-class KubeAppInactiveNotFound(NotFound):
-    message = _("No inactive application with name %(name)s and version %(version)s")
-
-
-class KubeAppChartReleaseNotFound(NotFound):
-    message = _("No chart release with name %(name)s and "
-                "namespace %(namespace)s for application %(app_id)s")
-
-
-class KubeAppReleasesNotFound(NotFound):
-    message = _("No releases found for application %(app_id)s")
 
 
 class DockerRegistryCredentialNotFound(NotFound):
@@ -1066,14 +1010,6 @@ class SysInvSignalTimeout(SysinvException):
     message = "Sysinv Timeout."
 
 
-class KubeAppProgressMonitorTimeout(SysinvException):
-    message = "Armada execution progress monitor timed out."
-
-
-class K8sNamespaceDeleteTimeout(SysinvException):
-    message = "Namespace %(name)s deletion timeout."
-
-
 class InvalidEndpoint(SysinvException):
     message = "The provided endpoint is invalid"
 
@@ -1189,10 +1125,6 @@ class HostLabelInvalid(Invalid):
     message = _("Host label is invalid. Reason: %(reason)s")
 
 
-class K8sNodeNotFound(NotFound):
-    message = _("Kubernetes Node %(name)s could not be found.")
-
-
 class PickleableException(Exception):
     """
     Pickleable Exception
@@ -1304,10 +1236,6 @@ class IncompleteCephMonNetworkConfig(CephFailure):
                 "found: %(results)s")
 
 
-class InvalidHelmNamespace(Invalid):
-    message = _("Invalid helm overrides namespace (%(namespace)s) for chart %(chart)s.")
-
-
 class LocalManagementPersonalityNotFound(NotFound):
     message = _("Local management personality is None: "
                 "config_uuid=%(config_uuid)s, config_dict=%(config_dict)s, "
@@ -1323,10 +1251,6 @@ class AgentInventoryInfoNotFound(NotFound):
 
 class LocalHostUUIDNotFound(NotFound):
     message = _("Local Host UUID not found")
-
-
-class InvalidHelmDockerImageSource(Invalid):
-    message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
 
 
 # DataNetwork
@@ -1390,19 +1314,107 @@ class FilesystemAlreadyExists(Conflict):
 class FilesystemNotFound(NotFound):
     message = _("Host FS with id %(fs_id)s not found")
 
+#
+# Kubernetes application and Helm related exceptions
+#
+
+
+class KubeAppUploadFailure(SysinvException):
+    message = _("Upload of application %(name)s (%(version)s) failed: %(reason)s")
+
+
+class KubeAppApplyFailure(SysinvException):
+    message = _("Deployment of application %(name)s (%(version)s) failed: %(reason)s")
+
+
+class KubeAppDeleteFailure(SysinvException):
+    message = _("Delete of application %(name)s (%(version)s) failed: %(reason)s")
+
+
+class KubeAppAbort(SysinvException):
+    message = _("Operation aborted by user.")
+
+
+class KubeAppAlreadyExists(Conflict):
+    message = _("An application with name %(name)s %(version)s already exists.")
+
+
+class KubeAppChartReleaseAlreadyExists(Conflict):
+    message = _("A chart release with name %(name)s and namespace "
+                "%(namespace)s for application %(app_id)s already exists.")
+
+
+class KubeAppNotFound(NotFound):
+    message = _("No application with name %(name)s.")
+
+
+class KubeAppInactiveNotFound(NotFound):
+    message = _("No inactive application with name %(name)s and version %(version)s")
+
+
+class KubeAppChartReleaseNotFound(NotFound):
+    message = _("No chart release with name %(name)s and "
+                "namespace %(namespace)s for application %(app_id)s")
+
+
+class KubeAppReleasesNotFound(NotFound):
+    message = _("No releases found for application %(app_id)s")
+
+
+class KubeAppProgressMonitorTimeout(SysinvException):
+    message = "Armada execution progress monitor timed out."
+
+
+class KubeNamespaceDeleteTimeout(SysinvException):
+    message = "Namespace %(name)s deletion timeout."
+
+
+class HelmTillerFailure(SysinvException):
+    message = _("Helm operation failure: %(reason)s")
+
+
+class HelmOverrideNotFound(NotFound):
+    message = _("No helm override with name %(name)s and namespace "
+                "%(namespace)s")
+
+
+class HelmOverrideAlreadyExists(Conflict):
+    message = _("A HelmOverride with name %(name)s and namespace "
+                "%(namespace)s already exists.")
+
+
+class InvalidHelmNamespace(Invalid):
+    message = _("Invalid helm overrides namespace (%(namespace)s) for chart %(chart)s.")
+
+
+class InvalidHelmDockerImageSource(Invalid):
+    message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
+
+#
+# Kubernetes related exceptions
+#
+
+
+class KubeNodeNotFound(NotFound):
+    message = _("Kubernetes Node %(name)s could not be found.")
+
 
 class KubeHostUpgradeAlreadyExists(Conflict):
-    message = _("A Kube Host Upgrade with id %(host_upgrade_id)s already exists.")
+    message = _("A Kubernetes Host Upgrade with id %(host_upgrade_id)s already exists.")
 
 
 class KubeHostUpgradeNotFound(NotFound):
-    message = _("Kube Host Upgrade with id %(host_upgrade_id)s not found")
+    message = _("Kubernetes Host Upgrade with id %(host_upgrade_id)s not found")
 
 
 class KubeUpgradeAlreadyExists(Conflict):
     message = _(
-        "A Kube Upgrade with id %(upgrade_id)s already exists.")
+        "A Kubernetes Upgrade with id %(upgrade_id)s already exists.")
 
 
 class KubeUpgradeNotFound(NotFound):
-    message = _("Kube Upgrade with id %(upgrade_id)s not found")
+    message = _("Kubernetes Upgrade with id %(upgrade_id)s not found")
+
+
+class KubeVersionNotFound(NotFound):
+    message = _("Kubernetes version %(version)s not found")

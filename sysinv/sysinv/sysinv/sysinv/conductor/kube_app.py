@@ -129,7 +129,7 @@ class AppOperator(object):
         self._fm_api = fm_api.FaultAPIs()
         self._docker = DockerHelper(self._dbapi)
         self._helm = helm.HelmOperator(self._dbapi)
-        self._kube = kubernetes.KubeOperator(self._dbapi)
+        self._kube = kubernetes.KubeOperator()
         self._utils = kube_app.KubeAppHelper(self._dbapi)
         self._lock = threading.Lock()
 
@@ -974,7 +974,7 @@ class AppOperator(object):
         body['metadata']['labels'].update(label_dict)
         try:
             self._kube.kube_patch_node(hostname, body)
-        except exception.K8sNodeNotFound:
+        except exception.KubeNodeNotFound:
             pass
 
     def _assign_host_labels(self, hosts, labels):
@@ -1168,7 +1168,7 @@ class AppOperator(object):
                 time.sleep(1)
 
             if loop_timeout > timeout:
-                raise exception.K8sNamespaceDeleteTimeout(name=namespace)
+                raise exception.KubeNamespaceDeleteTimeout(name=namespace)
             LOG.info("Namespace %s delete completed." % namespace)
         except Exception as e:
             LOG.error(e)
