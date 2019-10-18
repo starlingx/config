@@ -4522,10 +4522,19 @@ class HostController(rest.RestController):
                 constants.OPERATIONAL_ENABLED:
             if hostupdate.ihost_orig['invprovision'] == constants.PROVISIONING:
                 # first time unlocked successfully
-                LOG.info("stage_administrative_update: provisioned")
+                local_hostname = cutils.get_local_controller_hostname()
+                if (hostupdate.ihost_patch['hostname'] ==
+                        constants.CONTROLLER_0_HOSTNAME) and \
+                                local_hostname == constants.CONTROLLER_0_HOSTNAME:
+                    # first time controller-0 unlock, copy sysinv.conf
+                    # to drbd storage
+                    pecan.request.rpcapi.store_default_config(
+                        pecan.request.context)
+
                 hostupdate.ihost_val_update(
                     {'invprovision': constants.PROVISIONED}
                 )
+                LOG.info("stage_administrative_update: provisioned successfully")
 
     @staticmethod
     def _check_provisioned_storage_hosts():

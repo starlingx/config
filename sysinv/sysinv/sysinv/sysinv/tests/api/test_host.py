@@ -35,6 +35,7 @@ class FakeConductorAPI(object):
         self.iplatform_update_by_ihost = mock.MagicMock()
         self.evaluate_app_reapply = mock.MagicMock()
         self.update_clock_synchronization_config = mock.MagicMock()
+        self.store_default_config = mock.MagicMock()
 
     def create_ihost(self, context, values):
         # Create the host in the DB as the code under test expects this
@@ -135,6 +136,12 @@ class TestHost(base.FunctionalTest, dbbase.BaseHostTestCase):
                                [{'path': '/action',
                                  'value': action,
                                  'op': 'replace'}],
+                               headers={'User-Agent': user_agent},
+                               expect_errors=expect_errors)
+
+    def _patch_host(self, hostname, patch, user_agent, expect_errors=False):
+        return self.patch_json('/ihosts/%s' % hostname,
+                               patch,
                                headers={'User-Agent': user_agent},
                                expect_errors=expect_errors)
 
@@ -477,6 +484,64 @@ class TestPatch(TestHost):
         # Verify that the host was updated with the new clock_synchronization
         result = self.get_json('/ihosts/%s' % ndict['hostname'])
         self.assertEqual(constants.PTP, result['clock_synchronization'])
+
+    def test_controller_first_enabled_notification(self):
+        # Create controller-0, provisioning
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONING,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        # notify controller-0 enabled/available
+        response = self._patch_host(c0_host['hostname'],
+                                    [{'path': '/operational',
+                                      'value': constants.OPERATIONAL_ENABLED,
+                                      'op': 'replace'},
+                                     {'path': '/availability',
+                                      'value': constants.AVAILABILITY_ONLINE,
+                                      'op': 'replace'}],
+                                    'mtce')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that the default config is to be copied
+        self.fake_conductor_api.store_default_config.assert_called_once()
+
+        ihost = self._get_test_host_by_hostname(c0_host['hostname'])
+        self.assertEqual(constants.OPERATIONAL_ENABLED, ihost.operational)
+        self.assertEqual(constants.AVAILABILITY_ONLINE, ihost.availability)
+        self.assertEqual(constants.PROVISIONED, ihost.invprovision)
+
+    def test_controller_subsequent_enabled_notification(self):
+        # Create controller-0, provisioned
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        # notify controller-0 enabled/available
+        response = self._patch_host(c0_host['hostname'],
+                                    [{'path': '/operational',
+                                      'value': constants.OPERATIONAL_ENABLED,
+                                      'op': 'replace'},
+                                     {'path': '/availability',
+                                      'value': constants.AVAILABILITY_ONLINE,
+                                      'op': 'replace'}],
+                                    'mtce')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that the default config is not copied again
+        self.fake_conductor_api.store_default_config.assert_not_called()
+
+        ihost = self._get_test_host_by_hostname(c0_host['hostname'])
+        self.assertEqual(constants.OPERATIONAL_ENABLED, ihost.operational)
+        self.assertEqual(constants.AVAILABILITY_ONLINE, ihost.availability)
+        self.assertEqual(constants.PROVISIONED, ihost.invprovision)
 
     def test_unlock_action_controller(self):
         # Create controller-0

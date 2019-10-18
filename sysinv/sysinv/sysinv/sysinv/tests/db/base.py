@@ -357,6 +357,9 @@ class BaseHostTestCase(BaseSystemTestCase):
 
         return host
 
+    def _get_test_host_by_hostname(self, hostname):
+        return self.dbapi.ihost_get_by_hostname(hostname)
+
     def _create_test_host_cpus(self, host,
                                platform=0, vswitch=0, application=0,
                                threads=1):
