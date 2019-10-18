@@ -19,6 +19,7 @@ from sysinv.common import constants
 from sysinv.openstack.common import uuidutils
 
 from sysinv.tests.api import base
+from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 
 
@@ -41,7 +42,7 @@ class FakeConductorAPI(object):
         return ihost
 
 
-class TestHost(base.FunctionalTest):
+class TestHost(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def setUp(self):
         super(TestHost, self).setUp()
@@ -105,274 +106,42 @@ class TestHost(base.FunctionalTest):
         self.mock_utils_is_virtual.return_value = True
         self.addCleanup(p.stop)
 
-        # Create an isystem and load
-        self.system = dbutils.create_test_isystem(
-            capabilities={"cinder_backend": constants.CINDER_BACKEND_CEPH,
-                          "vswitch_type": constants.VSWITCH_TYPE_NONE,
-                          "region_config": False,
-                          "sdn_enabled": False,
-                          "shared_services": "[]"}
-        )
-        self.load = dbutils.create_test_load()
-
-    def _configure_networks(self):
-        mgmt_address_pool = dbutils.create_test_address_pool(
-            id=1,
-            network='192.168.204.0',
-            name='management',
-            ranges=[['192.168.204.2', '192.168.204.254']],
-            prefix=24)
-        dbutils.create_test_network(
-            id=1,
-            name='mgmt',
-            type=constants.NETWORK_TYPE_MGMT,
-            link_capacity=1000,
-            vlan_id=2,
-            address_pool_id=mgmt_address_pool.id)
-        cluster_address_pool = dbutils.create_test_address_pool(
-            id=2,
-            network='192.168.206.0',
-            name='cluster-host',
-            ranges=[['192.168.206.2', '192.168.206.254']],
-            prefix=24)
-        dbutils.create_test_network(
-            id=2,
-            name='cluster-host',
-            type=constants.NETWORK_TYPE_CLUSTER_HOST,
-            link_capacity=10000,
-            vlan_id=3,
-            address_pool_id=cluster_address_pool.id)
-        address_pool_oam = dbutils.create_test_address_pool(
-            id=3,
-            network='128.224.150.0',
-            name='oam',
-            ranges=[['128.224.150.1', '128.224.151.254']],
-            prefix=23)
-        dbutils.create_test_network(
-            id=3,
-            name='oam',
-            type=constants.NETWORK_TYPE_OAM,
-            address_pool_id=address_pool_oam.id)
-        dbutils.create_test_address(
-            family=2,
-            address='10.10.10.3',
-            prefix=24,
-            name='controller-0-oam',
-            address_pool_id=address_pool_oam.id)
-
-    def _create_controller_0(self, **kw):
-        ihost = dbutils.create_test_ihost(
-            hostname='controller-0',
-            mgmt_mac='01:34:67:9A:CD:F0',
-            mgmt_ip='192.168.204.3',
-            serialid='serial1',
-            bm_ip='128.224.150.193',
-            config_target='e4ec5ee2-967d-4b2d-8de8-f0a390fcbd35',
-            config_applied='e4ec5ee2-967d-4b2d-8de8-f0a390fcbd35',
+    def _create_controller_0(self, subfunction=None, numa_nodes=1, **kw):
+        return self._create_test_host(
+            personality=constants.CONTROLLER,
+            subfunction=subfunction,
+            numa_nodes=numa_nodes,
+            unit=0,
             **kw)
 
-        dbutils.create_test_ethernet_port(
-            id=1,
-            name='eth1',
-            host_id=ihost['id'],
-            interface_id=1,
-            pciaddr='0000:00:00.1',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=1,
-            ifname='oam',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        dbutils.create_test_ethernet_port(
-            id=2,
-            name='eth2',
-            host_id=ihost['id'],
-            interface_id=2,
-            pciaddr='0000:00:00.2',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=2,
-            ifname='mgmt',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        dbutils.create_test_ethernet_port(
-            id=3,
-            name='eth3',
-            host_id=ihost['id'],
-            interface_id=3,
-            pciaddr='0000:00:00.3',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=3,
-            ifname='cluster',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        return ihost
-
-    def _create_controller_1(self, **kw):
-        ihost = dbutils.create_test_ihost(
-            hostname='controller-1',
-            mgmt_mac='01:34:67:9A:CD:F1',
-            mgmt_ip='192.168.204.4',
-            serialid='serial2',
-            bm_ip='128.224.150.194',
-            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
-            config_applied='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+    def _create_controller_1(self, subfunction=None, numa_nodes=1, **kw):
+        return self._create_test_host(
+            personality=constants.CONTROLLER,
+            subfunction=subfunction,
+            numa_nodes=numa_nodes,
+            unit=1,
             **kw)
 
-        dbutils.create_test_ethernet_port(
-            id=4,
-            name='eth1',
-            host_id=ihost['id'],
-            interface_id=4,
-            pciaddr='0000:00:00.1',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=4,
-            ifname='oam',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        dbutils.create_test_ethernet_port(
-            id=5,
-            name='eth2',
-            host_id=ihost['id'],
-            interface_id=5,
-            pciaddr='0000:00:00.2',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=5,
-            ifname='mgmt',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        dbutils.create_test_ethernet_port(
-            id=6,
-            name='eth3',
-            host_id=ihost['id'],
-            interface_id=6,
-            pciaddr='0000:00:00.3',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=6,
-            ifname='cluster',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        return ihost
-
-    def _create_worker_0(self, **kw):
-        ihost = dbutils.create_test_ihost(
+    def _create_worker(self, unit=0, numa_nodes=1, **kw):
+        return self._create_test_host(
             personality=constants.WORKER,
-            hostname='worker-0',
-            mgmt_mac='01:34:67:9A:CD:F2',
-            mgmt_ip='192.168.204.5',
-            serialid='serial3',
-            bm_ip='128.224.150.195',
-            config_target='0ed92b98-261e-48bc-b48c-f2cdd1ec2b42',
-            config_applied='0ed92b98-261e-48bc-b48c-f2cdd1ec2b42',
+            numa_nodes=numa_nodes,
+            unit=unit,
             **kw)
 
-        node = self.dbapi.inode_create(ihost['id'],
-                                       dbutils.get_test_node(id=1))
-        cpu = self.dbapi.icpu_create(
-            ihost['id'],
-            dbutils.get_test_icpu(id=1, cpu=0,
-                                  forihostid=ihost['id'],
-                                  forinodeid=node.id,))
-        self.dbapi.imemory_create(
-            ihost['id'],
-            dbutils.get_test_imemory(id=1,
-                                     hugepages_configured=True,
-                                     vm_hugepages_nr_1G_pending=0,
-                                     forinodeid=cpu.forinodeid))
-
-        dbutils.create_test_ethernet_port(
-            id=7,
-            name='eth1',
-            host_id=ihost['id'],
-            interface_id=7,
-            pciaddr='0000:00:00.1',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=7,
-            ifname='mgmt',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        dbutils.create_test_ethernet_port(
-            id=8,
-            name='eth2',
-            host_id=ihost['id'],
-            interface_id=5,
-            pciaddr='0000:00:00.2',
-            dev_id=0)
-        interface = dbutils.create_test_interface(
-            id=8,
-            ifname='cluster',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=ihost['id'],
-            ihost_uuid=ihost['uuid'])
-        iface = self.dbapi.iinterface_get(interface['uuid'])
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        dbutils.create_test_interface_network(
-            interface_id=iface.id,
-            network_id=network.id)
-
-        return ihost
+    def _patch_host_action(
+            self, hostname, action, user_agent, expect_errors=False):
+        return self.patch_json('/ihosts/%s' % hostname,
+                               [{'path': '/action',
+                                 'value': action,
+                                 'op': 'replace'}],
+                               headers={'User-Agent': user_agent},
+                               expect_errors=expect_errors)
 
 
-class TestPost(TestHost):
+class TestPostFirstController(TestHost):
 
-    def test_create_ihost_controller_0(self):
+    def test_create_host_controller_0(self):
         # Test creation of controller-0
         ndict = dbutils.post_get_test_ihost(hostname='controller-0',
                                             mgmt_ip=None,
@@ -390,11 +159,33 @@ class TestPost(TestHost):
         self.assertEqual(ndict['personality'], result['personality'])
         self.assertEqual(ndict['serialid'], result['serialid'])
 
-    def test_create_ihost_controller_1(self):
-        self._configure_networks()
-        # Create controller-0
-        self._create_controller_0()
+    def test_create_host_valid_extra(self):
+        # Test creation of host with a valid location
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            location={'Country': 'Canada',
+                                                      'City': 'Ottawa'})
+        self.post_json('/ihosts', ndict,
+                       headers={'User-Agent': 'sysinv-test'})
 
+        # Verify that the host was created with the specified location
+        result = self.get_json('/ihosts/%s' % ndict['hostname'])
+        self.assertEqual(ndict['location'], result['location'])
+
+    def test_create_host_invalid_extra(self):
+        # Test creation of host with an invalid location
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            location={'foo': 0.123})
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
+
+class TestPostControllerMixin(object):
+
+    def setUp(self):
+        super(TestPostControllerMixin, self).setUp()
+
+    def test_create_host_controller_1(self):
         # Test creation of controller-1
         ndict = dbutils.post_get_test_ihost(hostname='controller-1',
                                             mgmt_ip=None,
@@ -417,11 +208,41 @@ class TestPost(TestHost):
         self.assertEqual(ndict['personality'], result['personality'])
         self.assertEqual(ndict['serialid'], result['serialid'])
 
-    def test_create_ihost_worker(self):
-        self._configure_networks()
-        # Create controller-0
-        self._create_controller_0()
+    def test_create_host_missing_mgmt_mac(self):
+        # Test creation of a second node with missing management MAC
+        ndict = dbutils.post_get_test_ihost(hostname='controller-1',
+                                            personality='controller',
+                                            subfunctions=None,
+                                            mgmt_mac=None,
+                                            mgmt_ip=None,
+                                            serialid='serial2',
+                                            bm_ip="128.224.150.195")
 
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_create_host_invalid_mgmt_mac_format(self):
+        # Test creation of a second node with an invalid management MAC format
+        ndict = dbutils.post_get_test_ihost(hostname='controller-1',
+                                            personality='controller',
+                                            subfunctions=None,
+                                            mgmt_mac='52:54:00:59:02:9',
+                                            mgmt_ip=None,
+                                            serialid='serial2',
+                                            bm_ip="128.224.150.195")
+
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
+
+class TestPostWorkerMixin(object):
+
+    def setUp(self):
+        super(TestPostWorkerMixin, self).setUp()
+
+    def test_create_host_worker(self):
         # Test creation of worker
         ndict = dbutils.post_get_test_ihost(hostname='worker-0',
                                             personality='worker',
@@ -446,67 +267,10 @@ class TestPost(TestHost):
         self.assertEqual(ndict['personality'], result['personality'])
         self.assertEqual(ndict['serialid'], result['serialid'])
 
-    def test_create_ihost_valid_extra(self):
-        # Test creation of host with a valid location
-        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
-                                            location={'Country': 'Canada',
-                                                      'City': 'Ottawa'})
-        self.post_json('/ihosts', ndict,
-                       headers={'User-Agent': 'sysinv-test'})
-
-        # Verify that the host was created with the specified location
-        result = self.get_json('/ihosts/%s' % ndict['hostname'])
-        self.assertEqual(ndict['location'], result['location'])
-
-    def test_create_ihost_invalid_extra(self):
-        # Test creation of host with an invalid location
-        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
-                                            location={'foo': 0.123})
-        self.assertRaises(webtest.app.AppError,
-                          self.post_json, '/ihosts', ndict,
-                          headers={'User-Agent': 'sysinv-test'})
-
-    def test_create_ihost_missing_mgmt_mac(self):
-        # Test creation of a second node with missing management MAC
-        self._configure_networks()
-        # Create controller-0
-        self._create_controller_0()
-
-        ndict = dbutils.post_get_test_ihost(hostname='controller-1',
-                                            personality='controller',
-                                            subfunctions=None,
-                                            mgmt_mac=None,
-                                            mgmt_ip=None,
-                                            serialid='serial2',
-                                            bm_ip="128.224.150.195")
-
-        self.assertRaises(webtest.app.AppError,
-                          self.post_json, '/ihosts', ndict,
-                          headers={'User-Agent': 'sysinv-test'})
-
-    def test_create_ihost_invalid_mgmt_mac_format(self):
-        # Test creation of a second node with an invalid management MAC format
-        self._configure_networks()
-        # Create controller-0
-        self._create_controller_0()
-
-        ndict = dbutils.post_get_test_ihost(hostname='controller-1',
-                                            personality='controller',
-                                            subfunctions=None,
-                                            mgmt_mac='52:54:00:59:02:9',
-                                            mgmt_ip=None,
-                                            serialid='serial2',
-                                            bm_ip="128.224.150.195")
-
-        self.assertRaises(webtest.app.AppError,
-                          self.post_json, '/ihosts', ndict,
-                          headers={'User-Agent': 'sysinv-test'})
-
 
 class TestDelete(TestHost):
 
-    def test_delete_ihost(self):
-        self._configure_networks()
+    def test_delete_host(self):
         # Create controller-0
         self._create_controller_0()
         # Create a worker host
@@ -543,12 +307,11 @@ class TestDelete(TestHost):
 
 class TestListHosts(TestHost):
 
-    def test_empty_ihost(self):
+    def test_empty_host(self):
         data = self.get_json('/ihosts')
         self.assertEqual([], data['ihosts'])
 
     def test_one(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0()
 
@@ -588,7 +351,7 @@ class TestListHosts(TestHost):
         self.assertNotIn('bm_password', result)
 
     def test_many(self):
-        ihosts = []
+        hosts = []
         for hostid in range(1000):  # there is a limit of 1000 returned by json
             ndict = dbutils.get_test_ihost(
                 id=hostid, hostname=hostid, mgmt_mac=hostid,
@@ -596,14 +359,14 @@ class TestListHosts(TestHost):
                 mgmt_ip="%s.%s.%s.%s" % (hostid, hostid, hostid, hostid),
                 uuid=uuidutils.generate_uuid())
             s = self.dbapi.ihost_create(ndict)
-            ihosts.append(s['uuid'])
+            hosts.append(s['uuid'])
         data = self.get_json('/ihosts')
-        self.assertEqual(len(ihosts), len(data['ihosts']))
+        self.assertEqual(len(hosts), len(data['ihosts']))
 
         uuids = [n['uuid'] for n in data['ihosts']]
-        self.assertEqual(ihosts.sort(), uuids.sort())  # uuids.sort
+        self.assertEqual(hosts.sort(), uuids.sort())  # uuids.sort
 
-    def test_ihost_links(self):
+    def test_host_links(self):
         uuid = uuidutils.generate_uuid()
         ndict = dbutils.get_test_ihost(id=1, uuid=uuid,
                                        forisystemid=self.system.id)
@@ -614,15 +377,15 @@ class TestListHosts(TestHost):
         self.assertIn(uuid, data['links'][0]['href'])
 
     def test_collection_links(self):
-        ihosts = []
+        hosts = []
         for hostid in range(100):
             ndict = dbutils.get_test_ihost(
                 id=hostid, hostname=hostid, mgmt_mac=hostid,
                 forisystemid=self.system.id,
                 mgmt_ip="%s.%s.%s.%s" % (hostid, hostid, hostid, hostid),
                 uuid=uuidutils.generate_uuid())
-            ihost = self.dbapi.ihost_create(ndict)
-            ihosts.append(ihost['uuid'])
+            host = self.dbapi.ihost_create(ndict)
+            hosts.append(host['uuid'])
         data = self.get_json('/ihosts/?limit=100')
         self.assertEqual(len(data['ihosts']), 100)
 
@@ -645,8 +408,8 @@ class TestListHosts(TestHost):
                                           host_id=ndict['id'],
                                           pciaddr=portid,
                                           uuid=uuidutils.generate_uuid())
-            ihost_id = ndict['id']
-            self.dbapi.ethernet_port_create(ihost_id, pdict)
+            host_id = ndict['id']
+            self.dbapi.ethernet_port_create(host_id, pdict)
 
         data = self.get_json('/ihosts/%s/ports' % ndict['uuid'])
         self.assertEqual(len(data['ports']), 2)
@@ -660,15 +423,6 @@ class TestListHosts(TestHost):
 
 
 class TestPatch(TestHost):
-
-    def _patch_host_action(
-            self, hostname, action, user_agent, expect_errors=False):
-        return self.patch_json('/ihosts/%s' % hostname,
-                               [{'path': '/action',
-                                 'value': action,
-                                 'op': 'replace'}],
-                               headers={'User-Agent': user_agent},
-                               expect_errors=expect_errors)
 
     def test_update_optimizable(self):
         # Create controller-0
@@ -725,14 +479,13 @@ class TestPatch(TestHost):
         self.assertEqual(constants.PTP, result['clock_synchronization'])
 
     def test_unlock_action_controller(self):
-        self._configure_networks()
         # Create controller-0
         c0_host = self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
 
         # Unlock host
         response = self._patch_host_action(c0_host['hostname'],
@@ -759,14 +512,13 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_force_unlock_action_controller(self):
-        self._configure_networks()
         # Create controller-0 - make it offline so force unlock required
         c0_host = self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
 
         # Force unlock host
         response = self._patch_host_action(c0_host['hostname'],
@@ -793,10 +545,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_unlock_action_controller_inventory_not_complete(self):
-        self._configure_networks()
         # Create controller-0 without inv_state initial inventory complete
         c0_host = self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -813,11 +563,8 @@ class TestPatch(TestHost):
         self.assertTrue(response.json['error_message'])
 
     def test_lock_action_controller(self):
-        self._configure_networks()
         # Create controller-0
-
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -825,7 +572,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -859,10 +605,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_force_lock_action_controller(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -870,7 +614,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -901,10 +644,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_unlock_action_worker(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -912,19 +653,20 @@ class TestPatch(TestHost):
 
         # Create controller-1
         self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
 
         # Create worker-0
-        w0_host = self._create_worker_0(
-            subfunctions=constants.WORKER,
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
 
         # Unlock worker host
         response = self._patch_host_action(w0_host['hostname'],
@@ -951,10 +693,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_lock_action_worker(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -962,15 +702,14 @@ class TestPatch(TestHost):
 
         # Create controller-1
         self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
 
         # Create worker-0
-        w0_host = self._create_worker_0(
-            subfunctions=constants.WORKER,
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1012,19 +751,21 @@ class TestPatch(TestHost):
         # is required to populate the storage (OSDs) for the host.
         self.skipTest("Not yet implemented")
 
+
+class TestPatchStdDuplexControllerAction(TestHost):
+
     def test_swact_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+            config_applied='89fbefe7-7b43-4bd2-9500-663b33df2e57')
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1053,10 +794,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_force_swact_action(self):
-        self._configure_networks()
         # Create controller-0 in disabled state so force swact is required
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_DISABLED,
@@ -1064,7 +803,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1092,10 +830,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_reset_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1103,7 +839,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1129,10 +864,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_reboot_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1140,7 +873,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1166,10 +898,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_reinstall_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1177,7 +907,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1206,10 +935,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_poweron_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1217,7 +944,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1243,10 +969,8 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_poweroff_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1254,7 +978,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1279,11 +1002,12 @@ class TestPatch(TestHost):
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
+
+class TestPatchStdDuplexControllerVIM(TestHost):
+
     def test_vim_services_enabled_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1291,7 +1015,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1324,10 +1047,8 @@ class TestPatch(TestHost):
                          result['vim_progress_status'])
 
     def test_vim_services_disabled_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1335,7 +1056,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1369,10 +1089,8 @@ class TestPatch(TestHost):
                          result['vim_progress_status'])
 
     def test_vim_services_disable_failed_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1380,7 +1098,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1414,10 +1131,8 @@ class TestPatch(TestHost):
                          result['vim_progress_status'])
 
     def test_vim_services_disable_extend_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1425,7 +1140,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1458,10 +1172,8 @@ class TestPatch(TestHost):
         self.assertEqual('', result['vim_progress_status'])
 
     def test_vim_services_delete_failed_action(self):
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1469,7 +1181,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1506,10 +1217,8 @@ class TestPatch(TestHost):
         # Note: Including this testcase for completeness (wanted to cover each
         # action. The testcases in test_interface.py cover the success case.
 
-        self._configure_networks()
         # Create controller-0
         self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1517,7 +1226,6 @@ class TestPatch(TestHost):
 
         # Create controller-1
         c1_host = self._create_controller_1(
-            subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
@@ -1537,19 +1245,17 @@ class TestPatch(TestHost):
                           headers={'User-Agent': 'sysinv-test'})
 
     def test_subfunction_config_action(self):
-        self._configure_networks()
         # Create controller-0 (AIO)
         c0_host = self._create_controller_0(
-            subfunctions=constants.WORKER,
+            subfunction=constants.WORKER,
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE)
+
+        # Get the disk created by _create_test_host
+        disk = self.dbapi.idisk_get(1, c0_host['id'])
         # Configure nova-local LVG
-        disk = self.dbapi.idisk_create(
-            c0_host['id'],
-            dbutils.get_test_idisk(device_node='/dev/sdb',
-                                   device_type=constants.DEVICE_TYPE_HDD))
         self.dbapi.ilvg_create(
             c0_host['id'],
             dbutils.get_test_lvg(lvm_vg_name=constants.LVG_NOVA_LOCAL))
@@ -1577,17 +1283,67 @@ class TestPatch(TestHost):
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
     def test_bad_action(self):
-        self._configure_networks()
         # Create controller-0
-        ihost = self._create_controller_0(
-            subfunctions=constants.CONTROLLER,
+        host = self._create_controller_0(
             availability=constants.AVAILABILITY_ONLINE)
 
         # Verify that the action was rejected
         self.assertRaises(webtest.app.AppError,
                           self.patch_json,
-                          '/ihosts/%s' % ihost['hostname'],
+                          '/ihosts/%s' % host['hostname'],
                           [{'path': '/action',
                             'value': 'badaction',
                             'op': 'replace'}],
                           headers={'User-Agent': 'sysinv-test'})
+
+
+class PostControllerHostTestCase(TestPostControllerMixin, TestHost,
+                                 dbbase.ControllerHostTestCase):
+    pass
+
+
+class PostWorkerHostTestCase(TestPostWorkerMixin, TestHost,
+                             dbbase.ControllerHostTestCase):
+    pass
+
+
+class PostAIOHostTestCase(TestPostControllerMixin, TestHost,
+                          dbbase.AIOHostTestCase):
+    pass
+
+
+class PostAIODuplexHostTestCase(TestPostControllerMixin, TestHost,
+                                dbbase.AIODuplexHostTestCase):
+    pass
+
+
+class PostAIODuplexDirectHostTestCase(TestPostControllerMixin, TestHost,
+                                      dbbase.AIODuplexDirectHostTestCase):
+    pass
+
+
+class PatchControllerHostTestCase(
+        TestPatchStdDuplexControllerVIM,
+        TestPatchStdDuplexControllerAction,
+        TestPatch):
+    pass
+
+
+class PatchAIOHostTestCase(TestPatch):
+
+    system_type = constants.TIS_AIO_BUILD
+
+    def setUp(self):
+        super(PatchAIOHostTestCase, self).setUp()
+
+
+class PatchAIOSimplexHostTestCase(PatchAIOHostTestCase):
+    system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+
+class PatchAIODuplexHostTestCase(PatchAIOHostTestCase):
+    system_mode = constants.SYSTEM_MODE_DUPLEX
+
+
+class PatchAIODuplexDirectHostTestCase(PatchAIOHostTestCase):
+    system_mode = constants.SYSTEM_MODE_DUPLEX_DIRECT

@@ -82,7 +82,7 @@ SW_VERSION = '0.0'
 
 def get_test_node(**kw):
     node = {
-        'id': kw.get('id', 1),
+        'id': kw.get('id'),
         'numa_node': kw.get('numa_node', 0),
         'capabilities': kw.get('capabilities', {}),
         'forihostid': kw.get('forihostid', 1)
@@ -593,7 +593,7 @@ def get_test_imemory(**kw):
 
 def get_test_idisk(**kw):
     inv = {
-        'id': kw.get('id', 2),
+        'id': kw.get('id'),
         'uuid': kw.get('uuid'),
         'device_node': kw.get('device_node'),
         'device_path': kw.get('device_path',
