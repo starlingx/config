@@ -128,9 +128,6 @@ conductor_opts = [
        cfg.IntOpt('managed_app_auto_recovery_interval',
                   default=300,
                   help='Interval to run managed app auto recovery'),
-       cfg.IntOpt('kube_upgrade_downgrade_retry_interval',
-                  default=3600,
-                  help='Interval in seconds between retries to upgrade/downgrade kubernetes components'),
                   ]
 
 CONF = cfg.CONF
@@ -5160,8 +5157,6 @@ class ConductorManager(service.PeriodicService):
         self._upgrade_downgrade_tiller()
         self._upgrade_downgrade_kube_networking()
 
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
     def _upgrade_downgrade_tiller(self):
         """Check if tiller needs to be upgraded or downgraded"""
         LOG.info("_upgrade_downgrade_tiller")
@@ -5202,10 +5197,9 @@ class ConductorManager(service.PeriodicService):
 
             if running_image is None:
                 LOG.warning("Failed to get tiller image")
-                return False
+                return
 
             LOG.info("Running tiller image: %s" % running_image)
-            LOG.info("Requested tiller version: %s" % image_versions.TILLER_IMAGE_VERSION)
 
             # Grab the version from the image name. Version is preceded
             # by a ":" e.g.
@@ -5213,7 +5207,7 @@ class ConductorManager(service.PeriodicService):
             running_image_name, running_version = running_image.rsplit(":", 1)
             if not running_version:
                 LOG.warning("Failed to get version from tiller image")
-                return False
+                return
 
             # Verify the tiller version running
             if running_version != image_versions.TILLER_IMAGE_VERSION:
@@ -5225,36 +5219,39 @@ class ConductorManager(service.PeriodicService):
                 local_registry_auth = cutils.get_local_docker_registry_auth()
                 self._docker._retrieve_specified_registries()
 
-                # download the image
-                try:
-                    img_tag, ret = self._docker.download_an_image("helm",
-                                                                  local_registry_auth,
-                                                                  download_image)
-                    if not ret:
-                        raise Exception
-                except Exception as e:
-                    LOG.warning("Failed to download image '%s'. %s" % (download_image, e))
-                    return False
+                # download the image, retry if it fails
+                while True:
+                    try:
+                        ret = self._docker.download_an_image("helm",
+                                                             local_registry_auth,
+                                                             download_image)
+                        if not ret:
+                            raise Exception
+                    except Exception as e:
+                        LOG.warning(
+                            "Failed to download image '%s'. %s" %
+                            (download_image, e))
+                        greenthread.sleep(FIVE_MIN_IN_SECS)
+                        continue
+                    break
 
                 # reset the cached registries
                 self._docker._reset_registries_info()
 
-                # Update the new image
-                try:
-                    helm_utils.helm_upgrade_tiller(download_image)
+                # Update the new image, retry if it fails
+                while True:
+                    try:
+                        helm_utils.helm_upgrade_tiller(download_image)
 
-                except Exception as e:
-                    LOG.warning("Failed to update the new image: %s" % e)
-                    return False
+                    except Exception as e:
+                        LOG.warning("Failed to update the new image: %s" % e)
+                        greenthread.sleep(FIVE_MIN_IN_SECS)
+                        continue
+                    break
 
         except Exception as e:
             LOG.error("{}. Failed to upgrade/downgrade tiller.".format(e))
-            return False
 
-        return True
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
     def _upgrade_downgrade_kube_networking(self):
         try:
             LOG.info(
@@ -5274,9 +5271,6 @@ class ConductorManager(service.PeriodicService):
         except Exception as e:
             LOG.error("Failed to upgrade/downgrade kubernetes "
                       "networking images: {}".format(e))
-            return False
-
-        return True
 
     def check_nodes_stable(self):
         hosts = self.dbapi.ihost_get_list()
