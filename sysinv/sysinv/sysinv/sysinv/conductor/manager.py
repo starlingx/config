@@ -5091,14 +5091,25 @@ class ConductorManager(service.PeriodicService):
     def _met_app_apply_prerequisites(self, app_name):
         prereqs_met = False
         if app_name == constants.HELM_APP_PLATFORM:
-            # make sure for the ceph related apps that we have ceph access
-            # and the crushmap is applied to correctly set up related k8s
-            # resources.
+            # For the application to apply, make sure:
+            # - for the ceph related apps that we have ceph access and the
+            #   crushmap is applied to correctly set up related k8s
+            #   resources.
+            # - the replica count will be non-zero so that manifest apply will
+            #   not timeout
             crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
                 constants.CEPH_CRUSH_MAP_APPLIED)
             if (os.path.isfile(crushmap_flag_file) and
                     self._ceph.have_ceph_monitor_access() and
-                    self._ceph.ceph_status_ok()):
+                    self._ceph.ceph_status_ok() and
+                    (self.dbapi.count_hosts_matching_criteria(
+                        personality=constants.CONTROLLER,
+                        administrative=constants.ADMIN_UNLOCKED,
+                        operational=constants.OPERATIONAL_ENABLED,
+                        availability=[constants.AVAILABILITY_AVAILABLE,
+                                      constants.AVAILABILITY_DEGRADED],
+                        vim_progress_status=constants.VIM_SERVICES_ENABLED) > 0)):
+
                 prereqs_met = True
         return prereqs_met
 
