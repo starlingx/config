@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2018 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -40,9 +40,6 @@ class UpdateCephCluster(base.DbTestCase):
     #  - test_add_valid_mix_tiers
     #  - test_add_4_mix_bbbb
 
-    upgrade_downgrade_kube_components_patcher = mock.patch.object(
-        manager.ConductorManager, '_upgrade_downgrade_kube_components')
-
     def setUp(self):
         super(UpdateCephCluster, self).setUp()
         self.service = manager.ConductorManager('test-host', 'test-topic')
@@ -52,12 +49,6 @@ class UpdateCephCluster(base.DbTestCase):
         self.system = utils.create_test_isystem()
         self.load = utils.create_test_load()
         self.host_index = -1
-
-        self.mock_upgrade_downgrade_kube_components = self.upgrade_downgrade_kube_components_patcher.start()
-
-    def tearDown(self):
-        super(UpdateCephCluster, self).tearDown()
-        self.upgrade_downgrade_kube_components_patcher.stop()
 
     def _create_storage_ihost(self, hostname):
         self.host_index += 1
