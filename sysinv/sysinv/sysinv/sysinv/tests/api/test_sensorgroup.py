@@ -1,3 +1,9 @@
+#
+# Copyright (c) 2017-2019 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 import mock
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
