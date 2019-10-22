@@ -226,13 +226,13 @@ class JsonPatchType(wtypes.Base):
                 raise wsme.exc.ClientSideError(msg % patch.path)
 
         if patch.op != 'remove':
-            if not patch.value:
+            if patch.value is None:
                 msg = _("Edit and Add operation of the field requires "
                         "non-empty value.")
                 raise wsme.exc.ClientSideError(msg)
 
         ret = {'path': patch.path, 'op': patch.op}
-        if patch.value:
+        if patch.value is not None:
             ret['value'] = patch.value
         return ret
 

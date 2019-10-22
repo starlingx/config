@@ -18,10 +18,13 @@
 # Copyright (c) 2013-2016 Wind River Systems, Inc.
 #
 
+
 import jsonpatch
+
 import pecan
 from pecan import rest
 import six
+
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -37,6 +40,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
+
 
 LOG = log.getLogger(__name__)
 
@@ -103,8 +107,14 @@ class Memory(base.APIBase):
     vswitch_hugepages_avail = int
     "Represent the imemory vswitch number of hugepages available"
 
+    vm_pending_as_percentage = wtypes.text
+    "Represents if the hugepages are represented by percentage (True) or by integer (False)."
+
     vm_hugepages_nr_2M_pending = int
     "Represent the imemory vm number of hugepages pending (2M pages)"
+
+    vm_hugepages_2M_percentage = int
+    "Represent the imemory vm percent of hugepages pending (2M pages)"
 
     vm_hugepages_nr_2M = int
     "Represent the imemory vm number of hugepages (2M pages)"
@@ -114,6 +124,9 @@ class Memory(base.APIBase):
 
     vm_hugepages_nr_1G_pending = int
     "Represent the imemory vm number of hugepages pending (1G pages)"
+
+    vm_hugepages_1G_percentage = int
+    "Represent the imemory vm percent of hugepages pending (1G pages)"
 
     vm_hugepages_nr_1G = int
     "Represent the imemory vm number of hugepages (1G pages)"
@@ -182,12 +195,15 @@ class Memory(base.APIBase):
                 'vswitch_hugepages_size_mib', 'vswitch_hugepages_nr',
                 'vswitch_hugepages_reqd',
                 'vswitch_hugepages_avail',
+                'vm_pending_as_percentage',
                 'vm_hugepages_nr_2M',
                 'vm_hugepages_nr_1G', 'vm_hugepages_use_1G',
                 'vm_hugepages_nr_2M_pending',
                 'vm_hugepages_avail_2M',
+                'vm_hugepages_2M_percentage',
                 'vm_hugepages_nr_1G_pending',
                 'vm_hugepages_avail_1G',
+                'vm_hugepages_1G_percentage',
                 'vm_hugepages_nr_4K',
                 'vm_hugepages_possible_2M', 'vm_hugepages_possible_1G',
                 'numa_node', 'ihost_uuid', 'inode_uuid',
@@ -391,9 +407,11 @@ class MemoryController(rest.RestController):
         vswitch_hugepages_size_mib = None
 
         platform_reserved_mib = None
+        vm_pending_as_percentage = None
         for p in patch:
             if p['path'] == '/platform_reserved_mib':
                 platform_reserved_mib = p['value']
+
             if p['path'] == '/vm_hugepages_nr_2M_pending':
                 vm_hugepages_nr_2M_pending = p['value']
 
@@ -405,6 +423,20 @@ class MemoryController(rest.RestController):
 
             if p['path'] == '/vswitch_hugepages_size_mib':
                 vswitch_hugepages_size_mib = p['value']
+
+            if p['path'] == '/vm_pending_as_percentage':
+                vm_pending_as_percentage = p['value']
+
+        if vm_pending_as_percentage is None:
+            vm_pending_as_percentage = rpc_port["vm_pending_as_percentage"]
+        elif vm_pending_as_percentage == "True":
+            if vm_hugepages_nr_2M_pending is not None:
+                patch.append({'op': 'replace', 'path': '/vm_hugepages_2M_percentage',
+                            'value': vm_hugepages_nr_2M_pending})
+
+            if vm_hugepages_nr_1G_pending is not None:
+                patch.append({'op': 'replace', 'path': '/vm_hugepages_1G_percentage',
+                            'value': vm_hugepages_nr_1G_pending})
 
         # The host must be locked
         if host_id:
@@ -420,7 +452,8 @@ class MemoryController(rest.RestController):
                                        vm_hugepages_nr_1G_pending,
                                        vswitch_hugepages_reqd,
                                        vswitch_hugepages_size_mib,
-                                       platform_reserved_mib)
+                                       platform_reserved_mib,
+                                       vm_pending_as_percentage)
         except wsme.exc.ClientSideError as e:
             inode = pecan.request.dbapi.inode_get(inode_id=rpc_port.forinodeid)
             numa_node = inode.numa_node
@@ -430,7 +463,8 @@ class MemoryController(rest.RestController):
         # Semantics checks for platform memory
         _check_memory(rpc_port, host_id, platform_reserved_mib,
                       vm_hugepages_nr_2M_pending, vm_hugepages_nr_1G_pending,
-                      vswitch_hugepages_reqd, vswitch_hugepages_size_mib)
+                      vswitch_hugepages_reqd, vswitch_hugepages_size_mib,
+                      vm_pending_as_percentage)
 
         # only allow patching allocated_function and capabilities
         # replace ihost_uuid and inode_uuid with corresponding
@@ -512,6 +546,10 @@ def _update(mem_uuid, mem_values):
     if 'vm_hugepages_nr_1G_pending' in mem_values:
         vm_hugepages_nr_1G_pending = mem_values['vm_hugepages_nr_1G_pending']
 
+    vm_pending_as_percentage = None
+    if 'vm_pending_as_percentage' in mem_values:
+        vm_pending_as_percentage = mem_values['vm_pending_as_percentage']
+
     # The host must be locked
     if host_id:
         _check_host(host_id)
@@ -525,12 +563,13 @@ def _update(mem_uuid, mem_values):
                                     vm_hugepages_nr_1G_pending,
                                     vswitch_hugepages_reqd,
                                     vswitch_hugepages_size_mib,
-                                    platform_reserved_mib)
+                                    platform_reserved_mib,
+                                    vm_pending_as_percentage)
 
     # Semantics checks for platform memory
     _check_memory(rpc_port, host_id, platform_reserved_mib,
                   vm_hugepages_nr_2M_pending, vm_hugepages_nr_1G_pending,
-                  vswitch_hugepages_reqd)
+                  vswitch_hugepages_reqd, vm_pending_as_percentage)
 
     # update memory values
     pecan.request.dbapi.imemory_update(mem_uuid, mem_values)
@@ -552,8 +591,22 @@ def _check_host(ihost):
 
 def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
                   vm_hugepages_nr_2M_pending=None, vm_hugepages_nr_1G_pending=None,
-                  vswitch_hugepages_reqd=None, vswitch_hugepages_size_mib=None):
+                  vswitch_hugepages_reqd=None, vswitch_hugepages_size_mib=None,
+                  vm_pending_as_percentage=None):
     if platform_reserved_mib:
+        # Check for invalid characters
+        try:
+            val = int(platform_reserved_mib)
+        except ValueError:
+            raise wsme.exc.ClientSideError((
+                "Platform memory must be a number"))
+        if val < 0:
+            raise wsme.exc.ClientSideError((
+                "Platform memory must be greater than zero"))
+
+        # translating vswitch nones to zeros
+        vswitch_hugepages_reqd = (0 if vswitch_hugepages_reqd is None else vswitch_hugepages_reqd)
+
         # Check for lower limit
         inode_id = rpc_port['forinodeid']
         inode = pecan.request.dbapi.inode_get(inode_id)
@@ -583,31 +636,45 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
             else:
                 raise wsme.exc.ClientSideError(msg_platform_over)
 
-        # Check if it is within the total amount of memory
-        mem_alloc = 0
-        if vm_hugepages_nr_2M_pending:
-            mem_alloc += int(vm_hugepages_nr_2M_pending) * constants.MIB_2M
-        elif rpc_port['vm_hugepages_nr_2M']:
-            mem_alloc += int(rpc_port['vm_hugepages_nr_2M']) * constants.MIB_2M
-        if vm_hugepages_nr_1G_pending:
-            mem_alloc += int(vm_hugepages_nr_1G_pending) * constants.MIB_1G
-        elif rpc_port['vm_hugepages_nr_1G']:
-            mem_alloc += int(rpc_port['vm_hugepages_nr_1G']) * constants.MIB_1G
-        LOG.debug("vm total=%s" % (mem_alloc))
+        if not vm_pending_as_percentage:
+            vm_pending_as_percentage = rpc_port["vm_pending_as_percentage"]
 
-        vs_hp_nr = 0
         if vswitch_hugepages_size_mib:
             vs_hp_size = int(vswitch_hugepages_size_mib)
         else:
             vs_hp_size = rpc_port['vswitch_hugepages_size_mib']
+
+        vs_hp_nr = 0
         if vswitch_hugepages_reqd:
             vs_hp_nr = int(vswitch_hugepages_reqd)
         elif rpc_port['vswitch_hugepages_nr']:
             vs_hp_nr = int(rpc_port['vswitch_hugepages_nr'])
 
+        hp_mem_avail = node_memtotal_mib - int(platform_reserved_mib) \
+                        - int(vs_hp_nr * vs_hp_size)
+
+        # Check if it is within the total amount of memory
+        mem_alloc = 0
+        if vm_pending_as_percentage == "True":
+            if vm_hugepages_nr_2M_pending is not None:
+                mem_alloc += int(hp_mem_avail * int(vm_hugepages_nr_2M_pending) / 100)
+            elif rpc_port['vm_hugepages_2M_percentage'] is not None:
+                mem_alloc += int(hp_mem_avail * int(rpc_port['vm_hugepages_2M_percentage']) / 100)
+            if vm_hugepages_nr_1G_pending is not None:
+                mem_alloc += int(hp_mem_avail * int(vm_hugepages_nr_1G_pending) / 100)
+            elif rpc_port['vm_hugepages_1G_percentage'] is not None:
+                mem_alloc += int(hp_mem_avail * int(rpc_port['vm_hugepages_1G_percentage']) / 100)
+        else:
+            if vm_hugepages_nr_2M_pending is not None:
+                mem_alloc += int(vm_hugepages_nr_2M_pending) * constants.MIB_2M
+            elif rpc_port['vm_hugepages_nr_2M'] is not None:
+                mem_alloc += int(rpc_port['vm_hugepages_nr_2M']) * constants.MIB_2M
+            if vm_hugepages_nr_1G_pending is not None:
+                mem_alloc += int(vm_hugepages_nr_1G_pending) * constants.MIB_1G
+            elif rpc_port['vm_hugepages_nr_1G'] is not None:
+                mem_alloc += int(rpc_port['vm_hugepages_nr_1G']) * constants.MIB_1G
+
         mem_alloc += vs_hp_size * vs_hp_nr
-        LOG.debug("vs_hp_nr=%s vs_hp_size=%s" % (vs_hp_nr, vs_hp_size))
-        LOG.debug("memTotal %s mem_alloc %s" % (node_memtotal_mib, mem_alloc))
 
         # Initial configuration defaults mem_alloc to consume 100% of 2M pages,
         # so we may marginally exceed available non-huge memory.
@@ -635,7 +702,7 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
 def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                        vm_hugepages_nr_1G=None, vswitch_hugepages_reqd=None,
                        vswitch_hugepages_size_mib=None,
-                       platform_reserved_mib=None):
+                       platform_reserved_mib=None, vm_pending_as_percentage=None):
 
     if rpc_port['vm_hugepages_use_1G'] == 'False':
         vs_hp_size = vswitch_hugepages_size_mib
@@ -645,8 +712,10 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
             raise wsme.exc.ClientSideError(_(
                   "Processor does not support 1G huge pages."))
 
+    node_memtotal_mib = rpc_port['node_memtotal_mib']
+
     # Check for invalid characters
-    if vm_hugepages_nr_2M:
+    if vm_hugepages_nr_2M is not None:
         try:
             val = int(vm_hugepages_nr_2M)
         except ValueError:
@@ -656,7 +725,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
             raise wsme.exc.ClientSideError(_(
                   "VM huge pages 2M must be greater than or equal to zero"))
 
-    if vm_hugepages_nr_1G:
+    if vm_hugepages_nr_1G is not None:
         try:
             val = int(vm_hugepages_nr_1G)
         except ValueError:
@@ -698,61 +767,6 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
             raise wsme.exc.ClientSideError(_(
                 "vSwitch hugepage size (MiB) must be a power of 2"))
 
-    # None == unchanged
-    if vm_hugepages_nr_1G is not None:
-        new_1G_pages = int(vm_hugepages_nr_1G)
-    elif rpc_port['vm_hugepages_nr_1G_pending']:
-        new_1G_pages = int(rpc_port['vm_hugepages_nr_1G_pending'])
-    elif rpc_port['vm_hugepages_nr_1G']:
-        new_1G_pages = int(rpc_port['vm_hugepages_nr_1G'])
-    else:
-        new_1G_pages = 0
-    vm_hp_1G_reqd_mib = new_1G_pages * constants.MIB_1G
-
-    # None == unchanged
-    if vm_hugepages_nr_2M is not None:
-        new_2M_pages = int(vm_hugepages_nr_2M)
-    elif rpc_port['vm_hugepages_nr_2M_pending']:
-        new_2M_pages = int(rpc_port['vm_hugepages_nr_2M_pending'])
-    elif rpc_port['vm_hugepages_nr_2M']:
-        new_2M_pages = int(rpc_port['vm_hugepages_nr_2M'])
-    else:
-        new_2M_pages = 0
-    vm_hp_2M_reqd_mib = new_2M_pages * constants.MIB_2M
-
-    # None == unchanged
-    if vswitch_hugepages_reqd is not None:
-        new_vs_pages = int(vswitch_hugepages_reqd)
-    elif rpc_port['vswitch_hugepages_nr']:
-        new_vs_pages = rpc_port['vswitch_hugepages_nr']
-    else:
-        new_vs_pages = 0
-    LOG.debug('new 2M pages: %s, 1G pages: %s, vswitch: %s' %
-              (new_2M_pages, new_1G_pages, new_vs_pages))
-
-    # None == unchanged
-    if vswitch_hugepages_size_mib is not None:
-        vs_hp_size_mib = int(vswitch_hugepages_size_mib)
-    elif rpc_port['vswitch_hugepages_size_mib']:
-        vs_hp_size_mib = rpc_port['vswitch_hugepages_size_mib']
-    else:
-        # default
-        vs_hp_size_mib = constants.MIB_2M
-    vs_hp_reqd_mib = new_vs_pages * vs_hp_size_mib
-
-    if new_2M_pages != 0 or new_1G_pages != 0:
-        if utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE:
-            if vs_hp_size_mib == constants.MIB_1G:
-                if new_2M_pages != 0:
-                    raise wsme.exc.ClientSideError(_(
-                        "Only 1G huge page allocation is supported"))
-            elif new_1G_pages != 0:
-                raise wsme.exc.ClientSideError(_(
-                    "Only 2M huge page allocation is supported"))
-        elif new_2M_pages != 0 and new_1G_pages != 0:
-            raise wsme.exc.ClientSideError(_(
-                "Host only supports single huge page size."))
-
     # The size of possible hugepages is the node mem total - platform reserved
     base_mem_mib = rpc_port['platform_reserved_mib']
     if platform_reserved_mib:
@@ -767,8 +781,101 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                 "Platform memory must be greater than zero"))
         base_mem_mib = int(platform_reserved_mib)
 
-    # only allow allocating 90% of the possible huge pages memory
-    hp_possible_mib = int((rpc_port['node_memtotal_mib'] - base_mem_mib) * 0.9)
+    # None == unchanged
+    if vswitch_hugepages_reqd is not None:
+        new_vs_pages = int(vswitch_hugepages_reqd)
+    elif rpc_port['vswitch_hugepages_nr']:
+        new_vs_pages = rpc_port['vswitch_hugepages_nr']
+    else:
+        new_vs_pages = 0
+
+    # None == unchanged
+    if vswitch_hugepages_size_mib is not None:
+        vs_hp_size_mib = int(vswitch_hugepages_size_mib)
+    elif rpc_port['vswitch_hugepages_size_mib']:
+        vs_hp_size_mib = rpc_port['vswitch_hugepages_size_mib']
+    else:
+        # default
+        vs_hp_size_mib = constants.MIB_2M
+
+    vs_hp_reqd_mib = new_vs_pages * vs_hp_size_mib
+
+    # None == unchanged
+    if vm_hugepages_nr_1G is not None:
+        new_1G_pages = int(vm_hugepages_nr_1G)
+    elif rpc_port['vm_hugepages_nr_1G_pending']:
+        new_1G_pages = int(rpc_port['vm_hugepages_nr_1G_pending'])
+    elif vm_pending_as_percentage == "True" and rpc_port['vm_hugepages_1G_percentage']:
+        new_1G_pages = int(rpc_port['vm_hugepages_1G_percentage'])
+    elif rpc_port['vm_hugepages_nr_1G']:
+        new_1G_pages = int(rpc_port['vm_hugepages_nr_1G'])
+    else:
+        new_1G_pages = 0
+
+    if(vm_pending_as_percentage == "True"):
+        vm_hp_1G_reqd_mib = int((node_memtotal_mib - base_mem_mib
+                             - int(new_vs_pages * vs_hp_size_mib))
+                             * new_1G_pages / 100)
+    else:
+        vm_hp_1G_reqd_mib = new_1G_pages * constants.MIB_1G
+
+    # None == unchanged
+    if vm_hugepages_nr_2M is not None:
+        new_2M_pages = int(vm_hugepages_nr_2M)
+    elif rpc_port['vm_hugepages_nr_2M_pending']:
+        new_2M_pages = int(rpc_port['vm_hugepages_nr_2M_pending'])
+    elif vm_pending_as_percentage == "True" and rpc_port['vm_hugepages_2M_percentage']:
+        new_2M_pages = int(rpc_port['vm_hugepages_2M_percentage'])
+    elif rpc_port['vm_hugepages_nr_2M']:
+        new_2M_pages = int(rpc_port['vm_hugepages_nr_2M'])
+    else:
+        new_2M_pages = 0
+
+    hp_mem_avail = node_memtotal_mib - base_mem_mib \
+                - int(new_vs_pages * vs_hp_size_mib)
+
+    if(vm_pending_as_percentage == "True"):
+        vm_hp_2M_reqd_mib = int(hp_mem_avail * new_2M_pages / 100)
+    else:
+        vm_hp_2M_reqd_mib = new_2M_pages * constants.MIB_2M
+
+    LOG.debug('new 2M pages: %s, 1G pages: %s, vswitch: %s' %
+              (new_2M_pages, new_1G_pages, new_vs_pages))
+
+    # The size of possible hugepages is the size of reported possible
+    # vm pages + the reported current number of vswitch pages.
+    if vs_hp_size_mib == constants.MIB_2M:
+        hp_possible_mib = int(
+            rpc_port.get('vm_hugepages_possible_2M', 0) +
+            rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
+    elif vs_hp_size_mib == constants.MIB_1G:
+        hp_possible_mib = int(
+            rpc_port.get('vm_hugepages_possible_1G', 0) +
+            rpc_port.get('vswitch_hugepages_nr', 0)) * vs_hp_size_mib
+
+    if new_2M_pages != 0 or new_1G_pages != 0:
+        if utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE:
+            if vs_hp_size_mib == constants.MIB_1G:
+                if new_2M_pages != 0:
+                    raise wsme.exc.ClientSideError(_(
+                        "Only 1G huge page allocation is supported"))
+            elif new_1G_pages != 0:
+                raise wsme.exc.ClientSideError(_(
+                    "Only 2M huge page allocation is supported"))
+        elif new_2M_pages != 0 and new_1G_pages != 0:
+            raise wsme.exc.ClientSideError(_(
+                "Host only supports single huge page size."))
+
+    # Check if percentage of pages is within valid range
+    if(vm_pending_as_percentage == "True"):
+        if(not 0 <= new_2M_pages <= 100):
+            raise wsme.exc.ClientSideError(_(
+                "2M hugepage percent allocation must be within 0% - 100%."))
+        if(not 0 <= new_1G_pages <= 100):
+            raise wsme.exc.ClientSideError(_(
+                "1G hugepage percent allocation must be within 0% - 100%."))
+
+    hp_possible_mib = int((rpc_port['node_memtotal_mib'] - base_mem_mib))
 
     # Total requested huge pages
     hp_requested_mib = vm_hp_2M_reqd_mib + vm_hp_1G_reqd_mib + vs_hp_reqd_mib
@@ -780,17 +887,22 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         vm_max_hp_1G = ((hp_possible_mib - vs_hp_reqd_mib - vm_hp_2M_reqd_mib)
                         / constants.MIB_1G)
 
-        if new_2M_pages > 0 and new_1G_pages > 0:
+        if vm_max_hp_2M < 0:
+            vm_max_hp_2M = 0
+        if vm_max_hp_1G < 0:
+            vm_max_hp_1G = 0
 
+        if new_2M_pages > 0 and new_1G_pages > 0:
             msg = _("For a requested vSwitch hugepage allocation of %s MiB, "
                     "max 1G pages is %s when 2M is %s, or "
-                    "max 2M pages is %s when 1G is %s." % (
+                    "max 2M pages is %s when 1G is %s" % (
                         vs_hp_reqd_mib, vm_max_hp_1G, new_2M_pages,
                         vm_max_hp_2M, new_1G_pages
                     ))
         elif new_1G_pages > 0:
             msg = _("For a requested vSwitch hugepage allocation of %s MiB, "
-                    "max 1G pages: %s" % (vs_hp_reqd_mib, vm_max_hp_1G))
+                    "max 1G pages: %s. . hp_possible: %s. hp_requested: %s"
+                    % (vs_hp_reqd_mib, vm_max_hp_1G, hp_possible_mib, hp_requested_mib))
         elif new_2M_pages > 0:
             msg = _("For a requested vSwitch hugepage allocation of %s MiB, "
                     "max 2M pages: %s" % (vs_hp_reqd_mib, vm_max_hp_2M))
@@ -798,5 +910,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
             msg = _("Max vSwitch hugepage allocation is %s MiB, when 2M is %s "
                     "and 1G is %s" % (hp_requested_mib, new_2M_pages,
                                       new_1G_pages))
+
         raise wsme.exc.ClientSideError(msg)
+
     return patch

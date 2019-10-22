@@ -1,4 +1,3 @@
-#
 # Copyright (c) 2017-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -561,7 +560,6 @@ class PlatformPuppet(base.BasePuppet):
 
             cpu_options = ""
             cpu_ranges = {}
-
             if constants.LOWLATENCY in host.subfunctions:
                 # set PM QoS latency that achieves C1 state for all cpus
                 config.update({
@@ -572,8 +570,7 @@ class PlatformPuppet(base.BasePuppet):
                 })
                 cpu_ranges.update({"nohz_full": rcu_nocbs_ranges})
 
-            isolcpus_ranges = utils.format_range_set(
-                vswitch_cpuset.union(app_isolated_cpuset))
+            isolcpus_ranges = utils.format_range_set(vswitch_cpuset.union(app_isolated_cpuset))
 
             cpu_ranges.update({
                 "isolcpus": isolcpus_ranges,
@@ -626,6 +623,8 @@ class PlatformPuppet(base.BasePuppet):
                 vswitch_2M_page = 0
                 vswitch_1G_page = 0
 
+                vm_pending_as_percentage = memory.vm_pending_as_percentage
+
                 platform_size = memory.platform_reserved_mib
                 platform_node = "\"node%d:%dMB:%d\"" % (
                     node, platform_size, platform_core_count)
@@ -635,6 +634,9 @@ class PlatformPuppet(base.BasePuppet):
                 vswitch_pages = memory.vswitch_hugepages_reqd \
                     if memory.vswitch_hugepages_reqd is not None \
                     else memory.vswitch_hugepages_nr
+
+                if vswitch_pages == 0:
+                    vswitch_pages = memory.vswitch_hugepages_nr
 
                 vswitch_node = "\"node%d:%dkB:%d\"" % (
                         node, vswitch_size * 1024, vswitch_pages)
@@ -651,6 +653,23 @@ class PlatformPuppet(base.BasePuppet):
 
                 total_hugepages_2M = vm_hugepages_nr_2M
                 total_hugepages_1G = vm_hugepages_nr_1G
+
+                if(vm_pending_as_percentage == "True"):
+                    vm_hugepages_nr_2M = memory.vm_hugepages_nr_2M_pending if \
+                        memory.vm_hugepages_nr_2M_pending is not None else \
+                        memory.vm_hugepages_2M_percentage if memory.vm_hugepages_2M_percentage \
+                        is not None else 0
+                    vm_hugepages_nr_1G = memory.vm_hugepages_nr_1G_pending if \
+                        memory.vm_hugepages_nr_1G_pending is not None else \
+                        memory.vm_hugepages_1G_percentage if memory.vm_hugepages_1G_percentage \
+                        is not None else 0
+
+                    total_hugepages_2M = int(int(memory.node_memtotal_mib - platform_size
+                        - vswitch_pages * memory.vswitch_hugepages_size_mib)
+                        * vm_hugepages_nr_2M / 100 / constants.MIB_2M)
+                    total_hugepages_1G = int(int(memory.node_memtotal_mib - platform_size
+                        - vswitch_pages * memory.vswitch_hugepages_size_mib)
+                        * vm_hugepages_nr_1G / 100 / constants.MIB_1G)
 
                 if memory.vswitch_hugepages_size_mib == constants.MIB_2M:
                     total_hugepages_2M += vswitch_pages
@@ -715,6 +734,7 @@ class PlatformPuppet(base.BasePuppet):
                     'platform::compute::grub::params::g_hugepages':
                         grub_hugepages_1G,
                 })
+
             config.update({
                 'platform::compute::grub::params::default_pgsz':
                     default_pgsz,
@@ -723,7 +743,8 @@ class PlatformPuppet(base.BasePuppet):
             if sum(vswitch_2M_pages) > 0:
                 config.update({
                     'platform::vswitch::params::hugepage_dir':
-                        '/mnt/huge-2048kB'})
+                        '/mnt/huge-2048kB'
+                })
 
         return config
 

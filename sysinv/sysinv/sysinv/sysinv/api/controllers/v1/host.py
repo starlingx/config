@@ -3592,16 +3592,35 @@ class HostController(rest.RestController):
                     allocated += m.vswitch_hugepages_reqd * m.vswitch_hugepages_size_mib
                 else:
                     allocated += m.vswitch_hugepages_nr * m.vswitch_hugepages_size_mib
-            if m.vm_hugepages_nr_2M_pending is not None:
-                allocated += constants.MIB_2M * m.vm_hugepages_nr_2M_pending
-                pending_2M_memory = True
-            elif m.vm_hugepages_nr_2M:
-                allocated += constants.MIB_2M * m.vm_hugepages_nr_2M
-            if m.vm_hugepages_nr_1G_pending is not None:
-                allocated += constants.MIB_1G * m.vm_hugepages_nr_1G_pending
-                pending_1G_memory = True
-            elif m.vm_hugepages_nr_1G:
-                allocated += constants.MIB_1G * m.vm_hugepages_nr_1G
+            if(m.vm_pending_as_percentage == "True"):
+                if m.vm_hugepages_nr_2M_pending is not None:
+                    allocated += (memtotal - allocated) \
+                        * m.vm_hugepages_nr_2M_pending / 100
+                    pending_2M_memory = True
+                elif m.vm_hugepages_2M_percentage:
+                    allocated += (memtotal - allocated) \
+                        * m.vm_hugepages_2M_percentage / 100
+                    pending_2M_memory = True
+
+                if m.vm_hugepages_nr_1G_pending is not None:
+                    allocated += (memtotal - allocated) \
+                        * m.vm_hugepages_nr_1G_pending / 100
+                    pending_1G_memory = True
+                elif m.vm_hugepages_1G_percentage:
+                    allocated += (memtotal - allocated) \
+                        * m.vm_hugepages_1G_percentage / 100
+                    pending_1G_memory = True
+            else:
+                if m.vm_hugepages_nr_2M_pending is not None:
+                    allocated += constants.MIB_2M * m.vm_hugepages_nr_2M_pending
+                    pending_2M_memory = True
+                elif m.vm_hugepages_nr_2M:
+                    allocated += constants.MIB_2M * m.vm_hugepages_nr_2M
+                if m.vm_hugepages_nr_1G_pending is not None:
+                    allocated += constants.MIB_1G * m.vm_hugepages_nr_1G_pending
+                    pending_1G_memory = True
+                elif m.vm_hugepages_nr_1G:
+                    allocated += constants.MIB_1G * m.vm_hugepages_nr_1G
 
             LOG.info("Memory: Total=%s MiB, Allocated=%s MiB, "
                     "2M: %s pages %s pages pending, "
@@ -3705,12 +3724,20 @@ class HostController(rest.RestController):
                 if m.hugepages_configured == "True":
                     value = {}
                     vs_hugepages_nr = m.vswitch_hugepages_nr
-                    vm_hugepages_nr_2M = m.vm_hugepages_nr_2M_pending \
-                        if m.vm_hugepages_nr_2M_pending is not None \
-                        else m.vm_hugepages_nr_2M
-                    vm_hugepages_nr_1G = m.vm_hugepages_nr_1G_pending \
-                        if m.vm_hugepages_nr_1G_pending is not None \
-                        else m.vm_hugepages_nr_1G
+
+                    if m.vm_hugepages_nr_2M_pending is not None:
+                        vm_hugepages_nr_2M = m.vm_hugepages_nr_2M_pending
+                    elif m.vm_hugepages_2M_percentage is not None and m.vm_pending_as_percentage == "True":
+                        vm_hugepages_nr_2M = m.vm_hugepages_2M_percentage
+                    else:
+                        vm_hugepages_nr_2M = m.vm_hugepages_nr_2M
+
+                    if m.vm_hugepages_nr_1G_pending is not None:
+                        vm_hugepages_nr_1G = m.vm_hugepages_nr_1G_pending
+                    elif m.vm_hugepages_1G_percentage is not None and m.vm_pending_as_percentage == "True":
+                        vm_hugepages_nr_1G = m.vm_hugepages_1G_percentage
+                    else:
+                        vm_hugepages_nr_1G = m.vm_hugepages_nr_1G
 
                     hp_possible_mib = (m.node_memtotal_mib -
                                        m.platform_reserved_mib)
@@ -3724,9 +3751,10 @@ class HostController(rest.RestController):
                     # vm_mem_mib should not be negative
                     if vm_mem_mib < constants.MIB_2M:
                         vm_mem_mib = 0
+
                     # Current value might not be suitable after upgrading or
                     # patching
-                    if vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) /
+                    if m.vm_pending_as_percentage == "False" and vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) /
                             constants.MIB_2M):
                         vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) /
                                                  constants.MIB_2M)

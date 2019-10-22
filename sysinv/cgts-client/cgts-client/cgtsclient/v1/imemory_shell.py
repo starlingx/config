@@ -1,4 +1,3 @@
-#
 # Copyright (c) 2013-2014 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -7,7 +6,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 # All Rights Reserved.
-#
 
 from cgtsclient.common import utils
 from cgtsclient import exc
@@ -24,6 +22,7 @@ def _print_imemory_show(imemory):
               'vswitch_hugepages_avail',
               'vswitch_hugepages_reqd',
               'vm_hugepages_nr_4K',
+              'vm_pending_as_percentage',
               'vm_hugepages_nr_2M',
               'vm_hugepages_nr_2M_pending',
               'vm_hugepages_avail_2M',
@@ -41,6 +40,7 @@ def _print_imemory_show(imemory):
               '                    Available',
               '                    Required',
               'Application  Pages (4K): Total',
+              'Application  Huge Pages Pending As Percentage',
               'Application  Huge Pages (2M): Total',
               '                Total Pending',
               '                Available',
@@ -115,6 +115,7 @@ def do_host_memory_list(cc, args):
               'vswitch_hugepages_avail',
               'vswitch_hugepages_reqd',
               'vm_hugepages_nr_4K',
+              'vm_pending_as_percentage',
               'vm_hugepages_nr_2M',
               'vm_hugepages_avail_2M',
               'vm_hugepages_nr_2M_pending',
@@ -133,6 +134,7 @@ def do_host_memory_list(cc, args):
                     'vs_hp_avail',
                     'vs_hp_reqd',
                     'app_total_4K',
+                    'app_hp_as_percentage',
                     'app_hp_total_2M',
                     'app_hp_avail_2M',
                     'app_hp_pending_2M',
@@ -196,6 +198,8 @@ def do_host_memory_modify(cc, args):
 
     function = user_specified_fields.get('function')
     vswitch_hp_size_mib = None
+    percent_2M = None
+    percent_1G = None
 
     patch = []
     for (k, v) in user_specified_fields.items():
@@ -211,14 +215,35 @@ def do_host_memory_modify(cc, args):
         else:
             if k == 'hugepages_nr_2M_pending':
                 k = 'vm_hugepages_nr_2M_pending'
+                percent_2M = "False"
+                if str(v).endswith('%'):
+                    percent_2M = "True"
+                    v = v.rstrip("%")
+                v = int(v)
+
             elif k == 'hugepages_nr_1G_pending':
                 k = 'vm_hugepages_nr_1G_pending'
+                percent_1G = "False"
+                if str(v).endswith('%'):
+                    percent_1G = "True"
+                    v = v.rstrip("%")
+                v = int(v)
 
         patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     if patch:
+        if (percent_2M == "True" and percent_1G == "False") or \
+                (percent_2M == "False" and percent_1G == "True"):
+            raise exc.CommandError('2MB hugepage and 1GB hugepage values must both be \
+                                   percent or not percent. (2M as percentage: %s, 1G as \
+                                   percentage: %s)' % (percent_2M, percent_1G))
+
         if vswitch_hp_size_mib:
-            patch.append({'op': 'replace', 'path': '/' + 'vswitch_hugepages_size_mib', 'value': vswitch_hp_size_mib})
+            patch.append({'op': 'replace', 'path': '/vswitch_hugepages_size_mib',
+                          'value': vswitch_hp_size_mib})
+        if percent_2M is not None or percent_1G is not None:
+            patch.append({'op': 'replace', 'path': '/vm_pending_as_percentage',
+                          'value': percent_2M if percent_2M is not None else percent_1G})
 
         imemory = cc.imemory.update(mem.uuid, patch)
         _print_imemory_show(imemory)

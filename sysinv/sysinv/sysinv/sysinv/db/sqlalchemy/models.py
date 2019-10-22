@@ -305,6 +305,7 @@ class imemory(Base):
     vswitch_hugepages_nr = Column(Integer)
     vswitch_hugepages_avail = Column(Integer)
 
+    vm_pending_as_percentage = Column(Boolean, default=False)
     vm_hugepages_nr_2M_pending = Column(Integer)
     vm_hugepages_nr_1G_pending = Column(Integer)
     vm_hugepages_nr_2M = Column(Integer)
@@ -312,6 +313,8 @@ class imemory(Base):
     vm_hugepages_nr_4K = Column(Integer)
     vm_hugepages_avail_2M = Column(Integer)
     vm_hugepages_avail_1G = Column(Integer)
+    vm_hugepages_2M_percentage = Column(Integer)
+    vm_hugepages_1G_percentage = Column(Integer)
 
     vm_hugepages_use_1G = Column(Boolean, default=False)
     vm_hugepages_possible_2M = Column(Integer)
