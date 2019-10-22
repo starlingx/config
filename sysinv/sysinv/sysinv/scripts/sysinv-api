@@ -254,7 +254,7 @@ sysinv_api_start () {
     fi
 
     # switch to non-root user before starting service
-    su ${OCF_RESKEY_user} -g root -s /bin/sh -c "${OCF_RESKEY_binary} --config-file=${OCF_RESKEY_config} ${RUN_OPT_DEBUG}"' >> /dev/null 2>&1 & echo $!' > $OCF_RESKEY_pid
+    su ${OCF_RESKEY_user} -s /bin/sh -c "${OCF_RESKEY_binary} --config-file=${OCF_RESKEY_config} ${RUN_OPT_DEBUG}"' >> /dev/null 2>&1 & echo $!' > $OCF_RESKEY_pid
     rc=$?
     if [ ${rc} -ne ${OCF_SUCCESS} ] ; then
         ocf_log err "${proc} failed ${mydaemon} daemon (rc=$rc)"
