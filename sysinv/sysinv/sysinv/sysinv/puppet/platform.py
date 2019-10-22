@@ -48,6 +48,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_remotelogging_config())
         config.update(self._get_snmp_config())
         config.update(self._get_certificate_config())
+        config.update(self._get_systemcontroller_config())
         return config
 
     def get_secure_system_config(self):
@@ -243,12 +244,14 @@ class PlatformPuppet(base.BasePuppet):
             constants.CONTROLLER, constants.NETWORK_TYPE_OAM)
         private_address = self._get_address_by_name(
             constants.CONTROLLER, constants.NETWORK_TYPE_MGMT)
-
+        public_address_url = self._format_url_address(public_address.address)
         https_enabled = self._https_enabled()
 
         config = {
             'platform::haproxy::params::public_ip_address':
                 public_address.address,
+            'platform::haproxy::params::public_address_url':
+                public_address_url,
             'platform::haproxy::params::private_ip_address':
                 private_address.address,
             'platform::haproxy::params::enable_https':
@@ -846,3 +849,17 @@ class PlatformPuppet(base.BasePuppet):
         return {
             'sysinv::agent::lldp_drivers': driver_list
         }
+
+    def _get_systemcontroller_config(self):
+        config = {}
+        if self._distributed_cloud_role() == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            sc_network = self.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
+            sc_network_addr_pool = self.dbapi.address_pool_get(
+                sc_network.pool_uuid)
+            sc_addr = sc_network_addr_pool.floating_address
+            sc_host = self._format_url_address(sc_addr)
+            config.update({'platform::params::system_controller_addr':
+                          sc_host})
+        return config

@@ -261,6 +261,17 @@ start()
         fi
     fi
 
+    if [ -e $CONFIG_DIR/registry.central/registry-cert.crt ]
+    then
+        mkdir -p /etc/docker/certs.d/registry.central:9001/
+        chmod 700 /etc/docker/certs.d/registry.central:9001/
+        cp $CONFIG_DIR/registry.central/registry-cert.crt /etc/docker/certs.d/registry.central:9001/registry-cert.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/registry-cert.crt to docker dir for central registry"
+        fi
+    fi
+
     # banner customization always returns 0, success:
     /usr/sbin/install_banner_customization
 
