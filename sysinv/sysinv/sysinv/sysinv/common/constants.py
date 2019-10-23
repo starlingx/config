@@ -1530,3 +1530,6 @@ DRIVER_MLX_CX4 = 'mlx5_core'
 
 MELLANOX_DRIVERS = [DRIVER_MLX_CX3,
                     DRIVER_MLX_CX4]
+
+# Traffic control
+TRAFFIC_CONTROL_SCRIPT = '/usr/local/bin/tc_setup.sh'

@@ -32,7 +32,6 @@ INSTALLATION_FAILED_FILE = '/etc/platform/installation_failed'
 BACKUPS_PATH = '/opt/backups'
 
 INTERFACES_LOG_FILE = "/tmp/configure_interfaces.log"
-TC_SETUP_SCRIPT = '/usr/local/bin/cgcs_tc_setup.sh'
 
 LINK_MTU_DEFAULT = "1500"
 
