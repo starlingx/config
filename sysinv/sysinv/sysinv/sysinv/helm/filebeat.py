@@ -34,12 +34,13 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
 
     def _get_config_overrides(self, system_fields):
         conf = {
+            'name': '${NODE_NAME}',
             'processors': [{'add_kubernetes_metadata': {'in_cluster': True}}],
             'filebeat.inputs': [
                 {
                     'enabled': True,
+                    'fields_under_root': True,
                     'fields': {
-                        "hostname": "${NODE_NAME}",
                         "system": system_fields
                     },
                     'paths': [

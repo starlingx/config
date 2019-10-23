@@ -48,6 +48,8 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
 
     def _get_config_overrides(self, system_fields):
         conf = {
+            'name': '${NODE_NAME}',
+            'fields_under_root': True,
             'fields': {
                 "system": system_fields
             }
