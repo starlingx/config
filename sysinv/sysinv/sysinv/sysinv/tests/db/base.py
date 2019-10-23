@@ -308,21 +308,42 @@ class BaseHostTestCase(BaseSystemTestCase):
     def setUp(self):
         super(BaseHostTestCase, self).setUp()
 
-    def _create_test_host(self, personality, subfunction=None, numa_nodes=1):
+    def _create_test_host(self, personality, subfunction=None, numa_nodes=1,
+                          unit=0, **kw):
         subfunctions = [personality]
         if subfunction:
             subfunctions.append(subfunction)
 
-        host = dbutils.create_test_ihost(
-            personality=personality,
-            hostname='%s-0' % personality,
-            forisystemid=self.system.id,
-            subfunctions=",".join(subfunctions)
-        )
+        if personality == constants.CONTROLLER:
+            hostname = '%s-%s' % (personality, unit)
+            name = utils.format_address_name(hostname, constants.NETWORK_TYPE_MGMT)
+            address = self.dbapi.address_get_by_name(name)
+            mgmt_ipaddr = address.address
+
+            host = dbutils.create_test_ihost(
+                uuid=uuidutils.generate_uuid(),
+                personality=personality,
+                hostname='%s-%s' % (personality, unit),
+                mgmt_mac='03:11:22:33:44:' + str(10 + len(self.hosts)),
+                mgmt_ip=mgmt_ipaddr,
+                forisystemid=self.system.id,
+                subfunctions=",".join(subfunctions),
+                **kw
+            )
+        else:
+            host = dbutils.create_test_ihost(
+                uuid=uuidutils.generate_uuid(),
+                personality=personality,
+                hostname='%s-%s' % (personality, unit),
+                mgmt_mac='03:11:22:33:44:' + str(10 + len(self.hosts)),
+                forisystemid=self.system.id,
+                subfunctions=",".join(subfunctions),
+                **kw
+            )
 
         for numa_node in range(0, numa_nodes):
             node = self.dbapi.inode_create(host.id,
-                dbutils.get_test_node(numa_node=numa_node))
+                dbutils.get_test_node(numa_node=numa_node, forhostid=host.id))
 
             self.dbapi.imemory_create(host.id,
                 dbutils.get_test_imemory(forinodeid=node.id))
@@ -360,6 +381,34 @@ class BaseHostTestCase(BaseSystemTestCase):
         self._create_test_addresses(
             [host.hostname], self.mgmt_subnet,
             constants.NETWORK_TYPE_MGMT, start=10)
+
+    def _create_test_host_platform_interface(self, host):
+        network_types = [constants.NETWORK_TYPE_OAM,
+                         constants.NETWORK_TYPE_MGMT,
+                         constants.NETWORK_TYPE_CLUSTER_HOST]
+        ifnames = ['oam', 'mgmt', 'cluster']
+        index = 0
+        for nt, name in zip(network_types, ifnames):
+            if (host.personality == constants.WORKER and
+                    nt == constants.NETWORK_TYPE_OAM):
+                continue
+            dbutils.create_test_ethernet_port(
+                name='eth%s' % index,
+                host_id=host['id'],
+                interface_id=index,
+                pciaddr='0000:00:00.%s' % index,
+                dev_id=0)
+            interface = dbutils.create_test_interface(
+                ifname=name,
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                forihostid=host['id'],
+                ihost_uuid=host['uuid'])
+            iface = self.dbapi.iinterface_get(interface['uuid'])
+            network = self.dbapi.network_get_by_type(nt)
+            dbutils.create_test_interface_network(
+                interface_id=iface.id,
+                network_id=network.id)
+            index = index + 1
 
 
 class ControllerHostTestCase(BaseHostTestCase):
