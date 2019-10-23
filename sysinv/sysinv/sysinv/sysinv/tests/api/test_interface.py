@@ -16,7 +16,9 @@ from six.moves import http_client
 
 from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
+from sysinv.openstack.common import uuidutils
 from sysinv.tests.api import base
+from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as db_api
 
@@ -136,7 +138,7 @@ providernet_list = {
 }
 
 
-class InterfaceTestCase(base.FunctionalTest):
+class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def _setup_configuration(self):
         pass
 
@@ -146,8 +148,8 @@ class InterfaceTestCase(base.FunctionalTest):
 
         p = mock.patch.object(api_if_v1, '_get_lower_interface_macs')
         self.mock_lower_macs = p.start()
-        self.mock_lower_macs.return_value = {'enp0s18': '08:00:27:8a:87:48',
-                                             'enp0s19': '08:00:27:ea:93:8e'}
+        self.mock_lower_macs.return_value = {'enp0s18': '11:22:33:44:55:66',
+                                             'enp0s19': '11:22:33:44:55:67'}
         self.addCleanup(p.stop)
         self._setup_context()
 
@@ -157,89 +159,27 @@ class InterfaceTestCase(base.FunctionalTest):
         else:
             return '/iinterfaces'
 
+    def _post_get_test_interface(self, **kw):
+        interface = dbutils.get_test_interface(**kw)
+
+        # When invoking a POST the following fields should not be populated:
+        del interface['uuid']
+        del interface['id']
+        del interface['networktypelist']
+        del interface['sriov_vf_pdevice_id']
+
+        return interface
+
     def _create_host(self, personality, subfunction=None,
                      mgmt_mac=None, mgmt_ip=None,
-                     sdn_enabled=True, admin=None,
-                     invprovision=constants.PROVISIONED):
-        if personality == constants.CONTROLLER:
-            self.system = dbutils.create_test_isystem(sdn_enabled=sdn_enabled)
-            self.address_pool1 = dbutils.create_test_address_pool(
-                id=1,
-                network='192.168.204.0',
-                name='management',
-                ranges=[['192.168.204.2', '192.168.204.254']],
-                prefix=24)
-            self.address_pool2 = dbutils.create_test_address_pool(
-                id=2,
-                network='192.168.206.0',
-                name='cluster-host',
-                ranges=[['192.168.206.2', '192.168.206.254']],
-                prefix=24)
-            self.address_pool_oam = dbutils.create_test_address_pool(
-                id=3,
-                network='128.224.150.0',
-                name='oam',
-                ranges=[['128.224.150.1', '128.224.151.254']],
-                prefix=23)
-            self.address_pool_v6 = dbutils.create_test_address_pool(
-                id=4,
-                network='abde::',
-                name='ipv6',
-                family='6',
-                ranges=[['abde::2', 'abde::ffff:ffff:ffff:fffe']],
-                prefix=64)
-            self.address_pool_pxeboot = dbutils.create_test_address_pool(
-                id=5,
-                network='192.168.202.0',
-                name='pxeboot',
-                ranges=[['192.168.202.2', '192.168.202.254']],
-                prefix=23)
-            self.mgmt_network = dbutils.create_test_network(
-                id=1,
-                name='mgmt',
-                type=constants.NETWORK_TYPE_MGMT,
-                link_capacity=1000,
-                vlan_id=2,
-                address_pool_id=self.address_pool1.id)
-            self.cluster_host_network = dbutils.create_test_network(
-                id=2,
-                name='cluster-host',
-                type=constants.NETWORK_TYPE_CLUSTER_HOST,
-                link_capacity=10000,
-                vlan_id=3,
-                address_pool_id=self.address_pool2.id)
-            self.oam_network = dbutils.create_test_network(
-                id=3,
-                name='oam',
-                type=constants.NETWORK_TYPE_OAM,
-                address_pool_id=self.address_pool_oam.id)
-            self.oam_address = dbutils.create_test_address(
-                family=2,
-                address='10.10.10.3',
-                prefix=24,
-                name='controller-0-oam',
-                address_pool_id=self.address_pool_oam.id)
-            self.pxeboot_network = dbutils.create_test_network(
-                id=4,
-                type=constants.NETWORK_TYPE_PXEBOOT,
-                address_pool_id=self.address_pool_pxeboot.id)
-            self.pxeboot_address = dbutils.create_test_address(
-                family=2,
-                address='192.168.202.3',
-                prefix=24,
-                name='controller-0-pxeboot',
-                address_pool_id=self.address_pool_pxeboot.id)
-
-        host = dbutils.create_test_ihost(
-            hostname='%s-0' % personality,
-            forisystemid=self.system.id,
+                     admin=None,
+                     invprovision=constants.PROVISIONED, **kw):
+        host = self._create_test_host(
             personality=personality,
-            subfunctions=subfunction or personality,
-            mgmt_mac=mgmt_mac,
-            mgmt_ip=mgmt_ip,
+            subfunction=subfunction,
             administrative=admin or constants.ADMIN_UNLOCKED,
-            invprovision=invprovision
-        )
+            invprovision=invprovision,
+            **kw)
         if personality == constants.CONTROLLER:
             self.controller = host
         else:
@@ -287,7 +227,7 @@ class InterfaceTestCase(base.FunctionalTest):
                                                       forihostid=host.id,
                                                       ihost_uuid=host.uuid)
         else:
-            interface = dbutils.post_get_test_interface(
+            interface = self._post_get_test_interface(
                 ifname=ifname,
                 ifclass=ifclass,
                 forihostid=host.id, ihost_uuid=host.uuid)
@@ -327,7 +267,7 @@ class InterfaceTestCase(base.FunctionalTest):
             ifname = (networktype or 'eth') + str(interface_id)
         if not ifclass and networktype in constants.PLATFORM_NETWORK_TYPES:
             ifclass = constants.INTERFACE_CLASS_PLATFORM
-        interface = dbutils.post_get_test_interface(
+        interface = self._post_get_test_interface(
             id=interface_id,
             ifname=ifname,
             iftype=constants.INTERFACE_TYPE_AE,
@@ -381,7 +321,7 @@ class InterfaceTestCase(base.FunctionalTest):
             ifname = 'vlan' + str(vlan_id)
         if not ifclass and networktype in constants.PLATFORM_NETWORK_TYPES:
             ifclass = constants.INTERFACE_CLASS_PLATFORM
-        interface = dbutils.post_get_test_interface(
+        interface = self._post_get_test_interface(
             ifname=ifname,
             iftype=constants.INTERFACE_TYPE_VLAN,
             ifclass=ifclass,
@@ -464,6 +404,16 @@ class InterfaceTestCase(base.FunctionalTest):
             if key in second:
                 self.assertEqual(first[key], second[key])
 
+    def _find_network_by_type(self, networktype):
+        for network in self.networks:
+            if network['type'] == networktype:
+                return network
+
+    def _find_address_pool_by_uuid(self, pool_uuid):
+        for pool in self.address_pools:
+            if pool['uuid'] == pool_uuid:
+                return pool
+
     def _setup_context(self):
         self.profile = {'host':
                         {'personality': constants.CONTROLLER,
@@ -473,14 +423,9 @@ class InterfaceTestCase(base.FunctionalTest):
                         'addresses': [],
                         'routes': [],
                         'interface_networks': []}
-        self.system = None
         self.controller = None
         self.worker = None
         self._setup_configuration()
-
-    def test_interface(self):
-        if len(self.profile['interfaces']) == 0:
-            self.assertFalse(False)
 
 
 class InterfaceControllerEthernet(InterfaceTestCase):
@@ -531,7 +476,6 @@ class InterfaceControllerVlanOverBond(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 2, bond)
         self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, bond)
-        # self._create_ethernet('none')
 
     def setUp(self):
         super(InterfaceControllerVlanOverBond, self).setUp()
@@ -554,7 +498,6 @@ class InterfaceControllerVlanOverEthernet(InterfaceTestCase):
                           constants.INTERFACE_CLASS_PLATFORM, 2, iface)
         self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.INTERFACE_CLASS_PLATFORM, 3, iface)
-        # self._create_ethernet_profile('none')
 
     def setUp(self):
         super(InterfaceControllerVlanOverEthernet, self).setUp()
@@ -563,7 +506,7 @@ class InterfaceControllerVlanOverEthernet(InterfaceTestCase):
         self._create_and_apply_profile(self.controller)
 
 
-class InterfaceComputeEthernet(InterfaceTestCase):
+class InterfaceWorkerEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
@@ -575,8 +518,6 @@ class InterfaceComputeEthernet(InterfaceTestCase):
         self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
         self._create_host(constants.WORKER, constants.WORKER,
-                          mgmt_mac='01:02.03.04.05.C0',
-                          mgmt_ip='192.168.24.12',
                           admin=constants.ADMIN_LOCKED)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
                               host=self.worker)
@@ -614,13 +555,13 @@ class InterfaceComputeEthernet(InterfaceTestCase):
         port['driver'] = 'mlx5_core'
 
     def setUp(self):
-        super(InterfaceComputeEthernet, self).setUp()
+        super(InterfaceWorkerEthernet, self).setUp()
 
     def test_worker_ethernet_profile(self):
         self._create_and_apply_profile(self.worker)
 
 
-class InterfaceComputeVlanOverEthernet(InterfaceTestCase):
+class InterfaceWorkerVlanOverEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
@@ -660,13 +601,13 @@ class InterfaceComputeVlanOverEthernet(InterfaceTestCase):
                               'group0-data1', host=self.worker)
 
     def setUp(self):
-        super(InterfaceComputeVlanOverEthernet, self).setUp()
+        super(InterfaceWorkerVlanOverEthernet, self).setUp()
 
     def test_worker_vlan_over_ethernet_profile(self):
         self._create_and_apply_profile(self.worker)
 
 
-class InterfaceComputeBond(InterfaceTestCase):
+class InterfaceWorkerBond(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where all platform interfaces are
@@ -696,13 +637,13 @@ class InterfaceComputeBond(InterfaceTestCase):
                               'group0-ext1', host=self.worker)
 
     def setUp(self):
-        super(InterfaceComputeBond, self).setUp()
+        super(InterfaceWorkerBond, self).setUp()
 
     def test_worker_bond_profile(self):
         self._create_and_apply_profile(self.worker)
 
 
-class InterfaceComputeVlanOverBond(InterfaceTestCase):
+class InterfaceWorkerVlanOverBond(InterfaceTestCase):
 
     def _setup_configuration(self):
         self._create_host(constants.CONTROLLER)
@@ -747,13 +688,13 @@ class InterfaceComputeVlanOverBond(InterfaceTestCase):
                               'group0-data1', host=self.worker)
 
     def setUp(self):
-        super(InterfaceComputeVlanOverBond, self).setUp()
+        super(InterfaceWorkerVlanOverBond, self).setUp()
 
     def test_worker_vlan_over_bond_profile(self):
         self._create_and_apply_profile(self.worker)
 
 
-class InterfaceComputeVlanOverDataEthernet(InterfaceTestCase):
+class InterfaceWorkerVlanOverDataEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         self._create_host(constants.CONTROLLER)
@@ -790,13 +731,13 @@ class InterfaceComputeVlanOverDataEthernet(InterfaceTestCase):
                               'group0-ext2', host=self.worker)
 
     def setUp(self):
-        super(InterfaceComputeVlanOverDataEthernet, self).setUp()
+        super(InterfaceWorkerVlanOverDataEthernet, self).setUp()
 
     def test_worker_vlan_over_data_ethernet_profile(self):
         self._create_and_apply_profile(self.worker)
 
 
-class InterfaceCpeEthernet(InterfaceTestCase):
+class InterfaceAIOEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
@@ -833,13 +774,13 @@ class InterfaceCpeEthernet(InterfaceTestCase):
                                   'group0-ext3'))
 
     def setUp(self):
-        super(InterfaceCpeEthernet, self).setUp()
+        super(InterfaceAIOEthernet, self).setUp()
 
-    def test_cpe_ethernet_profile(self):
+    def test_AIO_ethernet_profile(self):
         self._create_and_apply_profile(self.controller)
 
 
-class InterfaceCpeVlanOverEthernet(InterfaceTestCase):
+class InterfaceAIOVlanOverEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
@@ -867,13 +808,13 @@ class InterfaceCpeVlanOverEthernet(InterfaceTestCase):
                               'group0-ext2')
 
     def setUp(self):
-        super(InterfaceCpeVlanOverEthernet, self).setUp()
+        super(InterfaceAIOVlanOverEthernet, self).setUp()
 
-    def test_cpe_vlan_over_ethernet_profile(self):
+    def test_AIO_vlan_over_ethernet_profile(self):
         self._create_and_apply_profile(self.controller)
 
 
-class InterfaceCpeBond(InterfaceTestCase):
+class InterfaceAIOBond(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
@@ -897,13 +838,13 @@ class InterfaceCpeBond(InterfaceTestCase):
                               datanetworks='group0-ext1')
 
     def setUp(self):
-        super(InterfaceCpeBond, self).setUp()
+        super(InterfaceAIOBond, self).setUp()
 
-    def test_cpe_bond_profile(self):
+    def test_AIO_bond_profile(self):
         self._create_and_apply_profile(self.controller)
 
 
-class InterfaceCpeVlanOverBond(InterfaceTestCase):
+class InterfaceAIOVlanOverBond(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
@@ -932,14 +873,14 @@ class InterfaceCpeVlanOverBond(InterfaceTestCase):
                               'group0-ext2')
 
     def setUp(self):
-        super(InterfaceCpeVlanOverBond, self).setUp()
+        super(InterfaceAIOVlanOverBond, self).setUp()
 
-    def test_cpe_vlan_over_bond_profile(self):
+    def test_AIO_vlan_over_bond_profile(self):
         self._create_and_apply_profile(self.controller)
 
 
 # Test that the unsupported config is rejected
-class InterfaceCpeVlanOverDataEthernet(InterfaceTestCase):
+class InterfaceAIOVlanOverDataEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
@@ -977,29 +918,64 @@ class InterfaceCpeVlanOverDataEthernet(InterfaceTestCase):
                               expect_errors=False)
 
     def setUp(self):
-        super(InterfaceCpeVlanOverDataEthernet, self).setUp()
+        super(InterfaceAIOVlanOverDataEthernet, self).setUp()
 
 
 class TestList(InterfaceTestCase):
 
     def setUp(self):
         super(TestList, self).setUp()
-        self.system = dbutils.create_test_isystem()
-        self.load = dbutils.create_test_load()
-        self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
-        self.port = dbutils.create_test_ethernet_port(host_id=self.host.id)
+        self._create_host(constants.CONTROLLER)
 
-    def test_list_interface(self):
-        interface = dbutils.create_test_interface(forihostid='1')
-        data = self.get_json('/ihosts/%s/iinterfaces' % self.host['uuid'])
-        self.assertIn('ifname', data['iinterfaces'][0])
-        self.assertEqual(interface.uuid, data['iinterfaces'][0]["uuid"])
-        self.is_interface_equal(interface.as_dict(), data['iinterfaces'][0])
+    def test_empty_interface(self):
+        data = self.get_json('/ihosts/%s/iinterfaces' % self.hosts[0].uuid)
+        self.assertEqual([], data['iinterfaces'])
+
+    def test_one(self):
+        ndict = self._post_get_test_interface(ifname='eth0',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.hosts[0].id, ihost_uuid=self.hosts[0].uuid)
+        data = self.post_json('%s' % self._get_path(), ndict)
+
+        # Verify that the interface was created with the expected attributes
+        result = self.get_json('/iinterfaces/%s' %
+            (data.json['uuid']))
+        assert(uuidutils.is_uuid_like(result['uuid']))
+        self.assertEqual(ndict['aemode'], result['aemode'])
+        self.assertEqual(ndict['forihostid'], result['forihostid'])
+        self.assertEqual(ndict['ifclass'], result['ifclass'])
+        self.assertEqual(ndict['ifname'], result['ifname'])
+        self.assertEqual(ndict['iftype'], result['iftype'])
+        self.assertEqual(ndict['imac'], result['imac'])
+        self.assertEqual(ndict['imtu'], result['imtu'])
+        self.assertEqual(ndict['used_by'], result['used_by'])
+        self.assertEqual(ndict['uses'], result['uses'])
+        self.assertEqual(ndict['vlan_id'], result['vlan_id'])
+        # Verify that hidden attributes are not returned
+        self.assertNotIn('id', result)
+
+    def test_many(self):
+        interfaces = []
+        for id in range(3):
+            ndict = dbutils.get_test_interface(id=id,
+                uuid=uuidutils.generate_uuid(),
+                ifname='eth%s' % id,
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                imac='03:11:22:33:44:' + str(10 + id),
+                forihostid=self.hosts[0].id,
+                ihost_uuid=self.hosts[0].uuid)
+            s = self.dbapi.iinterface_create(self.hosts[0].id, ndict)
+            interfaces.append(s['uuid'])
+        data = self.get_json('/ihosts/%s/iinterfaces' % self.hosts[0].uuid)
+        self.assertEqual(len(interfaces), len(data['iinterfaces']))
+
+        uuids = [n['uuid'] for n in data['iinterfaces']]
+        self.assertEqual(interfaces.sort(), uuids.sort())  # uuids.sort
 
 
-class TestPatch(InterfaceTestCase):
+class TestPatchMixin(object):
     def setUp(self):
-        super(TestPatch, self).setUp()
+        super(TestPatchMixin, self).setUp()
         self._create_host(constants.CONTROLLER)
         self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
@@ -1119,23 +1095,10 @@ class TestPatch(InterfaceTestCase):
     def test_create_sriov_vf_driver_invalid(self):
         self._create_sriov_vf_driver_valid('bad_driver', expect_errors=True)
 
-    # No longer requires setting the network type back to none
-    # Expected error: The network type of an interface cannot be changed without
-    # first being reset back to none
-    # def test_invalid_change_networktype(self):
-    #     port, interface = self._create_ethernet('oam',
-    #                                             constants.NETWORK_TYPE_OAM)
-    #     response = self.patch_dict_json(
-    #         '%s' % self._get_path(interface['uuid']),
-    #         networktype=constants.NETWORK_TYPE_MGMT, expect_errors=True)
-    #     self.assertEqual(http_client.BAD_REQUEST, response.status_int)
-    #     self.assertEqual('application/json', response.content_type)
-    #     self.assertTrue(response.json['error_message'])
 
-
-class TestPost(InterfaceTestCase):
+class TestPostMixin(object):
     def setUp(self):
-        super(TestPost, self).setUp()
+        super(TestPostMixin, self).setUp()
         self._create_host(constants.CONTROLLER)
         self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
@@ -1193,165 +1156,144 @@ class TestPost(InterfaceTestCase):
                               host=self.worker,
                               expect_errors=True)
 
-    def test_data_ipv4_mode_valid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.worker.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv4_mode=constants.IPV4_POOL,
-            ipv4_pool=self.address_pool1.uuid)
-        self._post_and_check_success(ndict)
-
-    def test_data_ipv6_mode_valid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.worker.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv6_mode=constants.IPV6_POOL,
-            ipv6_pool=self.address_pool_v6.uuid)
-        self._post_and_check_success(ndict)
-
-    def test_platform_ipv4_mode_valid(self):
+    def test_address_mode_pool_valid(self):
         port, interface = self._create_ethernet(
             'mgmt', constants.NETWORK_TYPE_MGMT,
             ifclass=constants.INTERFACE_CLASS_PLATFORM)
-        response = self.patch_dict_json(
-            '%s' % self._get_path(interface['uuid']),
-            ipv4_mode=constants.IPV4_STATIC)
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        pool = self._find_address_pool_by_uuid(network['pool_uuid'])
+        if pool.family == constants.IPV4_FAMILY:
+            response = self.patch_dict_json(
+                '%s' % self._get_path(interface['uuid']),
+                ipv4_mode=constants.IPV4_POOL,
+                ipv4_pool=pool.uuid)
+            self.assertEqual(constants.IPV4_POOL, response.json['ipv4_mode'])
+        else:
+            response = self.patch_dict_json(
+                '%s' % self._get_path(interface['uuid']),
+                ipv6_mode=constants.IPV6_POOL,
+                ipv6_pool=pool.uuid)
+            self.assertEqual(constants.IPV6_POOL, response.json['ipv6_mode'])
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(http_client.OK, response.status_code)
-        self.assertEqual(constants.IPV4_STATIC, response.json['ipv4_mode'])
 
-    def test_platform_ipv6_mode_valid(self):
+    def test_address_mode_static_valid(self):
         port, interface = self._create_ethernet(
             'mgmt', constants.NETWORK_TYPE_MGMT,
             ifclass=constants.INTERFACE_CLASS_PLATFORM)
-        response = self.patch_dict_json(
-            '%s' % self._get_path(interface['uuid']),
-            ipv6_mode=constants.IPV6_STATIC)
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        pool = self._find_address_pool_by_uuid(network['pool_uuid'])
+        if pool.family == constants.IPV4_FAMILY:
+            response = self.patch_dict_json(
+                '%s' % self._get_path(interface['uuid']),
+                ipv4_mode=constants.IPV4_STATIC)
+        else:
+            response = self.patch_dict_json(
+                '%s' % self._get_path(interface['uuid']),
+                ipv6_mode=constants.IPV6_STATIC)
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(http_client.OK, response.status_code)
-        self.assertEqual(constants.IPV6_STATIC, response.json['ipv6_mode'])
 
     # Expected error: Address mode attributes only supported on
     # mgmt, oam, cluster-host, data interfaces
-    def test_platform_no_network_ipv4_mode(self):
-        ndict = dbutils.post_get_test_interface(
+    def test_address_mode_no_network(self):
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
             ipv4_mode=constants.IPV4_STATIC,
-            ipv4_pool=self.address_pool1.uuid)
+            ipv4_pool=self.address_pools[0].uuid)
         self._post_and_check_failure(ndict)
 
     # Expected error: Address mode attributes only supported on
     # mgmt, oam, cluster-host, data interfaces
-    def test_ipv4_mode_networktype_invalid(self):
-        ndict = dbutils.post_get_test_interface(
+    def test_address_mode_pci_invalid(self):
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
             ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
             ipv4_mode=constants.IPV4_STATIC,
             ipv6_mode=constants.IPV6_STATIC,
-            ipv4_pool=self.address_pool1.uuid,
-            ipv6_pool=self.address_pool2.uuid)
-        self._post_and_check_failure(ndict)
-
-    # Expected error: Specifying an IPv4 address pool requires setting the
-    # address mode to 'pool'
-    def test_ipv4_mode_cluster_host_invalid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.controller.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv4_mode=constants.IPV4_DISABLED,
-            ipv6_mode=constants.IPV6_DISABLED,
-            ipv4_pool=self.address_pool1.uuid)
+            ipv4_pool=self.address_pools[0].uuid,
+            ipv6_pool=self.address_pools[1].uuid)
         self._post_and_check_failure(ndict)
 
     # Expected error: Specifying an IPv4 address pool requires setting the
     # address mode to pool
-    def test_ipv4_mode_invalid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.controller.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv4_mode=constants.IPV4_DISABLED,
-            ipv4_pool=self.address_pool1.uuid)
+    def test_address_mode_disabled_pool_invalid(self):
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        pool = self._find_address_pool_by_uuid(network['pool_uuid'])
+        if pool.family == constants.IPV4_FAMILY:
+            ndict = self._post_get_test_interface(
+                ihost_uuid=self.controller.uuid,
+                ifname='name',
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET,
+                ipv4_mode=constants.IPV4_DISABLED,
+                ipv4_pool=pool.uuid)
+        else:
+            ndict = self._post_get_test_interface(
+                ihost_uuid=self.controller.uuid,
+                ifname='name',
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET,
+                ipv4_mode=constants.IPV4_POOL,
+                ipv4_pool=pool.uuid,
+                ipv6_mode=constants.IPV6_DISABLED,
+                ipv6_pool=pool.uuid)
         self._post_and_check_failure(ndict)
 
-    # Expected error: Specifying an IPv6 address pool requires setting the
-    # address mode to pool
-    def test_ipv6_mode_invalid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.controller.uuid,
-            ifname='name',
-            networktype=constants.NETWORK_TYPE_MGMT,
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv6_mode=constants.IPV6_DISABLED,
-            ipv6_pool=self.address_pool1.uuid)
-        self._post_and_check_failure(ndict)
-
-    # Expected error: IPv4 address pool name not specified
-    def test_ipv4_mode_no_pool_invalid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.worker.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv4_mode=constants.IPV4_POOL,
-            ipv6_mode=constants.IPV6_POOL)
-        self._post_and_check_failure(ndict)
-
-    # Expected error: IPv6 address pool name not specified
-    def test_ipv6_mode_no_pool_invalid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.worker.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv4_mode=constants.IPV4_POOL,
-            ipv6_mode=constants.IPV6_POOL,
-            ipv4_pool=self.address_pool_v6.uuid)
+    # Expected error: IPvX address pool name not specified
+    def test_address_mode_no_pool_invalid(self):
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        pool = self._find_address_pool_by_uuid(network['pool_uuid'])
+        if pool.family == constants.IPV4_FAMILY:
+            ndict = self._post_get_test_interface(
+                ihost_uuid=self.worker.uuid,
+                ifname='name',
+                ifclass=constants.INTERFACE_CLASS_DATA,
+                iftype=constants.INTERFACE_TYPE_ETHERNET,
+                ipv4_mode=constants.IPV4_POOL)
+        else:
+            ndict = self._post_get_test_interface(
+                ihost_uuid=self.worker.uuid,
+                ifname='name',
+                ifclass=constants.INTERFACE_CLASS_DATA,
+                iftype=constants.INTERFACE_TYPE_ETHERNET,
+                ipv6_mode=constants.IPV6_POOL)
         self._post_and_check_failure(ndict)
 
     # Expected error: Address pool IP family does not match requested family
-    def test_ipv4_pool_family_mismatch_invalid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.worker.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv4_mode=constants.IPV4_POOL,
-            ipv6_mode=constants.IPV6_POOL,
-            ipv4_pool=self.address_pool_v6.uuid,
-            ipv6_pool=self.address_pool_v6.uuid)
-        self._post_and_check_failure(ndict)
-
-    # Expected error: Address pool IP family does not match requested family
-    def test_ipv6_pool_family_mismatch_invalid(self):
-        ndict = dbutils.post_get_test_interface(
-            ihost_uuid=self.worker.uuid,
-            ifname='name',
-            ifclass=constants.INTERFACE_CLASS_DATA,
-            iftype=constants.INTERFACE_TYPE_ETHERNET,
-            ipv4_mode=constants.IPV4_POOL,
-            ipv6_mode=constants.IPV6_POOL,
-            ipv4_pool=self.address_pool1.uuid,
-            ipv6_pool=self.address_pool1.uuid)
-        self._post_and_check_failure(ndict)
+    def test_address_pool_family_mismatch_invalid(self):
+        port, interface = self._create_ethernet(
+            'mgmt', constants.NETWORK_TYPE_MGMT,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM)
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        pool = self._find_address_pool_by_uuid(network['pool_uuid'])
+        if pool.family == constants.IPV4_FAMILY:
+            response = self.patch_dict_json(
+                '%s' % self._get_path(interface['uuid']),
+                ipv6_mode=constants.IPV6_POOL,
+                ipv6_pool=pool.uuid,
+                expect_errors=True)
+        else:
+            response = self.patch_dict_json(
+                '%s' % self._get_path(interface['uuid']),
+                ipv4_mode=constants.IPV4_POOL,
+                ipv4_pool=pool.uuid,
+                expect_errors=True)
+        self.assertEqual(http_client.CONFLICT, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('Address pool IP family does not match requested family',
+                      response.json['error_message'])
 
     # Expected error: Device interface type must be 'aggregated ethernet' or
     # 'vlan' or 'ethernet'.
     def test_aemode_invalid_iftype(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-data0',
             ifname='name',
@@ -1364,7 +1306,7 @@ class TestPost(InterfaceTestCase):
     # Expected error: Device interface with interface type 'aggregated ethernet'
     #  in ___ mode should not specify a Tx Hash Policy.
     def test_aemode_no_txhash(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-data0',
             ifname='name',
@@ -1377,7 +1319,7 @@ class TestPost(InterfaceTestCase):
     # Device interface with network type ___, and interface type
     # 'aggregated ethernet' must have a Tx Hash Policy of 'layer2'.
     def test_aemode_invalid_txhash(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             ifname='name',
             ifclass=constants.INTERFACE_CLASS_DATA,
@@ -1389,7 +1331,7 @@ class TestPost(InterfaceTestCase):
     # Expected error: Device interface with interface type 'aggregated ethernet'
     #  in 'balanced' or '802.3ad' mode require a valid Tx Hash Policy
     def test_aemode_invalid_txhash_none(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-data0',
             ifname='name',
@@ -1399,7 +1341,7 @@ class TestPost(InterfaceTestCase):
             txhashpolicy=None)
         self._post_and_check_failure(ndict)
 
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-data0',
             ifname='name',
@@ -1413,7 +1355,7 @@ class TestPost(InterfaceTestCase):
     # 'aggregated ethernet' must be in mode 'active_standby' or 'balanced' or
     # '802.3ad'.
     def test_aemode_invalid_data(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-data0',
             ifname='name',
@@ -1424,7 +1366,7 @@ class TestPost(InterfaceTestCase):
         self._post_and_check_failure(ndict)
 
     def test_aemode_invalid_platform(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.controller.uuid,
             ifname='name',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
@@ -1434,7 +1376,7 @@ class TestPost(InterfaceTestCase):
         self._post_and_check_failure(ndict)
 
     def test_setting_mgmt_mtu_allowed(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.controller.uuid,
             ifname='mgmt0',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
@@ -1443,7 +1385,7 @@ class TestPost(InterfaceTestCase):
         self._post_and_check_success(ndict)
 
     def test_setting_cluster_host_mtu_allowed(self):
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.controller.uuid,
             ifname='cluster0',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
@@ -1460,7 +1402,7 @@ class TestPost(InterfaceTestCase):
                                                datanetworks='group0-data0')
         port, iface1 = self._create_ethernet()
 
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-ext1',
             ifname='bond1',
@@ -1489,7 +1431,7 @@ class TestPost(InterfaceTestCase):
             vlan_id=10, datanetworks='group0-ext0')
         port, iface1 = self._create_ethernet()
 
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-ext1',
             ifname='bond0',
@@ -1508,7 +1450,7 @@ class TestPost(InterfaceTestCase):
                                                datanetworks='group0-data0')
         port, iface1 = self._create_ethernet()
 
-        ndict = dbutils.post_get_test_interface(
+        ndict = self._post_get_test_interface(
             ihost_uuid=self.worker.uuid,
             datanetworks='group0-ext1',
             ifname='bond1',
@@ -1596,7 +1538,7 @@ class TestPost(InterfaceTestCase):
 
     # Expected message:
     # The data network type is only supported on nodes supporting worker functions
-    def test_create_invalid_oam_data_ethernet(self):
+    def test_create_invalid_data_ethernet(self):
         self._create_ethernet('shared',
                               networktype=constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
@@ -1624,9 +1566,9 @@ class TestPost(InterfaceTestCase):
             self.assertTrue(response.json['error_message'])
 
 
-class TestCpePost(InterfaceTestCase):
+class TestAIOPost(InterfaceTestCase):
     def setUp(self):
-        super(TestCpePost, self).setUp()
+        super(TestAIOPost, self).setUp()
         self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
@@ -1765,9 +1707,9 @@ class TestCpePost(InterfaceTestCase):
             self.assertEqual(http_client.OK, response.status_int)
 
 
-class TestCpePatch(InterfaceTestCase):
+class TestAIOPatch(InterfaceTestCase):
     def setUp(self):
-        super(TestCpePatch, self).setUp()
+        super(TestAIOPatch, self).setUp()
         self._create_host(constants.CONTROLLER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
@@ -1828,3 +1770,25 @@ class TestCpePatch(InterfaceTestCase):
             expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
+
+
+class IPv4TestPost(TestPostMixin,
+                   InterfaceTestCase):
+    pass
+
+
+class IPv6TestPost(TestPostMixin,
+                   dbbase.BaseIPv6Mixin,
+                   InterfaceTestCase):
+    pass
+
+
+class IPv4TestPatch(TestPatchMixin,
+                    InterfaceTestCase):
+    pass
+
+
+class IPv6TestPatch(TestPatchMixin,
+                    dbbase.BaseIPv6Mixin,
+                    InterfaceTestCase):
+    pass

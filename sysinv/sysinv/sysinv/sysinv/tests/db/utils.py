@@ -902,30 +902,6 @@ def create_test_ethernet_port(**kw):
     return dbapi.ethernet_port_create(ethernet_port['host_id'], ethernet_port)
 
 
-def post_get_test_interface(**kw):
-    interface = {
-        'forihostid': kw.get('forihostid'),
-        'ihost_uuid': kw.get('ihost_uuid'),
-        'ifname': kw.get('ifname'),
-        'iftype': kw.get('iftype', 'ethernet'),
-        'imac': kw.get('imac', '11:22:33:44:55:66'),
-        'imtu': kw.get('imtu', 1500),
-        'ifclass': kw.get("ifclass"),
-        'aemode': kw.get('aemode', 'balanced'),
-        'txhashpolicy': kw.get('txhashpolicy', 'layer2'),
-        'vlan_id': kw.get('vlan_id'),
-        'uses': kw.get('uses', None),
-        'used_by': kw.get('used_by', []),
-        'ipv4_mode': kw.get('ipv4_mode'),
-        'ipv6_mode': kw.get('ipv6_mode'),
-        'ipv4_pool': kw.get('ipv4_pool'),
-        'ipv6_pool': kw.get('ipv6_pool'),
-        'sriov_numvfs': kw.get('sriov_numvfs', None),
-        'sriov_vf_driver': kw.get('sriov_vf_driver', None)
-    }
-    return interface
-
-
 def get_test_interface(**kw):
     interface = {
         'id': kw.get('id'),

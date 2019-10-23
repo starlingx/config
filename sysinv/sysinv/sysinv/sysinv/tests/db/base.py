@@ -209,6 +209,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         pool = dbutils.create_test_address_pool(
             name=name,
             network=str(subnet.network),
+            family=subnet.version,
             prefix=subnet.prefixlen,
             ranges=ranges)
         self.address_pools.append(pool)
