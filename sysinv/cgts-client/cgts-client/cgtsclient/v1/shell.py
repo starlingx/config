@@ -41,6 +41,7 @@ from cgtsclient.v1 import isystem_shell
 from cgtsclient.v1 import itrapdest_shell
 from cgtsclient.v1 import iuser_shell
 
+from cgtsclient.v1 import kube_version_shell
 from cgtsclient.v1 import label_shell
 from cgtsclient.v1 import license_shell
 from cgtsclient.v1 import lldp_agent_shell
@@ -119,6 +120,7 @@ COMMAND_MODULES = [
     label_shell,
     app_shell,
     host_fs_shell,
+    kube_version_shell,
 ]
 
 

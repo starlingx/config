@@ -53,6 +53,7 @@ from cgtsclient.v1 import istor
 from cgtsclient.v1 import isystem
 from cgtsclient.v1 import itrapdest
 from cgtsclient.v1 import iuser
+from cgtsclient.v1 import kube_version
 from cgtsclient.v1 import label
 from cgtsclient.v1 import license
 from cgtsclient.v1 import lldp_agent
@@ -159,3 +160,4 @@ class Client(http.HTTPClient):
         self.fernet = fernet.FernetManager(self)
         self.app = app.AppManager(self)
         self.host_fs = host_fs.HostFsManager(self)
+        self.kube_version = kube_version.KubeVersionManager(self)
