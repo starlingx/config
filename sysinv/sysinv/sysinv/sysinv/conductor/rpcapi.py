@@ -1749,7 +1749,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                              rpc_app=rpc_app,
                              mode=mode))
 
-    def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile, operation):
+    def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
+                           operation, reuse_user_overrides=None):
         """Handle application update request
 
         :param context: request context.
@@ -1759,13 +1760,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                            application update to
         :param tarfile: location of application tarfile to be extracted
         :param operation: apply or rollback
+        :param reuse_user_overrides: (optional) True or False
         """
         return self.cast(context,
                          self.make_msg('perform_app_update',
                                        from_rpc_app=from_rpc_app,
                                        to_rpc_app=to_rpc_app,
                                        tarfile=tarfile,
-                                       operation=operation))
+                                       operation=operation,
+                                       reuse_user_overrides=reuse_user_overrides))
 
     def perform_app_remove(self, context, rpc_app):
         """Handle application remove request

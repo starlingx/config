@@ -44,7 +44,7 @@ def retrieve_helm_releases():
     """
     helm_list = subprocess.Popen(
         ['helm', '--kubeconfig', '/etc/kubernetes/admin.conf',
-         'list', '--deployed', '--output', 'yaml'],
+         'list', '--output', 'yaml'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, helm_list.kill)
 

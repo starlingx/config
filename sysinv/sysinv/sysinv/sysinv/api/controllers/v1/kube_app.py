@@ -476,6 +476,9 @@ class KubeAppController(rest.RestController):
         version = body.get('app_version', '')
         name, version, mname, mfile = self._check_tarfile(tarfile, name, version,
                                                           constants.APP_UPDATE_OP)
+        reuse_overrides = False
+        if body.get('reuse_user_overrides') in ['true', 'True']:
+            reuse_overrides = True
 
         try:
             applied_app = objects.kube_app.get_by_name(pecan.request.context, name)
@@ -546,7 +549,7 @@ class KubeAppController(rest.RestController):
 
         pecan.request.rpcapi.perform_app_update(pecan.request.context,
                                                 applied_app, target_app,
-                                                tarfile, operation)
+                                                tarfile, operation, reuse_overrides)
 
         return KubeApp.convert_with_links(target_app)
 

@@ -108,9 +108,20 @@ def do_application_upload(cc, args):
 @utils.arg('-v', '--app-version',
            metavar='<app version>',
            help='Version of the application')
+@utils.arg('--reuse-user-overrides',
+           metavar='<true/false>',
+           help=('Reuse user overrides when updating application'
+                 'to a new version. It will supersede the metadata '
+                 'preference specified by the application.'))
 def do_application_update(cc, args):
     """Update the deployed application to a different version"""
     data = _application_check(args)
+
+    fields_list = ['reuse_user_overrides']
+    fields = dict((k, v) for (k, v) in vars(args).items()
+                  if k in fields_list and not (v is None))
+    data.update(fields)
+
     response = cc.app.update(data)
     _print_application_show(response)
     _print_reminder_msg(response.name)

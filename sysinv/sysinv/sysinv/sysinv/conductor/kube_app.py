@@ -66,6 +66,7 @@ TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 DOCKER_REGISTRY_SECRET = 'default-registry-key'
 CHARTS_PENDING_INSTALL_ITERATIONS = 60
 
+ARMADA_LOG_MAX = 10
 ARMADA_HOST_LOG_LOCATION = '/var/log/armada'
 ARMADA_CONTAINER_LOG_LOCATION = '/logs'
 ARMADA_LOCK_GROUP = 'armada.process'
@@ -1403,6 +1404,64 @@ class AppOperator(object):
             except Exception as e:
                 LOG.exception(e)
 
+    def _get_user_overrides_flag_from_metadata(self, app):
+        # This function gets the "maintain_user_overrides"
+        # parameter from application metadata
+        reuse_overrides = False
+        metadata_file = os.path.join(app.path,
+                                     constants.APP_METADATA_FILE)
+        if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
+            with open(metadata_file, 'r') as f:
+                try:
+                    y = yaml.safe_load(f)
+                    reuse_overrides = y.get('maintain_user_overrides', False)
+                except KeyError:
+                    # metadata file does not have the key
+                    pass
+        return reuse_overrides
+
+    def _preserve_user_overrides(self, from_app, to_app):
+        """Dump user overrides
+
+        In the scenario of updating application to a new version, this
+        method is used to copy the user overrides from the old version
+        to the new version.
+
+        :param from_app: application object that application updating from
+        :param to_app: application object that application updating to
+        """
+        to_db_app = self._dbapi.kube_app_get(to_app.name)
+        from_db_app = self._dbapi.kube_app_get_inactive_by_name_version(
+            from_app.name, version=from_app.version)
+
+        from_app_db_charts = self._dbapi.helm_override_get_all(from_db_app.id)
+        from_app_charts = {}
+        for chart in from_app_db_charts:
+            from_app_charts.setdefault(chart.name, {}).update(
+                {chart.namespace: chart.user_overrides})
+
+        for chart in to_app.charts:
+            if (chart.name in from_app_charts and
+                    chart.namespace in from_app_charts[chart.name] and
+                    from_app_charts[chart.name][chart.namespace]):
+                user_overrides = {'user_overrides': from_app_charts[chart.name][chart.namespace]}
+                try:
+                    self._dbapi.helm_override_update(
+                        app_id=to_db_app.id, name=chart.name,
+                        namespace=chart.namespace, values=user_overrides)
+                except exception.HelmOverrideNotFound:
+                    # Unexpected
+                    values = {
+                        'name': chart.name,
+                        'namespace': chart.namespace,
+                        'app_id': to_db_app.id
+                    }
+                    values.update(user_overrides)
+                    self._dbapi.helm_override_create(values=values)
+                LOG.info("Application %s (%s) will apply the user overrides for"
+                         "Chart %s from version %s" % (to_app.name, to_app.version,
+                                                       chart.name, from_app.version))
+
     def _make_armada_request_with_monitor(self, app, request, overrides_str=None):
         """Initiate armada request with monitoring
 
@@ -1491,10 +1550,24 @@ class AppOperator(object):
             finally:
                 LOG.info("Exiting progress monitoring thread for app %s" % app.name)
 
+        def _cleanup_armada_log(location, app_name, request):
+            """Cleanup the oldest armada log if reach the maximum"""
+            list_of_logs = [os.path.join(location, f) for f in os.listdir(location)
+                            if re.match(r'{}-{}.*.log'.format(app_name, request), f)]
+
+            try:
+                if len(list_of_logs) > ARMADA_LOG_MAX:
+                    oldest_logfile = min(list_of_logs, key=os.path.getctime)
+                    os.remove(oldest_logfile)
+            except OSError:
+                pass
+
         # Body of the outer method
         mqueue = queue.Queue()
         rc = True
-        logfile = ARMADA_CONTAINER_LOG_LOCATION + '/' + app.name + '-' + request + '.log'
+        logname = time.strftime(app.name + '-' + request + '_%Y-%m-%d-%H-%M-%S.log')
+        logfile = ARMADA_CONTAINER_LOG_LOCATION + '/' + logname
+
         if request == constants.APP_APPLY_OP:
             pattern = APPLY_SEARCH_PATTERN
         elif request == constants.APP_DELETE_OP:
@@ -1506,6 +1579,8 @@ class AppOperator(object):
                                           pattern, logfile)
         rc = self._docker.make_armada_request(request, app.armada_mfile,
                                               overrides_str, app.releases, logfile)
+
+        _cleanup_armada_log(ARMADA_HOST_LOG_LOCATION, app.name, request)
         mqueue.put('done')
         monitor.kill()
         return rc
@@ -2077,7 +2152,8 @@ class AppOperator(object):
 
         return False
 
-    def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile, operation):
+    def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile,
+                           operation, reuse_user_overrides=None):
         """Process application update request
 
         This method leverages the existing application upload workflow to
@@ -2103,6 +2179,7 @@ class AppOperator(object):
                            application updating to
         :param tarfile: location of application tarfile
         :param operation: apply or rollback
+        :param reuse_user_overrides: (optional) True or False
         """
 
         from_app = AppOperator.Application(from_rpc_app,
@@ -2129,6 +2206,14 @@ class AppOperator(object):
 
             result = False
             if operation == constants.APP_APPLY_OP:
+                reuse_overrides = \
+                    self._get_user_overrides_flag_from_metadata(to_app)
+                if reuse_user_overrides is not None:
+                    reuse_overrides = reuse_user_overrides
+
+                # Preserve user overrides for the new app
+                if reuse_overrides:
+                    self._preserve_user_overrides(from_app, to_app)
                 result = self.perform_app_apply(to_rpc_app, mode=None, caller='update')
             elif operation == constants.APP_ROLLBACK_OP:
                 result = self._perform_app_rollback(from_app, to_app)
@@ -2686,7 +2771,7 @@ class DockerHelper(object):
                             app_releases=None, logfile=None):
 
         if logfile is None:
-            logfile = request + '.log'
+            logfile = time.strftime(request + '_%Y-%m-%d-%H-%M-%S.log')
 
         if app_releases is None:
             app_releases = []
