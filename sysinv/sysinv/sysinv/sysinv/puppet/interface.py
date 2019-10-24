@@ -17,6 +17,7 @@ from sysinv.common import interface
 from sysinv.common import utils
 from sysinv.conductor import openstack
 from sysinv.openstack.common import log
+from sysinv.openstack.common.gettextutils import _
 
 from sysinv.puppet import base
 from sysinv.puppet import quoted_str
@@ -1197,14 +1198,21 @@ def find_sriov_interfaces_by_driver(context, driver):
 def interface_sort_key(iface):
     """
     Sort interfaces by interface type placing ethernet interfaces ahead of
-    aggregated ethernet interfaces, and vlan interfaces last.
+    aggregated ethernet and vlan interfaces, with pci interfaces last.
     """
-    if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+    if iface['iftype'] == constants.INTERFACE_TYPE_VIRTUAL:
         return 0, iface['ifname']
-    elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
+    elif iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET and not is_pci_interface(iface):
         return 1, iface['ifname']
-    else:  # if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+    elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
         return 2, iface['ifname']
+    elif iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+        return 3, iface['ifname']
+    elif is_pci_interface(iface):
+        return 4, iface['ifname']
+    else:
+        msg = _('Invalid iftype: %s') % iface['iftype']
+        raise exception.SysinvException(msg)
 
 
 def generate_interface_configs(context, config):
