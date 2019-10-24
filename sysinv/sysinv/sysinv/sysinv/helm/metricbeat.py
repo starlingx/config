@@ -64,53 +64,86 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
         return conf
 
     def _get_metric_module_config(self):
-        metricsets = [
-            "cpu",
-            "load",
-            "memory",
-            "network",
-            "process",
-            "process_summary",
-            "diskio",
-        ]
-        period = "15s"
-
-        metricsets_filesystem = [
-            "filesystem",
-            "fsstat",
-        ]
-        period_fs = "60s"
         conf = [
-            {"module": "system",
-             "period": period,
-             "metricsets": metricsets,
-             "processes": [
-                 ".*"],
-             "process.include_top_n": {
-                 "by_cpu": 15,
-                 "by_memory": 15},
-             },
-
-            {"module": "system",
-             "period": period_fs,
-             "metricsets": metricsets_filesystem,
-             "processes": [
-                 ".*"],
-             "processors": [
-                 {
-                     "drop_event.when.regexp": {
-                         "system.filesystem.mount_point":
-                             "^/(sys|cgroup|proc|dev|etc|host|lib)($|/)"
+            {
+                "module": "system",
+                "period": "60s",
+                "metricsets": [
+                    "cpu",
+                    "diskio",
+                    "load",
+                    "memory",
+                    "process_summary",
+                ]
+            },
+            {
+                "module": "system",
+                "period": "60s",
+                "metricsets": [
+                    "process"
+                ],
+                "processes": [
+                    ".*"],
+                "process.include_top_n": {
+                    "by_cpu": 15,
+                    "by_memory": 15},
+                "processors": [
+                    {"drop_event.when": {
+                        # drop containerized processes
+                        "regexp": {
+                            "system.process.cgroup.cpu.path":
+                            "^/k8s.infra/.*"
+                        }
+                    }}
+                ]
+            },
+            {
+                "module": "system",
+                "period": "60s",
+                "metricsets": [
+                    "network"
+                ],
+                "processors": [
+                    {"drop_event.when": {
+                        "or": [
+                            # drop container interfaces
+                            {"regexp": {
+                                "system.network.name":
+                                "^(docker0|cali.*)$"
+                            }},
+                            # drop interfaces with no traffic
+                            {"and": [
+                                {"equals":
+                                    {"system.network.in.packets": 0}
+                                 },
+                                {"equals":
+                                    {"system.network.out.packets": 0}
+                                 }]
+                             }
+                        ]}
                      }
-                 }],
-             },
+                ]
+            },
+            {
+                "module": "system",
+                "period": "5m",
+                "metricsets": [
+                    "filesystem",
+                    "fsstat",
+                ],
+                "processors": [
+                    {"drop_event.when": {
+                        "regexp": {
+                            "system.filesystem.mount_point":
+                            "^/(sys|cgroup|proc|dev|etc|host|lib)($|/)"
+                        }
+                    }}
+                ],
+            }
         ]
         return conf
 
     def _get_metric_kubernetes(self):
-        metricsets = [
-            "node", "system", "pod", "container", "volume"]
-        period = "15s"
         conf = {
             "enabled": True,
             "config": [
@@ -118,8 +151,13 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                     "module": "kubernetes",
                     "in_cluster": True,
                     "add_metadata": True,
-                    "metricsets": metricsets,
-                    "period": period,
+                    "metricsets": [
+                        "node",
+                        "system",
+                        "pod",
+                        "container"
+                    ],
+                    "period": "10s",
                     "host": "${NODE_NAME}",
                     "hosts": [
                         "https://${HOSTNAME}:10250"
@@ -136,15 +174,6 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
         return conf
 
     def _get_metric_deployment_kubernetes(self):
-        metricsets_k8s = [
-            "state_node",
-            "state_deployment",
-            "state_replicaset",
-            "state_pod",
-            "state_container",
-            "event"
-        ]
-        period = "15s"
         conf = {
             "enabled": True,
             "config": [
@@ -152,8 +181,15 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                     "module": "kubernetes",
                     "in_cluster": True,
                     "add_metadata": True,
-                    "metricsets": metricsets_k8s,
-                    "period": period,
+                    "metricsets": [
+                        "state_node",
+                        "state_deployment",
+                        "state_replicaset",
+                        "state_pod",
+                        "state_container",
+                        "event"
+                    ],
+                    "period": "60s",
                     "host": "${NODE_NAME}",
                     "hosts": [
                         "${KUBE_STATE_METRICS_HOST}:8080"
