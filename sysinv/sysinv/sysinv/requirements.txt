@@ -7,6 +7,7 @@ boto3
 cryptography!=2.0  # BSD/Apache-2.0
 eventlet==0.20.0
 greenlet>=0.3.2 # MIT
+keyring
 kombu>=2.4.8
 lxml>=2.3
 WebOb>=1.7.1  # MIT

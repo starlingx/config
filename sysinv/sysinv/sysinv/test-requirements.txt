@@ -21,7 +21,6 @@ testtools!=1.2.0,>=0.9.36
 tempest-lib<0.5.0,>=0.4.0
 ipaddr
 pytest
-keyring
 pyudev
 libvirt-python>=1.2.5
 migrate
