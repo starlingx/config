@@ -546,15 +546,10 @@ class PlatformPuppet(base.BasePuppet):
             vswitch_cpus = self._get_host_cpu_list(
                 host, constants.VSWITCH_FUNCTION, threads=True)
             vswitch_cpuset = set([c.cpu for c in vswitch_cpus])
-            vswitch_ranges = utils.format_range_set(vswitch_cpuset)
 
             # non-platform logical cpus
             rcu_nocbs_cpuset = host_cpuset - platform_cpuset
             rcu_nocbs_ranges = utils.format_range_set(rcu_nocbs_cpuset)
-
-            # non-vswitch logical cpus
-            non_vswitch_cpuset = host_cpuset - vswitch_cpuset
-            non_vswitch_ranges = utils.format_range_set(non_vswitch_cpuset)
 
             # isolated logical cpus
             app_isolated_cpus = self._get_host_cpu_list(
@@ -565,11 +560,12 @@ class PlatformPuppet(base.BasePuppet):
             cpu_ranges = {}
 
             if constants.LOWLATENCY in host.subfunctions:
+                # set PM QoS latency that achieves C1 state for all cpus
                 config.update({
                     'platform::compute::pmqos::low_wakeup_cpus':
-                        "\"%s\"" % vswitch_ranges,
+                        "\"%s\"" % host_ranges,
                     'platform::compute::pmqos::hight_wakeup_cpus':
-                        "\"%s\"" % non_vswitch_ranges,
+                        "\"%s\"" % "",
                 })
                 cpu_ranges.update({"nohz_full": rcu_nocbs_ranges})
 
