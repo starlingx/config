@@ -502,9 +502,9 @@ def do_host_apply_profile(cc, args):
 
     # Echo list of new memory
     imemory = cc.imemory.list(host.uuid)
-    field_labels = ['uuid', 'vm_hugepages_1G', 'vm_hugepages_2M',
-                    'vm_hugepages_2M_pending',
-                    'vm_hugepages_1G_pending']
+    field_labels = ['uuid', 'application_hugepages_1G', 'application_hugepages_2M',
+                    'application_hugepages_2M_pending',
+                    'application_hugepages_1G_pending']
 
     fields = ['uuid', 'vm_hugepages_nr_1G', 'vm_hugepages_nr_2M',
               'vm_hugepages_nr_2M_pending', 'vm_hugepages_nr_1G_pending']
@@ -612,8 +612,8 @@ def do_host_apply_memprofile(cc, args):
 
     # Echo list of new host memory
     imemory = cc.imemory.list(host.uuid)
-    field_labels = ['uuid', 'vm_hugepages_1G', 'vm_hugepages_2M',
-                    'vm_hugepages_2M_pending', 'vm_hugepages_1G_pending',
+    field_labels = ['uuid', 'application_hugepages_1G', 'application_hugepages_2M',
+                    'application_hugepages_2M_pending', 'application_hugepages_1G_pending',
                     'vswitch_hugepages_nr', 'vswitch_hugepages_size_reqd',
                     'vswitch_hugepages_size_mib']
 
