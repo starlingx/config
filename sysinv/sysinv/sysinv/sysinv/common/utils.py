@@ -968,7 +968,7 @@ def get_minimum_platform_reserved_memory(ihost, numa_node):
                 reserved += 500
     else:
         if host_has_function(ihost, constants.WORKER):
-            # Engineer 2G per numa node for disk IO RSS overhead
+            # Engineer 1G per numa node for disk IO RSS overhead
             reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
     return reserved
 
