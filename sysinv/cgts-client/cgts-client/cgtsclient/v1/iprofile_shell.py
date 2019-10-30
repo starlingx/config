@@ -181,7 +181,7 @@ def get_cpuprofile_data(cc, iprofile):
     iprofile.platform_cores = get_core_list_str(iprofile, icpu_utils.PLATFORM_CPU_TYPE)
     iprofile.vswitch_cores = get_core_list_str(iprofile, icpu_utils.VSWITCH_CPU_TYPE)
     iprofile.shared_cores = get_core_list_str(iprofile, icpu_utils.SHARED_CPU_TYPE)
-    iprofile.vms_cores = get_core_list_str(iprofile, icpu_utils.APPLICATION_CPU_TYPE)
+    iprofile.application_cores = get_core_list_str(iprofile, icpu_utils.APPLICATION_CPU_TYPE)
     iprofile.isolated_cores = get_core_list_str(iprofile, icpu_utils.ISOLATED_CPU_TYPE)
 
 
@@ -208,18 +208,17 @@ def do_cpuprofile_list(cc, args):
                                                   icpu_utils.VSWITCH_CPU_TYPE)
         profile.shared_cores = get_core_list_str(profile,
                                                  icpu_utils.SHARED_CPU_TYPE)
-        profile.vms_cores = get_core_list_str(profile,
-                                              icpu_utils.APPLICATION_CPU_TYPE)
+        profile.application_cores = get_core_list_str(profile, icpu_utils.APPLICATION_CPU_TYPE)
         profile.isolated_cores = get_core_list_str(profile,
                                                    icpu_utils.ISOLATED_CPU_TYPE)
 
     field_labels = ['uuid', 'name',
                     'processors', 'phy cores per proc', 'hyperthreading',
                     'platform cores', 'vswitch cores', 'shared cores',
-                    'vm cores', 'isolated_cores']
+                    'application cores', 'application-isolated cores']
     fields = ['uuid', 'profilename',
               'sockets', 'physical_cores', 'hyperthreading',
-              'platform_cores', 'vswitch_cores', 'shared_cores', 'vms_cores',
+              'platform_cores', 'vswitch_cores', 'shared_cores', 'application_cores',
               'isolated_cores']
     utils.print_list(profiles, fields, field_labels, sortby=0)
 
@@ -227,11 +226,11 @@ def do_cpuprofile_list(cc, args):
 def _print_cpuprofile_show(cpuprofile):
     labels = ['uuid', 'name',
               'processors', 'phy cores per proc', 'hyperthreading',
-              'platform cores', 'vswitch cores', 'shared cores', 'vm cores',
-              'isolated_cores', 'created_at', 'updated_at']
+              'platform cores', 'vswitch cores', 'shared cores', 'application cores',
+              'application-isolated cores', 'created_at', 'updated_at']
     fields = ['uuid', 'profilename',
               'sockets', 'physical_cores', 'hyperthreading',
-              'platform_cores', 'vswitch_cores', 'shared_cores', 'vms_cores',
+              'platform_cores', 'vswitch_cores', 'shared_cores', 'application_cores',
               'isolated_cores', 'created_at', 'updated_at']
     data = [(f, getattr(cpuprofile, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)
@@ -585,8 +584,8 @@ def get_memprofile_data(cc, iprofile):
     iprofile.memory = cc.iprofile.list_imemorys(iprofile.uuid)
     iprofile.nodes = cc.iprofile.list_inodes(iprofile.uuid)
     iprofile.platform_reserved_mib = get_memoryconfig_platform(iprofile)
-    iprofile.vm_hugepages_2M = get_memoryconfig_2M(iprofile)
-    iprofile.vm_hugepages_1G = get_memoryconfig_1G(iprofile)
+    iprofile.application_hugepages_2M = get_memoryconfig_2M(iprofile)
+    iprofile.application_hugepages_1G = get_memoryconfig_1G(iprofile)
     iprofile.vswitch_hugepages_nr = get_memoryconfig_vswitch_nr(iprofile)
     iprofile.vswitch_hugepages_size_mib = get_memoryconfig_vswitch_size(iprofile)
 
@@ -596,26 +595,26 @@ def do_memprofile_list(cc, args):
     profiles = cc.iprofile.list_memory_profiles()
     for profile in profiles:
         profile.platform_reserved_mib = get_memoryconfig_platform(profile)
-        profile.vm_hugepages_2M = get_memoryconfig_2M(profile)
-        profile.vm_hugepages_1G = get_memoryconfig_1G(profile)
+        profile.application_hugepages_2M = get_memoryconfig_2M(profile)
+        profile.application_hugepages_1G = get_memoryconfig_1G(profile)
         profile.vswitch_hugepages_nr = get_memoryconfig_vswitch_nr(profile)
         profile.vswitch_hugepages_size_mib = get_memoryconfig_vswitch_size(profile)
 
     field_labels = ['uuid', 'name', 'platform_reserved_mib',
-                    'vm_hugepages_2M', 'vm_hugepages_1G',
+                    'application_hugepages_2M', 'application_hugepages_1G',
                     'vswitch_hugepages_nr', 'vswitch_hugepages_size_mib']
     fields = ['uuid', 'profilename', 'platform_reserved_mib',
-              'vm_hugepages_2M', 'vm_hugepages_1G',
+              'application_hugepages_2M', 'application_hugepages_1G',
               'vswitch_hugepages_nr', 'vswitch_hugepages_size_mib']
     utils.print_list(profiles, fields, field_labels, sortby=0)
 
 
 def _print_memprofile_show(memoryprofile):
-    fields = ['profilename', 'platform_reserved_mib', 'vm_hugepages_2M',
-              'vm_hugepages_1G', 'vswitch_hugepages_nr',
+    fields = ['profilename', 'platform_reserved_mib', 'application_hugepages_2M',
+              'application_hugepages_1G', 'vswitch_hugepages_nr',
               'vswitch_hugepages_size_mib', 'uuid', 'created_at', 'updated_at']
-    labels = ['name', 'platform_reserved_mib', 'vm_hugepages_2M',
-              'vm_hugepages_1G', 'vswitch_hugepages_nr',
+    labels = ['name', 'platform_reserved_mib', 'application_hugepages_2M',
+              'application_hugepages_1G', 'vswitch_hugepages_nr',
               'vswitch_hugepages_size_mib', 'uuid', 'created_at', 'updated_at']
 
     data = [(f, getattr(memoryprofile, f, '')) for f in fields]

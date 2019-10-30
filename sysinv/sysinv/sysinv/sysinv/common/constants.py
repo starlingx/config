@@ -114,8 +114,8 @@ LOWLATENCY = 'lowlatency'
 PLATFORM_FUNCTION = "Platform"
 VSWITCH_FUNCTION = "Vswitch"
 SHARED_FUNCTION = "Shared"
-APPLICATION_FUNCTION = "Applications"
-ISOLATED_FUNCTION = "Isolated"
+APPLICATION_FUNCTION = "Application"
+ISOLATED_FUNCTION = "Application-isolated"
 NO_FUNCTION = "None"
 
 CPU_FUNCTIONS = [

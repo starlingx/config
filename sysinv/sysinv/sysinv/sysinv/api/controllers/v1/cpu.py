@@ -597,7 +597,7 @@ def _update_isolated_cpu_counts(host, cpu, counts, capabilities=None):
         count = int(count)
         if count < 0:
             raise wsme.exc.ClientSideError(
-                _('Isolated cpus must be non-negative.'))
+                _('Application-isolated cpus must be non-negative.'))
         if host.hyperthreading:
             # the data structures track the number of logical cpus and the
             # API expects the requested count to refer to the number

@@ -87,7 +87,7 @@ def do_host_cpu_list(cc, args):
            help="Name or ID of host")
 @utils.arg('-f', '--function',
            metavar='<function>',
-           choices=['vswitch', 'shared', 'platform', 'isolated'],
+           choices=['vswitch', 'shared', 'platform', 'application-isolated'],
            required=True,
            help='The Core Function.')
 @utils.arg('-p0', '--num_cores_on_processor0',
