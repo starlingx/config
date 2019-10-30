@@ -295,21 +295,23 @@ VSWITCH_TYPE_NONE = "none"
 DEFAULT_PLATFORM_STOR_SIZE = 10
 DEFAULT_DOCKER_STOR_SIZE = 1
 DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE = 1
-DEFAULT_DATABASE_STOR_SIZE = 20
-DEFAULT_SMALL_DATABASE_STOR_SIZE = 10
-DEFAULT_SMALL_BACKUP_STOR_SIZE = 40
+DEFAULT_DATABASE_STOR_SIZE = 10
+DEFAULT_SMALL_DATABASE_STOR_SIZE = 5
+DEFAULT_SMALL_BACKUP_STOR_SIZE = 20
 DEFAULT_VIRTUAL_DATABASE_STOR_SIZE = 5
 DEFAULT_VIRTUAL_BACKUP_STOR_SIZE = 5
 DEFAULT_EXTENSION_STOR_SIZE = 1
 DEFAULT_PATCH_VAULT_STOR_SIZE = 8
 DEFAULT_ETCD_STORE_SIZE = 1
 
+BACKUP_OVERHEAD = 5
+
 # The threshold between small and large disks is 240GiB
 DEFAULT_SMALL_DISK_SIZE = 240
 # The minimum disk size needed to create all partitions
 # Value based on the following calculation:
-# 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   20 (2*10)
-# DEFAULT_SMALL_BACKUP_STOR_SIZE                       40
+# 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   10 (2*5)
+# DEFAULT_SMALL_BACKUP_STOR_SIZE                       20
 # LOG_VOL_SIZE (reserved in kickstarts)                 8
 # SCRATCH_VOL_SIZE (reserved in kickstarts)             8
 # RABBIT_LV                                             2
@@ -325,8 +327,8 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # boot partition (created in kickstarts)                1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     184
-MINIMUM_DISK_SIZE = 184
+#                                                     154
+MINIMUM_DISK_SIZE = 154
 
 KUBERNETES_DOCKER_STOR_SIZE = 30
 DOCKER_DISTRIBUTION_STOR_SIZE = 16
@@ -488,8 +490,6 @@ CEPH_UNDEFINED_MODEL = 'undefined'
 # Storage: Minimum number of monitors
 MIN_STOR_MONITORS_MULTINODE = 2
 MIN_STOR_MONITORS_AIO = 1
-
-BACKUP_OVERHEAD = 20
 
 # Suffix used in LVM volume name to indicate that the
 # volume is actually a thin pool.  (And thin volumes will
