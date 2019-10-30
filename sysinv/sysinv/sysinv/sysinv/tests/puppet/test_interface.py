@@ -675,40 +675,35 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_get_interface_traffic_classifier_for_mgmt(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
         self.iface['networks'] = self._get_network_ids_by_type(
             constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_MGMT)
         classifier = interface.get_interface_traffic_classifier(
-            self.context, self.iface, network.id)
+            self.context, self.iface)
         print(self.context)
-        expected = ('/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
-                    (self.port['name'], constants.NETWORK_TYPE_MGMT,
+        expected = ('%s %s %s %s > /dev/null' %
+                    (constants.TRAFFIC_CONTROL_SCRIPT,
+                     self.port['name'], constants.NETWORK_TYPE_MGMT,
                      constants.LINK_SPEED_10G))
         self.assertEqual(classifier, expected)
 
     def test_get_interface_traffic_classifier_for_cluster_host(self):
         self.iface['ifname'] = 'cluster_host0'
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_CLUSTER_HOST]
         self.iface['networks'] = self._get_network_ids_by_type(
             constants.NETWORK_TYPE_CLUSTER_HOST)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
         classifier = interface.get_interface_traffic_classifier(
-            self.context, self.iface, network.id)
+            self.context, self.iface)
         self.assertIsNone(classifier)
 
     def test_get_interface_traffic_classifier_for_oam(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_OAM]
         self.iface['networks'] = self._get_network_ids_by_type(
             constants.NETWORK_TYPE_OAM)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_OAM)
         classifier = interface.get_interface_traffic_classifier(
-            self.context, self.iface, network.id)
+            self.context, self.iface)
         self.assertIsNone(classifier)
 
     def test_get_interface_traffic_classifier_for_none(self):
@@ -998,7 +993,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_get_controller_ethernet_config_mgmt(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
         self.iface['networks'] = self._get_network_ids_by_type(
             constants.NETWORK_TYPE_MGMT)
         self._update_context()
@@ -1010,8 +1005,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'IPV6_AUTOCONF': 'no',
                    'LINKDELAY': '20',
                    'post_up':
-                       '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
-                       (self.port['name'], constants.NETWORK_TYPE_MGMT,
+                       '%s %s %s %s > /dev/null' %
+                       (constants.TRAFFIC_CONTROL_SCRIPT,
+                        self.port['name'], constants.NETWORK_TYPE_MGMT,
                         constants.LINK_SPEED_10G)}
         expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500, gateway='192.168.204.1',
@@ -1130,7 +1126,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_get_worker_ethernet_config_mgmt(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
         self.iface['networks'] = self._get_network_ids_by_type(
             constants.NETWORK_TYPE_MGMT)
         self.host['personality'] = constants.WORKER
@@ -1143,8 +1139,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'IPV6_AUTOCONF': 'no',
                    'LINKDELAY': '20',
                    'post_up':
-                       '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' %
-                       (self.port['name'], constants.NETWORK_TYPE_MGMT,
+                       '%s %s %s %s > /dev/null' %
+                       (constants.TRAFFIC_CONTROL_SCRIPT,
+                        self.port['name'], constants.NETWORK_TYPE_MGMT,
                         constants.LINK_SPEED_10G)}
         expected = self._get_network_config(
             ifname=self.port['name'], mtu=1500, options=options)

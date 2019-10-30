@@ -668,19 +668,19 @@ def get_interface_address_method(context, iface, network_id=None):
             return DHCP_METHOD
 
 
-def get_interface_traffic_classifier(context, iface, network_id=None):
+def get_interface_traffic_classifier(context, iface):
     """
     Get the interface traffic classifier command line (if any)
     """
-    networktype = find_networktype_by_network_id(context, network_id)
-    if (networktype and
-            networktype == constants.NETWORK_TYPE_MGMT):
-        networkspeed = constants.LINK_SPEED_10G
-        ifname = get_interface_os_ifname(context, iface)
-        return '/usr/local/bin/cgcs_tc_setup.sh %s %s %s > /dev/null' \
-               % (ifname,
-                  networktype,
-                  networkspeed)
+    for networktype in iface.networktypelist:
+        if (networktype == constants.NETWORK_TYPE_MGMT):
+            networkspeed = constants.LINK_SPEED_10G
+            ifname = get_interface_os_ifname(context, iface)
+            return '%s %s %s %s > /dev/null' \
+                   % (constants.TRAFFIC_CONTROL_SCRIPT,
+                      ifname,
+                      networktype,
+                      networkspeed)
     return None
 
 
@@ -1013,10 +1013,13 @@ def get_common_network_config(context, iface, config, network_id=None):
     """
     LOG.debug("get_common_network_config %s %s network_id=%s" %
               (iface.ifname, iface.networktypelist, network_id))
-    traffic_classifier = get_interface_traffic_classifier(context, iface,
-                                                          network_id)
-    if traffic_classifier:
-        config['options']['post_up'] = traffic_classifier
+
+    os_ifname = get_interface_os_ifname(context, iface)
+    if os_ifname == config['ifname']:
+        # post-up scripts do not work for aliases.
+        traffic_classifier = get_interface_traffic_classifier(context, iface)
+        if traffic_classifier:
+            config['options']['post_up'] = traffic_classifier
 
     method = get_interface_address_method(context, iface, network_id)
     if method == STATIC_METHOD:
