@@ -38,7 +38,7 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
             if utils.is_aio_simplex_system(self.dbapi):
                 replicas = 1
         else:
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx2048m -Xms2048m"
+            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx4096m -Xms4096m"
 
         overrides = {
             common.HELM_NS_MONITOR: {
@@ -80,7 +80,7 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
         else:
             cpu_requests = "500m"
             cpu_limits = "2"
-            memory_size = "4096Mi"
+            memory_size = "6144Mi"
 
         resources = {
             'requests': {
