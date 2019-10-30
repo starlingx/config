@@ -53,6 +53,7 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_CLUSTER_POD,
                          constants.NETWORK_TYPE_CLUSTER_SERVICE,
                          constants.NETWORK_TYPE_IRONIC,
+                         constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
                          ]
 
 
