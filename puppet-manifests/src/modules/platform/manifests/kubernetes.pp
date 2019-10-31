@@ -437,6 +437,16 @@ class platform::kubernetes::master::init
       }
     }
   }
+
+  # Run kube-cert-rotation daily
+  cron { 'kube-cert-rotation':
+    ensure      => 'present',
+    command     => '/usr/bin/kube-cert-rotation.sh',
+    environment => 'PATH=/bin:/usr/bin:/usr/sbin',
+    minute      => '10',
+    hour        => '*/24',
+    user        => 'root',
+  }
 }
 
 class platform::kubernetes::master
