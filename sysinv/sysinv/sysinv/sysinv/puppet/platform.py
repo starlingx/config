@@ -859,7 +859,6 @@ class PlatformPuppet(base.BasePuppet):
             sc_network_addr_pool = self.dbapi.address_pool_get(
                 sc_network.pool_uuid)
             sc_addr = sc_network_addr_pool.floating_address
-            sc_host = self._format_url_address(sc_addr)
             config.update({'platform::params::system_controller_addr':
-                          sc_host})
+                          sc_addr})
         return config
