@@ -10,8 +10,8 @@ import subprocess
 
 import os
 
+from sysinv._i18n import _
 from sysinv.common import exception
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log as logging
 from tsconfig import tsconfig
 

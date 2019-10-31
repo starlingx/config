@@ -5,13 +5,12 @@
 
 import pecan
 from pecan import rest
-
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from sysinv._i18n import _
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 
 LOG = log.getLogger(__name__)

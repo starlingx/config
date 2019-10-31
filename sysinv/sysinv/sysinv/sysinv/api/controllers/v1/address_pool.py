@@ -20,17 +20,15 @@
 
 
 import netaddr
-import uuid
-
 import pecan
 from pecan import rest
 import random
-
+import uuid
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
-from oslo_utils._i18n import _
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import types

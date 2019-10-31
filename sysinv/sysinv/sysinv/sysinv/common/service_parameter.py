@@ -11,11 +11,11 @@ import netaddr
 import pecan
 import wsme
 
+from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 

@@ -14,12 +14,11 @@
 #    under the License.
 
 import datetime
+import six
 import time
 
 from oslo_config import cfg
-import six
-
-from sysinv.openstack.common.gettextutils import _
+from sysinv._i18n import _
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import timeutils
 

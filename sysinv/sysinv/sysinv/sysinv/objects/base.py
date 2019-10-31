@@ -22,10 +22,10 @@ import collections
 import copy
 import six
 
+from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.objects import utils as obj_utils
 from sysinv.openstack.common import context
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common.rpc import common as rpc_common
 from sysinv.openstack.common.rpc import serializer as rpc_serializer

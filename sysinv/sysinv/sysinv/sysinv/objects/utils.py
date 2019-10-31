@@ -25,8 +25,8 @@ import netaddr
 import uuid
 import six
 
+from sysinv._i18n import _
 from sysinv.common import constants
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import timeutils
 
 

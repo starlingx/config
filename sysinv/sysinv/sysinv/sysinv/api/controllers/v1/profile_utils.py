@@ -19,11 +19,10 @@
 # Copyright (c) 2013-2015 Wind River Systems, Inc.
 #
 
-
 import netaddr
+from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 

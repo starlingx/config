@@ -7,17 +7,16 @@
 import pecan
 from pecan import rest
 import six
-import yaml
-
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
+import yaml
 
+from sysinv._i18n import _
 from sysinv import objects
 from sysinv.common import exception
 from sysinv.helm import common
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 
 LOG = log.getLogger(__name__)

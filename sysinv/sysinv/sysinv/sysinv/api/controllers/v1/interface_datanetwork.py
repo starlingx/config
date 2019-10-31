@@ -22,13 +22,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import uuid
-import wsme
 import pecan
 from pecan import rest
+import uuid
+import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import types
@@ -36,8 +37,6 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.common import utils as cutils
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.openstack.common.gettextutils import _
-
 from sysinv import objects
 
 

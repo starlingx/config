@@ -18,15 +18,14 @@
 # Copyright (c) 2016-2017 Wind River Systems, Inc.
 #
 
-
-import uuid
-
+import os
 import pecan
+from pecan import rest
+import uuid
 import wsme
 import wsmeext.pecan as wsme_pecan
-import os
-from oslo_utils._i18n import _
-from pecan import rest
+
+from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection

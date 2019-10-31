@@ -19,25 +19,26 @@
 # Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
-import subprocess
-import socket
 import jsonpatch
+import netaddr
 import os
 import pecan
 import re
+import socket
+import subprocess
 import wsme
-import netaddr
+
+from fm_api import constants as fm_constants
 import tsconfig.tsconfig as tsc
 
 from oslo_config import cfg
+from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import health
 from sysinv.helm import common as helm_common
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
-from fm_api import constants as fm_constants
 
 LOG = log.getLogger(__name__)
 

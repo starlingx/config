@@ -19,17 +19,17 @@
 # Copyright (c) 2013-2015 Wind River Systems, Inc.
 #
 
-from oslo_utils import strutils
 import re
 import six
-
 import wsme
 from wsme import types as wtypes
 
+from oslo_utils import strutils
+
+from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.api.controllers.v1 import utils as apiutils
-from sysinv.openstack.common.gettextutils import _
 
 
 class MACAddressType(wtypes.UserType):

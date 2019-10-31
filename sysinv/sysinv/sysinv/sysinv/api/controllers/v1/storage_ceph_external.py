@@ -22,20 +22,19 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import jsonpatch
 import copy
+import jsonpatch
 import os
-from oslo_serialization import jsonutils
-
 import pecan
 from pecan import rest
 from pecan import expose
 import six
-
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_serialization import jsonutils
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
@@ -48,7 +47,6 @@ from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 

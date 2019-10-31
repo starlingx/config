@@ -14,9 +14,8 @@
 #    under the License.
 
 from oslo_config import cfg
-
+from sysinv._i18n import _
 from sysinv.openstack.common import context as req_context
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import rpc
 

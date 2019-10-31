@@ -23,10 +23,10 @@ import migrate
 from migrate.versioning import util as migrate_util
 import sqlalchemy
 
+from oslo_db.sqlalchemy import enginefacade
+from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.db import migration
-from sysinv.openstack.common.gettextutils import _
-from oslo_db.sqlalchemy import enginefacade
 
 
 @migrate_util.decorator

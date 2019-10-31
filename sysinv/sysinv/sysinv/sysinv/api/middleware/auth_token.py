@@ -13,14 +13,14 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import re
 import json
+import re
 
 from keystonemiddleware import auth_token
 
+from sysinv._i18n import _
 from sysinv.common import utils
 from sysinv.common import exception
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)

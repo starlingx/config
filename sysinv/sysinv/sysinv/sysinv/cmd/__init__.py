@@ -22,5 +22,4 @@ import eventlet
 
 eventlet.monkey_patch(os=False)
 
-from sysinv.openstack.common import gettextutils
-gettextutils.install('sysinv')
+import sysinv._i18n  # noqa

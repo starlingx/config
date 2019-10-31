@@ -19,15 +19,16 @@
 # Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
-
-import six
 import jsonpatch
 import pecan
-import wsme
-import wsmeext.pecan as wsme_pecan
-from oslo_config import cfg
 from pecan import expose
 from pecan import rest
+import six
+import wsme
+import wsmeext.pecan as wsme_pecan
+
+from oslo_config import cfg
+from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -56,7 +57,6 @@ import xml.etree.ElementTree as et
 from lxml import etree
 from sysinv.api.controllers.v1 import profile_utils
 from sysinv.openstack.common.db import exception as dbException
-from sysinv.openstack.common.gettextutils import _
 from wsme import types as wtypes
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 

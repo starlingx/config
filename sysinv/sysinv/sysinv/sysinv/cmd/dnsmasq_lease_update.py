@@ -30,16 +30,14 @@ This file was based on dhcpbridge.py from nova
 
 from __future__ import print_function
 
-import sys
 import os
+import sys
 
 from oslo_config import cfg
-
+from sysinv._i18n import _
 from sysinv.common import service as sysinv_service
-
-from sysinv.openstack.common import context
 from sysinv.conductor import rpcapi as conductor_rpcapi
-from sysinv.openstack.common.gettextutils import _
+from sysinv.openstack.common import context
 from sysinv.openstack.common import log
 
 CONF = cfg.CONF

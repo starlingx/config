@@ -19,6 +19,7 @@
 # Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
+import re
 import time
 from six.moves.urllib.parse import urlparse
 import webob
@@ -27,6 +28,7 @@ from oslo_config import cfg
 from oslo_serialization import jsonutils
 from pecan import hooks
 
+from sysinv._i18n import _
 from sysinv.common import context
 from sysinv.common import utils
 from sysinv.conductor import rpcapi
@@ -35,9 +37,7 @@ from sysinv.openstack.common import policy
 from webob import exc
 
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
-import re
 
 LOG = log.getLogger(__name__)
 

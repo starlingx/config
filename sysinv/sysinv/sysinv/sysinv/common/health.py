@@ -10,6 +10,7 @@ from controllerconfig import backup_restore
 
 from fm_api import fm_api
 
+from sysinv._i18n import _
 from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import utils
@@ -18,7 +19,6 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 import cgcs_patch.constants as patch_constants
 

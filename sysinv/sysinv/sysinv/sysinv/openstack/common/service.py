@@ -29,10 +29,9 @@ import time
 
 import eventlet
 from eventlet import event
-from oslo_config import cfg
 
-# from sysinv.openstack.common import eventlet_backdoor
-from sysinv.openstack.common.gettextutils import _
+from oslo_config import cfg
+from sysinv._i18n import _
 from sysinv.openstack.common import importutils
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import threadgroup
