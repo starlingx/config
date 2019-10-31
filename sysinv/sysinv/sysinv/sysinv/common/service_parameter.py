@@ -475,59 +475,55 @@ DOCKER_PROXY_PARAMETER_RESOURCE = {
         'platform::docker::params::no_proxy',
 }
 
-DOCKER_REGISTRY_PARAMETER_OPTIONAL = [
-    constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY,
-]
-
-DOCKER_REGISTRY_PARAMETER_VALIDATOR = {
-    constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY: _validate_docker_insecure_registry_bool,
-}
-
-DOCKER_REGISTRY_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_DOCKER_INSECURE_REGISTRY:
-        'platform::docker::params::insecure_registry',
-}
-
 DOCKER_REGISTRIES_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_DOCKER_URL,
     constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET,
     constants.SERVICE_PARAM_NAME_DOCKER_TYPE,
-    constants.SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES
+    constants.SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES,
+    constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY
 ]
 
 DOCKER_REGISTRIES_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL: _validate_docker_registry_address,
     constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET: _validate_docker_registry_auth_secret,
     constants.SERVICE_PARAM_NAME_DOCKER_TYPE: _validate_docker_registry_type,
-    constants.SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES: _validate_docker_registry_address
+    constants.SERVICE_PARAM_NAME_DOCKER_ADDITIONAL_OVERRIDES: _validate_docker_registry_address,
+    constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY: _validate_docker_insecure_registry_bool
 }
 
 DOCKER_DOCKER_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
         'platform::docker::params::docker_registry',
-    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
-        'platform::docker::params::docker_registry_secret'
+    constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY:
+        'platform::docker::params::docker_registry_secure',
 }
 
 DOCKER_GCR_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
         'platform::docker::params::gcr_registry',
-    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
-        'platform::docker::params::gcr_registry_secret'
+    constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY:
+        'platform::docker::params::gcr_registry_secure',
 }
 
 DOCKER_K8S_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
         'platform::docker::params::k8s_registry',
-    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
-        'platform::docker::params::k8s_registry_secret'
+    constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY:
+        'platform::docker::params::k8s_registry_secure',
 }
 
 DOCKER_QUAY_REGISTRY_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_DOCKER_URL:
         'platform::docker::params::quay_registry',
-    constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
-        'platform::docker::params::quay_registry_secret'
+    constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY:
+        'platform::docker::params::quay_registry_secure',
+}
+
+DOCKER_ELASTIC_REGISTRY_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_DOCKER_URL:
+        'platform::docker::params::elastic_registry',
+    constants.SERVICE_PARAM_NAME_DOCKER_SECURE_REGISTRY:
+        'platform::docker::params::elastic_registry_secure',
 }
 
 KUBERNETES_CERTIFICATES_PARAMETER_OPTIONAL = [
@@ -625,11 +621,6 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: DOCKER_PROXY_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: DOCKER_PROXY_PARAMETER_RESOURCE,
         },
-        constants.SERVICE_PARAM_SECTION_DOCKER_REGISTRY: {
-            SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRY_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRY_PARAMETER_VALIDATOR,
-            SERVICE_PARAM_RESOURCE: DOCKER_REGISTRY_PARAMETER_RESOURCE,
-        },
         constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY: {
             SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRIES_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRIES_PARAMETER_VALIDATOR,
@@ -652,7 +643,8 @@ SERVICE_PARAMETER_SCHEMA = {
         },
         constants.SERVICE_PARAM_SECTION_DOCKER_ELASTIC_REGISTRY: {
             SERVICE_PARAM_OPTIONAL: DOCKER_REGISTRIES_PARAMETER_OPTIONAL,
-            SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRIES_PARAMETER_VALIDATOR
+            SERVICE_PARAM_VALIDATOR: DOCKER_REGISTRIES_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: DOCKER_ELASTIC_REGISTRY_PARAMETER_RESOURCE
         }
     },
     constants.SERVICE_TYPE_KUBERNETES: {
