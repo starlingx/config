@@ -2722,21 +2722,12 @@ class DockerHelper(object):
                     overrides_dir: {'bind': '/overrides', 'mode': 'ro'},
                     logs_dir: {'bind': ARMADA_CONTAINER_LOG_LOCATION, 'mode': 'rw'}}
 
-                quay_registry_url = self._dbapi.service_parameter_get_all(
-                    service=constants.SERVICE_TYPE_DOCKER,
-                    section=constants.SERVICE_PARAM_SECTION_DOCKER_QUAY_REGISTRY,
-                    name=constants.SERVICE_PARAM_NAME_DOCKER_URL)
-
-                if quay_registry_url:
-                    quay_url = quay_registry_url[0].value
-                    # If registry url has a port, strip it out
-                    quay_url = re.sub(r':[0-9]+', '', quay_url)
-                else:
-                    quay_url = constants.DEFAULT_DOCKER_QUAY_REGISTRY
-
-                armada_image_tag = constants.DOCKER_REGISTRY_SERVER + '/' + quay_url + \
-                    image_versions.ARMADA_IMAGE_NAME + ":" + \
-                    image_versions.ARMADA_IMAGE_VERSION
+                # Armada img was pushed to local registry (registry.local:9001/quay.io/)
+                # at bootstrap time
+                armada_image_tag = constants.DOCKER_REGISTRY_SERVER + '/' + \
+                                   constants.DEFAULT_DOCKER_QUAY_REGISTRY + \
+                                   image_versions.ARMADA_IMAGE_NAME + ":" + \
+                                   image_versions.ARMADA_IMAGE_VERSION
 
                 armada_image = client.images.list(armada_image_tag)
                 # Pull Armada image if it's not available
