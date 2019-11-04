@@ -15,26 +15,24 @@ Manage Disk partitions on this host and provide inventory updates
 
 import json
 import math
-import re
 import os
+import re
 import shutil
 import socket
 import subprocess
+import sys
 import time
 
-import sys
 from collections import defaultdict
 
 from oslo_config import cfg
-
+from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import service as sysinv_service
-
+from sysinv.common import utils
+from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.openstack.common import context
 from sysinv.openstack.common import log
-from sysinv.common import utils
-from sysinv.openstack.common.gettextutils import _
-from sysinv.conductor import rpcapi as conductor_rpcapi
 
 CONF = cfg.CONF
 LOG = log.getLogger(__name__)

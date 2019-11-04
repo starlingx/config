@@ -22,8 +22,7 @@ import itertools
 import json
 
 from oslo_config import cfg
-
-from sysinv.openstack.common.gettextutils import _
+from sysinv._i18n import _
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common.rpc import matchmaker as mm
 

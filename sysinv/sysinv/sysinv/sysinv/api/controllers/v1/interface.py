@@ -34,6 +34,7 @@ import string
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import address
 from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
@@ -52,7 +53,6 @@ from sysinv import objects
 from sysinv.objects import utils as object_utils
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 

@@ -26,7 +26,6 @@ import re
 
 from oslo_config import cfg
 from oslo_db import exception as db_exc
-
 from oslo_db.sqlalchemy import enginefacade
 from oslo_db.sqlalchemy import utils as db_utils
 
@@ -41,6 +40,7 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.orm.exc import MultipleResultsFound
 from sqlalchemy.orm.exc import NoResultFound
 
+from sysinv._i18n import _
 from sysinv import objects
 from sysinv.common import constants
 from sysinv.common import exception
@@ -50,7 +50,6 @@ from sysinv.db.sqlalchemy import models
 
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
 
 CONF = cfg.CONF
 CONF.import_opt('connection',

@@ -19,17 +19,16 @@
 # Copyright (c) 2013-2017 Wind River Systems, Inc.
 #
 
-
 import jsonpatch
-import six
-
 import pecan
 from pecan import rest
-
+import six
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_serialization import jsonutils
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import pv as pv_api
@@ -42,8 +41,6 @@ from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
-from oslo_serialization import jsonutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 LOG = log.getLogger(__name__)

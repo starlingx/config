@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from sysinv.openstack.common.gettextutils import _
+from sysinv._i18n import _
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import rpc
 from sysinv.openstack.common.rpc import dispatcher as rpc_dispatcher

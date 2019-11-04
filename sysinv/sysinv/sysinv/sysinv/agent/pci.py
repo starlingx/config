@@ -16,7 +16,7 @@ import os
 import shlex
 import subprocess
 
-from oslo_utils._i18n import _
+from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.openstack.common import log as logging

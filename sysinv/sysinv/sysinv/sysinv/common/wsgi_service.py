@@ -15,13 +15,14 @@
 
 import socket
 from netaddr import IPAddress
+
 from oslo_config import cfg
 from oslo_log import log
 from oslo_service import service
 from oslo_service import wsgi
+from sysinv._i18n import _
 from sysinv.api import app
 from sysinv.common import exception
-from sysinv.openstack.common.gettextutils import _
 
 
 CONF = cfg.CONF

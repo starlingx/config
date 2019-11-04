@@ -11,13 +11,13 @@ import six
 from netaddr import IPAddress
 from netaddr import IPNetwork
 
+from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import interface
 from sysinv.common import utils
 from sysinv.conductor import openstack
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 from sysinv.puppet import base
 from sysinv.puppet import quoted_str

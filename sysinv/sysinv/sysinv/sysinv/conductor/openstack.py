@@ -13,12 +13,12 @@
 
 import keyring
 from cinderclient.v2 import client as cinder_client_v2
+from oslo_config import cfg
+from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import StorageBackendConfig
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log as logging
-from oslo_config import cfg
 from keystoneclient.v3 import client as keystone_client
 from keystoneclient.auth.identity import v3
 from keystoneclient import session

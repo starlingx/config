@@ -32,6 +32,7 @@ from eventlet import Timeout
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 from oslo_log import log as logging
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import kube_app
 from sysinv.common import constants
 from sysinv.common import exception
@@ -43,7 +44,6 @@ from sysinv.conductor import openstack
 from sysinv.helm import common
 from sysinv.helm import helm
 from sysinv.helm import utils as helm_utils
-from sysinv.openstack.common.gettextutils import _
 
 
 # Log and config

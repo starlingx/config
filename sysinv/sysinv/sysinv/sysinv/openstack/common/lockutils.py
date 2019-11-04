@@ -25,10 +25,10 @@ import time
 import weakref
 
 from eventlet import semaphore
-from oslo_config import cfg
 
+from oslo_config import cfg
+from sysinv._i18n import _
 from sysinv.openstack.common import fileutils
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import local
 from sysinv.openstack.common import log as logging
 

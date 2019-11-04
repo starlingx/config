@@ -4,9 +4,12 @@
 #
 
 import pecan
+from pecan import rest
 import wsme
 import wsmeext.pecan as wsme_pecan
-from pecan import rest
+from wsme import types as wtypes
+
+from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -19,9 +22,7 @@ from sysinv.common import utils as cutils
 from sysinv.helm import common
 from sysinv.openstack.common import excutils
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common.rpc import common as rpc_common
-from wsme import types as wtypes
 
 LOG = log.getLogger(__name__)
 

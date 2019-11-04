@@ -15,6 +15,7 @@ import wsmeext.pecan as wsme_pecan
 
 from contextlib import contextmanager
 from oslo_log import log
+from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -24,7 +25,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.helm import common as helm_common
-from sysinv.openstack.common.gettextutils import _
 
 import cgcs_patch.constants as patch_constants
 

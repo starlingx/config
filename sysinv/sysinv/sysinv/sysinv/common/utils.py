@@ -58,15 +58,16 @@ from eventlet.green import subprocess
 from eventlet import greenthread
 import netaddr
 
+from oslo_concurrency import lockutils
 from oslo_config import cfg
 
 from fm_api import constants as fm_constants
+
+from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.helm import common as helm_common
 from sysinv.openstack.common import log as logging
-from sysinv.openstack.common.gettextutils import _
-from oslo_concurrency import lockutils
 
 
 try:

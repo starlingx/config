@@ -65,6 +65,7 @@ from oslo_config import cfg
 from platform_util.license import license
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
+from sysinv._i18n import _
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import cpu_utils
@@ -100,7 +101,6 @@ from sysinv.openstack.common import log
 from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common import timeutils
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import common as helm_common

@@ -19,19 +19,19 @@
 # Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
-
 import jsonpatch
-import six
-import re
-
 import pecan
 from pecan import rest
-
+import re
+import six
 import subprocess
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_config import cfg
+
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import disk
@@ -45,10 +45,8 @@ from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
-from oslo_config import cfg
 
 journal_opts = [
                 cfg.IntOpt('journal_max_size',

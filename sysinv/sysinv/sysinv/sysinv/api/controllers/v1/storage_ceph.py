@@ -21,19 +21,18 @@
 
 import copy
 import jsonpatch
-import re
-
-from oslo_utils import strutils
-from oslo_serialization import jsonutils
-
 import pecan
 from pecan import rest
+import re
 import six
-
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_serialization import jsonutils
+from oslo_utils import strutils
+
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
@@ -49,7 +48,6 @@ from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv import objects
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
 
 
 LOG = log.getLogger(__name__)

@@ -19,11 +19,10 @@ return keys for direct exchanges, per (approximate) AMQP parlance.
 """
 
 import contextlib
-
 import eventlet
-from oslo_config import cfg
 
-from sysinv.openstack.common.gettextutils import _
+from oslo_config import cfg
+from sysinv._i18n import _
 from sysinv.openstack.common import log as logging
 
 

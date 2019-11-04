@@ -38,9 +38,8 @@ from eventlet import semaphore
 # This import should no longer be needed when the amqp_rpc_single_reply_queue
 # option is removed.
 from oslo_config import cfg
-
+from sysinv._i18n import _
 from sysinv.openstack.common import excutils
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import local
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common.rpc import common as rpc_common

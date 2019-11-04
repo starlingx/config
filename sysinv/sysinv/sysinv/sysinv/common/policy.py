@@ -20,10 +20,9 @@
 import os.path
 
 from oslo_config import cfg
-
+from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import utils
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import policy
 
 

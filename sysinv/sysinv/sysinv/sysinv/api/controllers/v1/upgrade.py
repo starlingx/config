@@ -7,16 +7,18 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 #
+
+import os
 import pecan
 from pecan import rest
 from pecan import expose
-import os
 import six
 import socket
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
@@ -28,7 +30,6 @@ from sysinv.common import utils as cutils
 from sysinv.common import constants
 from sysinv import objects
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 

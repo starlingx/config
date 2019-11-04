@@ -20,12 +20,11 @@ System-level utilities and helper functions.
 """
 
 import re
+import six
 import sys
 import unicodedata
 
-import six
-
-from sysinv.openstack.common.gettextutils import _
+from sysinv._i18n import _
 
 
 # Used for looking up extensions of text

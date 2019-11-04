@@ -18,15 +18,13 @@
 # Copyright (c) 2013-2016 Wind River Systems, Inc.
 #
 
-
-import six
-
 import pecan
 from pecan import rest
-
+import six
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
@@ -36,7 +34,6 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import exception
 from sysinv import objects
-from sysinv.openstack.common.gettextutils import _
 from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)

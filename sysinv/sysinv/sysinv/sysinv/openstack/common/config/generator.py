@@ -29,11 +29,8 @@ import textwrap
 import six
 
 from oslo_config import cfg
-
-from sysinv.openstack.common import gettextutils
 from sysinv.openstack.common import importutils
 
-gettextutils.install('sysinv')
 
 STROPT = "StrOpt"
 BOOLOPT = "BoolOpt"

@@ -18,13 +18,12 @@
 #    under the License.
 
 import copy
+import six
 import sys
 import traceback
 
 from oslo_config import cfg
-import six
-
-from sysinv.openstack.common.gettextutils import _
+from sysinv._i18n import _
 from sysinv.openstack.common import importutils
 from sysinv.openstack.common import jsonutils
 from sysinv.openstack.common import local

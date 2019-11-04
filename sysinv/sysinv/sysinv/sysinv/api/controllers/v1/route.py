@@ -18,16 +18,14 @@
 # Copyright (c) 2015-2016 Wind River Systems, Inc.
 #
 
-
 import netaddr
-import uuid
-
 import pecan
 from pecan import rest
-
+import uuid
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import types
@@ -37,7 +35,6 @@ from sysinv.common import constants
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 

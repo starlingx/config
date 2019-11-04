@@ -10,7 +10,7 @@
 #
 
 from oslo_config import cfg
-from oslo_utils._i18n import _
+from sysinv._i18n import _
 
 SYSINV_LLDP_OPTS = [
     cfg.ListOpt('drivers',

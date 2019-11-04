@@ -25,14 +25,13 @@ import os
 import re
 
 from oslo_config import cfg
-
+from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import image_service as service
 from sysinv.common import utils
 from sysinv.openstack.common import fileutils
 from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import strutils
-from sysinv.openstack.common.gettextutils import _
 
 LOG = logging.getLogger(__name__)
 

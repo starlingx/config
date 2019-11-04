@@ -11,9 +11,9 @@ from grp import getgrnam
 from pwd import getpwnam
 
 from oslo_config import cfg
+from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.openstack.common import log as logging
-from sysinv.openstack.common.gettextutils import _
 
 CONF = cfg.CONF
 

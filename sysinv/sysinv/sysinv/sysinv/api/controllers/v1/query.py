@@ -26,17 +26,17 @@
 # Copyright (c) 2013-2015 Wind River Systems, Inc.
 #
 
-import inspect
-import functools
-import six
 import ast
-
+import functools
+import inspect
+import six
 import wsme
 from wsme import types as wtypes
+
 from oslo_utils import strutils
 from oslo_utils import timeutils
+from sysinv._i18n import _
 from sysinv.openstack.common import log
-from sysinv.openstack.common.gettextutils import _
 
 LOG = log.getLogger(__name__)
 

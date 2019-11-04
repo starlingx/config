@@ -21,11 +21,11 @@ Exception related utilities.
 
 import contextlib
 import logging
+import six
 import sys
 import traceback
-import six
 
-from sysinv.openstack.common.gettextutils import _
+from sysinv._i18n import _
 
 
 @contextlib.contextmanager

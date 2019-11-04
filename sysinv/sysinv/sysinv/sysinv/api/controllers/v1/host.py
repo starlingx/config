@@ -46,8 +46,9 @@ from fm_api import constants as fm_constants
 from fm_api import fm_api
 from pecan import expose
 from pecan import rest
-from sysinv import objects
 
+from sysinv import objects
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import ethernet_port
 from sysinv.api.controllers.v1 import port
 from sysinv.api.controllers.v1 import address as address_api
@@ -90,7 +91,6 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
-from sysinv.openstack.common.gettextutils import _
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import health
 
