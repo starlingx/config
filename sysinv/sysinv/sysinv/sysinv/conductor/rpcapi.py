@@ -1107,16 +1107,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        mtc_port=mtc_port,
                                        ihost_mtc_dict=ihost_mtc_dict))
 
-    def notify_subfunctions_config(self, context,
-                                   ihost_uuid, ihost_notify_dict):
-        """
-        Synchronously, notify sysinv of host subfunctions config status
-        """
-        return self.call(context,
-                         self.make_msg('notify_subfunctions_config',
-                                       ihost_uuid=ihost_uuid,
-                                       ihost_notify_dict=ihost_notify_dict))
-
     def ilvg_get_nova_ilvg_by_ihost(self,
                                     context,
                                     ihost_uuid):
@@ -1840,3 +1830,10 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('configure_sc_database',
                                        host=host))
+
+    def store_default_config(self, context):
+        """
+        :param context: request context.
+        :return:
+        """
+        return self.call(context, self.make_msg('store_default_config'))

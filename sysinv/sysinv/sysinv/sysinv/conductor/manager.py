@@ -4608,8 +4608,7 @@ class ConductorManager(service.PeriodicService):
                     "personalities": personalities,
                     "host_uuids": [active_host.uuid],
                     "classes": ['openstack::keystone::endpoint::runtime',
-                                'platform::firewall::runtime',
-                                'platform::sysinv::runtime']
+                                'platform::firewall::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
@@ -8176,12 +8175,6 @@ class ConductorManager(service.PeriodicService):
 
         _sync_update_host_config_applied(self, context, ihost_obj, config_uuid)
 
-    def _update_subfunctions(self, context, ihost_obj):
-        """Update subfunctions."""
-
-        ihost_obj.invprovision = constants.PROVISIONED
-        ihost_obj.save(context)
-
     def _config_reinstall_hosts(self, context, personalities):
         """ update the hosts configuration status for all host to be "
             reinstall is required.
@@ -8453,24 +8446,6 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed mtc_host_add=%s" % ihost_mtc_dict)
 
         return
-
-    def notify_subfunctions_config(self, context, ihost_uuid, ihost_notify_dict):
-        """
-        Notify sysinv of host subfunctions configuration status
-        """
-
-        subfunctions_configured = ihost_notify_dict.get(
-            'subfunctions_configured') or ""
-        try:
-            ihost_obj = self.dbapi.ihost_get(ihost_uuid)
-        except Exception as e:
-            LOG.exception("notify_subfunctions_config e=%s "
-                          "ihost=%s subfunctions=%s" %
-                          (e, ihost_uuid, subfunctions_configured))
-            return False
-
-        if not subfunctions_configured:
-            self._update_subfunctions(context, ihost_obj)
 
     def ilvg_get_nova_ilvg_by_ihost(self,
                                     context,
@@ -10741,3 +10716,20 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.error("Received a request to configure the sc database "
                       "for host %s under the wrong condition." % host.hostname)
+
+    def store_default_config(self, context):
+        """ copy sysinv.conf to drbd storage """
+        try:
+            os.makedirs(constants.SYSINV_CONFIG_PATH)
+        except OSError as oe:
+            if (oe.errno != errno.EEXIST or
+                    not os.path.isdir(constants.SYSINV_CONFIG_PATH)):
+                LOG.error("Failed to create dir %s" % constants.SYSINV_CONFIG_PATH)
+                raise
+
+        shutil.copyfile(constants.SYSINV_CONFIG_FILE_LOCAL,
+                        constants.SYSINV_CONF_DEFAULT_PATH)
+        LOG.info("copied %s to %s" % (constants.SYSINV_CONFIG_FILE_LOCAL,
+                                      constants.SYSINV_CONF_DEFAULT_PATH))
+
+        os.chmod(constants.SYSINV_CONF_DEFAULT_PATH, 0o400)

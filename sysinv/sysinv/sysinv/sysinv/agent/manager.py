@@ -1235,18 +1235,9 @@ class AgentManager(service.PeriodicService):
                         (constants.WORKER in subfunctions_list)):
                     if self.subfunctions_configured(subfunctions_list) and \
                             not self._wait_for_nova_lvg(icontext, rpcapi, self._ihost_uuid):
-
-                        ihost_notify_dict = {'subfunctions_configured': True}
-                        rpcapi.notify_subfunctions_config(icontext,
-                                                        self._ihost_uuid,
-                                                        ihost_notify_dict)
                         self._notify_subfunctions_alarm_clear = True
                     else:
                         if not self._notify_subfunctions_alarm_raise:
-                            ihost_notify_dict = {'subfunctions_configured': False}
-                            rpcapi.notify_subfunctions_config(icontext,
-                                                                self._ihost_uuid,
-                                                                ihost_notify_dict)
                             self._notify_subfunctions_alarm_raise = True
                 else:
                     self._notify_subfunctions_alarm_clear = True

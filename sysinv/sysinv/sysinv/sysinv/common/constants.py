@@ -13,6 +13,10 @@ import tsconfig.tsconfig as tsc
 
 SYSINV_RUNNING_IN_LAB = '/etc/sysinv/.running_in_lab'
 SYSINV_CONFIG_PATH = os.path.join(tsc.PLATFORM_PATH, "sysinv", tsc.SW_VERSION)
+SYSINV_CONFIG_FILE_LOCAL = '/etc/sysinv/sysinv.conf'
+SYSINV_CONF_DEFAULT_FILE = 'sysinv.conf.default'
+SYSINV_CONF_DEFAULT_PATH = os.path.join(SYSINV_CONFIG_PATH,
+                                        SYSINV_CONF_DEFAULT_FILE)
 
 # IP families
 IPV4_FAMILY = 4
