@@ -49,6 +49,9 @@ import yaml
 
 from six.moves import configparser
 from six import StringIO
+
+from oslo_config import cfg
+from oslo_log import log
 from sysinv.agent import disk
 from sysinv.agent import partition
 from sysinv.agent import pv
@@ -64,17 +67,12 @@ from sysinv.objects import base as objects_base
 from sysinv.puppet import common as puppet
 from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.openstack.common import context as mycontext
-from sysinv.openstack.common import log
 from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common.rpc.common import Timeout
 from sysinv.openstack.common.rpc.common import serialize_remote_exception
-from oslo_config import cfg
-
-
 from sysinv.openstack.common.rpc.common import RemoteError
 
 import tsconfig.tsconfig as tsc
-
 
 MANAGER_TOPIC = 'sysinv.agent_manager'
 

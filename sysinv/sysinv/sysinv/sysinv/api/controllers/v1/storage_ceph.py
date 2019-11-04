@@ -29,6 +29,7 @@ import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_log import log
 from oslo_serialization import jsonutils
 from oslo_utils import strutils
 
@@ -46,7 +47,6 @@ from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv import objects
-from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
 
 

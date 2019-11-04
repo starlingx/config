@@ -4,11 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from oslo_log import log as logging
 from sysinv.common import service_parameter
-
 from sysinv.puppet import base
 
-from sysinv.openstack.common import log as logging
 LOG = logging.getLogger(__name__)
 
 

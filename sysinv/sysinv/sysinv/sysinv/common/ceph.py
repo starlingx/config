@@ -12,21 +12,21 @@
 
 from __future__ import absolute_import
 
-import shutil
-import subprocess
 import os
 import pecan
 import requests
+import shutil
+import subprocess
 import tempfile
 
 from cephclient import wrapper as ceph
 from requests.exceptions import ReadTimeout
 from contextlib import contextmanager
 
+from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 

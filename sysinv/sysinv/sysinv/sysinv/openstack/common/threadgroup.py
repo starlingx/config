@@ -18,9 +18,8 @@ from eventlet import greenlet
 from eventlet import greenpool
 from eventlet import greenthread
 
-from sysinv.openstack.common import log as logging
+from oslo_log import log as logging
 from sysinv.openstack.common import loopingcall
-
 
 LOG = logging.getLogger(__name__)
 

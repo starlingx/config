@@ -26,6 +26,7 @@ import webob
 
 from oslo_config import cfg
 from oslo_serialization import jsonutils
+from oslo_log import log
 from pecan import hooks
 
 from sysinv._i18n import _
@@ -35,9 +36,6 @@ from sysinv.conductor import rpcapi
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import policy
 from webob import exc
-
-from sysinv.openstack.common import log
-
 
 LOG = log.getLogger(__name__)
 

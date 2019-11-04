@@ -14,10 +14,8 @@
 #    under the License.
 
 from oslo_config import cfg
-
+from oslo_log import log as logging
 from sysinv.openstack.common import jsonutils
-from sysinv.openstack.common import log as logging
-
 
 CONF = cfg.CONF
 

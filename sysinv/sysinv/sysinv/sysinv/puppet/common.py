@@ -6,13 +6,12 @@
 
 """ System Inventory Puppet common top level code."""
 
+import os
 import subprocess
 
-import os
-
+from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.common import exception
-from sysinv.openstack.common import log as logging
 from tsconfig import tsconfig
 
 

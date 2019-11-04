@@ -257,9 +257,9 @@ import sqlalchemy.orm
 from sqlalchemy.pool import NullPool, StaticPool
 from sqlalchemy.sql.expression import literal_column
 
+from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.openstack.common.db import exception
-from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import timeutils
 
 DEFAULT = 'DEFAULT'

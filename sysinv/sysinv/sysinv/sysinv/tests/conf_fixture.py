@@ -16,8 +16,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import fixtures
 from oslo_config import cfg
+from oslo_config import fixture as config_fixture
 
 from sysinv.common import config
 
@@ -26,7 +26,7 @@ CONF.import_opt('use_ipv6', 'sysinv.netconf')
 CONF.import_opt('host', 'sysinv.common.service')
 
 
-class ConfFixture(fixtures.Fixture):
+class ConfFixture(config_fixture.Config):
     """Fixture to manage global conf settings."""
 
     def __init__(self, conf):
@@ -43,6 +43,5 @@ class ConfFixture(fixtures.Fixture):
         self.conf.set_default('connection', "sqlite://", group='database')
         self.conf.set_default('sqlite_synchronous', False)
         self.conf.set_default('use_ipv6', True)
-        self.conf.set_default('verbose', True)
         config.parse_args([], default_config_files=[])
         self.addCleanup(self.conf.reset)

@@ -23,9 +23,9 @@
 Client side of the agent RPC API.
 """
 
+from oslo_log import log
 from sysinv.objects import base as objects_base
 import sysinv.openstack.common.rpc.proxy
-from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)
 

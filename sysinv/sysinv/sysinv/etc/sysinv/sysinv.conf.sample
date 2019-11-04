@@ -128,16 +128,12 @@
 
 
 #
-# Options defined in sysinv.openstack.common.log
+# Options defined in oslo_log
 #
 
 # Print debugging output (set logging level to DEBUG instead
 # of default WARNING level). (boolean value)
 #debug=false
-
-# Print more verbose output (set logging level to INFO instead
-# of default WARNING level). (boolean value)
-#verbose=false
 
 # Log output to standard error (boolean value)
 #use_stderr=true

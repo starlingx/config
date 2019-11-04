@@ -28,11 +28,10 @@ For some wrappers that add message versioning to rpc, see:
 import inspect
 
 from oslo_config import cfg
+from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.openstack.common import importutils
 from sysinv.openstack.common import local
-from sysinv.openstack.common import log as logging
-
 
 LOG = logging.getLogger(__name__)
 

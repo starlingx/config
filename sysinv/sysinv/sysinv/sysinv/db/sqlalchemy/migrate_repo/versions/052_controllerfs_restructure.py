@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy import Integer, Boolean, String
 from sqlalchemy import Column, MetaData, Table
 
-from sysinv.openstack.common import log
+from oslo_log import log
 
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'

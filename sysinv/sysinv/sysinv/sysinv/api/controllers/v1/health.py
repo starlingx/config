@@ -9,9 +9,8 @@ import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_log import log
 from sysinv._i18n import _
-from sysinv.openstack.common import log
-
 
 LOG = log.getLogger(__name__)
 

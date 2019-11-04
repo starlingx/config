@@ -17,9 +17,10 @@ import yaml
 
 from six import iteritems
 from stevedore import extension
+
+from oslo_log import log as logging
 from sysinv.common import exception
 from sysinv.common import utils
-from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 
 

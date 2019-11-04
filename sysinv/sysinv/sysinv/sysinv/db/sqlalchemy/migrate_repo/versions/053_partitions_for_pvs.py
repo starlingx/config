@@ -8,7 +8,7 @@
 from sqlalchemy import Integer, DateTime
 from sqlalchemy import Column, MetaData, String, Table, ForeignKey, Text
 
-from sysinv.openstack.common import log
+from oslo_log import log
 
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'

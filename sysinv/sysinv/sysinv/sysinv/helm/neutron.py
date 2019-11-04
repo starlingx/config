@@ -4,10 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
-from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 from sysinv.helm import openstack
 

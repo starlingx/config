@@ -14,10 +14,11 @@
 import json
 import subprocess
 import sys
+
+from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 

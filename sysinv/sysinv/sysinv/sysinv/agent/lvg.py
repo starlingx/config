@@ -14,8 +14,8 @@
 import subprocess
 import sys
 
+from oslo_log import log as logging
 from sysinv.common import constants
-from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 

@@ -12,12 +12,12 @@ Sysinv upgrade utilities.
 import sys
 
 from oslo_config import cfg
+from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import service
 from sysinv.common import utils
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import log
 
 from tsconfig.tsconfig import system_mode
 

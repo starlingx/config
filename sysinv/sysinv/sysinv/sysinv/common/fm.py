@@ -9,10 +9,11 @@
 
 from keystoneauth1.access import service_catalog as k_service_catalog
 from oslo_config import cfg
+from oslo_log import log
+
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 import fmclient as fm_client
-from sysinv.openstack.common import log
 
 CONF = cfg.CONF
 

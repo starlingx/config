@@ -20,9 +20,9 @@ import contextlib
 import errno
 import os
 
+from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.openstack.common import excutils
-from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 

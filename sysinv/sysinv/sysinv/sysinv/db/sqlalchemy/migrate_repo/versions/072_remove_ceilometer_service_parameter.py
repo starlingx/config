@@ -7,7 +7,7 @@
 
 from sqlalchemy import Column, MetaData, Table, Integer
 
-from sysinv.openstack.common import log
+from oslo_log import log
 
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'

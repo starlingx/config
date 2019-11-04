@@ -24,8 +24,8 @@ import pecan
 from pecan import expose
 from pecan import rest
 
+from oslo_log import log
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log
 from sysinv.openstack.common.rpc.common import RemoteError
 from tsconfig import tsconfig
 

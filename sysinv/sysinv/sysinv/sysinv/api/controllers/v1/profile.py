@@ -28,6 +28,7 @@ import wsme
 import wsmeext.pecan as wsme_pecan
 
 from oslo_config import cfg
+from oslo_log import log
 from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
@@ -52,7 +53,6 @@ from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log
 import xml.etree.ElementTree as et
 from lxml import etree
 from sysinv.api.controllers.v1 import profile_utils

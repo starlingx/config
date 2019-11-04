@@ -14,9 +14,10 @@
 import pyudev
 import subprocess
 import sys
-from sysinv.common import utils as utils
+
+from oslo_log import log as logging
 from sysinv.common import constants
-from sysinv.openstack.common import log as logging
+from sysinv.common import utils as utils
 
 LOG = logging.getLogger(__name__)
 

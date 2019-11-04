@@ -11,14 +11,13 @@
 """ System Inventory Storage Backend Utilities and helper functions."""
 
 
-import pecan
 import ast
+import pecan
 
+from oslo_log import log
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log
-
 
 LOG = log.getLogger(__name__)
 

@@ -11,14 +11,13 @@
 #
 
 import jsonpatch
-
 import pecan
 from pecan import rest
-
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_log import log
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
@@ -28,7 +27,6 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common import excutils
-from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)
 
