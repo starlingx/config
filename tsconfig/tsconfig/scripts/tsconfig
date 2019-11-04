@@ -26,8 +26,6 @@ INITIAL_CONFIG_COMPLETE_FLAG=${PLATFORM_CONF_PATH}/.initial_config_complete
 INITIAL_WORKER_CONFIG_COMPLETE=${PLATFORM_CONF_PATH}/.initial_worker_config_complete
 # Set after each application of worker manifests
 VOLATILE_WORKER_CONFIG_COMPLETE=${VOLATILE_PATH}/.worker_config_complete
-# Set to prevent starting worker services (used in combined node upgrade)
-VOLATILE_DISABLE_WORKER_SERVICES=${VOLATILE_PATH}/.disable_worker_services
 
 # Upgrade flags
 

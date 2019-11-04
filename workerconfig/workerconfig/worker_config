@@ -294,69 +294,6 @@ start()
         fi
     fi
 
-    # Upgrade related checks for controller-1 in combined controller/worker
-    if [ "$nodetype" = "controller" -a "$HOST" = "controller-1" ]
-    then
-        # Check controller activity.
-        # Prior to the final compile of R5 the service check below had been
-        # against platform-nfs-ip. However, there was a worker
-        # subfunction configuration failure when an AIO-DX system controller
-        # booted up while there was no pingable backup controller. Seems the
-        # platform-nfs-ip service was not always reaching the enabled-active
-        # state when this check was performed under this particular failure.
-        # Seems an earlier launched service of like functionality, namely
-        # 'platform-export-fs' is reliably enabled at this point there-by
-        # resolving the issue.
-        sm-query service platform-export-fs | grep enabled-active > /dev/null 2>&1
-        if [ $? -ne 0 ]
-        then
-            # This controller is not active so it is safe to check the version
-            # of the mate controller.
-            VOLATILE_ETC_PLATFORM_MOUNT=$VOLATILE_PATH/etc_platform
-            mkdir $VOLATILE_ETC_PLATFORM_MOUNT
-            nfs-mount controller-0:/etc/platform $VOLATILE_ETC_PLATFORM_MOUNT
-            if [ $? -eq 0 ]
-            then
-                # Check whether software versions match on the two controllers
-                MATE_SW_VERSION=$(source $VOLATILE_ETC_PLATFORM_MOUNT/platform.conf && echo $sw_version)
-                if [ $SW_VERSION != $MATE_SW_VERSION ]
-                then
-                    echo "Controllers are running different software versions"
-                    echo "SW_VERSION: $SW_VERSION  MATE_SW_VERSION: $MATE_SW_VERSION"
-
-                    # Since controller-1 is always upgraded first (and downgraded
-                    # last), we know that controller-1 is running a higher release
-                    # than controller-0.
-                    # This controller is not active and is running a higher
-                    # release than the mate controller, so do not launch
-                    # any of the worker services (they will not work with
-                    # a lower version of the controller services).
-                    echo "Disabling worker services until controller activated"
-                    touch $VOLATILE_DISABLE_WORKER_SERVICES
-
-                    # Copy $PLATFORM_DIR into a temporary location for the worker_services script to
-                    # access. This is only required for CPE upgrades
-                    rm -rf $VOLATILE_PLATFORM_PATH
-                    mkdir -p $VOLATILE_PLATFORM_PATH
-                    cp -Rp $PLATFORM_DIR/* $VOLATILE_PLATFORM_PATH/
-
-                fi
-                umount $VOLATILE_ETC_PLATFORM_MOUNT
-                rmdir $VOLATILE_ETC_PLATFORM_MOUNT
-            else
-                rmdir $VOLATILE_ETC_PLATFORM_MOUNT
-                fatal_error "Unable to mount /etc/platform"
-            fi
-        else
-            # Controller-1 (CPE) is active and is rebooting. This is probably a DOR. Since this
-            # could happen during an upgrade, we will copy $PLATFORM_DIR into a temporary
-            # location for the worker_services script to access in case of a future swact.
-            rm -rf $VOLATILE_PLATFORM_PATH
-            mkdir -p $VOLATILE_PLATFORM_PATH
-            cp -Rp $PLATFORM_DIR/* $VOLATILE_PLATFORM_PATH/
-        fi
-    fi
-
     # Apply the puppet manifest
     HOST_HIERA=${PUPPET_PATH}/hieradata/${IPADDR}.yaml
     if [ -f ${HOST_HIERA} ]; then
