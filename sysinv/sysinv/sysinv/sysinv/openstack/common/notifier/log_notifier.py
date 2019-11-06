@@ -15,7 +15,7 @@
 
 from oslo_config import cfg
 from oslo_log import log as logging
-from sysinv.openstack.common import jsonutils
+from oslo_serialization import jsonutils
 
 CONF = cfg.CONF
 

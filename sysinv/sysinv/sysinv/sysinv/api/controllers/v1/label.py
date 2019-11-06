@@ -10,6 +10,7 @@ import wsmeext.pecan as wsme_pecan
 from wsme import types as wtypes
 
 from oslo_log import log
+from oslo_utils import excutils
 from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
@@ -21,7 +22,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.helm import common
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common.rpc import common as rpc_common
 
 LOG = log.getLogger(__name__)

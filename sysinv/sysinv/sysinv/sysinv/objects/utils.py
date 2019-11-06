@@ -25,9 +25,9 @@ import netaddr
 import uuid
 import six
 
+from oslo_utils import timeutils
 from sysinv._i18n import _
 from sysinv.common import constants
-from sysinv.openstack.common import timeutils
 
 
 def datetime_or_none(dt):

@@ -19,8 +19,8 @@ import time
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import timeutils
 from sysinv._i18n import _
-from sysinv.openstack.common import timeutils
 
 periodic_opts = [
     cfg.BoolOpt('run_external_periodic_tasks',

@@ -39,8 +39,8 @@ from eventlet import semaphore
 # option is removed.
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import excutils
 from sysinv._i18n import _
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common import local
 from sysinv.openstack.common.rpc import common as rpc_common
 

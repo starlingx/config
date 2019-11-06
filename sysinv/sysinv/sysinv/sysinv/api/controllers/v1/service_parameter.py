@@ -19,6 +19,7 @@ from fm_api import constants as fm_constants
 from fm_api import fm_api
 
 from oslo_log import log
+from oslo_utils import excutils
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
@@ -31,7 +32,6 @@ from sysinv.common import constants
 from sysinv.common import service_parameter
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import excutils
 from sysinv.openstack.common.rpc import common as rpc_common
 
 LOG = log.getLogger(__name__)

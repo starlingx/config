@@ -29,7 +29,7 @@ import textwrap
 import six
 
 from oslo_config import cfg
-from sysinv.openstack.common import importutils
+from oslo_utils import importutils
 
 
 STROPT = "StrOpt"
