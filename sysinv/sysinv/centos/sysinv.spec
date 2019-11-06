@@ -139,6 +139,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/sysinv-upgrade
 %{_bindir}/sysinv-puppet
 %{_bindir}/sysinv-helm
+%{_bindir}/sysinv-utils
 
 %package wheels
 Summary: %{name} wheels

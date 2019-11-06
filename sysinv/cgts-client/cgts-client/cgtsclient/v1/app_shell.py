@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,13 +9,17 @@ import re
 
 from cgtsclient.common import utils
 from cgtsclient import exc
-from collections import OrderedDict
 
 
-def _print_application_show(app):
-    ordereddata = OrderedDict(sorted(app.to_dict().items(),
-                                     key=lambda t: t[0]))
-    utils.print_dict(ordereddata, wrap=72)
+def _print_application_show(app, columns=None, output_format=None):
+
+    if columns:
+        data_dict = dict((k, v) for (k, v) in vars(app).items()
+                         if k in columns and not (v is None))
+    else:
+        data_dict = app.to_dict()
+
+    utils.print_dict_with_format(data_dict, wrap=72, output_format=output_format)
 
 
 def _print_reminder_msg(app_name):
@@ -73,11 +77,18 @@ def do_application_list(cc, args):
 
 @utils.arg('name', metavar='<app name>',
            help="Name of the application")
+@utils.arg('--column',
+           action='append',
+           default=[],
+           help="Specify the column(s) to include, can be repeated")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
 def do_application_show(cc, args):
     """Show application details"""
     try:
         app = cc.app.get(args.name)
-        _print_application_show(app)
+        _print_application_show(app, args.column, args.format)
     except exc.HTTPNotFound:
         raise exc.CommandError('application not found: %s' % args.name)
 

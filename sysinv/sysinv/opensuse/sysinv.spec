@@ -161,7 +161,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/sysinv-upgrade
 %{_bindir}/sysinv-puppet
 %{_bindir}/sysinv-helm
-
+%{_bindir}/sysinv-utils
 %pre
 %service_add_pre sysinv-api.service sysinv-api.target
 %service_add_pre sysinv-conductor.service sysinv-conductor.target

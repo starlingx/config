@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -450,6 +450,19 @@ class OpenStackOperator(object):
         except Exception:
             LOG.error("Unable to find Barbican secret %s or secret does not "
                       "have payload", secret_ref)
+            return None
+
+    def get_barbican_secrets_by_name(self, name, use_openstack=False):
+        if use_openstack:
+            client = self._get_barbicanclient(
+                service_config=OPENSTACK_CONFIG)
+        else:
+            client = self._get_barbicanclient()
+        try:
+            secret_list = client.secrets.list(name=name)
+            return secret_list
+        except Exception:
+            LOG.error("Unable to find Barbican secrets %s", name)
             return None
 
     def get_barbican_secret_by_name(self, context, name):

@@ -1,4 +1,4 @@
-# Copyright 2013-2017 Wind River, Inc
+# Copyright 2013-2019 Wind River, Inc
 # Copyright 2012 OpenStack LLC.
 # All Rights Reserved.
 #
@@ -22,6 +22,7 @@ except Exception:
     is_remote = True
 
 import argparse
+from collections import OrderedDict
 import copy
 import dateutil
 import math
@@ -32,6 +33,7 @@ import six
 import sys
 import textwrap
 import uuid
+import yaml
 
 from prettytable import ALL
 from prettytable import FRAME
@@ -364,11 +366,25 @@ def parse_date(string_data):
 
 
 def print_list(objs, fields, field_labels, formatters={}, sortby=0,
-               reversesort=False, no_wrap_fields=[], printer=default_printer):
-    # print_list() is the same as print_long_list() with paging turned off
-    return print_long_list(objs, fields, field_labels, formatters=formatters, sortby=sortby,
-                           reversesort=reversesort, no_wrap_fields=no_wrap_fields,
-                           no_paging=True, printer=printer)
+               reversesort=False, no_wrap_fields=[], printer=default_printer,
+               output_format=None):
+
+    if output_format == 'yaml' or output_format == 'value':
+        my_dict_list = []
+        for o in objs:
+            my_dict_list.append(dict((k, getattr(o, k)) for k in fields))
+
+        if output_format == 'yaml':
+            print(yaml.safe_dump(my_dict_list, default_flow_style=False))
+
+        elif output_format == 'value':
+            for _dict in my_dict_list:
+                print_dict_value(_dict)
+
+    else:
+        return print_long_list(objs, fields, field_labels, formatters=formatters, sortby=sortby,
+                               reversesort=reversesort, no_wrap_fields=no_wrap_fields,
+                               no_paging=True, printer=printer)
 
 
 def _build_row_from_object(fields, formatters, o):
@@ -443,6 +459,24 @@ def print_long_list(objs, fields, field_labels, formatters={}, sortby=0, reverse
         pt.add_row(o)
 
     pt.done()
+
+
+def print_dict_with_format(data, wrap=0, output_format=None):
+    if output_format == 'yaml':
+        print(yaml.safe_dump(data, default_flow_style=False))
+
+    elif output_format == 'value':
+        print_dict_value(data)
+
+    else:
+        ordereddata = OrderedDict(sorted(data.items(), key=lambda t: t[0]))
+        print_dict(ordereddata, wrap=wrap)
+
+
+def print_dict_value(d):
+    # Print values on a single line separated by spaces
+    # e.g. 'available ntp'
+    print (' '.join(map(str, d.values())))
 
 
 def print_dict(d, dict_property="Property", wrap=0):

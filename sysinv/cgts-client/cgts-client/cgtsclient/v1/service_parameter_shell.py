@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -38,6 +38,13 @@ def do_service_parameter_show(cc, args):
 @utils.arg('--name',
            metavar='<name>',
            help="Search by parameter name")
+@utils.arg('--column',
+           action='append',
+           default=[],
+           help="Specify the column(s) to include, can be repeated")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
 def do_service_parameter_list(cc, args):
     """List Service parameters."""
     query = None
@@ -47,11 +54,14 @@ def do_service_parameter_list(cc, args):
             query = k + '=' + v
     parameters = cc.service_parameter.list(q=options.cli_to_array(query))
 
-    field_labels = ['uuid', 'service', 'section', 'name', 'value',
-                    'personality', 'resource']
-    fields = ['uuid', 'service', 'section', 'name', 'value',
-              'personality', 'resource']
-    utils.print_list(parameters, fields, field_labels, sortby=None)
+    if args.column:
+        fields = args.column
+    else:
+        fields = ['uuid', 'service', 'section', 'name', 'value', 'personality',
+                  'resource']
+
+    utils.print_list(parameters, fields, fields, sortby=None,
+                     output_format=args.format)
 
 
 @utils.arg('uuid',

@@ -9,7 +9,6 @@
 # All Rights Reserved.
 #
 
-from collections import OrderedDict
 import datetime
 import os
 
@@ -25,24 +24,29 @@ from cgtsclient.v1 import istor as istor_utils
 from six.moves import input
 
 
-def _print_ihost_show(ihost):
-    fields = ['id', 'uuid', 'personality', 'hostname', 'invprovision',
-              'administrative', 'operational', 'availability', 'task',
-              'action', 'mgmt_mac', 'mgmt_ip', 'serialid',
-              'capabilities', 'bm_type', 'bm_username', 'bm_ip',
-              'config_applied', 'config_target', 'config_status',
-              'location', 'uptime', 'reserved', 'created_at', 'updated_at',
-              'boot_device', 'rootfs_device', 'install_output', 'console',
-              'tboot', 'vim_progress_status', 'software_load', 'install_state',
-              'install_state_info', 'inv_state', 'clock_synchronization']
-    optional_fields = ['vsc_controllers', 'ttys_dcd']
-    if ihost.subfunctions != ihost.personality:
-        fields.append('subfunctions')
-        if 'controller' in ihost.subfunctions:
-            fields.append('subfunction_oper')
-            fields.append('subfunction_avail')
-    if ihost.peers:
-        fields.append('peers')
+def _print_ihost_show(ihost, columns=None, output_format=None):
+    optional_fields = []
+    if columns:
+        fields = columns
+    else:
+        fields = ['id', 'uuid', 'personality', 'hostname', 'invprovision',
+                  'administrative', 'operational', 'availability', 'task',
+                  'action', 'mgmt_mac', 'mgmt_ip', 'serialid',
+                  'capabilities', 'bm_type', 'bm_username', 'bm_ip',
+                  'config_applied', 'config_target', 'config_status',
+                  'location', 'uptime', 'reserved', 'created_at', 'updated_at',
+                  'boot_device', 'rootfs_device', 'install_output', 'console',
+                  'tboot', 'vim_progress_status', 'software_load',
+                  'install_state', 'install_state_info', 'inv_state',
+                  'clock_synchronization']
+        optional_fields = ['vsc_controllers', 'ttys_dcd']
+        if ihost.subfunctions != ihost.personality:
+            fields.append('subfunctions')
+            if 'controller' in ihost.subfunctions:
+                fields.append('subfunction_oper')
+                fields.append('subfunction_avail')
+        if ihost.peers:
+            fields.append('peers')
 
     # Do not display the trailing '+' which indicates the audit iterations
     if ihost.install_state_info:
@@ -51,29 +55,49 @@ def _print_ihost_show(ihost):
         ihost.install_state = ihost.install_state.rstrip('+')
 
     data_list = [(f, getattr(ihost, f, '')) for f in fields]
-    data_list += [(f, getattr(ihost, f, '')) for f in optional_fields
-                  if hasattr(ihost, f)]
+    if optional_fields:
+        data_list += [(f, getattr(ihost, f, '')) for f in optional_fields
+                      if hasattr(ihost, f)]
+
     data = dict(data_list)
-    ordereddata = OrderedDict(sorted(data.items(), key=lambda t: t[0]))
-    utils.print_dict(ordereddata, wrap=72)
+
+    utils.print_dict_with_format(data, wrap=72, output_format=output_format)
 
 
 @utils.arg('hostnameorid', metavar='<hostname or id>',
            help="Name or ID of host")
+@utils.arg('--column',
+           action='append',
+           default=[],
+           help="Specify the column(s) to include, can be repeated")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
 def do_host_show(cc, args):
     """Show host attributes."""
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
-    _print_ihost_show(ihost)
+    _print_ihost_show(ihost, args.column, args.format)
 
 
+@utils.arg('--column',
+           action='append',
+           default=[],
+           help="Specify the column(s) to include, can be repeated")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
 def do_host_list(cc, args):
     """List hosts."""
     ihosts = cc.ihost.list()
-    field_labels = ['id', 'hostname', 'personality',
-                    'administrative', 'operational', 'availability']
-    fields = ['id', 'hostname', 'personality',
-              'administrative', 'operational', 'availability']
-    utils.print_list(ihosts, fields, field_labels, sortby=0)
+
+    if args.column:
+        fields = args.column
+    else:
+        fields = ['id', 'hostname', 'personality', 'administrative',
+                  'operational', 'availability']
+
+    utils.print_list(ihosts, fields, fields, sortby=0,
+                     output_format=args.format)
 
 
 def do_host_upgrade_list(cc, args):

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -78,12 +78,13 @@ class ShellTest(utils.BaseTestCase):
 
     def test_help_on_subcommand(self):
         required = [
-            '.*?^usage: system host-show <hostname or id>'
+            '.*?^usage: system host-show \[--column COLUMN\] \[--format {table,yaml,value}\]'
+            '.*?<hostname or id>'
             '',
             ".*?^Show host attributes.",
             '',
             ".*?^Positional arguments:",
-            ".*?^  <hostname or id>  Name or ID of host",
+            ".*?<hostname or id>      Name or ID of host",
         ]
         argstrings = [
             'help host-show',
