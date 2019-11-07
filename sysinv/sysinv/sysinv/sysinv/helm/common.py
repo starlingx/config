@@ -9,7 +9,7 @@
 
 import os
 
-from sysinv.openstack.common import log as logging
+from oslo_log import log as logging
 from tsconfig import tsconfig
 
 

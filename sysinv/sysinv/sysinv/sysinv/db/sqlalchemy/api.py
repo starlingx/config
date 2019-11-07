@@ -40,6 +40,7 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.orm.exc import MultipleResultsFound
 from sqlalchemy.orm.exc import NoResultFound
 
+from oslo_log import log
 from sysinv._i18n import _
 from sysinv import objects
 from sysinv.common import constants
@@ -47,8 +48,6 @@ from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.db import api
 from sysinv.db.sqlalchemy import models
-
-from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
 
 CONF = cfg.CONF

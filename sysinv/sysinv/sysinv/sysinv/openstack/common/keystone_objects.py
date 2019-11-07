@@ -6,7 +6,8 @@
 import datetime
 import iso8601
 
-from sysinv.openstack.common import log
+from oslo_log import log
+
 LOG = log.getLogger(__name__)
 
 

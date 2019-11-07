@@ -22,34 +22,33 @@ Allows overriding of config for use of fakes, and some black magic for
 inline callbacks.
 
 """
+import sys
+import eventlet
+eventlet.monkey_patch(os=False)
 
-from sysinv.db import migration
-from sysinv.common import paths
-from sysinv.objects import base as objects_base
-from sysinv.openstack.common.fixture import moxstubout
-from sysinv.openstack.common import log as logging
-from sysinv.openstack.common import timeutils
-from sysinv.tests import conf_fixture
-from sysinv.tests import policy_fixture
-from sysinv.db import api as dbapi
-from oslo_config import cfg
-from oslo_db.sqlalchemy import enginefacade
 import copy
 import fixtures
 import mock
 import os
 import shutil
-import sys
 import testtools
-import eventlet
-eventlet.monkey_patch(os=False)
 
+from oslo_config import cfg
+from oslo_db.sqlalchemy import enginefacade
+from oslo_log import log as logging
+from sysinv.common import paths
+from sysinv.db import api as dbapi
+from sysinv.db import migration
 import sysinv.helm.utils
+from sysinv.objects import base as objects_base
+from sysinv.openstack.common.fixture import moxstubout
+from sysinv.openstack.common import timeutils
+from sysinv.tests import conf_fixture
+from sysinv.tests import policy_fixture
 
 CONF = cfg.CONF
 _DB_CACHE = None
 
-logging.setup('sysinv')
 
 sys.modules['fm_core'] = mock.Mock()
 sys.modules['rpm'] = mock.Mock()
@@ -152,6 +151,14 @@ class TestCase(testtools.TestCase):
             self.useFixture(fixtures.MonkeyPatch('sys.stderr', stderr))
 
         self.log_fixture = self.useFixture(fixtures.FakeLogger())
+
+        def fake_logging_setup(*args):
+            pass
+
+        self.useFixture(
+            fixtures.MonkeyPatch('oslo_log.log.setup', fake_logging_setup))
+        logging.register_options(CONF)
+
         self.useFixture(conf_fixture.ConfFixture(CONF))
 
         global _DB_CACHE

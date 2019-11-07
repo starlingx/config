@@ -22,8 +22,8 @@ import sys
 from eventlet import event
 from eventlet import greenthread
 
+from oslo_log import log as logging
 from sysinv._i18n import _
-from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import timeutils
 
 LOG = logging.getLogger(__name__)

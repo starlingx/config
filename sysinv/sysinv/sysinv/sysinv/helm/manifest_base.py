@@ -18,7 +18,7 @@ import tempfile
 
 from glob import glob
 from six import iteritems
-from sysinv.openstack.common import log as logging
+from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 

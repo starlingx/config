@@ -7,13 +7,13 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 #
+from oslo_log import log
 from sysinv.common import constants
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
 from sqlalchemy.orm import exc
 
-from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)
 

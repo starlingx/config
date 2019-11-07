@@ -7,14 +7,13 @@
 import netaddr
 import uuid
 
+from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
-from sysinv.openstack.common import log as logging
 from sysinv.helm import common
 from sysinv.helm import swift
-
 from sysinv.puppet import openstack
 
 LOG = logging.getLogger(__name__)

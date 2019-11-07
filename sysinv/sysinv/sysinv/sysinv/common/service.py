@@ -20,13 +20,13 @@
 import socket
 
 from oslo_config import cfg
-
+from oslo_log import log as logging
+from oslo_service import service
 from sysinv.openstack.common import context
-from sysinv.openstack.common import log
 from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common import rpc
 from sysinv.openstack.common.rpc import service as rpc_service
-from oslo_service import service
+from sysinv import version
 
 
 cfg.CONF.register_opts([
@@ -58,17 +58,20 @@ class PeriodicService(rpc_service.Service, periodic_task.PeriodicTasks):
 def prepare_service(argv=None):
     if argv is None:
         argv = []
+    logging.register_options(cfg.CONF)
+
+    extra_log_level_defaults = [
+        'qpid.messaging=INFO',
+        'keystoneclient=INFO',
+        'eventlet.wsgi.server=WARN'
+    ]
+    logging.set_defaults(default_log_levels=logging.get_default_log_levels() +
+                         extra_log_level_defaults)
     rpc.set_defaults(control_exchange='sysinv')
-    cfg.set_defaults(log.log_opts,
-                     default_log_levels=['amqplib=WARN',
-                                         'qpid.messaging=INFO',
-                                         'sqlalchemy=WARN',
-                                         'keystoneclient=INFO',
-                                         'stevedore=INFO',
-                                         'eventlet.wsgi.server=WARN'
-                                         ])
-    cfg.CONF(argv[1:], project='sysinv')
-    log.setup('sysinv')
+    cfg.CONF(argv[1:],
+             project='sysinv',
+             version=version.version_string())
+    logging.setup(cfg.CONF, 'sysinv')
 
 
 def process_launcher():

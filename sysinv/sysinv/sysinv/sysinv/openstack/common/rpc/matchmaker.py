@@ -22,9 +22,8 @@ import contextlib
 import eventlet
 
 from oslo_config import cfg
+from oslo_log import log as logging
 from sysinv._i18n import _
-from sysinv.openstack.common import log as logging
-
 
 matchmaker_opts = [
     cfg.IntOpt('matchmaker_heartbeat_freq',

@@ -31,6 +31,7 @@ from cryptography.hazmat.backends import default_backend
 from pecan import expose
 from pecan import rest
 
+from oslo_log import log
 from sysinv._i18n import _
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
@@ -41,7 +42,6 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import log
 from wsme import types as wtypes
 
 LOG = log.getLogger(__name__)

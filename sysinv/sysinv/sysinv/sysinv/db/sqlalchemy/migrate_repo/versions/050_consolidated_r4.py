@@ -12,10 +12,9 @@ from migrate.changeset import UniqueConstraint
 from sqlalchemy import Boolean, DateTime, Enum, Integer, String, Text
 from sqlalchemy import Column, ForeignKey, MetaData, Table
 from sqlalchemy.dialects import postgresql
+
+from oslo_log import log
 from sysinv.common import constants
-
-
-from sysinv.openstack.common import log
 
 ENGINE = 'InnoDB'
 CHARSET = 'utf8'

@@ -32,13 +32,12 @@ from fm_api import constants as fm_constants
 import tsconfig.tsconfig as tsc
 
 from oslo_config import cfg
+from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import health
 from sysinv.helm import common as helm_common
-from sysinv.openstack.common import log
-
 
 LOG = log.getLogger(__name__)
 

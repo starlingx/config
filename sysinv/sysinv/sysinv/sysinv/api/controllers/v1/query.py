@@ -33,10 +33,10 @@ import six
 import wsme
 from wsme import types as wtypes
 
+from oslo_log import log
 from oslo_utils import strutils
 from oslo_utils import timeutils
 from sysinv._i18n import _
-from sysinv.openstack.common import log
 
 LOG = log.getLogger(__name__)
 

@@ -61,6 +61,7 @@ from fm_api import fm_api
 from netaddr import IPAddress
 from netaddr import IPNetwork
 from oslo_config import cfg
+from oslo_log import log
 from platform_util.license import license
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
@@ -96,7 +97,6 @@ from sysinv.objects import kube_app as kubeapp_obj
 from sysinv.openstack.common import context as ctx
 from sysinv.openstack.common import excutils
 from sysinv.openstack.common import jsonutils
-from sysinv.openstack.common import log
 from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common import timeutils
 from sysinv.openstack.common import uuidutils

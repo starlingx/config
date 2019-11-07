@@ -28,6 +28,7 @@ import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from oslo_log import log
 from oslo_serialization import jsonutils
 
 from sysinv._i18n import _
@@ -41,7 +42,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
-from sysinv.openstack.common import log
 from sysinv.openstack.common import uuidutils
 
 LOG = log.getLogger(__name__)

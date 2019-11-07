@@ -5,17 +5,16 @@
 #
 
 from __future__ import absolute_import
+import json
 import netaddr
 import os
 import re
-import json
 import subprocess
 
+from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
-from sysinv.openstack.common import log as logging
-
 from sysinv.puppet import base
 from sysinv.puppet import interface
 

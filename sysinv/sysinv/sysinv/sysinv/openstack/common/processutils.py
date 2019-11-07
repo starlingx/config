@@ -27,9 +27,8 @@ import signal
 from eventlet.green import subprocess
 from eventlet import greenthread
 
+from oslo_log import log as logging
 from sysinv._i18n import _
-from sysinv.openstack.common import log as logging
-
 
 LOG = logging.getLogger(__name__)
 

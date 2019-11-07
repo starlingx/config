@@ -16,10 +16,10 @@ import os
 import shlex
 import subprocess
 
+from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import utils
-from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 

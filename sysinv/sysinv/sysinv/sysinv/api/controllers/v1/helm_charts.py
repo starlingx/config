@@ -12,12 +12,11 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 import yaml
 
+from oslo_log import log
 from sysinv._i18n import _
 from sysinv import objects
 from sysinv.common import exception
 from sysinv.helm import common
-from sysinv.openstack.common import log
-
 
 LOG = log.getLogger(__name__)
 

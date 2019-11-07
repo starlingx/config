@@ -10,6 +10,8 @@ from six.moves.urllib.request import urlopen
 from six.moves.urllib.request import Request
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
+
+from oslo_log import log
 from sysinv.common import configp
 from sysinv.common import exception as si_exception
 from sysinv.openstack.common.keystone_objects import Token
@@ -17,7 +19,6 @@ from sysinv.openstack.common.keystone_objects import Token
 from sysinv.common.exception import OpenStackException
 from sysinv.common.exception import OpenStackRestAPIException
 
-from sysinv.openstack.common import log
 LOG = log.getLogger(__name__)
 
 

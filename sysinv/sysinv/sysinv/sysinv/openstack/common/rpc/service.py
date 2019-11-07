@@ -17,12 +17,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_log import log as logging
 from sysinv._i18n import _
-from sysinv.openstack.common import log as logging
 from sysinv.openstack.common import rpc
 from sysinv.openstack.common.rpc import dispatcher as rpc_dispatcher
 from sysinv.openstack.common import service
-
 
 LOG = logging.getLogger(__name__)
 

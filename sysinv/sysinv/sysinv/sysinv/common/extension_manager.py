@@ -21,8 +21,7 @@ Base class for plugin loader.
 
 from stevedore import enabled
 
-from sysinv.openstack.common import log
-
+from oslo_log import log
 
 LOG = log.getLogger(__name__)
 

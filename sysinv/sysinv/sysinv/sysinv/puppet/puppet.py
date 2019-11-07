@@ -15,7 +15,7 @@ import yaml
 
 from stevedore import extension
 
-from sysinv.openstack.common import log as logging
+from oslo_log import log as logging
 from sysinv.puppet import common
 
 

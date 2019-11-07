@@ -17,7 +17,7 @@ from os.path import isfile
 from os.path import join
 import re
 
-from sysinv.openstack.common import log as logging
+from oslo_log import log as logging
 import tsconfig.tsconfig as tsc
 
 LOG = logging.getLogger(__name__)

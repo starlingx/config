@@ -9,6 +9,7 @@
 
 """ System inventory Armada manifest operator."""
 
+from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.helm import manifest_base as base
@@ -40,7 +41,6 @@ from sysinv.helm.panko import PankoHelm
 from sysinv.helm.placement import PlacementHelm
 from sysinv.helm.rabbitmq import RabbitmqHelm
 from sysinv.helm.swift import SwiftHelm
-from sysinv.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 
