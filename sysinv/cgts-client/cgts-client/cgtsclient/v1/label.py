@@ -8,6 +8,7 @@
 #
 
 from cgtsclient.common import base
+from cgtsclient.v1 import options
 
 
 class KubernetesLabel(base.Resource):
@@ -34,8 +35,8 @@ class KubernetesLabelManager(base.Manager):
         except IndexError:
             return None
 
-    def assign(self, host_uuid, label):
-        return self._create(self._path(host_uuid), label)
+    def assign(self, host_uuid, label, parameters=None):
+        return self._create(options.build_url(self._path(host_uuid), q=None, params=parameters), label)
 
     def remove(self, uuid):
         return self._delete(self._path(uuid))

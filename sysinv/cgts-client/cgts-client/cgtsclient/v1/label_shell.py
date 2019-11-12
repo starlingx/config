@@ -43,11 +43,15 @@ def do_host_label_list(cc, args):
            action='append',
            default=[],
            help="List of Kubernetes labels")
+@utils.arg('--overwrite',
+           action='store_true',
+           help="Allow labels to be overwritten")
 def do_host_label_assign(cc, args):
     """Update the Kubernetes labels on a host."""
     attributes = utils.extract_keypairs(args)
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
-    new_labels = cc.label.assign(ihost.uuid, attributes)
+    parameters = ["overwrite=" + str(args.overwrite)]
+    new_labels = cc.label.assign(ihost.uuid, attributes, parameters)
     for p in new_labels.labels:
         uuid = p['uuid']
         if uuid is not None:

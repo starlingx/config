@@ -189,9 +189,9 @@ class LabelController(rest.RestController):
         return Label.convert_with_links(sp_label)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(LabelCollection, types.uuid,
+    @wsme_pecan.wsexpose(LabelCollection, types.uuid, types.boolean,
                          body=types.apidict)
-    def post(self, uuid, body):
+    def post(self, uuid, overwrite=False, body=None):
         """Assign label(s) to a host.
         """
         if self._from_ihosts:
@@ -203,6 +203,21 @@ class LabelController(rest.RestController):
         _check_host_locked(host, body.keys())
 
         _semantic_check_worker_labels(body)
+
+        existing_labels = {}
+        for label_key in body.keys():
+            label = None
+            try:
+                label = pecan.request.dbapi.label_query(host.id, label_key)
+            except exception.HostLabelNotFoundByKey:
+                pass
+            if label:
+                if overwrite:
+                    existing_labels.update({label_key: label.uuid})
+                else:
+                    raise wsme.exc.ClientSideError(
+                        _("Label %s exists for host %s. Use overwrite option to assign a new value." % (
+                            label_key, host.hostname)))
 
         try:
             pecan.request.rpcapi.update_kubernetes_label(
@@ -223,12 +238,17 @@ class LabelController(rest.RestController):
                 'label_key': key,
                 'label_value': value
             }
-
             try:
-                new_label = pecan.request.dbapi.label_create(uuid, values)
+                if existing_labels.get(key, None):
+                    # Update the value
+                    label_uuid = existing_labels.get(key)
+                    new_label = pecan.request.dbapi.label_update(label_uuid, {'label_value': value})
+                else:
+                    new_label = pecan.request.dbapi.label_create(uuid, values)
                 new_records.append(new_label)
             except exception.HostLabelAlreadyExists:
-                pass
+                # We should not be here
+                raise wsme.exc.ClientSideError(_("Error creating label %s") % label_key)
 
         try:
             vim_api.vim_host_update(
