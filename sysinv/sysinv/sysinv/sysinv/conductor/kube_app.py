@@ -479,6 +479,73 @@ class AppOperator(object):
         finally:
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
+    def _get_image_tags_from_armada_chart(self, chart_name, chart_data):
+        """This function is to get image tags from armada chart
+
+           The following image formats are handled:
+             1. values:
+                  images:
+                    tags:
+             2. values:
+                  image:
+                    repository:
+                    tag:
+             3. values:
+                  image:
+                  imageTag:
+             4. values:
+                  controller:
+                    image:
+                      repository:
+                      tag:
+                  defaultBackend:
+                    image:
+                      repository:
+                      tag:
+                  monitoring:
+                    image:
+                      repository:
+                      tag:
+        """
+
+        try:
+            images_manifest = {}
+            if ("images" in chart_data['values'] and
+                    "tags" in chart_data['values']['images']):
+                images_manifest = chart_data['values']['images']['tags']
+
+            elif "image" in chart_data['values']:
+                images_manifest[chart_name] = []
+                if ("repository" in chart_data['values']['image'] and
+                        "tag" in chart_data['values']['image']):
+                    y_image = chart_data['values']['image']
+                    y_image_tag = \
+                        y_image['repository'] + ":" + str(y_image['tag'])
+                    images_manifest[chart_name].append(y_image_tag)
+
+                elif "imageTag" in chart_data['values']:
+                    y_image = chart_data['values']
+                    y_image_tag = \
+                        y_image['image'] + ":" + str(y_image['imageTag'])
+                    images_manifest[chart_name].append(y_image_tag)
+
+            for key in ["controller", "defaultBackend", "monitoring"]:
+                if (key in chart_data['values'] and
+                        "image" in chart_data['values'][key]):
+                    y_image = chart_data['values'][key]['image']
+                    y_image_tag = \
+                        y_image['repository'] + ":" + str(y_image['tag'])
+                    if chart_name in images_manifest:
+                        images_manifest[chart_name].append(y_image_tag)
+                    else:
+                        images_manifest = {chart_name: [y_image_tag]}
+
+        except (TypeError, KeyError, AttributeError):
+            LOG.info("Armada manifest file has no img tags for "
+                     "chart %s" % chart_name)
+            pass
+        return images_manifest
+
     def _get_image_tags_by_path(self, path):
         """ Mine the image tags from values.yaml files in the chart directory,
             intended for custom apps.
@@ -574,34 +641,7 @@ class AppOperator(object):
                         pass
 
                 # Get the image tags from the armada manifest file
-                try_image_tag_repo_format = False
-                try_image_imagetag_format = False
-                try:
-                    images_manifest = chart_data['values']['images']['tags']
-                except (TypeError, KeyError, AttributeError):
-                    try_image_tag_repo_format = True
-                    LOG.info("Armada manifest file has no img tags for "
-                             "chart %s" % chart_name)
-                    pass
-
-                if try_image_tag_repo_format:
-                    try:
-                        y_image = chart_data['values']['image']
-                        y_image_tag = \
-                            y_image['repository'] + ":" + y_image['tag']
-                        images_manifest = {chart_name: y_image_tag}
-                    except (AttributeError, TypeError, KeyError):
-                        try_image_imagetag_format = True
-                        pass
-
-                if try_image_imagetag_format:
-                    try:
-                        y_image = chart_data['values']
-                        y_image_tag = \
-                            y_image['image'] + ":" + y_image['imageTag']
-                        images_manifest = {chart_name: y_image_tag}
-                    except (AttributeError, TypeError, KeyError):
-                        pass
+                images_manifest = self._get_image_tags_from_armada_chart(chart_name, chart_data)
 
                 # For the image tags from the chart path which do not exist
                 # in the overrides and manifest file, add to manifest file.
@@ -614,12 +654,19 @@ class AppOperator(object):
                             images_manifest.update({key: images_charts[key]})
                         # If the image is tagged as null, do not download
                         if images_manifest[key]:
-                            if not re.match(r'^.+:.+/', images_manifest[key]):
-                                images_manifest.update({key:
-                                    '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
-                                                   images_manifest[key])})
+                            if not isinstance(images_manifest[key], list):
+                                if not re.match(r'^.+:.+/', images_manifest[key]):
+                                    images_manifest.update({key:
+                                        '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
+                                                       images_manifest[key])})
+                                    chart_image_tags_updated = True
+                                image_tags.append(images_manifest[key])
+                            else:
+                                for image in images_manifest[key]:
+                                    if not image.startswith(constants.DOCKER_REGISTRY_SERVER):
+                                        image = '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER, image)
+                                    image_tags.append(image)
                                 chart_image_tags_updated = True
-                            image_tags.append(images_manifest[key])
                     else:
                         if not re.match(r'^.+:.+/', images_overrides[key]):
                             images_overrides.update(
@@ -739,6 +786,7 @@ class AppOperator(object):
 
             try_image_tag_repo_format = False
             try_image_imagetag_format = False
+            try_image_special_key_format = False
 
             if os.path.exists(chart_path):
                 with open(chart_path, 'r') as f:
@@ -767,6 +815,18 @@ class AppOperator(object):
                             images = {chart.name: y_image_tag}
                         except (AttributeError, TypeError, KeyError):
                             LOG.info("Chart %s has no imageTag tags" % chart_name)
+                            try_image_special_key_format = True
+                            pass
+
+                    if try_image_special_key_format:
+                        try:
+                            for key in ["controller", "defaultBackend"]:
+                                y_image = y[key]['image']
+                                y_image_tag = \
+                                    y_image['repository'] + ":" + y_image['tag']
+                                images = {chart.name: y_image_tag}
+                        except (AttributeError, TypeError, KeyError):
+                            LOG.info("Chart %s has no special image tags" % chart_name)
                             pass
 
             if images:
