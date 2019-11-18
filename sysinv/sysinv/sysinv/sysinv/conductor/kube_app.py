@@ -2685,7 +2685,7 @@ class DockerHelper(object):
                         if (section in registries_type and
                                 registries_type[section] == constants.DOCKER_REGISTRY_TYPE_AWS_ECR):
                             auth = cutils.get_aws_ecr_registry_credentials(
-                                url, auth['username'], auth['password'])
+                                self._dbapi, url, auth['username'], auth['password'])
                         self.registries_info[section]['registry_auth'] = auth
             except exception.SysinvException:
                 raise exception.SysinvException(_(

@@ -25,6 +25,7 @@
 """Utilities and helper functions."""
 
 import boto3
+from botocore.config import Config
 import collections
 import contextlib
 import datetime
@@ -2147,19 +2148,51 @@ def get_local_docker_registry_auth():
                 password=registry_password)
 
 
-def get_aws_ecr_registry_credentials(registry, username, password):
-    region = re.compile("[0-9]*.dkr.ecr.(.*).amazonaws.com.*").match(registry)
-    if region:
-        ecr_region = region.groups()[0]
-    else:
-        ecr_region = 'us-west-2'
+def get_aws_ecr_registry_credentials(dbapi, registry, username, password):
+    def _set_advanced_config_for_botocore_client(dbapi):
+        """ This function is to set advanced configuration
+            for botocore client
+
+        supported configuration:
+            proxies(optional): A dictionary of proxy servers
+                to use by protocal or endpoint.
+                e.g.:
+                {'http': 'http://128.224.150.2:3128',
+                'https': 'http://128.224.150.2:3129'}
+
+        """
+        config = None
+
+        proxies = dbapi.service_parameter_get_all(
+            service=constants.SERVICE_TYPE_DOCKER,
+            section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY)
+
+        proxies_dict = {}
+        for proxy in proxies:
+            if proxy.name == constants.SERVICE_PARAM_NAME_DOCKER_HTTP_PROXY:
+                proxies_dict.update({'http': str(proxy.value)})
+
+            elif proxy.name == constants.SERVICE_PARAM_NAME_DOCKER_HTTPS_PROXY:
+                proxies_dict.update({'https': str(proxy.value)})
+
+        if proxies_dict:
+            config = Config(proxies=proxies_dict)
+        return config
 
     try:
+        region = re.compile("[0-9]*.dkr.ecr.(.*).amazonaws.com.*").match(registry)
+        if region:
+            ecr_region = region.groups()[0]
+        else:
+            ecr_region = 'us-west-2'
+
+        config = _set_advanced_config_for_botocore_client(dbapi)
         client = boto3.client(
             'ecr',
             region_name=ecr_region,
             aws_access_key_id=username,
-            aws_secret_access_key=password)
+            aws_secret_access_key=password,
+            config=config)
 
         response = client.get_authorization_token()
         token = response['authorizationData'][0]['authorizationToken']
