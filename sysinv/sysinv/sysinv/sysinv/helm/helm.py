@@ -526,9 +526,8 @@ class HelmOperator(object):
         manifest_op = self.get_armada_manifest_operator(app_name)
 
         # Load the manifest into the operator
-        armada_manifest = utils.generate_armada_manifest_filename_abs(
-            utils.generate_armada_manifest_dir(app.name, app.app_version),
-            app.name, app.manifest_file)
+        armada_manifest = utils.generate_synced_armada_manifest_fqpn(
+            app.name, app.app_version, app.manifest_file)
         manifest_op.load(armada_manifest)
 
         if app_name in self.helm_system_applications:
