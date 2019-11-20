@@ -1887,11 +1887,6 @@ class AppOperator(object):
         LOG.error("Application rollback aborted!")
         return False
 
-    def _is_system_app(self, name):
-        if name in self._helm.get_helm_applications():
-            return True
-        return False
-
     def perform_app_upload(self, rpc_app, tarfile):
         """Process application upload request
 
@@ -1904,8 +1899,7 @@ class AppOperator(object):
         :param tarfile: location of application tarfile
         """
 
-        app = AppOperator.Application(rpc_app,
-                                      self._is_system_app(rpc_app.get('name')))
+        app = AppOperator.Application(rpc_app)
         LOG.info("Application %s (%s) upload started." % (app.name, app.version))
 
         try:
@@ -2078,8 +2072,7 @@ class AppOperator(object):
         :return boolean: whether application apply was successful
         """
 
-        app = AppOperator.Application(rpc_app,
-                                      self._is_system_app(rpc_app.get('name')))
+        app = AppOperator.Application(rpc_app)
 
         # If apply is called from update method, the app's abort status has
         # already been registered.
@@ -2250,10 +2243,8 @@ class AppOperator(object):
         :param reuse_user_overrides: (optional) True or False
         """
 
-        from_app = AppOperator.Application(from_rpc_app,
-            from_rpc_app.get('name') in self._helm.get_helm_applications())
-        to_app = AppOperator.Application(to_rpc_app,
-            to_rpc_app.get('name') in self._helm.get_helm_applications())
+        from_app = AppOperator.Application(from_rpc_app)
+        to_app = AppOperator.Application(to_rpc_app)
 
         self._register_app_abort(to_app.name)
         self._raise_app_alarm(to_app.name, constants.APP_UPDATE_IN_PROGRESS,
@@ -2354,8 +2345,7 @@ class AppOperator(object):
         :return boolean: whether application remove was successful
         """
 
-        app = AppOperator.Application(rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+        app = AppOperator.Application(rpc_app)
         self._register_app_abort(app.name)
 
         self.clear_reapply(app.name)
@@ -2410,29 +2400,21 @@ class AppOperator(object):
         return rc
 
     def activate(self, rpc_app):
-        app = AppOperator.Application(
-            rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+        app = AppOperator.Application(rpc_app)
         with self._lock:
             return app.update_active(True)
 
     def deactivate(self, rpc_app):
-        app = AppOperator.Application(
-            rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+        app = AppOperator.Application(rpc_app)
         with self._lock:
             return app.update_active(False)
 
     def get_appname(self, rpc_app):
-        app = AppOperator.Application(
-            rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+        app = AppOperator.Application(rpc_app)
         return app.name
 
     def is_app_active(self, rpc_app):
-        app = AppOperator.Application(
-            rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+        app = AppOperator.Application(rpc_app)
         return app.active
 
     def perform_app_abort(self, rpc_app):
@@ -2449,8 +2431,7 @@ class AppOperator(object):
         :param rpc_app: application object in the RPC request
         """
 
-        app = AppOperator.Application(rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+        app = AppOperator.Application(rpc_app)
 
         # Retrieve the latest app status from the database
         db_app = self._dbapi.kube_app_get(app.name)
@@ -2481,8 +2462,7 @@ class AppOperator(object):
         :param rpc_app: application object in the RPC request
         """
 
-        app = AppOperator.Application(rpc_app,
-            rpc_app.get('name') in self._helm.get_helm_applications())
+        app = AppOperator.Application(rpc_app)
         try:
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
@@ -2505,10 +2485,8 @@ class AppOperator(object):
             support application related operations.
         """
 
-        def __init__(self, rpc_app, is_system_app):
+        def __init__(self, rpc_app):
             self._kube_app = rpc_app
-
-            self.system_app = is_system_app
 
             self.tarfile = None
             self.downloaded_tarfile = False
@@ -2557,6 +2535,17 @@ class AppOperator(object):
             self.patch_dependencies = []
             self.charts = []
             self.releases = []
+
+        @property
+        def system_app(self):
+            # TODO(rchurch): This will be refactored as plugins become bundled
+            # with applications. A system app can be determined if it has any
+            # installed plugins after being uploaded.
+            return ((self.name == constants.HELM_APP_OPENSTACK or
+                     self.name == constants.HELM_APP_MONITOR or
+                     self.name == constants.HELM_APP_PLATFORM) or
+                    (True if (os.path.exists(self.sync_plugins_dir) and
+                              os.listdir(self.sync_plugins_dir)) else False))
 
         @property
         def name(self):
@@ -2608,9 +2597,6 @@ class AppOperator(object):
         def regenerate_application_info(self, new_name, new_version, new_patch_dependencies):
             self._kube_app.name = new_name
             self._kube_app.app_version = new_version
-            self.system_app = \
-                (self.name == constants.HELM_APP_OPENSTACK or
-                 self.name == constants.HELM_APP_MONITOR)
 
             new_armada_dir = cutils.generate_synced_armada_dir(
                 self.name, self.version)
