@@ -59,16 +59,24 @@ class HelmOperator(object):
     def __init__(self, dbapi=None):
         self.dbapi = dbapi
 
-        # register chart operators for lookup
+        # Initialize the plugins
+        self.helm_system_applications = {}
         self.chart_operators = {}
+        self.armada_manifest_operators = {}
 
+        # Find all plugins for apps, charts per app, and armada manifest
+        # operators
+        self.discover_plugins()
+
+    def discover_plugins(self):
+        """ Scan for all available plugins """
         # dict containing sequence of helm charts per app
-        self.helm_system_applications = self.get_helm_applications()
+        self.helm_system_applications = self._load_helm_applications()
 
         # dict containing Armada manifest operators per app
-        self.armada_manifest_operators = self.load_armada_manifest_operators()
+        self.armada_manifest_operators = self._load_armada_manifest_operators()
 
-    def load_armada_manifest_operators(self):
+    def _load_armada_manifest_operators(self):
         """Build a dictionary of armada manifest operators"""
 
         operators_dict = {}
@@ -91,7 +99,7 @@ class HelmOperator(object):
             manifest_op = self.armada_manifest_operators['generic']
         return manifest_op
 
-    def get_helm_applications(self):
+    def _load_helm_applications(self):
         """Build a dictionary of supported helm applications"""
 
         helm_application_dict = {}
@@ -117,6 +125,10 @@ class HelmOperator(object):
                 supported_helm_applications[name].append(plugin_name)
 
         return supported_helm_applications
+
+    def get_helm_applications(self):
+        """ Get the system applications and charts """
+        return self.helm_system_applications
 
     @property
     def context(self):
