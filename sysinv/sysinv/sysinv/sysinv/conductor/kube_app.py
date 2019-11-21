@@ -855,7 +855,7 @@ class AppOperator(object):
                         db_app.id, chart, namespace, {'system_overrides':
                                                       system_overrides})
                 except exception.HelmOverrideNotFound:
-                    LOG.exception(e)
+                    LOG.exception("Helm Override Not Found")
 
     def _validate_labels(self, labels):
         expr = re.compile(r'[a-z0-9]([-a-z0-9]*[a-z0-9])')
@@ -2720,8 +2720,8 @@ class DockerHelper(object):
                 elif request == constants.APP_APPLY_OP:
                     cmd = ("/bin/bash -c 'set -o pipefail; armada apply "
                            "--enable-chart-cleanup --debug {m} {o} {t} | "
-                           "tee {l}'".format(m=manifest_file, o=overrides_str,
-                                             t=tiller_host, l=logfile))
+                           "tee {lf}'".format(m=manifest_file, o=overrides_str,
+                                             t=tiller_host, lf=logfile))
                     LOG.info("Armada apply command = %s" % cmd)
                     (exit_code, exec_logs) = armada_svc.exec_run(cmd)
                     if exit_code == 0:

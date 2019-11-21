@@ -8,7 +8,7 @@
       jobs:
         - openstack-tox-linters
         - sysinv-tox-py27
-        - sysinv-tox-py35
+        - sysinv-tox-py36
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
@@ -22,7 +22,7 @@
       jobs:
         - openstack-tox-linters
         - sysinv-tox-py27
-        - sysinv-tox-py35
+        - sysinv-tox-py36
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
@@ -50,11 +50,11 @@
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
-    name: sysinv-tox-py35
+    name: sysinv-tox-py36
     parent: tox
     description: |
-      Run py35 test for sysinv
-    nodeset: ubuntu-xenial
+      Run py36 test for sysinv
+    nodeset: ubuntu-bionic
     required-projects:
       - starlingx/fault
       - starlingx/update
@@ -62,7 +62,7 @@
     files:
       - sysinv/sysinv/*
     vars:
-      tox_envlist: py35
+      tox_envlist: py36
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:

@@ -760,7 +760,7 @@ class AgentManager(service.PeriodicService):
             except Timeout:
                 LOG.info("get_ihost_by_macs rpc Timeout.")
                 return  # wait for next audit cycle
-            except Exception as ex:
+            except Exception:
                 LOG.warn("Conductor RPC get_ihost_by_macs exception "
                          "response")
 

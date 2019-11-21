@@ -338,11 +338,11 @@ class DiskOperator(object):
                 device_type = device.device_type
 
                 rotation_rate = constants.DEVICE_TYPE_UNDETERMINED
-                if rotational is '1':
+                if rotational == '1':
                     device_type = constants.DEVICE_TYPE_HDD
                     if 'ID_ATA_ROTATION_RATE_RPM' in device:
                         rotation_rate = device['ID_ATA_ROTATION_RATE_RPM']
-                elif rotational is '0':
+                elif rotational == '0':
                     if constants.DEVICE_NAME_NVME in device.device_node:
                         device_type = constants.DEVICE_TYPE_NVME
                     else:
