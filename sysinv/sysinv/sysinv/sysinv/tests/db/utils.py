@@ -236,13 +236,26 @@ def create_test_load(**kw):
     return dbapi.load_create(load)
 
 
-def get_test_kube_upgrade():
+def post_get_test_kube_upgrade(**kw):
+    upgrade = get_test_kube_upgrade(**kw)
+    del upgrade['id']
+    del upgrade['uuid']
+    del upgrade['from_version']
+    del upgrade['state']
+    del upgrade['reserved_1']
+    del upgrade['reserved_2']
+    del upgrade['reserved_3']
+    del upgrade['reserved_4']
+    return upgrade
+
+
+def get_test_kube_upgrade(**kw):
     upgrade = {
         'id': 1,
-        'uuid': uuidutils.generate_uuid(),
-        "from_version": 1,
-        "to_version": 2,
-        "state": "tbd",
+        'uuid': kw.get('uuid', uuidutils.generate_uuid()),
+        "from_version": kw.get('from_version', 'v1.42.1'),
+        "to_version": kw.get('to_version', 'v1.42.2'),
+        "state": kw.get('state', 'upgrade-started'),
         "reserved_1": "res1",
         "reserved_2": "res2",
         "reserved_3": "res3",
@@ -255,7 +268,7 @@ def get_test_kube_host_upgrade():
     upgrade = {
         'id': 1,
         'uuid': uuidutils.generate_uuid(),
-        "target_version": 2,
+        "target_version": 'v1.42.1',
         "status": "tbd",
         "reserved_1": "",
         "reserved_2": "",
@@ -266,8 +279,8 @@ def get_test_kube_host_upgrade():
     return upgrade
 
 
-def create_test_kube_upgrade():
-    upgrade = get_test_kube_upgrade()
+def create_test_kube_upgrade(**kw):
+    upgrade = get_test_kube_upgrade(**kw)
 
     # Let DB generate ID and uuid
     if 'id' in upgrade:
@@ -281,7 +294,7 @@ def create_test_kube_upgrade():
 
 
 def create_test_kube_host_upgrade():
-    upgrade = get_test_kube_upgrade()
+    upgrade = get_test_kube_host_upgrade()
 
     # Let DB generate ID, uuid and host_id
     if 'id' in upgrade:

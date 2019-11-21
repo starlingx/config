@@ -21,18 +21,19 @@ class KubeHostUpgrade(base.SysinvObject):
         'id': int,
         'uuid': utils.str_or_none,
 
-        'target_version': utils.int_or_none,
+        'target_version': utils.str_or_none,
         'status': utils.str_or_none,
+        'control_plane_version': utils.str_or_none,  # Not stored in DB
+        'kubelet_version': utils.str_or_none,  # Not stored in DB
         'reserved_1': utils.str_or_none,
         'reserved_2': utils.str_or_none,
         'reserved_3': utils.str_or_none,
         'reserved_4': utils.str_or_none,
 
         'host_id': int,
-        'host_uuid': utils.str_or_none,
     }
 
-    _foreign_fields = {'host_uuid': 'host:uuid'}
+    _optional_fields = ['control_plane_version', 'kubelet_version']
 
     @base.remotable_classmethod
     def get_by_uuid(cls, context, uuid):

@@ -14,7 +14,9 @@ import subprocess
 from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils
+from sysinv import objects
 from sysinv.puppet import base
 from sysinv.puppet import interface
 
@@ -28,6 +30,10 @@ CLUSTER_SERVICE_DNS_IP_OFFSET = 10
 class KubernetesPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for kubernetes configuration"""
     ETCD_SERVICE_PORT = '2379'
+
+    def __init__(self, *args, **kwargs):
+        super(KubernetesPuppet, self).__init__(*args, **kwargs)
+        self._kube_operator = kubernetes.KubeOperator()
 
     def get_system_config(self):
         config = {}
@@ -95,6 +101,9 @@ class KubernetesPuppet(base.BasePuppet):
         # Generate the token and join command for this host.
         config.update(self._get_host_join_command(host))
 
+        # Get the kubernetes version for this host
+        config.update(self._get_kubernetes_version(host))
+
         return config
 
     def _get_host_join_command(self, host):
@@ -150,6 +159,28 @@ class KubernetesPuppet(base.BasePuppet):
     def _get_dns_service_ip(self):
         subnet = netaddr.IPNetwork(self._get_cluster_service_subnet())
         return str(subnet[CLUSTER_SERVICE_DNS_IP_OFFSET])
+
+    def _get_kubernetes_version(self, host):
+        config = {}
+
+        # Get the kubernetes upgrade record for this host
+        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+            self.context, host.id)
+        version = kube_host_upgrade_obj.target_version
+        if version is None:
+            # The target version is not set if an upgrade hasn't been started,
+            # so get the running kubernetes version.
+            try:
+                version = self._kube_operator.kube_get_kubernetes_version()
+            except Exception:
+                # During initial installation of the first controller,
+                # kubernetes may not be running yet. In that case, none of the
+                # puppet manifests being applied will need the kubernetes
+                # version.
+                LOG.warning("Unable to retrieve kubernetes version")
+
+        config.update({'platform::kubernetes::params::version': version})
+        return config
 
     def _get_host_node_config(self, host):
         node_ip = self._get_address_by_name(

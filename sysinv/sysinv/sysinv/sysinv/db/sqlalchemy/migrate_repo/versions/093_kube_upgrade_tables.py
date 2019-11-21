@@ -21,9 +21,6 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
-    meta = MetaData()
-    meta.bind = migrate_engine
-
     kube_upgrade = Table(
         'kube_upgrade',
         meta,

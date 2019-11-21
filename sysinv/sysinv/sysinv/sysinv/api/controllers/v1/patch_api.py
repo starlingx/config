@@ -85,6 +85,27 @@ def patch_is_applied(token, timeout, region_name, patches):
     return response
 
 
+def patch_is_available(token, timeout, region_name, patches):
+    """
+    Query the available state for a list of patches
+    """
+    api_cmd = None
+
+    if not token:
+        token = get_token(region_name)
+    if token:
+        api_cmd = token.get_service_url("patching", "patching")
+
+    patch_dependencies = ""
+    for patch in patches:
+        patch_dependencies += "/%s" % patch
+
+    api_cmd += "/v1/is_available%s" % patch_dependencies
+
+    response = rest_api_request(token, "GET", api_cmd, timeout=timeout)
+    return response
+
+
 def patch_report_app_dependencies(token, timeout, region_name, patches, app_name):
     """
     Report the application patch dependencies

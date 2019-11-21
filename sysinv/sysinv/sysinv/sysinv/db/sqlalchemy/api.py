@@ -1269,6 +1269,7 @@ class Connection(api.Connection):
             except db_exc.DBDuplicateEntry:
                 raise exception.NodeAlreadyExists(uuid=values['uuid'])
             self._host_upgrade_create(host.id, software_load)
+            self._kube_host_upgrade_create(host.id)
             return self._host_get(values['uuid'])
 
     @objects.objectify(objects.host)
@@ -8091,8 +8092,9 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.kube_host_upgrade)
-    def kube_host_upgrade_create(self, host_id, values):
+    def _kube_host_upgrade_create(self, host_id, values=None):
+        if values is None:
+            values = dict()
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         values['host_id'] = int(host_id)
@@ -8105,8 +8107,11 @@ class Connection(api.Connection):
             except db_exc.DBDuplicateEntry:
                 raise exception.KubeHostUpgradeAlreadyExists(
                     uuid=values['uuid'], host=host_id)
-
             return self._kube_host_upgrade_get(values['uuid'])
+
+    @objects.objectify(objects.kube_host_upgrade)
+    def kube_host_upgrade_create(self, host_id, values):
+        return self._kube_host_upgrade_create(host_id, values)
 
     @objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_get(self, host_upgrade_id):
@@ -8115,8 +8120,15 @@ class Connection(api.Connection):
     @objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_get_list(self, limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
+        query = model_query(models.KubeHostUpgrade)
+        # Only retrieve host upgrade records associated with actual hosts
+        # (not host profiles).
+        query = query.join(models.ihost,
+                           models.KubeHostUpgrade.host_id == models.ihost.id)
+        query = query.filter(models.ihost.recordtype == "standard")
+
         return _paginate_query(models.KubeHostUpgrade, limit, marker,
-                               sort_key, sort_dir)
+                               sort_key, sort_dir, query)
 
     @objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_get_by_host(self, host_id):
@@ -8173,8 +8185,8 @@ class Connection(api.Connection):
             return self._kube_upgrade_get(values['uuid'])
 
     @objects.objectify(objects.kube_upgrade)
-    def kube_upgrade_get(self, server):
-        return self._kube_upgrade_get(server)
+    def kube_upgrade_get(self, upgrade_id):
+        return self._kube_upgrade_get(upgrade_id)
 
     @objects.objectify(objects.kube_upgrade)
     def kube_upgrade_get_one(self):

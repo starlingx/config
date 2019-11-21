@@ -1821,3 +1821,43 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :return:
         """
         return self.call(context, self.make_msg('store_default_config'))
+
+    def kube_download_images(self, context, kube_version):
+        """Asynchronously, have the conductor download the kubernetes images
+        for this new version.
+
+        :param context: request context
+        :param kube_version: kubernetes version to download
+        """
+        return self.cast(context, self.make_msg('kube_download_images',
+                                                kube_version=kube_version))
+
+    def kube_upgrade_control_plane(self, context, host_uuid):
+        """Asynchronously, have the conductor upgrade the kubernetes control
+        plane on this host.
+
+        :param context: request context
+        :param host_uuid: uuid or id of the host
+        """
+        return self.cast(context, self.make_msg(
+            'kube_upgrade_control_plane', host_uuid=host_uuid))
+
+    def kube_upgrade_kubelet(self, context, host_uuid):
+        """Asynchronously, have the conductor upgrade the kubernetes kubelet
+        plane on this host.
+
+        :param context: request context
+        :param host_uuid: uuid or id of the host
+        """
+        return self.cast(context, self.make_msg('kube_upgrade_kubelet',
+                                                host_uuid=host_uuid))
+
+    def kube_upgrade_networking(self, context, kube_version):
+        """Asynchronously, have the conductor upgrade networking for this
+        new version.
+
+        :param context: request context
+        :param kube_version: kubernetes version being upgraded to
+        """
+        return self.cast(context, self.make_msg('kube_upgrade_networking',
+                                                kube_version=kube_version))

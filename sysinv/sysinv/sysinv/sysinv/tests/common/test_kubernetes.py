@@ -374,6 +374,37 @@ class TestKubeOperator(base.TestCase):
             ]
         )
 
+        self.config_map_result = kubernetes.client.V1ConfigMap(
+            api_version="v1",
+            data={"ClusterConfiguration":
+                      "apiServer:\n"
+                      "  certSANs:\n"
+                      "  - 127.0.0.1\n"
+                      "  - 192.168.206.2\n"
+                      "apiVersion: kubeadm.k8s.io/v1beta2\n"
+                      "kubernetesVersion: v1.42.4\n"
+                      "kind: ClusterStatus\n"
+                  },
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="kubeadm-config",
+                namespace="kube-system"),
+        )
+
+        self.config_map_result_no_version = kubernetes.client.V1ConfigMap(
+            api_version="v1",
+            data={"ClusterConfiguration":
+                      "apiServer:\n"
+                      "  certSANs:\n"
+                      "  - 127.0.0.1\n"
+                      "  - 192.168.206.2\n"
+                      "apiVersion: kubeadm.k8s.io/v1beta2\n"
+                      "kind: ClusterStatus\n"
+                  },
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="kubeadm-config",
+                namespace="kube-system"),
+        )
+
     def setUp(self):
         super(TestKubeOperator, self).setUp()
 
@@ -397,6 +428,15 @@ class TestKubeOperator(base.TestCase):
             'kubernetes.client.CoreV1Api.list_node',
             mock_list_node)
         self.mocked_list_node.start()
+
+        self.read_namespaced_config_map_result = None
+
+        def mock_read_namespaced_config_map(obj, configmap, namespace):
+            return self.read_namespaced_config_map_result
+        self.mocked_read_namespaced_config_map = mock.patch(
+            'kubernetes.client.CoreV1Api.read_namespaced_config_map',
+            mock_read_namespaced_config_map)
+        self.mocked_read_namespaced_config_map.start()
 
         self.kube_operator = kube.KubeOperator()
 
@@ -545,3 +585,18 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
                           'v1.43.1': 'available'}
+
+    def test_kube_get_kubernetes_version(self):
+
+        self.read_namespaced_config_map_result = self.config_map_result
+
+        result = self.kube_operator.kube_get_kubernetes_version()
+        assert result == 'v1.42.4'
+
+    def test_kube_get_kubernetes_version_missing_version(self):
+
+        self.read_namespaced_config_map_result = \
+            self.config_map_result_no_version
+
+        result = self.kube_operator.kube_get_kubernetes_version()
+        assert result is None

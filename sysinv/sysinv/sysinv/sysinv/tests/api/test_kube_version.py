@@ -11,7 +11,10 @@ Tests for the API /kube_version/ methods.
 import mock
 import webtest.app
 
+from sysinv.common import kubernetes
+
 from sysinv.tests.api import base
+from sysinv.tests.db import utils as dbutils
 
 FAKE_KUBE_VERSIONS = [
     {'version': 'v1.42.1',
@@ -40,6 +43,11 @@ FAKE_KUBE_VERSIONS = [
      },
 ]
 
+FAKE_KUBE_STATES = {'v1.42.1': 'available',
+                    'v1.42.2': 'available',
+                    'v1.43.1': 'active',
+                    'v1.43.2': 'available'}
+
 
 def mock_get_kube_versions():
     return FAKE_KUBE_VERSIONS
@@ -51,10 +59,7 @@ class TestKubeVersion(base.FunctionalTest):
         super(TestKubeVersion, self).setUp()
 
         def mock_kube_get_version_states(obj):
-            return {'v1.42.1': 'available',
-                    'v1.42.2': 'available',
-                    'v1.43.1': 'active',
-                    'v1.43.2': 'available'}
+            return FAKE_KUBE_STATES
         self.mocked_kube_get_version_states = mock.patch(
             'sysinv.common.kubernetes.KubeOperator.kube_get_version_states',
             mock_kube_get_version_states)
@@ -104,6 +109,30 @@ class TestListKubeVersions(TestKubeVersion):
         self.assertEqual(result['state'], 'active')
         self.assertEqual(result['target'], True)
 
+    def test_one_upgrade_target(self):
+        # Create an upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_STARTED,
+        )
+
+        result = self.get_json('/kube_versions/v1.43.2')
+
+        # Verify that the version has the expected attributes
+        self.assertEqual(result['version'],
+                         FAKE_KUBE_VERSIONS[3]['version'])
+        self.assertEqual(result['upgrade_from'],
+                         FAKE_KUBE_VERSIONS[3]['upgrade_from'])
+        self.assertEqual(result['downgrade_to'],
+                         FAKE_KUBE_VERSIONS[3]['downgrade_to'])
+        self.assertEqual(result['applied_patches'],
+                         FAKE_KUBE_VERSIONS[3]['applied_patches'])
+        self.assertEqual(result['available_patches'],
+                         FAKE_KUBE_VERSIONS[3]['available_patches'])
+        self.assertEqual(result['state'], 'available')
+        self.assertEqual(result['target'], True)
+
     def test_bad_version(self):
         self.assertRaises(webtest.app.AppError, self.get_json,
                           '/kube_versions/v1.42.2.unknown')
@@ -111,3 +140,35 @@ class TestListKubeVersions(TestKubeVersion):
     def test_all(self):
         data = self.get_json('/kube_versions')
         self.assertEqual(len(FAKE_KUBE_VERSIONS), len(data['kube_versions']))
+
+        index = 0
+        for result in data['kube_versions']:
+            self.assertEqual(result['version'],
+                             FAKE_KUBE_VERSIONS[index]['version'])
+            self.assertEqual(result['state'],
+                             FAKE_KUBE_STATES[result['version']])
+            self.assertEqual(result['target'],
+                             True if FAKE_KUBE_STATES[result['version']] ==
+                                     'active' else False)
+            index += 1
+
+    def test_all_upgrade_target(self):
+        # Create an upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_STARTED,
+        )
+
+        data = self.get_json('/kube_versions')
+        self.assertEqual(len(FAKE_KUBE_VERSIONS), len(data['kube_versions']))
+
+        index = 0
+        for result in data['kube_versions']:
+            self.assertEqual(result['version'],
+                             FAKE_KUBE_VERSIONS[index]['version'])
+            self.assertEqual(result['state'],
+                             FAKE_KUBE_STATES[result['version']])
+            self.assertEqual(result['target'],
+                             True if result['version'] == 'v1.43.2' else False)
+            index += 1

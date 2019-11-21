@@ -1742,8 +1742,6 @@ class KubeHostUpgrade(Base):
 
     host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
-
 
 class KubeUpgrade(Base):
     __tablename__ = 'kube_upgrade'

@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 from distutils.version import LooseVersion
 import json
+import re
 
 from kubernetes import config
 from kubernetes import client
@@ -38,6 +39,25 @@ NAMESPACE_KUBE_SYSTEM = 'kube-system'
 KUBE_APISERVER = 'kube-apiserver'
 KUBE_CONTROLLER_MANAGER = 'kube-controller-manager'
 KUBE_SCHEDULER = 'kube-scheduler'
+
+# Kubernetes upgrade states
+KUBE_UPGRADE_DOWNLOADING_IMAGES = 'downloading-images'
+KUBE_UPGRADE_STARTED = 'upgrade-started'
+KUBE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
+KUBE_UPGRADED_FIRST_MASTER = 'upgraded-first-master'
+KUBE_UPGRADING_NETWORKING = 'upgrading-networking'
+KUBE_UPGRADED_NETWORKING = 'upgraded-networking'
+KUBE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
+KUBE_UPGRADED_SECOND_MASTER = 'upgraded-second-master'
+KUBE_UPGRADING_KUBELETS = 'upgrading-kubelets'
+KUBE_UPGRADE_COMPLETE = 'upgrade-complete'
+KUBE_UPGRADE_FAILED = 'upgrade-failed'
+
+# Kubernetes constants
+MANIFEST_APPLY_TIMEOUT = 60 * 15
+MANIFEST_APPLY_INTERVAL = 10
+POD_START_TIMEOUT = 60
+POD_START_INTERVAL = 10
 
 
 def get_kube_versions():
@@ -446,3 +466,20 @@ class KubeOperator(object):
             version_states[active_candidates[0]] = KUBE_STATE_ACTIVE
 
         return version_states
+
+    def kube_get_kubernetes_version(self):
+        """Returns the kubernetes version from the kubadm config map."""
+
+        c = self._get_kubernetesclient_core()
+
+        # Get the kubernetes version from the kubeadm config map
+        config_map = c.read_namespaced_config_map('kubeadm-config',
+                                                  NAMESPACE_KUBE_SYSTEM)
+        cluster_config = config_map.data['ClusterConfiguration']
+        match = re.search('\nkubernetesVersion: (.*)\n', cluster_config)
+        if match is None:
+            LOG.error("Unable to find kubernetesVersion in kubeadm-config %s" %
+                      config_map)
+            return None
+        else:
+            return match.group(1)

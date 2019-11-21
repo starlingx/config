@@ -122,6 +122,16 @@ class ihostManager(base.Manager):
         result = self._json_get(self._path('bulk_export'))
         return result
 
+    def kube_upgrade_control_plane(self, hostid):
+        resp, body = self.api.json_request(
+            'POST', self._path(hostid) + "/kube_upgrade_control_plane")
+        return self.resource_class(self, body)
+
+    def kube_upgrade_kubelet(self, hostid):
+        resp, body = self.api.json_request(
+            'POST', self._path(hostid) + "/kube_upgrade_kubelet")
+        return self.resource_class(self, body)
+
 
 def _find_ihost(cc, ihost):
     if ihost.isdigit() or utils.is_uuid_like(ihost):

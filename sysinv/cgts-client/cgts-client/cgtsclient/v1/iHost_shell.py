@@ -9,6 +9,7 @@
 # All Rights Reserved.
 #
 
+from collections import OrderedDict
 import datetime
 import os
 
@@ -64,6 +65,22 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
     utils.print_dict_with_format(data, wrap=72, output_format=output_format)
 
 
+def _get_kube_host_upgrade_details(cc):
+    # Get the list of kubernetes host upgrades
+    kube_host_upgrades = cc.kube_host_upgrade.list()
+
+    # Map the host_id to hostname and personality
+    kube_host_upgrade_details = dict()
+    for kube_host_upgrade in kube_host_upgrades:
+        kube_host_upgrade_details[kube_host_upgrade.host_id] = {
+            'target_version': kube_host_upgrade.target_version,
+            'control_plane_version': kube_host_upgrade.control_plane_version,
+            'kubelet_version': kube_host_upgrade.kubelet_version,
+            'status': kube_host_upgrade.status}
+
+    return kube_host_upgrade_details
+
+
 @utils.arg('hostnameorid', metavar='<hostname or id>',
            help="Name or ID of host")
 @utils.arg('--column',
@@ -107,6 +124,31 @@ def do_host_upgrade_list(cc, args):
                     'running_release', 'target_release']
     fields = ['id', 'hostname', 'personality',
               'software_load', 'target_load']
+    utils.print_list(ihosts, fields, field_labels, sortby=0)
+
+
+def do_kube_host_upgrade_list(cc, args):
+    """List kubernetes upgrade info for hosts."""
+
+    # Get the list of hosts
+    ihosts = cc.ihost.list()
+    # Get the kubernetes host upgrades
+    kube_host_upgrade_details = _get_kube_host_upgrade_details(cc)
+
+    for host in ihosts:
+        host.target_version = \
+            kube_host_upgrade_details[host.id]['target_version']
+        host.control_plane_version = \
+            kube_host_upgrade_details[host.id]['control_plane_version']
+        host.kubelet_version = \
+            kube_host_upgrade_details[host.id]['kubelet_version']
+        host.status = \
+            kube_host_upgrade_details[host.id]['status']
+
+    field_labels = ['id', 'hostname', 'personality', 'target_version',
+                    'control_plane_version', 'kubelet_version', 'status']
+    fields = ['id', 'hostname', 'personality', 'target_version',
+              'control_plane_version', 'kubelet_version', 'status']
     utils.print_list(ihosts, fields, field_labels, sortby=0)
 
 
@@ -763,3 +805,41 @@ def do_host_upgrade(cc, args):
 
     ihost = cc.ihost.upgrade(args.hostid, args.force)
     _print_ihost_show(ihost)
+
+
+@utils.arg('hostid',
+           metavar='<hostname or id>',
+           help="Name or ID of host")
+@utils.arg('component',
+           metavar='<component>',
+           choices=['control-plane', 'kubelet'],
+           help='kubernetes component to upgrade')
+def do_kube_host_upgrade(cc, args):
+    """Perform kubernetes upgrade for a host."""
+
+    if args.component == 'control-plane':
+        host = cc.ihost.kube_upgrade_control_plane(args.hostid)
+    elif args.component == 'kubelet':
+        host = cc.ihost.kube_upgrade_kubelet(args.hostid)
+    else:
+        raise exc.CommandError('Invalid component value: %s' % args.component)
+
+    # Get the kubernetes host upgrades
+    kube_host_upgrade_details = _get_kube_host_upgrade_details(cc)
+
+    host.target_version = \
+        kube_host_upgrade_details[host.id]['target_version']
+    host.control_plane_version = \
+        kube_host_upgrade_details[host.id]['control_plane_version']
+    host.kubelet_version = \
+        kube_host_upgrade_details[host.id]['kubelet_version']
+    host.status = \
+        kube_host_upgrade_details[host.id]['status']
+
+    fields = ['id', 'hostname', 'personality', 'target_version',
+              'control_plane_version', 'kubelet_version', 'status']
+
+    data_list = [(f, getattr(host, f, '')) for f in fields]
+    data = dict(data_list)
+    ordereddata = OrderedDict(sorted(data.items(), key=lambda t: t[0]))
+    utils.print_dict(ordereddata, wrap=72)
