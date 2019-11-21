@@ -23,11 +23,13 @@
 """Test class for Sysinv ManagerService."""
 
 import mock
+import os.path
 import uuid
 
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common import utils as cutils
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import context
@@ -97,16 +99,14 @@ class ManagerTestCase(base.DbTestCase):
             self.upgrade_downgrade_kube_components_patcher.start()
         self.addCleanup(self.mock_upgrade_downgrade_kube_components.stop)
 
-        self.do_update_alarm_status_patcher = mock.patch.object(
-            manager.ConductorManager, '_do_update_alarm_status')
-        self.mock_do_update_alarm_status = \
-            self.do_update_alarm_status_patcher.start()
-        self.addCleanup(self.mock_do_update_alarm_status.stop)
+        self.service.fm_api = mock.Mock()
+        self.service.fm_api.set_fault.side_effect = self._raise_alarm
+        self.service.fm_api.clear_fault.side_effect = self._clear_alarm
 
         self.fail_config_apply_runtime_manifest = False
 
         def mock_config_apply_runtime_manifest(obj, context, config_uuid,
-                                               config_dict):
+                                               config_dict, force=False):
             if not self.fail_config_apply_runtime_manifest:
                 # Pretend the config was applied
                 if 'host_uuids' in config_dict:
@@ -183,6 +183,16 @@ class ManagerTestCase(base.DbTestCase):
             mock_get_kube_versions)
         self.mocked_get_kube_versions.start()
         self.addCleanup(self.mocked_get_kube_versions.stop)
+
+        self.service._puppet = mock.Mock()
+        self.service._allocate_addresses_for_host = mock.Mock()
+        self.service._update_pxe_config = mock.Mock()
+        self.service._ceph_mon_create = mock.Mock()
+        self.alarm_raised = False
+
+    def tearDown(self):
+        super(ManagerTestCase, self).tearDown()
+        self.upgrade_downgrade_kube_components_patcher.stop()
 
     def _create_test_ihost(self, **kwargs):
         # ensure the system ID for proper association
@@ -1012,3 +1022,47 @@ class ManagerTestCase(base.DbTestCase):
         # Verify that the host upgrade status was cleared
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
         self.assertIsNotNone(updated_host_upgrade.status)
+
+    def test_configure_out_of_date(self):
+        config_applied = self.service._config_set_reboot_required(uuid.uuid4())
+        config_target = self.service._config_set_reboot_required(uuid.uuid4())
+        ihost = self._create_test_ihost(config_applied=config_applied,
+                config_target=config_target)
+        os.path.isfile = mock.Mock(return_value=True)
+        cutils.is_aio_system = mock.Mock(return_value=True)
+        ihost['mgmt_mac'] = '00:11:22:33:44:55'
+        ihost['mgmt_ip'] = '1.2.3.42'
+        ihost['hostname'] = 'controller-0'
+        ihost['invprovision'] = 'provisioned'
+        ihost['personality'] = 'controller'
+        ihost['administrative'] = 'unlocked'
+        ihost['operational'] = 'available'
+        ihost['availability'] = 'online'
+        ihost['serialid'] = '1234567890abc'
+        ihost['boot_device'] = 'sda'
+        ihost['rootfs_device'] = 'sda'
+        ihost['install_output'] = 'text'
+        ihost['console'] = 'ttyS0,115200'
+        self.service.configure_ihost(self.context, ihost)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+        imsg_dict = {'config_applied': res['config_target']}
+        self.service.iconfig_update_by_ihost(self.context, ihost['uuid'], imsg_dict)
+        self.assertEqual(self.alarm_raised, False)
+
+        personalities = [constants.CONTROLLER]
+        self.service._config_update_hosts(self.context, personalities, reboot=True)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+
+        personalities = [constants.CONTROLLER]
+        self.service._config_update_hosts(self.context, personalities, reboot=False)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+        config_uuid = self.service._config_clear_reboot_required(res['config_target'])
+        imsg_dict = {'config_applied': config_uuid}
+        self.service.iconfig_update_by_ihost(self.context, ihost['uuid'], imsg_dict)
+        self.assertEqual(self.alarm_raised, True)
+
+    def _raise_alarm(self, fault):
+        self.alarm_raised = True
+
+    def _clear_alarm(self, fm_id, fm_instance):
+        self.alarm_raised = False
