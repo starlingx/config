@@ -52,6 +52,14 @@ class ElasticsearchCuratorHelm(elastic.ElasticBaseHelm):
                 except Exception as e:
                     LOG.warn("Cannot parse elasticsearch-data volume size: %s" % e)
 
+        # Elasticsearch reports index size back to curator calculated over all
+        # shards on all data nodes, so multiply by 2 as it is configured for
+        # 2 shards per index (primary and replica, on 1 data node each).
+        # If only one data node is present (AIO-SX or locked controller in a
+        # dual controller config), curator will make the adjustment, and factor
+        # down its given index size limits.
+        data_volume_size_gb = 2 * data_volume_size_gb
+
         # Give 50% of elasticsearch data volume
         # to filebeat, 40% to metricbeat and 10% to collectd, all
         # modified by a safety margin due to cronjob running every 6 hours.
