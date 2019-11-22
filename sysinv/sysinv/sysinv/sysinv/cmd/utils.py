@@ -25,11 +25,13 @@ CONF = cfg.CONF
 def create_host_overrides(filename):
     try:
         dbapi = api.get_instance()
+        data = {}
 
         # Get the DNS info
         dns = dbapi.idns_get_one()
-        dns_list = dns.nameservers.split(',')
-        data = {'dns_servers': dns_list}
+        if dns.nameservers:
+            dns_list = dns.nameservers.split(',')
+            data.update({'dns_servers': dns_list})
 
         # Get the address pool info
         pools = dbapi.address_pools_get_all()
@@ -105,32 +107,29 @@ def create_host_overrides(filename):
                                  }
                     data.update(pool_data)
 
-        # Get the docker no-proxy info if it exists
-        no_proxy = dbapi.service_parameter_get_one(service='docker',
-                                                   name='no_proxy')
-        if no_proxy:
-            # Remove the open and close parenthesis if address is IPV6
-            _value = no_proxy.value.strip("[]")
-            no_proxy_list = _value.split(',')
-            data.update({'docker_no_proxy': no_proxy_list})
+        docker_list = dbapi.service_parameter_get_all(service=constants.SERVICE_TYPE_DOCKER,
+                                                      section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY)
+        for docker in docker_list:
+            # Get the docker no-proxy info if it exists
+            if docker.name == constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY:
+                # Remove the open and close parenthesis if address is IPV6
+                _value = docker.value.strip("[]")
+                no_proxy_list = _value.split(',')
+                data.update({'docker_no_proxy': no_proxy_list})
 
-        # Get the docker http_proxy info if it exists
-        http_proxy = dbapi.service_parameter_get_one(service='docker',
-                                                     name='http_proxy')
-        if http_proxy:
-            data.update({'docker_http_proxy': http_proxy.value})
+            # Get the docker http_proxy info if it exists
+            elif docker.name == constants.SERVICE_PARAM_NAME_DOCKER_HTTP_PROXY:
+                data.update({'docker_http_proxy': docker.value})
 
-        # Get the docker https_proxy info if it exists
-        https_proxy = dbapi.service_parameter_get_one(service='docker',
-                                                      name='https_proxy')
-        if https_proxy:
-            data.update({'docker_https_proxy': https_proxy.value})
+            # Get the docker https_proxy info if it exists
+            elif docker.name == constants.SERVICE_PARAM_NAME_DOCKER_HTTPS_PROXY:
+                data.update({'docker_https_proxy': docker.value})
 
         # Save collected information in file
         with open(filename, 'w') as outfile:
             yaml.safe_dump(data, outfile, default_flow_style=False)
     except Exception as e:
-        LOG.error(e)
+        LOG.error("Error with create_host_overrides: %s", e)
 
 
 def add_action_parsers(subparsers):
