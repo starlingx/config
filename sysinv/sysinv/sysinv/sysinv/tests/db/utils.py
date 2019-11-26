@@ -1185,3 +1185,36 @@ def create_test_app(**kw):
         del app_data['id']
     dbapi = db_api.get_instance()
     return dbapi.kube_app_create(app_data)
+
+
+def get_test_pci_devices(**kw):
+    pci_devices = {
+        'id': kw.get('id', 2345),
+        'host_id': kw.get('host_id', 2),
+        'name': kw.get('name', 'pci_0000_00_02_0 '),
+        'pciaddr': kw.get('pciaddr', '0000:00:02.0'),
+        'pclass_id': kw.get('pclass_id', '030000'),
+        'pvendor_id': kw.get('pvendor_id', '8086'),
+        'pdevice_id': kw.get('pdevice_id', '3ea5'),
+        'pclass': kw.get('pclass', 'VGA compatible controller'),
+        'pvendor': kw.get('pvendor', 'Intel Corporation'),
+        'pdevice': kw.get('pdevice', 'Iris Plus Graphics 655'),
+        'numa_node': kw.get('numa_node', -1),
+        'enabled': kw.get('enabled', True),
+        'driver': kw.get('driver', '')
+    }
+    return pci_devices
+
+
+def create_test_pci_devices(**kw):
+    """Create test pci devices entry in DB and return PciDevice DB object.
+    Function to be used to create test pci device objects in the database.
+    :param kw: kwargs with overriding values for pci device attributes.
+    :returns: Test PciDevice DB object.
+    """
+    pci_devices = get_test_pci_devices(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del pci_devices['id']
+    dbapi = db_api.get_instance()
+    return dbapi.pci_device_create(pci_devices['host_id'], pci_devices)
