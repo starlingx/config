@@ -1834,6 +1834,7 @@ class Connection(api.Connection):
                            values['host_id']))
                 raise exception.PCIAddrAlreadyExists(pciaddr=values['pciaddr'],
                                                      host=values['host_id'])
+            return self._pci_device_get(values['pciaddr'], values['host_id'])
 
     @objects.objectify(objects.pci_device)
     def pci_device_get_all(self, hostid=None):
@@ -1842,8 +1843,7 @@ class Connection(api.Connection):
             query = query.filter_by(host_id=hostid)
         return query.all()
 
-    @objects.objectify(objects.pci_device)
-    def pci_device_get(self, deviceid, hostid=None):
+    def _pci_device_get(self, deviceid, hostid=None):
         query = model_query(models.PciDevice)
         if hostid:
             query = query.filter_by(host_id=hostid)
@@ -1854,6 +1854,10 @@ class Connection(api.Connection):
             raise exception.ServerNotFound(server=deviceid)
 
         return result
+
+    @objects.objectify(objects.pci_device)
+    def pci_device_get(self, deviceid, hostid=None):
+        return self._pci_device_get(deviceid, hostid)
 
     @objects.objectify(objects.pci_device)
     def pci_device_get_list(self, limit=None, marker=None,

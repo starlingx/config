@@ -136,6 +136,15 @@ class DbNodeTestCase(base.DbTestCase):
                 utils.get_test_port(name='eth0', pciaddr="00:03.0"))
         self.assertEqual(n['id'], p['host_id'])
 
+    def test_create_devices_on_a_server(self):
+        n = self._create_test_ihost()
+
+        forihostid = n['id']
+
+        d = self.dbapi.pci_device_create(forihostid,
+                utils.get_test_pci_devices())
+        self.assertEqual(n['id'], d['host_id'])
+
     def test_create_storageVolume_on_a_server(self):
         n = self._create_test_ihost()
 
