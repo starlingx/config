@@ -3281,39 +3281,39 @@ class HostController(rest.RestController):
                 interface.ifclass != constants.INTERFACE_CLASS_PCI_SRIOV):
             return
 
-        if_configured_sriov_numvfs = interface.sriov_numvfs
-        if not if_configured_sriov_numvfs:
-            return
+        if interface.iftype == constants.INTERFACE_TYPE_ETHERNET:
+            if_configured_sriov_numvfs = interface.sriov_numvfs
+            if not if_configured_sriov_numvfs:
+                return
 
-        ports = pecan.request.dbapi.port_get_by_host_interface(
-            host['id'], interface.id)
-
-        for p in ports:
-            if (p.sriov_vfs_pci_address and
-                    if_configured_sriov_numvfs ==
-                    len(p.sriov_vfs_pci_address.split(','))):
-                LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
-                         (if_configured_sriov_numvfs, p.sriov_vfs_pci_address))
-                break
-        else:
-            msg = (_("Expecting number of interface sriov_numvfs=%s. "
-                     "Please wait a few minutes for inventory update and "
-                     "retry host-unlock." %
-                     if_configured_sriov_numvfs))
-            LOG.info(msg)
-            pecan.request.rpcapi.update_sriov_config(
-                pecan.request.context,
-                host['uuid'])
-            raise wsme.exc.ClientSideError(msg)
-
-        for p in ports:
-            if (interface.sriov_vf_driver == constants.SRIOV_DRIVER_TYPE_NETDEVICE and
-                    p.sriov_vf_driver is None):
-                msg = (_("Value for SR-IOV VF driver is %s, but "
-                         "corresponding port has an invalid driver" %
-                         constants.SRIOV_DRIVER_TYPE_NETDEVICE))
+            ports = pecan.request.dbapi.port_get_by_host_interface(
+                host['id'], interface.id)
+            for p in ports:
+                if (p.sriov_vfs_pci_address and
+                        if_configured_sriov_numvfs ==
+                        len(p.sriov_vfs_pci_address.split(','))):
+                    LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
+                             (if_configured_sriov_numvfs, p.sriov_vfs_pci_address))
+                    break
+            else:
+                msg = (_("Expecting number of interface sriov_numvfs=%s. "
+                         "Please wait a few minutes for inventory update and "
+                         "retry host-unlock." %
+                        if_configured_sriov_numvfs))
                 LOG.info(msg)
+                pecan.request.rpcapi.update_sriov_config(
+                    pecan.request.context,
+                    host['uuid'])
                 raise wsme.exc.ClientSideError(msg)
+
+            for p in ports:
+                if (interface.sriov_vf_driver == constants.SRIOV_DRIVER_TYPE_NETDEVICE and
+                        p.sriov_vf_driver is None):
+                    msg = (_("Value for SR-IOV VF driver is %s, but "
+                             "corresponding port has an invalid driver" %
+                            constants.SRIOV_DRIVER_TYPE_NETDEVICE))
+                    LOG.info(msg)
+                    raise wsme.exc.ClientSideError(msg)
 
         self._check_sriovdp_interface_datanets(interface)
 

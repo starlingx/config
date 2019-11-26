@@ -2120,6 +2120,8 @@ class Connection(api.Connection):
             interface = models.VlanInterfaces()
         elif values['iftype'] == constants.INTERFACE_TYPE_VIRTUAL:
             interface = models.VirtualInterfaces()
+        elif values['iftype'] == constants.INTERFACE_TYPE_VF:
+            interface = models.SriovVFInterfaces()
         else:
             interface = models.EthernetInterfaces()
         return self._interface_create(interface, forihostid, values)
@@ -2235,10 +2237,12 @@ class Connection(api.Connection):
                 raise exception.InvalidParameterValue(
                     err="Multiple entries found for interface %s" % iinterface_id)
 
-            if result.iftype == 'ae':
+            if result.iftype == constants.INTERFACE_TYPE_AE:
                 return self._interface_update(models.AeInterfaces, iinterface_id, values)
-            elif result.iftype == 'vlan':
+            elif result.iftype == constants.INTERFACE_TYPE_VLAN:
                 return self._interface_update(models.VlanInterfaces, iinterface_id, values)
+            elif result.iftype == constants.INTERFACE_TYPE_VF:
+                return self._interface_update(models.SriovVFInterfaces, iinterface_id, values)
             else:
                 return self._interface_update(models.EthernetInterfaces, iinterface_id, values)
 
@@ -2561,6 +2565,39 @@ class Connection(api.Connection):
 
     def virtual_interface_destroy(self, interface_id):
         return self._interface_destroy(models.VirtualInterfaces, interface_id)
+
+    @objects.objectify(objects.sriov_vf_interface)
+    def sriov_vf_interface_create(self, forihostid, values):
+        interface = models.SriovVFInterfaces()
+        return self._interface_create(interface, forihostid, values)
+
+    @objects.objectify(objects.sriov_vf_interface)
+    def sriov_vf_interface_get_all(self, forihostid=None):
+        return self._interface_get_all(models.SriovVFInterfaces, forihostid)
+
+    @objects.objectify(objects.sriov_vf_interface)
+    def sriov_vf_interface_get(self, interface_id):
+        return self._interface_get(models.SriovVFInterfaces, interface_id)
+
+    @objects.objectify(objects.sriov_vf_interface)
+    def sriov_vf_interface_get_list(self, limit=None, marker=None,
+                                    sort_key=None, sort_dir=None):
+        return self._interface_get_list(models.SriovVFInterfaces, limit, marker,
+                                        sort_key, sort_dir)
+
+    @objects.objectify(objects.sriov_vf_interface)
+    def sriov_vf_interface_get_by_ihost(self, ihost,
+                                        limit=None, marker=None,
+                                        sort_key=None, sort_dir=None):
+        return self._interface_get_by_ihost(models.SriovVFInterfaces, ihost, limit,
+                                            marker, sort_key, sort_dir)
+
+    @objects.objectify(objects.sriov_vf_interface)
+    def sriov_vf_interface_update(self, interface_id, values):
+        return self._interface_update(models.SriovVFInterfaces, interface_id, values)
+
+    def sriov_vf_interface_destroy(self, interface_id):
+        return self._interface_destroy(models.SriovVFInterfaces, interface_id)
 
     def _disk_get(self, disk_id, forihostid=None):
         query = model_query(models.idisk)

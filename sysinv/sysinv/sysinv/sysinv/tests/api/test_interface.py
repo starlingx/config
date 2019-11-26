@@ -355,6 +355,110 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                                  lower_iface,
                                  datanetworks, self.worker, expect_errors)
 
+    def _create_sriov(self, ifname,
+                      sriov_totalvfs=None, sriov_numvfs=None,
+                      sriov_vf_driver=None,
+                      datanetworks=None, host=None, expect_errors=False):
+        interface_id = len(self.profile['interfaces']) + 1
+        if not ifname:
+            ifname = 'sriov' + str(interface_id)
+        if not host:
+            host = self.controller
+        if not sriov_totalvfs:
+            sriov_totalvfs = 64
+        if not sriov_numvfs:
+            sriov_numvfs = 64
+
+        port_id = len(self.profile['ports'])
+        port = dbutils.create_test_ethernet_port(
+            id=port_id,
+            name='eth' + str(port_id),
+            host_id=host.id,
+            interface_id=interface_id,
+            pciaddr='0000:00:00.' + str(port_id + 1),
+            dev_id=0,
+            sriov_totalvfs=sriov_totalvfs,
+            sriov_numvfs=sriov_numvfs,
+            driver='i40e',
+            sriov_vf_driver='i40evf')
+
+        ifclass = constants.INTERFACE_CLASS_PCI_SRIOV
+        interface = self._post_get_test_interface(
+            ifname=ifname,
+            ifclass=ifclass,
+            forihostid=host.id, ihost_uuid=host.uuid,
+            sriov_numvfs=sriov_numvfs,
+            sriov_vf_driver=sriov_vf_driver)
+        response = self._post_and_check(interface, expect_errors)
+        if expect_errors is False:
+            interface['uuid'] = response.json['uuid']
+            iface = self.dbapi.iinterface_get(interface['uuid'])
+            if datanetworks:
+                for dn_name in datanetworks:
+                    dn = self.dbapi.datanetworks_get_all({'name': dn_name})
+                    if dn:
+                        dbutils.create_test_interface_datanetwork(
+                            interface_id=iface.id,
+                            datanetwork_id=dn.id)
+
+        self.profile['interfaces'].append(interface)
+        self.profile['ports'].append(port)
+
+        return port, interface
+
+    def _create_worker_sriov(self, ifname, networktype, ifclass, vlan_id,
+                             lower_iface=None, datanetworks=None,
+                             host=None, expect_errors=False):
+        return self._create_sriov(ifname, networktype, ifclass, vlan_id,
+                                 lower_iface,
+                                 datanetworks, self.worker, expect_errors)
+
+    def _create_vf(self, ifname, ifclass=None,
+                   lower_iface=None, sriov_numvfs=None,
+                   sriov_vf_driver=None, datanetworks=None, host=None,
+                   expect_errors=False):
+        if not host:
+            host = self.controller
+        if not lower_iface:
+            lower_port, lower_iface = self._create_sriov(
+                'sriov', host=host, sriov_numvfs=sriov_numvfs)
+        if not ifname:
+            ifname = 'vf'
+        if not ifclass:
+            ifclass = constants.INTERFACE_CLASS_PCI_SRIOV
+        if not sriov_numvfs:
+            sriov_numvfs = lower_iface['sriov_numvfs'] - 1
+
+        interface = self._post_get_test_interface(
+            ifname=ifname,
+            iftype=constants.INTERFACE_TYPE_VF,
+            ifclass=ifclass,
+            uses=[lower_iface['ifname']],
+            forihostid=host.id, ihost_uuid=host.uuid,
+            sriov_numvfs=sriov_numvfs,
+            sriov_vf_driver=sriov_vf_driver)
+        response = self._post_and_check(interface, expect_errors)
+        if expect_errors is False:
+            interface['uuid'] = response.json['uuid']
+            iface = self.dbapi.iinterface_get(interface['uuid'])
+            if ifclass == constants.INTERFACE_CLASS_PCI_SRIOV and datanetworks:
+                for dn_name in datanetworks:
+                    dn = self.dbapi.datanetworks_get_all({'name': dn_name})
+                    if dn:
+                        dbutils.create_test_interface_datanetwork(
+                            interface_id=iface.id,
+                            datanetwork_id=dn.id)
+
+        self.profile['interfaces'].append(interface)
+        return interface
+
+    def _create_worker_vf(self, ifname, networktype, ifclass, vlan_id,
+                          lower_iface=None, datanetworks=None,
+                          host=None, expect_errors=False):
+        return self._create_vf(ifname, networktype, ifclass, vlan_id,
+                                 lower_iface,
+                                 datanetworks, self.worker, expect_errors)
+
     def _post_and_check_success(self, ndict):
         response = self.post_json('%s' % self._get_path(), ndict)
         self.assertEqual(http_client.OK, response.status_int)
@@ -879,6 +983,36 @@ class InterfaceAIOVlanOverBond(InterfaceTestCase):
         self._create_and_apply_profile(self.controller)
 
 
+class InterfaceAIOVfOverSriov(InterfaceTestCase):
+
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # controller with a worker subfunction and all interfaces are
+        # ethernet aside from a VF over SR-IOV interface.
+        self._create_host(constants.CONTROLLER, constants.WORKER,
+                          admin=constants.ADMIN_LOCKED)
+        self._create_datanetworks()
+        self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_ethernet('data', constants.NETWORK_TYPE_DATA,
+                              constants.INTERFACE_CLASS_DATA,
+                              'group0-data0')
+        self._create_ethernet('pthru', constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                              constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                              'group0-ext0')
+        lower_port, lower_iface = self._create_sriov(
+            'sriov1', sriov_numvfs=2, datanetworks='group0-data0')
+        self._create_vf('vf1', lower_iface=lower_iface, sriov_numvfs=1,
+                        sriov_vf_driver='vfio', datanetworks='group0-data1')
+
+    def setUp(self):
+        super(InterfaceAIOVfOverSriov, self).setUp()
+
+    def test_AIO_vf_over_sriov_profile(self):
+        self._create_and_apply_profile(self.controller)
+
+
 # Test that the unsupported config is rejected
 class InterfaceAIOVlanOverDataEthernet(InterfaceTestCase):
 
@@ -1038,7 +1172,7 @@ class TestPatchMixin(object):
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
 
-    # Expected error: VLAN MTU ___ cannot be larger than MTU of underlying
+    # Expected error: Interface MTU ___ cannot be larger than MTU of underlying
     # interface ___
     def test_vlan_mtu_smaller_than_users(self):
         port, lower_interface = self._create_ethernet(
@@ -1055,6 +1189,32 @@ class TestPatchMixin(object):
             aemode='balanced',
             txhashpolicy='layer2',
             uses=['pxeboot'],
+            imtu=1500)
+        response = self.patch_dict_json(
+            '%s' % self._get_path(upper['uuid']), imtu=1800,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+
+    # Expected error: Interface MTU ___ cannot be larger than MTU of underlying
+    # interface ___
+    def test_vf_mtu_smaller_than_users(self):
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        upper = dbutils.create_test_interface(
+            forihostid='2',
+            ihost_uuid=self.worker.uuid,
+            ifname='vf0',
+            networktype=constants.NETWORK_TYPE_PCI_SRIOV,
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            iftype=constants.INTERFACE_TYPE_VF,
+            sriov_numvfs=2,
+            sriov_vf_driver='vfio',
+            datanetworks='group0-ext0',
+            aemode='balanced',
+            txhashpolicy='layer2',
+            uses=['sriov'],
             imtu=1500)
         response = self.patch_dict_json(
             '%s' % self._get_path(upper['uuid']), imtu=1800,
@@ -1564,6 +1724,116 @@ class TestPostMixin(object):
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
+
+    # Expected message:
+    # VF interfaces must be created over an interface of class pci-sriov
+    def test_create_vf_over_invalid_interface(self):
+        port, lower_iface = self._create_ethernet(
+            'data', constants.NETWORK_TYPE_DATA,
+            constants.INTERFACE_CLASS_DATA, 'group0-data0', host=self.worker)
+        self._create_vf('vf1', lower_iface=lower_iface, sriov_numvfs=1,
+            host=self.worker, sriov_vf_driver='vfio',
+            datanetworks='group0-data0', expect_errors=True)
+
+    # Expected message:
+    # VF interfaces must have an interface class of pci-sriov
+    def test_create_invalid_vf_interface_class(self):
+        self._create_vf('vf1', ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_numvfs=1,
+            host=self.worker, sriov_vf_driver='vfio',
+            datanetworks='group0-data0', expect_errors=True)
+
+    # Expected message:
+    # The number of virtual functions _ must be less than or equal to the
+    # available VFs _ available on the underlying interface _
+    def test_create_invalid_vf_interface_numvfs(self):
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=4, expect_errors=True)
+
+    # Expected message:
+    # The number of virtual functions _ must be less than or equal to the
+    # available VFs _ available on the underlying interface _
+    def test_create_invalid_vf_interface_numvfs_multiple_children(self):
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=1, expect_errors=False)
+        self._create_vf('vf2', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3, expect_errors=True)
+
+    # Expected message:
+    # Interface _ is being used by VF interface _ and therefore the interface
+    # class cannot be changed from 'pci-sriov'.
+    def test_modify_sriov_interface_invalid_class_with_upper_vf(self):
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=1, expect_errors=False)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(lower_iface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("the interface class cannot be changed from 'pci-sriov'",
+                      response.json['error_message'])
+
+    # Expected message:
+    # The number of virtual functions _ must be greater than the number of
+    # consumed VFs _ used by the upper VF interfaces _
+    def test_modify_sriov_interface_invalid_numvfs_with_upper_vf(self):
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3, expect_errors=False)
+
+        response = self.patch_dict_json(
+            '%s' % self._get_path(lower_iface['uuid']),
+            sriov_numvfs=2,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('must be greater than the number of consumed VFs',
+                      response.json['error_message'])
+
+    def test_interface_vf_usesmodify_success(self):
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3, expect_errors=False)
+
+        port, new_lower_iface = self._create_sriov(
+            'sriov2', host=self.worker, sriov_numvfs=4)
+        # Modify VF interface to another SRIOV interface
+
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            usesmodify=new_lower_iface['uuid'])
+        self.assertEqual('application/json', patch_result.content_type)
+        self.assertEqual(http_client.OK, patch_result.status_code)
+
+    def test_interface_vf_usesmodify_invalid(self):
+        port, lower_iface = self._create_sriov(
+            'sriov1', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3, expect_errors=False)
+
+        port, new_lower_iface = self._create_sriov(
+            'sriov2', host=self.worker, sriov_numvfs=4)
+        uses = ','.join(vf['uses'])
+        response = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            usesmodify=uses + ',' + new_lower_iface['uuid'],
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertIn('VF interfaces can only use one lower',
+                      response.json['error_message'])
 
 
 class TestAIOPost(InterfaceTestCase):

@@ -509,9 +509,7 @@ def get_lower_interface(context, iface):
     """
     Return the interface object that is used to implement a VLAN interface.
     """
-    assert iface['iftype'] == constants.INTERFACE_TYPE_VLAN
-    lower_ifname = iface['uses'][0]
-    return context['interfaces'][lower_ifname]
+    return interface.get_lower_interface(context, iface)
 
 
 def get_lower_interface_os_ifname(context, iface):
@@ -936,10 +934,12 @@ def get_ethernet_network_config(context, iface, config):
         if not is_a_mellanox_cx3_device(context, iface):
             # CX3 device can only use kernel module options to enable vfs
             # others share the same pci-sriov sysfs enabling mechanism
-            sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
-                            get_interface_port_name(context, iface))
-            options['pre_up'] = "echo 0 > %s; echo %s > %s" % (
-                sriovfs_path, iface['sriov_numvfs'], sriovfs_path)
+
+            if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
+                                get_interface_port_name(context, iface))
+                options['pre_up'] = "echo 0 > %s; echo %s > %s" % (
+                    sriovfs_path, iface['sriov_numvfs'], sriovfs_path)
     elif interface_class == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
         sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
                         get_interface_port_name(context, iface))
@@ -973,13 +973,39 @@ def get_route_config(route, ifname):
     return config
 
 
-def get_sriov_config(context, iface):
-    vf_driver = iface['sriov_vf_driver']
-    port = get_interface_port(context, iface)
-    vf_addr_list = port['sriov_vfs_pci_address']
+def get_sriov_interface_port(context, iface):
+    """
+    Determine the underlying port of the SR-IOV interface.
+    """
+    return interface.get_sriov_interface_port(context, iface)
 
-    if not vf_addr_list:
+
+def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):
+    """
+    Determine the virtual function addresses of SR-IOV interface,
+    given the list of vf addresses on the port.
+    """
+    return interface.get_sriov_interface_vf_addrs(context, iface, vf_addr_list)
+
+
+def get_sriov_config(context, iface):
+    """
+    Returns an SR-IOV interface config dictionary.
+    """
+    vf_driver = iface['sriov_vf_driver']
+
+    port = interface.get_sriov_interface_port(context, iface)
+    if not port:
         return {}
+
+    vf_addrs = port.get('sriov_vfs_pci_address', None)
+    if not vf_addrs:
+        return {}
+
+    vf_addr_list = vf_addrs.split(',')
+    vf_addr_list = interface.get_sriov_interface_vf_addrs(
+        context, iface, vf_addr_list)
+    vf_addr_list = ",".join(vf_addr_list)
 
     if vf_driver:
         if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
@@ -1054,6 +1080,11 @@ def get_interface_network_config(context, iface, network_id=None):
     """
     Builds a network_config resource dictionary for a given interface
     """
+
+    if iface['iftype'] == constants.INTERFACE_TYPE_VF:
+        # Only the parent SR-IOV interface needs a network config
+        return {}
+
     # Create a basic network config resource
     os_ifname = get_interface_os_ifname(context, iface)
     method = get_interface_address_method(context, iface, network_id)
@@ -1109,16 +1140,18 @@ def generate_network_config(context, config, iface):
     # overridden if there is a specific network type configuration, otherwise
     # it will act as the parent device for the aliases
     net_config = get_interface_network_config(context, iface)
-    config[NETWORK_CONFIG_RESOURCE].update({
-        net_config['ifname']: format_network_config(net_config)
-    })
+    if net_config:
+        config[NETWORK_CONFIG_RESOURCE].update({
+            net_config['ifname']: format_network_config(net_config)
+        })
 
     for net_type in iface.networktypelist:
         net_id = find_network_id_by_networktype(context, net_type)
         net_config = get_interface_network_config(context, iface, net_id)
-        config[NETWORK_CONFIG_RESOURCE].update({
-            net_config['ifname']: format_network_config(net_config)
-        })
+        if net_config:
+            config[NETWORK_CONFIG_RESOURCE].update({
+                net_config['ifname']: format_network_config(net_config)
+            })
 
     # Add complementary puppet resource definitions (if needed)
     for route in get_interface_routes(context, iface):

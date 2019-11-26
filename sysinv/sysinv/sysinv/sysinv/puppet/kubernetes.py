@@ -353,7 +353,11 @@ class KubernetesPuppet(base.BasePuppet):
 
         interfaces = self._get_network_interfaces_by_class(ifclass)
         for iface in interfaces:
-            port = interface.get_interface_port(self.context, iface)
+
+            port = interface.get_sriov_interface_port(self.context, iface)
+            if not port:
+                continue
+
             datanets = interface.get_interface_datanets(self.context, iface)
             for datanet in datanets:
                 dn_name = datanet['name'].strip()

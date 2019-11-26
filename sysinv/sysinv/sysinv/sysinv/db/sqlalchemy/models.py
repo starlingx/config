@@ -422,6 +422,14 @@ class VlanInterfaces(EthernetCommon, Interfaces):
     }
 
 
+class SriovVFInterfaces(EthernetCommon, Interfaces):
+    __tablename__ = 'vf_interfaces'
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'vf',
+    }
+
+
 class VirtualInterfaces(EthernetCommon, Interfaces):
     __tablename__ = 'virtual_interfaces'
 
