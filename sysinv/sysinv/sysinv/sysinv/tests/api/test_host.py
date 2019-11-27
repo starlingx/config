@@ -757,6 +757,86 @@ class TestPatch(TestHost):
         result = self.get_json('/ihosts/%s' % w0_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
 
+    def test_unlock_action_worker_while_locking(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_AVAILABLE,
+            ihost_action=constants.LOCK_ACTION)
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(
+            w0_host, platform=1, vswitch=2, application=12)
+
+        # Unlock worker host while lock action in progress
+        response = self._patch_host_action(w0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        # Verify that the unlock was not sent to the VIM
+        self.mock_vim_api_host_action.assert_not_called()
+        # Verify that the host was not modified in maintenance
+        self.mock_mtce_api_host_modify.assert_not_called()
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertIn('Host unlock rejected due to in progress action %s' %
+                      constants.LOCK_ACTION,
+                      response.json['error_message'])
+
+        result = self.get_json('/ihosts/%s' % w0_host['hostname'])
+        self.assertEqual(constants.LOCK_ACTION, result['ihost_action'])
+
+    def test_unlock_action_worker_while_force_locking(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_AVAILABLE,
+            ihost_action=constants.FORCE_LOCK_ACTION)
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(
+            w0_host, platform=1, vswitch=2, application=12)
+
+        # Unlock worker host while lock action in progress
+        response = self._patch_host_action(w0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        # Verify that the unlock was not sent to the VIM
+        self.mock_vim_api_host_action.assert_not_called()
+        # Verify that the host was not modified in maintenance
+        self.mock_mtce_api_host_modify.assert_not_called()
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertIn('Host unlock rejected due to in progress action %s' %
+                      constants.FORCE_LOCK_ACTION,
+                      response.json['error_message'])
+
+        result = self.get_json('/ihosts/%s' % w0_host['hostname'])
+        self.assertEqual(constants.FORCE_LOCK_ACTION, result['ihost_action'])
+
     def test_lock_action_worker(self):
         # Create controller-0
         self._create_controller_0(

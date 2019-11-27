@@ -806,6 +806,11 @@ class RouteNotFoundByName(NotFound):
                 "could not be found.")
 
 
+class HostLocking(SysinvException):
+    message = _("Unable to complete the action because "
+                "host %(host)s is undergoing action %(action)s.")
+
+
 class HostLocked(SysinvException):
     message = _("Unable to complete the action %(action)s because "
                 "Host %(host)s is in administrative state = unlocked.")

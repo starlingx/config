@@ -4350,17 +4350,30 @@ class HostController(rest.RestController):
         if action == constants.UNLOCK_ACTION:
             # Set ihost_action in DB as early as possible as we need
             # it as a synchronization point for things like lvg/pv
-            # deletion which is not allowed when ihost is unlokced
+            # deletion which is not allowed when host is unlocked
             # or in the process of unlocking.
             rc = self.update_ihost_action(action, hostupdate)
             if rc:
                 pecan.request.dbapi.ihost_update(hostupdate.ihost_orig['uuid'],
                                                  hostupdate.ihost_val_prenotify)
+                host_action_orig = \
+                    hostupdate.ihost_orig.get('ihost_action', "")
                 try:
                     self.check_unlock(hostupdate, force_unlock)
+                except exception.HostLocking:
+                    msg = _("Host unlock rejected due to in progress action %s"
+                            % host_action_orig.strip('-'))
+                    self.update_ihost_action(host_action_orig, hostupdate)
+                    pecan.request.dbapi.ihost_update(
+                        hostupdate.ihost_orig['uuid'],
+                        hostupdate.ihost_val_prenotify)
+                    # raise as a Client side exception
+                    raise wsme.exc.ClientSideError(msg)
                 except Exception:
                     LOG.info("host unlock check didn't pass, "
-                             "so set the ihost_action back to None and re-raise the exception")
+                             "so set the ihost_action (%s) back to None "
+                             "and re-raise the exception" %
+                             host_action_orig)
                     self.update_ihost_action(None, hostupdate)
                     pecan.request.dbapi.ihost_update(hostupdate.ihost_orig['uuid'],
                                                      hostupdate.ihost_val_prenotify)
@@ -5006,9 +5019,16 @@ class HostController(rest.RestController):
 
         # Semantic Check: Avoid Unlock of Unlocked Host
         if hostupdate.ihost_orig['administrative'] == constants.ADMIN_UNLOCKED:
-            raise wsme.exc.ClientSideError(
-                _("Avoiding 'unlock' action on already "
-                  "'unlocked' host %s" % hostupdate.ihost_orig['hostname']))
+            host_action = hostupdate.ihost_orig['ihost_action'] or ""
+            if (host_action.startswith(constants.LOCK_ACTION) or
+                    host_action.startswith(constants.FORCE_LOCK_ACTION)):
+                raise exception.HostLocking(
+                    host=hostupdate.ihost_orig['hostname'],
+                    action=host_action.strip('-'))
+            else:
+                raise wsme.exc.ClientSideError(
+                    _("Avoiding 'unlock' action on already "
+                      "'unlocked' host %s" % hostupdate.ihost_orig['hostname']))
 
         # Semantic Check: Action Dependency: Power-Off / Unlock case
         if (hostupdate.ihost_orig['availability'] ==
