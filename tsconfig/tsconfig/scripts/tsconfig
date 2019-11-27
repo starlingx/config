@@ -20,6 +20,11 @@ PUPPET_PATH=${PLATFORM_PATH}/puppet/${SW_VERSION}
 # System configuration flags
 INITIAL_CONFIG_COMPLETE_FLAG=${PLATFORM_CONF_PATH}/.initial_config_complete
 
+# Set after the first application of controller manifests
+INITIAL_CONTROLLER_CONFIG_COMPLETE=${PLATFORM_CONF_PATH}/.initial_controller_config_complete
+# Set after each application of controller manifests
+VOLATILE_CONTROLLER_CONFIG_COMPLETE=${VOLATILE_PATH}/.controller_config_complete
+
 # Worker configuration flags
 
 # Set after the first application of worker manifests
