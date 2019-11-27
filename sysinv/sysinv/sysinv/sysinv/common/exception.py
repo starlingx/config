@@ -1394,6 +1394,10 @@ class InvalidHelmNamespace(Invalid):
 class InvalidHelmDockerImageSource(Invalid):
     message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
 
+
+class PlatformApplicationApplyFailure(SysinvException):
+    message = _("Failed to apply %(name)s application.")
+
 #
 # Kubernetes related exceptions
 #

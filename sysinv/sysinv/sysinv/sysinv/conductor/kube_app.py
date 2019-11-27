@@ -38,6 +38,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import image_versions
+from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.conductor import openstack
@@ -1359,6 +1360,8 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
+    @retry(retry_on_exception=lambda x: isinstance(x, exception.PlatformApplicationApplyFailure),
+           stop_max_attempt_number=5, wait_fixed=30 * 1000)
     def _make_armada_request_with_monitor(self, app, request, overrides_str=None):
         """Initiate armada request with monitoring
 
@@ -1460,6 +1463,13 @@ class AppOperator(object):
                 pass
 
         # Body of the outer method
+
+        # This check is for cases where an abort is issued while
+        # this function waits between retries. In such cases, it
+        # should just return False
+        if AppOperator.is_app_aborted(app.name):
+            return False
+
         mqueue = queue.Queue()
         rc = True
         logname = time.strftime(app.name + '-' + request + '_%Y-%m-%d-%H-%M-%S.log')
@@ -1480,6 +1490,15 @@ class AppOperator(object):
         _cleanup_armada_log(ARMADA_HOST_LOG_LOCATION, app.name, request)
         mqueue.put('done')
         monitor.kill()
+
+        # In case platform-integ-apps apply fails, we raise a specific exception
+        # to be caught by the retry decorator and attempt a re-apply
+        if (not rc and request == constants.APP_APPLY_OP and
+                app.name == constants.HELM_APP_PLATFORM and
+                not AppOperator.is_app_aborted(app.name)):
+            LOG.info("%s app failed applying. Retrying." % str(app.name))
+            raise exception.PlatformApplicationApplyFailure(name=app.name)
+
         return rc
 
     def _create_app_specific_resources(self, app_name):
@@ -1608,6 +1627,8 @@ class AppOperator(object):
                 else:
                     rc = False
 
+        except exception.PlatformApplicationApplyFailure:
+            rc = False
         except Exception as e:
             # ie. patch report error, cleanup application files error
             #     helm release delete failure
