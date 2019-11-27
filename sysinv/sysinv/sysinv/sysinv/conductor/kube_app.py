@@ -140,6 +140,7 @@ class AppOperator(object):
         self._helm = helm.HelmOperator(self._dbapi)
         self._kube = kubernetes.KubeOperator()
         self._utils = kube_app.KubeAppHelper(self._dbapi)
+        self._image = AppImageParser()
         self._lock = threading.Lock()
 
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
@@ -487,73 +488,6 @@ class AppOperator(object):
         finally:
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
-    def _get_image_tags_from_armada_chart(self, chart_name, chart_data):
-        """This function is to get image tags from armada chart
-
-           The following image formats are handled:
-             1. values:
-                  images:
-                    tags:
-             2. values:
-                  image:
-                    repository:
-                    tag:
-             3. values:
-                  image:
-                  imageTag:
-             4. values:
-                  controller:
-                    image:
-                      repository:
-                      tag:
-                  defaultBackend:
-                    image:
-                      repository:
-                      tag:
-                  monitoring:
-                    image:
-                      repository:
-                      tag:
-        """
-
-        try:
-            images_manifest = {}
-            if ("images" in chart_data['values'] and
-                    "tags" in chart_data['values']['images']):
-                images_manifest = chart_data['values']['images']['tags']
-
-            elif "image" in chart_data['values']:
-                images_manifest[chart_name] = []
-                if ("repository" in chart_data['values']['image'] and
-                        "tag" in chart_data['values']['image']):
-                    y_image = chart_data['values']['image']
-                    y_image_tag = \
-                        y_image['repository'] + ":" + str(y_image['tag'])
-                    images_manifest[chart_name].append(y_image_tag)
-
-                elif "imageTag" in chart_data['values']:
-                    y_image = chart_data['values']
-                    y_image_tag = \
-                        y_image['image'] + ":" + str(y_image['imageTag'])
-                    images_manifest[chart_name].append(y_image_tag)
-
-            for key in ["controller", "defaultBackend", "monitoring"]:
-                if (key in chart_data['values'] and
-                        "image" in chart_data['values'][key]):
-                    y_image = chart_data['values'][key]['image']
-                    y_image_tag = \
-                        y_image['repository'] + ":" + str(y_image['tag'])
-                    if chart_name in images_manifest:
-                        images_manifest[chart_name].append(y_image_tag)
-                    else:
-                        images_manifest = {chart_name: [y_image_tag]}
-
-        except (TypeError, KeyError, AttributeError):
-            LOG.info("Armada manifest file has no img tags for "
-                     "chart %s" % chart_name)
-            pass
-        return images_manifest
-
     def _get_image_tags_by_path(self, path):
         """ Mine the image tags from values.yaml files in the chart directory,
             intended for custom apps.
@@ -562,55 +496,35 @@ class AppOperator(object):
         """
 
         def _parse_charts():
-            ids = []
-            image_tags = []
+            app_imgs = []
             for r, f in cutils.get_files_matching(path, 'values.yaml'):
                 with open(os.path.join(r, f), 'r') as value_f:
-                    try_image_tag_repo_format = False
-                    try_image_imagetag_format = False
                     y = yaml.safe_load(value_f)
-                    try:
-                        ids = y["images"]["tags"].values()
-                    except (AttributeError, TypeError, KeyError):
-                        try_image_tag_repo_format = True
 
-                    if try_image_tag_repo_format:
-                        try:
-                            y_image = y["image"]
-                            y_image_tag = y_image['repository'] + ":" + y_image['tag']
-                            ids = [y_image_tag]
-                        except (AttributeError, TypeError, KeyError):
-                            try_image_imagetag_format = True
-                            pass
+                chart_images = self._image.find_images_in_dict(y)
+                download_imgs = self._image.generate_download_images_list(
+                    chart_images, [])
+                app_imgs.extend(download_imgs)
+            return app_imgs
 
-                    if try_image_imagetag_format:
-                        try:
-                            y_image_tag = \
-                                y_image['image'] + ":" + y_image['imageTag']
-                            ids = [y_image_tag]
-                        except (AttributeError, TypeError, KeyError):
-                            pass
+        app_imgs = _parse_charts()
 
-                image_tags.extend(ids)
-            return image_tags
-
-        image_tags = _parse_charts()
-
-        return list(set(image_tags))
+        return list(set(app_imgs))
 
     def _get_image_tags_by_charts(self, app_images_file, app_manifest_file, overrides_dir):
         """ Mine the image tags for charts from the images file. Add the
-            image tags to the manifest file if the image tags from the charts
-            do not exist in both overrides file and manifest file. Convert
-            the image tags in the manifest file. Intended for system app.
+            image tags to the manifest file if the image tags from the
+            charts do not exist in the manifest file. Convert the image
+            tags in in both override files and manifest file. Intended
+            for system app.
 
             The image tagging conversion(local docker registry address prepended):
             ${LOCAL_REGISTRY_SERVER}:${REGISTRY_PORT}/<image-name>
             (ie..registry.local:9001/docker.io/mariadb:10.2.13)
-        """
 
-        manifest_image_tags_updated = False
-        image_tags = []
+        """
+        app_imgs = []
+        manifest_update_required = False
 
         if os.path.exists(app_images_file):
             with open(app_images_file, 'r') as f:
@@ -621,72 +535,50 @@ class AppOperator(object):
                 charts = list(yaml.load_all(f, Loader=yaml.RoundTripLoader))
 
         for chart in charts:
-            images_charts = {}
-            images_overrides = {}
-            images_manifest = {}
-
-            overrides_image_tags_updated = False
-            chart_image_tags_updated = False
-
             if "armada/Chart/" in chart['schema']:
                 chart_data = chart['data']
                 chart_name = chart_data['chart_name']
                 chart_namespace = chart_data['namespace']
 
                 # Get the image tags by chart from the images file
+                helm_chart_imgs = {}
                 if chart_name in images_file:
-                    images_charts = images_file[chart_name]
+                    helm_chart_imgs = images_file[chart_name]
 
-                # Get the image tags from the overrides file
+                # Get the image tags from the chart overrides file
                 overrides = chart_namespace + '-' + chart_name + '.yaml'
                 app_overrides_file = os.path.join(overrides_dir, overrides)
+                overrides_file = {}
                 if os.path.exists(app_overrides_file):
-                    try:
-                        with open(app_overrides_file, 'r') as f:
-                            overrides_file = yaml.safe_load(f)
-                            images_overrides = overrides_file['data']['values']['images']['tags']
-                    except (TypeError, KeyError):
-                        pass
+                    with open(app_overrides_file, 'r') as f:
+                        overrides_file = yaml.safe_load(f)
+
+                override_imgs = self._image.find_images_in_dict(
+                    overrides_file.get('data', {}).get('values', {}))
+                override_imgs_copy = copy.deepcopy(override_imgs)
 
                 # Get the image tags from the armada manifest file
-                images_manifest = self._get_image_tags_from_armada_chart(chart_name, chart_data)
+                armada_chart_imgs = self._image.find_images_in_dict(
+                    chart_data.get('values', {}))
+                armada_chart_imgs_copy = copy.deepcopy(armada_chart_imgs)
+                armada_chart_imgs = self._image.merge_dict(helm_chart_imgs, armada_chart_imgs)
 
-                # For the image tags from the chart path which do not exist
-                # in the overrides and manifest file, add to manifest file.
-                # Convert the image tags in the overrides and manifest file
-                # with local docker registry address.
-                # Append the required images to the image_tags list.
-                for key in images_charts:
-                    if key not in images_overrides:
-                        if key not in images_manifest:
-                            images_manifest.update({key: images_charts[key]})
-                        # If the image is tagged as null, do not download
-                        if images_manifest[key]:
-                            if not isinstance(images_manifest[key], list):
-                                if not re.match(r'^.+:.+/', images_manifest[key]):
-                                    images_manifest.update({key:
-                                        '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
-                                                       images_manifest[key])})
-                                    chart_image_tags_updated = True
-                                image_tags.append(images_manifest[key])
-                            else:
-                                for image in images_manifest[key]:
-                                    if not image.startswith(constants.DOCKER_REGISTRY_SERVER):
-                                        image = '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER, image)
-                                    image_tags.append(image)
-                                chart_image_tags_updated = True
-                    else:
-                        if not re.match(r'^.+:.+/', images_overrides[key]):
-                            images_overrides.update(
-                                {key: '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER,
-                                                     images_overrides[key])})
-                            overrides_image_tags_updated = True
-                        image_tags.append(images_overrides[key])
+                # Update image tags with local registry prefix
+                override_imgs = self._image.update_images_with_local_registry(override_imgs)
+                armada_chart_imgs = self._image.update_images_with_local_registry(armada_chart_imgs)
 
-                if overrides_image_tags_updated:
+                # Generate a list of required images by chart
+                download_imgs = copy.deepcopy(armada_chart_imgs)
+                download_imgs = self._image.merge_dict(download_imgs, override_imgs)
+                download_imgs_list = self._image.generate_download_images_list(download_imgs, [])
+                app_imgs.extend(download_imgs_list)
+
+                # Update chart override file if needed
+                if override_imgs != override_imgs_copy:
                     with open(app_overrides_file, 'w') as f:
                         try:
-                            overrides_file["data"]["values"]["images"] = {"tags": images_overrides}
+                            overrides_file['data']['values'] = self._image.merge_dict(
+                                overrides_file['data']['values'], override_imgs)
                             yaml.safe_dump(overrides_file, f, default_flow_style=False)
                             LOG.info("Overrides file %s updated with new image tags" %
                                      app_overrides_file)
@@ -694,14 +586,14 @@ class AppOperator(object):
                             LOG.error("Overrides file %s fails to update" %
                                       app_overrides_file)
 
-                if chart_image_tags_updated:
-                    if 'values' in chart_data:
-                        chart_data['values']['images'] = {'tags': images_manifest}
-                    else:
-                        chart_data["values"] = {"images": {"tags": images_manifest}}
-                    manifest_image_tags_updated = True
+                # Update armada chart if needed
+                if armada_chart_imgs != armada_chart_imgs_copy:
+                    chart_data['values'] = self._image.merge_dict(
+                        chart_data.get('values', {}), armada_chart_imgs)
+                    manifest_update_required = True
 
-        if manifest_image_tags_updated:
+        # Update manifest file if needed
+        if manifest_update_required:
             with open(app_manifest_file, 'w') as f:
                 try:
                     yaml.dump_all(charts, f, Dumper=yaml.RoundTripDumper,
@@ -712,7 +604,7 @@ class AppOperator(object):
                     LOG.error("Manifest file %s fails to update with "
                               "new image tags: %s" % (app_manifest_file, e))
 
-        return list(set(image_tags))
+        return list(set(app_imgs))
 
     def _register_embedded_images(self, app):
         """
@@ -769,7 +661,6 @@ class AppOperator(object):
         # The list of images for each chart are saved to the images file.
         images_by_charts = {}
         for chart in app.charts:
-            images = {}
             chart_name = os.path.join(app.inst_charts_dir, chart.name)
 
             if not os.path.exists(chart_name):
@@ -791,54 +682,13 @@ class AppOperator(object):
                     pass
 
             chart_path = os.path.join(chart_name, 'values.yaml')
-
-            try_image_tag_repo_format = False
-            try_image_imagetag_format = False
-            try_image_special_key_format = False
-
             if os.path.exists(chart_path):
                 with open(chart_path, 'r') as f:
                     y = yaml.safe_load(f)
-                    try:
-                        images = y["images"]["tags"]
-                    except (TypeError, KeyError, AttributeError):
-                        LOG.info("Chart %s has no images tags" % chart_name)
-                        try_image_tag_repo_format = True
 
-                    if try_image_tag_repo_format:
-                        try:
-                            y_image = y["image"]
-                            y_image_tag = \
-                                y_image['repository'] + ":" + y_image['tag']
-                            images = {chart.name: y_image_tag}
-                        except (AttributeError, TypeError, KeyError):
-                            LOG.info("Chart %s has no image tags" % chart_name)
-                            try_image_imagetag_format = True
-                            pass
-
-                    if try_image_imagetag_format:
-                        try:
-                            y_image_tag = \
-                                y['image'] + ":" + y['imageTag']
-                            images = {chart.name: y_image_tag}
-                        except (AttributeError, TypeError, KeyError):
-                            LOG.info("Chart %s has no imageTag tags" % chart_name)
-                            try_image_special_key_format = True
-                            pass
-
-                    if try_image_special_key_format:
-                        try:
-                            for key in ["controller", "defaultBackend"]:
-                                y_image = y[key]['image']
-                                y_image_tag = \
-                                    y_image['repository'] + ":" + y_image['tag']
-                                images = {chart.name: y_image_tag}
-                        except (AttributeError, TypeError, KeyError):
-                            LOG.info("Chart %s has no special image tags" % chart_name)
-                            pass
-
-            if images:
-                images_by_charts.update({chart.name: images})
+                chart_images = self._image.find_images_in_dict(y)
+                if chart_images:
+                    images_by_charts.update({chart.name: chart_images})
 
         with open(app.sync_imgfile, 'wb') as f:
             yaml.safe_dump(images_by_charts, f, explicit_start=True,
@@ -3030,3 +2880,147 @@ class DockerHelper(object):
             LOG.info("Image %s download succeeded in %d seconds" %
                      (img_tag, elapsed_time))
         return img_tag, rc
+
+
+class AppImageParser(object):
+    """Utility class to help find images for an application"""
+
+    TAG_LIST = ['tag', 'imageTag', 'imagetag']
+
+    def _find_images_in_dict(self, var_dict):
+        """A generator to find image references in a nested dictionary.
+
+            Supported image formats in app:
+              1. images:
+                   tags: <dict>
+
+              2. image: <str>
+
+              3. image:
+                   repository: <str>
+                   tag: <str>
+
+              4. image: <str>
+                 imageTag(tag/imagetag): <str>
+
+        :param var_dict: dict
+        :return: a list of image references
+        """
+        if isinstance(var_dict, dict):
+            for k, v in six.iteritems(var_dict):
+                if k == 'images':
+                    try:
+                        yield {k: {'tags': v['tags']}}
+                    except (KeyError, TypeError):
+                        pass
+
+                elif k == 'image':
+                    try:
+                        image = {}
+                        keys = v.keys()
+                        if 'repository' in keys:
+                            image.update({'repository': v['repository']})
+                        if 'tag' in keys:
+                            image.update({'tag': v['tag']})
+                        if image:
+                            yield {k: image}
+                    except (KeyError, TypeError, AttributeError):
+                        if isinstance(v, str) or v is None:
+                            yield {k: v}
+
+                elif k in self.TAG_LIST:
+                    if isinstance(v, str) or v is None:
+                        yield {k: v}
+
+                elif isinstance(v, dict):
+                    for result in self._find_images_in_dict(v):
+                        yield {k: result}
+
+    def find_images_in_dict(self, var_dict):
+        """Find image references in a nested dictionary.
+
+        This function is used to find images from helm chart,
+        chart overrides file and armada manifest file.
+
+        :param var_dict: dict
+        :return: a dict of image references
+        """
+        images_dict = {}
+        images = list(self._find_images_in_dict(var_dict))
+        for img in images:
+            images_dict = self.merge_dict(images_dict, img)
+
+        return images_dict
+
+    def merge_dict(self, source_dict, overrides_dict):
+        """Recursively merge two nested dictionaries. The
+        'overrides_dict' is merged into 'source_dict'.
+        """
+        for k, v in six.iteritems(overrides_dict):
+            if isinstance(v, dict):
+                source_dict[k] = self.merge_dict(
+                    source_dict.get(k, {}), v)
+            else:
+                source_dict[k] = v
+        return source_dict
+
+    def update_images_with_local_registry(self, imgs_dict):
+        """Update image references with local registry prefix.
+
+        :param imgs_dict: a dict of images
+        :return: a dict of images with local registry prefix
+        """
+        if not isinstance(imgs_dict, dict):
+            raise exception.SysinvException(_(
+                "Unable to update images with local registry "
+                "prefix: %s is not a dict." % imgs_dict))
+
+        for k, v in six.iteritems(imgs_dict):
+            if v and isinstance(v, str):
+                if (not re.search(r'^.+:.+/', v) and
+                        k not in self.TAG_LIST):
+                    if not cutils.is_valid_domain_name(v[:v.find('/')]):
+                        # Explicitly specify 'docker.io' in the image
+                        v = '{}/{}'.format(
+                            constants.DEFAULT_DOCKER_DOCKER_REGISTRY, v)
+                    v = '{}/{}'.format(constants.DOCKER_REGISTRY_SERVER, v)
+                    imgs_dict[k] = v
+
+            elif isinstance(v, dict):
+                self.update_images_with_local_registry(v)
+        return imgs_dict
+
+    def generate_download_images_list(self, download_imgs_dict, download_imgs_list):
+        """Generate a list of images that is required to be downloaded.
+        """
+        if not isinstance(download_imgs_dict, dict):
+            raise exception.SysinvException(_(
+                "Unable to generate download images list: %s "
+                "is not a dict." % download_imgs_dict))
+
+        for k, v in six.iteritems(download_imgs_dict):
+            if k == 'images':
+                try:
+                    imgs = filter(None, v['tags'].values())
+                    download_imgs_list.extend(imgs)
+                except (KeyError, TypeError):
+                    pass
+
+            elif k == 'image':
+                try:
+                    img = v['repository'] + ':' + v['tag']
+                except (KeyError, TypeError):
+                    img = ''
+                    if v and isinstance(v, str):
+                        img = v
+                        for t in self.TAG_LIST:
+                            if t in download_imgs_dict and download_imgs_dict[t]:
+                                img = img + ':' + download_imgs_dict[t]
+                                break
+                if re.search(r'/.+:.+$', img):
+                    download_imgs_list.append(img)
+
+            elif isinstance(v, dict):
+                self.generate_download_images_list(v, download_imgs_list)
+
+        return list(set(download_imgs_list))

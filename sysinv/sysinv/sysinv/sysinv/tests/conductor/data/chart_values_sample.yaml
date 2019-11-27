@@ -1,0 +1,60 @@
+labels:
+  api:
+    node_selector_key: openstack-control-plane
+    node_selector_value: enabled
+  volume:
+    node_selector_key: openstack-control-plane
+    node_selector_value: enabled
+
+images:
+  tags:
+    cinder_db_sync: docker.io/openstackhelm/cinder:ocata
+    db_drop: docker.io/openstackhelm/heat:ocata
+    ks_service: docker.io/openstackhelm/heat:ocata
+    image_local_sync: null
+
+image:
+  repository: docker.elastic.co/elasticsearch/elasticsearch-oss
+  tag: 7.4.0
+
+extraInitContainers:
+  limitset:
+    image: docker.elastic.co/beats/filebeat-oss:7.4.0
+
+controller:
+  image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller
+  imageTag: 0.23.0
+
+defaultBackend:
+  image: null
+  tag: null
+
+monitoring:
+  image:
+    repository: docker.io/trustpilot/beat-exporter
+
+exporter:
+  logstash:
+    test:
+      image: docker.elastic.co/logstash/logstash-oss
+      imagetag: "7.2.0"
+
+testFramework:
+  tag: 0.4.0
+
+endpoints:
+  image:
+    name: glance
+    hosts:
+      default: glance-api
+      public: glance
+    host_fqdn_override:
+      default: null
+    path:
+      default: null
+    scheme:
+      default: http
+    port:
+      api:
+        default: 9292
+        public: 80
