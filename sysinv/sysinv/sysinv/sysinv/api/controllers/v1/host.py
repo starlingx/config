@@ -2406,32 +2406,8 @@ class HostController(rest.RestController):
                 openstack_worker = True
                 break
 
-        idict = {'operation': constants.DELETE_ACTION,
-                 'uuid': ihost.uuid,
-                 'invprovision': ihost.invprovision}
-
-        mtc_response_dict = mtce_api.host_delete(
-            self._api_token, self._mtc_address, self._mtc_port,
-            idict, constants.MTC_DELETE_TIMEOUT_IN_SECS)
-
-        LOG.info("Mtce Delete Response: %s", mtc_response_dict)
-
-        if mtc_response_dict is None:
-            mtc_response_dict = {'status': 'fail',
-                                 'reason': 'no response',
-                                 'action': 'retry'}
-
-        # Check mtce response prior to attempting delete
-        if mtc_response_dict.get('status') != 'pass':
-            self._vim_host_add(ihost)
-            if mtc_response_dict.get('reason') != 'no response':
-                raise wsme.exc.ClientSideError(_("Mtce rejected delete request."
-                                                 "Please retry and if problem persists then contact your "
-                                                 "system administrator."))
-            else:
-                raise wsme.exc.ClientSideError(_("Timeout waiting for system response. Please wait for a "
-                                                 "few moments. If the host is not deleted,please retry. If "
-                                                 "problem persists then contact your system administrator."))
+        if ihost.hostname and ihost.personality:
+            self._notify_mtce_host_delete(ihost)
 
         pecan.request.rpcapi.unconfigure_ihost(pecan.request.context,
                                                ihost)
@@ -2536,6 +2512,38 @@ class HostController(rest.RestController):
                 pecan.request.dbapi, constants.HELM_APP_OPENSTACK):
             pecan.request.rpcapi.evaluate_app_reapply(
                 pecan.request.context, constants.HELM_APP_OPENSTACK)
+
+    def _notify_mtce_host_delete(self, ihost):
+
+        mtce_request_dict = {'operation': constants.DELETE_ACTION,
+                             'uuid': ihost.uuid,
+                             'invprovision': ihost.invprovision}
+
+        mtc_response_dict = mtce_api.host_delete(
+            self._api_token, self._mtc_address, self._mtc_port,
+            mtce_request_dict, constants.MTC_DELETE_TIMEOUT_IN_SECS)
+
+        LOG.info("Mtce Delete Response: %s", mtc_response_dict)
+
+        if mtc_response_dict is None:
+            mtc_response_dict = {'status': 'fail',
+                                 'reason': 'no response',
+                                 'action': 'retry'}
+
+        # Check mtce response prior to attempting delete
+        if mtc_response_dict.get('status') != 'pass':
+            self._vim_host_add(ihost)
+            if mtc_response_dict.get('reason') != 'no response':
+                raise wsme.exc.ClientSideError(
+                    _("Mtce rejected host-delete request."
+                      "Please retry and if problem persists then contact "
+                      "your system administrator."))
+            else:
+                raise wsme.exc.ClientSideError(
+                    _("Timeout waiting for system response. Please wait "
+                      "for a few moments. If the host is not deleted, "
+                      "please retry. If problem persists then contact "
+                      "your system administrator."))
 
     def _check_upgrade_provision_order(self, personality, hostname):
         LOG.info("_check_upgrade_provision_order personality=%s, hostname=%s" %

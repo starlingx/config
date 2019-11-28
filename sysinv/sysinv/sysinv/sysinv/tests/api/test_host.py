@@ -311,6 +311,37 @@ class TestDelete(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertTrue(response.json['error_message'])
 
+    def test_delete_unprovisioned_host(self):
+        # Create controller-0
+        self._create_controller_0()
+        # Create an unprovisioned host (i.e. without hostname or personality)
+        ndict = dbutils.post_get_test_ihost(uuid=uuidutils.generate_uuid,
+                                            personality=None,
+                                            hostname=None,
+                                            mgmt_ip='192.168.204.111')
+        self.dbapi.ihost_create(ndict)
+        # Delete the worker host
+        self.delete('/ihosts/%s' % ndict['uuid'],
+                    headers={'User-Agent': 'sysinv-test'})
+
+        # Verify that the host was deleted from the VIM
+        self.mock_vim_api_host_delete.assert_called_once()
+        # Verify that the delete was not sent to maintenance
+        self.mock_mtce_api_host_delete.assert_not_called()
+        # Verify that the host was unconfigured
+        self.fake_conductor_api.unconfigure_ihost.assert_called_once()
+        # Verify that the host was deleted from barbican
+        self.fake_conductor_api.delete_barbican_secret.assert_called_once()
+        # Verify that the patch drop host was not invoked
+        self.mock_patch_api_drop_host.assert_not_called()
+
+        # Verify the host no longer exists
+        response = self.get_json('/ihosts/%s' % ndict['uuid'],
+                                 expect_errors=True)
+        self.assertEqual(response.status_int, 404)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertTrue(response.json['error_message'])
+
 
 class TestListHosts(TestHost):
 
