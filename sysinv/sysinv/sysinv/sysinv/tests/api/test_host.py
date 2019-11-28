@@ -39,6 +39,7 @@ class FakeConductorAPI(object):
         self.store_default_config = mock.MagicMock()
         self.kube_upgrade_control_plane = mock.MagicMock()
         self.kube_upgrade_kubelet = mock.MagicMock()
+        self.create_barbican_secret = mock.MagicMock()
 
     def create_ihost(self, context, values):
         # Create the host in the DB as the code under test expects this
@@ -1304,6 +1305,45 @@ class TestPatch(TestHost):
         self.assertEqual(constants.OPERATIONAL_ENABLED, ihost.operational)
         self.assertEqual(constants.AVAILABILITY_ONLINE, ihost.availability)
         self.assertEqual(constants.PROVISIONED, ihost.invprovision)
+
+    def test_update_host_bm_valid(self):
+        # Create controller-0, provisioned
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        bm_ip = '128.224.141.222'
+        bm_username = 'root'
+
+        for bm_type in constants.HOST_BM_VALID_PROVISIONED_TYPE_LIST:
+            bm_password = 'password' + bm_type
+            response = self._patch_host(c0_host['hostname'],
+                                        [{'path': '/bm_type',
+                                          'value': bm_type,
+                                          'op': 'replace'},
+                                         {'path': '/bm_ip',
+                                          'value': bm_ip,
+                                          'op': 'replace'},
+                                         {'path': '/bm_username',
+                                          'value': bm_username,
+                                          'op': 'replace'},
+                                         {'path': '/bm_password',
+                                          'value': bm_password,
+                                          'op': 'replace'}],
+                                        '')
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code, http_client.OK)
+
+            ihost = self._get_test_host_by_hostname(c0_host['hostname'])
+            self.assertEqual(bm_type, ihost.bm_type)
+            self.assertEqual(bm_ip, ihost.bm_ip)
+            self.assertEqual(bm_username, ihost.bm_username)
+
+            self.fake_conductor_api.create_barbican_secret.assert_called_with(
+                mock.ANY, ihost.uuid, bm_password)
 
     def test_unlock_action_controller(self):
         # Create controller-0

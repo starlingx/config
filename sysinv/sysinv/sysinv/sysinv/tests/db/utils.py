@@ -134,7 +134,7 @@ def get_test_ihost(**kw):
             'serialid': kw.get('serialid', 'sysinv123456'),
             'bm_ip': kw.get('bm_ip', "128.224.150.193"),
             'bm_mac': kw.get('bm_mac', "a4:5d:36:fc:a5:6c"),
-            'bm_type': kw.get('bm_type', constants.BM_TYPE_GENERIC),
+            'bm_type': kw.get('bm_type', constants.HOST_BM_TYPE_DEPROVISIONED),
             'bm_username': kw.get('bm_username', "ihostbmusername"),
             'action': kw.get('action', "none"),
             'task': kw.get('task', None),

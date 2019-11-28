@@ -228,25 +228,6 @@ def _validate_mnfa_timeout(name, value):
                     SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX)
 
 
-def _validate_bmc_access_method(name, value):
-    error = False
-    try:
-        if str(value) != SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_LEARN and \
-                str(value) != SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_IPMI and \
-                str(value) != SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_REDFISH:
-            error = True
-
-    except ValueError:
-        error = True
-
-    if error is True:
-        raise wsme.exc.ClientSideError(_(
-            "Method must be one of '%s', '%s' or '%s'" %
-            (SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_LEARN,
-             SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_IPMI,
-             SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_REDFISH)))
-
-
 def _validate_ipv4(name, value):
     """Check if router_id value is valid"""
     if not netaddr.valid_ipv4(value):
@@ -369,7 +350,6 @@ PLATFORM_MTCE_PARAMETER_MANDATORY = [
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD,
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD,
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT,
-    constants.SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD,
 ]
 
 PLATFORM_SYSINV_PARAMETER_PROTECTED = ['firewall_rules_id']
@@ -392,9 +372,6 @@ SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MIN = 2
 SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_MAX = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MIN = 100
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_MAX = 86400
-SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_LEARN = 'learn'
-SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_REDFISH = 'redfish'
-SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD_IPMI = 'ipmi'
 
 
 PLATFORM_MTCE_PARAMETER_VALIDATOR = {
@@ -414,8 +391,6 @@ PLATFORM_MTCE_PARAMETER_VALIDATOR = {
         _validate_mnfa_threshold,
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT:
         _validate_mnfa_timeout,
-    constants.SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD:
-        _validate_bmc_access_method,
 }
 
 PLATFORM_MTCE_PARAMETER_RESOURCE = {
@@ -427,7 +402,6 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD: 'platform::mtce::params::heartbeat_degrade_threshold',
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD: 'platform::mtce::params::mnfa_threshold',
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT: 'platform::mtce::params::mnfa_timeout',
-    constants.SERVICE_PARAM_PLAT_MTCE_BMC_ACCESS_METHOD: 'platform::mtce::params::bmc_access_method',
 }
 
 RADOSGW_CONFIG_PARAMETER_MANDATORY = [
