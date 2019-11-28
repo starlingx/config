@@ -1392,14 +1392,24 @@ class HostController(rest.RestController):
                 delta.add(key)
                 ihost_orig[key] = defaults[key]
 
-        bm_list = ['bm_type', 'bm_ip',
-                   'bm_username', 'bm_password']
+        bm_list = ['bm_ip', 'bm_username', 'bm_password']
         for bmi in bm_list:
             if bmi in ihost_dict:
                 delta.add(bmi)
                 changed_paths.append({'path': '/' + str(bmi),
                                       'value': ihost_dict[bmi],
                                       'op': 'replace'})
+        if ihost_dict.get('bm_ip') and ihost_dict.get('bm_username'):
+            implict_bm_type = constants.HOST_BM_TYPE_DEFAULT
+        else:
+            implict_bm_type = constants.HOST_BM_TYPE_DEPROVISIONED
+
+        if ihost_dict.get('bm_type') is None:
+            ihost_dict['bm_type'] = implict_bm_type
+            delta.add('bm_type')
+            changed_paths.append({'path': '/bm_type',
+                                  'value': ihost_dict['bm_type'],
+                                  'op': 'replace'})
 
         self._bm_semantic_check_and_update(ihost_orig, ihost_dict,
                                            delta, changed_paths,
@@ -3804,15 +3814,24 @@ class HostController(rest.RestController):
 
         password_exists = password_exists and patch_bm_password is not None
 
-        bm_type_orig = ohost.get('bm_type') or ""
-        bm_type_patch = phost.get('bm_type') or ""
-        if bm_type_patch.lower() == 'none':
-            bm_type_patch = ''
-        if (not bm_type_patch) and (bm_type_orig != bm_type_patch):
-            LOG.info("bm_type None from %s to %s." %
-                     (ohost['bm_type'], phost['bm_type']))
+        bm_type_patch = phost.get('bm_type')
+        # Semantic Check: Validate BM type against supported list
+        if bm_type_patch not in constants.HOST_BM_VALID_TYPE_LIST:
+            raise wsme.exc.ClientSideError(
+                _("%s: Rejected: '%s' is not a supported board management "
+                  "type. Must be one of %s" %
+                  (phost['hostname'],
+                   phost['bm_type'],
+                   constants.HOST_BM_VALID_TYPE_LIST)))
 
-            bm_type_changed_to_none = True
+        bm_type_orig = ohost.get('bm_type')
+        if bm_type_orig != bm_type_patch:
+            if bm_type_patch == constants.HOST_BM_TYPE_DEPROVISIONED:
+                LOG.info("BM is to be deprovisioned")
+                bm_type_changed_to_none = True
+            else:
+                LOG.info("BM type %s is changed to %s" %
+                         (bm_type_orig, bm_type_patch))
 
         if 'bm_ip' in delta:
             obm_ip = ohost['bm_ip'] or ""
@@ -3827,49 +3846,18 @@ class HostController(rest.RestController):
                           "controller IP Address is not user-modifiable." %
                           (constants.REGION_PRIMARY, phost['hostname'])))
 
-        if (phost['bm_ip'] or phost['bm_type'] or phost['bm_username']):
-            if (not phost['bm_type'] or
-              (phost['bm_type'] and phost['bm_type'].lower() ==
-               constants.BM_TYPE_NONE)) and not bm_type_changed_to_none:
-                raise wsme.exc.ClientSideError(
-                    _("%s: Rejected: Board Management controller Type "
-                      "is not provisioned.  Provisionable values: 'bmc'."
-                      % phost['hostname']))
+        if phost['bm_ip'] or phost['bm_type'] or phost['bm_username']:
+            if bm_type_patch == constants.HOST_BM_TYPE_DEPROVISIONED:
+                if not bm_type_changed_to_none:
+                    raise wsme.exc.ClientSideError(
+                        _("%s: Rejected: Board Management controller Type "
+                          "is not provisioned.  Provisionable values: '%s'." %
+                          (phost['hostname'],
+                           constants.HOST_BM_VALID_PROVISIONED_TYPE_LIST)))
             elif not phost['bm_username']:
                 raise wsme.exc.ClientSideError(
                     _("%s: Rejected: Board Management controller username "
                       "is not configured." % phost['hostname']))
-
-        # Semantic Check: Validate BM type against supported list
-        # ilo, quanta is kept for backwards compatability only
-        valid_bm_type_list = [None, 'None', constants.BM_TYPE_NONE,
-                              constants.BM_TYPE_GENERIC,
-                              'ilo', 'ilo3', 'ilo4', 'quanta']
-
-        if not phost['bm_type']:
-            phost['bm_type'] = None
-
-        if not (phost['bm_type'] in valid_bm_type_list):
-            raise wsme.exc.ClientSideError(
-                _("%s: Rejected: '%s' is not a supported board management "
-                  "type. Must be one of %s" %
-                  (phost['hostname'],
-                   phost['bm_type'],
-                   valid_bm_type_list)))
-
-        bm_type_str = phost['bm_type']
-        if (phost['bm_type'] and
-           bm_type_str.lower() != constants.BM_TYPE_NONE):
-            LOG.info("Updating bm_type from %s to %s" %
-                     (phost['bm_type'], constants.BM_TYPE_GENERIC))
-            phost['bm_type'] = constants.BM_TYPE_GENERIC
-            if hostupdate:
-                hostupdate.ihost_val_update(
-                    {'bm_type': constants.BM_TYPE_GENERIC})
-        else:
-            phost['bm_type'] = None
-            if hostupdate:
-                hostupdate.ihost_val_update({'bm_type': None})
 
         if (phost['bm_type'] and phost['bm_ip'] and
                 (ohost['bm_ip'] != phost['bm_ip'])):
