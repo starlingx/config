@@ -22,7 +22,7 @@ class KubeUpgrade(base.SysinvObject):
         'uuid': utils.str_or_none,
 
         'from_version': utils.str_or_none,
-        'to_version': utils.int_or_none,
+        'to_version': utils.str_or_none,
         'state': utils.str_or_none,
         'reserved_1': utils.str_or_none,
         'reserved_2': utils.str_or_none,
@@ -33,6 +33,10 @@ class KubeUpgrade(base.SysinvObject):
     @base.remotable_classmethod
     def get_by_uuid(cls, context, uuid):
         return cls.dbapi.kube_upgrade_get(uuid)
+
+    @base.remotable_classmethod
+    def get_one(cls, context):
+        return cls.dbapi.kube_upgrade_get_one()
 
     def save_changes(self, context, updates):
         self.dbapi.kube_upgrade_update(self.uuid,  # pylint: disable=no-member

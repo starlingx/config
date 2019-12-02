@@ -53,6 +53,8 @@ from cgtsclient.v1 import istor
 from cgtsclient.v1 import isystem
 from cgtsclient.v1 import itrapdest
 from cgtsclient.v1 import iuser
+from cgtsclient.v1 import kube_host_upgrade
+from cgtsclient.v1 import kube_upgrade
 from cgtsclient.v1 import kube_version
 from cgtsclient.v1 import label
 from cgtsclient.v1 import license
@@ -161,3 +163,5 @@ class Client(http.HTTPClient):
         self.app = app.AppManager(self)
         self.host_fs = host_fs.HostFsManager(self)
         self.kube_version = kube_version.KubeVersionManager(self)
+        self.kube_upgrade = kube_upgrade.KubeUpgradeManager(self)
+        self.kube_host_upgrade = kube_host_upgrade.KubeHostUpgradeManager(self)

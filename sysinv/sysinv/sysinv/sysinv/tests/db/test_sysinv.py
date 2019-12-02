@@ -389,3 +389,26 @@ class DbNodeTestCase(base.DbTestCase):
 
         upd = self.dbapi.storage_ceph_update(res['id'], values)
         self.assertEqual(values['services'], upd['services'])
+
+    def test_kube_upgrades(self):
+        # Test kube_upgrade and kube_host_upgrade table creation
+        upgrade = utils.create_test_kube_upgrade()
+        host_upgrade = utils.create_test_kube_host_upgrade()
+
+        # Test updating state in kube_upgrade table
+        old_state = upgrade['state']
+        new_state = 'upgrading'
+        self.assertNotEqual(old_state, new_state)
+
+        res = self.dbapi.kube_upgrade_update(
+            upgrade['id'], {'state': new_state})
+        self.assertEqual(new_state, res['state'])
+
+        # Test updating status in kube_host_upgrade table
+        old_status = host_upgrade['status']
+        new_status = new_state
+        self.assertNotEqual(old_status, new_status)
+
+        res = self.dbapi.kube_host_upgrade_update(
+            host_upgrade['uuid'], {'status': new_status})
+        self.assertEqual(new_status, res['status'])

@@ -91,10 +91,10 @@ fixtures = {
 }
 
 
-class ihostManagerTest(testtools.TestCase):
+class HostManagerTest(testtools.TestCase):
 
     def setUp(self):
-        super(ihostManagerTest, self).setUp()
+        super(HostManagerTest, self).setUp()
         self.api = utils.FakeAPI(fixtures)
         self.mgr = cgtsclient.v1.ihost.ihostManager(self.api)
 

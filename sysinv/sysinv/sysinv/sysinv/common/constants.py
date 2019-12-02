@@ -1507,9 +1507,11 @@ ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
 UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
 INVENTORY_WAIT_TIMEOUT_IN_SECS = 90
 
-# Ansible kubernetes networking playbook
+# Ansible playbooks
 ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-networking.yml'
+ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK = \
+    '/usr/share/ansible/stx-ansible/playbooks/push_k8s_images.yml'
 
 # Clock synchronization types
 NTP = 'ntp'

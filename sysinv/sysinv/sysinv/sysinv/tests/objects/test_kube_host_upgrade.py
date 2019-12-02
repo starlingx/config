@@ -53,18 +53,18 @@ class TestKubeHostUpgradesObject(base.DbTestCase):
         self.mox.StubOutWithMock(self.dbapi, 'kube_host_upgrade_get')
 
         first_obj = objects.kube_host_upgrade.from_db_object(self._get_db_data(
-            dict(self.fake_upgrade_data, target_version=1)))
+            dict(self.fake_upgrade_data, target_version='v1.42.1')))
         second_obj = objects.kube_host_upgrade.from_db_object(self._get_db_data(
-            dict(self.fake_upgrade_data, target_version=2)))
+            dict(self.fake_upgrade_data, target_version='v1.42.2')))
 
         self.dbapi.kube_host_upgrade_get(uuid).AndReturn(first_obj)
         self.dbapi.kube_host_upgrade_get(uuid).AndReturn(second_obj)
         self.mox.ReplayAll()
 
         n = objects.kube_host_upgrade.get_by_uuid(self.admin_context, uuid)
-        self.assertEqual(n.target_version, 1)
+        self.assertEqual(n.target_version, 'v1.42.1')
         n.refresh()
-        self.assertEqual(n.target_version, 2)
+        self.assertEqual(n.target_version, 'v1.42.2')
         self.mox.VerifyAll()
 
     def test_objectify(self):

@@ -89,6 +89,7 @@ from sysinv.api.controllers.v1 import patch_api
 from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.openstack.common import uuidutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
@@ -1079,7 +1080,9 @@ class HostController(rest.RestController):
         'upgrade': ['POST'],
         'downgrade': ['POST'],
         'install_progress': ['POST'],
-        'wipe_osds': ['GET']
+        'wipe_osds': ['GET'],
+        'kube_upgrade_control_plane': ['POST'],
+        'kube_upgrade_kubelet': ['POST'],
     }
 
     def __init__(self, from_isystem=False):
@@ -1087,6 +1090,7 @@ class HostController(rest.RestController):
         self._mtc_address = constants.LOCALHOST_HOSTNAME
         self._mtc_port = 2112
         self._ceph = ceph.CephApiOperator()
+        self._kube_operator = kubernetes.KubeOperator()
 
         self._api_token = None
         # self._name = 'api-host'
@@ -6452,6 +6456,186 @@ class HostController(rest.RestController):
         val = {'ihost_action': constants.FORCE_LOCK_ACTION}
         hostupdate.ihost_val_prenotify_update(val)
         hostupdate.ihost_val.update(val)
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(Host, six.text_type)
+    def kube_upgrade_control_plane(self, uuid):
+        """Upgrade the kubernetes control plane on this host"""
+
+        host_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
+
+        # The kubernetes upgrade must have been started
+        try:
+            kube_upgrade_obj = objects.kube_upgrade.get_one(
+                pecan.request.context)
+        except exception.NotFound:
+            raise wsme.exc.ClientSideError(_(
+                "A kubernetes upgrade is not in progress."))
+
+        # Either controller can be upgraded
+        if host_obj.personality != constants.CONTROLLER:
+            raise wsme.exc.ClientSideError(_(
+                "This host does not have a kubernetes control plane."))
+
+        # Verify the upgrade is in the correct state
+        if kube_upgrade_obj.state not in [kubernetes.KUBE_UPGRADE_STARTED,
+                                          kubernetes.KUBE_UPGRADED_NETWORKING]:
+            raise wsme.exc.ClientSideError(_(
+                "The kubernetes upgrade must be in the %s or %s state to "
+                "upgrade the control plane." % (
+                    kubernetes.KUBE_UPGRADE_STARTED,
+                    kubernetes.KUBE_UPGRADED_NETWORKING)))
+
+        # Check the existing control plane version
+        cp_versions = self._kube_operator.kube_get_control_plane_versions()
+        current_cp_version = cp_versions.get(host_obj.hostname)
+        if current_cp_version == kube_upgrade_obj.to_version:
+            raise wsme.exc.ClientSideError(_(
+                "The kubernetes control plane on this host was already "
+                "upgraded."))
+        elif current_cp_version is None:
+            raise wsme.exc.ClientSideError(_(
+                "Unable to determine the version of the kubernetes control "
+                "plane on this host."))
+
+        # The host must be unlocked/available to upgrade the control plane
+        if (host_obj.administrative != constants.ADMIN_UNLOCKED or
+                host_obj.operational != constants.OPERATIONAL_ENABLED):
+            raise wsme.exc.ClientSideError(_(
+                "The host must be unlocked and available to upgrade the "
+                "control plane."))
+
+        # Update the target version for this host
+        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+            pecan.request.context, host_obj.id)
+        kube_host_upgrade_obj.target_version = kube_upgrade_obj.to_version
+        kube_host_upgrade_obj.save()
+
+        if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_STARTED:
+            # Tell the conductor to upgrade the control plane
+            pecan.request.rpcapi.kube_upgrade_control_plane(
+                pecan.request.context, host_obj.uuid)
+
+            # Update the upgrade state
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
+            kube_upgrade_obj.save()
+        else:
+            # Tell the conductor to upgrade the control plane
+            pecan.request.rpcapi.kube_upgrade_control_plane(
+                pecan.request.context, host_obj.uuid)
+
+            # Update the upgrade state
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_SECOND_MASTER
+            kube_upgrade_obj.save()
+
+        LOG.info("Upgrading kubernetes control plane on host %s" %
+                 host_obj.hostname)
+        return Host.convert_with_links(host_obj)
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(Host, six.text_type)
+    def kube_upgrade_kubelet(self, uuid):
+        """Upgrade the kubernetes kubelet on this host"""
+
+        host_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
+
+        # The kubernetes upgrade must have been started
+        try:
+            kube_upgrade_obj = objects.kube_upgrade.get_one(
+                pecan.request.context)
+        except exception.NotFound:
+            raise wsme.exc.ClientSideError(_(
+                "A kubernetes upgrade is not in progress."))
+
+        # Verify the host has a kubelet
+        if host_obj.personality not in [constants.CONTROLLER,
+                                        constants.WORKER]:
+            raise wsme.exc.ClientSideError(_(
+                "This host does not have a kubelet."))
+
+        # Verify the upgrade is in the correct state
+        if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            if kube_upgrade_obj.state != kubernetes.KUBE_UPGRADED_NETWORKING:
+                raise wsme.exc.ClientSideError(_(
+                    "The kubernetes upgrade must be in the %s state to "
+                    "upgrade the kubelet." %
+                    kubernetes.KUBE_UPGRADED_NETWORKING))
+        elif kube_upgrade_obj.state not in [
+                kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+                kubernetes.KUBE_UPGRADING_KUBELETS]:
+            raise wsme.exc.ClientSideError(_(
+                "The kubernetes upgrade must be in the %s or %s state to "
+                "upgrade the kubelet." % (
+                    kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+                    kubernetes.KUBE_UPGRADING_KUBELETS)))
+
+        # The necessary patches must be applied
+        api_token = None
+        system = pecan.request.dbapi.isystem_get_one()
+        target_version_obj = objects.kube_version.get_by_version(
+            kube_upgrade_obj.to_version)
+        if target_version_obj.available_patches:
+            patches_applied = patch_api.patch_is_applied(
+                token=api_token,
+                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
+                region_name=system.region_name,
+                patches=target_version_obj.available_patches
+            )
+            if not patches_applied:
+                raise wsme.exc.ClientSideError(_(
+                    "The following patches must be applied before upgrading "
+                    "the kubelets: %s" % target_version_obj.available_patches))
+
+        # Enforce the ordering of controllers first
+        kubelet_versions = self._kube_operator.kube_get_kubelet_versions()
+        if host_obj.personality == constants.WORKER:
+            if kubelet_versions.get(constants.CONTROLLER_0_HOSTNAME) != \
+                    kube_upgrade_obj.to_version or \
+                    kubelet_versions.get(constants.CONTROLLER_1_HOSTNAME) != \
+                    kube_upgrade_obj.to_version:
+                raise wsme.exc.ClientSideError(_(
+                    "The kubelets on all controller hosts must be upgraded "
+                    "before upgrading kubelets on worker hosts."))
+
+        # Check the existing kubelet version
+        current_kubelet_version = kubelet_versions.get(host_obj.hostname)
+        if current_kubelet_version == kube_upgrade_obj.to_version:
+            raise wsme.exc.ClientSideError(_(
+                "The kubelet on this host was already upgraded."))
+        elif current_kubelet_version is None:
+            raise wsme.exc.ClientSideError(_(
+                "Unable to determine the version of the kubelet on this host."))
+
+        # Verify the host is in the correct state
+        if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            if (host_obj.administrative != constants.ADMIN_UNLOCKED or
+                    host_obj.availability != constants.AVAILABILITY_AVAILABLE):
+                raise wsme.exc.ClientSideError(_(
+                    "The host must be unlocked and available to upgrade the "
+                    "kubelet."))
+        elif (host_obj.administrative != constants.ADMIN_LOCKED or
+                host_obj.availability != constants.AVAILABILITY_ONLINE):
+            raise wsme.exc.ClientSideError(_(
+                "The host must be locked and online to upgrade the kubelet."))
+
+        # Set the target version if this is a worker host
+        if host_obj.personality == constants.WORKER:
+            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                pecan.request.context, host_obj.id)
+            kube_host_upgrade_obj.target_version = kube_upgrade_obj.to_version
+            kube_host_upgrade_obj.save()
+
+        # Tell the conductor to upgrade the kubelet
+        pecan.request.rpcapi.kube_upgrade_kubelet(pecan.request.context,
+                                                  host_obj.uuid)
+
+        # Update the upgrade state
+        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_KUBELETS
+        kube_upgrade_obj.save()
+
+        LOG.info("Upgrading kubernetes kubelet on host %s" %
+                 host_obj.hostname)
+        return Host.convert_with_links(host_obj)
 
 
 def _create_node(host, xml_node, personality, is_dynamic_ip):

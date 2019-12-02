@@ -39,6 +39,8 @@ from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
 from sysinv.api.controllers.v1 import kube_app
+from sysinv.api.controllers.v1 import kube_host_upgrade
+from sysinv.api.controllers.v1 import kube_upgrade
 from sysinv.api.controllers.v1 import kube_version
 from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import interface
@@ -252,6 +254,12 @@ class V1(base.APIBase):
 
     kube_versions = [link.Link]
     "Links to the kube_version resource"
+
+    kube_upgrade = [link.Link]
+    "Links to the kube_upgrade resource"
+
+    kube_host_upgrades = [link.Link]
+    "Links to the kube_host_upgrade resource"
 
     @classmethod
     def convert(self):
@@ -786,6 +794,21 @@ class V1(base.APIBase):
                                                 'kube_versions', '',
                                                 bookmark=True)]
 
+        v1.kube_upgrade = [link.Link.make_link('self', pecan.request.host_url,
+                                               'kube_upgrade', ''),
+                           link.Link.make_link('bookmark',
+                                               pecan.request.host_url,
+                                               'kube_upgrade', '',
+                                               bookmark=True)]
+
+        v1.kube_host_upgrades = [link.Link.make_link('self',
+                                                     pecan.request.host_url,
+                                                     'kube_host_upgrades', ''),
+                                 link.Link.make_link('bookmark',
+                                                     pecan.request.host_url,
+                                                     'kube_host_upgrades', '',
+                                                     bookmark=True)]
+
         return v1
 
 
@@ -855,6 +878,8 @@ class Controller(rest.RestController):
     interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController()
     host_fs = host_fs.HostFsController()
     kube_versions = kube_version.KubeVersionController()
+    kube_upgrade = kube_upgrade.KubeUpgradeController()
+    kube_host_upgrades = kube_host_upgrade.KubeHostUpgradeController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):
