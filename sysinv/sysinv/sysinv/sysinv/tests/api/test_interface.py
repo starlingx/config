@@ -471,13 +471,27 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
 
-    def _post_and_check(self, ndict, expect_errors=False):
+    def _post_and_check(self, ndict, expect_errors=False, error_message=None):
         response = self.post_json('%s' % self._get_path(), ndict,
                                   expect_errors)
         if expect_errors:
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
+            if error_message:
+                self.assertIn(error_message, response.json['error_message'])
+        else:
+            self.assertEqual(http_client.OK, response.status_int)
+        return response
+
+    def _patch_and_check(self, data, path, expect_errors=False, error_message=None):
+        response = self.patch_dict('%s' % path, expect_errors=expect_errors, data=data)
+        if expect_errors:
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
+            if error_message:
+                self.assertIn(error_message, response.json['error_message'])
         else:
             self.assertEqual(http_client.OK, response.status_int)
         return response
@@ -1053,6 +1067,118 @@ class InterfaceAIOVlanOverDataEthernet(InterfaceTestCase):
 
     def setUp(self):
         super(InterfaceAIOVlanOverDataEthernet, self).setUp()
+
+
+# Test PTP configs
+class InterfacePTP(InterfaceTestCase):
+
+    def _setup_configuration(self):
+        # Setup a sample configuration with one controller and one worker
+        self._create_host(constants.CONTROLLER)
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
+        self._create_datanetworks()
+
+    def setUp(self):
+        super(InterfacePTP, self).setUp()
+
+    def test_modify_ptp_interface_valid(self):
+        port0, if0 = self._create_ethernet('if0', host=self.worker)
+        sriovif = dbutils.create_test_interface(forihostid=self.worker.id, datanetworks='group0-data0')
+        dbutils.create_test_ethernet_port(
+            id=1, name='if1', host_id=self.worker.id, interface_id=sriovif.id, pciaddr='0000:00:00.11', dev_id=0,
+            sriov_totalvfs=1, sriov_numvfs=1, driver='i40e', sriov_vf_driver='i40evf'
+        )
+        if0_uuid = if0['uuid']
+        sriov_uuid = sriovif['uuid']
+
+        # Platform interface and master
+        data = {
+            'ifname': 'ptpif',
+            'ptp_role': constants.INTERFACE_PTP_ROLE_MASTER,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM
+        }
+        self._patch_and_check(data, self._get_path(if0_uuid))
+
+        # Slave role
+        data['ptp_role'] = constants.INTERFACE_PTP_ROLE_SLAVE
+        self._patch_and_check(data, self._get_path(if0_uuid))
+
+        # SRIOV and master
+        sriov_data = {
+            'ifname': 'sriovptp',
+            'sriov_numvfs': 1,
+            'ifclass': constants.INTERFACE_CLASS_PCI_SRIOV,
+            'ptp_role': constants.INTERFACE_PTP_ROLE_MASTER
+        }
+        self._patch_and_check(sriov_data, self._get_path(sriov_uuid))
+
+        # Back to none
+        self._patch_and_check({'ptp_role': constants.INTERFACE_PTP_ROLE_NONE}, self._get_path(sriov_uuid))
+
+    def test_modify_ptp_interface_invalid(self):
+        port0, if0 = self._create_ethernet('if0', ifclass=constants.INTERFACE_CLASS_PLATFORM, host=self.worker)
+        port1, if1 = self._create_ethernet('if1', host=self.worker)
+
+        if0_uuid = if0['uuid']
+        if1_uuid = if1['uuid']
+        # Invalid PTP role
+        data = {
+            'ifname': 'ptpif',
+            'ptp_role': 'invalid'
+        }
+        self._patch_and_check(data, self._get_path(if0_uuid), expect_errors=True,
+                              error_message="Interface ptp_role must be one of")
+
+        # Valid role, incorrect class
+        data['ptp_role'] = constants.INTERFACE_PTP_ROLE_MASTER
+        self._patch_and_check(data, self._get_path(if1_uuid), expect_errors=True,
+                              error_message="Invalid interface class for ptp_role")
+
+    def test_add_ptp_interface_valid(self):
+        self._create_ethernet('if0', host=self.worker)
+        self._create_ethernet('if1', host=self.worker)
+        self._create_ethernet('if2', host=self.worker)
+
+        # Add master vlan
+        vlan_data = {
+            'ihost_uuid': self.worker.uuid,
+            'ifname': 'vlanptp',
+            'iftype': constants.INTERFACE_TYPE_VLAN,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'vlan_id': 100,
+            'uses': ['if0'],
+            'ptp_role': constants.INTERFACE_PTP_ROLE_MASTER
+        }
+        self._post_and_check(vlan_data)
+
+        # Add slave ae
+        ae_data = {
+            'ihost_uuid': self.worker.uuid,
+            'ifname': 'aeptp',
+            'iftype': constants.INTERFACE_TYPE_AE,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'uses': ['if1', 'if2'],
+            'ptp_role': constants.INTERFACE_PTP_ROLE_SLAVE
+        }
+        self._post_and_check(ae_data)
+
+    def test_add_ptp_interface_invalid(self):
+        self._create_ethernet('if0', host=self.worker)
+
+        # Add vlan with invalid ptp_role data
+        vlan_data = {
+            'ihost_uuid': self.worker.uuid,
+            'ifname': 'vlanptp',
+            'iftype': constants.INTERFACE_TYPE_VLAN,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'vlan_id': 100,
+            'uses': ['if0'],
+            'ptp_role': 'invalid'
+        }
+        error_message = "Interface ptp_role must be one of"
+        self._post_and_check(vlan_data, expect_errors=True, error_message=error_message)
+        vlan_data['ptp_role'] = ''
+        self._post_and_check(vlan_data, expect_errors=True, error_message=error_message)
 
 
 class TestList(InterfaceTestCase):

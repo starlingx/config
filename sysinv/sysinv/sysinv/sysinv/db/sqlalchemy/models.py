@@ -347,6 +347,7 @@ class Interfaces(Base):
     farend = Column(JSONEncodedDict)
     sriov_numvfs = Column(Integer)
     sriov_vf_driver = Column(String(255))
+    ptp_role = Column(String(255), default='none')
 
     used_by = relationship(
         "Interfaces",

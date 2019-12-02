@@ -16,7 +16,7 @@ from cgtsclient.v1 import iinterface as iinterface_utils
 
 def _print_iinterface_show(cc, iinterface):
     fields = ['ifname', 'iftype', 'ports',
-              'imac', 'imtu', 'ifclass',
+              'imac', 'imtu', 'ifclass', 'ptp_role',
               'aemode', 'schedpolicy', 'txhashpolicy',
               'uuid', 'ihost_uuid',
               'vlan_id', 'uses', 'used_by',
@@ -164,11 +164,16 @@ def do_host_if_delete(cc, args):
            metavar='<sriov vf driver>',
            choices=['netdevice', 'vfio'],
            help='The SR-IOV VF driver for this device')
+@utils.arg('--ptp-role',
+           dest='ptp_role',
+           metavar='<ptp role>',
+           choices=['master', 'slave', 'none'],
+           help='The PTP role for this interface')
 def do_host_if_add(cc, args):
     """Add an interface."""
 
     field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
-                  'txhashpolicy', 'vlan_id',
+                  'txhashpolicy', 'vlan_id', 'ptp_role',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                   'sriov_numvfs', 'sriov_vf_driver']
 
@@ -254,11 +259,16 @@ def do_host_if_add(cc, args):
            metavar='<sriov vf driver>',
            choices=['netdevice', 'vfio'],
            help='The SR-IOV VF driver for this device')
+@utils.arg('--ptp-role',
+           dest='ptp_role',
+           metavar='<ptp role>',
+           choices=['master', 'slave', 'none'],
+           help='The PTP role for this interface')
 def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
-                'ports', 'ifclass',
+                'ports', 'ifclass', 'ptp_role',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                 'sriov_numvfs', 'sriov_vf_driver']
 

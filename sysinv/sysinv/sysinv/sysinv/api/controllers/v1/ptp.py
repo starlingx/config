@@ -20,6 +20,7 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
@@ -210,6 +211,8 @@ class PTPController(rest.RestController):
                     rpc_ptp[field] = ptp[field]
 
             delta = rpc_ptp.obj_what_changed()
+            if 'transport' in delta and rpc_ptp.transport == constants.PTP_TRANSPORT_UDP:
+                self._validate_ptp_udp_transport()
             if delta:
                 rpc_ptp.save()
                 # perform rpc to conductor to perform config apply
@@ -223,6 +226,32 @@ class PTPController(rest.RestController):
             msg = _("PTP update failed: %s %s %s : patch %s" %
                     (ptp['mode'], ptp['transport'], ptp['mechanism'], patch))
             raise wsme.exc.ClientSideError(msg)
+
+    def _validate_ptp_udp_transport(self):
+        # Ensure all hosts using ptp have addresses associated with their ptp interfaces
+        hosts = pecan.request.dbapi.ihost_get_list()
+        ptp_hosts = []
+        for host in hosts:
+            if host.clock_synchronization == constants.PTP and host.administrative == constants.ADMIN_UNLOCKED:
+                ptp_hosts.append(host)
+
+        for ptp_host in ptp_hosts:
+            host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(ptp_host.uuid)
+            ptp_interfaces = []
+            for interface in host_interfaces:
+                if interface.ptp_role != constants.INTERFACE_PTP_ROLE_NONE:
+                    ptp_interfaces.append(interface)
+
+            addresses = pecan.request.dbapi.addresses_get_by_host(ptp_host.uuid)
+            address_interfaces = set()
+            for address in addresses:
+                address_interfaces.add(address.ifname)
+            for ptp_interface in ptp_interfaces:
+                if ptp_interface.ifname not in address_interfaces:
+                    raise wsme.exc.ClientSideError(_("Invalid system configuration for UDP based PTP transport. All "
+                                                     "hosts must have addresses specified for each PTP interface. "
+                                                     "Interface %s on host %s does not have an address." %
+                                                     (ptp_interface.ifname, ptp_host.hostname)))
 
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, ptp_uuid):

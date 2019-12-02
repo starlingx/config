@@ -1230,6 +1230,17 @@ def find_sriov_interfaces_by_driver(context, driver):
     return ifaces
 
 
+def get_ptp_interfaces(context):
+    """
+    Lookup interfaces with a ptp_role specified
+    """
+    ifaces = []
+    for ifname, iface in six.iteritems(context['interfaces']):
+        if iface['ptp_role'] != constants.INTERFACE_PTP_ROLE_NONE:
+            ifaces.append(iface)
+    return ifaces
+
+
 def interface_sort_key(iface):
     """
     Sort interfaces by interface type placing ethernet interfaces ahead of

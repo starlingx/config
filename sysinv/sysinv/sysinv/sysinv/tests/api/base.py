@@ -120,6 +120,13 @@ class FunctionalTest(base.TestCase):
         return self.post_json(path, expect_errors=expect_errors,
                               headers=headers, **newargs)
 
+    def patch_dict(self, path, data, expect_errors=False):
+        params = []
+        for key, value in data.items():
+            pathkey = '/' + key
+            params.append({'op': 'replace', 'path': pathkey, 'value': value})
+        return self.post_json(path, expect_errors=expect_errors, params=params, method='patch')
+
     def delete(self, path, expect_errors=False, headers=None,
                extra_environ=None, status=None, path_prefix=PATH_PREFIX):
         full_path = path_prefix + path
