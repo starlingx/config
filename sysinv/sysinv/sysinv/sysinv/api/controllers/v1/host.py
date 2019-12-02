@@ -5174,6 +5174,20 @@ class HostController(rest.RestController):
 
         # personality specific lock checks
         personality = hostupdate.ihost_patch.get('personality')
+
+        # Semantic Check: Avoid Lock of Host with recovering OSDs
+        # First ignore: workers, simplex, hosts without OSDs configured
+        if personality != constants.WORKER and \
+                not cutils.is_aio_simplex_system(pecan.request.dbapi) and \
+                pecan.request.dbapi.istor_get_by_ihost(hostupdate.ihost_orig['uuid']) and \
+                self._ceph.check_recovery_in_progress(hostupdate.ihost_orig['hostname']):
+            raise wsme.exc.ClientSideError(
+                _("PGs in recovery state, rejecting %s action on %s as OSDs "
+                  "of this host are getting up to date data from its peer "
+                  "host. Retry once recovery completes." % (
+                      hostupdate.ihost_patch['action'],
+                      hostupdate.ihost_orig['hostname'])))
+
         if personality == constants.CONTROLLER:
             self.check_lock_controller(hostupdate)
 
