@@ -46,6 +46,8 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
         return {
             'keystone::db::postgresql::user': dbuser,
+            'keystone::cache_enabled': True,
+            'keystone::cache_backend': 'dogpile.cache.memcached',
 
             'platform::client::params::admin_username': admin_username,
 
@@ -147,6 +149,22 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'keystone::roles::admin::password': admin_password,
             'keystone::database_connection': db_connection,
             'platform::client::params::admin_password': admin_password,
+        }
+        return config
+
+    def get_host_config(self, host):
+        # The valid format for IPv6 addresses is: inet6:[<ip_v6>]:port
+        # Although, for IPv4, the "inet" part is not mandatory, we
+        # specify if anyway, for consistency purposes.
+        if self._get_address_by_name(
+                constants.CONTROLLER_PLATFORM_NFS,
+                constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
+            argument = "url:inet6:[%s]:11211" % host.mgmt_ip
+        else:
+            argument = "url:inet:%s:11211" % host.mgmt_ip
+
+        config = {
+            'keystone::cache_backend_argument': argument
         }
         return config
 
