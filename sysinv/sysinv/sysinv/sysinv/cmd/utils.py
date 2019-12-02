@@ -130,6 +130,7 @@ def create_host_overrides(filename):
             yaml.safe_dump(data, outfile, default_flow_style=False)
     except Exception as e:
         LOG.error("Error with create_host_overrides: %s", e)
+        sys.exit(1)
 
 
 def add_action_parsers(subparsers):
