@@ -488,35 +488,12 @@ class AppOperator(object):
         finally:
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
-    def _get_image_tags_by_path(self, path):
-        """ Mine the image tags from values.yaml files in the chart directory,
-            intended for custom apps.
-
-            TODO(awang): Support custom apps to pull images from local registry
-        """
-
-        def _parse_charts():
-            app_imgs = []
-            for r, f in cutils.get_files_matching(path, 'values.yaml'):
-                with open(os.path.join(r, f), 'r') as value_f:
-                    y = yaml.safe_load(value_f)
-
-                chart_images = self._image.find_images_in_dict(y)
-                download_imgs = self._image.generate_download_images_list(
-                    chart_images, [])
-                app_imgs.extend(download_imgs)
-            return app_imgs
-
-        app_imgs = _parse_charts()
-
-        return list(set(app_imgs))
-
     def _get_image_tags_by_charts(self, app_images_file, app_manifest_file, overrides_dir):
         """ Mine the image tags for charts from the images file. Add the
             image tags to the manifest file if the image tags from the
             charts do not exist in the manifest file. Convert the image
             tags in in both override files and manifest file. Intended
-            for system app.
+            for both system and custom apps.
 
             The image tagging conversion(local docker registry address prepended):
             ${LOCAL_REGISTRY_SERVER}:${REGISTRY_PORT}/<image-name>
@@ -588,6 +565,11 @@ class AppOperator(object):
 
                 # Update armada chart if needed
                 if armada_chart_imgs != armada_chart_imgs_copy:
+                    # This is to convert a empty orderedDict to dict
+                    if 'values' in chart_data:
+                        if not chart_data['values']:
+                            chart_data['values'] = {}
+
                     chart_data['values'] = self._image.merge_dict(
                         chart_data.get('values', {}), armada_chart_imgs)
                     manifest_update_required = True
@@ -632,14 +614,11 @@ class AppOperator(object):
         self._helm.generate_helm_application_overrides(
             app.sync_overrides_dir, app.name, mode=None, cnamespace=None,
             armada_format=True, armada_chart_info=app.charts, combined=True)
-        if app.system_app:
-            self._save_images_list_by_charts(app)
-            # Get the list of images from the updated images overrides
-            images_to_download = self._get_image_tags_by_charts(
-                app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
-        else:
-            # For custom apps, mine image tags from application path
-            images_to_download = self._get_image_tags_by_path(app.inst_path)
+
+        self._save_images_list_by_charts(app)
+        # Get the list of images from the updated images overrides
+        images_to_download = self._get_image_tags_by_charts(
+            app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
 
         if not images_to_download:
             # TODO(tngo): We may want to support the deployment of apps that
@@ -1944,11 +1923,11 @@ class AppOperator(object):
         ready = True
         try:
             app.charts = self._get_list_of_charts(app.sync_armada_mfile)
+            self._create_local_registry_secrets(app.name)
             if app.system_app:
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
 
-                self._create_local_registry_secrets(app.name)
                 self._create_storage_provisioner_secrets(app.name)
                 self._create_app_specific_resources(app.name)
 
@@ -2221,17 +2200,16 @@ class AppOperator(object):
             if self._dbapi.kube_app_get_inactive(app.name):
                 self._dbapi.kube_app_destroy(app.name, inactive=True)
 
-            if app.system_app:
-
-                try:
-                    self._delete_local_registry_secrets(app.name)
+            try:
+                self._delete_local_registry_secrets(app.name)
+                if app.system_app:
                     self._delete_storage_provisioner_secrets(app.name)
                     self._delete_app_specific_resources(app.name)
-                except Exception as e:
-                    self._abort_operation(app, constants.APP_REMOVE_OP)
-                    LOG.exception(e)
-                    self._deregister_app_abort(app.name)
-                    return False
+            except Exception as e:
+                self._abort_operation(app, constants.APP_REMOVE_OP)
+                LOG.exception(e)
+                self._deregister_app_abort(app.name)
+                return False
 
             self._update_app_status(app, constants.APP_UPLOAD_SUCCESS,
                                     constants.APP_PROGRESS_COMPLETED)
