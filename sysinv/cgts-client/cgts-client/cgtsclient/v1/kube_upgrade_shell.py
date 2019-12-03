@@ -9,6 +9,7 @@ from cgtsclient import exc
 
 # Kubernetes constants
 KUBE_UPGRADE_STATE_UPGRADING_NETWORKING = 'upgrading-networking'
+KUBE_UPGRADE_STATE_COMPLETE = 'upgrade-complete'
 
 
 def _print_kube_upgrade_show(obj):
@@ -52,6 +53,23 @@ def do_kube_upgrade_networking(cc, args):
 
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_UPGRADING_NETWORKING
+
+    patch = []
+    for (k, v) in data.items():
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
+    try:
+        kube_upgrade = cc.kube_upgrade.update(patch)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Kubernetes upgrade UUID not found')
+
+    _print_kube_upgrade_show(kube_upgrade)
+
+
+def do_kube_upgrade_complete(cc, args):
+    """Complete a kubernetes upgrade."""
+
+    data = dict()
+    data['state'] = KUBE_UPGRADE_STATE_COMPLETE
 
     patch = []
     for (k, v) in data.items():

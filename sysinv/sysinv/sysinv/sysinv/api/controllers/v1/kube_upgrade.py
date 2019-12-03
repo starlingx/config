@@ -267,14 +267,36 @@ class KubeUpgradeController(rest.RestController):
                     "networking" %
                     kubernetes.KUBE_UPGRADED_FIRST_MASTER))
 
+            # Update the upgrade state
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_NETWORKING
+            kube_upgrade_obj.save()
+
             # Tell the conductor to upgrade networking
             pecan.request.rpcapi.kube_upgrade_networking(
                 pecan.request.context, kube_upgrade_obj.to_version)
 
-            # Update the upgrade state
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_NETWORKING
+            return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+
+        elif updates['state'] == kubernetes.KUBE_UPGRADE_COMPLETE:
+            # Make sure upgrade is in the correct state to complete
+            if kube_upgrade_obj.state != \
+                    kubernetes.KUBE_UPGRADING_KUBELETS:
+                raise wsme.exc.ClientSideError(_(
+                    "Kubernetes upgrade must be in %s state to complete" %
+                    kubernetes.KUBE_UPGRADING_KUBELETS))
+
+            # Make sure the target version is active
+            version_states = self._kube_operator.kube_get_version_states()
+            if version_states.get(kube_upgrade_obj.to_version, None) != \
+                    kubernetes.KUBE_STATE_ACTIVE:
+                raise wsme.exc.ClientSideError(_(
+                    "Kubernetes to_version must be active to complete"))
+
+            # All is well, mark the upgrade as complete
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE
             kube_upgrade_obj.save()
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+
         else:
             raise wsme.exc.ClientSideError(_(
                 "Invalid state %s supplied" % updates['state']))

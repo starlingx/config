@@ -109,9 +109,17 @@ class ManagerTestCase(base.DbTestCase):
                                                config_dict):
             if not self.fail_config_apply_runtime_manifest:
                 # Pretend the config was applied
-                for host_uuid in config_dict['host_uuids']:
-                    self.dbapi.ihost_update(host_uuid,
-                                            {'config_applied': config_uuid})
+                if 'host_uuids' in config_dict:
+                    for host_uuid in config_dict['host_uuids']:
+                        self.dbapi.ihost_update(host_uuid,
+                                                {'config_applied': config_uuid})
+                else:
+                    for personality in config_dict['personalities']:
+                        hosts = self.dbapi.ihost_get_by_personality(personality)
+                        for host in hosts:
+                            self.dbapi.ihost_update(
+                                host.uuid, {'config_applied': config_uuid})
+
         self.mocked_config_apply_runtime_manifest = mock.patch.object(
             manager.ConductorManager, '_config_apply_runtime_manifest',
             mock_config_apply_runtime_manifest)
@@ -437,6 +445,125 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_FAILED)
 
+    def test_kube_download_images_one_controller(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.MANIFEST_APPLY_TIMEOUT = 1
+
+        # Download images
+        self.service.kube_download_images(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_STARTED)
+
+    def test_kube_download_images_one_controller_manifest_timeout(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.MANIFEST_APPLY_TIMEOUT = 1
+
+        # Make the manifest apply fail
+        self.fail_config_apply_runtime_manifest = True
+
+        # Download images
+        self.service.kube_download_images(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_FAILED)
+
+    def test_kube_download_images_two_controllers(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-1',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:56',
+            mgmt_ip='1.2.3.5',
+        )
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.MANIFEST_APPLY_TIMEOUT = 1
+
+        # Download images
+        self.service.kube_download_images(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_STARTED)
+
     def test_kube_upgrade_control_plane_first_master(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
@@ -733,11 +860,6 @@ class ManagerTestCase(base.DbTestCase):
 
         # Upgrade the kubelet
         self.service.kube_upgrade_kubelet(self.context, c1.uuid)
-
-        # Verify that the upgrade state was updated
-        updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_COMPLETE)
 
         # Verify that the host upgrade status was cleared
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)

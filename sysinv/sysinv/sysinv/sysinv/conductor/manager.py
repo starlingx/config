@@ -10692,6 +10692,8 @@ class ConductorManager(service.PeriodicService):
         LOG.info("executing playbook: %s for version %s" %
                  (constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK, kube_version))
 
+        # Execute the playbook to download the images from the external
+        # registry to registry.local.
         proc = subprocess.Popen(
             ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
              constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK],
@@ -10703,13 +10705,50 @@ class ConductorManager(service.PeriodicService):
         if proc.returncode:
             LOG.warning("ansible-playbook returned an error: %s" %
                         proc.returncode)
-            new_state = kubernetes.KUBE_UPGRADE_FAILED
+            # Update the upgrade state
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
+            kube_upgrade_obj.save()
+            return
+
+        # Update the config for the controller host(s)
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        # Apply the runtime manifest to have docker download the images on
+        # each controller.
+        config_dict = {
+            "personalities": personalities,
+            "classes": 'platform::kubernetes::pre_pull_control_plane_images'
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+        # Wait for the manifest(s) to be applied
+        elapsed = 0
+        while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
+            elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
+            greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
+            controller_hosts = self.dbapi.ihost_get_by_personality(
+                constants.CONTROLLER)
+            for host_obj in controller_hosts:
+                if host_obj.config_target != host_obj.config_applied:
+                    # At least one controller has not been updated yet
+                    LOG.debug("Waiting for config apply on host %s" %
+                              host_obj.hostname)
+                    break
+            else:
+                LOG.info("Config was applied for all controller hosts")
+                break
         else:
-            new_state = kubernetes.KUBE_UPGRADE_STARTED
+            LOG.warning("Manifest apply failed for a controller host")
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
+            kube_upgrade_obj.save()
+            return
 
         # Update the upgrade state
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = new_state
+        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTED
         kube_upgrade_obj.save()
 
     def kube_upgrade_control_plane(self, context, host_uuid):
@@ -10886,14 +10925,6 @@ class ConductorManager(service.PeriodicService):
             context, host_obj.id)
         kube_host_upgrade_obj.status = None
         kube_host_upgrade_obj.save()
-
-        # Check whether the upgrade is complete
-        version_states = kube_operator.kube_get_version_states()
-        if version_states.get(target_version, None) == \
-                kubernetes.KUBE_STATE_ACTIVE:
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE
-            kube_upgrade_obj.save()
 
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
