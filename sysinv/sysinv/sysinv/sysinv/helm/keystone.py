@@ -32,6 +32,7 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
                 'pod': self._get_pod_overrides(),
                 'conf': self._get_conf_overrides(),
                 'endpoints': self._get_endpoints_overrides(),
+                'network': self._get_network_overrides(),
             }
         }
 
@@ -221,7 +222,7 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
             return super(KeystoneHelm, self)._region_config()
 
     def _get_endpoints_overrides(self):
-        return {
+        overrides = {
             'identity': {
                 'auth': self._get_endpoints_identity_overrides(
                     self.SERVICE_NAME, []),
@@ -240,6 +241,21 @@ class KeystoneHelm(openstack.OpenstackBaseHelm):
                     self.SERVICE_NAME, [self.SERVICE_NAME])
             },
         }
+
+        admin_endpoint_override = \
+            self._get_endpoints_hosts_admin_overrides(self.SERVICE_NAME)
+        if admin_endpoint_override:
+            overrides['identity']['hosts'] = admin_endpoint_override
+
+        return overrides
+
+    def _get_network_overrides(self):
+        overrides = {
+            'api': {
+                'ingress': self._get_network_api_ingress_overrides(),
+            }
+        }
+        return overrides
 
     def get_admin_user_name(self):
         if self._region_config():
