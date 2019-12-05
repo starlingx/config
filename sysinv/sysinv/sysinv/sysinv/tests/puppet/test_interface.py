@@ -249,6 +249,41 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
         self._setup_address_and_routes(db_interface)
         return db_interface
 
+    def _create_vf_test(self, ifname, num_vfs, vf_driver=None,
+                        lower_iface=None):
+        if not lower_iface:
+            lower_port, lower_iface = self._create_ethernet_test(
+                'sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV)
+        if not ifname:
+            ifname = 'vf-' + lower_iface['ifname']
+        if not num_vfs:
+            num_vfs = 1
+
+        networks = []
+
+        ifclass = constants.INTERFACE_CLASS_PCI_SRIOV
+        interface_id = len(self.interfaces)
+        interface = {'id': interface_id,
+                     'uuid': str(uuid.uuid4()),
+                     'forihostid': self.host.id,
+                     'ifname': ifname,
+                     'iftype': constants.INTERFACE_TYPE_VF,
+                     'imac': '02:11:22:33:44:' + str(10 + interface_id),
+                     'uses': [lower_iface['ifname']],
+                     'used_by': [],
+                     'ifclass': ifclass,
+                     'networks': networks,
+                     'networktype': constants.NETWORK_TYPE_PCI_SRIOV,
+                     'imtu': 1500,
+                     'sriov_numvfs': num_vfs,
+                     'sriov_vf_driver': vf_driver}
+        lower_iface['used_by'].append(interface['ifname'])
+        db_interface = dbutils.create_test_interface(**interface)
+        self.interfaces.append(db_interface)
+        self._setup_address_and_routes(db_interface)
+        return db_interface
+
     def _create_test_host(self, personality, subfunction=None):
         subfunctions = [personality]
         if subfunction:
@@ -408,13 +443,23 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         value = interface.get_interface_port_name(self.context, self.iface)
         self.assertEqual(value, self.port['name'])
 
-    def test_get_lower_interface(self):
+    def test_get_lower_interface_vlan(self):
         vlan = self._create_vlan_test(
             "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
         self._update_context()
         value = interface.get_lower_interface(self.context, vlan)
         self.assertEqual(value, self.iface)
+
+    def test_get_lower_interface_vf(self):
+        port, iface = self._create_ethernet_test(
+            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            sriov_vf_driver=None)
+        vf = self._create_vf_test("vf1", 1, None, lower_iface=iface)
+        self._update_context()
+        value = interface.get_lower_interface(self.context, vf)
+        self.assertEqual(value, iface)
 
     def test_get_interface_os_ifname_ethernet(self):
         value = interface.get_interface_os_ifname(self.context, self.iface)
@@ -711,6 +756,77 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface)
         self.assertIsNone(classifier)
 
+    def test_get_sriov_interface_port(self):
+        port, iface = self._create_ethernet_test(
+            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            sriov_vf_driver=None)
+        vf = self._create_vf_test("vf1", 1, None, lower_iface=iface)
+        self._update_context()
+        value = interface.get_sriov_interface_port(self.context, vf)
+        self.assertEqual(value, port)
+
+    def test_get_sriov_interface_vf_addrs(self):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        vf_addr_list = [vf_addr1, vf_addr2]
+        port, iface = self._create_ethernet_test(
+            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            sriov_vf_driver=None)
+        vf1 = self._create_vf_test("vf1", 1, None, lower_iface=iface)
+        self._update_context()
+        addrs1 = interface.get_sriov_interface_vf_addrs(
+            self.context, iface, vf_addr_list)
+        self.assertEqual(len(addrs1), 1)
+        addrs2 = interface.get_sriov_interface_vf_addrs(
+            self.context, vf1, vf_addr_list)
+        self.assertEqual(len(addrs2), 1)
+
+    def test_get_sriov_interface_vf_addrs_multiple_children(self):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        vf_addr3 = "0000:81:02.0"
+        vf_addr_list = [vf_addr1, vf_addr2, vf_addr3]
+        port, iface = self._create_ethernet_test(
+            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=3,
+            sriov_vf_driver=None)
+        vf1 = self._create_vf_test("vf1", 1, None, lower_iface=iface)
+        vf2 = self._create_vf_test("vf2", 1, None, lower_iface=iface)
+        self._update_context()
+        addrs1 = interface.get_sriov_interface_vf_addrs(
+            self.context, vf1, vf_addr_list)
+        self.assertEqual(len(addrs1), 1)
+        addrs2 = interface.get_sriov_interface_vf_addrs(
+            self.context, vf2, vf_addr_list)
+        self.assertEqual(len(addrs2), 1)
+        addrs3 = interface.get_sriov_interface_vf_addrs(
+            self.context, iface, vf_addr_list)
+        self.assertEqual(len(addrs3), 1)
+
+    def test_get_sriov_interface_vf_addrs_multiple_parents(self):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        vf_addr3 = "0000:81:02.0"
+        vf_addr_list = [vf_addr1, vf_addr2, vf_addr3]
+        port, iface = self._create_ethernet_test(
+            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=3,
+            sriov_vf_driver=None)
+        vf1 = self._create_vf_test("vf1", 2, None, lower_iface=iface)
+        vf2 = self._create_vf_test("vf2", 1, None, lower_iface=vf1)
+        self._update_context()
+        addrs1 = interface.get_sriov_interface_vf_addrs(
+            self.context, vf1, vf_addr_list)
+        self.assertEqual(len(addrs1), 1)
+        addrs2 = interface.get_sriov_interface_vf_addrs(
+            self.context, vf2, vf_addr_list)
+        self.assertEqual(len(addrs2), 1)
+        addrs3 = interface.get_sriov_interface_vf_addrs(
+            self.context, iface, vf_addr_list)
+        self.assertEqual(len(addrs3), 1)
+
     def test_get_bridge_interface_name_none_dpdk_supported(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
@@ -830,6 +946,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_needs_interface_config_sriov_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
+        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.WORKER
         self._update_context()
@@ -838,6 +955,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_needs_interface_config_pthru_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
+        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
         self.host['personality'] = constants.WORKER
         self._update_context()
@@ -886,6 +1004,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_needs_interface_config_sriov_cpe(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
+        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.CONTROLLER
@@ -895,6 +1014,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_needs_interface_config_sriov_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
+        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.WORKER
@@ -904,6 +1024,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_needs_interface_config_pthru_cpe_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
+        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
         self.host['personality'] = constants.CONTROLLER
         self.host['subfunctions'] = constants.WORKER
@@ -1201,6 +1322,18 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         expected = self._get_network_config(
             ifname=self.port['name'], mtu=1500, method='manual',
             options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_worker_ethernet_config_pci_sriov_vf(self):
+        port, iface = self._create_ethernet_test(
+            'sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            sriov_vf_driver=None)
+        vf = self._create_vf_test("vf", 1, None, lower_iface=iface)
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, vf)
+        expected = {}
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1667,6 +1800,34 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
                                              'eth2', 'cluster-host']
         self.expected_data_interfaces = ['eth4', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
+
+
+class InterfaceComputeVfOverSriov(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are ethernet interfaces, aside from
+        # a VF interface over SR-IOV
+        self.host = self._create_test_host(constants.WORKER)
+        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA)
+        port, iface = self._create_ethernet_test(
+            'sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            sriov_vf_driver=None)
+        self._create_vf_test("vf", 1, None, lower_iface=iface)
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                   constants.NETWORK_TYPE_PCI_PASSTHROUGH)
+
+    def setUp(self):
+        super(InterfaceComputeVfOverSriov, self).setUp()
+        self.expected_bmc_interface = 'pxeboot'
+        self.expected_platform_interfaces = ['pxeboot', 'mgmt',
+                                             'eth2', 'cluster-host']
+        self.expected_data_interfaces = ['eth4', 'data']
+        self.expected_pci_interfaces = ['sriov', 'pthru', 'vf']
 
 
 class InterfaceComputeBond(InterfaceHostTestCase):

@@ -271,6 +271,10 @@ class NeutronHelm(openstack.OpenstackBaseHelm):
         """
         Determine the port name of the underlying device.
         """
+        if (iface['iftype'] == constants.INTERFACE_TYPE_VF and iface['uses']):
+            lower_iface = self.dbapi.iinterface_get(iface['uses'][0])
+            if lower_iface:
+                return self._get_interface_port_name(lower_iface)
         assert iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
         port = self.dbapi.port_get_by_interface(iface.id)
         if port:

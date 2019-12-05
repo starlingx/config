@@ -116,7 +116,7 @@ def do_host_if_delete(cc, args):
            help="Name of interface [REQUIRED]")
 @utils.arg('iftype',
            metavar='<iftype>',
-           choices=['ae', 'vlan', 'virtual'],
+           choices=['ae', 'vlan', 'virtual', 'vf'],
            nargs='?',
            help="Type of the interface")
 @utils.arg('-a', '--aemode',
@@ -155,12 +155,22 @@ def do_host_if_delete(cc, args):
 @utils.arg('--ipv6-pool',
            metavar='<ipv6 pool uuid or name>',
            help='The IPv6 address pool name or uuid if mode is set to \'pool\'')
+@utils.arg('-N', '--num-vfs',
+           dest='sriov_numvfs',
+           metavar='<sriov numvfs>',
+           help='The number of SR-IOV VFs of the interface')
+@utils.arg('--vf-driver',
+           dest='sriov_vf_driver',
+           metavar='<sriov vf driver>',
+           choices=['netdevice', 'vfio'],
+           help='The SR-IOV VF driver for this device')
 def do_host_if_add(cc, args):
     """Add an interface."""
 
     field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
                   'txhashpolicy', 'vlan_id',
-                  'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
+                  'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
+                  'sriov_numvfs', 'sriov_vf_driver']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
@@ -174,6 +184,9 @@ def do_host_if_add(cc, args):
         elif args.iftype == 'virtual':
             uses = None
             portnamesoruuids = []
+        elif args.iftype == 'vf':
+            uses = args.portsorifaces
+            portnamesoruuids = None
         else:
             uses = None
             portnamesoruuids = ','.join(args.portsorifaces)

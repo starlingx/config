@@ -800,24 +800,24 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
                  "{}").format(', '.join(constants.SRIOV_DRIVER_TYPES)))
                 raise wsme.exc.ClientSideError(msg)
 
-        ports = pecan.request.dbapi.ethernet_port_get_all(hostid=ihost['id'])
-        port_list = [
-            (p.name, p.sriov_totalvfs, p.driver) for p in ports
-            if p.interface_id and p.interface_id == interface['id']
-        ]
+        if interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+            ports = pecan.request.dbapi.ethernet_port_get_all(hostid=ihost['id'])
+            port_list = [
+                (p.name, p.sriov_totalvfs, p.driver) for p in ports
+                if p.interface_id and p.interface_id == interface['id']
+            ]
+            if len(port_list) != 1:
+                raise wsme.exc.ClientSideError(_("Exactly one port must be enabled."))
 
-        if len(port_list) != 1:
-            raise wsme.exc.ClientSideError(_("At most one port must be enabled."))
+            sriov_totalvfs = port_list[0][1]
+            if sriov_totalvfs is None or sriov_totalvfs == 0:
+                raise wsme.exc.ClientSideError(_("SR-IOV can't be configured on this interface"))
 
-        sriov_totalvfs = port_list[0][1]
-        if sriov_totalvfs is None or sriov_totalvfs == 0:
-            raise wsme.exc.ClientSideError(_("SR-IOV can't be configured on this interface"))
-
-        if int(interface['sriov_numvfs']) > sriov_totalvfs:
-            raise wsme.exc.ClientSideError(_("The interface support a maximum of %s VFs" % sriov_totalvfs))
-        driver = port_list[0][2]
-        if driver is None or not driver:
-            raise wsme.exc.ClientSideError(_("Corresponding port has invalid driver"))
+            if int(interface['sriov_numvfs']) > sriov_totalvfs:
+                raise wsme.exc.ClientSideError(_("The interface support a maximum of %s VFs" % sriov_totalvfs))
+            driver = port_list[0][2]
+            if driver is None or not driver:
+                raise wsme.exc.ClientSideError(_("Corresponding port has invalid driver"))
 
         sriov_update = True
     return sriov_update
@@ -847,9 +847,10 @@ def _check_interface_class_and_host_type(ihost, interface):
 
 def _check_interface_class_and_type(interface):
     if (interface['ifclass'] in PCI_INTERFACE_CLASS and
-            interface['iftype'] != "ethernet"):
-        msg = (_("The {} interface class is only valid on Ethernet interfaces").
-               format(', '.join(PCI_INTERFACE_CLASS)))
+            interface['iftype'] not in [constants.INTERFACE_TYPE_ETHERNET,
+                constants.INTERFACE_TYPE_VF]):
+        msg = (_("The {} interface class is only valid on Ethernet and "
+                 "VF interfaces").format(', '.join(PCI_INTERFACE_CLASS)))
         raise wsme.exc.ClientSideError(msg)
 
 
@@ -1080,11 +1081,12 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                         "must have the interface class set to 'none'.")
                 raise wsme.exc.ClientSideError(msg)
 
-    # Ensure that the interfaces being used in the AE interface
-    # are not changed after the AE interface has been created
     if interface['used_by']:
+        used_vfs = 0
         for i in interface['used_by']:
             iface = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
+            # Ensure that the interfaces being used in the AE interface
+            # are not changed after the AE interface has been created
             if iface.iftype == constants.INTERFACE_TYPE_AE and \
                     interface['ifclass']:
                 msg = _("Interface '{}' is being used by interface '{}' "
@@ -1092,6 +1094,26 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                         "class cannot be changed from 'none'.".format(interface['ifname'],
                                                                       iface.ifname))
                 raise wsme.exc.ClientSideError(msg)
+            # Ensure that if the interface has any virtual function (VF)
+            # interfaces, that the interface class does not change from
+            # pci-sriov, and that the number of requested virtual functions is
+            # greater than the sum of the virtual functions on the upper
+            # VF interfaces.
+            if iface.iftype == constants.INTERFACE_TYPE_VF:
+                if interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
+                    msg = _("Interface '{}' is being used by VF interface '{}' "
+                            "and therefore the interface class cannot be changed "
+                            "from 'pci-sriov'.".format(interface['ifname'],
+                                                   iface.ifname))
+                    raise wsme.exc.ClientSideError(msg)
+                else:
+                    used_vfs += iface['sriov_numvfs']
+                    if interface['sriov_numvfs'] <= used_vfs:
+                        msg = _("The number of virtual functions (%s) must be greater "
+                                "than the number of consumed VFs used by the "
+                                "upper VF interfaces (%s)" %
+                                (interface['sriov_numvfs'], interface['used_by']))
+                        raise wsme.exc.ClientSideError(msg)
 
     # check interface class validity
     _check_interface_class(ihost, interface, existing_interface)
@@ -1120,7 +1142,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
     supported_type = [constants.INTERFACE_TYPE_AE,
                       constants.INTERFACE_TYPE_VLAN,
                       constants.INTERFACE_TYPE_ETHERNET,
-                      constants.INTERFACE_TYPE_VIRTUAL]
+                      constants.INTERFACE_TYPE_VIRTUAL,
+                      constants.INTERFACE_TYPE_VF]
     if not iftype or iftype not in supported_type:
         msg = (_("Device interface type must be one of "
                  "{}").format(', '.join(supported_type)))
@@ -1169,8 +1192,9 @@ def _check_interface_data(op, interface, ihost, existing_interface,
 
     # Ensure that data and non-data interfaces are not using the same
     # shared device
-    if (iftype != constants.INTERFACE_TYPE_VLAN and
-            iftype != constants.INTERFACE_TYPE_VIRTUAL):
+    if iftype not in [constants.INTERFACE_TYPE_VLAN,
+                      constants.INTERFACE_TYPE_VF,
+                      constants.INTERFACE_TYPE_VIRTUAL]:
         port_list_host = \
             pecan.request.dbapi.ethernet_port_get_all(hostid=ihost['id'])
         for name in interface['uses']:
@@ -1184,13 +1208,14 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                                                  host_port)
 
     # check MTU
-    if interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-        vlan_mtu = interface['imtu']
+    if interface['iftype'] in [constants.INTERFACE_TYPE_VLAN,
+                               constants.INTERFACE_TYPE_VF]:
+        interface_mtu = interface['imtu']
         for name in interface['uses']:
             parent = pecan.request.dbapi.iinterface_get(name, ihost_uuid)
-            if int(vlan_mtu) > int(parent['imtu']):
-                msg = _("VLAN MTU (%s) cannot be larger than MTU of "
-                        "underlying interface (%s)" % (vlan_mtu, parent['imtu']))
+            if int(interface_mtu) > int(parent['imtu']):
+                msg = _("Interface MTU (%s) cannot be larger than MTU of "
+                        "underlying interface (%s)" % (interface_mtu, parent['imtu']))
                 raise wsme.exc.ClientSideError(msg)
     elif interface['used_by']:
         mtus = _get_interface_mtus(ihost_uuid, interface)
@@ -1201,6 +1226,38 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                         (interface['imtu'], mtu))
                 raise wsme.exc.ClientSideError(msg)
 
+    # Check vf interfaces
+    if iftype == constants.INTERFACE_TYPE_VF:
+        if interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
+            msg = _("VF interfaces must have an interface class of %s" %
+                    constants.INTERFACE_CLASS_PCI_SRIOV)
+            raise wsme.exc.ClientSideError(msg)
+        if len(interface['uses']) > 1:
+            msg = _("VF interfaces can only use one lower pci-sriov interface")
+            raise wsme.exc.ClientSideError(msg)
+        lower_ifname = interface['uses'][0]
+        lower_iface = (
+            pecan.request.dbapi.iinterface_get(lower_ifname, ihost_uuid))
+        if lower_iface['iftype'] not in [constants.INTERFACE_TYPE_VF,
+                                         constants.INTERFACE_TYPE_ETHERNET]:
+            msg = _("VF interfaces cannot be created over interfaces "
+                    "of type %s" % lower_iface['iftype'])
+            raise wsme.exc.ClientSideError(msg)
+        if (lower_iface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV):
+            msg = _("VF interfaces must be created over an interface of class"
+                    " %s" % constants.INTERFACE_CLASS_PCI_SRIOV)
+            raise wsme.exc.ClientSideError(msg)
+        avail_vfs = lower_iface['sriov_numvfs'] - 1
+        for i in lower_iface['used_by']:
+            if i != interface['ifname']:
+                iface = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
+                avail_vfs -= iface.get('sriov_numvfs', 0)
+        if interface['sriov_numvfs'] > avail_vfs:
+            msg = _("The number of virtual functions (%s) must be less "
+                    "than or equal to the available VFs (%s) available "
+                    "on the underlying interface (%s)" %
+                    (interface['sriov_numvfs'], avail_vfs, lower_iface['ifname']))
+            raise wsme.exc.ClientSideError(msg)
     return interface
 
 

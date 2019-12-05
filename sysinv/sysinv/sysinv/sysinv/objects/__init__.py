@@ -46,6 +46,7 @@ from sysinv.objects import interface_ae
 from sysinv.objects import interface_ethernet
 from sysinv.objects import interface_datanetwork
 from sysinv.objects import interface_network
+from sysinv.objects import interface_vf
 from sysinv.objects import interface_virtual
 from sysinv.objects import interface_vlan
 from sysinv.objects import journal
@@ -132,6 +133,7 @@ ethernet_interface = interface_ethernet.EthernetInterface
 ae_interface = interface_ae.AEInterface
 virtual_interface = interface_virtual.VirtualInterface
 vlan_interface = interface_vlan.VLANInterface
+sriov_vf_interface = interface_vf.SriovVFInterface
 interface_network = interface_network.InterfaceNetwork
 interface_datanetwork = interface_datanetwork.InterfaceDataNetwork
 port = port.Port

@@ -269,11 +269,12 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         devices = []
         for iface in iface_context['interfaces'].values():
             if iface['ifclass'] in [constants.INTERFACE_CLASS_PCI_SRIOV]:
-                port = interface.get_interface_port(iface_context, iface)
+                port = interface.get_sriov_interface_port(iface_context, iface)
                 dnames = interface._get_datanetwork_names(iface_context, iface)
-                vf_addrs = port['sriov_vfs_pci_address']
+                vf_addrs = port['sriov_vfs_pci_address'].split(",")
+                vf_addrs = interface.get_sriov_interface_vf_addrs(iface_context, iface, vf_addrs)
                 if vf_addrs:
-                    for vf_addr in vf_addrs.split(","):
+                    for vf_addr in vf_addrs:
                         device = {
                             'address': vf_addr,
                             'physical_network': dnames,
