@@ -49,9 +49,7 @@ class KubeUpgradeManager(base.Manager):
     def delete(self):
         """Delete a kubernetes upgrade."""
 
-        res, body = self.api.json_request('DELETE', self._path())
-        if body:
-            return self.resource_class(self, body)
+        return self.api.json_request('DELETE', self._path())
 
     def update(self, patch):
         """Update a kubernetes upgrade."""

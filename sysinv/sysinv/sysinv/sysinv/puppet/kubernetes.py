@@ -53,6 +53,8 @@ class KubernetesPuppet(base.BasePuppet):
                  self._get_dns_service_domain(),
              'platform::kubernetes::params::dns_service_ip':
                  self._get_dns_service_ip(),
+             'platform::kubernetes::params::upgrade_to_version':
+                 self._get_kubernetes_upgrade_to_version(),
              })
 
         return config
@@ -159,6 +161,16 @@ class KubernetesPuppet(base.BasePuppet):
     def _get_dns_service_ip(self):
         subnet = netaddr.IPNetwork(self._get_cluster_service_subnet())
         return str(subnet[CLUSTER_SERVICE_DNS_IP_OFFSET])
+
+    def _get_kubernetes_upgrade_to_version(self):
+        try:
+            # Get the kubernetes upgrade record
+            kube_upgrade_obj = self.dbapi.kube_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade is in progress
+            return None
+        else:
+            return kube_upgrade_obj.to_version
 
     def _get_kubernetes_version(self, host):
         config = {}

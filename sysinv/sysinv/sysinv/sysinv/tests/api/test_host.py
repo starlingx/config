@@ -807,6 +807,90 @@ class TestPostKubeUpgrades(TestHost):
         self.assertIn("host does not have a kubelet",
                       result.json['error_message'])
 
+    def test_kube_upgrade_kubelet_controller_0_repeated(self):
+        # Test upgrading kubernetes kubelet on controller-0 when it was already
+        # done
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Update the target version
+        values = {'target_version': 'v1.42.2'}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Indicate the kubelet is already upgraded
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.42.2'}
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+        )
+
+        # Upgrade the kubelet
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_kubelet',
+            body, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("kubelet on this host was already upgraded",
+                      result.json['error_message'])
+
+    def test_kube_upgrade_kubelet_controller_0_repeated_force(self):
+        # Test upgrading kubernetes kubelet on controller-0 when it was already
+        # done, but allowed because of the force option
+
+        # Create controller-0
+        c0 = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Update the target version
+        values = {'target_version': 'v1.42.2'}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Indicate the kubelet is already upgraded
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.42.2'}
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+        )
+
+        # Upgrade the kubelet
+        body = {'force': True}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_kubelet',
+            body, headers={'User-Agent': 'sysinv-test'})
+
+        # Verify the host was returned
+        self.assertEqual(result.json['hostname'], 'controller-0')
+
+        # Verify the kubelet was upgraded
+        self.fake_conductor_api.kube_upgrade_kubelet.\
+            assert_called_with(mock.ANY, c0.uuid)
+
+        # Verify that the upgrade state was updated
+        result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
+        self.assertEqual(result['state'],
+                         kubernetes.KUBE_UPGRADING_KUBELETS)
+
     def test_kube_upgrade_kubelet_controller_0_wrong_upgrade_state(self):
         # Test upgrading kubernetes kubelet on controller-0 with upgrade in
         # the wrong state.
@@ -946,6 +1030,10 @@ class TestPostKubeUpgrades(TestHost):
             administrative=constants.ADMIN_LOCKED,
             operational=constants.OPERATIONAL_DISABLED,
             availability=constants.AVAILABILITY_ONLINE)
+
+        # Update the target version
+        values = {'target_version': 'v1.42.2'}
+        self.dbapi.kube_host_upgrade_update(1, values)
 
         # Create the upgrade
         dbutils.create_test_kube_upgrade(

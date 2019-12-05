@@ -103,7 +103,7 @@ class HostTest(test_shell.ShellTest):
         self.ihost_manager_kube_upgrade_control_plane_result = \
             [ihost(None, FAKE_IHOST, True)]
 
-        def mock_ihost_manager_kube_upgrade_control_plane(obj, hostid):
+        def mock_ihost_manager_kube_upgrade_control_plane(obj, hostid, force):
             return self.ihost_manager_kube_upgrade_control_plane_result
         self.mocked_ihost_manager_kube_upgrade_control_plane = mock.patch(
             'cgtsclient.v1.ihost.ihostManager.kube_upgrade_control_plane',
@@ -112,7 +112,7 @@ class HostTest(test_shell.ShellTest):
         self.addCleanup(
             self.mocked_ihost_manager_kube_upgrade_control_plane.stop)
 
-        def mock_ihost_manager_kube_upgrade_kubelet(obj, hostid):
+        def mock_ihost_manager_kube_upgrade_kubelet(obj, hostid, force):
             return self.ihost_manager_kube_upgrade_kubelet_result
 
         self.mocked_ihost_manager_kube_upgrade_kubelet = mock.patch(

@@ -813,14 +813,18 @@ def do_host_upgrade(cc, args):
 @utils.arg('component',
            metavar='<component>',
            choices=['control-plane', 'kubelet'],
-           help='kubernetes component to upgrade')
+           help='Kubernetes component to upgrade')
+@utils.arg('-f', '--force',
+           action='store_true',
+           default=False,
+           help="Force the kubernetes upgrade operation ")
 def do_kube_host_upgrade(cc, args):
     """Perform kubernetes upgrade for a host."""
 
     if args.component == 'control-plane':
-        host = cc.ihost.kube_upgrade_control_plane(args.hostid)
+        host = cc.ihost.kube_upgrade_control_plane(args.hostid, args.force)
     elif args.component == 'kubelet':
-        host = cc.ihost.kube_upgrade_kubelet(args.hostid)
+        host = cc.ihost.kube_upgrade_kubelet(args.hostid, args.force)
     else:
         raise exc.CommandError('Invalid component value: %s' % args.component)
 

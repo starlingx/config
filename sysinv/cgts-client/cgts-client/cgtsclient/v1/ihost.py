@@ -122,14 +122,20 @@ class ihostManager(base.Manager):
         result = self._json_get(self._path('bulk_export'))
         return result
 
-    def kube_upgrade_control_plane(self, hostid):
+    def kube_upgrade_control_plane(self, hostid, force):
+        post_body = {}
+        post_body['force'] = force
         resp, body = self.api.json_request(
-            'POST', self._path(hostid) + "/kube_upgrade_control_plane")
+            'POST', self._path(hostid) + "/kube_upgrade_control_plane",
+            body=post_body)
         return self.resource_class(self, body)
 
-    def kube_upgrade_kubelet(self, hostid):
+    def kube_upgrade_kubelet(self, hostid, force):
+        post_body = {}
+        post_body['force'] = force
         resp, body = self.api.json_request(
-            'POST', self._path(hostid) + "/kube_upgrade_kubelet")
+            'POST', self._path(hostid) + "/kube_upgrade_kubelet",
+            body=post_body)
         return self.resource_class(self, body)
 
 
