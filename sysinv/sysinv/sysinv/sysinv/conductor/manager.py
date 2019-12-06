@@ -7247,8 +7247,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
-        if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
-                tsc.system_type != constants.TIS_AIO_BUILD):
+        if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             data = {
                 'name': constants.FILESYSTEM_NAME_PATCH_VAULT,
                 'size': constants.DEFAULT_PATCH_VAULT_STOR_SIZE,
@@ -9281,8 +9280,7 @@ class ConductorManager(service.PeriodicService):
                             '/dev/cgts-vg/etcd-lv ' \
                             '/dev/cgts-vg/dockerdistribution-lv '
 
-        if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
-                tsc.system_type != constants.TIS_AIO_BUILD):
+        if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/patch-vault-lv '
 
         lvdisplay_dict = {}
