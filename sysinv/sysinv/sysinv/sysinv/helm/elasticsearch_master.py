@@ -21,8 +21,6 @@ class ElasticsearchMasterHelm(elastic.ElasticBaseHelm):
 
         replicas = 3
         if utils.is_aio_system(self.dbapi):
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx256m -Xms256m"
-
             if self._count_hosts_by_label(common.LABEL_MONITOR_MASTER) < 3:
                 # For AIO-SX, we will get here by definition, as there will
                 # only be 1 master labelled host.
@@ -30,6 +28,10 @@ class ElasticsearchMasterHelm(elastic.ElasticBaseHelm):
                 # need 1 elasticsearch master pod, as the 2 data
                 # pods will be master capable to form a cluster of 3 masters.
                 replicas = 1
+
+        if (utils.is_aio_system(self.dbapi) and not
+                self._is_distributed_cloud_role_system_controller()):
+            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx256m -Xms256m"
         else:
             esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx512m -Xms512m"
 
@@ -60,7 +62,8 @@ class ElasticsearchMasterHelm(elastic.ElasticBaseHelm):
             return overrides
 
     def _get_master_resource_overrides(self):
-        if utils.is_aio_system(self.dbapi):
+        if (utils.is_aio_system(self.dbapi) and not
+                self._is_distributed_cloud_role_system_controller()):
             cpu_requests = "200m"
             memory_size = "256Mi"
         else:

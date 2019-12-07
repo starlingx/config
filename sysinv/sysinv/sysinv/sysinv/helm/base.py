@@ -81,6 +81,74 @@ class BaseHelm(object):
         system = self._get_system()
         return system.distributed_cloud_role
 
+    def _is_distributed_cloud_role_subcloud(self):
+        """Returns boolean of whether this system role is subcloud"""
+
+        if self.dbapi is None:
+            return False
+
+        is_distributed_cloud_role_subcloud = self.context.get(
+            '_is_distributed_cloud_role_subcloud', None)
+
+        if is_distributed_cloud_role_subcloud is None:
+            if self._distributed_cloud_role() == \
+                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                is_distributed_cloud_role_subcloud = True
+            else:
+                is_distributed_cloud_role_subcloud = False
+
+            self.context['_is_distributed_cloud_role_subcloud'] = \
+                is_distributed_cloud_role_subcloud
+
+        return is_distributed_cloud_role_subcloud
+
+    def _is_distributed_cloud_role_system_controller(self):
+        """Returns boolean of whether this system role is system_controller"""
+
+        if self.dbapi is None:
+            return False
+
+        is_distributed_cloud_role_system_controller = self.context.get(
+            '_is_distributed_cloud_role_system_controller', None)
+
+        if is_distributed_cloud_role_system_controller is None:
+            if self._distributed_cloud_role() == \
+                    constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                is_distributed_cloud_role_system_controller = True
+            else:
+                is_distributed_cloud_role_system_controller = False
+
+            self.context['_is_distributed_cloud_role_system_controller'] = \
+                is_distributed_cloud_role_system_controller
+
+        return is_distributed_cloud_role_system_controller
+
+    def _system_controller_floating_address(self):
+        if self.dbapi is None:
+            return None
+
+        if not self._distributed_cloud_role():
+            return None
+
+        sc_float_ip = self.context.get(
+            '_system_controller_floating_address', None)
+
+        if sc_float_ip is None:
+            try:
+                sys_controller_network = self.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+                sys_controller_network_addr_pool = self.dbapi.address_pool_get(
+                    sys_controller_network.pool_uuid)
+                sc_float_ip = sys_controller_network_addr_pool.floating_address
+            except exception.NetworkTypeNotFound:
+                LOG.error("No System Controller Network Type found")
+                raise
+
+            if utils.is_valid_ipv6(sc_float_ip):
+                sc_float_ip = '[' + sc_float_ip + ']'
+            self.context['_system_controller_floating_address'] = sc_float_ip
+        return sc_float_ip
+
     def _region_name(self):
         """Returns the local region name of the system"""
         if self.dbapi is None:

@@ -25,6 +25,10 @@ class ElasticBaseHelm(base.BaseHelm):
     # Size of elasticsearch data volume.
     DATA_VOLUME_SIZE_GB = 150
 
+    NODE_PORT = 31001
+    PREFIX = "mon"
+    ELASTICSEARCH_CLIENT_PATH = "/%s-elasticsearch-client" % PREFIX
+
     @property
     def CHART(self):
         # subclasses must define the property: CHART='name of chart'

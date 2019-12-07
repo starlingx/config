@@ -29,12 +29,21 @@ class LogstashHelm(elastic.ElasticBaseHelm):
             common.HELM_NS_MONITOR: {
                 'replicaCount': replicas,
                 'resources': self._get_resources_overrides(),
-                'config': {
-                    'elasticsearch.path': "",
-                },
+                'config': self._get_config(),
                 'systemNameForIndex': system_name_for_index,
             }
         }
+
+        if self._is_distributed_cloud_role_subcloud():
+            subcloud_settings = {
+                'elasticsearch': {
+                    'host': "http://%s" %
+                    self._system_controller_floating_address(),
+                    'port': self.NODE_PORT
+                },
+                'ingress': {'enabled': False},
+            }
+            overrides[common.HELM_NS_MONITOR].update(subcloud_settings)
 
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]
@@ -44,9 +53,19 @@ class LogstashHelm(elastic.ElasticBaseHelm):
         else:
             return overrides
 
+    def _get_config(self):
+        if self._is_distributed_cloud_role_subcloud():
+            # this does  not accept self.ELASTICSEARCH_CLIENT_PATH
+            config = {'elasticsearch.path': "/mon-elasticsearch-client"}
+        else:
+            config = {'elasticsearch.path': ""}
+
+        return config
+
     def _get_resources_overrides(self):
 
-        if utils.is_aio_system(self.dbapi):
+        if (utils.is_aio_system(self.dbapi) and not
+                self._is_distributed_cloud_role_system_controller()):
             cpu_limits = "500m"
             memory_limits = "1024Mi"
         else:
