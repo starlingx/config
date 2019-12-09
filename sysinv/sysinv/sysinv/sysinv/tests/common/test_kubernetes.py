@@ -305,6 +305,99 @@ class TestKubeOperator(base.TestCase):
                 ),
         }
 
+        self.cp_pods_missing_result = {
+            'kube-apiserver-test-node-1':
+                kubernetes.client.V1PodList(
+                    api_version="v1",
+                    items=[
+                        kubernetes.client.V1Pod(
+                            api_version="v1",
+                            kind="Pod",
+                            metadata=kubernetes.client.V1ObjectMeta(
+                                name="kube-apiserver-test-node-1",
+                                namespace="kube-system"),
+                            spec=kubernetes.client.V1PodSpec(
+                                containers=[
+                                    kubernetes.client.V1Container(
+                                        name="kube-apiserver",
+                                        image="test-image-1:v1.42.1"),
+                                ],
+                            ),
+                        ),
+                    ],
+                ),
+            'kube-controller-manager-test-node-1':
+                kubernetes.client.V1PodList(
+                    api_version="v1",
+                    items=[],
+                ),
+            'kube-scheduler-test-node-1':
+                kubernetes.client.V1PodList(
+                    api_version="v1",
+                    items=[
+                        kubernetes.client.V1Pod(
+                            api_version="v1",
+                            kind="Pod",
+                            metadata=kubernetes.client.V1ObjectMeta(
+                                name="kube-scheduler-test-node-1",
+                                namespace="kube-system"),
+                            spec=kubernetes.client.V1PodSpec(
+                                containers=[
+                                    kubernetes.client.V1Container(
+                                        name="kube-scheduler",
+                                        image="test-image-3:v1.42.1"),
+                                ],
+                            ),
+                        ),
+                    ],
+                ),
+            'kube-apiserver-test-node-2':
+                kubernetes.client.V1PodList(
+                    api_version="v1",
+                    items=[
+                        kubernetes.client.V1Pod(
+                            api_version="v1",
+                            kind="Pod",
+                            metadata=kubernetes.client.V1ObjectMeta(
+                                name="kube-apiserver-test-node-2",
+                                namespace="kube-system"),
+                            spec=kubernetes.client.V1PodSpec(
+                                containers=[
+                                    kubernetes.client.V1Container(
+                                        name="kube-apiserver",
+                                        image="test-image-1:v1.42.1"),
+                                ],
+                            ),
+                        ),
+                    ],
+                ),
+            'kube-controller-manager-test-node-2':
+                kubernetes.client.V1PodList(
+                    api_version="v1",
+                    items=[
+                        kubernetes.client.V1Pod(
+                            api_version="v1",
+                            kind="Pod",
+                            metadata=kubernetes.client.V1ObjectMeta(
+                                name="kube-controller-manager-test-node-2",
+                                namespace="kube-system"),
+                            spec=kubernetes.client.V1PodSpec(
+                                containers=[
+                                    kubernetes.client.V1Container(
+                                        name="kube-controller-manager",
+                                        image="test-image-2:v1.42.1"),
+                                ],
+                            ),
+                        ),
+                    ],
+                ),
+            'kube-scheduler-test-node-2':
+                kubernetes.client.V1PodList(
+                    api_version="v1",
+                    items=[],
+                ),
+        }
+
         self.single_node_result = kubernetes.client.V1NodeList(
             api_version="v1",
             items=[
@@ -488,6 +581,20 @@ class TestKubeOperator(base.TestCase):
 
         result = self.kube_operator.kube_get_control_plane_versions()
         assert result == {'test-node-1': 'v1.42.0'}
+
+    def test_kube_get_control_plane_versions_missing_component(self):
+
+        self.list_namespaced_pod_result = self.cp_pods_missing_result
+        self.list_node_result = self.multi_node_result
+
+        self.cp_pods_missing_result['kube-apiserver-test-node-1'].\
+            items[0].spec.containers[0].image = "test-image-1:v1.42.0"
+        self.cp_pods_missing_result['kube-controller-manager-test-node-2'].\
+            items[0].spec.containers[0].image = "test-image-3:v1.42.3"
+
+        result = self.kube_operator.kube_get_control_plane_versions()
+        assert result == {'test-node-1': 'v1.42.0',
+                          'test-node-2': 'v1.42.1'}
 
     def test_kube_get_control_plane_versions_multi_node(self):
 

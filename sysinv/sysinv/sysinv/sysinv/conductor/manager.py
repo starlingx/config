@@ -234,6 +234,7 @@ class ConductorManager(service.PeriodicService):
 
         # Upgrade start tasks
         self._upgrade_init_actions()
+        self._kube_upgrade_init_actions()
 
         self._handle_restore_in_progress()
 
@@ -10682,6 +10683,51 @@ class ConductorManager(service.PeriodicService):
 
         os.chmod(constants.SYSINV_CONF_DEFAULT_PATH, 0o400)
 
+    def _kube_upgrade_init_actions(self):
+        """ Perform any kubernetes upgrade related startup actions"""
+        try:
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+        except exception.NotFound:
+            # Not upgrading kubernetes
+            return
+
+        # Fail any upgrade operation that is in a transitory state. This
+        # service is responsible for monitoring these operations and since
+        # we were just restarted, the operation will never progress.
+        fail_state = None
+        if kube_upgrade.state == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES:
+            fail_state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+        elif kube_upgrade.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
+            fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+        elif kube_upgrade.state == kubernetes.KUBE_UPGRADING_NETWORKING:
+            fail_state = kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
+        elif kube_upgrade.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
+            fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
+
+        if fail_state is not None:
+            LOG.warning("Failing upgrade in %s state due to service restart" %
+                        kube_upgrade.state)
+            self.dbapi.kube_upgrade_update(kube_upgrade.id,
+                                           {'state': fail_state})
+
+        # Fail any host upgrade operation that is in a transitory state.
+        kube_host_upgrades = self.dbapi.kube_host_upgrade_get_list()
+        for kube_host_upgrade in kube_host_upgrades:
+            fail_status = None
+            if kube_host_upgrade.status == \
+                    kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE:
+                fail_status = \
+                    kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+            elif kube_host_upgrade.status == \
+                    kubernetes.KUBE_HOST_UPGRADING_KUBELET:
+                fail_status = kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
+
+            if fail_status is not None:
+                LOG.warning("Failing host upgrade with %s status due to "
+                            "service restart" % kube_host_upgrade.status)
+                self.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
+                                                    {'status': fail_status})
+
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""
 
@@ -10703,7 +10749,8 @@ class ConductorManager(service.PeriodicService):
                         proc.returncode)
             # Update the upgrade state
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
+            kube_upgrade_obj.state = \
+                kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
             kube_upgrade_obj.save()
             return
 
@@ -10738,13 +10785,14 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.warning("Manifest apply failed for a controller host")
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
+            kube_upgrade_obj.state = \
+                kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
             kube_upgrade_obj.save()
             return
 
         # Update the upgrade state
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTED
+        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
         kube_upgrade_obj.save()
 
     def kube_upgrade_control_plane(self, context, host_uuid):
@@ -10760,17 +10808,15 @@ class ConductorManager(service.PeriodicService):
         if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
             puppet_class = 'platform::kubernetes::upgrade_first_control_plane'
             new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
+            fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
             puppet_class = 'platform::kubernetes::upgrade_control_plane'
             new_state = kubernetes.KUBE_UPGRADED_SECOND_MASTER
+            fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
         else:
-            LOG.error("Invalid state %s to upgrade control plane." %
-                      kube_upgrade_obj.state)
-            return
-
-        # Update status
-        kube_host_upgrade_obj.status = "Upgrading control plane"
-        kube_host_upgrade_obj.save()
+            raise exception.SysinvException(_(
+                "Invalid state %s to upgrade control plane." %
+                kube_upgrade_obj.state))
 
         # Update the config for this host
         personalities = [host_obj.personality]
@@ -10799,10 +10845,11 @@ class ConductorManager(service.PeriodicService):
             LOG.warning("Manifest apply failed for host %s" % host_name)
             kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
                 context, host_obj.id)
-            kube_host_upgrade_obj.status = "Control plane upgrade failed"
+            kube_host_upgrade_obj.status = \
+                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
             kube_host_upgrade_obj.save()
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
+            kube_upgrade_obj.state = fail_state
             kube_upgrade_obj.save()
             return
 
@@ -10822,10 +10869,11 @@ class ConductorManager(service.PeriodicService):
                         host_name)
             kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
                 context, host_obj.id)
-            kube_host_upgrade_obj.status = "Control plane upgrade failed"
+            kube_host_upgrade_obj.status = \
+                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
             kube_host_upgrade_obj.save()
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
+            kube_upgrade_obj.state = fail_state
             kube_upgrade_obj.save()
             return
 
@@ -10852,13 +10900,9 @@ class ConductorManager(service.PeriodicService):
         elif host_obj.personality == constants.WORKER:
             puppet_class = 'platform::kubernetes::worker::upgrade_kubelet'
         else:
-            LOG.error("Invalid personality %s to upgrade kubelet." %
-                      host_obj.personality)
-            return
-
-        # Update status
-        kube_host_upgrade_obj.status = "Upgrading kubelet"
-        kube_host_upgrade_obj.save()
+            raise exception.SysinvException(_(
+                "Invalid personality %s to upgrade kubelet." %
+                host_obj.personality))
 
         # Update the config for this host
         personalities = [host_obj.personality]
@@ -10887,11 +10931,9 @@ class ConductorManager(service.PeriodicService):
             LOG.warning("Manifest apply failed for host %s" % host_name)
             kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
                 context, host_obj.id)
-            kube_host_upgrade_obj.status = "Control plane upgrade failed"
+            kube_host_upgrade_obj.status = \
+                kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
             kube_host_upgrade_obj.save()
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
-            kube_upgrade_obj.save()
             return
 
         # Wait for the kubelet to start with the new version
@@ -10909,11 +10951,9 @@ class ConductorManager(service.PeriodicService):
             LOG.warning("Kubelet upgrade failed for host %s" % host_name)
             kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
                 context, host_obj.id)
-            kube_host_upgrade_obj.status = "Kubelet upgrade failed"
+            kube_host_upgrade_obj.status = \
+                kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED
             kube_host_upgrade_obj.save()
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_FAILED
-            kube_upgrade_obj.save()
             return
 
         # The kubelet update was successful

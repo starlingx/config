@@ -426,7 +426,8 @@ class ManagerTestCase(base.DbTestCase):
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_STARTED)
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
 
     def test_kube_download_images_ansible_fail(self):
         # Create an upgrade
@@ -443,7 +444,67 @@ class ManagerTestCase(base.DbTestCase):
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_FAILED)
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
+
+    def test_kube_upgrade_init_actions(self):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # Test the handling of transitory upgrade states
+        expected_fail_results = [
+            (kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+             kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED),
+            (kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+             kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED),
+            (kubernetes.KUBE_UPGRADING_NETWORKING,
+             kubernetes.KUBE_UPGRADING_NETWORKING_FAILED),
+            (kubernetes.KUBE_UPGRADING_SECOND_MASTER,
+             kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED),
+        ]
+
+        for current_state, fail_state in expected_fail_results:
+            utils.create_test_kube_upgrade(
+                from_version='v1.42.1',
+                to_version='v1.42.2',
+                state=current_state,
+            )
+            self.service._kube_upgrade_init_actions()
+            updated_upgrade = self.dbapi.kube_upgrade_get_one()
+            self.assertEqual(updated_upgrade.state, fail_state)
+            self.dbapi.kube_upgrade_destroy(updated_upgrade.id)
+
+        # Test the handling of transitory host upgrade states
+        expected_fail_results = [
+            (kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE,
+             kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED),
+            (kubernetes.KUBE_HOST_UPGRADING_KUBELET,
+             kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED),
+        ]
+
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        for current_status, fail_status in expected_fail_results:
+            self.dbapi.kube_host_upgrade_update(1, {'status': current_status})
+            self.service._kube_upgrade_init_actions()
+            updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
+            self.assertEqual(updated_host_upgrade.status, fail_status)
 
     def test_kube_download_images_one_controller(self):
         # Create an upgrade
@@ -476,7 +537,8 @@ class ManagerTestCase(base.DbTestCase):
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_STARTED)
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
 
     def test_kube_download_images_one_controller_manifest_timeout(self):
         # Create an upgrade
@@ -513,7 +575,7 @@ class ManagerTestCase(base.DbTestCase):
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_FAILED)
+                         kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)
 
     def test_kube_download_images_two_controllers(self):
         # Create an upgrade
@@ -562,7 +624,8 @@ class ManagerTestCase(base.DbTestCase):
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
-        self.assertEqual(updated_upgrade.state, kubernetes.KUBE_UPGRADE_STARTED)
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
 
     def test_kube_upgrade_control_plane_first_master(self):
         # Create an upgrade
@@ -645,11 +708,12 @@ class ManagerTestCase(base.DbTestCase):
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_FAILED)
+                         kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
 
         # Verify that the host upgrade status was set
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
-        self.assertIsNotNone(updated_host_upgrade.status)
+        self.assertEqual(updated_host_upgrade.status,
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED)
 
     def test_kube_upgrade_control_plane_first_master_upgrade_fail(self):
         # Create an upgrade
@@ -686,7 +750,7 @@ class ManagerTestCase(base.DbTestCase):
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_FAILED)
+                         kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
 
         # Verify that the host upgrade status was cleared
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
@@ -870,7 +934,7 @@ class ManagerTestCase(base.DbTestCase):
         utils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
         # Create controller-0
         config_uuid = str(uuid.uuid4())
@@ -898,21 +962,22 @@ class ManagerTestCase(base.DbTestCase):
         # Upgrade the kubelet
         self.service.kube_upgrade_kubelet(self.context, c0.uuid)
 
-        # Verify that the upgrade state was updated
+        # Verify that the upgrade state was not updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_FAILED)
+                         kubernetes.KUBE_UPGRADING_KUBELETS)
 
         # Verify that the host upgrade status was set
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
-        self.assertIsNotNone(updated_host_upgrade.status)
+        self.assertEqual(updated_host_upgrade.status,
+                         kubernetes.KUBE_HOST_UPGRADING_KUBELET_FAILED)
 
     def test_kube_upgrade_kubelet_controller_upgrade_fail(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
         # Create controller-0
         config_uuid = str(uuid.uuid4())
@@ -939,10 +1004,10 @@ class ManagerTestCase(base.DbTestCase):
         # Upgrade the kubelet
         self.service.kube_upgrade_kubelet(self.context, c0.uuid)
 
-        # Verify that the upgrade state was updated
+        # Verify that the upgrade state was not updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_FAILED)
+                         kubernetes.KUBE_UPGRADING_KUBELETS)
 
         # Verify that the host upgrade status was cleared
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)

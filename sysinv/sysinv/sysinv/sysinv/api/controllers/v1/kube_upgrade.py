@@ -116,6 +116,38 @@ class KubeUpgradeController(rest.RestController):
             updates[attribute] = p['value']
         return updates
 
+    @staticmethod
+    def _check_patch_requirements(region_name,
+                                  applied_patches=None,
+                                  available_patches=None):
+        """Checks whether specified patches are applied or available"""
+
+        api_token = None
+        if applied_patches:
+            patches_applied = patch_api.patch_is_applied(
+                token=api_token,
+                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
+                region_name=region_name,
+                patches=applied_patches
+            )
+            if not patches_applied:
+                raise wsme.exc.ClientSideError(_(
+                    "The following patches must be applied before doing "
+                    "the kubernetes upgrade: %s" % applied_patches))
+
+        if available_patches:
+            patches_available = patch_api.patch_is_available(
+                token=api_token,
+                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
+                region_name=region_name,
+                patches=available_patches
+            )
+            if not patches_available:
+                raise wsme.exc.ClientSideError(_(
+                    "The following patches must be available before doing "
+                    "the kubernetes upgrade: %s" %
+                    available_patches))
+
     @wsme_pecan.wsexpose(KubeUpgradeCollection)
     def get_all(self):
         """Retrieve a list of kubernetes upgrades."""
@@ -162,7 +194,7 @@ class KubeUpgradeController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "The installed Kubernetes version %s cannot upgrade to "
                 "version %s" % (current_kube_version,
-                                 target_version_obj.version)))
+                                target_version_obj.version)))
 
         # The current kubernetes version must be active
         version_states = self._kube_operator.kube_get_version_states()
@@ -172,35 +204,12 @@ class KubeUpgradeController(rest.RestController):
                 "The installed Kubernetes version %s is not active on all "
                 "hosts" % current_kube_version))
 
-        # The necessary patches must be applied
-        api_token = None
+        # Verify patching requirements
         system = pecan.request.dbapi.isystem_get_one()
-        if target_version_obj.applied_patches:
-            patches_applied = patch_api.patch_is_applied(
-                token=api_token,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name,
-                patches=target_version_obj.applied_patches
-            )
-            if not patches_applied:
-                raise wsme.exc.ClientSideError(_(
-                    "The following patches must be applied before starting "
-                    "the kubernetes upgrade: %s" %
-                    target_version_obj.applied_patches))
-
-        # The necessary patches must be available
-        if target_version_obj.available_patches:
-            patches_available = patch_api.patch_is_available(
-                token=api_token,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name,
-                patches=target_version_obj.available_patches
-            )
-            if not patches_available:
-                raise wsme.exc.ClientSideError(_(
-                    "The following patches must be available before starting "
-                    "the kubernetes upgrade: %s" %
-                    target_version_obj.available_patches))
+        self._check_patch_requirements(
+            system.region_name,
+            applied_patches=target_version_obj.applied_patches,
+            available_patches=target_version_obj.available_patches)
 
         # TODO: check that all installed applications support new k8s version
         # TODO: check that tiller/armada support new k8s version
@@ -220,14 +229,10 @@ class KubeUpgradeController(rest.RestController):
 
         # TODO: kubernetes related health checks...
 
-        # Tell the conductor to download the images for the new version
-        pecan.request.rpcapi.kube_download_images(
-            pecan.request.context, to_version)
-
         # Create upgrade record.
         create_values = {'from_version': current_kube_version,
                          'to_version': to_version,
-                         'state': kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES}
+                         'state': kubernetes.KUBE_UPGRADE_STARTED}
         new_upgrade = pecan.request.dbapi.kube_upgrade_create(create_values)
 
         # Set the target version for each host to the current version
@@ -237,7 +242,7 @@ class KubeUpgradeController(rest.RestController):
             pecan.request.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
                                                          update_values)
 
-        LOG.info("Starting kubernetes upgrade from version: %s to version: %s"
+        LOG.info("Started kubernetes upgrade from version: %s to version: %s"
                  % (current_kube_version, to_version))
 
         return KubeUpgrade.convert_with_links(new_upgrade)
@@ -258,14 +263,49 @@ class KubeUpgradeController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "A kubernetes upgrade is not in progress"))
 
-        if updates['state'] == kubernetes.KUBE_UPGRADING_NETWORKING:
-            # Make sure upgrade is in the correct state to upgrade networking
-            if kube_upgrade_obj.state != \
-                    kubernetes.KUBE_UPGRADED_FIRST_MASTER:
+        if updates['state'] == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES:
+            # Make sure upgrade is in the correct state to download images
+            if kube_upgrade_obj.state not in [
+                    kubernetes.KUBE_UPGRADE_STARTED,
+                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED]:
                 raise wsme.exc.ClientSideError(_(
-                    "Kubernetes upgrade must be in %s state to upgrade "
+                    "Kubernetes upgrade must be in %s or %s state to download "
+                    "images" %
+                    (kubernetes.KUBE_UPGRADE_STARTED,
+                     kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED)))
+
+            # Verify patching requirements (since the api server is not
+            # upgraded yet, patches could have been removed)
+            system = pecan.request.dbapi.isystem_get_one()
+            target_version_obj = objects.kube_version.get_by_version(
+                kube_upgrade_obj.to_version)
+            self._check_patch_requirements(
+                system.region_name,
+                applied_patches=target_version_obj.applied_patches,
+                available_patches=target_version_obj.available_patches)
+
+            # Update the upgrade state
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES
+            kube_upgrade_obj.save()
+
+            # Tell the conductor to download the images for the new version
+            pecan.request.rpcapi.kube_download_images(
+                pecan.request.context, kube_upgrade_obj.to_version)
+
+            LOG.info("Downloading kubernetes images for version: %s" %
+                kube_upgrade_obj.to_version)
+            return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+
+        elif updates['state'] == kubernetes.KUBE_UPGRADING_NETWORKING:
+            # Make sure upgrade is in the correct state to upgrade networking
+            if kube_upgrade_obj.state not in [
+                    kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                    kubernetes.KUBE_UPGRADING_NETWORKING_FAILED]:
+                raise wsme.exc.ClientSideError(_(
+                    "Kubernetes upgrade must be in %s or %s state to upgrade "
                     "networking" %
-                    kubernetes.KUBE_UPGRADED_FIRST_MASTER))
+                    (kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                     kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)))
 
             # Update the upgrade state
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_NETWORKING
@@ -275,6 +315,8 @@ class KubeUpgradeController(rest.RestController):
             pecan.request.rpcapi.kube_upgrade_networking(
                 pecan.request.context, kube_upgrade_obj.to_version)
 
+            LOG.info("Upgrading kubernetes networking to version: %s" %
+                kube_upgrade_obj.to_version)
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
         elif updates['state'] == kubernetes.KUBE_UPGRADE_COMPLETE:
@@ -295,6 +337,9 @@ class KubeUpgradeController(rest.RestController):
             # All is well, mark the upgrade as complete
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE
             kube_upgrade_obj.save()
+
+            LOG.info("Completed kubernetes upgrade to version: %s" %
+                kube_upgrade_obj.to_version)
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
         else:
@@ -302,7 +347,7 @@ class KubeUpgradeController(rest.RestController):
                 "Invalid state %s supplied" % updates['state']))
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(KubeUpgrade)
+    @wsme_pecan.wsexpose(None)
     def delete(self):
         """Delete Kubernetes Upgrade."""
 

@@ -346,6 +346,16 @@ class TestPostKubeUpgrades(TestHost):
         self.mocked_patch_is_applied.start()
         self.addCleanup(self.mocked_patch_is_applied.stop)
 
+        self.mock_patch_is_available_result = True
+
+        def mock_patch_is_available(token, timeout, region_name, patches):
+            return self.mock_patch_is_available_result
+        self.mocked_patch_is_available = mock.patch(
+            'sysinv.api.controllers.v1.patch_api.patch_is_available',
+            mock_patch_is_available)
+        self.mocked_patch_is_available.start()
+        self.addCleanup(self.mocked_patch_is_available.stop)
+
     def test_kube_upgrade_control_plane_controller_0(self):
         # Test upgrading kubernetes control plane on controller-0
 
@@ -360,7 +370,7 @@ class TestPostKubeUpgrades(TestHost):
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         # Upgrade the control plane
@@ -376,9 +386,58 @@ class TestPostKubeUpgrades(TestHost):
         self.fake_conductor_api.kube_upgrade_control_plane.\
             assert_called_with(mock.ANY, c0.uuid)
 
-        # Verify that the target version was updated
+        # Verify that the target version and status was updated
         result = self.get_json('/kube_host_upgrades/1')
         self.assertEqual(result['target_version'], 'v1.42.2')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE)
+
+        # Verify that the upgrade state was updated
+        result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
+        self.assertEqual(result['state'],
+                         kubernetes.KUBE_UPGRADING_FIRST_MASTER)
+
+    def test_kube_upgrade_control_plane_controller_0_after_failure(self):
+        # Test upgrading kubernetes control plane on controller-0 after a
+        # failure
+
+        # Create controller-0
+        c0 = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
+        )
+
+        # Mark the kube host upgrade as failed
+        values = {'target_version': 'v1.42.2',
+                  'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Upgrade the control plane
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            body, headers={'User-Agent': 'sysinv-test'})
+
+        # Verify the host was returned
+        self.assertEqual(result.json['hostname'], 'controller-0')
+
+        # Verify the control plane was upgraded
+        self.fake_conductor_api.kube_upgrade_control_plane.\
+            assert_called_with(mock.ANY, c0.uuid)
+
+        # Verify that the target version and status was updated
+        result = self.get_json('/kube_host_upgrades/1')
+        self.assertEqual(result['target_version'], 'v1.42.2')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE)
 
         # Verify that the upgrade state was updated
         result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
@@ -404,7 +463,7 @@ class TestPostKubeUpgrades(TestHost):
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         # Upgrade the control plane
@@ -420,9 +479,11 @@ class TestPostKubeUpgrades(TestHost):
         self.fake_conductor_api.kube_upgrade_control_plane.\
             assert_called_with(mock.ANY, c1.uuid)
 
-        # Verify that the target version was updated
+        # Verify that the target version and status was updated
         result = self.get_json('/kube_host_upgrades/2')
         self.assertEqual(result['target_version'], 'v1.42.2')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE)
 
         # Verify that the upgrade state was updated
         result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
@@ -448,8 +509,12 @@ class TestPostKubeUpgrades(TestHost):
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADED_NETWORKING,
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
         )
+
+        # Mark the first kube host upgrade as OK
+        values = {'target_version': 'v1.42.2'}
+        self.dbapi.kube_host_upgrade_update(1, values)
 
         # Upgrade the control plane
         body = {}
@@ -464,14 +529,113 @@ class TestPostKubeUpgrades(TestHost):
         self.fake_conductor_api.kube_upgrade_control_plane.\
             assert_called_with(mock.ANY, c1.uuid)
 
-        # Verify that the target version was updated
+        # Verify that the target version and status was updated
         result = self.get_json('/kube_host_upgrades/2')
         self.assertEqual(result['target_version'], 'v1.42.2')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE)
 
         # Verify that the upgrade state was updated
         result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
         self.assertEqual(result['state'],
                          kubernetes.KUBE_UPGRADING_SECOND_MASTER)
+
+    def test_kube_upgrade_control_plane_second_controller_after_failure(self):
+        # Test upgrading kubernetes control plane on the second controller
+        # after a failure
+
+        # Create controllers
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        c1 = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED,
+        )
+
+        # Mark the first kube host upgrade as OK
+        values = {'target_version': 'v1.42.2'}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Mark the second kube host upgrade as failed
+        values = {'target_version': 'v1.42.2',
+                  'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED}
+        self.dbapi.kube_host_upgrade_update(2, values)
+
+        # Upgrade the control plane
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-1/kube_upgrade_control_plane',
+            body, headers={'User-Agent': 'sysinv-test'})
+
+        # Verify the host was returned
+        self.assertEqual(result.json['hostname'], 'controller-1')
+
+        # Verify the control plane was upgraded
+        self.fake_conductor_api.kube_upgrade_control_plane.\
+            assert_called_with(mock.ANY, c1.uuid)
+
+        # Verify that the target version and status was updated
+        result = self.get_json('/kube_host_upgrades/2')
+        self.assertEqual(result['target_version'], 'v1.42.2')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE)
+
+        # Verify that the upgrade state was updated
+        result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
+        self.assertEqual(result['state'],
+                         kubernetes.KUBE_UPGRADING_SECOND_MASTER)
+
+    def test_kube_upgrade_control_plane_wrong_controller_after_failure(self):
+        # Test upgrading kubernetes control plane on the wrong controller
+        # after a failure
+
+        # Create controllers
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
+        )
+
+        # Mark the first kube host upgrade as failed
+        values = {'target_version': 'v1.42.2',
+                  'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Upgrade the second control plane
+        result = self.post_json(
+            '/ihosts/controller-1/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("The first control plane upgrade must be completed",
+                      result.json['error_message'])
 
     def test_kube_upgrade_control_plane_no_upgrade(self):
         # Test upgrading kubernetes control plane with no upgrade
@@ -523,7 +687,104 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertTrue(result.json['error_message'])
-        self.assertIn("upgrade must be in the",
+        self.assertIn("The kubernetes upgrade is not in a valid state",
+                      result.json['error_message'])
+
+    def test_kube_upgrade_control_plane_controller_0_missing_applied_patches(
+            self):
+        # Test upgrading kubernetes control plane with missing applied patches
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+        )
+
+        # Fake the missing patches
+        self.mock_patch_is_applied_result = False
+        self.get_kube_versions_result = [
+            {'version': 'v1.42.1',
+             'upgrade_from': [],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
+            {'version': 'v1.42.2',
+             'upgrade_from': ['v1.42.1'],
+             'downgrade_to': [],
+             'applied_patches': ['MISSING_PATCH.1'],
+             'available_patches': ['MISSING_PATCH.2'],
+             },
+        ]
+
+        # Upgrade the control plane
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("The following patches must be applied",
+                      result.json['error_message'])
+
+    def test_kube_upgrade_control_plane_controller_0_missing_available_patches(
+            self):
+        # Test upgrading kubernetes control plane with missing available
+        # patches
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+        )
+
+        # Fake the missing patches
+        self.mock_patch_is_available_result = False
+        self.get_kube_versions_result = [
+            {'version': 'v1.42.1',
+             'upgrade_from': [],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
+            {'version': 'v1.42.2',
+             'upgrade_from': ['v1.42.1'],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': ['MISSING_PATCH.2'],
+             },
+        ]
+
+        # Upgrade the control plane
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("The following patches must be available",
                       result.json['error_message'])
 
     def test_kube_upgrade_control_plane_wrong_personality(self):
@@ -546,7 +807,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         # Upgrade the control plane
@@ -576,7 +837,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         # No control plane version for this controller
@@ -611,7 +872,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         # Upgrade the control plane
@@ -625,6 +886,40 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertTrue(result.json['error_message'])
         self.assertIn("must be unlocked and available",
+                      result.json['error_message'])
+
+    def test_kube_upgrade_control_plane_already_in_progress(self):
+        # Test upgrading kubernetes control plane with upgrade in progress
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+        )
+
+        # Mark the kube host as already upgrading
+        values = {'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Upgrade the control plane
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("control plane on this host is already being upgraded",
                       result.json['error_message'])
 
     def test_kube_upgrade_kubelet_controller_0(self):
@@ -656,6 +951,11 @@ class TestPostKubeUpgrades(TestHost):
         # Verify the kubelet was upgraded
         self.fake_conductor_api.kube_upgrade_kubelet.\
             assert_called_with(mock.ANY, c0.uuid)
+
+        # Verify that the status was updated
+        result = self.get_json('/kube_host_upgrades/1')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_KUBELET)
 
         # Verify that the upgrade state was updated
         result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
@@ -696,6 +996,11 @@ class TestPostKubeUpgrades(TestHost):
         # Verify the kubelet was upgraded
         self.fake_conductor_api.kube_upgrade_kubelet.\
             assert_called_with(mock.ANY, c1.uuid)
+
+        # Verify that the status was updated
+        result = self.get_json('/kube_host_upgrades/2')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_KUBELET)
 
         # Verify that the upgrade state was updated
         result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
@@ -745,9 +1050,11 @@ class TestPostKubeUpgrades(TestHost):
         # Verify the host was returned
         self.assertEqual(result.json['hostname'], 'worker-0')
 
-        # Verify that the target version was updated
+        # Verify that the target version and status was updated
         result = self.get_json('/kube_host_upgrades/3')
         self.assertEqual(result['target_version'], 'v1.42.2')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_KUBELET)
 
         # Verify the kubelet was upgraded
         self.fake_conductor_api.kube_upgrade_kubelet.\
@@ -887,6 +1194,11 @@ class TestPostKubeUpgrades(TestHost):
         self.fake_conductor_api.kube_upgrade_kubelet.\
             assert_called_with(mock.ANY, c0.uuid)
 
+        # Verify that the status was updated
+        result = self.get_json('/kube_host_upgrades/1')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_KUBELET)
+
         # Verify that the upgrade state was updated
         result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
         self.assertEqual(result['state'],
@@ -907,7 +1219,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         # Upgrade the kubelet
@@ -1092,6 +1404,41 @@ class TestPostKubeUpgrades(TestHost):
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertTrue(result.json['error_message'])
         self.assertIn("The host must be locked and online",
+                      result.json['error_message'])
+
+    def test_kube_upgrade_kubelet_already_in_progress(self):
+        # Test upgrading kubernetes kubelet with upgrade in progress
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_SECOND_MASTER,
+        )
+
+        # Mark the kube host as already upgrading
+        values = {'status': kubernetes.KUBE_HOST_UPGRADING_KUBELET}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Upgrade the kubelet
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_kubelet',
+            body, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("The kubelet on this host is already being upgraded",
                       result.json['error_message'])
 
 
