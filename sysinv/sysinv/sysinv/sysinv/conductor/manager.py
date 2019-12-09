@@ -7265,18 +7265,6 @@ class ConductorManager(service.PeriodicService):
                 data['name'], data['logical_volume'], data['size']))
             self.dbapi.controller_fs_create(data)
 
-        else:
-            values = {
-                'services': constants.SB_SVC_GLANCE,
-                'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_EXTERNAL],
-                'state': constants.SB_STATE_CONFIGURED,
-                'backend': constants.SB_TYPE_EXTERNAL,
-                'task': constants.SB_TASK_NONE,
-                'capabilities': {},
-                'forsystemid': system.id
-            }
-            self.dbapi.storage_external_create(values)
-
     def update_service_config(self, context, service=None, do_apply=False):
         """Update the service parameter configuration"""
 
