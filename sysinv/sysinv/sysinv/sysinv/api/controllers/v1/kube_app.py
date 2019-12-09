@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -300,6 +300,7 @@ class KubeAppController(rest.RestController):
             db_app.status = constants.APP_APPLY_IN_PROGRESS
             db_app.progress = None
             db_app.recovery_attempts = 0
+            db_app.mode = mode
             db_app.save()
             pecan.request.rpcapi.perform_app_apply(pecan.request.context,
                                                    db_app, mode=mode)

@@ -1881,6 +1881,7 @@ class KubeApp(Base):
     progress = Column(String(255), nullable=True)
     active = Column(Boolean, nullable=False, default=False)
     recovery_attempts = Column(Integer, nullable=False, default=0)
+    mode = Column(String(255), nullable=True)
     UniqueConstraint('name', 'app_version', name='u_app_name_version')
 
 
