@@ -10621,10 +10621,11 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Received a request to update management mac for host "
                       "%s under the wrong condition." % host.hostname)
 
-    def configure_sc_database(self, context, host):
-        """Configure the system controller database upon the creation of initial
-        controller host and distributed_cloud_role change from 'none' to
-        'systemcontroller' during bootstrap playbook play and replay.
+    def configure_system_controller(self, context, host):
+        """Configure the system controller database and file system upon the
+        creation of initial controller host and distributed_cloud_role change
+        from 'none' to 'systemcontroller' during bootstrap playbook play and
+        replay.
 
         :param context: request context.
         :param host: an ihost object
@@ -10651,16 +10652,18 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "host_uuids": [host.uuid],
-                    "classes": ['platform::postgresql::sc::runtime']
+                    "classes": ['platform::postgresql::sc::runtime',
+                                'platform::dcmanager::fs::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict, force=True)
             else:
-                LOG.error("Unable to configure the sc database. Timed out "
-                          "waiting for inventory to complete.")
+                LOG.error("Unable to configure the sc database or file system. "
+                          "Timed out waiting for inventory to complete.")
         else:
-            LOG.error("Received a request to configure the sc database "
-                      "for host %s under the wrong condition." % host.hostname)
+            LOG.error("Received a request to configure the sc database and "
+                      "filesystem for host %s under the wrong condition."
+                      % host.hostname)
 
     def store_default_config(self, context):
         """ copy sysinv.conf to drbd storage """

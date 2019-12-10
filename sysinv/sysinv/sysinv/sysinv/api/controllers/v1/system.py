@@ -569,7 +569,7 @@ class SystemController(rest.RestController):
                 constants.CONTROLLER)
             # this is a replay case after the first host has been created
             if len(hosts) == 1:
-                pecan.request.rpcapi.configure_sc_database(
+                pecan.request.rpcapi.configure_system_controller(
                     pecan.request.context, hosts[0])
 
         if 'security_feature' in delta_handle:
