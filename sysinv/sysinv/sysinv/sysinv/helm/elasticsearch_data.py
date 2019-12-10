@@ -17,15 +17,9 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
 
     def get_overrides(self, namespace=None):
 
-        # Note memory values are to be system engineered.
-
         combined_data_and_master = False
         replicas = 2
         if utils.is_aio_system(self.dbapi):
-            # esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx512m -Xms512m"
-            # memory_size = "512Mi"
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx1536m -Xms1536m"
-
             if (utils.is_aio_duplex_system(self.dbapi) and
                     self._count_hosts_by_label(
                         common.LABEL_MONITOR_MASTER) < 3):
@@ -37,8 +31,13 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
 
             if utils.is_aio_simplex_system(self.dbapi):
                 replicas = 1
+        if (utils.is_aio_system(self.dbapi) and not
+                self._is_distributed_cloud_role_system_controller()):
+            esJavaOpts = \
+                "-Djava.net.preferIPv6Addresses=true -Xmx1536m -Xms1536m"
         else:
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx4096m -Xms4096m"
+            esJavaOpts = \
+                "-Djava.net.preferIPv6Addresses=true -Xmx4096m -Xms4096m"
 
         overrides = {
             common.HELM_NS_MONITOR: {
@@ -73,7 +72,8 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
     def _get_data_resources_overrides(self):
         # Default values based upon AIO+4 and Standard+20 system test
 
-        if utils.is_aio_system(self.dbapi):
+        if (utils.is_aio_system(self.dbapi) and not
+                self._is_distributed_cloud_role_system_controller()):
             cpu_requests = "200m"
             cpu_limits = "1"
             memory_size = "4096Mi"

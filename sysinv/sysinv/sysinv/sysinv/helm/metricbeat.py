@@ -54,6 +54,21 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                 "system": system_fields
             }
         }
+
+        if self._is_distributed_cloud_role_subcloud():
+            sc_conf = {
+                 'setup.dashboards': {'enabled': False},
+                 'output.elasticsearch': {
+                     'hosts': [
+                         "%s:%s%s" % (
+                             self._system_controller_floating_address(),
+                             self.NODE_PORT,
+                             self.ELASTICSEARCH_CLIENT_PATH)
+                     ]
+                 }
+            }
+            conf.update(sc_conf)
+
         return conf
 
     def _get_metric_system(self):

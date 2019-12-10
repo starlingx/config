@@ -18,11 +18,16 @@ class ElasticsearchClientHelm(elastic.ElasticBaseHelm):
     def get_overrides(self, namespace=None):
         replicas = 2
         if utils.is_aio_system(self.dbapi):
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx512m -Xms512m"
             if utils.is_aio_simplex_system(self.dbapi):
                 replicas = 1
+
+        if (utils.is_aio_system(self.dbapi) and not
+                self._is_distributed_cloud_role_system_controller()):
+            esJavaOpts = \
+                "-Djava.net.preferIPv6Addresses=true -Xmx512m -Xms512m"
         else:
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx1024m -Xms1024m"
+            esJavaOpts = \
+                "-Djava.net.preferIPv6Addresses=true -Xmx1024m -Xms1024m"
 
         overrides = {
             common.HELM_NS_MONITOR: {
@@ -42,7 +47,8 @@ class ElasticsearchClientHelm(elastic.ElasticBaseHelm):
             return overrides
 
     def _get_client_resources_overrides(self):
-        if utils.is_aio_system(self.dbapi):
+        if (utils.is_aio_system(self.dbapi) and not
+                self._is_distributed_cloud_role_system_controller()):
             cpu_requests = "50m"
             cpu_limits = "1"  # high watermark
             memory_size = "1024Mi"
