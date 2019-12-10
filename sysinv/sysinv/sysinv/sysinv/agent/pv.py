@@ -16,6 +16,8 @@ import subprocess
 import sys
 
 from oslo_log import log as logging
+
+from sysinv.common import disk_utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -221,7 +223,7 @@ class PVOperator(object):
                          "nothing to remove!" % parm)
 
         try:
-            cutils.disk_wipe(ipv_dict['idisk_device_node'])
+            disk_utils.disk_wipe(ipv_dict['idisk_device_node'])
             # Clean up the directory used by the volume group otherwise VG
             # creation will fail without a reboot
             vgs, __ = cutils.execute('vgs', '--noheadings',

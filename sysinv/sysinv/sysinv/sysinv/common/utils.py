@@ -1566,44 +1566,6 @@ def _check_upgrade(dbapi, host_obj=None):
           "software upgrade. Try again after the upgrade is completed."))
 
 
-def disk_wipe(device):
-    """Wipe GPT table entries.
-    We ignore exit codes in case disk is toasted or not present.
-    Note: Assumption is that entire disk is used
-    :param device: disk device node or device path
-    """
-    LOG.info("Wiping device: %s " % device)
-
-    # Wipe well known GPT table entries, if any.
-    trycmd('wipefs', '-f', '-a', device)
-    execute('udevadm', 'settle')
-
-    # Wipe any other tables at the beginning of the device.
-    out, err = trycmd(
-        'dd', 'if=/dev/zero',
-        'of=%s' % device,
-        'bs=512', 'count=2048',
-        'conv=fdatasync')
-    LOG.info("Wiped beginning of disk: %s - %s" % (out, err))
-
-    # Get size of disk.
-    size, __ = trycmd('blockdev', '--getsz',
-                      device)
-    size = size.rstrip()
-
-    if size and size.isdigit():
-        # Wipe at the end of device.
-        out, err = trycmd(
-            'dd', 'if=/dev/zero',
-            'of=%s' % device,
-            'bs=512', 'count=2048',
-            'seek=%s' % (int(size) - 2048),
-            'conv=fdatasync')
-        LOG.info("Wiped end of disk: %s - %s" % (out, err))
-
-    LOG.info("Device %s zapped" % device)
-
-
 def get_dhcp_client_iaid(mac_address):
     """Retrieves the client IAID from its MAC address."""
     hwaddr = list(int(byte, 16) for byte in mac_address.split(':'))

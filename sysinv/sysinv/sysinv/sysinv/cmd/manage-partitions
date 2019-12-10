@@ -27,10 +27,14 @@ from collections import defaultdict
 
 from oslo_config import cfg
 from oslo_log import log
+
 from sysinv._i18n import _
+
 from sysinv.common import constants
 from sysinv.common import service as sysinv_service
 from sysinv.common import utils
+from sysinv.common import disk_utils
+
 from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.openstack.common import context
 
@@ -819,7 +823,7 @@ def check_partitions(data, mode, pfile):
     for p in json_body:
         disk_device_path = p.get('disk_device_path')
         if not _gpt_table_present(device_node=disk_device_path):
-            utils.disk_wipe(disk_device_path)
+            disk_utils.disk_wipe(disk_device_path)
             utils.execute('parted', disk_device_path, 'mklabel', 'gpt')
             time.sleep(1)  # Wait for udev to flush partition table data
 
