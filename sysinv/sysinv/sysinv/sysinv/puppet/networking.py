@@ -31,6 +31,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_mgmt_interface_config())
         config.update(self._get_cluster_interface_config())
         config.update(self._get_ironic_interface_config())
+        config.update(self._get_ptp_interface_config())
         if host.personality == constants.CONTROLLER:
             config.update(self._get_oam_interface_config())
         return config
@@ -173,6 +174,34 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_ironic_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_IRONIC)
+
+    def _get_ptp_interface_config(self):
+        config = {}
+        ptp_devices = {
+            constants.INTERFACE_PTP_ROLE_MASTER: [],
+            constants.INTERFACE_PTP_ROLE_SLAVE: []
+        }
+        ptp_interfaces = interface.get_ptp_interfaces(self.context)
+        ptp = self.dbapi.ptp_get_one()
+        is_udp = (ptp.transport == constants.PTP_TRANSPORT_UDP)
+        for network_interface in ptp_interfaces:
+            interface_devices = interface.get_interface_devices(self.context, network_interface)
+
+            address_family = None
+            if is_udp:
+                address = interface.get_interface_primary_address(self.context, network_interface)
+                if address:
+                    address_family = netaddr.IPAddress(address['address']).version
+
+            for device in interface_devices:
+                ptp_devices[network_interface['ptp_role']].append({'device': device, 'family': address_family})
+
+        config.update({
+            'platform::ptp::master_devices': ptp_devices[constants.INTERFACE_PTP_ROLE_MASTER],
+            'platform::ptp::slave_devices': ptp_devices[constants.INTERFACE_PTP_ROLE_SLAVE]
+        })
+
+        return config
 
     def _get_interface_config(self, networktype):
         config = {}

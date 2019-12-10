@@ -2332,6 +2332,117 @@ class TestPatchStdDuplexControllerVIM(TestHost):
                           headers={'User-Agent': 'sysinv-test'})
 
 
+class TestHostPTPValidation(TestHost):
+    def test_ptp_unlock_valid(self):
+        ptp = self.dbapi.ptp_get_one()
+        ptp_uuid = ptp.uuid
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            clock_synchronization=constants.PTP,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+
+        # Host with PTP must have at least one ptp interface
+        interface = {
+            'forihostid': w0_host['id'],
+            'ifname': 'ptpif',
+            'iftype': constants.INTERFACE_TYPE_ETHERNET,
+            'imac': '02:11:22:33:44:11',
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'ptp_role': constants.INTERFACE_PTP_ROLE_MASTER
+        }
+        ptp_if = dbutils.create_test_interface(**interface)
+        response = self._patch_host_action(
+            w0_host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # With UDP transport all host PTP interfaces must have an IP
+
+        self.dbapi.ptp_update(ptp_uuid, {'transport': constants.PTP_TRANSPORT_UDP})
+        address = {'interface_id': ptp_if.id,
+                   'family': 4,
+                   'prefix': 24,
+                   'address': '192.168.1.2'}
+        dbutils.create_test_address(**address)
+        response = self._patch_host_action(
+            w0_host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_ptp_unlock_invalid(self):
+        ptp = self.dbapi.ptp_get_one()
+        ptp_uuid = ptp.uuid
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            clock_synchronization=constants.PTP,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+
+        # Host with PTP must have at least one ptp interface
+        response = self._patch_host_action(
+            w0_host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Hosts with PTP clock synchronization must have at least one", response.json['error_message'])
+
+        # With UDP transport all host PTP interfaces must have an IP
+        interface = {
+            'forihostid': w0_host['id'],
+            'ifname': 'ptpif',
+            'iftype': constants.INTERFACE_TYPE_ETHERNET,
+            'imac': '02:11:22:33:44:11',
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'ptp_role': constants.INTERFACE_PTP_ROLE_MASTER
+        }
+        dbutils.create_test_interface(**interface)
+        self.dbapi.ptp_update(ptp_uuid, {'transport': constants.PTP_TRANSPORT_UDP})
+
+        response = self._patch_host_action(
+            w0_host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test', expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("All PTP interfaces must have an associated address", response.json['error_message'])
+
+
 class PostControllerHostTestCase(TestPostControllerMixin, TestHost,
                                  dbbase.ControllerHostTestCase):
     pass

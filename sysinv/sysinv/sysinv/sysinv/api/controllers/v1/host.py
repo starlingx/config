@@ -6040,6 +6040,32 @@ class HostController(rest.RestController):
 
             hostupdate.configure_required = True
 
+        host_uuid = ihost['uuid']
+        # Validate PTP interfaces if PTP is used on this host
+        if ihost['clock_synchronization'] == constants.PTP:
+            # Ensure we have at least one PTP interface
+            host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(host_uuid)
+            ptp_interfaces = []
+            for interface in host_interfaces:
+                if interface.ptp_role != constants.INTERFACE_PTP_ROLE_NONE:
+                    ptp_interfaces.append(interface)
+
+            if not ptp_interfaces:
+                raise wsme.exc.ClientSideError(
+                    _("Hosts with PTP clock synchronization must have at least one PTP interface configured"))
+
+            # Check that interfaces have addresses assigned if PTP transport is UDP
+            system_ptp = pecan.request.dbapi.ptp_get_one()
+            if system_ptp.transport == constants.PTP_TRANSPORT_UDP:
+                addresses = pecan.request.dbapi.addresses_get_by_host(host_uuid)
+                address_interfaces = set()
+                for address in addresses:
+                    address_interfaces.add(address.ifname)
+                for ptp_interface in ptp_interfaces:
+                    if ptp_interface.ifname not in address_interfaces:
+                        raise wsme.exc.ClientSideError(
+                            _("All PTP interfaces must have an associated address when PTP transport is UDP"))
+
     def check_unlock_partitions(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""
         ihost = hostupdate.ihost_patch

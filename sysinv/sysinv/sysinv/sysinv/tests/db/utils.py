@@ -938,7 +938,8 @@ def get_test_interface(**kw):
         'ipv6_pool': kw.get('ipv6_pool'),
         'sriov_numvfs': kw.get('sriov_numvfs', None),
         'sriov_vf_driver': kw.get('sriov_vf_driver', None),
-        'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None)
+        'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None),
+        'ptp_role': kw.get('ptp_role', None)
     }
     return interface
 

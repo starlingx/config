@@ -189,6 +189,9 @@ class Interface(base.APIBase):
     sriov_vf_driver = wtypes.text
     "The driver of configured SR-IOV VFs"
 
+    ptp_role = wtypes.text
+    "The PTP role for this interface"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.interface.fields.keys())
         for k in self.fields:
@@ -213,7 +216,7 @@ class Interface(base.APIBase):
                                            'aemode', 'schedpolicy', 'txhashpolicy',
                                            'vlan_id', 'uses', 'usesmodify', 'used_by',
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                                           'sriov_numvfs', 'sriov_vf_driver'])
+                                           'sriov_numvfs', 'sriov_vf_driver', 'ptp_role'])
 
         # never expose the ihost_id attribute
         interface.ihost_id = wtypes.Unset
@@ -1000,6 +1003,33 @@ def _check_network_type_and_port(interface, ihost,
             raise wsme.exc.ClientSideError(msg)
 
 
+def _check_interface_ptp(interface):
+    # Ensure PTP settings are valid for this interface
+    # Validate PTP role value
+    ptp_role = interface['ptp_role']
+    if ptp_role is None:
+        return
+
+    supported_ptp_values = [constants.INTERFACE_PTP_ROLE_MASTER,
+                            constants.INTERFACE_PTP_ROLE_SLAVE,
+                            constants.INTERFACE_PTP_ROLE_NONE]
+    if ptp_role not in supported_ptp_values:
+        msg = (_("Interface ptp_role must be one of "
+                 "{}").format(', '.join(supported_ptp_values)))
+        raise wsme.exc.ClientSideError(msg)
+
+    # Validate interface class for PTP
+    if ptp_role != constants.INTERFACE_PTP_ROLE_NONE:
+        ifclass = interface['ifclass']
+        supported_ptp_classes = [constants.INTERFACE_CLASS_PLATFORM,
+                                 constants.INTERFACE_CLASS_PCI_SRIOV,
+                                 constants.INTERFACE_TYPE_VF]
+        if not ifclass or ifclass not in supported_ptp_classes:
+            msg = (_("Invalid interface class for ptp_role: {0}. Device interface class must be one of "
+                     "{1}").format(ptp_role, ', '.join(supported_ptp_classes)))
+            raise wsme.exc.ClientSideError(msg)
+
+
 def _check_interface_data(op, interface, ihost, existing_interface,
                           datanetworks=None):
     # Get data
@@ -1258,6 +1288,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                     "on the underlying interface (%s)" %
                     (interface['sriov_numvfs'], avail_vfs, lower_iface['ifname']))
             raise wsme.exc.ClientSideError(msg)
+    _check_interface_ptp(interface)
+
     return interface
 
 

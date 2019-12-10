@@ -1924,3 +1924,15 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in ports_col.items():
             self.assertTrue(isinstance(ports.c[col].type,
                             getattr(sqlalchemy.types, coltype)))
+
+    def _check_096(self, engine, data):
+        # 096_ptp_interface.py
+
+        # Assert data types for new columns in table "interface"
+        interface = db_utils.get_table(engine, 'interfaces')
+        interface_col = {
+            'ptp_role': 'String',
+        }
+        for col, coltype in interface_col.items():
+            self.assertTrue(isinstance(interface.c[col].type,
+                                       getattr(sqlalchemy.types, coltype)))
