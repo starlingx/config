@@ -960,7 +960,7 @@ class AppOperator(object):
         for ns in namespaces:
             if (ns in [common.HELM_NS_HELM_TOOLKIT,
                        common.HELM_NS_STORAGE_PROVISIONER] or
-                    self._kube.kube_get_secret(pool_secret, ns)):
+                    self._kube.kube_get_secret(pool_secret, ns) is not None):
                 # Secret already exist
                 continue
 
@@ -1026,7 +1026,7 @@ class AppOperator(object):
             list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
         for ns in namespaces:
             if (ns == common.HELM_NS_HELM_TOOLKIT or
-                 self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns)):
+                 self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns) is not None):
                 # Secret already exist
                 continue
 
@@ -1076,6 +1076,75 @@ class AppOperator(object):
             except Exception as e:
                 LOG.error(e)
                 raise
+
+    def audit_local_registry_secrets(self):
+        """
+        local registry uses admin's username&password for authentication.
+        K8s stores the authentication info in secrets in order to access
+        local registry, while admin's password is saved in keyring.
+        Admin's password could be changed by openstack client cmd outside of
+        sysinv and K8s. It will cause info mismatch between keyring and
+        k8s's secrets, and leads to authentication failure.
+        There are two ways to keep k8s's secrets updated with data in keyring:
+        1. Polling. Use a periodic task to sync info from keyring to secrets.
+        2. Notification. Keystone send out notification when there is password
+           update, and notification receiver to do the data sync.
+        To ensure k8s's secrets are timely and always synced with keyring, both
+        methods are used here. And this function will be called in both cases
+        to audit password info between keyring and default-registry-key, and
+        update keyring's password to all local registry secrets if need.
+        """
+
+        # Use lock to synchronize call from timer and notification
+        lock_name = "AUDIT_LOCAL_REGISTRY_SECRETS"
+
+        @cutils.synchronized(lock_name, external=False)
+        def _sync_audit_local_registry_secrets(self):
+            try:
+                secret = self._kube.kube_get_secret("default-registry-key", "kube-system")
+                if secret is None:
+                    return
+                secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
+                secret_auth_info = (secret_auth_body.split('auth":')[1]).split('"')[1]
+                registry_auth = get_local_docker_registry_auth()
+                registry_auth_info = '{0}:{1}'.format(registry_auth['username'],
+                                                      registry_auth['password'])
+                if secret_auth_info == base64.b64encode(registry_auth_info):
+                    LOG.debug("Auth info is the same, no update is needed for k8s secret.")
+                    return
+            except Exception as e:
+                LOG.error(e)
+                return
+
+            # update "default-registry-key" secret info under all namespaces
+            try:
+                # update secret with new auth info
+                token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
+                        constants.DOCKER_REGISTRY_SERVER, base64.b64encode(registry_auth_info))
+                secret.data['.dockerconfigjson'] = base64.b64encode(token)
+
+                ns_list = self._kube.kube_get_namespace_name_list()
+                for ns in ns_list:
+                    secret = self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns)
+                    if secret is None:
+                        continue
+
+                    try:
+                        secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
+                        if constants.DOCKER_REGISTRY_SERVER in secret_auth_body:
+                            secret.data['.dockerconfigjson'] = base64.b64encode(token)
+                            self._kube.kube_patch_secret(DOCKER_REGISTRY_SECRET, ns, secret)
+                            LOG.info("Secret %s under Namespace %s is updated"
+                                     % (DOCKER_REGISTRY_SECRET, ns))
+                    except Exception as e:
+                        LOG.error("Failed to update Secret %s under Namespace %s: %s"
+                                  % (DOCKER_REGISTRY_SECRET, ns, e))
+                        continue
+            except Exception as e:
+                LOG.error(e)
+                return
+
+        _sync_audit_local_registry_secrets(self)
 
     def _delete_namespace(self, namespace):
         loop_timeout = 1
