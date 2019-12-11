@@ -69,11 +69,23 @@ class KubernetesPuppet(base.BasePuppet):
             with open(os.path.join(
                     constants.KUBERNETES_PKI_SHARED_DIR, 'sa.pub'), 'r') as f:
                 sa_pub = f.read()
+            with open(os.path.join(
+                    constants.KUBERNETES_PKI_SHARED_DIR,
+                    'front-proxy-ca.crt'), 'r') as f:
+                front_proxy_ca_crt = f.read()
+            with open(os.path.join(
+                    constants.KUBERNETES_PKI_SHARED_DIR,
+                    'front-proxy-ca.key'), 'r') as f:
+                front_proxy_ca_key = f.read()
             config.update(
                 {'platform::kubernetes::params::ca_crt': ca_crt,
                  'platform::kubernetes::params::ca_key': ca_key,
                  'platform::kubernetes::params::sa_key': sa_key,
                  'platform::kubernetes::params::sa_pub': sa_pub,
+                 'platform::kubernetes::params::front_proxy_ca_crt':
+                     front_proxy_ca_crt,
+                 'platform::kubernetes::params::front_proxy_ca_key':
+                     front_proxy_ca_key,
                  })
         return config
 
