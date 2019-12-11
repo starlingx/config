@@ -12,12 +12,15 @@ Tests for the API /ihosts/ methods.
 """
 
 import mock
+import requests
 import webtest.app
 from six.moves import http_client
 
 from sysinv.common import constants
 from sysinv.common import kubernetes
 from sysinv.openstack.common import uuidutils
+
+from cephclient import wrapper as ceph
 
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
@@ -109,6 +112,36 @@ class TestHost(base.FunctionalTest, dbbase.BaseHostTestCase):
         p = mock.patch('sysinv.common.utils.is_virtual')
         self.mock_utils_is_virtual = p.start()
         self.mock_utils_is_virtual.return_value = True
+        self.addCleanup(p.stop)
+
+        # Mock cephclient API calls
+        response = requests.Response()
+        response.status_code = requests.codes.ok
+        response.reason = "OK"
+
+        p = mock.patch.object(ceph.CephWrapper, 'health')
+        self.mock_ceph_health = p.start()
+        output = {u'checks': {}, u'status': u'HEALTH_OK'}
+
+        self.mock_ceph_health.return_value = response, dict(output=output)
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(ceph.CephWrapper, 'osd_tree')
+        self.mock_ceph_osd_tree = p.start()
+        output = \
+            {u'nodes':
+                 [{u'children': [-2], u'id': -1, u'name': u'storage-tier',
+                   u'type': u'root'},
+                  {u'children': [-3, -4], u'id': -2, u'name': u'group-0',
+                   u'type': u'chassis'},
+                  {u'children': [0], u'id': -4, u'name': u'controller-0',
+                   u'type': u'host'},
+                  {u'id': 0, u'name': u'osd.0', u'type': u'osd'},
+                  {u'children': [1], u'id': -3, u'name': u'controller-1',
+                   u'type': u'host'},
+                  {u'id': 1, u'name': u'osd.1', u'type': u'osd'}]}
+
+        self.mock_ceph_osd_tree.return_value = response, dict(output=output)
         self.addCleanup(p.stop)
 
     def _create_controller_0(self, subfunction=None, numa_nodes=1, **kw):

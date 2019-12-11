@@ -617,6 +617,89 @@ class CephApiOperator(object):
                             return storage['name']
         return None
 
+    def _identify_acting_osds(self, line):
+        """
+        Extract OSDs that act on a PG
+
+        :param line: Input line from `ceph health detail`
+        :return: The OSDs that are acting on a PG
+        """
+        import re
+        osds = line.split('acting')[1]
+        osds = [obj for obj in re.split(' |,|\[|]', osds) if obj]
+        return osds
+
+    def _identify_host_osds(self, osd_tree, target_host):
+        """
+        Extract OSDs on a host
+
+        :param target_host: The host
+        :param osd_tree: JSON of `ceph osd tree`
+        :return: Set with OSDs id on host
+        """
+        import six
+        osd_tree = dict([(n['id'], n) for n in osd_tree['nodes']])
+        host_osds = set()
+
+        for (_id, _node) in six.iteritems(osd_tree):
+            if _node['type'] == 'host' and _node['name'] == target_host:
+                for child_id in _node['children']:
+                    host_osds.add(osd_tree[child_id]['name'][len('osd.'):])
+
+        return host_osds
+
+    def check_recovery_in_progress(self, target_host, timeout=10):
+        """
+        Check if ceph is recovering data
+
+        :param target_host: Care only for OSDs on this host
+        :param timeout: Ceph api timeout
+        :return: True if ceph recovery in progress on target host
+        """
+
+        rc = False
+
+        try:
+            response, body = self._ceph_api.health(detail='detail',
+                                                   body='json',
+                                                   timeout=timeout)
+            health_detail = body['output']
+            if response.status_code != requests.codes.ok:
+                response.raise_for_status()
+        except Exception as e:
+            rc = True
+            LOG.warn("ceph health exception: %s " % e)
+
+        try:
+            response, body = self._ceph_api.osd_tree(body='json')
+            osd_tree = body['output']
+
+            if response.status_code != requests.codes.ok:
+                response.raise_for_status()
+        except Exception as e:
+            rc = True
+            LOG.warn("ceph osd tree exception: %s " % e)
+
+        try:
+            this_host_osds = self._identify_host_osds(osd_tree, target_host)
+
+            for line in health_detail['checks']['PG_DEGRADED']['detail']:
+                msg = line['message']
+                if "recovering" in msg or \
+                        "recovery_wait" in msg:
+                    acting_osds = self._identify_acting_osds(msg)
+                    for osd in acting_osds:
+                        if osd in this_host_osds:
+                            rc = True
+                            break
+                    if rc:
+                        break
+
+        except Exception as e:
+            pass
+
+        return rc
+
     def check_osds_down_up(self, hostname, upgrade):
         # check if osds from a storage are down/up
         response, body = self._ceph_api.osd_tree(body='json')
