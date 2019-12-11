@@ -234,14 +234,22 @@ class KubeOperator(object):
                       "kube_get_namespace %s: %s" % (namespace, e))
             raise
 
+    def kube_get_namespace_name_list(self):
+        c = self._get_kubernetesclient_core()
+        try:
+            ns_list = c.list_namespace()
+            return list(set(ns.metadata.name for ns in ns_list.items))
+        except Exception as e:
+            LOG.error("Failed to get Namespace list: %s" % e)
+            raise
+
     def kube_get_secret(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:
-            c.read_namespaced_secret(name, namespace)
-            return True
+            return c.read_namespaced_secret(name, namespace)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
-                return False
+                return None
             else:
                 LOG.error("Failed to get Secret %s under "
                           "Namespace %s: %s" % (name, namespace, e.body))
@@ -268,6 +276,15 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Failed to copy Secret %s from Namespace %s to Namespace "
                       "%s: %s" % (name, src_namespace, dst_namespace, e))
+            raise
+
+    def kube_patch_secret(self, name, namespace, body):
+        c = self._get_kubernetesclient_core()
+        try:
+            c.patch_namespaced_secret(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch Secret %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
             raise
 
     def kube_delete_persistent_volume_claim(self, namespace, **kwargs):
