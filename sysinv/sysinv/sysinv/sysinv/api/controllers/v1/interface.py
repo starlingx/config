@@ -664,7 +664,8 @@ def _set_defaults(interface):
                 'txhashpolicy': None,
                 'vlan_id': None,
                 'sriov_numvfs': 0,
-                'sriov_vf_driver': None}
+                'sriov_vf_driver': None,
+                'ptp_role': constants.INTERFACE_PTP_ROLE_NONE}
 
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
