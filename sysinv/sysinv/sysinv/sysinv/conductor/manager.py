@@ -91,6 +91,7 @@ from sysinv.conductor import ceph as iceph
 from sysinv.conductor import kube_app
 from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
+from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
@@ -199,7 +200,11 @@ class ConductorManager(service.PeriodicService):
 
         # Upgrade/Downgrade kubernetes components.
         # greenthread must be called after super.start for it to work properly.
-        greenthread.spawn(self._upgrade_downgrade_kube_components())
+        greenthread.spawn(self._upgrade_downgrade_kube_components)
+
+        # monitor keystone user update event to check whether admin password is
+        # changed or not. If changed, then sync it to kubernetes's secret info.
+        greenthread.spawn(keystone_listener.start_keystone_listener, self._app)
 
     def _start(self):
         self.dbapi = dbapi.get_instance()
@@ -4823,6 +4828,13 @@ class ConductorManager(service.PeriodicService):
                                         {'install_state': host.install_state,
                                          'install_state_info':
                                              host.install_state_info})
+
+    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    def _kubernetes_local_secrets_audit(self, context):
+        # Audit kubernetes local registry secrets info
+        LOG.debug("Sysinv Conductor running periodic audit task for k8s local registry secrets.")
+        if self._app:
+            self._app.audit_local_registry_secrets()
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _conductor_audit(self, context):
