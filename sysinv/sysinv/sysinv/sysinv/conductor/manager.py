@@ -2518,6 +2518,16 @@ class ConductorManager(service.PeriodicService):
                                         cpu_count, hyperthreading):
         """Return the initial number of reserved logical cores for platform
         use.  This can be overridden later by the end user."""
+        # Reserve all logical cpus on all numa nodes for AIO systemcontroller
+        system = self.dbapi.isystem_get_one()
+        system_type = system.system_type
+        dc_role = system.distributed_cloud_role
+        if (system_type == constants.TIS_AIO_BUILD and
+                dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            return cpu_count
+
+        # Reserve one full core for worker on numa node 0, and one full core
+        # for AIO controller on numa node 0
         cpus = 0
         if cutils.host_has_function(ihost, constants.WORKER) and node == 0:
             cpus += 1 if not hyperthreading else 2
