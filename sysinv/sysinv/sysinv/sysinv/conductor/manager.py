@@ -2524,7 +2524,8 @@ class ConductorManager(service.PeriodicService):
         system_type = system.system_type
         dc_role = system.distributed_cloud_role
         if (system_type == constants.TIS_AIO_BUILD and
-                dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+                dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+                cutils.host_has_function(ihost, constants.CONTROLLER)):
             return cpu_count
 
         # Reserve one full core for worker on numa node 0, and one full core
