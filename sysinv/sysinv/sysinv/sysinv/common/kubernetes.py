@@ -41,17 +41,27 @@ KUBE_CONTROLLER_MANAGER = 'kube-controller-manager'
 KUBE_SCHEDULER = 'kube-scheduler'
 
 # Kubernetes upgrade states
-KUBE_UPGRADE_DOWNLOADING_IMAGES = 'downloading-images'
 KUBE_UPGRADE_STARTED = 'upgrade-started'
+KUBE_UPGRADE_DOWNLOADING_IMAGES = 'downloading-images'
+KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED = 'downloading-images-failed'
+KUBE_UPGRADE_DOWNLOADED_IMAGES = 'downloaded-images'
 KUBE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
+KUBE_UPGRADING_FIRST_MASTER_FAILED = 'upgrading-first-master-failed'
 KUBE_UPGRADED_FIRST_MASTER = 'upgraded-first-master'
 KUBE_UPGRADING_NETWORKING = 'upgrading-networking'
+KUBE_UPGRADING_NETWORKING_FAILED = 'upgrading-networking-failed'
 KUBE_UPGRADED_NETWORKING = 'upgraded-networking'
 KUBE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
+KUBE_UPGRADING_SECOND_MASTER_FAILED = 'upgrading-second-master-failed'
 KUBE_UPGRADED_SECOND_MASTER = 'upgraded-second-master'
 KUBE_UPGRADING_KUBELETS = 'upgrading-kubelets'
 KUBE_UPGRADE_COMPLETE = 'upgrade-complete'
-KUBE_UPGRADE_FAILED = 'upgrade-failed'
+
+# Kubernetes host upgrade statuses
+KUBE_HOST_UPGRADING_CONTROL_PLANE = 'upgrading-control-plane'
+KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED = 'upgrading-control-plane-failed'
+KUBE_HOST_UPGRADING_KUBELET = 'upgrading-kubelet'
+KUBE_HOST_UPGRADING_KUBELET_FAILED = 'upgrading-kubelet-failed'
 
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
@@ -391,7 +401,7 @@ class KubeOperator(object):
 
         node_versions = dict()
         for node_name in master_nodes:
-            versions = dict()
+            versions = list()
             for component in [KUBE_APISERVER,
                               KUBE_CONTROLLER_MANAGER,
                               KUBE_SCHEDULER]:
@@ -400,14 +410,11 @@ class KubeOperator(object):
                 pod_name = component + '-' + node_name
                 image = self.kube_get_image_by_pod_name(
                     pod_name, NAMESPACE_KUBE_SYSTEM, component)
-                versions[component] = image.rsplit(':')[-1]
+                if image is not None:
+                    versions.append(LooseVersion(image.rsplit(':')[-1]))
 
             # Calculate the lowest version
-            lowest_version = min(
-                LooseVersion(versions[KUBE_APISERVER]),
-                LooseVersion(versions[KUBE_CONTROLLER_MANAGER]),
-                LooseVersion(versions[KUBE_SCHEDULER]))
-            node_versions[node_name] = str(lowest_version)
+            node_versions[node_name] = str(min(versions))
 
         return node_versions
 

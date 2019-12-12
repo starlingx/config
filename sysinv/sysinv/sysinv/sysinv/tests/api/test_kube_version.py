@@ -114,7 +114,7 @@ class TestListKubeVersions(TestKubeVersion):
         dbutils.create_test_kube_upgrade(
             from_version='v1.43.1',
             to_version='v1.43.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         result = self.get_json('/kube_versions/v1.43.2')
@@ -157,7 +157,7 @@ class TestListKubeVersions(TestKubeVersion):
         dbutils.create_test_kube_upgrade(
             from_version='v1.43.1',
             to_version='v1.43.2',
-            state=kubernetes.KUBE_UPGRADE_STARTED,
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
         )
 
         data = self.get_json('/kube_versions')
