@@ -18,6 +18,8 @@ import subprocess
 import sys
 
 from oslo_log import log as logging
+
+from sysinv.common import disk_utils
 from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.conductor import rpcapi as conductor_rpcapi
@@ -142,7 +144,7 @@ class DiskOperator(object):
     def disk_format_gpt(self, host_uuid, idisk_dict, is_cinder_device):
         disk_node = idisk_dict.get('device_path')
 
-        utils.disk_wipe(disk_node)
+        disk_utils.disk_wipe(disk_node)
         utils.execute('parted', disk_node, 'mklabel', 'gpt')
 
         if is_cinder_device:
