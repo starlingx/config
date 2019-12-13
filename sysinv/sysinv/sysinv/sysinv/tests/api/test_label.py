@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import mock
 import platform
 
 from six.moves import http_client
@@ -157,3 +158,46 @@ class LabelAssignTestCase(LabelTestCase):
             'kube-topology-mgr-policy': 'invalid',
         }
         self.assign_labels_failure(host_uuid, topology_mgr_label)
+
+    def mock_get_system_enabled_k8s_plugins_return_plugins():
+        return {"intel-gpu-plugin": "intelgpu=enabled",
+                "intel-qat-plugin": "intelqat=enabled"}
+
+    def mock_get_system_enabled_k8s_plugins_return_none():
+        return None
+
+    @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
+                mock_get_system_enabled_k8s_plugins_return_plugins)
+    def test_create_plugin_labels_on_supported_node(self):
+        dbutils.create_test_pci_devices(
+            host_id=self.worker.id,
+            pclass='VGA compatible controller',
+            driver='i915',)
+
+        test_plugin_label = {'intelgpu': 'enabled', }
+        self.assign_labels(self.worker.uuid, test_plugin_label)
+
+        response_data = self.get_host_labels(self.worker.uuid)
+        self.validate_labels(test_plugin_label, response_data)
+
+    @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
+                mock_get_system_enabled_k8s_plugins_return_plugins)
+    def test_create_plugin_labels_on_unsupported_node(self):
+        dbutils.create_test_pci_devices(
+            host_id=self.worker.id,
+            pclass='VGA compatible controller',
+            driver='',)
+
+        test_plugin_label = {'intelgpu': 'enabled', }
+
+        self.assign_labels_failure(self.worker.uuid, test_plugin_label)
+
+    @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
+                mock_get_system_enabled_k8s_plugins_return_none)
+    def test_create_plugin_labels_on_non_plugin_system(self):
+        test_plugin_label = {'intelgpu': 'enabled', }
+
+        self.assign_labels(self.worker.uuid, test_plugin_label)
+
+        response_data = self.get_host_labels(self.worker.uuid)
+        self.validate_labels(test_plugin_label, response_data)
