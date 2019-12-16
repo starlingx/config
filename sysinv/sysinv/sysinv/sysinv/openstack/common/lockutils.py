@@ -28,8 +28,8 @@ from eventlet import semaphore
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import fileutils
 from sysinv._i18n import _
-from sysinv.openstack.common import fileutils
 from sysinv.openstack.common import local
 
 LOG = logging.getLogger(__name__)

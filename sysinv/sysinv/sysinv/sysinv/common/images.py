@@ -26,12 +26,12 @@ import re
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import fileutils
+from oslo_utils import strutils
 from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import image_service as service
 from sysinv.common import utils
-from sysinv.openstack.common import fileutils
-from sysinv.openstack.common import strutils
 
 LOG = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class QemuImgInfo(object):
         if real_size:
             details = real_size.group(1)
         try:
-            details = strutils.to_bytes(details)
+            details = strutils.string_to_bytes(details, return_int=True)
         except (TypeError):
             pass
         return details

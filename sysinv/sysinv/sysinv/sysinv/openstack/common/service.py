@@ -32,8 +32,8 @@ from eventlet import event
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import importutils
 from sysinv._i18n import _
-from sysinv.openstack.common import importutils
 from sysinv.openstack.common import threadgroup
 
 

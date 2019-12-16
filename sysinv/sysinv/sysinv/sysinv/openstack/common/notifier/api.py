@@ -18,11 +18,11 @@ import six
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_serialization import jsonutils
+from oslo_utils import importutils
+from oslo_utils import timeutils
 from sysinv._i18n import _
 from sysinv.openstack.common import context
-from sysinv.openstack.common import importutils
-from sysinv.openstack.common import jsonutils
-from sysinv.openstack.common import timeutils
 
 LOG = logging.getLogger(__name__)
 

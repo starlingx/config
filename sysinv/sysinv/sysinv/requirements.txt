@@ -1,7 +1,6 @@
 pbr>=0.5
 SQLAlchemy
 amqplib>=0.6.1
-anyjson>=0.3.3
 argparse
 boto3
 botocore>=1.11.0

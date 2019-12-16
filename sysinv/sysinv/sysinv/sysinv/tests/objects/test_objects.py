@@ -21,11 +21,11 @@ import six
 
 gettext.install('sysinv')
 
+from oslo_utils import timeutils
 from sysinv.common import exception
 from sysinv.objects import base
 from sysinv.objects import utils
 from sysinv.openstack.common import context
-from sysinv.openstack.common import timeutils
 from sysinv.tests import base as test_base
 
 

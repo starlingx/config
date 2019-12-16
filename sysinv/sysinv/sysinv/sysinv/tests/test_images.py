@@ -16,7 +16,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import contextlib
+import fixtures
 
+from oslo_utils import excutils
 from sysinv.common import exception
 from sysinv.common import images
 from sysinv.tests import base
@@ -35,7 +38,15 @@ class SysinvImagesTestCase(base.TestCase):
         def fake_unlink(path):
             self.executes.append(('rm', path))
 
-        def fake_rm_on_errror(path):
+        @contextlib.contextmanager
+        def fake_rm_on_error(path):
+            try:
+                yield
+            except Exception:
+                with excutils.save_and_reraise_exception():
+                    fake_del_if_exists(path)
+
+        def fake_del_if_exists(path):
             self.executes.append(('rm', '-f', path))
 
         def fake_qemu_img_info(path):
@@ -62,7 +73,12 @@ class SysinvImagesTestCase(base.TestCase):
         self.stub_out('os.unlink', fake_unlink)
         self.stub_out('sysinv.common.images.fetch', lambda *_: None)
         self.stub_out('sysinv.common.images.qemu_img_info', fake_qemu_img_info)
-        self.stub_out('sysinv.openstack.common.fileutils.delete_if_exists', fake_rm_on_errror)
+        self.useFixture(fixtures.MonkeyPatch(
+                'oslo_utils.fileutils.remove_path_on_error',
+                fake_rm_on_error))
+        self.useFixture(fixtures.MonkeyPatch(
+                'oslo_utils.fileutils.delete_if_exists',
+                fake_del_if_exists))
 
         context = 'opaque context'
         image_id = '4'

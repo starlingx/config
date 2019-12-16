@@ -58,14 +58,12 @@ as it allows particular rules to be explicitly disabled.
 
 import abc
 import re
-
 import six
-
 from six.moves.urllib.parse import urlencode
 from six.moves.urllib.request import urlopen
-from sysinv.openstack.common import jsonutils
-from oslo_log import log as logging
 
+from oslo_log import log as logging
+from oslo_serialization import jsonutils
 
 LOG = logging.getLogger(__name__)
 

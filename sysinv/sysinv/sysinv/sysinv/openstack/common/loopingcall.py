@@ -23,8 +23,8 @@ from eventlet import event
 from eventlet import greenthread
 
 from oslo_log import log as logging
+from oslo_utils import timeutils
 from sysinv._i18n import _
-from sysinv.openstack.common import timeutils
 
 LOG = logging.getLogger(__name__)
 

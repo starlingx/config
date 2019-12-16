@@ -36,13 +36,14 @@ import testtools
 from oslo_config import cfg
 from oslo_db.sqlalchemy import enginefacade
 from oslo_log import log as logging
+from oslo_utils import timeutils
+
 from sysinv.common import paths
 from sysinv.db import api as dbapi
 from sysinv.db import migration
 import sysinv.helm.utils
 from sysinv.objects import base as objects_base
 from sysinv.openstack.common.fixture import moxstubout
-from sysinv.openstack.common import timeutils
 from sysinv.tests import conf_fixture
 from sysinv.tests import policy_fixture
 

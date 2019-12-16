@@ -25,9 +25,9 @@ import greenlet
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_serialization import jsonutils
+from oslo_utils import importutils
 from sysinv._i18n import _
-from sysinv.openstack.common import importutils
-from sysinv.openstack.common import jsonutils
 from sysinv.openstack.common.rpc import amqp as rpc_amqp
 from sysinv.openstack.common.rpc import common as rpc_common
 

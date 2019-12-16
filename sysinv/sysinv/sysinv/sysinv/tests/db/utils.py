@@ -21,8 +21,8 @@
 """Sysinv test utilities."""
 import uuid
 
+from oslo_serialization import jsonutils as json
 from sysinv.common import constants
-from sysinv.openstack.common import jsonutils as json
 from sysinv.db import api as db_api
 
 

@@ -10,11 +10,11 @@
 #
 
 from oslo_log import log as logging
+from oslo_utils import excutils
 
 from sysinv.agent.lldp import manager
 from sysinv.common import exception
 from sysinv.common import constants
-from sysinv.openstack.common import excutils
 
 LOG = logging.getLogger(__name__)
 
