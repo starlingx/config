@@ -12,6 +12,7 @@
         - sysinv-tox-py35
         - sysinv-tox-flake8
         - sysinv-tox-pylint
+        - sysinv-tox-bandit
         - controllerconfig-tox-flake8
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
@@ -25,6 +26,7 @@
         - sysinv-tox-py35
         - sysinv-tox-flake8
         - sysinv-tox-pylint
+        - sysinv-tox-bandit
         - controllerconfig-tox-flake8
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
@@ -88,6 +90,17 @@
       - sysinv/sysinv/*
     vars:
       tox_envlist: pylint
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: sysinv-tox-bandit
+    parent: tox
+    description: |
+      Run bandit test for sysinv
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: bandit
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
