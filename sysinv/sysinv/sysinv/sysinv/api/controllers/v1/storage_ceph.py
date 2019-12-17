@@ -32,6 +32,7 @@ import wsmeext.pecan as wsme_pecan
 from oslo_log import log
 from oslo_serialization import jsonutils
 from oslo_utils import strutils
+from oslo_utils import uuidutils
 
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
@@ -47,7 +48,6 @@ from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv import objects
-from sysinv.openstack.common import uuidutils
 
 
 LOG = log.getLogger(__name__)

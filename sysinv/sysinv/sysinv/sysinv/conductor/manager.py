@@ -66,6 +66,7 @@ from oslo_log import log
 from oslo_serialization import jsonutils
 from oslo_utils import excutils
 from oslo_utils import timeutils
+from oslo_utils import uuidutils
 from platform_util.license import license
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
@@ -101,7 +102,6 @@ from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
 from sysinv.openstack.common import context as ctx
 from sysinv.openstack.common import periodic_task
-from sysinv.openstack.common import uuidutils
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import common as helm_common

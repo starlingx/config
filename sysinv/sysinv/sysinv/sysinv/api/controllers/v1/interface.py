@@ -33,6 +33,7 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from oslo_log import log
+from oslo_utils import uuidutils
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import address
 from sysinv.api.controllers.v1 import address_pool
@@ -50,7 +51,6 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.objects import utils as object_utils
-from sysinv.openstack.common import uuidutils
 
 from fm_api import constants as fm_constants
 from fm_api import fm_api

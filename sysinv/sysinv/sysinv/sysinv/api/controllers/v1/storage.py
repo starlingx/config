@@ -31,6 +31,7 @@ import wsmeext.pecan as wsme_pecan
 
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import uuidutils
 
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
@@ -44,7 +45,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
-from sysinv.openstack.common import uuidutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 

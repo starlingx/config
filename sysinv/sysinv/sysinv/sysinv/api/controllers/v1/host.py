@@ -48,6 +48,7 @@ from pecan import expose
 from pecan import rest
 
 from oslo_log import log
+from oslo_utils import uuidutils
 from sysinv import objects
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import ethernet_port
@@ -91,7 +92,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
-from sysinv.openstack.common import uuidutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import health
 

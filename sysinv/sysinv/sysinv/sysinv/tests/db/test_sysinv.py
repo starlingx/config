@@ -8,7 +8,7 @@
 
 """Tests for manipulating Nodes via the DB API"""
 
-from sysinv.openstack.common import uuidutils
+from oslo_utils import uuidutils
 
 from sysinv.common import constants
 from sysinv.common import exception

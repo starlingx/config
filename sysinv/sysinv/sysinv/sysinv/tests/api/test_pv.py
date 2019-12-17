@@ -12,8 +12,8 @@ import mock
 import webtest.app
 from six.moves import http_client
 
+from oslo_utils import uuidutils
 from sysinv.common import constants
-from sysinv.openstack.common import uuidutils
 
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
