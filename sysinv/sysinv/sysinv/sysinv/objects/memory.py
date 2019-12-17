@@ -39,12 +39,15 @@ class Memory(base.SysinvObject):
             'vswitch_hugepages_nr': utils.int_or_none,
             'vswitch_hugepages_avail': utils.int_or_none,
 
+            'vm_pending_as_percentage': utils.str_or_none,
             'vm_hugepages_nr_2M_pending': utils.int_or_none,
             'vm_hugepages_nr_1G_pending': utils.int_or_none,
             'vm_hugepages_nr_2M': utils.int_or_none,
             'vm_hugepages_avail_2M': utils.int_or_none,
             'vm_hugepages_nr_1G': utils.int_or_none,
             'vm_hugepages_avail_1G': utils.int_or_none,
+            'vm_hugepages_2M_percentage': utils.int_or_none,
+            'vm_hugepages_1G_percentage': utils.int_or_none,
             'vm_hugepages_nr_4K': utils.int_or_none,
 
 

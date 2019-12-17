@@ -1936,3 +1936,17 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in interface_col.items():
             self.assertTrue(isinstance(interface.c[col].type,
                                        getattr(sqlalchemy.types, coltype)))
+
+    def _check_097(self, engine, data):
+        # 097_memory_column_add.py
+
+        # Assert data types for new columns in table "memory"
+        memorys = db_utils.get_table(engine, 'i_imemory')
+        memorys_cols = {
+            'vm_pending_as_percentage': 'Boolean',
+            'vm_hugepages_2M_percentage': 'Integer',
+            'vm_hugepages_1G_percentage': 'Integer',
+        }
+        for col, coltype in memorys_cols.items():
+            self.assertTrue(isinstance(memorys.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))
