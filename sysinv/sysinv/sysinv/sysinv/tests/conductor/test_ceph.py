@@ -9,14 +9,15 @@
 """Test class for Sysinv Storage Peer groups."""
 
 import mock
+
 from cephclient import wrapper as ceph
+from oslo_utils import uuidutils
 
 from sysinv.common import constants
 from sysinv.conductor import manager
 from sysinv.conductor import ceph as iceph
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import context
-from sysinv.openstack.common import uuidutils
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
 

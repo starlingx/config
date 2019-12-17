@@ -24,7 +24,7 @@ context or provide additional information in their specific WSGI pipeline.
 
 import itertools
 
-from sysinv.openstack.common import uuidutils
+from oslo_utils import uuidutils
 
 
 def generate_request_id():

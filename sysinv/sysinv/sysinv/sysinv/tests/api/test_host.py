@@ -16,9 +16,9 @@ import requests
 import webtest.app
 from six.moves import http_client
 
+from oslo_utils import uuidutils
 from sysinv.common import constants
 from sysinv.common import kubernetes
-from sysinv.openstack.common import uuidutils
 
 from cephclient import wrapper as ceph
 

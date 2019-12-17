@@ -20,11 +20,11 @@ import itertools
 import netaddr
 import six
 
+from oslo_utils import uuidutils
+
 from sysinv.common import constants
 from sysinv.common import utils
-
 from sysinv.openstack.common import context
-from sysinv.openstack.common import uuidutils
 
 from sysinv.tests import base
 from sysinv.tests.db import utils as dbutils

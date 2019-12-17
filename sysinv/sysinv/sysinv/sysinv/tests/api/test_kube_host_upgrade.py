@@ -10,9 +10,9 @@ Tests for the API /kube_host_upgrades/ methods.
 
 import mock
 
-from sysinv.common import constants
-from sysinv.openstack.common import uuidutils
+from oslo_utils import uuidutils
 
+from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils

@@ -22,11 +22,10 @@
 import uuid
 
 from oslo_serialization import jsonutils as json
+from oslo_utils import uuidutils
 from sysinv.common import constants
 from sysinv.db import api as db_api
 
-
-from sysinv.openstack.common import uuidutils
 
 fake_info = {"foo": "bar"}
 

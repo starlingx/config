@@ -14,9 +14,9 @@ Tests for the API /interfaces/ methods.
 import mock
 from six.moves import http_client
 
+from oslo_utils import uuidutils
 from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
-from sysinv.openstack.common import uuidutils
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils

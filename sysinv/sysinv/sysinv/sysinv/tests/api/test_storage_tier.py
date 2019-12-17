@@ -29,6 +29,7 @@ except ImportError:
         with ExitStack() as stack:
             yield tuple(stack.enter_context(cm) for cm in contexts)
 from oslo_serialization import jsonutils
+from oslo_utils import uuidutils
 from sysinv.conductor import manager
 from sysinv.conductor import rpcapi
 from sysinv.common import ceph as ceph_utils
@@ -37,7 +38,6 @@ from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import context
-from sysinv.openstack.common import uuidutils
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 
