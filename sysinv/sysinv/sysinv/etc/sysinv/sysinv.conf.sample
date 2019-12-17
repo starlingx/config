@@ -108,7 +108,7 @@
 
 
 #
-# Options defined in sysinv.openstack.common.eventlet_backdoor
+# Options defined in oslo_service.eventlet_backdoor
 #
 
 # port for eventlet backdoor to listen (integer value)
