@@ -5,11 +5,11 @@
 #
 
 from __future__ import absolute_import
+from eventlet.green import subprocess
 import json
 import netaddr
 import os
 import re
-import subprocess
 
 from oslo_log import log as logging
 from sysinv.common import constants

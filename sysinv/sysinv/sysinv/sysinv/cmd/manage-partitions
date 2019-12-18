@@ -13,13 +13,13 @@
 Manage Disk partitions on this host and provide inventory updates
 """
 
+from eventlet.green import subprocess
 import json
 import math
 import os
 import re
 import shutil
 import socket
-import subprocess
 import sys
 import time
 

@@ -11,7 +11,7 @@
 
 """ inventory ipy Utilities and helper functions."""
 
-import subprocess
+from eventlet.green import subprocess
 import sys
 
 from oslo_log import log as logging

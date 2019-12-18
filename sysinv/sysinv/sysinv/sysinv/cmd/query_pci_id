@@ -5,9 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from eventlet.green import subprocess
 import sys
 import json
-import subprocess
 from argparse import ArgumentParser
 
 

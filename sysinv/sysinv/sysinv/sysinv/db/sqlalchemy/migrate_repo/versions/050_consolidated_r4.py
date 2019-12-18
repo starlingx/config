@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from eventlet.green import subprocess
 import json
-import subprocess
 import tsconfig.tsconfig as tsconfig
 from migrate.changeset import UniqueConstraint
 from sqlalchemy import Boolean, DateTime, Enum, Integer, String, Text
