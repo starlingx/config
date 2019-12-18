@@ -8192,12 +8192,18 @@ class ConductorManager(service.PeriodicService):
 
         for host in hosts:
             if host.personality in personalities:
+                # Never generate hieradata for uninventoried hosts, as their
+                # interface config will be incomplete.
+                if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+                    LOG.info(
+                        "Cannot generate the configuration for %s, "
+                        "the host is not inventoried yet." % host.hostname)
                 # We will allow controller nodes to re-generate manifests
                 # when in an "provisioning" state. This will allow for
                 # example the ntp configuration to be changed on an CPE
                 # node before the "worker_config_complete" has been
                 # executed.
-                if (force or
+                elif (force or
                     host.invprovision == constants.PROVISIONED or
                     (host.invprovision == constants.PROVISIONING and
                      host.personality == constants.CONTROLLER)):
