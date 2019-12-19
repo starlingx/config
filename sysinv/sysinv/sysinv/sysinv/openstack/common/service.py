@@ -75,7 +75,6 @@ class Launcher(object):
 
         """
         self.services = Services()
-        # self.backdoor_port = eventlet_backdoor.initialize_if_enabled()
 
     def launch_service(self, service):
         """Load and start the given service.
@@ -84,7 +83,6 @@ class Launcher(object):
         :returns: None
 
         """
-        # service.backdoor_port = self.backdoor_port
         self.services.add(service)
 
     def stop(self):
