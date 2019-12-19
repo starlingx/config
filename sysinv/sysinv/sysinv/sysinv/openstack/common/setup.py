@@ -24,9 +24,9 @@ from __future__ import print_function
 
 import email
 import email.errors
-from eventlet.green import subprocess
 import os
 import re
+import subprocess
 import sys
 
 from setuptools.command import sdist

@@ -9,8 +9,8 @@
 # All Rights Reserved.
 #
 
-from eventlet.green import subprocess
 import simplejson as json
+import subprocess
 
 from oslo_log import log as logging
 

@@ -11,8 +11,8 @@
 
 """ inventory ipv Utilities and helper functions."""
 
-from eventlet.green import subprocess
 import json
+import subprocess
 import sys
 
 from oslo_log import log as logging

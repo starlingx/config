@@ -11,8 +11,8 @@
 
 """ Inventory disk partition utilities and helper functions."""
 
-from eventlet.green import subprocess
 import pyudev
+import subprocess
 import sys
 
 from oslo_log import log as logging

@@ -35,12 +35,12 @@
 
 from __future__ import print_function
 
-from eventlet.green import subprocess
 from six.moves import configparser
 import logging
 import os
 import pwd
 import signal
+import subprocess
 import sys
 
 

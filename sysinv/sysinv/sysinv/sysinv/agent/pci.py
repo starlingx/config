@@ -11,10 +11,10 @@
 
 """ inventory pci Utilities and helper functions."""
 
-from eventlet.green import subprocess
 import glob
 import os
 import shlex
+import subprocess
 
 from oslo_log import log as logging
 from sysinv._i18n import _

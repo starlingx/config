@@ -19,13 +19,13 @@
 # Copyright (c) 2013-2018 Wind River Systems, Inc.
 #
 
-from eventlet.green import subprocess
 import jsonpatch
 import netaddr
 import os
 import pecan
 import re
 import socket
+import subprocess
 import wsme
 
 from fm_api import constants as fm_constants

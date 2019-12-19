@@ -3,8 +3,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-from eventlet.green import subprocess
 import os
+import subprocess
 
 from controllerconfig import backup_restore
 

@@ -4,9 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from eventlet.green import subprocess
 import keyring
 import os
+import subprocess
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
