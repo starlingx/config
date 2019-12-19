@@ -12,11 +12,11 @@
 
 from __future__ import absolute_import
 
+from eventlet.green import subprocess
 import os
 import pecan
 import requests
 import shutil
-import subprocess
 import tempfile
 
 from cephclient import wrapper as ceph

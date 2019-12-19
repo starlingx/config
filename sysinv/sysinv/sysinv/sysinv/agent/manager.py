@@ -35,12 +35,12 @@ Commands (from conductors) are received via RPC calls.
 
 from __future__ import print_function
 import errno
+from eventlet.green import subprocess
 import fcntl
 import fileinput
 import os
 import retrying
 import shutil
-import subprocess
 import sys
 import tempfile
 import time

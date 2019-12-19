@@ -4,9 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from eventlet.green import subprocess
 import os
 import shutil
-import subprocess
 from grp import getgrnam
 from pwd import getpwnam
 

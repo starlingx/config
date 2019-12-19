@@ -12,6 +12,7 @@
 import base64
 import copy
 import docker
+from eventlet.green import subprocess
 import grp
 import functools
 import os
@@ -20,7 +21,6 @@ import re
 import ruamel.yaml as yaml
 import shutil
 import six
-import subprocess
 import threading
 import time
 
