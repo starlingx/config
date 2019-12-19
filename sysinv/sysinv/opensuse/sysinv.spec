@@ -101,9 +101,9 @@ install -m 644 -p -D scripts/sysinv-conductor.service %{buildroot}%{_unitdir}/sy
 #install -p -D -m 755 %%{buildroot}/usr/bin/sysinv-conductor %%{buildroot}/usr/bin/sysinv-conductor
 
 install -d -m 755 %{buildroot}%{local_bindir}
-install -p -D -m 755 sysinv/cmd/partition_info.sh %{buildroot}%{local_bindir}/partition_info.sh
-install -p -D -m 755 sysinv/cmd/manage-partitions %{buildroot}%{local_bindir}/manage-partitions
-install -p -D -m 755 sysinv/cmd/query_pci_id %{buildroot}%{local_bindir}/query_pci_id
+install -p -D -m 755 scripts/partition_info.sh %{buildroot}%{local_bindir}/partition_info.sh
+install -p -D -m 755 scripts/manage-partitions %{buildroot}%{local_bindir}/manage-partitions
+install -p -D -m 755 scripts/query_pci_id %{buildroot}%{local_bindir}/query_pci_id
 
 # Add once she-bang is fixed
 #chmod 755 %%{buildroot}%%{pythonroot}/sysinv/cmd/agent.py
