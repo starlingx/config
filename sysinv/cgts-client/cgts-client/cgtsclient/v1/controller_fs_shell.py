@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -39,6 +39,13 @@ def _print_controller_fs_show(controller_fs):
            action='append',
            default=[],
            help="Modify controller filesystem sizes")
+@utils.arg('--column',
+           action='append',
+           default=[],
+           help="Specify the column(s) to include, can be repeated")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
 def do_controllerfs_modify(cc, args):
     """Modify controller filesystem sizes."""
 
@@ -59,7 +66,7 @@ def do_controllerfs_modify(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError('Failed to modify controller filesystems')
 
-    _print_controllerfs_list(cc)
+    _print_controllerfs_list(cc, args)
 
 
 @utils.arg('name',
@@ -72,15 +79,28 @@ def do_controllerfs_show(cc, args):
     _print_controller_fs_show(controller_fs)
 
 
-def _print_controllerfs_list(cc):
+def _print_controllerfs_list(cc, args):
     controller_fs_list = cc.controller_fs.list()
 
-    field_labels = ['UUID', 'FS Name', 'Size in GiB', 'Logical Volume',
-                    'Replicated', 'State']
-    fields = ['uuid', 'name', 'size', 'logical_volume', 'replicated', 'state']
-    utils.print_list(controller_fs_list, fields, field_labels, sortby=1)
+    if args.column:
+        fields = args.column
+        field_labels = args.column
+    else:
+        field_labels = ['UUID', 'FS Name', 'Size in GiB', 'Logical Volume',
+                        'Replicated', 'State']
+        fields = ['uuid', 'name', 'size', 'logical_volume', 'replicated', 'state']
+
+    utils.print_list(controller_fs_list, fields, field_labels,
+                     sortby=0, output_format=args.format)
 
 
+@utils.arg('--column',
+           action='append',
+           default=[],
+           help="Specify the column(s) to include, can be repeated")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
 def do_controllerfs_list(cc, args):
     """Show list of controller filesystems"""
-    _print_controllerfs_list(cc)
+    _print_controllerfs_list(cc, args)
