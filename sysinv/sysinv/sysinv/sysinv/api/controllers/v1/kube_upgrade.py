@@ -170,6 +170,16 @@ class KubeUpgradeController(rest.RestController):
 
         force = body.get('force', False) is True
 
+        # There must not be a platform upgrade in progress
+        try:
+            pecan.request.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            pass
+        else:
+            raise wsme.exc.ClientSideError(_(
+                "A kubernetes upgrade cannot be done while a platform upgrade "
+                "is in progress"))
+
         # There must not already be a kubernetes upgrade in progress
         try:
             pecan.request.dbapi.kube_upgrade_get_one()
@@ -214,9 +224,9 @@ class KubeUpgradeController(rest.RestController):
         # TODO: check that all installed applications support new k8s version
         # TODO: check that tiller/armada support new k8s version
 
-        # The system must be healthy from the platform perspective
+        # The system must be healthy
         success, output = pecan.request.rpcapi.get_system_health(
-            pecan.request.context, force=force)
+            pecan.request.context, force=force, kube_upgrade=True)
         if not success:
             LOG.info("Health query failure during kubernetes upgrade start: %s"
                      % output)
@@ -225,9 +235,7 @@ class KubeUpgradeController(rest.RestController):
             else:
                 raise wsme.exc.ClientSideError(_(
                     "System is not in a valid state for kubernetes upgrade. "
-                    "Run system health-query-upgrade for more details."))
-
-        # TODO: kubernetes related health checks...
+                    "Run system health-query for more details."))
 
         # Create upgrade record.
         create_values = {'from_version': current_kube_version,
@@ -326,6 +334,15 @@ class KubeUpgradeController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Kubernetes upgrade must be in %s state to complete" %
                     kubernetes.KUBE_UPGRADING_KUBELETS))
+
+            # Make sure no hosts are in a transitory or failed state
+            kube_host_upgrades = \
+                pecan.request.dbapi.kube_host_upgrade_get_list()
+            for kube_host_upgrade in kube_host_upgrades:
+                if kube_host_upgrade.status is not None:
+                    raise wsme.exc.ClientSideError(_(
+                        "At least one host has not completed the kubernetes "
+                        "upgrade"))
 
             # Make sure the target version is active
             version_states = self._kube_operator.kube_get_version_states()

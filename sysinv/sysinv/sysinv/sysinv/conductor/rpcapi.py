@@ -1285,17 +1285,21 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('complete_simplex_backup',
                                                 success=success))
 
-    def get_system_health(self, context, force=False, upgrade=False):
+    def get_system_health(self, context, force=False, upgrade=False,
+                          kube_upgrade=False):
         """
         Performs a system health check.
 
         :param context: request context.
         :param force: set to true to ignore minor and warning alarms
         :param upgrade: set to true to perform an upgrade health check
+        :param kube_upgrade: set to true to perform a kubernetes upgrade health
+                             check
         """
         return self.call(context,
                          self.make_msg('get_system_health',
-                                       force=force, upgrade=upgrade))
+                                       force=force, upgrade=upgrade,
+                                       kube_upgrade=kube_upgrade))
 
     def reserve_ip_for_first_storage_node(self, context):
         """

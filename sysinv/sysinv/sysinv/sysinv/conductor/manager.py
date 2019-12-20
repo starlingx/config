@@ -9166,19 +9166,25 @@ class ConductorManager(service.PeriodicService):
 
         return
 
-    def get_system_health(self, context, force=False, upgrade=False):
+    def get_system_health(self, context, force=False, upgrade=False,
+                          kube_upgrade=False):
         """
         Performs a system health check.
 
         :param context: request context.
         :param force: set to true to ignore minor and warning alarms
         :param upgrade: set to true to perform an upgrade health check
+        :param kube_upgrade: set to true to perform a kubernetes upgrade health
+                             check
         """
         health_util = health.Health(self.dbapi)
 
         if upgrade is True:
             return health_util.get_system_health_upgrade(context=context,
                                                          force=force)
+        elif kube_upgrade is True:
+            return health_util.get_system_health_kube_upgrade(context=context,
+                                                              force=force)
         else:
             return health_util.get_system_health(context=context,
                                                  force=force)

@@ -11,6 +11,7 @@ Tests for the API /kube_upgrade/ methods.
 import mock
 from six.moves import http_client
 
+from sysinv.common import constants
 from sysinv.common import kubernetes
 
 from sysinv.tests.api import base
@@ -56,16 +57,17 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.kube_download_images = mock.MagicMock()
         self.kube_upgrade_networking = mock.MagicMock()
-        self.get_system_health_return = (True, "System is super healthy")
+        self.get_system_health_return = (
+            True, "System is super healthy")
 
-    def get_system_health(self, context, force=False):
+    def get_system_health(self, context, force=False, kube_upgrade=False):
         if force:
             return True, "System is healthy because I was forced to say that"
         else:
             return self.get_system_health_return
 
 
-class TestKubeUpgrade(base.FunctionalTest, dbbase.BaseSystemTestCase):
+class TestKubeUpgrade(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def setUp(self):
         super(TestKubeUpgrade, self).setUp()
@@ -132,6 +134,14 @@ class TestKubeUpgrade(base.FunctionalTest, dbbase.BaseSystemTestCase):
         self.mocked_kube_get_version_states.start()
         self.addCleanup(self.mocked_kube_get_version_states.stop)
 
+    def _create_controller_0(self, subfunction=None, numa_nodes=1, **kw):
+        return self._create_test_host(
+            personality=constants.CONTROLLER,
+            subfunction=subfunction,
+            numa_nodes=numa_nodes,
+            unit=0,
+            **kw)
+
 
 class TestListKubeUpgrade(TestKubeUpgrade):
 
@@ -182,6 +192,24 @@ class TestPostKubeUpgrade(TestKubeUpgrade, dbbase.ControllerHostTestCase):
         kube_host_upgrade = self.dbapi.kube_host_upgrade_get_by_host(
             self.host.id)
         self.assertEqual('v1.43.1', kube_host_upgrade.target_version)
+
+    def test_create_platform_upgrade_exists(self):
+        # Test creation of upgrade when platform upgrade in progress
+        dbutils.create_test_load(software_version=dbutils.SW_VERSION_NEW,
+                                 compatible_version=dbutils.SW_VERSION,
+                                 state=constants.IMPORTED_LOAD_STATE)
+        dbutils.create_test_upgrade()
+
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
+        result = self.post_json('/kube_upgrade', create_dict,
+                                headers={'User-Agent': 'sysinv-test'},
+                                expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("upgrade cannot be done while a platform upgrade",
+                      result.json['error_message'])
 
     def test_create_upgrade_exists(self):
         # Test creation of upgrade when upgrade already exists
@@ -545,6 +573,43 @@ class TestPatch(TestKubeUpgrade):
         self.assertEqual(result['from_version'], 'v1.43.1')
         self.assertEqual(result['to_version'], 'v1.43.2')
         self.assertEqual(result['state'], new_state)
+
+    def test_update_state_complete_incomplete_host(self):
+        # Test updating the state of an upgrade to complete when a host has
+        # not completed its upgrade
+        self.kube_get_version_states_result = {'v1.42.1': 'available',
+                                               'v1.42.2': 'available',
+                                               'v1.43.1': 'available',
+                                               'v1.43.2': 'active',
+                                               'v1.43.3': 'available'}
+
+        # Create host
+        self._create_controller_0()
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS)
+
+        # Mark the kube host upgrade as failed
+        values = {'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Update state
+        new_state = kubernetes.KUBE_UPGRADE_COMPLETE
+        result = self.patch_json('/kube_upgrade',
+                                 [{'path': '/state',
+                                   'value': new_state,
+                                   'op': 'replace'}],
+                                 headers={'User-Agent': 'sysinv-test'},
+                                 expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("At least one host has not completed",
+                      result.json['error_message'])
 
     def test_update_state_no_upgrade(self):
         # Test updating the state when an upgrade doesn't exist
