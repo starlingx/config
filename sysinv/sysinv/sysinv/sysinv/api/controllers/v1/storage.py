@@ -19,12 +19,12 @@
 # Copyright (c) 2013-2019 Wind River Systems, Inc.
 #
 
+from eventlet.green import subprocess
 import jsonpatch
 import pecan
 from pecan import rest
 import re
 import six
-import subprocess
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan

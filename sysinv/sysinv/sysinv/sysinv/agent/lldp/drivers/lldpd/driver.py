@@ -9,10 +9,10 @@
 # All Rights Reserved.
 #
 
+from eventlet.green import subprocess
 from oslo_log import log as logging
 
 import simplejson as json
-import subprocess
 
 from sysinv.agent.lldp.drivers import base
 from sysinv.agent.lldp import plugin

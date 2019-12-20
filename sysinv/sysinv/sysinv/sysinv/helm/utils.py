@@ -9,9 +9,9 @@
 
 """Helm utilities and helper functions."""
 
+from eventlet.green import subprocess
 import ruamel.yaml as yaml
 from oslo_log import log as logging
-import subprocess
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import exception
 from sysinv.openstack.common import context

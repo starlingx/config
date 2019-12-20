@@ -11,10 +11,10 @@
 
 """ inventory idisk Utilities and helper functions."""
 
+from eventlet.green import subprocess
 import os
 import pyudev
 import re
-import subprocess
 import sys
 
 from oslo_log import log as logging
