@@ -17,23 +17,18 @@
 
 """Common utilities used in testing"""
 
+import fixtures
 import os
 import tempfile
-
-import fixtures
-from oslo_config import cfg
 import testtools
 
-from sysinv.openstack.common.fixture import moxstubout
+from oslo_config import cfg
 
 
 class BaseTestCase(testtools.TestCase):
 
     def setUp(self, conf=cfg.CONF):
         super(BaseTestCase, self).setUp()
-        moxfixture = self.useFixture(moxstubout.MoxStubout())
-        self.mox = moxfixture.mox
-        self.stubs = moxfixture.stubs
         self.conf = conf
         self.addCleanup(self.conf.reset)
         self.useFixture(fixtures.FakeLogger('openstack.common'))
@@ -45,8 +40,6 @@ class BaseTestCase(testtools.TestCase):
     def tearDown(self):
         super(BaseTestCase, self).tearDown()
         self.conf.reset()
-        self.stubs.UnsetAll()
-        self.stubs.SmartUnsetAll()
 
     def create_tempfiles(self, files, ext='.conf'):
         tempfiles = []

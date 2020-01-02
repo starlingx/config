@@ -52,23 +52,6 @@ class TestACL(base.FunctionalTest):
         response = self.get_json(self.node_path, expect_errors=True)
         self.assertEqual(response.status_int, 401)
 
-    def test_authenticated(self):
-        # Test skipped to prevent error message in Jenkins. Error thrown is:
-        # webtest.app.AppError: Bad response: 401 Unauthorized (not 200 OK or
-        # 3xx redirect for
-        # http://localhost/v1/ihosts/1be26c0b-03f2-4d2e-ae87-c02d7f33c123)
-        # 'Authentication required'
-        self.skipTest("Skipping to prevent failure notification on Jenkins")
-        self.mox.StubOutWithMock(self.dbapi, 'ihost_get')
-        self.dbapi.ihost_get(self.fake_node['uuid']).AndReturn(
-                                 self.fake_node)
-        self.mox.ReplayAll()
-
-        response = self.get_json(self.node_path,
-                                 headers={'X-Auth-Token': utils.ADMIN_TOKEN})
-
-        self.assertEqual(response['uuid'], self.fake_node['uuid'])
-
     def test_non_admin(self):
         # Test skipped to prevent error message in Jenkins. Error thrown is:
         # raise mismatch_error

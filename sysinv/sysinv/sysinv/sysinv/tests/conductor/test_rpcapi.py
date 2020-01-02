@@ -22,6 +22,7 @@
 """
 Unit Tests for :py:class:`sysinv.conductor.rpcapi.ConductorAPI`.
 """
+import mock
 
 from oslo_config import cfg
 from oslo_serialization import jsonutils as json
@@ -69,14 +70,13 @@ class RPCAPITestCase(base.DbTestCase):
             if expected_retval:
                 return expected_retval
 
-        self.stubs.Set(rpc, rpc_method, _fake_rpc_method)
-
-        retval = getattr(rpcapi, method)(ctxt, **kwargs)
-
-        self.assertEqual(retval, expected_retval)
-        expected_args = [ctxt, expected_topic, expected_msg]
-        for arg, expected_arg in zip(self.fake_args, expected_args):
-            self.assertEqual(arg, expected_arg)
+        with mock.patch.object(rpc, rpc_method) as mock_method:
+            mock_method.side_effect = _fake_rpc_method
+            retval = getattr(rpcapi, method)(ctxt, **kwargs)
+            self.assertEqual(retval, expected_retval)
+            expected_args = [ctxt, expected_topic, expected_msg]
+            for arg, expected_arg in zip(self.fake_args, expected_args):
+                self.assertEqual(arg, expected_arg)
 
     def test_create_ihost(self):
         ihost_dict = {'mgmt_mac': '00:11:22:33:44:55',

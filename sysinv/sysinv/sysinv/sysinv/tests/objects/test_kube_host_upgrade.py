@@ -7,6 +7,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #
+import mock
 
 from sysinv.db import api as db_api
 from sysinv.db.sqlalchemy import models
@@ -26,46 +27,40 @@ class TestKubeHostUpgradesObject(base.DbTestCase):
 
     def test_load(self):
         uuid = self.fake_upgrade_data['uuid']
-        self.mox.StubOutWithMock(self.dbapi, 'kube_host_upgrade_get')
-
-        self.dbapi.kube_host_upgrade_get(uuid).AndReturn(self.obj_data)
-        self.mox.ReplayAll()
-
-        objects.kube_host_upgrade.get_by_uuid(self.admin_context, uuid)
-        self.mox.VerifyAll()
+        with mock.patch.object(self.dbapi,
+                               "kube_host_upgrade_get") as get_mock:
+            get_mock.return_value = self.obj_data
+            objects.kube_host_upgrade.get_by_uuid(self.admin_context, uuid)
+            get_mock.assert_called_once_with(uuid)
 
     def test_save(self):
         uuid = self.fake_upgrade_data['uuid']
-        self.mox.StubOutWithMock(self.dbapi, 'kube_host_upgrade_get')
-        self.mox.StubOutWithMock(self.dbapi, 'kube_host_upgrade_update')
-
-        self.dbapi.kube_host_upgrade_get(uuid).AndReturn(self.obj_data)
-        self.dbapi.kube_host_upgrade_update(uuid, {'status': "upgrading"})
-        self.mox.ReplayAll()
-
-        n = objects.kube_host_upgrade.get_by_uuid(self.admin_context, uuid)
-        n.status = "upgrading"
-        n.save()
-        self.mox.VerifyAll()
+        with mock.patch.object(self.dbapi,
+                               "kube_host_upgrade_get") as get_mock:
+            with mock.patch.object(self.dbapi,
+                                   "kube_host_upgrade_update") as update_mock:
+                get_mock.return_value = self.obj_data
+                n = objects.kube_host_upgrade.get_by_uuid(self.admin_context,
+                                                          uuid)
+                n.status = "upgrading"
+                n.save()
+                update_mock.assert_called_once_with(uuid,
+                                                    {'status': "upgrading"})
 
     def test_refresh(self):
         uuid = self.fake_upgrade_data['uuid']
-        self.mox.StubOutWithMock(self.dbapi, 'kube_host_upgrade_get')
-
         first_obj = objects.kube_host_upgrade.from_db_object(self._get_db_data(
             dict(self.fake_upgrade_data, target_version='v1.42.1')))
         second_obj = objects.kube_host_upgrade.from_db_object(self._get_db_data(
             dict(self.fake_upgrade_data, target_version='v1.42.2')))
 
-        self.dbapi.kube_host_upgrade_get(uuid).AndReturn(first_obj)
-        self.dbapi.kube_host_upgrade_get(uuid).AndReturn(second_obj)
-        self.mox.ReplayAll()
-
-        n = objects.kube_host_upgrade.get_by_uuid(self.admin_context, uuid)
-        self.assertEqual(n.target_version, 'v1.42.1')
-        n.refresh()
-        self.assertEqual(n.target_version, 'v1.42.2')
-        self.mox.VerifyAll()
+        with mock.patch.object(self.dbapi,
+                               "kube_host_upgrade_get") as get_mock:
+            get_mock.side_effect = iter([first_obj, second_obj])
+            n = objects.kube_host_upgrade.get_by_uuid(self.admin_context, uuid)
+            self.assertEqual(n.target_version, 'v1.42.1')
+            n.refresh()
+            self.assertEqual(n.target_version, 'v1.42.2')
 
     def test_objectify(self):
 

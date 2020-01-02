@@ -43,7 +43,6 @@ from sysinv.db import api as dbapi
 from sysinv.db import migration
 import sysinv.helm.utils
 from sysinv.objects import base as objects_base
-from sysinv.openstack.common.fixture import moxstubout
 from sysinv.tests import conf_fixture
 from sysinv.tests import policy_fixture
 
@@ -179,9 +178,6 @@ class TestCase(testtools.TestCase):
                 objects_base.SysinvObject._obj_classes)
         self.addCleanup(self._restore_obj_registry)
 
-        mox_fixture = self.useFixture(moxstubout.MoxStubout())
-        self.mox = mox_fixture.mox
-        self.stubs = mox_fixture.stubs
         self.addCleanup(self._clear_attrs)
         self.useFixture(fixtures.EnvironmentVariable('http_proxy'))
         self.policy = self.useFixture(policy_fixture.PolicyFixture())
@@ -229,9 +225,6 @@ class TestCase(testtools.TestCase):
         Use the monkey patch fixture to replace a function for the
         duration of a test. Useful when you want to provide fake
         methods instead of mocks during testing.
-
-        This should be used instead of self.stubs.Set (which is based
-        on mox) going forward.
         """
         self.useFixture(fixtures.MonkeyPatch(old, new))
 
