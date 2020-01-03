@@ -51,11 +51,13 @@ import sqlalchemy.exc
 
 from migrate.versioning import repository
 from oslo_db.sqlalchemy import utils as db_utils
+from oslo_config import cfg
 from oslo_log import log as logging
 from sqlalchemy import MetaData, Table
 from sysinv.openstack.common import lockutils
 
 import sysinv.db.sqlalchemy.migrate_repo
+from sysinv.tests import conf_fixture
 from sysinv.tests import utils as test_utils
 
 LOG = logging.getLogger(__name__)
@@ -519,6 +521,8 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
 
     def setUp(self):
         super(TestMigrations, self).setUp()
+        self.useFixture(conf_fixture.ConfFixture(cfg.CONF))
+
         if six.PY2:
             version = -1
         else:
@@ -665,13 +669,11 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
     def test_postgresql_opportunistically(self):
         # Test is skipped because postgresql isn't present/configured on target
         # server and will cause errors. Skipped to prevent Jenkins notification.
-        self.skipTest("Skipping to prevent postgres from throwing error in Jenkins")
         self._test_postgresql_opportunistically()
 
     def test_postgresql_connect_fail(self):
         # Test is skipped because postgresql isn't present/configured on target
         # server and will cause errors. Skipped to prevent Jenkins notification.
-        self.skipTest("Skipping to prevent postgres from throwing error in Jenkins")
         """Test that we can trigger a postgres connection failure
 
         Test that we can fail gracefully to ensure we don't break people
