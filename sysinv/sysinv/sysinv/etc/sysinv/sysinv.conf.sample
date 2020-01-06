@@ -116,7 +116,7 @@
 
 
 #
-# Options defined in sysinv.openstack.common.lockutils
+# Options defined in oslo_concurrency.lockutils
 #
 
 # Whether to disable inter-process locks (boolean value)

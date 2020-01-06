@@ -51,10 +51,10 @@ import sqlalchemy.exc
 
 from migrate.versioning import repository
 from oslo_db.sqlalchemy import utils as db_utils
+from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log as logging
 from sqlalchemy import MetaData, Table
-from sysinv.openstack.common import lockutils
 
 import sysinv.db.sqlalchemy.migrate_repo
 from sysinv.tests import conf_fixture
