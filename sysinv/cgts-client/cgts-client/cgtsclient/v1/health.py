@@ -20,3 +20,8 @@ class HealthManager(base.Manager):
         path = '/v1/health/upgrade'
         resp, body = self.api.json_request('GET', path)
         return body
+
+    def get_kube_upgrade(self):
+        path = '/v1/health/kube-upgrade'
+        resp, body = self.api.json_request('GET', path)
+        return body

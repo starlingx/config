@@ -198,6 +198,16 @@ class UpgradeController(rest.RestController):
                 "upgrade-start rejected: An upgrade can only be started "
                 "when %s is active." % constants.CONTROLLER_0_HOSTNAME))
 
+        # There must not be a kubernetes upgrade in progress
+        try:
+            pecan.request.dbapi.kube_upgrade_get_one()
+        except exception.NotFound:
+            pass
+        else:
+            raise wsme.exc.ClientSideError(_(
+                "upgrade-start rejected: A platform upgrade cannot be done "
+                "while a kubernetes upgrade is in progress."))
+
         # There must not already be an upgrade in progress
         try:
             pecan.request.dbapi.software_upgrade_get_one()

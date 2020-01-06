@@ -77,6 +77,7 @@ properties = {
 int_uninitialized = 999
 
 SW_VERSION = '0.0'
+SW_VERSION_NEW = '1.0'
 
 
 def get_test_node(**kw):
@@ -222,9 +223,10 @@ def create_test_isystem(**kw):
 
 def get_test_load(**kw):
     load = {
-        "software_version": SW_VERSION,
-        "compatible_version": "N/A",
+        "software_version": kw.get("software_version", SW_VERSION),
+        "compatible_version": kw.get("compatible_version", "N/A"),
         "required_patches": "N/A",
+        "state": kw.get("state", constants.ACTIVE_LOAD_STATE),
     }
     return load
 
@@ -233,6 +235,19 @@ def create_test_load(**kw):
     load = get_test_load(**kw)
     dbapi = db_api.get_instance()
     return dbapi.load_create(load)
+
+
+def get_test_upgrade(**kw):
+    upgrade = {'from_load': kw.get('from_load', 1),
+               'to_load': kw.get('to_load', 2),
+               'state': kw.get('state', constants.UPGRADE_STARTING)}
+    return upgrade
+
+
+def create_test_upgrade(**kw):
+    upgrade = get_test_upgrade(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.software_upgrade_create(upgrade)
 
 
 def post_get_test_kube_upgrade(**kw):
