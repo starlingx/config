@@ -1082,10 +1082,12 @@ class InterfacePTP(InterfaceTestCase):
         super(InterfacePTP, self).setUp()
 
     def test_modify_ptp_interface_valid(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
         port0, if0 = self._create_ethernet('if0', host=self.worker)
         sriovif = dbutils.create_test_interface(forihostid=self.worker.id, datanetworks='group0-data0')
         dbutils.create_test_ethernet_port(
-            id=1, name='if1', host_id=self.worker.id, interface_id=sriovif.id, pciaddr='0000:00:00.11', dev_id=0,
+            id=2, name='if1', host_id=self.worker.id, interface_id=sriovif.id, pciaddr='0000:00:00.11', dev_id=0,
             sriov_totalvfs=1, sriov_numvfs=1, driver='i40e', sriov_vf_driver='i40evf'
         )
         if0_uuid = if0['uuid']
@@ -1372,14 +1374,21 @@ class TestPatchMixin(object):
             self.assertEqual(vf_driver, response.json['sriov_vf_driver'])
 
     def test_create_sriov_vf_driver_netdevice_valid(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         self._create_sriov_vf_driver_valid(
             constants.SRIOV_DRIVER_TYPE_NETDEVICE)
 
     def test_create_sriov_vf_driver_vfio_valid(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         self._create_sriov_vf_driver_valid(constants.SRIOV_DRIVER_TYPE_VFIO)
 
     def test_create_sriov_vf_driver_invalid(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         self._create_sriov_vf_driver_valid('bad_driver', expect_errors=True)
+
+    def test_create_sriov_no_mgmt(self):
+        self._create_sriov_vf_driver_valid(constants.SRIOV_DRIVER_TYPE_VFIO,
+                                           expect_errors=True)
 
 
 class TestPostMixin(object):
@@ -1873,6 +1882,8 @@ class TestPostMixin(object):
     # The number of virtual functions _ must be less than or equal to the
     # available VFs _ available on the underlying interface _
     def test_create_invalid_vf_interface_numvfs(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
         self._create_vf('vf1', lower_iface=lower_iface,
@@ -1882,6 +1893,8 @@ class TestPostMixin(object):
     # The number of virtual functions _ must be less than or equal to the
     # available VFs _ available on the underlying interface _
     def test_create_invalid_vf_interface_numvfs_multiple_children(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
         self._create_vf('vf1', lower_iface=lower_iface,
@@ -1893,6 +1906,8 @@ class TestPostMixin(object):
     # Interface _ is being used by VF interface _ and therefore the interface
     # class cannot be changed from 'pci-sriov'.
     def test_modify_sriov_interface_invalid_class_with_upper_vf(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
         self._create_vf('vf1', lower_iface=lower_iface,
@@ -1912,6 +1927,8 @@ class TestPostMixin(object):
     # The number of virtual functions _ must be greater than the number of
     # consumed VFs _ used by the upper VF interfaces _
     def test_modify_sriov_interface_invalid_numvfs_with_upper_vf(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
         self._create_vf('vf1', lower_iface=lower_iface,
@@ -1928,6 +1945,8 @@ class TestPostMixin(object):
                       response.json['error_message'])
 
     def test_interface_vf_usesmodify_success(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
         vf = self._create_vf('vf1', lower_iface=lower_iface,
@@ -1944,6 +1963,8 @@ class TestPostMixin(object):
         self.assertEqual(http_client.OK, patch_result.status_code)
 
     def test_interface_vf_usesmodify_invalid(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
         port, lower_iface = self._create_sriov(
             'sriov1', host=self.worker, sriov_numvfs=4)
         vf = self._create_vf('vf1', lower_iface=lower_iface,
