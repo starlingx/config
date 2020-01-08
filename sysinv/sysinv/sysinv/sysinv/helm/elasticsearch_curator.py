@@ -62,9 +62,13 @@ class ElasticsearchCuratorHelm(elastic.ElasticBaseHelm):
 
         # Give 50% of elasticsearch data volume
         # to filebeat, 40% to metricbeat and 10% to collectd, all
-        # modified by a safety margin due to cronjob running every 6 hours.
+        # modified by a safety margin due to elasticsearch disk allocation
+        # settings and cronjob running every half hour.
 
-        volume_size_with_margin_factor = 0.95 * data_volume_size_gb
+        # Set margin factor to 83%, as elasticsearch currently has
+        # default cluster.routing.allocation.disk settings set to:
+        # low: 85%, high 90%, flood_stage: 95%.
+        volume_size_with_margin_factor = 0.83 * data_volume_size_gb
 
         filebeat_limit_int = int(0.5 * volume_size_with_margin_factor)
         filebeat_limit = str(filebeat_limit_int)
@@ -83,8 +87,8 @@ class ElasticsearchCuratorHelm(elastic.ElasticBaseHelm):
                     'METRICBEAT_INDEX_LIMIT_GB': metricbeat_limit,
                     'COLLECTD_INDEX_LIMIT_GB': collectd_limit,
                 },
-                # Run job every 6 hours.
-                'cronjob': {'schedule': "0 */6 * * *"},
+                # Run job every half hour.
+                'cronjob': {'schedule': "*/30 * * * *"},
             }
         }
 
