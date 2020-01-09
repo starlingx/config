@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2019 Wind River Systems, Inc.
+# Copyright (c) 2016-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -42,13 +42,12 @@ from tsconfig.tsconfig import CONTROLLER_UPGRADE_STARTED_FLAG
 from tsconfig.tsconfig import RESTORE_IN_PROGRESS_FLAG
 
 from controllerconfig.common import constants
-from controllerconfig.common import log
 from controllerconfig import utils as cutils
-from controllerconfig import backup_restore
-
 from controllerconfig.upgrades import utils
 
-LOG = log.get_logger(__name__)
+from oslo_log import log
+
+LOG = log.getLogger(__name__)
 
 POSTGRES_MOUNT_PATH = '/mnt/postgresql'
 POSTGRES_DUMP_MOUNT_PATH = '/mnt/db_dump'
@@ -865,8 +864,6 @@ def main():
             exit(1)
         arg += 1
 
-    log.configure()
-
     if not from_release or not to_release:
         print("Both the FROM_RELEASE and TO_RELEASE must be specified")
         exit(1)
@@ -955,9 +952,10 @@ def extract_data_from_archive(archive, staging_dir, from_release, to_release):
     extract_relative_directory(archive, 'config/ssh_config',
                                tmp_config_path + '/ssh_config')
 
+    # TODO: Switch this over to use Ansible
     # Restore certificate files if they are in the archive
-    backup_restore.restore_etc_ssl_dir(archive,
-                                       configpath=tmp_config_path)
+    # backup_restore.restore_etc_ssl_dir(archive,
+    #                                    configpath=tmp_config_path)
 
     # Extract etc files
     archive.extract('etc/hostname', '/')
@@ -975,11 +973,12 @@ def extract_data_from_archive(archive, staging_dir, from_release, to_release):
         path = 'config/' + file
         extract_relative_file(archive, path, tmp_config_path)
 
+    # TODO: Switch this over to use Ansible
     # Extract distributed cloud addn_hosts file if present in archive.
-    if backup_restore.file_exists_in_archive(
-            archive, 'config/dnsmasq.addn_hosts_dc'):
-        extract_relative_file(
-            archive, 'config/dnsmasq.addn_hosts_dc', tmp_config_path)
+    # if backup_restore.file_exists_in_archive(
+    #         archive, 'config/dnsmasq.addn_hosts_dc'):
+    #     extract_relative_file(
+    #         archive, 'config/dnsmasq.addn_hosts_dc', tmp_config_path)
 
 
 def extract_postgres_data(archive):
@@ -1114,7 +1113,8 @@ def upgrade_controller_simplex(backup_file):
     to_release = metadata['upgrade']['to_release']
 
     check_load_version(to_release)
-    backup_restore.check_load_subfunctions(archive, staging_dir)
+    # TODO: Switch this over to use Ansible
+    # backup_restore.check_load_subfunctions(archive, staging_dir)
 
     # Patching is potentially a multi-phase step.
     # If the controller is impacted by patches from the backup,
@@ -1271,7 +1271,8 @@ def upgrade_controller_simplex(backup_file):
     LOG.info("Generating manifests for %s" %
              sysinv_constants.CONTROLLER_0_HOSTNAME)
 
-    backup_restore.configure_loopback_interface(archive)
+    # TODO: Switch this over to use Ansible
+    # backup_restore.configure_loopback_interface(archive)
 
     print_log_info("Creating configs...")
     cutils.create_system_config()
@@ -1301,10 +1302,10 @@ def upgrade_controller_simplex(backup_file):
 
     cutils.apply_banner_customization()
 
-    backup_restore.restore_ldap(archive, backup_restore.ldap_permdir,
-                                staging_dir)
-
-    backup_restore.restore_std_dir(archive, backup_restore.home_permdir)
+    # TODO: Switch this over to use Ansible
+    # backup_restore.restore_ldap(archive, backup_restore.ldap_permdir,
+    #                             staging_dir)
+    # backup_restore.restore_std_dir(archive, backup_restore.home_permdir)
 
     archive.close()
     shutil.rmtree(staging_dir, ignore_errors=True)
@@ -1351,8 +1352,6 @@ def simplex_main():
                   sys.argv[arg])
             exit(1)
         arg += 1
-
-    log.configure()
 
     # Enforce that the command is being run from the console
     if cutils.is_ssh_parent():

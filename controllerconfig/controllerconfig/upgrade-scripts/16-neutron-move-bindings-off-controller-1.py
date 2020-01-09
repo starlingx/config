@@ -14,9 +14,9 @@ import psycopg2
 import sys
 
 from psycopg2.extras import RealDictCursor
-from controllerconfig.common import log
+from oslo_log import log
 
-LOG = log.get_logger(__name__)
+LOG = log.getLogger(__name__)
 
 
 def main():

@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -41,7 +41,6 @@ import wsme
 import wsmeext.pecan as wsme_pecan
 
 from wsme import types as wtypes
-from controllerconfig import HOST_XML_ATTRIBUTES
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 from pecan import expose
@@ -98,6 +97,12 @@ from sysinv.common import health
 LOG = log.getLogger(__name__)
 KEYRING_BM_SERVICE = "BM"
 ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER = "-1003"
+HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions',
+                       'mgmt_mac', 'mgmt_ip',
+                       'bm_ip', 'bm_type', 'bm_username',
+                       'bm_password', 'boot_device', 'rootfs_device',
+                       'install_output', 'console', 'vsc_controllers',
+                       'power_on', 'location']
 
 
 def _get_controller_address(hostname):

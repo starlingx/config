@@ -1,5 +1,5 @@
 """
-Copyright (c) 2015-2017 Wind River Systems, Inc.
+Copyright (c) 2015-2020 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -7,16 +7,15 @@ SPDX-License-Identifier: Apache-2.0
 import json
 
 from controllerconfig.common.exceptions import KeystoneFail
-from controllerconfig.common import dcmanager
 from controllerconfig.common import keystone
-from controllerconfig.common import log
 from six.moves import http_client as httplib
 from six.moves.urllib import request as urlrequest
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
+from oslo_log import log
 
 
-LOG = log.get_logger(__name__)
+LOG = log.getLogger(__name__)
 
 
 def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
@@ -324,16 +323,3 @@ def delete_project(token, api_url, id):
     api_cmd = api_url + "/projects/" + id
     response = rest_api_request(token, "DELETE", api_cmd,)
     return keystone.Project(response)
-
-
-def get_subcloud_config(token, api_url, subcloud_name,
-                        hash_string):
-    """
-    Ask DC Manager for our subcloud configuration
-    """
-    api_cmd = api_url + "/subclouds/" + subcloud_name + "/config"
-    response = rest_api_request(token, "GET", api_cmd)
-    config = dict()
-    config['users'] = dcmanager.UserList(response['users'], hash_string)
-
-    return config

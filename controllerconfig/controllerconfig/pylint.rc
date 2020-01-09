@@ -35,22 +35,14 @@ load-plugins=
 # fixme: (notes, xxx, fixme)
 # W0101: unreachable-code
 # W0105: pointless-string-statement
-# W0110: deprecated-lambda
-# W0120: useless-else-on-loop
-# W0201: attribute-defined-outside-init
-# W0211: bad-staticmethod-argument
-# W0212: protected-access
 # W0311: bad-indentation
 # W0403: relative-import
-# W0612: unused-variable
 # W0613: unused-argument
 # W0621: redefined-outer-name
 # W0622: redefined-builtin
-# W0631: undefined-loop-variable
 # W0703: broad-except
 # W1501: bad-open-mode
-disable=C, R, fixme, W0101, W0105, W0110, W0120, W0201, W0211, W0212, W0311, W0403,
-        W0612, W0613, W0621, W0622, W0631, W0703, W1501
+disable=C, R, fixme, W0101, W0105, W0311, W0403, W0613, W0621, W0622, W0703, W1501
 
 
 [REPORTS]

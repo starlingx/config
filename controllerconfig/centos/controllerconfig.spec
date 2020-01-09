@@ -57,10 +57,7 @@ mkdir -p $RPM_BUILD_ROOT/wheels
 install -m 644 dist/*.whl $RPM_BUILD_ROOT/wheels/
 
 install -d -m 755 %{buildroot}%{local_bindir}
-install -p -D -m 700 scripts/keyringstaging %{buildroot}%{local_bindir}/keyringstaging
 install -p -D -m 700 scripts/openstack_update_admin_password %{buildroot}%{local_bindir}/openstack_update_admin_password
-install -p -D -m 700 scripts/install_clone.py %{buildroot}%{local_bindir}/install_clone
-install -p -D -m 700 scripts/finish_install_clone.sh %{buildroot}%{local_bindir}/finish_install_clone.sh
 
 install -d -m 755 %{buildroot}%{local_goenabledd}
 install -p -D -m 700 scripts/config_goenabled_check.sh %{buildroot}%{local_goenabledd}/config_goenabled_check.sh
@@ -74,13 +71,12 @@ install -p -D -m 755 upgrade-scripts/* %{buildroot}%{local_etc_upgraded}/
 
 install -d -m 755 %{buildroot}%{local_etc_systemd}
 install -p -D -m 664 scripts/controllerconfig.service %{buildroot}%{local_etc_systemd}/controllerconfig.service
-#install -p -D -m 664 scripts/config.service %{buildroot}%{local_etc_systemd}/config.service
 
 %post
 systemctl enable controllerconfig.service
 
 %clean
-rm -rf $RPM_BUILD_ROOT 
+rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root,-)

@@ -19,11 +19,12 @@ from cinderclient.v3 import client as cinder_client_v3
 from glanceclient import Client
 
 from cinderclient import utils as c_utils
-from controllerconfig.common import log
 from controllerconfig.common.rest_api_utils import get_token
 from controllerconfig.common.exceptions import TidyStorageFail
 
-LOG = log.get_logger(__name__)
+from oslo_log import log
+
+LOG = log.getLogger(__name__)
 
 KEYSTONE_AUTH_SERVER_RETRY_CNT = 60
 KEYSTONE_AUTH_SERVER_WAIT = 1  # 1sec wait per retry
@@ -564,8 +565,6 @@ def main():
             sys.argv[1] in ['--help', '-h', '-?']):
         show_help()
         exit(1)
-
-    log.configure()
 
     result_file = sys.argv[1]
 
