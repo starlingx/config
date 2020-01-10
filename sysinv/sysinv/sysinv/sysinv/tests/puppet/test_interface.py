@@ -298,8 +298,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
 
     @puppet.puppet_context
     def _update_context(self):
+        # interface is added as an operator by systemconfig.puppet_plugins
         self.context = \
-            self.operator.interface._create_interface_context(self.host)
+            self.operator.interface._create_interface_context(self.host)  # pylint: disable=no-member
 
         # Update the puppet context with generated interface context
         self.operator.context.update(self.context)
@@ -354,43 +355,43 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertFalse(result)
 
     def test_get_port_interface_id_index(self):
-        index = self.operator.interface._get_port_interface_id_index(self.host)
+        index = self.operator.interface._get_port_interface_id_index(self.host)  # pylint: disable=no-member
         for port in self.ports:
             self.assertTrue(port['interface_id'] in index)
             self.assertEqual(index[port['interface_id']], port)
 
     def test_get_port_pciaddr_index(self):
-        index = self.operator.interface._get_port_pciaddr_index(self.host)
+        index = self.operator.interface._get_port_pciaddr_index(self.host)   # pylint: disable=no-member
         for port in self.ports:
             self.assertTrue(port['pciaddr'] in index)
             self.assertIn(port, index[port['pciaddr']])
 
     def test_get_interface_name_index(self):
-        index = self.operator.interface._get_interface_name_index(self.host)
+        index = self.operator.interface._get_interface_name_index(self.host)  # pylint: disable=no-member
         for iface in self.interfaces:
             self.assertTrue(iface['ifname'] in index)
             self.assertEqual(index[iface['ifname']], iface)
 
     def test_get_network_type_index(self):
-        index = self.operator.interface._get_network_type_index()
+        index = self.operator.interface._get_network_type_index()  # pylint: disable=no-member
         for network in self.networks:
             self.assertTrue(network['type'] in index)
             self.assertEqual(index[network['type']], network)
 
     def test_get_address_interface_name_index(self):
-        index = self.operator.interface._get_address_interface_name_index(self.host)
+        index = self.operator.interface._get_address_interface_name_index(self.host)  # pylint: disable=no-member
         for address in self.addresses:
             self.assertTrue(address['ifname'] in index)
             self.assertIn(address, index[address['ifname']])
 
     def test_get_routes_interface_name_index(self):
-        index = self.operator.interface._get_routes_interface_name_index(self.host)
+        index = self.operator.interface._get_routes_interface_name_index(self.host)  # pylint: disable=no-member
         for route in self.routes:
             self.assertTrue(route['ifname'] in index)
             self.assertIn(route, index[route['ifname']])
 
     def test_get_gateway_index(self):
-        index = self.operator.interface._get_gateway_index()
+        index = self.operator.interface._get_gateway_index()  # pylint: disable=no-member
         self.assertEqual(len(index), 2)
         self.assertEqual(index[constants.NETWORK_TYPE_MGMT],
                          str(self.mgmt_gateway_address))
@@ -1072,7 +1073,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def _get_sriov_config(self, ifname='default',
                           vf_driver=constants.SRIOV_DRIVER_TYPE_VFIO,
-                          vf_addrs=[""]):
+                          vf_addrs=None):
+        if vf_addrs is None:
+            vf_addrs = [""]
         config = {'ifname': ifname,
                   'vf_driver': vf_driver,
                   'vf_addrs': vf_addrs}
@@ -1548,12 +1551,12 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
         with open(config_filename, 'w') as config_file:
-            config = self.operator.interface.get_host_config(self.host)
+            config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
             self.assertIsNotNone(config)
             yaml.dump(config, config_file, default_flow_style=False)
 
     def test_create_interface_context(self):
-        context = self.operator.interface._create_interface_context(self.host)
+        context = self.operator.interface._create_interface_context(self.host)  # pylint: disable=no-member
         self.assertIn('personality', context)
         self.assertIn('subfunctions', context)
         self.assertIn('devices', context)

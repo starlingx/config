@@ -36,7 +36,7 @@ class TestACL(base.FunctionalTest):
         self.dbapi = db_api.get_instance()
         self.node_path = '/ihosts/%s' % self.fake_node['uuid']
 
-    def get_json(self, path, expect_errors=False, headers=None, q=[], **param):
+    def get_json(self, path, expect_errors=False, headers=None, q=None, **param):
         return super(TestACL, self).get_json(path,
                                                 expect_errors=expect_errors,
                                                 headers=headers,

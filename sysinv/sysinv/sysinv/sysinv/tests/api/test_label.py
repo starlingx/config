@@ -4,17 +4,14 @@
 #
 
 import mock
-import platform
 from six.moves import http_client
+from six.moves.urllib.parse import urlencode
+
 from sysinv.common import constants
 from sysinv.db import api as dbapi
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 
-if platform.python_version().startswith('2.7'):
-    from urllib import urlencode
-else:
-    from urllib.parse import urlencode
 
 HEADER = {'User-Agent': 'sysinv'}
 es_labels = {'elastic-data': 'enabled',
@@ -28,6 +25,15 @@ es_invalid_worker_labels = {'elastic-master': 'mandalorian'}
 
 def mock_helm_override_get(dbapi, app_name, chart_name, namespace):
     return True
+
+
+def mock_get_system_enabled_k8s_plugins_return_plugins():
+    return {"intel-gpu-plugin": "intelgpu=enabled",
+            "intel-qat-plugin": "intelqat=enabled"}
+
+
+def mock_get_system_enabled_k8s_plugins_return_none():
+    return None
 
 
 class LabelTestCase(base.FunctionalTest):
@@ -166,13 +172,6 @@ class LabelAssignTestCase(LabelTestCase):
             'kube-topology-mgr-policy': 'invalid',
         }
         self.assign_labels_failure(host_uuid, topology_mgr_label)
-
-    def mock_get_system_enabled_k8s_plugins_return_plugins():
-        return {"intel-gpu-plugin": "intelgpu=enabled",
-                "intel-qat-plugin": "intelqat=enabled"}
-
-    def mock_get_system_enabled_k8s_plugins_return_none():
-        return None
 
     @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
                 mock_get_system_enabled_k8s_plugins_return_plugins)

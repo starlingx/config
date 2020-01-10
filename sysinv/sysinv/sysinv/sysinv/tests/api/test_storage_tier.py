@@ -759,12 +759,12 @@ class StorageTierDependentTCs(base.FunctionalTest):
                     mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
                         mock_mon_status, mock_backend_configured, mock_osd):
 
-            def fake_configure_osd_istor(context, istor_obj):
+            def fake_configure_osd_istor_1(context, istor_obj):
                 istor_obj['osdid'] = 1
                 return istor_obj
 
             mock_mon_status.return_value = [3, 2, ['controller-0', 'controller-1', 'storage-0']]
-            mock_osd.side_effect = fake_configure_osd_istor
+            mock_osd.side_effect = fake_configure_osd_istor_1
 
             response = self.post_json('/istors', values, expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
@@ -783,12 +783,12 @@ class StorageTierDependentTCs(base.FunctionalTest):
                     mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
                         mock_mon_status, mock_backend_configured, mock_osd):
 
-            def fake_configure_osd_istor(context, istor_obj):
+            def fake_configure_osd_istor_2(context, istor_obj):
                 istor_obj['osdid'] = 1
                 return istor_obj
 
             mock_mon_status.return_value = [3, 2, ['controller-0', 'controller-1', 'storage-0']]
-            mock_osd.side_effect = fake_configure_osd_istor
+            mock_osd.side_effect = fake_configure_osd_istor_2
 
             response = self.post_json('/istors', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
