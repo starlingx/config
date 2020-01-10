@@ -16,3 +16,14 @@ class HelmTestCaseMixin(object):
         self.useFixture(keyring_fixture.KeyringBackend())
         mock.patch('sysinv.common.utils.is_virtual',
                    return_value=False).start()
+
+    def assertOverridesParameters(self, overrides, parameters):
+        """Validate the overrides contains the supplied parameters"""
+        for key, value in parameters.items():
+            self.assertIn(key, overrides)
+            if isinstance(value, dict):
+                for subkey, subvalue in value.items():
+                    self.assertOverridesParameters(overrides[key][subkey],
+                                                   subvalue)
+            else:
+                self.assertEqual(overrides.get(key), value)

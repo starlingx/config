@@ -1233,3 +1233,23 @@ def create_test_pci_devices(**kw):
         del pci_devices['id']
     dbapi = db_api.get_instance()
     return dbapi.pci_device_create(pci_devices['host_id'], pci_devices)
+
+
+def get_test_label(**kw):
+    label = {
+        'host_id': kw.get('host_id'),
+        'label_key': kw.get('label_key'),
+        'label_value': kw.get('label_value'),
+    }
+    return label
+
+
+def create_test_label(**kw):
+    """Create test label in DB and return label object.
+    Function to be used to create test label objects in the database.
+    :param kw: kwargs with overriding values for labels's attributes.
+    :returns: Test label DB object.
+    """
+    label = get_test_label(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.label_create(label['host_id'], label)
