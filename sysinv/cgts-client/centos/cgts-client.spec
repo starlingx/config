@@ -9,24 +9,24 @@ URL: unknown
 Source0: %{name}-%{version}.tar.gz
 
 BuildRequires: git
-BuildRequires: python-setuptools
-BuildRequires: python-pbr
-BuildRequires: python2-pip
-BuildRequires: python2-wheel
-Requires: python-httplib2
-Requires: python-prettytable
+BuildRequires: python3-setuptools
+BuildRequires: python3-pbr
+BuildRequires: python3-pip
+BuildRequires: python3-wheel
+Requires: python3-httplib2
+Requires: python3-prettytable
 Requires: bash-completion
-Requires: python-neutronclient
-Requires: python-keystoneclient
+Requires: python3-neutronclient
+Requires: python3-keystoneclient
 # Needed for python2 and python3 compatible
-Requires: python-six
+Requires: python3-six
 
 %description
 System Client and CLI
 
 %define local_bindir /usr/bin/
 %define local_etc_bash_completiond /etc/bash_completion.d/
-%define pythonroot /usr/lib64/python2.7/site-packages
+%define pythonroot %python3_sitearch
 %define debug_package %{nil}
 
 %prep
@@ -38,12 +38,12 @@ rm -rf *.egg-info
 
 %build
 export PBR_VERSION=%{version}
-%{__python} setup.py build
-%py2_build_wheel
+%{__python3} setup.py build
+%py3_build_wheel
 
 %install
 export PBR_VERSION=%{version}
-%{__python} setup.py install --root=$RPM_BUILD_ROOT \
+%{__python3} setup.py install --root=$RPM_BUILD_ROOT \
                              --install-lib=%{pythonroot} \
                              --prefix=/usr \
                              --install-data=/usr/share \
