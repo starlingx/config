@@ -10,26 +10,26 @@ Source0: %{name}-%{version}.tar.gz
 
 %define debug_package %{nil}
 
-BuildRequires: python-setuptools
-BuildRequires: python2-pip
-BuildRequires: python2-wheel
+BuildRequires: python3-setuptools
+BuildRequires: python3-pip
+BuildRequires: python3-wheel
 
 %description
 Titanium Cloud Config Info
 
 %define local_dir /usr/
 %define local_bindir %{local_dir}/bin/
-%define pythonroot /usr/lib64/python2.7/site-packages
+%define pythonroot %{python3_sitearch}
 
 %prep
 %setup
 
 %build
-%{__python} setup.py build
-%py2_build_wheel
+%{__python3} setup.py build
+%py3_build_wheel
 
 %install
-%{__python} setup.py install --root=$RPM_BUILD_ROOT \
+%{__python3} setup.py install --root=$RPM_BUILD_ROOT \
                              --install-lib=%{pythonroot} \
                              --prefix=/usr \
                              --install-data=/usr/share \
@@ -49,8 +49,8 @@ rm -rf $RPM_BUILD_ROOT
 %{local_bindir}/*
 %dir %{pythonroot}/%{name}
 %{pythonroot}/%{name}/*
-%dir %{pythonroot}/%{name}-%{version}.0-py2.7.egg-info
-%{pythonroot}/%{name}-%{version}.0-py2.7.egg-info/*
+%dir %{pythonroot}/%{name}-%{version}.0-py3.6.egg-info
+%{pythonroot}/%{name}-%{version}.0-py3.6.egg-info/*
 
 %package wheels
 Summary: %{name} wheels
