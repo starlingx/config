@@ -192,6 +192,9 @@ class ConductorManager(service.PeriodicService):
         # Timeouts for adding & removing operations
         self._pv_op_timeouts = {}
         self._stor_bck_op_timeouts = {}
+        # struct {'host_uuid':[config_uuid_0,config_uuid_1]}
+        # this will track the config w/ reboot request to apply
+        self._host_reboot_config_uuid = {}
 
     def start(self):
         self._start()
@@ -7892,9 +7895,38 @@ class ConductorManager(service.PeriodicService):
             # We avoid re-raising this as it may brake critical operations after this one
             return constants.CINDER_RESIZE_FAILURE
 
+    def _remove_config_from_reboot_config_list(self, ihost_uuid, config_uuid):
+        LOG.info("_remove_config_from_reboot_config_list host: %s,config_uuid: %s" %
+                  (ihost_uuid, config_uuid))
+        if ihost_uuid in self._host_reboot_config_uuid:
+            try:
+                self._host_reboot_config_uuid[ihost_uuid].remove(config_uuid)
+            except ValueError:
+                LOG.info("_remove_config_from_reboot_config_list fail"
+                         " host:%s", ihost_uuid)
+                pass
+
+    def _clear_config_from_reboot_config_list(self, ihost_uuid):
+        LOG.info("_clear_config_from_reboot_config_list host:%s", ihost_uuid)
+        if ihost_uuid in self._host_reboot_config_uuid:
+            try:
+                del self._host_reboot_config_uuid[ihost_uuid][:]
+            except ValueError:
+                LOG.info("_clear_config_from_reboot_config_list fail"
+                         " host: %s", ihost_uuid)
+                pass
+
     def _config_out_of_date(self, ihost_obj):
         target = ihost_obj.config_target
         applied = ihost_obj.config_applied
+        applied_reboot = None
+        if applied is not None:
+            try:
+                applied_reboot = self._config_set_reboot_required(applied)
+            except ValueError:
+                # for worker node, the applied might be 'install'
+                applied_reboot = applied
+                pass
         hostname = ihost_obj.hostname
 
         if not hostname:
@@ -7905,6 +7937,7 @@ class ConductorManager(service.PeriodicService):
                      (hostname, applied))
             return False
         elif target == applied:
+            self._clear_config_from_reboot_config_list(ihost_obj.uuid)
             if ihost_obj.personality == constants.CONTROLLER:
 
                 controller_fs_list = self.dbapi.controller_fs_get_list()
@@ -7920,6 +7953,13 @@ class ConductorManager(service.PeriodicService):
             else:
                 LOG.info("%s: iconfig up to date: target %s, applied %s " %
                          (hostname, target, applied))
+                return False
+        elif target == applied_reboot:
+            if ihost_obj.uuid in self._host_reboot_config_uuid:
+                if len(self._host_reboot_config_uuid[ihost_obj.uuid]) == 0:
+                    return False
+                return True
+            else:
                 return False
         else:
             LOG.warn("%s: iconfig out of date: target %s, applied %s " %
@@ -8112,6 +8152,8 @@ class ConductorManager(service.PeriodicService):
         @cutils.synchronized(lock_name, external=False)
         def _sync_update_host_config_applied(self,
                                              context, ihost_obj, config_uuid):
+            self._remove_config_from_reboot_config_list(ihost_obj.uuid,
+                    config_uuid)
             if ihost_obj.config_applied != config_uuid:
                 ihost_obj.config_applied = config_uuid
                 ihost_obj.save(context)
@@ -8159,6 +8201,12 @@ class ConductorManager(service.PeriodicService):
 
         for host in hosts:
             if host.personality and host.personality in personalities:
+                if reboot:
+                    if host.uuid in self._host_reboot_config_uuid:
+                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
+                    else:
+                        self._host_reboot_config_uuid[host.uuid] = []
+                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
                 self._update_host_config_target(context, host, config_uuid)
 
         LOG.info("_config_update_hosts config_uuid=%s" % config_uuid)
