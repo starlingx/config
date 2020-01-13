@@ -8,34 +8,34 @@ Packager: Wind River <info@windriver.com>
 URL: unknown
 Source0: %{name}-%{version}.tar.gz
 
-BuildRequires: python-setuptools
-BuildRequires: python-pbr
-BuildRequires: python2-pip
-BuildRequires: python2-wheel
+BuildRequires: python3-setuptools
+BuildRequires: python3-pbr
+BuildRequires: python3-pip
+BuildRequires: python3-wheel
 BuildRequires: systemd
-Requires: pyparted
-Requires: python-boto3
-Requires: python2-botocore >= 1.11.0
-Requires: python-docker
-Requires: python-eventlet
-Requires: python-ipaddr
-Requires: python-keyring
-Requires: python-kubernetes
-Requires: python-netaddr
-Requires: python-pyudev
-Requires: python-pbr
-Requires: python-webtest
-Requires: python-wsme
-Requires: python-six
-Requires: python2-django
-Requires: python2-mox3
-Requires: python2-oslo-i18n
-Requires: python2-oslo-config
-Requires: python2-oslo-concurrency
-Requires: python2-oslo-db
-Requires: python2-oslo-log
-Requires: python2-oslo-utils
-Requires: python2-pecan
+Requires: python3-pyparted
+Requires: python3-boto3
+Requires: python3-botocore >= 1.13.21
+Requires: python3-docker
+Requires: python3-eventlet
+Requires: python3-ipaddr
+Requires: python3-keyring
+Requires: python3-kubernetes
+Requires: python3-netaddr
+Requires: python3-pyudev
+Requires: python3-pbr
+Requires: python3-webtest
+Requires: python3-wsme
+Requires: python3-six
+Requires: python3-django
+Requires: python3-mox3
+Requires: python3-oslo-i18n
+Requires: python3-oslo-config
+Requires: python3-oslo-concurrency
+Requires: python3-oslo-db
+Requires: python3-oslo-log
+Requires: python3-oslo-utils
+Requires: python3-pecan
 Requires: tsconfig
 
 %description
@@ -45,7 +45,7 @@ System Inventory
 %define local_etc_goenabledd /etc/goenabled.d/
 %define local_etc_sysinv     /etc/sysinv/
 %define local_etc_motdd      /etc/motd.d/
-%define pythonroot           /usr/lib64/python2.7/site-packages
+%define pythonroot           %python3_sitearch
 %define ocf_resourced        /usr/lib/ocf/resource.d
 
 %define debug_package %{nil}
@@ -58,12 +58,12 @@ rm -rf *.egg-info
 
 %build
 export PBR_VERSION=%{version}
-%{__python} setup.py build
-%py2_build_wheel
+%{__python3} setup.py build
+%py3_build_wheel
 
 %install
 export PBR_VERSION=%{version}
-%{__python} setup.py install --root=%{buildroot} \
+%{__python3} setup.py install --root=%{buildroot} \
                              --install-lib=%{pythonroot} \
                              --prefix=/usr \
                              --install-data=/usr/share \
