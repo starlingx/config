@@ -7,7 +7,7 @@ rcfile=pylint.rc
 #init-hook=
 
 # Add files or directories to the blacklist. Should be base names, not paths.
-ignore=tests
+ignore=
 
 # Pickle collected data for later comparisons.
 persistent=yes

@@ -139,7 +139,9 @@ class FunctionalTest(base.TestCase):
         return response
 
     def get_json(self, path, expect_errors=False, headers=None,
-                 extra_environ=None, q=[], path_prefix=PATH_PREFIX, **params):
+                 extra_environ=None, q=None, path_prefix=PATH_PREFIX, **params):
+        if q is None:
+            q = []
         full_path = path_prefix + path
         query_params = {'q.field': [],
                         'q.value': [],

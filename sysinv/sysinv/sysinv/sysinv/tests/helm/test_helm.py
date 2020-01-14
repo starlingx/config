@@ -18,14 +18,14 @@ class StxOpenstackAppMixin(object):
     app_name = 'stx-openstack'
 
 
-class HelmOperatorTestSuite(helm_base.HelmTestCaseMixin):
-    """When HelmOperatorTestSuite is added as a Mixin
+class HelmOperatorTestSuiteMixin(helm_base.HelmTestCaseMixin):
+    """When HelmOperatorTestSuiteMixin is added as a Mixin
        alongside a subclass of BaseHostTestCase
        these testcases are added to it
        This also requires an AppMixin to provide app_name
     """
     def setUp(self):
-        super(HelmOperatorTestSuite, self).setUp()
+        super(HelmOperatorTestSuiteMixin, self).setUp()
         self.app = dbutils.create_test_app(name=self.app_name)
         # If a ceph keyring entry is missing, a subprocess will be invoked
         # so a fake keyring password is being supplied here.
@@ -54,7 +54,7 @@ class HelmOperatorTestSuite(helm_base.HelmTestCaseMixin):
         self.addCleanup(write_file.stop)
 
     def tearDown(self):
-        super(HelmOperatorTestSuite, self).tearDown()
+        super(HelmOperatorTestSuiteMixin, self).tearDown()
 
     @mock.patch.object(HelmOperator, '_write_chart_overrides')
     def test_generate_helm_chart_overrides(self, mock_write_chart):
@@ -73,7 +73,7 @@ class HelmOperatorTestSuite(helm_base.HelmTestCaseMixin):
 class HelmSTXOpenstackControllerTestCase(StxOpenstackAppMixin,
                                          dbbase.BaseIPv6Mixin,
                                          dbbase.BaseCephStorageBackendMixin,
-                                         HelmOperatorTestSuite,
+                                         HelmOperatorTestSuiteMixin,
                                          dbbase.ControllerHostTestCase):
     pass
 
@@ -85,6 +85,6 @@ class HelmSTXOpenstackControllerTestCase(StxOpenstackAppMixin,
 # - stx-openstack app
 class HelmSTXOpenstackAIOTestCase(StxOpenstackAppMixin,
                                   dbbase.BaseCephStorageBackendMixin,
-                                  HelmOperatorTestSuite,
+                                  HelmOperatorTestSuiteMixin,
                                   dbbase.AIOSimplexHostTestCase):
     pass
