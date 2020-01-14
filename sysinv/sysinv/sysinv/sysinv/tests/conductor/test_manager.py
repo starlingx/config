@@ -430,6 +430,20 @@ class ManagerTestCase(base.DbTestCase):
 
         self.assertEqual(ret, {})
 
+    def test_mtc_host_add(self):
+        mock_notify_mtc_and_recv = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.notify_mtc_and_recv',
+                    mock_notify_mtc_and_recv)
+        p.start().return_value = {'status': 'pass'}
+        self.addCleanup(p.stop)
+
+        ihost = {}
+        ihost['hostname'] = 'newhost'
+        ihost['personality'] = 'worker'
+
+        self.service.mtc_host_add(self.context, "localhost", 2112, ihost)
+        mock_notify_mtc_and_recv.assert_called_with("localhost", 2112, ihost)
+
     def test_kube_download_images(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
