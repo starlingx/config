@@ -102,3 +102,10 @@ class AppOperatorTestCase(base.DbTestCase):
         self.app_operator.clear_reapply('test-app-1')
         result = self.app_operator.needs_reapply('test-app-1')
         self.assertEqual(result, False)
+
+    def test_is_app_aborted(self):
+        self.app_operator.abort_requested["test_app"] = True
+        res = self.app_operator.is_app_aborted("test_app")
+        self.assertEqual(res, True)
+        res = self.app_operator.is_app_aborted("test_app_123")
+        self.assertEqual(res, False)
