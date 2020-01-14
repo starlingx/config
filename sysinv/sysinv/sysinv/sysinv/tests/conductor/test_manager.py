@@ -444,6 +444,20 @@ class ManagerTestCase(base.DbTestCase):
         self.service.mtc_host_add(self.context, "localhost", 2112, ihost)
         mock_notify_mtc_and_recv.assert_called_with("localhost", 2112, ihost)
 
+    def test_ilvg_get_nova_ilvg_by_ihost(self):
+        ihost = self._create_test_ihost()
+        lvg_dict = {
+            'lvm_vg_name': constants.LVG_NOVA_LOCAL,
+        }
+        ilvg = self.dbapi.ilvg_create(ihost['id'], lvg_dict)
+        ret = self.service.ilvg_get_nova_ilvg_by_ihost(self.context, ihost['uuid'])
+        self.assertEqual(ret[0]['uuid'], ilvg['uuid'])
+
+    def test_ilvg_get_nova_ilvg_by_ihost_no_nova_ilvg(self):
+        ihost = self._create_test_ihost()
+        ret = self.service.ilvg_get_nova_ilvg_by_ihost(self.context, ihost['uuid'])
+        self.assertEqual(ret, [])
+
     def test_kube_download_images(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
