@@ -55,6 +55,8 @@ ROUTE_CONFIG_RESOURCE = 'platform::interfaces::route_config'
 SRIOV_CONFIG_RESOURCE = 'platform::interfaces::sriov_config'
 ADDRESS_CONFIG_RESOURCE = 'platform::addresses::address_config'
 
+DATA_IFACE_LIST_RESOURCE = 'platform::lmon::params::data_iface_devices'
+
 
 class InterfacePuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for interface configuration"""
@@ -86,6 +88,7 @@ class InterfacePuppet(base.BasePuppet):
             ROUTE_CONFIG_RESOURCE: {},
             ADDRESS_CONFIG_RESOURCE: {},
             SRIOV_CONFIG_RESOURCE: {},
+            DATA_IFACE_LIST_RESOURCE: [],
         }
 
         system = self._get_system()
@@ -105,6 +108,9 @@ class InterfacePuppet(base.BasePuppet):
 
         # Generate driver specific configuration
         generate_driver_config(context, config)
+
+        # Generate data iface list configuration
+        generate_data_iface_list_config(context, config)
 
         # Update the global context with generated interface context
         self.context.update(context)
@@ -1354,6 +1360,16 @@ def generate_mlx4_core_options(context, config):
 
     mlx4_core_options = "port_type_array=2,2 num_vfs=%s" % num_vfs_options
     config['platform::networking::mlx4_core_options'] = mlx4_core_options
+
+
+def generate_data_iface_list_config(context, config):
+    """
+    Generate the puppet resource for data-network iface name.
+    """
+    for iface in context['interfaces'].values():
+        if is_data_interface(context, iface):
+            ifname = get_interface_os_ifname(context, iface)
+            config[DATA_IFACE_LIST_RESOURCE].append(ifname)
 
 
 def generate_driver_config(context, config):
