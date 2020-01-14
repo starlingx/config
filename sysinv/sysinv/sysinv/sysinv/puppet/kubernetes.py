@@ -118,8 +118,6 @@ class KubernetesPuppet(base.BasePuppet):
             cmd = ['kubeadm', 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
             join_cmd = subprocess.check_output(cmd)
-            join_cmd = join_cmd.strip()
-            join_cmd += " --cri-socket /var/run/containerd/containerd.sock"
             config.update(
                 {'platform::kubernetes::worker::params::join_cmd': join_cmd, })
         except subprocess.CalledProcessError:
