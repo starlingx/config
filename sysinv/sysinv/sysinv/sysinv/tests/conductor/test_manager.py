@@ -458,6 +458,100 @@ class ManagerTestCase(base.DbTestCase):
         ret = self.service.ilvg_get_nova_ilvg_by_ihost(self.context, ihost['uuid'])
         self.assertEqual(ret, [])
 
+    def test_platform_interfaces(self):
+        ihost = self._create_test_ihost()
+        interface = utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port = utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'])
+        self.assertEqual(ret[0]['name'], port['name'])
+
+    def test_platform_interfaces_multi(self):
+        ihost = self._create_test_ihost()
+        interface_mgmt = utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port_mgmt = utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface_mgmt['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        interface_oam = utils.create_test_interface(
+                ifname='oam',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port_oam = utils.create_test_ethernet_port(
+            name='eth1',
+            host_id=ihost['id'],
+            interface_id=interface_oam['id'],
+            pciaddr='0000:00:00.02',
+            dev_id=1)
+
+        interface_data = utils.create_test_interface(
+                ifname='data',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_DATA,
+                iftype=constants.INTERFACE_TYPE_VLAN)
+        utils.create_test_ethernet_port(
+            name='eth2',
+            host_id=ihost['id'],
+            interface_id=interface_data['id'],
+            pciaddr='0000:00:00.03',
+            dev_id=2)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'])
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(ret[0]['name'], port_mgmt['name'])
+        self.assertEqual(ret[1]['name'], port_oam['name'])
+
+    def test_platform_interfaces_no_port(self):
+        ihost = self._create_test_ihost()
+        utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'])
+        self.assertEqual(ret, [])
+
+    def test_platform_interfaces_invalid_ihost(self):
+        ihost = self._create_test_ihost()
+        interface = utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'] + 1)
+        self.assertEqual(ret, [])
+
     def test_kube_download_images(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
