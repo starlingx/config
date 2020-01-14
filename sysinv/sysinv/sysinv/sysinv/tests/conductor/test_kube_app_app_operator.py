@@ -6,6 +6,7 @@
 
 """Test class for Sysinv kube_app AppOperator."""
 
+from sysinv.common import constants
 from sysinv.conductor import kube_app
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import context
@@ -68,3 +69,22 @@ class AppOperatorTestCase(base.DbTestCase):
         self.assertEqual(res, False)
         # check current active
         self.assertEqual(test_app_2.active, False)
+
+    def test_get_appname(self):
+        test_app_name = 'test-app-1'
+        dbutils.create_test_app(name=test_app_name,
+                                status=constants.APP_APPLY_SUCCESS)
+        test_app_1 = obj_app.get_by_name(self.context, 'test-app-1')
+        app_name = self.app_operator.get_appname(test_app_1)
+        self.assertEqual(test_app_name, app_name)
+
+    def test_is_app_active(self):
+        dbutils.create_test_app(name='test-app-1',
+                                active=True)
+        test_app_1 = obj_app.get_by_name(self.context, 'test-app-1')
+        self.app_operator.activate(test_app_1)
+        is_active = self.app_operator.is_app_active(test_app_1)
+        self.assertEqual(is_active, True)
+        self.app_operator.deactivate(test_app_1)
+        is_active = self.app_operator.is_app_active(test_app_1)
+        self.assertEqual(is_active, False)
