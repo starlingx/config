@@ -1066,3 +1066,63 @@ class ManagerTestCase(base.DbTestCase):
 
     def _clear_alarm(self, fm_id, fm_instance):
         self.alarm_raised = False
+
+    def _create_test_ihosts(self):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55',
+            mgmt_ip='1.2.3.4')
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-1',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='22:44:33:55:11:66',
+            mgmt_ip='1.2.3.5')
+        # Create compute-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='22:44:33:55:11:77',
+            mgmt_ip='1.2.3.6')
+
+    def test_get_ihost_by_macs(self):
+        self._create_test_ihosts()
+        ihost_macs = ['22:44:33:55:11:66', '22:44:33:88:11:66']
+        ihost = self.service.get_ihost_by_macs(self.context, ihost_macs)
+        self.assertEqual(ihost.mgmt_mac, '22:44:33:55:11:66')
+
+    def test_get_ihost_by_macs_no_match(self):
+        self._create_test_ihosts()
+        ihost = None
+        ihost_macs = ['22:44:33:99:11:66', '22:44:33:88:11:66']
+        ihost = self.service.get_ihost_by_macs(self.context, ihost_macs)
+        self.assertEqual(ihost, None)
