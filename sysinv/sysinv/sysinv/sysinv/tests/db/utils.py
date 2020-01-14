@@ -1184,6 +1184,7 @@ def get_test_app(**kw):
         'manifest_file': kw.get('manifest_file',
                                 constants.APP_TARFILE_NAME_PLACEHOLDER),
         'status': kw.get('status', constants.APP_UPLOAD_IN_PROGRESS),
+        'active': kw.get('active', False),
     }
     return app_data
 
