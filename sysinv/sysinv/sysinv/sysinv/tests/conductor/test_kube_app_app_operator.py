@@ -46,3 +46,25 @@ class AppOperatorTestCase(base.DbTestCase):
         self.assertEqual(res, False)
         # check current active
         self.assertEqual(test_app_2.active, True)
+
+    def test_deactivate(self):
+        # Create kubernetes apps
+        dbutils.create_test_app(name='test-app-1',
+                                active=True)
+        test_app_1 = obj_app.get_by_name(self.context, 'test-app-1')
+        self.assertEqual(test_app_1.active, True)
+        res = self.app_operator.deactivate(test_app_1)
+        # check was_active
+        self.assertEqual(res, True)
+        # check current active
+        self.assertEqual(test_app_1.active, False)
+
+        dbutils.create_test_app(name='test-app-2',
+                                active=False)
+        test_app_2 = obj_app.get_by_name(self.context, 'test-app-2')
+        self.assertEqual(test_app_2.active, False)
+        res = self.app_operator.deactivate(test_app_2)
+        # check was_active
+        self.assertEqual(res, False)
+        # check current active
+        self.assertEqual(test_app_2.active, False)
