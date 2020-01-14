@@ -310,18 +310,24 @@ class KubeAppController(rest.RestController):
 
         # Examine all the required labels on the given hosts
         # and build up our actual and good label counts.
+        host_info = {}
         for host in hosts:
             labels = pecan.request.dbapi.label_get_by_host(host.uuid)
 
             host_good = (host.administrative == constants.ADMIN_UNLOCKED
                 and host.operational == constants.OPERATIONAL_ENABLED)
 
+            host_labels_dict = {}
             for label in labels:
                 if label.label_key in required_label_counts:
                     if label.label_value == helm_common.LABEL_VALUE_ENABLED:
                         label_counts[label.label_key] += 1
                         if host_good:
                             good_label_counts[label.label_key] += 1
+
+                    host_labels_dict[label.label_key] = label.label_value
+
+            host_info[host.hostname] = {"personality": host.personality, "labels": host_labels_dict}
 
         # If we are short of labels on unlocked and enabled hosts
         # inform the user with a detailed message.
@@ -332,6 +338,11 @@ class KubeAppController(rest.RestController):
                         " labelled and unlocked-enabled=%d" %
                         (k, helm_common.LABEL_VALUE_ENABLED, v,
                          label_counts[k], good_label_counts[k]))
+
+        if msg:
+            app_helper = KubeAppHelper(pecan.request.dbapi)
+            msg += "\n"
+            msg += app_helper._extract_missing_labels_message(host_info, required_label_counts)
 
         if msg:
             raise wsme.exc.ClientSideError(
@@ -724,3 +735,45 @@ class KubeAppHelper(object):
                         p, os.path.join(p, f), demote_user):
                     raise exception.SysinvException(_(
                         "failed to extract tar file {}.".format(os.path.basename(f))))
+
+    def _extract_missing_labels_message(self, host_info_dict, required_label_counts):
+        msg = ""
+        have_workers = False
+        one_worker_have_required_label = False
+        for host_name, host_info in host_info_dict.items():
+            host_personality = host_info.get("personality")
+            labels = host_info.get("labels")
+            host_msg = ("%s " % host_name)
+            missing_labels = False
+            invalid_labels = False
+            if (host_personality == constants.CONTROLLER):
+                for required_label_name, required_label_value in required_label_counts.items():
+                    if required_label_name not in labels:
+                        missing_labels = True
+                        host_msg += ("%s=%s " % (required_label_name, helm_common.LABEL_VALUE_ENABLED))
+                    elif labels.get(required_label_name) != helm_common.LABEL_VALUE_ENABLED:
+                        invalid_labels = True
+                        host_msg += (" %s=%s " % (required_label_name, labels.get(required_label_name)))
+
+                if missing_labels:
+                    msg += (", Please use [system host-label-assign %s] "
+                            "to set the missing label\n" %
+                            host_msg)
+                if invalid_labels:
+                    msg += (", Please correct host labels values to be enabled [%s]\n" %
+                            host_msg)
+            elif (host_personality == constants.WORKER):
+                have_workers = True
+                if (labels.get(helm_common.LABEL_MONITOR_MASTER) == helm_common.LABEL_VALUE_ENABLED):
+                    one_worker_have_required_label = True
+                elif (labels.get(helm_common.LABEL_MONITOR_MASTER) != helm_common.LABEL_VALUE_ENABLED):
+                    msg += (", Please correct host labels values to be enabled [%s %s=%s]\n" %
+                        (host_name, helm_common.LABEL_MONITOR_MASTER,
+                        labels.get(helm_common.LABEL_MONITOR_MASTER)))
+
+        if (have_workers and not one_worker_have_required_label):
+                msg += (", Please use [system host-label-assign <worker hostname> %s=%s] to"
+                " set the missing label on one of the worker(s)" %
+                (helm_common.LABEL_MONITOR_MASTER, helm_common.LABEL_VALUE_ENABLED))
+
+        return msg
