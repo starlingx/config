@@ -437,3 +437,14 @@ class AIODuplexHostTestCase(AIOHostTestCase):
 
 class AIODuplexDirectHostTestCase(AIOHostTestCase):
     system_mode = constants.SYSTEM_MODE_DUPLEX_DIRECT
+
+
+class AIODuplexSystemTestCase(AIODuplexHostTestCase):
+
+    def setUp(self):
+        super(AIODuplexSystemTestCase, self).setUp()
+        self.host2 = self._create_test_host(constants.CONTROLLER,
+                                            constants.WORKER,
+                                            unit=1)
+        self._create_test_host_cpus(self.host2, platform=2, vswitch=2,
+                                    application=11)
