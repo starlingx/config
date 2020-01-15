@@ -1255,3 +1255,8 @@ def create_test_label(**kw):
     label = get_test_label(**kw)
     dbapi = db_api.get_instance()
     return dbapi.label_create(label['host_id'], label)
+
+
+def create_test_oam(**kw):
+    dbapi = db_api.get_instance()
+    return dbapi.iextoam_get_one()

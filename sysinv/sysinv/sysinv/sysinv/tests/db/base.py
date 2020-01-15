@@ -50,6 +50,9 @@ class BaseIPv4Mixin(object):
 
     nameservers = ['8.8.8.8', '8.8.4.4']
 
+    # Used to test changing oam from ipv4 to ipv6
+    change_family_oam_subnet = netaddr.IPNetwork('fd00::/64')
+
 
 class BaseIPv6Mixin(object):
 
@@ -62,6 +65,9 @@ class BaseIPv6Mixin(object):
     multicast_subnet = netaddr.IPNetwork('ff08::1:1:0/124')
 
     nameservers = ['2001:4860:4860::8888', '2001:4860:4860::8844']
+
+    # Used to test changing oam from ipv6 to ipv4
+    change_family_oam_subnet = netaddr.IPNetwork('10.10.10.0/24')
 
 
 class BaseCephStorageBackendMixin(object):
@@ -128,6 +134,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.hosts = []
         self.address_pools = []
         self.networks = []
+        self.oam = None
 
     def _create_test_common(self):
         self._create_test_system()
@@ -140,6 +147,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_ptp()
         self._create_test_networks()
         self._create_test_static_ips()
+        self._create_test_oam()
         self._create_test_multicast_ips()
 
     def _create_test_system(self):
@@ -264,6 +272,9 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_addresses(
             hostnames, self.cluster_host_subnet,
             constants.NETWORK_TYPE_CLUSTER_HOST)
+
+    def _create_test_oam(self):
+        self.oam = dbutils.create_test_oam()
 
     def _create_test_multicast_ips(self):
 
