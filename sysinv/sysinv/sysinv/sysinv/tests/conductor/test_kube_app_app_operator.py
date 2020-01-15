@@ -6,6 +6,8 @@
 
 """Test class for Sysinv kube_app AppOperator."""
 
+import fixtures
+
 from sysinv.common import constants
 from sysinv.conductor import kube_app
 from sysinv.db import api as dbapi
@@ -25,6 +27,7 @@ class AppOperatorTestCase(base.DbTestCase):
         self.app_operator = kube_app.AppOperator(dbapi.get_instance())
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
+        self.temp_dir = self.useFixture(fixtures.TempDir())
 
     def test_activate(self):
         # Create kubernetes apps
@@ -88,3 +91,14 @@ class AppOperatorTestCase(base.DbTestCase):
         self.app_operator.deactivate(test_app_1)
         is_active = self.app_operator.is_app_active(test_app_1)
         self.assertEqual(is_active, False)
+
+    def test_reapply(self):
+        dbutils.create_test_app(name='test-app-1',
+                                active=True)
+        constants.APP_PENDING_REAPPLY_FLAG = self.temp_dir.path + "/.app_reapply"
+        self.app_operator.set_reapply('test-app-1')
+        result = self.app_operator.needs_reapply('test-app-1')
+        self.assertEqual(result, True)
+        self.app_operator.clear_reapply('test-app-1')
+        result = self.app_operator.needs_reapply('test-app-1')
+        self.assertEqual(result, False)
