@@ -1141,3 +1141,86 @@ class ManagerTestCase(base.DbTestCase):
         ihost = None
         ihost = self.service.get_ihost_by_hostname(self.context, ihost_hostname)
         self.assertEqual(ihost, None)
+
+    def test_pci_device_update_by_host(self):
+        # Create compute-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+        PCI_DEV_1 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_1',
+                     'pciaddr': '0000:0b:01.0',
+                     'pclass_id': '060100',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0443',
+                     'enabled': True}
+        PCI_DEV_2 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_2',
+                     'pciaddr': '0000:0c:01.0',
+                     'pclass_id': '060200',
+                     'pvendor_id': '8088',
+                     'pdevice_id': '0444',
+                     'enabled': True}
+        pci_device_dict_array = [PCI_DEV_1, PCI_DEV_2]
+
+        # create new dev
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_device_dict_array)
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_1['pciaddr'], host_id)
+        for key in PCI_DEV_1:
+            self.assertEqual(dev[key], PCI_DEV_1[key])
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+        for key in PCI_DEV_2:
+            self.assertEqual(dev[key], PCI_DEV_2[key])
+
+        # update existed dev
+        pci_dev_dict_update1 = [{'pciaddr': PCI_DEV_2['pciaddr'],
+                                'pclass_id': '060500',
+                                'pvendor_id': '8086',
+                                'pdevice_id': '0449',
+                                'pclass': '0600',
+                                'pvendor': '',
+                                'psvendor': '',
+                                'psdevice': 'qat',
+                                'sriov_totalvfs': 32,
+                                'sriov_numvfs': 4,
+                                'sriov_vfs_pci_address': '',
+                                'driver': ''}]
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update1)
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+
+        for key in pci_dev_dict_update1[0]:
+            self.assertEqual(dev[key], pci_dev_dict_update1[0][key])
+
+        # update existed dev failure case, failed to change uuid.
+        pci_dev_dict_update2 = [{'pciaddr': PCI_DEV_2['pciaddr'],
+                                'pclass_id': '060500',
+                                'pvendor_id': '8086',
+                                'pdevice_id': '0449',
+                                'pclass': '0600',
+                                'pvendor': '',
+                                'psvendor': '',
+                                'psdevice': 'qat',
+                                'sriov_totalvfs': 32,
+                                'sriov_numvfs': 4,
+                                'sriov_vfs_pci_address': '',
+                                'driver': '',
+                                'uuid': 1122}]
+
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update2)
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+        self.assertEqual(dev['uuid'], PCI_DEV_2['uuid'])
