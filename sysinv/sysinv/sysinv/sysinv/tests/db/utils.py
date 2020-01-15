@@ -349,9 +349,9 @@ def get_test_ntp(**kw):
     ntp = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
-        'enabled': kw.get('enabled'),
         'ntpservers': kw.get('ntpservers'),
-        'forisystemid': kw.get('forisystemid', None)
+        'forisystemid': kw.get('forisystemid', None),
+        'isystem_uuid': kw.get('isystem_uuid', None)
     }
     return ntp
 
@@ -363,6 +363,14 @@ def create_test_ntp(**kw):
         del ntp['id']
     dbapi = db_api.get_instance()
     return dbapi.intp_create(ntp)
+
+
+def post_get_test_ntp(**kw):
+    ntp = get_test_ntp(**kw)
+    # When invoking a POST the following fields should not be populated:
+    del ntp['uuid']
+    del ntp['id']
+    return ntp
 
 
 # Create test ptp object
