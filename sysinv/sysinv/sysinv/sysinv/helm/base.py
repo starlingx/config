@@ -208,6 +208,22 @@ class BaseHelm(object):
             availability=availability,
             vim_progress_status=vim_progress_status))
 
+    def _num_provisioned_controllers(self):
+        """
+        This is used by platform managed applications
+        Takes care of the case where one controller is provisioned
+        and the other is installed but not provisioned.
+        when the second controller is provisioned, the unlock will
+        will check if the overrides are different and reapply platform
+        managed applications appropriately
+        """
+        return self._num_controllers_matching_criteria(
+                    administrative=constants.ADMIN_UNLOCKED,
+                    operational=constants.OPERATIONAL_ENABLED,
+                    availability=[constants.AVAILABILITY_AVAILABLE,
+                                  constants.AVAILABILITY_DEGRADED],
+                    vim_progress_status=constants.VIM_SERVICES_ENABLED)
+
     def _get_address_by_name(self, name, networktype):
         """
         Retrieve an address entry by name and scoped by network type
