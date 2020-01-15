@@ -1,6 +1,6 @@
-========================
-stx-config Release Notes
-========================
+=====================================
+StarlingX Configuration Release Notes
+=====================================
 
 .. toctree::
    :maxdepth: 2

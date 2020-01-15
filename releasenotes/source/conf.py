@@ -57,7 +57,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = 'stx-config'
+project = u'StarlingX Configuration'
 
 # Release notes are version independent, no need to set version and release
 release = ''

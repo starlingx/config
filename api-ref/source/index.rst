@@ -1,12 +1,13 @@
-========================
-stx-config API Reference
-========================
+===========================
+Configuration API Reference
+===========================
 
-Use the StarlingX stx-config API for system configuration management.
+Use the StarlingX Configuration API for system configuration management.
 
-stx-config API content can be searched using the :ref:`search page <search>`.
+Search Configuration API content using the :ref:`search page <search>`.
 
-API Reference
+-------------
+API reference
 -------------
 
 .. toctree::
