@@ -2108,6 +2108,27 @@ class TestAIOPatch(InterfaceTestCase):
                           admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
 
+    def _setup_sriov_interface_w_numvfs(self, numvfs=5):
+        # create sriov interface
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
+        interface = dbutils.create_test_interface(forihostid='1')
+        dbutils.create_test_ethernet_port(
+            id=1, name='eth1', host_id=1, interface_id=interface.id,
+            pciaddr='0000:00:00.11', dev_id=0, sriov_totalvfs=5, sriov_numvfs=1,
+            driver='i40e',
+            sriov_vf_driver='i40evf')
+
+        # patch to set numvfs
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            sriov_numvfs=numvfs,
+            expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(response.json['sriov_numvfs'], numvfs)
+
+        return interface
+
     # Expected error: Value for number of SR-IOV VFs must be > 0.
     def test_invalid_sriov_numvfs(self):
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
@@ -2121,6 +2142,100 @@ class TestAIOPatch(InterfaceTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertIn('Value for number of SR-IOV VFs must be > 0.',
             response.json['error_message'])
+
+    # Expected error: Number of SR-IOV VFs is specified but
+    # interface class is not pci-sriov.
+    def test_invalid_numvfs_data_class(self):
+        # class data -> class data but with numvfs
+        interface = dbutils.create_test_interface(
+            forihostid='1',
+            ifclass=constants.INTERFACE_CLASS_DATA)
+
+        # case 1: non-sriov class has numvfs
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_numvfs=1,
+            expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertIn('Number of SR-IOV VFs is specified but interface '
+                      'class is not pci-sriov.',
+                      response.json['error_message'])
+
+    def test_invalid_vf_driver_data_class(self):
+        # class data -> class data but with sriov_vf_driver
+        interface = dbutils.create_test_interface(
+            forihostid='1',
+            ifclass=constants.INTERFACE_CLASS_DATA)
+
+        # case 2: non-sriov class has vf_driver
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_vf_driver=constants.SRIOV_DRIVER_TYPE_NETDEVICE,
+            expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertIn('SR-IOV VF driver is specified but interface '
+                      'class is not pci-sriov.',
+                      response.json['error_message'])
+
+    def test_invalid_numvfs_sriov_to_data(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+        # patch to change interface class to data with numvfs, and verify bad numvfs
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_numvfs=5,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertIn('Number of SR-IOV VFs is specified but interface class is not pci-sriov',
+            response.json['error_message'])
+
+    def test_invalid_vfdriver_sriov_to_data(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+        # patch to change interface class to data with sriov_vf_driver,
+        # and verify bad sriov_vf_driver
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_vf_driver=constants.SRIOV_DRIVER_TYPE_NETDEVICE,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertIn('SR-IOV VF driver is specified but interface class is not pci-sriov',
+            response.json['error_message'])
+
+    def test_clear_numvfs_when_no_longer_sriov_class(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+        # patch to change interface class to data, and verify numvfs is 0
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(response.json["sriov_numvfs"], 0)
+
+    def test_clear_vfdriver_when_no_longer_sriov_class(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+
+        # patch to change interface vf driver to netdevice
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            sriov_vf_driver=constants.SRIOV_DRIVER_TYPE_NETDEVICE,
+            expect_errors=False)
+        self.assertEqual(response.json["sriov_vf_driver"],
+            constants.SRIOV_DRIVER_TYPE_NETDEVICE)
+
+        # patch to change interface class to data, and verify numvfs is 0
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(response.json["sriov_vf_driver"], None)
 
     # Expected error: SR-IOV can't be configured on this interface
     def test_invalid_sriov_totalvfs_zero(self):
