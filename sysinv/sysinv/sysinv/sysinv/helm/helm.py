@@ -32,6 +32,12 @@ LOG = logging.getLogger(__name__)
 # The convention here is for the helm plugins to be named ###_PLUGINNAME.
 HELM_PLUGIN_PREFIX_LENGTH = 4
 
+# Number of optional characters appended to Armada manifest operator name,
+# to allow overriding with a newer version of the Armada manifest operator.
+# The convention here is for the Armada operator plugins to allow an
+# optional suffix, as in PLUGINNAME_###.
+ARMADA_PLUGIN_SUFFIX_LENGTH = 4
+
 
 def helm_context(func):
     """Decorate to initialize the local threading context"""
@@ -85,8 +91,19 @@ class HelmOperator(object):
             namespace='systemconfig.armada.manifest_ops',
             invoke_on_load=True, invoke_args=())
 
-        for op in armada_manifest_operators:
-            operators_dict[op.name] = op.obj
+        sorted_armada_manifest_operators = sorted(
+            armada_manifest_operators.extensions, key=lambda x: x.name)
+
+        for op in sorted_armada_manifest_operators:
+            if (op.name[-(ARMADA_PLUGIN_SUFFIX_LENGTH - 1):].isdigit() and
+                    op.name[-ARMADA_PLUGIN_SUFFIX_LENGTH:-3] == '_'):
+                op_name = op.name[0:-ARMADA_PLUGIN_SUFFIX_LENGTH]
+                LOG.info("_load_armada_manifest_operators op.name=%s "
+                         "adjust to op_name=%s" % (op.name, op_name))
+            else:
+                op_name = op.name
+
+            operators_dict[op_name] = op.obj
 
         return operators_dict
 
