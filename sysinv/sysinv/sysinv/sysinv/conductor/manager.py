@@ -5635,20 +5635,24 @@ class ConductorManager(service.PeriodicService):
                      % flag_file)
             pass
 
-    def update_route_config(self, context):
+    def update_route_config(self, context, host_id):
         """add or remove a static route
 
         :param context: an admin context.
+        :param host_id: the host id
         """
 
         # update manifest files and notifiy agents to apply them
         personalities = [constants.CONTROLLER,
                          constants.WORKER,
                          constants.STORAGE]
-        config_uuid = self._config_update_hosts(context, personalities)
+        host = self.dbapi.ihost_get(host_id)
 
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host.uuid])
         config_dict = {
             "personalities": personalities,
+            'host_uuids': [host.uuid],
             "classes": 'platform::network::runtime'
         }
 
