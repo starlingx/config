@@ -284,6 +284,11 @@ class BaseHostTestCase(BaseSystemTestCase):
 
     def setUp(self):
         super(BaseHostTestCase, self).setUp()
+        self.disks = {}
+
+    def tearDown(self):
+        super(BaseHostTestCase, self).tearDown()
+        self.disks = {}
 
     def _create_test_host(self, personality, subfunction=None, numa_nodes=1,
                           unit=0, **kw):
@@ -325,9 +330,10 @@ class BaseHostTestCase(BaseSystemTestCase):
             self.dbapi.imemory_create(host.id,
                 dbutils.get_test_imemory(forinodeid=node.id))
 
-        self.dbapi.idisk_create(host.id,
+        disk = self.dbapi.idisk_create(host.id,
             dbutils.get_test_idisk(device_node=self.root_disk_device_node,
                                    device_type=self.root_disk_device_type))
+        self.disks[host.id] = disk
 
         self.hosts.append(host)
 
