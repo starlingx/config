@@ -101,7 +101,7 @@ def create_test_node(**kw):
     if 'id' not in kw:
         del node['id']
     dbapi = db_api.get_instance()
-    return dbapi.inode_create(node)
+    return dbapi.inode_create(node['forihostid'], node)
 
 
 def post_get_test_ihost(**kw):
@@ -877,7 +877,8 @@ def get_test_ethernet_port(**kw):
         'sriov_numvfs': kw.get('sriov_numvfs'),
         'sriov_vf_driver': kw.get('sriov_vf_driver'),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id'),
-        'driver': kw.get('driver')
+        'driver': kw.get('driver'),
+        'numa_node': kw.get('numa_node', -1)
     }
     return ethernet_port
 
