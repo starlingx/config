@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import json
+import os
 import pecan
 from pecan import rest
 import wsme
@@ -204,6 +206,8 @@ class LabelController(rest.RestController):
 
         _semantic_check_worker_labels(body)
 
+        _semantic_check_k8s_plugins_labels(host, body)
+
         existing_labels = {}
         for label_key in body.keys():
             label = None
@@ -348,3 +352,35 @@ def _semantic_check_worker_labels(body):
                 raise wsme.exc.ClientSideError(
                     _(
                         "Invalid value for %s label." % constants.KUBE_CPU_MANAGER_LABEL))
+
+
+def _get_system_enabled_k8s_plugins():
+    if not os.path.isfile(constants.ENABLED_KUBE_PLUGINS):
+        return None
+
+    with open(constants.ENABLED_KUBE_PLUGINS) as f:
+        return json.loads(f.read())
+
+
+def _semantic_check_intel_gpu_plugins_labels(host):
+    pci_devices = pecan.request.dbapi.pci_device_get_by_host(host.id)
+    for pci_device in pci_devices:
+        if ("VGA" in pci_device.pclass and pci_device.driver == "i915"):
+            return
+
+    raise wsme.exc.ClientSideError("Host %s does not support Intel GPU device plugin." % (host.hostname))
+
+
+def _semantic_check_k8s_plugins_labels(host, body):
+    """
+    Perform hardware checks to ensure k8s plugins labels are valid on particular node.
+    """
+    plugins = _get_system_enabled_k8s_plugins()
+    if plugins is None:
+        return
+
+    for label_key, label_value in body.items():
+        label = label_key + "=" + label_value
+        if label in plugins.values():
+            if label == constants.KUBE_INTEL_GPU_DEVICE_PLUGIN_LABEL:
+                _semantic_check_intel_gpu_plugins_labels(host)
