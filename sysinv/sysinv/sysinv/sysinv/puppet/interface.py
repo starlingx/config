@@ -51,9 +51,9 @@ MANUAL_METHOD = 'manual'
 DHCP_METHOD = 'dhcp'
 
 NETWORK_CONFIG_RESOURCE = 'platform::interfaces::network_config'
-ROUTE_CONFIG_RESOURCE = 'platform::interfaces::route_config'
-SRIOV_CONFIG_RESOURCE = 'platform::interfaces::sriov_config'
-ADDRESS_CONFIG_RESOURCE = 'platform::addresses::address_config'
+SRIOV_CONFIG_RESOURCE = 'platform::interfaces::sriov::sriov_config'
+ADDRESS_CONFIG_RESOURCE = 'platform::network::addresses::address_config'
+ROUTE_CONFIG_RESOURCE = 'platform::network::routes::route_config'
 
 DATA_IFACE_LIST_RESOURCE = 'platform::lmon::params::data_iface_devices'
 

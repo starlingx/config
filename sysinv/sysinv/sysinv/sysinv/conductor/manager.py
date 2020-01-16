@@ -5653,7 +5653,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host.uuid],
-            "classes": 'platform::network::runtime'
+            "classes": 'platform::network::routes::runtime'
         }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
