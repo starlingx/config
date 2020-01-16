@@ -423,6 +423,23 @@ class ManagerTestCase(base.DbTestCase):
                           self.context,
                           ihost)
 
+    def test_vim_host_add(self):
+        mock_vim_host_add = mock.MagicMock()
+        p = mock.patch('sysinv.api.controllers.v1.vim_api.vim_host_add',
+                mock_vim_host_add)
+        p.start().return_value = {}
+        self.addCleanup(p.stop)
+
+        ret = self.service.vim_host_add(self.context, None, str(uuid.uuid4()),
+                    "newhostname", "worker", "locked", "disabled", "offline",
+                    "disabled", "not-installed", 10)
+
+        mock_vim_host_add.assert_called_with(mock.ANY, mock.ANY,
+                "newhostname", "worker", "locked", "disabled", "offline",
+                "disabled", "not-installed", 10)
+
+        self.assertEqual(ret, {})
+
     def test_kube_download_images(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
