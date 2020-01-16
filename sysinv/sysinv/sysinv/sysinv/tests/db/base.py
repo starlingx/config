@@ -178,10 +178,19 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.ptp = dbutils.create_test_ptp(
             system_id=self.system.id)
 
-    def _create_test_network(self, name, nettype, subnet, ranges=None):
+    def _create_test_network(self, name, network_type, subnet, ranges=None):
+        address_pool_id = self._create_test_address_pool(name, subnet, ranges).id
+
+        network = dbutils.create_test_network(
+            type=network_type,
+            address_pool_id=address_pool_id)
+
+        self.networks.append(network)
+        return network
+
+    def _create_test_address_pool(self, name, subnet, ranges=None):
         if not ranges:
             ranges = [(str(subnet[2]), str(subnet[-2]))]
-
         pool = dbutils.create_test_address_pool(
             name=name,
             network=str(subnet.network),
@@ -189,13 +198,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             prefix=subnet.prefixlen,
             ranges=ranges)
         self.address_pools.append(pool)
-
-        network = dbutils.create_test_network(
-            type=nettype,
-            address_pool_id=pool.id)
-
-        self.networks.append(network)
-        return network
+        return pool
 
     def _create_test_networks(self):
 
