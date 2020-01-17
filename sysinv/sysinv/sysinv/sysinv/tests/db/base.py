@@ -237,12 +237,15 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _create_test_addresses(self, hostnames, subnet, network_type,
                                start=1, stop=None):
         ips = itertools.islice(subnet, start, stop)
+        addresses = []
         for name in hostnames:
-            dbutils.create_test_address(
-                name=utils.format_address_name(name, network_type),
-                family=subnet.version,
-                prefix=subnet.prefixlen,
-                address=str(next(ips)))
+            address = dbutils.create_test_address(
+                          name=utils.format_address_name(name, network_type),
+                          family=subnet.version,
+                          prefix=subnet.prefixlen,
+                          address=str(next(ips)))
+            addresses.append(address)
+        return addresses
 
     def _create_test_static_ips(self):
         hostnames = [
@@ -260,7 +263,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             hostnames, self.pxeboot_subnet,
             constants.NETWORK_TYPE_PXEBOOT)
 
-        self._create_test_addresses(
+        self.mgmt_addresses = self._create_test_addresses(
             hostnames + platform_hostnames,
             self.mgmt_subnet,
             constants.NETWORK_TYPE_MGMT)
@@ -388,6 +391,7 @@ class BaseHostTestCase(BaseSystemTestCase):
                          constants.NETWORK_TYPE_CLUSTER_HOST]
         ifnames = ['oam', 'mgmt', 'cluster']
         index = 0
+        ifaces = []
         for nt, name in zip(network_types, ifnames):
             if (host.personality == constants.WORKER and
                     nt == constants.NETWORK_TYPE_OAM):
@@ -404,11 +408,13 @@ class BaseHostTestCase(BaseSystemTestCase):
                 forihostid=host['id'],
                 ihost_uuid=host['uuid'])
             iface = self.dbapi.iinterface_get(interface['uuid'])
+            ifaces.append(iface)
             network = self.dbapi.network_get_by_type(nt)
             dbutils.create_test_interface_network(
                 interface_id=iface.id,
                 network_id=network.id)
             index = index + 1
+        return ifaces
 
 
 class ControllerHostTestCase(BaseHostTestCase):
