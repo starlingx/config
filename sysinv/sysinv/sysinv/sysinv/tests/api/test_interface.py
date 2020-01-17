@@ -2133,6 +2133,7 @@ class TestAIOPatch(InterfaceTestCase):
 
     # Expected error: Value for number of SR-IOV VFs must be > 0.
     def test_invalid_sriov_numvfs(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         port, interface = self._create_ethernet('eth0',
                                                 constants.NETWORK_TYPE_NONE)
         response = self.patch_dict_json(
@@ -2141,9 +2142,12 @@ class TestAIOPatch(InterfaceTestCase):
             expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
+        self.assertIn('Value for number of SR-IOV VFs must be > 0.',
+            response.json['error_message'])
 
     # Expected error: SR-IOV can't be configured on this interface
     def test_invalid_sriov_totalvfs_zero(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         interface = dbutils.create_test_interface(forihostid='1')
         dbutils.create_test_ethernet_port(
             id=1, name='eth1', host_id=1, interface_id=interface.id,
@@ -2155,9 +2159,12 @@ class TestAIOPatch(InterfaceTestCase):
             expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
+        self.assertIn('SR-IOV can\'t be configured on this interface',
+            response.json['error_message'])
 
     # Expected error: The interface support a maximum of ___ VFs
     def test_invalid_sriov_exceeded_totalvfs(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         interface = dbutils.create_test_interface(forihostid='1')
         dbutils.create_test_ethernet_port(
             id=1, name='eth1', host_id=1, interface_id=interface.id,
@@ -2171,9 +2178,12 @@ class TestAIOPatch(InterfaceTestCase):
             expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
+        self.assertIn('The interface support a maximum of',
+            response.json['error_message'])
 
     # Expected error: Corresponding port has invalid driver
     def test_invalid_driver_for_sriov(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
         interface = dbutils.create_test_interface(forihostid='1')
         dbutils.create_test_ethernet_port(
             id=1, name='eth1', host_id=1, interface_id=interface.id,
@@ -2187,6 +2197,8 @@ class TestAIOPatch(InterfaceTestCase):
             expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
+        self.assertIn('Corresponding port has invalid driver',
+            response.json['error_message'])
 
 
 class IPv4TestPost(TestPostMixin,
