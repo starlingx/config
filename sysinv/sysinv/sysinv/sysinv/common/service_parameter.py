@@ -63,7 +63,7 @@ def _validate_float(name, value):
 
 
 def _validate_not_empty(name, value):
-    if not value or value is '':
+    if not value or value == '':
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' must not be an empty value." % name))
 

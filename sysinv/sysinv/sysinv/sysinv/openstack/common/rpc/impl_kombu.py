@@ -519,7 +519,7 @@ class Connection(object):
             try:
                 self._connect(params)
                 return
-            except (IOError, self.connection_errors) as e:
+            except (IOError, self.connection_errors) as e:  # noqa: F841
                 pass
             except Exception as e:
                 # NOTE(comstud): Unfortunately it's possible for amqplib
@@ -532,7 +532,7 @@ class Connection(object):
                     raise
 
             log_info = {}
-            log_info['err_str'] = str(e)
+            log_info['err_str'] = str(e)  # noqa: F821
             log_info['max_retries'] = self.max_retries
             log_info.update(params)
 

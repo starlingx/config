@@ -10498,7 +10498,7 @@ class ConductorManager(service.PeriodicService):
                 with open(f, 'rb') as file:
                     new_hash[f] = hashlib.md5(file.read()).hexdigest()
 
-            if cmp(old_hash, new_hash) != 0:
+            if old_hash != new_hash:
                 LOG.info("There has been an overrides change, setting up "
                          "reapply of %s", app.name)
                 self._app.set_reapply(app.name)
