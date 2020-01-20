@@ -801,6 +801,7 @@ def _simpleTestHarness(no_wrap):
 
     print("nowrap = {}".format(is_nowrap_set()))
 
+
 if __name__ == "__main__":
     _simpleTestHarness(True)
     _simpleTestHarness(False)

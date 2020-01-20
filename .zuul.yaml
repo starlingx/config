@@ -16,6 +16,7 @@
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - cgtsclient-tox-py27
+        - cgtsclient-tox-py36
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
     gate:
@@ -30,6 +31,7 @@
         - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - cgtsclient-tox-py27
+        - cgtsclient-tox-py36
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
 
@@ -170,6 +172,19 @@
     vars:
       tox_envlist: py27
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
+
+- job:
+    name: cgtsclient-tox-py36
+    parent: tox
+    description: |
+      Run py36 test for cgts-client
+    nodeset: ubuntu-bionic
+    files:
+      - sysinv/cgts-client/*
+    vars:
+      tox_envlist: py36
+      tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
+
 
 - job:
     name: cgtsclient-tox-pep8
