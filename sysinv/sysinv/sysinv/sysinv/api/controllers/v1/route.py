@@ -347,7 +347,8 @@ class RouteController(rest.RestController):
         self._check_reachable_gateway(interface_id, route)
         # Attempt to create the new route record
         result = pecan.request.dbapi.route_create(interface_id, route)
-        pecan.request.rpcapi.update_route_config(pecan.request.context)
+        pecan.request.rpcapi.update_route_config(pecan.request.context,
+                                                 result.forihostid)
 
         return Route.convert_with_links(result)
 
@@ -378,6 +379,9 @@ class RouteController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, route_uuid):
         """Delete an IP route."""
-        self._get_one(route_uuid)
+        try:
+            route = objects.route.get_by_uuid(pecan.request.context, route_uuid)
+        except exception.RouteNotFound:
+            raise
         pecan.request.dbapi.route_destroy(route_uuid)
-        pecan.request.rpcapi.update_route_config(pecan.request.context)
+        pecan.request.rpcapi.update_route_config(pecan.request.context, route.forihostid)

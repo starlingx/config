@@ -515,7 +515,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('delete_flag_file',
                                        flag_file=flag_file))
 
-    def update_route_config(self, context):
+    def update_route_config(self, context, host_id):
         """Synchronously, have a conductor configure static route.
 
         Does the following tasks:
@@ -524,10 +524,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         - who each apply the route manifest
 
         :param context: request context.
+        :param host_id: the host id
         """
-        LOG.debug("ConductorApi.update_route_config: sending"
-                  " update_route_config to conductor")
-        return self.call(context, self.make_msg('update_route_config'))
+        LOG.debug("ConductorApi.update_route_config: sending "
+                  " update_route_config to conductor for "
+                  "host_id(%s)" % host_id)
+        return self.call(context, self.make_msg('update_route_config',
+                                                host_id=host_id))
 
     def update_sriov_config(self, context, host_uuid):
         """Synchronously, have a conductor configure sriov config.
