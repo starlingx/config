@@ -1363,3 +1363,32 @@ class ManagerTestCase(base.DbTestCase):
         self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update2)
         dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
         self.assertEqual(dev['uuid'], PCI_DEV_2['uuid'])
+
+    def test_inumas_update_by_ihost(self):
+        # Create compute-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+        utils.create_test_node(id=1, numa_node=0, forihostid=host_id)
+        utils.create_test_node(id=2, numa_node=1, forihostid=host_id)
+        port1 = utils.create_test_ethernet_port(
+            id=1, name="port1", host_id=host_id,
+            interface_id="1122", mac='08:00:27:43:60:11', numa_node=3)
+        self.assertEqual(port1['node_id'], None)
+        inuma_dict_array = [{'numa_node': 1}, {'numa_node': 3}]
+        self.service.inumas_update_by_ihost(self.context, host_uuid, inuma_dict_array)
+        updated_port = self.dbapi.ethernet_port_get(port1['uuid'], host_id)
+
+        self.assertEqual(updated_port['node_id'], 3)
