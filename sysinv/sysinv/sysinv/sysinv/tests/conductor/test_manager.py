@@ -1265,3 +1265,18 @@ class ManagerTestCase(base.DbTestCase):
         ihost_macs = ['22:44:33:99:11:66', '22:44:33:88:11:66']
         ihost = self.service.get_ihost_by_macs(self.context, ihost_macs)
         self.assertEqual(ihost, None)
+
+    def test_get_ihost_by_hostname(self):
+        self._create_test_ihosts()
+        ihost_hostname = 'controller-1'
+        ihost = self.service.get_ihost_by_hostname(self.context, ihost_hostname)
+        self.assertEqual(ihost.mgmt_mac, '22:44:33:55:11:66')
+        self.assertEqual(ihost.mgmt_ip, '1.2.3.5')
+        self.assertEqual(ihost.hostname, 'controller-1')
+
+    def test_get_ihost_by_hostname_invalid_name(self):
+        self._create_test_ihosts()
+        ihost_hostname = 'compute'
+        ihost = None
+        ihost = self.service.get_ihost_by_hostname(self.context, ihost_hostname)
+        self.assertEqual(ihost, None)
