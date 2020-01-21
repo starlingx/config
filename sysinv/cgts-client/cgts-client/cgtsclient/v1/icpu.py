@@ -6,9 +6,9 @@
 #
 
 
+from cgtsclient._i18n import _
 from cgtsclient.common import base
 from cgtsclient import exc
-from cgtsclient.openstack.common.gettextutils import _
 
 
 CREATION_ATTRIBUTES = ['ihost_uuid', 'inode_uuid', 'cpu', 'core', 'thread',
