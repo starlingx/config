@@ -19,6 +19,8 @@ class BarbicanPuppet(openstack.OpenstackBasePuppet):
 
         return {
             'barbican::db::postgresql::user': dbuser,
+            'barbican::keystone::authtoken::region_name':
+                self._keystone_region_name(),
         }
 
     def get_secure_static_config(self):
