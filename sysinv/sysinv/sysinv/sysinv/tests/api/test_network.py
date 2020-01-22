@@ -88,6 +88,9 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def _create_test_networks(self):
         pass
 
+    def _create_test_oam(self):
+        pass
+
     # Skip creating static pxeboot ip
     def _create_test_static_ips(self):
         hostnames = [
