@@ -202,7 +202,8 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                         "state_replicaset",
                         "state_pod",
                         "state_container",
-                        "event"
+                        "event",
+                        "state_statefulset"
                     ],
                     "period": "60s",
                     "host": "${NODE_NAME}",
