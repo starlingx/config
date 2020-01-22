@@ -2835,8 +2835,10 @@ class DockerHelper(object):
 
                 LOG.info("Image %s download started from local registry" % img_tag)
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
-                client.pull(img_tag, auth_config=local_registry_auth)
-            except docker.errors.NotFound:
+                auth = '{0}:{1}'.format(local_registry_auth['username'],
+                                        local_registry_auth['password'])
+                subprocess.check_call(["crictl", "pull", "--creds", auth, img_tag])
+            except subprocess.CalledProcessError:
                 try:
                     # Pull the image from the public/private registry
                     LOG.info("Image %s is not available in local registry, "
@@ -2859,6 +2861,16 @@ class DockerHelper(object):
                 except Exception as e:
                     rc = False
                     LOG.error("Image %s push failed to local registry: %s" % (img_tag, e))
+                    return img_tag, rc
+
+                try:
+                    # remove docker container image after it is pushed to local registry.
+                    LOG.info("Remove image %s after push to local registry." % (target_img_tag))
+                    client.remove_image(target_img_tag)
+                    client.remove_image(img_tag)
+                except Exception as e:
+                    LOG.warning("Image %s remove failed: %s" % (target_img_tag, e))
+
             except Exception as e:
                 rc = False
                 LOG.error("Image %s download failed from local registry: %s" % (img_tag, e))
