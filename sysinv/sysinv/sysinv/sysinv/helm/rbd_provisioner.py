@@ -81,12 +81,7 @@ class RbdProvisionerHelm(base.BaseHelm):
             classes.append(cls)
 
         global_settings = {
-            "replicas": self._num_controllers_matching_criteria(
-                administrative=constants.ADMIN_UNLOCKED,
-                operational=constants.OPERATIONAL_ENABLED,
-                availability=[constants.AVAILABILITY_AVAILABLE,
-                              constants.AVAILABILITY_DEGRADED],
-                vim_progress_status=constants.VIM_SERVICES_ENABLED),
+            "replicas": self._num_provisioned_controllers(),
             "defaultStorageClass": constants.K8S_RBD_PROV_STOR_CLASS_NAME
         }
 
