@@ -913,6 +913,19 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
+    def _storage_provisioner_required(self, app_name):
+        check_storage_provisioner_apps = [constants.HELM_APP_MONITOR]
+
+        if app_name not in check_storage_provisioner_apps:
+            return True
+
+        system = self._dbapi.isystem_get_one()
+        if system.distributed_cloud_role == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            return False
+        else:
+            return True
+
     def _create_storage_provisioner_secrets(self, app_name):
         """ Provide access to the system persistent storage provisioner.
 
@@ -1949,7 +1962,8 @@ class AppOperator(object):
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
 
-                self._create_storage_provisioner_secrets(app.name)
+                if self._storage_provisioner_required(app.name):
+                    self._create_storage_provisioner_secrets(app.name)
                 self._create_app_specific_resources(app.name)
 
             self._update_app_status(
@@ -2224,7 +2238,8 @@ class AppOperator(object):
             try:
                 self._delete_local_registry_secrets(app.name)
                 if app.system_app:
-                    self._delete_storage_provisioner_secrets(app.name)
+                    if self._storage_provisioner_required(app.name):
+                        self._delete_storage_provisioner_secrets(app.name)
                     self._delete_app_specific_resources(app.name)
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
