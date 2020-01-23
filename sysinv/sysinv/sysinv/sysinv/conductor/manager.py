@@ -10657,7 +10657,8 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "host_uuids": [host.uuid],
-                    "classes": ['openstack::keystone::endpoint::runtime']
+                    "classes": ['openstack::keystone::endpoint::runtime',
+                                'openstack::barbican::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict, force=True)
