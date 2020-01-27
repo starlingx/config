@@ -9,7 +9,6 @@ Tests for the API / network / methods.
 """
 
 import mock
-import unittest
 from six.moves import http_client
 
 from oslo_utils import uuidutils
@@ -352,8 +351,6 @@ class TestDelete(NetworkTestCase):
     def test_delete_pxeboot(self):
         self._test_delete_allowed(constants.NETWORK_TYPE_PXEBOOT)
 
-    # See https://bugs.launchpad.net/starlingx/+bug/1859855
-    @unittest.expectedFailure
     def test_delete_pxeboot_after_initial_config(self):
         self._test_delete_after_initial_config_not_allowed(
             constants.NETWORK_TYPE_PXEBOOT
