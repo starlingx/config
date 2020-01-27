@@ -86,7 +86,9 @@ def do_show(cc, args):
 @utils.arg('-S', '--security_feature',
            metavar='<security_feature>',
            choices=['spectre_meltdown_v1', 'spectre_meltdown_all'],
-           help='Use spectre_meltdown_v1 for spectre/meltdown v1 fixes, or spectre_meltdown_all to use all fixes')
+           help='Use spectre_meltdown_v1 to add linux bootargs "nopti '
+                'nospectre_v2 nospectre_v1", or spectre_meltdown_all to not '
+                'add any mitigation disabling bootargs')
 def do_modify(cc, args):
     """Modify system attributes."""
     isystems = cc.isystem.list()
