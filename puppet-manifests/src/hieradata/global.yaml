@@ -7,7 +7,7 @@ platform::params::controller_hostname: controller
 platform::params::controller_0_hostname: controller-0
 platform::params::controller_1_hostname: controller-1
 platform::params::pxeboot_hostname: pxecontroller
-platform::params::security_feature: nopti nospectre_v2
+platform::params::security_feature: nopti nospectre_v2 nospectre_v1
 platform::amqp::auth_user: guest
 platform::users::params::sysadmin_password_max_age: 45
 

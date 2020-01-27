@@ -1,7 +1,7 @@
 class platform::grub
 {
   include ::platform::params
-  $managed_security_params = 'nopti nospectre_v2'
+  $managed_security_params = 'nopti nospectre_v2 nospectre_v1'
 
   # Run grubby to update params
   # First, remove all the parameters we manage, then we add back in the ones
