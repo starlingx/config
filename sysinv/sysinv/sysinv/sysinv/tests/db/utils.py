@@ -416,6 +416,16 @@ def create_test_dns(**kw):
     return dbapi.idns_create(dns)
 
 
+def post_get_test_dns(**kw):
+    dns = get_test_dns(**kw)
+
+    # When invoking a POST the following fields should not be populated:
+    del dns['uuid']
+    del dns['id']
+
+    return dns
+
+
 # Create test drbd object
 def get_test_drbd(**kw):
     drbd = {
