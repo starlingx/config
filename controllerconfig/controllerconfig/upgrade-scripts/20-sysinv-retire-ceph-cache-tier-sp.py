@@ -13,9 +13,9 @@ import sys
 
 from sysinv.common import constants
 from psycopg2.extras import RealDictCursor
-from controllerconfig.common import log
+from oslo_log import log
 
-LOG = log.get_logger(__name__)
+LOG = log.getLogger(__name__)
 
 # Sections that need to be removed from retired Ceph cache tiering feature
 SERVICE_PARAM_SECTION_CEPH_CACHE_TIER = 'cache_tiering'
