@@ -252,11 +252,10 @@ class TestList(AddressTestCase):
     def setUp(self):
         super(TestList, self).setUp()
 
-    # See https://bugs.launchpad.net/starlingx/+bug/1860176
-    @unittest.expectedFailure
     def test_list_default_addresses_all(self):
         response = self.get_json(self.API_PREFIX)
-        self.assertEqual([], response[self.RESULT_KEY])
+        for result in response[self.RESULT_KEY]:
+            self.assertIn("address", result)
 
     def test_list_default_addresses_host(self):
         response = self.get_json(self.get_host_scoped_url(self.host.uuid))

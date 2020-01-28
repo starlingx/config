@@ -224,8 +224,8 @@ class AddressController(rest.RestController):
                 sort_key=sort_key, sort_dir=sort_dir)
         else:
             addresses = pecan.request.dbapi.addresses_get_all(
-                family=0, limit=limit, marker=marker_obj,
-                sort_key=sort_key, sort_dir=sort_dir)
+                limit=limit, marker=marker_obj, sort_key=sort_key,
+                sort_dir=sort_dir)
 
         return AddressCollection.convert_with_links(
             addresses, limit, url=resource_url, expand=expand,
