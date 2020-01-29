@@ -60,7 +60,7 @@ sdn_enabled=no
 region_config=no
 system_mode=duplex
 sw_version=19.09
-security_feature="nopti nospectre_v2"
+security_feature="nopti nospectre_v2 nospectre_v1"
 vswitch_type=ovs-dpdk
 """
 
@@ -82,7 +82,7 @@ region_2_name=Region2
 distributed_cloud_role=CloudRole
 system_mode=duplex
 sw_version=19.09
-security_feature="nopti nospectre_v2"
+security_feature="nopti nospectre_v2 nospectre_v1"
 vswitch_type=ovs-dpdk
 """
 
