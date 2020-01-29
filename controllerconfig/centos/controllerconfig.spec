@@ -8,24 +8,24 @@ Packager: Wind River <info@windriver.com>
 URL: unknown
 Source0: %{name}-%{version}.tar.gz
 
-BuildRequires: python-setuptools
-BuildRequires: python2-pip
-BuildRequires: python2-wheel
+BuildRequires: python3-setuptools
+BuildRequires: python3-pip
+BuildRequires: python3-wheel
 Requires: fm-api
 Requires: psmisc
 Requires: sysinv
 Requires: systemd
 Requires: tsconfig
-Requires: python-iso8601
-Requires: python-keyring
-Requires: python-netaddr
-Requires: python-netifaces
-Requires: python-pyudev
-Requires: python-six
-Requires: python2-crypto
-Requires: python2-oslo-utils
-Requires: python2-pysnmp
-Requires: python2-ruamel-yaml
+Requires: python3-iso8601
+Requires: python3-keyring
+Requires: python3-netaddr
+Requires: python3-netifaces
+Requires: python3-pyudev
+Requires: python3-six
+Requires: python3-crypto
+Requires: python3-oslo-utils
+Requires: python3-pysnmp
+Requires: python3-ruamel-yaml
 
 %description
 Controller node configuration
@@ -36,19 +36,19 @@ Controller node configuration
 %define local_goenabledd /etc/goenabled.d/
 %define local_etc_upgraded /etc/upgrade.d/
 %define local_etc_systemd /etc/systemd/system/
-%define pythonroot /usr/lib64/python2.7/site-packages
+%define pythonroot %python3_sitearch
 %define debug_package %{nil}
 
 %prep
 %setup
 
 %build
-%{__python} setup.py build
-%py2_build_wheel
+%{__python3} setup.py build
+%py3_build_wheel
 
 # TODO: NO_GLOBAL_PY_DELETE (see python-byte-compile.bbclass), put in macro/script
 %install
-%{__python} setup.py install --root=$RPM_BUILD_ROOT \
+%{__python3} setup.py install --root=$RPM_BUILD_ROOT \
                              --install-lib=%{pythonroot} \
                              --prefix=/usr \
                              --install-data=/usr/share \
@@ -88,8 +88,8 @@ rm -rf $RPM_BUILD_ROOT
 %{local_bindir}/*
 %dir %{pythonroot}/%{name}
 %{pythonroot}/%{name}/*
-%dir %{pythonroot}/%{name}-%{version}.0-py2.7.egg-info
-%{pythonroot}/%{name}-%{version}.0-py2.7.egg-info/*
+%dir %{pythonroot}/%{name}-%{version}.0-py3.6.egg-info
+%{pythonroot}/%{name}-%{version}.0-py3.6.egg-info/*
 %{local_goenabledd}/*
 %{local_etc_initd}/*
 %dir %{local_etc_upgraded}
