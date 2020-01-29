@@ -9,7 +9,6 @@ Tests for the API / address / methods.
 """
 
 import netaddr
-import unittest
 from six.moves import http_client
 
 from oslo_utils import uuidutils
@@ -226,8 +225,6 @@ class TestDelete(AddressTestCase):
     def setUp(self):
         super(TestDelete, self).setUp()
 
-    # See https://bugs.launchpad.net/starlingx/+bug/1860186
-    @unittest.expectedFailure
     def test_delete(self):
         # Delete the API object
         delete_object = self.mgmt_addresses[0]
