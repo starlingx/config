@@ -1162,6 +1162,40 @@ class ManagerTestCase(base.DbTestCase):
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
         self.assertIsNotNone(updated_host_upgrade.status)
 
+    def test_kube_upgrade_networking(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_NETWORKING,
+        )
+
+        # Upgrade kubernetes networking
+        self.service.kube_upgrade_networking(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADED_NETWORKING)
+
+    def test_kube_upgrade_networking_ansible_fail(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_NETWORKING,
+        )
+        # Fake an ansible failure
+        self.fake_subprocess_popen.returncode = 1
+
+        # Upgrade kubernetes networking
+        self.service.kube_upgrade_networking(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
+
     def test_configure_out_of_date(self):
         config_applied = self.service._config_set_reboot_required(uuid.uuid4())
         config_target = self.service._config_set_reboot_required(uuid.uuid4())

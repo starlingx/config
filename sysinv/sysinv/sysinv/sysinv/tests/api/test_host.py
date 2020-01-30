@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -542,7 +542,7 @@ class TestPostKubeUpgrades(TestHost):
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Mark the first kube host upgrade as OK

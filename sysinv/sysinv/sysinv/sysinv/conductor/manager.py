@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -5280,12 +5280,27 @@ class ConductorManager(service.PeriodicService):
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
     def _upgrade_downgrade_kube_networking(self):
         try:
-            LOG.info(
-                "_upgrade_downgrade_kube_networking executing playbook: %s " %
-                constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK)
+            # Get the kubernetes version from the upgrade table
+            # if an upgrade exists
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            kube_version = \
+                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
+        except exception.NotFound:
+            # Not upgrading kubernetes, get the kubernetes version
+            # from the kubeadm config map
+            kube_version = self._kube.kube_get_kubernetes_version()
+
+        if not kube_version:
+            LOG.error("Unable to get the current kubernetes version.")
+            return False
+
+        try:
+            LOG.info("_upgrade_downgrade_kube_networking executing"
+                     " playbook: %s for version %s" %
+                     (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
 
             proc = subprocess.Popen(
-                ['ansible-playbook',
+                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
                  constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
                 stdout=subprocess.PIPE)
             out, _ = proc.communicate()
@@ -11029,8 +11044,26 @@ class ConductorManager(service.PeriodicService):
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
 
-        # TODO: Upgrade kubernetes networking.
-        LOG.info("Upgrade kubernetes networking here")
+        LOG.info("executing playbook: %s for version %s" %
+                 (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
+
+        proc = subprocess.Popen(
+            ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+             constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
+            stdout=subprocess.PIPE)
+        out, _ = proc.communicate()
+
+        LOG.info("ansible-playbook: %s." % out)
+
+        if proc.returncode:
+            LOG.warning("ansible-playbook returned an error: %s" %
+                        proc.returncode)
+            # Update the upgrade state
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = \
+                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
+            kube_upgrade_obj.save()
+            return
 
         # Indicate that networking upgrade is complete
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
