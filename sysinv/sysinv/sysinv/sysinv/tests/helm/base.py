@@ -19,11 +19,14 @@ class HelmTestCaseMixin(object):
 
     def assertOverridesParameters(self, overrides, parameters):
         """Validate the overrides contains the supplied parameters"""
-        for key, value in parameters.items():
-            self.assertIn(key, overrides)
-            if isinstance(value, dict):
-                for subkey, subvalue in value.items():
-                    self.assertOverridesParameters(overrides[key][subkey],
-                                                   subvalue)
-            else:
-                self.assertEqual(overrides.get(key), value)
+        if not isinstance(overrides, dict) and not isinstance(parameters, dict):
+            self.assertEqual(overrides, parameters)
+        else:
+            for key, value in parameters.items():
+                self.assertIn(key, overrides)
+                if isinstance(value, dict):
+                    for subkey, subvalue in value.items():
+                        self.assertOverridesParameters(overrides[key][subkey],
+                                                       subvalue)
+                else:
+                    self.assertEqual(overrides.get(key), value)

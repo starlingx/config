@@ -425,6 +425,18 @@ class ControllerHostTestCase(BaseHostTestCase):
         self._create_test_host_cpus(self.host, platform=16)
 
 
+class ProvisionedControllerHostTestCase(BaseHostTestCase):
+
+    def setUp(self):
+        super(ProvisionedControllerHostTestCase, self).setUp()
+        self.host = self._create_test_host(constants.CONTROLLER,
+                                           administrative=constants.ADMIN_UNLOCKED,
+                                           operational=constants.OPERATIONAL_ENABLED,
+                                           availability=constants.AVAILABILITY_AVAILABLE,
+                                           vim_progress_status=constants.VIM_SERVICES_ENABLED)
+        self._create_test_host_cpus(self.host, platform=16)
+
+
 class WorkerHostTestCase(BaseHostTestCase):
 
     def setUp(self):
@@ -453,6 +465,20 @@ class AIOHostTestCase(BaseHostTestCase):
         self._create_test_host_cpus(self.host, platform=2, vswitch=2, application=11)
 
 
+class ProvisionedAIOHostTestCase(BaseHostTestCase):
+
+    system_mode = constants.TIS_AIO_BUILD
+
+    def setUp(self):
+        super(ProvisionedAIOHostTestCase, self).setUp()
+        self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER,
+                                           administrative=constants.ADMIN_UNLOCKED,
+                                           operational=constants.OPERATIONAL_ENABLED,
+                                           availability=constants.AVAILABILITY_AVAILABLE,
+                                           vim_progress_status=constants.VIM_SERVICES_ENABLED)
+        self._create_test_host_cpus(self.host, platform=2, vswitch=2, application=11)
+
+
 class AIOSimplexHostTestCase(AIOHostTestCase):
     system_mode = constants.SYSTEM_MODE_SIMPLEX
 
@@ -472,5 +498,21 @@ class AIODuplexSystemTestCase(AIODuplexHostTestCase):
         self.host2 = self._create_test_host(constants.CONTROLLER,
                                             constants.WORKER,
                                             unit=1)
+        self._create_test_host_cpus(self.host2, platform=2, vswitch=2,
+                                    application=11)
+
+
+class ProvisionedAIODuplexSystemTestCase(ProvisionedAIOHostTestCase):
+    system_mode = constants.SYSTEM_MODE_DUPLEX
+
+    def setUp(self):
+        super(ProvisionedAIODuplexSystemTestCase, self).setUp()
+        self.host2 = self._create_test_host(constants.CONTROLLER,
+                                            constants.WORKER,
+                                            unit=1,
+                                            administrative=constants.ADMIN_UNLOCKED,
+                                            operational=constants.OPERATIONAL_ENABLED,
+                                            availability=constants.AVAILABILITY_AVAILABLE,
+                                            vim_progress_status=constants.VIM_SERVICES_ENABLED)
         self._create_test_host_cpus(self.host2, platform=2, vswitch=2,
                                     application=11)
