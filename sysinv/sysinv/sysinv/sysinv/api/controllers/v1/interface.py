@@ -842,17 +842,8 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
 
 
 def _check_host(ihost):
-    if utils.is_aio_simplex_host_unlocked(ihost):
+    if ihost['administrative'] != constants.ADMIN_LOCKED:
         raise wsme.exc.ClientSideError(_("Host must be locked."))
-    elif ihost['administrative'] != 'locked' and not \
-            utils.is_host_simplex_controller(ihost):
-        unlocked = False
-        current_ihosts = pecan.request.dbapi.ihost_get_list()
-        for h in current_ihosts:
-            if h['administrative'] != 'locked' and h['hostname'] != ihost['hostname']:
-                unlocked = True
-        if unlocked:
-            raise wsme.exc.ClientSideError(_("Host must be locked."))
 
 
 def _check_interface_class_and_host_type(ihost, interface):
