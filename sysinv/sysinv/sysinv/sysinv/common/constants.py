@@ -479,6 +479,7 @@ SB_CEPH_MON_GIB_MIN = 20
 SB_CEPH_MON_GIB_MAX = 40
 
 SB_CONFIGURATION_TIMEOUT = 1200
+INIT_CEPH_INFO_INTERVAL_SECS = 30
 
 # Ceph storage deployment model
 # Controller model: OSDs are on controllers, no storage nodes can

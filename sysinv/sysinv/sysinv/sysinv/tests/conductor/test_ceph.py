@@ -13,6 +13,7 @@ import mock
 from cephclient import wrapper as ceph
 from oslo_utils import uuidutils
 
+from sysinv.common import ceph as cceph
 from sysinv.common import constants
 from sysinv.conductor import manager
 from sysinv.conductor import ceph as iceph
@@ -43,6 +44,8 @@ class UpdateCephCluster(base.DbTestCase):
 
     upgrade_downgrade_kube_components_patcher = mock.patch.object(
         manager.ConductorManager, '_upgrade_downgrade_kube_components')
+    fix_crushmap_patcher = mock.patch.object(
+        cceph, 'fix_crushmap')
 
     def setUp(self):
         super(UpdateCephCluster, self).setUp()
@@ -55,10 +58,13 @@ class UpdateCephCluster(base.DbTestCase):
         self.host_index = -1
 
         self.mock_upgrade_downgrade_kube_components = self.upgrade_downgrade_kube_components_patcher.start()
+        self.mock_fix_crushmap = self.fix_crushmap_patcher.start()
+        self.mock_fix_crushmap.return_value = True
 
     def tearDown(self):
         super(UpdateCephCluster, self).tearDown()
         self.upgrade_downgrade_kube_components_patcher.stop()
+        self.fix_crushmap_patcher.stop()
 
     def _create_storage_ihost(self, hostname):
         self.host_index += 1
@@ -81,6 +87,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=False), None)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
         self.assertIsNotNone(self.service._ceph.cluster_db_uuid)
@@ -92,6 +99,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
         self.assertIsNotNone(self.service._ceph.cluster_ceph_uuid)
         self.assertIsNotNone(self.service._ceph.cluster_db_uuid)
@@ -106,6 +114,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=False), None)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
         self.assertIsNotNone(self.service._ceph.cluster_db_uuid)
@@ -135,6 +144,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=False), None)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
@@ -164,6 +174,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         clusters = self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH)
@@ -188,6 +199,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=False), None)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
@@ -225,6 +237,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         clusters = self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH)
@@ -259,6 +272,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         clusters = self.dbapi.clusters_get_all(type=constants.CINDER_BACKEND_CEPH)
@@ -326,6 +340,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         for h in hosts:
@@ -381,6 +396,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         for h in hosts:
@@ -398,6 +414,7 @@ class UpdateCephCluster(base.DbTestCase):
         with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
             mock_fsid.return_value = (mock.MagicMock(ok=True), cluster_uuid)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
 
         storage_0 = self._create_storage_ihost('storage-0')

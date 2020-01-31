@@ -621,9 +621,12 @@ class StorageTierDependentTCs(base.FunctionalTest):
         self._create_storage_mon('storage-0', storage_0['id'])
 
         # Mock the fsid call so that we don't have to wait for the timeout
-        with mock.patch.object(ceph.CephWrapper, 'fsid') as mock_fsid:
+        with nested(mock.patch.object(ceph.CephWrapper, 'fsid'),
+                    mock.patch.object(ceph_utils, 'fix_crushmap')) as (mock_fsid, mock_fix_crushmap):
+            mock_fix_crushmap.return_value = True
             mock_fsid.return_value = (mock.MagicMock(ok=False), None)
             self.service.start()
+            self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
         self.assertIsNone(self.service._ceph.cluster_ceph_uuid)
         self.assertIsNotNone(self.service._ceph.cluster_db_uuid)
