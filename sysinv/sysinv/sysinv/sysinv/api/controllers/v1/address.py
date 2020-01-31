@@ -461,8 +461,10 @@ class AddressController(rest.RestController):
     def delete(self, address_uuid):
         """Delete an IP address."""
         address = self._get_one(address_uuid)
-        interface_uuid = getattr(address, 'interface_uuid')
-        self._check_orphaned_routes(interface_uuid, address.as_dict())
-        self._check_host_state(getattr(address, 'forihostid'))
+        if address.interface_uuid:
+            self._check_orphaned_routes(address.interface_uuid,
+                address.as_dict())
+        if address.forihostid:
+            self._check_host_state(address.forihostid)
         self._check_from_pool(getattr(address, 'pool_uuid'))
         pecan.request.dbapi.address_destroy(address_uuid)
