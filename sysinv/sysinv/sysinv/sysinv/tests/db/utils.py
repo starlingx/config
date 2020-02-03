@@ -344,6 +344,28 @@ def create_test_user(**kw):
     return dbapi.iuser_create(user)
 
 
+# Create test helm override object
+def get_test_helm_overrides(**kw):
+    helm_overrides = {
+        'id': kw.get('id'),
+        'name': kw.get('name'),
+        'namespace': kw.get('namespace'),
+        'user_overrides': kw.get('user_overrides', None),
+        'system_overrides': kw.get('system_overrides', None),
+        'app_id': kw.get('app_id', None)
+    }
+    return helm_overrides
+
+
+def create_test_helm_overrides(**kw):
+    helm_overrides = get_test_helm_overrides(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del helm_overrides['id']
+    dbapi = db_api.get_instance()
+    return dbapi.helm_override_create(helm_overrides)
+
+
 # Create test ntp object
 def get_test_ntp(**kw):
     ntp = {
