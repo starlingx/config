@@ -36,6 +36,14 @@ class StxOpenstackAppMixin(object):
                     label_value=common.LABEL_VALUE_ENABLED)
 
 
+class StxPlatformAppMixin(object):
+    path_name = 'stx-platform.tgz'
+    app_name = 'oidc-auth-apps'
+
+    def setUp(self):
+        super(StxPlatformAppMixin, self).setUp()
+
+
 class HelmOperatorTestSuiteMixin(helm_base.HelmTestCaseMixin):
     """When HelmOperatorTestSuiteMixin is added as a Mixin
        alongside a subclass of BaseHostTestCase
@@ -105,4 +113,17 @@ class HelmSTXOpenstackAIOTestCase(StxOpenstackAppMixin,
                                   dbbase.BaseCephStorageBackendMixin,
                                   HelmOperatorTestSuiteMixin,
                                   dbbase.AIOSimplexHostTestCase):
+    pass
+
+
+# Test Configuration:
+# - Controller
+# - IPv6
+# - Ceph Storage
+# - stx-platform app
+class HelmSTXPlatformControllerTestCase(StxPlatformAppMixin,
+                                         dbbase.BaseIPv6Mixin,
+                                         dbbase.BaseCephStorageBackendMixin,
+                                         HelmOperatorTestSuiteMixin,
+                                         dbbase.ControllerHostTestCase):
     pass
