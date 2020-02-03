@@ -325,6 +325,31 @@ def create_test_kube_host_upgrade():
     return dbapi.kube_host_upgrade_create(hostid, upgrade)
 
 
+# Create test controller file system object
+def get_test_controller_fs(**kw):
+    controller_fs = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'name': kw.get('name'),
+        'forisystemid': kw.get('forisystemid', None),
+        'state': kw.get('state'),
+        'size': kw.get('size'),
+        'logical_volume': kw.get('logical_volume'),
+        'replicated': kw.get('replicated'),
+        'isystem_uuid': kw.get('isystem_uuid', None)
+    }
+    return controller_fs
+
+
+def create_test_controller_fs(**kw):
+    controller_fs = get_test_controller_fs(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del controller_fs['id']
+    dbapi = db_api.get_instance()
+    return dbapi.controller_fs_create(controller_fs)
+
+
 # Create test user object
 def get_test_user(**kw):
     user = {
@@ -725,11 +750,35 @@ def get_test_mon(**kw):
     return mon
 
 
+def get_test_host_fs(**kw):
+    host_fs = {
+        'id': kw.get('id', 2),
+        'uuid': kw.get('uuid'),
+        'name': kw.get('name'),
+        'size': kw.get('size', 2029),
+        'logical_volume': kw.get('logical_volume', 'scratch-lv'),
+        'forihostid': kw.get('forihostid', 1),
+    }
+    return host_fs
+
+
+def create_test_host_fs(**kw):
+    host_fs = get_test_host_fs(**kw)
+    if 'uuid' not in kw:
+        del host_fs['uuid']
+    dbapi = db_api.get_instance()
+    forihostid = host_fs['forihostid']
+    return dbapi.host_fs_create(forihostid, host_fs)
+
+
 def get_test_lvg(**kw):
     lvg = {
         'id': kw.get('id', 2),
         'uuid': kw.get('uuid'),
         'lvm_vg_name': kw.get('lvm_vg_name'),
+        'lvm_vg_size': kw.get('lvm_vg_size', 202903650304),
+        'lvm_vg_total_pe': kw.get('lvm_vg_total_pe', 6047),
+        'lvm_vg_free_pe': kw.get('lvm_vg_free_pe', 1541),
         'forihostid': kw.get('forihostid', 2),
     }
     return lvg
@@ -754,6 +803,7 @@ def get_test_pv(**kw):
     pv = {
         'id': kw.get('id', 2),
         'uuid': kw.get('uuid'),
+        'pv_state': kw.get('pv_state', 'unprovisioned'),
         'lvm_vg_name': kw.get('lvm_vg_name'),
         'disk_or_part_uuid': kw.get('disk_or_part_uuid', str(uuid.uuid4())),
         'disk_or_part_device_path': kw.get('disk_or_part_device_path',

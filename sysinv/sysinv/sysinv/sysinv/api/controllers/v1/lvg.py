@@ -147,7 +147,7 @@ class LVG(base.APIBase):
         # lvm_vg_total_pe is Volume Group's total Physical Extents
         if lvg.lvm_vg_total_pe and lvg.lvm_vg_total_pe > 0:
             lvg.lvm_vg_avail_size = \
-                lvg.lvm_vg_size * lvg.lvm_vg_free_pe / lvg.lvm_vg_total_pe
+                lvg.lvm_vg_size * lvg.lvm_vg_free_pe // lvg.lvm_vg_total_pe
         else:
             lvg.lvm_vg_avail_size = 0
 
