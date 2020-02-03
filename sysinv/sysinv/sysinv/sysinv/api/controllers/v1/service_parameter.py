@@ -237,7 +237,8 @@ class ServiceParameterController(rest.RestController):
         schema = service_parameter.SERVICE_PARAMETER_SCHEMA[service][section]
         parameters = (schema.get(service_parameter.SERVICE_PARAM_MANDATORY, []) +
                       schema.get(service_parameter.SERVICE_PARAM_OPTIONAL, []))
-        if name not in parameters:
+        has_wildcard = (constants.SERVICE_PARAM_NAME_WILDCARD in parameters)
+        if name not in parameters and not has_wildcard:
             msg = _("The parameter name %s is invalid for "
                     "service %s section %s"
                     % (name, service, section))

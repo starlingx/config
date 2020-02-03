@@ -5585,10 +5585,18 @@ class ConductorManager(service.PeriodicService):
 
     def update_ptp_config(self, context):
         """Update the PTP configuration"""
+        self._update_ptp_host_configs(context)
+
+    def _update_ptp_host_configs(self, context):
+        """Issue config updates to hosts with ptp clocks"""
         personalities = [constants.CONTROLLER,
                          constants.WORKER,
                          constants.STORAGE]
-        self._config_update_hosts(context, personalities)
+
+        hosts = self.dbapi.ihost_get_list()
+        ptp_hosts = [host.uuid for host in hosts if host.clock_synchronization == constants.PTP]
+        if ptp_hosts:
+            self._config_update_hosts(context, personalities, host_uuids=ptp_hosts, reboot=True)
 
     def update_system_mode_config(self, context):
         """Update the system mode configuration"""
@@ -7293,6 +7301,8 @@ class ConductorManager(service.PeriodicService):
         elif service == constants.SERVICE_TYPE_OPENSTACK:
             # Do nothing. Does not need to update target config of any hosts
             pass
+        elif service == constants.SERVICE_TYPE_PTP:
+            self._update_ptp_host_configs(context)
         else:
             # All other services
             personalities = [constants.CONTROLLER]

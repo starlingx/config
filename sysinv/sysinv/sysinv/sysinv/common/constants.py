@@ -931,6 +931,12 @@ SERVICE_TYPE_DOCKER = 'docker'
 SERVICE_TYPE_HTTP = 'http'
 SERVICE_TYPE_OPENSTACK = 'openstack'
 SERVICE_TYPE_KUBERNETES = 'kubernetes'
+SERVICE_TYPE_PTP = 'ptp'
+
+# For service parameter sections that include a wildcard, any 'name' field will be
+# allowed by the API. The wildcard card name will only be matched if no other matches
+# are found first.
+SERVICE_PARAM_NAME_WILDCARD = '*wildcard*'
 
 SERVICE_PARAM_SECTION_IDENTITY_CONFIG = 'config'
 
@@ -1036,6 +1042,22 @@ DEFAULT_REGISTRIES_INFO = {
 # kubernetes parameters
 SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES = 'certificates'
 SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST = 'apiserver_certsan'
+
+# ptp service parameters
+SERVICE_PARAM_SECTION_PTP_GLOBAL = 'global'
+SERVICE_PARAM_SECTION_PTP_PHC2SYS = 'phc2sys'
+SERVICE_PARAM_NAME_PTP_UPDATE_RATE = 'update-rate'
+SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES = 'summary-updates'
+
+PTP_PHC2SYS_DEFAULTS = {
+    SERVICE_PARAM_NAME_PTP_UPDATE_RATE: 10,
+    SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES: 600
+}
+
+PTP_PHC2SYS_OPTIONS_MAP = {
+    SERVICE_PARAM_NAME_PTP_UPDATE_RATE: 'R',
+    SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES: 'u'
+}
 
 # default filesystem size to 25 MB
 SERVICE_PARAM_RADOSGW_FS_SIZE_MB_DEFAULT = 25
@@ -1528,6 +1550,7 @@ CLOCK_SYNCHRONIZATION = [
 # PTP transport modes
 PTP_TRANSPORT_UDP = 'udp'
 PTP_TRANSPORT_L2 = 'l2'
+PTP_NETWORK_TRANSPORT_IEEE_802_3 = 'L2'
 
 # Backup & Restore
 FIX_INSTALL_UUID_INTERVAL_SECS = 30

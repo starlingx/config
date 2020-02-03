@@ -431,16 +431,61 @@ class PlatformPuppet(base.BasePuppet):
             ptp_enabled = True
         else:
             ptp_enabled = False
+            return {'platform::ptp::enabled': ptp_enabled}
+
+        ptp_config = {
+            'tx_timestamp_timeout': '20',
+            'summary_interval': '6',
+            'clock_servo': 'linreg',
+            'delay_mechanism': ptp.mechanism.upper(),
+            'time_stamping': ptp.mode.lower()
+        }
+
+        if ptp.mode.lower() == 'hardware':
+            ptp_config.update({'boundary_clock_jbod': '1'})
+
+        ptp_service_params = self.dbapi.service_parameter_get_all(
+            service=constants.SERVICE_TYPE_PTP, section=constants.SERVICE_PARAM_SECTION_PTP_GLOBAL)
+
+        # Merge options specified in service parameters with ptp database values and defaults
+        for param in ptp_service_params:
+            ptp_config.update({param.name: param.value})
+
+        transport = constants.PTP_TRANSPORT_L2
+
+        specified_transport = ptp_config.get('network_transport')
+        if specified_transport:
+            # Currently we can only set the network transport globally. Setting the transport flag
+            # to udp will force puppet to apply the correct UDP family to each interface
+            if specified_transport != constants.PTP_NETWORK_TRANSPORT_IEEE_802_3:
+                transport = constants.PTP_TRANSPORT_UDP
+        else:
+            ptp_config.update({'network_transport': constants.PTP_NETWORK_TRANSPORT_IEEE_802_3})
+            transport = ptp.transport
+
+        # Generate ptp4l global options
+        ptp4l_options = []
+        for key, value in ptp_config.items():
+            ptp4l_options.append({'name': key, 'value': value})
+
+        # Get the options for the phc2sys system
+        phc2sys_config = constants.PTP_PHC2SYS_DEFAULTS
+        phc2sys_service_params = self.dbapi.service_parameter_get_all(
+            service=constants.SERVICE_TYPE_PTP,
+            section=constants.SERVICE_PARAM_SECTION_PTP_PHC2SYS)
+
+        for param in phc2sys_service_params:
+            phc2sys_config.update({param.name: param.value})
+
+        phc2sys_options = ''
+        for key, value in phc2sys_config.items():
+            phc2sys_options += '-' + constants.PTP_PHC2SYS_OPTIONS_MAP[key] + ' ' + str(value) + ' '
 
         return {
-            'platform::ptp::enabled':
-                ptp_enabled,
-            'platform::ptp::mode':
-                ptp.mode,
-            'platform::ptp::transport':
-                ptp.transport,
-            'platform::ptp::mechanism':
-                ptp.mechanism,
+            'platform::ptp::enabled': ptp_enabled,
+            'platform::ptp::transport': transport,
+            'platform::ptp::ptp4l_options': ptp4l_options,
+            'platform::ptp::phc2sys_options': phc2sys_options
         }
 
     def _get_host_sysctl_config(self, host):

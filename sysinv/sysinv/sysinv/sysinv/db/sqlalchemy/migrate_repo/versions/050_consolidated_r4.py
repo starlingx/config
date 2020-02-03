@@ -9,7 +9,7 @@ from eventlet.green import subprocess
 import json
 import tsconfig.tsconfig as tsconfig
 from migrate.changeset import UniqueConstraint
-from sqlalchemy import Boolean, DateTime, Enum, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy import Column, ForeignKey, MetaData, Table
 from sqlalchemy.dialects import postgresql
 
@@ -101,17 +101,26 @@ def upgrade(migrate_engine):
                                      primary_key=True, nullable=False),
                               mysql_engine=ENGINE, mysql_charset=CHARSET,
                               autoload=True)
-
-    if migrate_engine.url.get_dialect() is postgresql.dialect:
-        old_serviceEnum = Enum('identity',
-                               'horizon',
-                               'ceph',
-                               'network',
-                               name='serviceEnum')
-
-        service_col = service_parameter.c.service
-        service_col.alter(Column('service', String(16)))
-        old_serviceEnum.drop(bind=migrate_engine, checkfirst=False)
+    service_parameter.drop()
+    meta.remove(service_parameter)
+    service_parameter = Table(
+        'service_parameter',
+        meta,
+        Column('created_at', DateTime),
+        Column('updated_at', DateTime),
+        Column('deleted_at', DateTime),
+        Column('id', Integer, primary_key=True, nullable=False),
+        Column('uuid', String(36), unique=True),
+        Column('service', String(16)),
+        Column('section', String(255)),
+        Column('name', String(255)),
+        Column('value', String(255)),
+        UniqueConstraint('service', 'section', 'name',
+                         name='u_servicesectionname'),
+        mysql_engine=ENGINE,
+        mysql_charset=CHARSET,
+    )
+    service_parameter.create(migrate_engine, checkfirst=False)
 
     # 049_add_controllerfs_scratch.py
     controller_fs = Table('controller_fs', meta, autoload=True)
