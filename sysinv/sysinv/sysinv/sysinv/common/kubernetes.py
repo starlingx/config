@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -80,6 +80,22 @@ def get_kube_versions():
          'available_patches': [],
          },
     ]
+
+
+def get_kube_networking_upgrade_version(kube_upgrade):
+    """Determine the version that kubernetes networking
+       should be upgraded to."""
+    if kube_upgrade.state in [
+            KUBE_UPGRADE_STARTED,
+            KUBE_UPGRADE_DOWNLOADING_IMAGES,
+            KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
+            KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            KUBE_UPGRADING_FIRST_MASTER,
+            KUBE_UPGRADING_FIRST_MASTER_FAILED,
+            KUBE_UPGRADED_FIRST_MASTER]:
+        return kube_upgrade.from_version
+    else:
+        return kube_upgrade.to_version
 
 
 class KubeOperator(object):

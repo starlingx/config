@@ -6586,8 +6586,7 @@ class HostController(rest.RestController):
         # Verify the upgrade is in the correct state
         if kube_upgrade_obj.state in [
                 kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
-                kubernetes.KUBE_UPGRADED_NETWORKING,
-                kubernetes.KUBE_UPGRADED_FIRST_MASTER]:
+                kubernetes.KUBE_UPGRADED_NETWORKING]:
             # We are upgrading a control plane
             pass
         elif kube_upgrade_obj.state in [
