@@ -1,12 +1,11 @@
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 from eventlet.green import subprocess
 import os
 
-from controllerconfig import backup_restore
 
 from fm_api import fm_api
 
@@ -14,6 +13,7 @@ from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import ceph
 from sysinv.common import constants
+from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.common.fm import fmclient
 from sysinv.common.storage_backend_conf import StorageBackendConfig
@@ -33,6 +33,7 @@ class Health(object):
     def __init__(self, dbapi):
         self._dbapi = dbapi
         self._ceph = ceph.CephApiOperator()
+        self._kube_operator = kubernetes.KubeOperator()
 
     def _check_hosts_provisioned(self, hosts):
         """Checks that each host is provisioned"""
@@ -206,22 +207,73 @@ class Health(object):
 
     def _check_simplex_available_space(self):
         """Ensures there is free space for the backup"""
-        try:
-            backup_restore.check_size("/opt/backups", True)
-        except backup_restore.BackupFail:
-            return False
 
-        return True
+        # TODO: Switch this over to use Ansible
+        # try:
+        #    backup_restore.check_size("/opt/backups", True)
+        # except backup_restore.BackupFail:
+        #    return False
+        # return True
+        LOG.info("Skip the check of the enough free space.")
+
+    def _check_kube_nodes_ready(self):
+        """Checks that each kubernetes node is ready"""
+        fail_node_list = []
+
+        nodes = self._kube_operator.kube_get_nodes()
+        for node in nodes:
+            for condition in node.status.conditions:
+                if condition.type == "Ready" and condition.status != "True":
+                    # This node is not ready
+                    fail_node_list.append(node.metadata.name)
+
+        success = not fail_node_list
+        return success, fail_node_list
+
+    def _check_kube_control_plane_pods(self):
+        """Checks that each kubernetes control plane pod is ready"""
+        fail_pod_list = []
+
+        pod_ready_status = self._kube_operator.\
+            kube_get_control_plane_pod_ready_status()
+
+        for pod_name, ready_status in pod_ready_status.items():
+            if ready_status != "True":
+                # This pod is not ready
+                fail_pod_list.append(pod_name)
+
+        success = not fail_pod_list
+        return success, fail_pod_list
+
+    def _check_kube_applications(self):
+        """Checks that each kubernetes application is in a valid state"""
+
+        fail_app_list = []
+        apps = self._dbapi.kube_app_get_all()
+
+        for app in apps:
+            # The following states are valid during kubernetes upgrade
+            if app.status not in [constants.APP_UPLOAD_SUCCESS,
+                                  constants.APP_APPLY_SUCCESS,
+                                  constants.APP_INACTIVE_STATE]:
+                fail_app_list.append(app.name)
+
+        success = not fail_app_list
+        return success, fail_app_list
 
     def get_system_health(self, context, force=False):
-        """Returns the general health of the system"""
-        # Checks the following:
-        # All hosts are provisioned
-        # All hosts are patch current
-        # All hosts are unlocked/enabled
-        # All hosts having matching configs
-        # No management affecting alarms
-        # For ceph systems: The storage cluster is healthy
+        """Returns the general health of the system
+
+        Checks the following:
+        - All hosts are provisioned
+        - All hosts are patch current
+        - All hosts are unlocked/enabled
+        - All hosts having matching configs
+        - No management affecting alarms
+        - For ceph systems: The storage cluster is healthy
+        - All kubernetes nodes are ready
+        - All kubernetes control plane pods are ready
+        """
 
         hosts = self._dbapi.ihost_get_list()
         output = _('System Health:\n')
@@ -286,6 +338,24 @@ class Health(object):
         if not success:
             output += _('[%s] alarms found, [%s] of which are management '
                         'affecting\n') % (allowed + affecting, affecting)
+
+        health_ok = health_ok and success
+
+        success, error_nodes = self._check_kube_nodes_ready()
+        output += _('All kubernetes nodes are ready: [%s]\n') \
+            % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+        if not success:
+            output += _('Kubernetes nodes not ready: %s\n') \
+                % ', '.join(error_nodes)
+
+        health_ok = health_ok and success
+
+        success, error_nodes = self._check_kube_control_plane_pods()
+        output += _('All kubernetes control plane pods are ready: [%s]\n') \
+            % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+        if not success:
+            output += _('Kubernetes control plane pods not ready: %s\n') \
+                % ', '.join(error_nodes)
 
         health_ok = health_ok and success
 
@@ -356,5 +426,26 @@ class Health(object):
                 % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
             health_ok = health_ok and success
+
+        return health_ok, output
+
+    def get_system_health_kube_upgrade(self, context, force=False):
+        """Ensures the system is in a valid state for a kubernetes upgrade
+
+        Does a general health check then does the following:
+        - All kubernetes applications are in a stable state
+       """
+
+        health_ok, output = self.get_system_health(context, force)
+
+        success, apps_not_valid = self._check_kube_applications()
+        output += _(
+            'All kubernetes applications are in a valid state: [%s]\n') \
+            % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+        if not success:
+            output += _('Kubernetes applications not in a valid state: %s\n') \
+                % ', '.join(apps_not_valid)
+
+        health_ok = health_ok and success
 
         return health_ok, output

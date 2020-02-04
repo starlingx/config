@@ -29,9 +29,9 @@ class Key(object):
         return hash((self.chassisid, self.portid, self.portname))
 
     def __cmp__(self, rhs):
-        return (cmp(self.chassisid, rhs.chassisid) or
-                cmp(self.portid, rhs.portid) or
-                cmp(self.portname, rhs.portname))
+        return ((self.chassisid < rhs.chassisid) or
+                (self.portid < rhs.portid) or
+                (self.portname < rhs.portname))
 
     def __eq__(self, rhs):
         return (self.chassisid == rhs.chassisid and

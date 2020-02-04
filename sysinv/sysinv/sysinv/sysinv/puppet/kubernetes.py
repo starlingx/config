@@ -8,7 +8,6 @@ from __future__ import absolute_import
 from eventlet.green import subprocess
 import json
 import netaddr
-import os
 import re
 
 from oslo_log import log as logging
@@ -39,16 +38,6 @@ class KubernetesPuppet(base.BasePuppet):
         config = {}
         config.update(
             {'platform::kubernetes::params::enabled': True,
-             'platform::kubernetes::params::pod_network_cidr':
-                 self._get_pod_network_cidr(),
-             'platform::kubernetes::params::pod_network_ipversion':
-                 self._get_pod_network_ipversion(),
-             'platform::kubernetes::params::service_network_cidr':
-                 self._get_cluster_service_subnet(),
-             'platform::kubernetes::params::apiserver_advertise_address':
-                 self._get_cluster_host_address(),
-             'platform::kubernetes::params::etcd_endpoint':
-                 self._get_etcd_endpoint(),
              'platform::kubernetes::params::service_domain':
                  self._get_dns_service_domain(),
              'platform::kubernetes::params::dns_service_ip':
@@ -57,44 +46,6 @@ class KubernetesPuppet(base.BasePuppet):
                  self._get_kubernetes_upgrade_to_version(),
              })
 
-        return config
-
-    def get_secure_system_config(self):
-        config = {}
-        # This retrieves the certificates that were used during the bootstrap
-        # ansible playbook.
-        if os.path.exists(constants.KUBERNETES_PKI_SHARED_DIR):
-            # Store required certificates in configuration.
-            with open(os.path.join(
-                    constants.KUBERNETES_PKI_SHARED_DIR, 'ca.crt'), 'r') as f:
-                ca_crt = f.read()
-            with open(os.path.join(
-                    constants.KUBERNETES_PKI_SHARED_DIR, 'ca.key'), 'r') as f:
-                ca_key = f.read()
-            with open(os.path.join(
-                    constants.KUBERNETES_PKI_SHARED_DIR, 'sa.key'), 'r') as f:
-                sa_key = f.read()
-            with open(os.path.join(
-                    constants.KUBERNETES_PKI_SHARED_DIR, 'sa.pub'), 'r') as f:
-                sa_pub = f.read()
-            with open(os.path.join(
-                    constants.KUBERNETES_PKI_SHARED_DIR,
-                    'front-proxy-ca.crt'), 'r') as f:
-                front_proxy_ca_crt = f.read()
-            with open(os.path.join(
-                    constants.KUBERNETES_PKI_SHARED_DIR,
-                    'front-proxy-ca.key'), 'r') as f:
-                front_proxy_ca_key = f.read()
-            config.update(
-                {'platform::kubernetes::params::ca_crt': ca_crt,
-                 'platform::kubernetes::params::ca_key': ca_key,
-                 'platform::kubernetes::params::sa_key': sa_key,
-                 'platform::kubernetes::params::sa_pub': sa_pub,
-                 'platform::kubernetes::params::front_proxy_ca_crt':
-                     front_proxy_ca_crt,
-                 'platform::kubernetes::params::front_proxy_ca_key':
-                     front_proxy_ca_key,
-                 })
         return config
 
     def get_host_config(self, host):
@@ -122,21 +73,31 @@ class KubernetesPuppet(base.BasePuppet):
 
     def _get_host_join_command(self, host):
         config = {}
-
-        if host.personality != constants.WORKER:
+        if not utils.is_initial_config_complete():
             return config
 
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
+            join_cmd_additions = ''
+            if host.personality == constants.CONTROLLER:
+                # Upload the certificates used during kubeadm join
+                # The cert key will be printed in the last line of the output
+                cmd = ['kubeadm', 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
+                       '/etc/kubernetes/kubeadm.yaml']
+                cmd_output = subprocess.check_output(cmd)
+                cert_key = cmd_output.strip().split('\n')[-1]
+                join_cmd_additions = " --control-plane --certificate-key %s" % cert_key
+
             cmd = ['kubeadm', 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
             join_cmd = subprocess.check_output(cmd)
-            config.update(
-                {'platform::kubernetes::worker::params::join_cmd': join_cmd, })
+            join_cmd_additions += " --cri-socket /var/run/containerd/containerd.sock"
+            join_cmd = join_cmd.strip() + join_cmd_additions
         except subprocess.CalledProcessError:
-            raise exception.SysinvException(
-                'Failed to generate bootstrap token')
+            raise exception.SysinvException('Failed to generate bootstrap token')
+
+        config.update({'platform::kubernetes::params::join_cmd': join_cmd})
 
         return config
 

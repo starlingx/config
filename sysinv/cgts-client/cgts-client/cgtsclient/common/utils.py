@@ -41,13 +41,10 @@ from prettytable import NONE
 
 from datetime import datetime
 from dateutil import parser
-
-from cgtsclient import exc
-from cgtsclient.openstack.common import importutils
 from functools import wraps
 
-# noinspection PyProtectedMember
-from wrapping_formatters import _get_width
+from cgtsclient import exc
+from oslo_utils import importutils
 
 from cgtsclient.common import wrapping_formatters
 from six.moves import input
@@ -300,7 +297,7 @@ def pt_builder(field_labels, fields, formatters, paging, printer=default_printer
             output = self.pt.get_string()
             if wrapping_formatters.is_nowrap_set():
                 return output
-            output_width = _get_width(output)
+            output_width = wrapping_formatters._get_width(output)
             if output_width <= self.terminal_width:
                 return output
             # At this point pretty Table (self.pt) does not fit the terminal width so let's
@@ -476,7 +473,7 @@ def print_dict_with_format(data, wrap=0, output_format=None):
 def print_dict_value(d):
     # Print values on a single line separated by spaces
     # e.g. 'available ntp'
-    print (' '.join(map(str, d.values())))
+    print(' '.join(map(str, d.values())))
 
 
 def print_dict(d, dict_property="Property", wrap=0):

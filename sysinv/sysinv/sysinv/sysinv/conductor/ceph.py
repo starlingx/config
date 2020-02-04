@@ -845,7 +845,7 @@ class CephOperator(object):
         try:
             resp, body = self._ceph_api.osd_stat(body='json',
                                                  timeout=timeout)
-        except ReadTimeout as e:
+        except ReadTimeout:
             resp = type('Response', (),
                         dict(ok=False,
                              reason=('Ceph API osd_stat() timeout '

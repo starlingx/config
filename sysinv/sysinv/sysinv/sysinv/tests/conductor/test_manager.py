@@ -23,11 +23,13 @@
 """Test class for Sysinv ManagerService."""
 
 import mock
+import os.path
 import uuid
 
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common import utils as cutils
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import context
@@ -97,16 +99,14 @@ class ManagerTestCase(base.DbTestCase):
             self.upgrade_downgrade_kube_components_patcher.start()
         self.addCleanup(self.mock_upgrade_downgrade_kube_components.stop)
 
-        self.do_update_alarm_status_patcher = mock.patch.object(
-            manager.ConductorManager, '_do_update_alarm_status')
-        self.mock_do_update_alarm_status = \
-            self.do_update_alarm_status_patcher.start()
-        self.addCleanup(self.mock_do_update_alarm_status.stop)
+        self.service.fm_api = mock.Mock()
+        self.service.fm_api.set_fault.side_effect = self._raise_alarm
+        self.service.fm_api.clear_fault.side_effect = self._clear_alarm
 
         self.fail_config_apply_runtime_manifest = False
 
         def mock_config_apply_runtime_manifest(obj, context, config_uuid,
-                                               config_dict):
+                                               config_dict, force=False):
             if not self.fail_config_apply_runtime_manifest:
                 # Pretend the config was applied
                 if 'host_uuids' in config_dict:
@@ -183,6 +183,16 @@ class ManagerTestCase(base.DbTestCase):
             mock_get_kube_versions)
         self.mocked_get_kube_versions.start()
         self.addCleanup(self.mocked_get_kube_versions.stop)
+
+        self.service._puppet = mock.Mock()
+        self.service._allocate_addresses_for_host = mock.Mock()
+        self.service._update_pxe_config = mock.Mock()
+        self.service._ceph_mon_create = mock.Mock()
+        self.alarm_raised = False
+
+    def tearDown(self):
+        super(ManagerTestCase, self).tearDown()
+        self.upgrade_downgrade_kube_components_patcher.stop()
 
     def _create_test_ihost(self, **kwargs):
         # ensure the system ID for proper association
@@ -412,6 +422,145 @@ class ManagerTestCase(base.DbTestCase):
                           self.service.configure_ihost,
                           self.context,
                           ihost)
+
+    def test_vim_host_add(self):
+        mock_vim_host_add = mock.MagicMock()
+        p = mock.patch('sysinv.api.controllers.v1.vim_api.vim_host_add',
+                mock_vim_host_add)
+        p.start().return_value = {}
+        self.addCleanup(p.stop)
+
+        ret = self.service.vim_host_add(self.context, None, str(uuid.uuid4()),
+                    "newhostname", "worker", "locked", "disabled", "offline",
+                    "disabled", "not-installed", 10)
+
+        mock_vim_host_add.assert_called_with(mock.ANY, mock.ANY,
+                "newhostname", "worker", "locked", "disabled", "offline",
+                "disabled", "not-installed", 10)
+
+        self.assertEqual(ret, {})
+
+    def test_mtc_host_add(self):
+        mock_notify_mtc_and_recv = mock.MagicMock()
+        p = mock.patch('sysinv.common.utils.notify_mtc_and_recv',
+                    mock_notify_mtc_and_recv)
+        p.start().return_value = {'status': 'pass'}
+        self.addCleanup(p.stop)
+
+        ihost = {}
+        ihost['hostname'] = 'newhost'
+        ihost['personality'] = 'worker'
+
+        self.service.mtc_host_add(self.context, "localhost", 2112, ihost)
+        mock_notify_mtc_and_recv.assert_called_with("localhost", 2112, ihost)
+
+    def test_ilvg_get_nova_ilvg_by_ihost(self):
+        ihost = self._create_test_ihost()
+        lvg_dict = {
+            'lvm_vg_name': constants.LVG_NOVA_LOCAL,
+        }
+        ilvg = self.dbapi.ilvg_create(ihost['id'], lvg_dict)
+        ret = self.service.ilvg_get_nova_ilvg_by_ihost(self.context, ihost['uuid'])
+        self.assertEqual(ret[0]['uuid'], ilvg['uuid'])
+
+    def test_ilvg_get_nova_ilvg_by_ihost_no_nova_ilvg(self):
+        ihost = self._create_test_ihost()
+        ret = self.service.ilvg_get_nova_ilvg_by_ihost(self.context, ihost['uuid'])
+        self.assertEqual(ret, [])
+
+    def test_platform_interfaces(self):
+        ihost = self._create_test_ihost()
+        interface = utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port = utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'])
+        self.assertEqual(ret[0]['name'], port['name'])
+
+    def test_platform_interfaces_multi(self):
+        ihost = self._create_test_ihost()
+        interface_mgmt = utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port_mgmt = utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface_mgmt['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        interface_oam = utils.create_test_interface(
+                ifname='oam',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port_oam = utils.create_test_ethernet_port(
+            name='eth1',
+            host_id=ihost['id'],
+            interface_id=interface_oam['id'],
+            pciaddr='0000:00:00.02',
+            dev_id=1)
+
+        interface_data = utils.create_test_interface(
+                ifname='data',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_DATA,
+                iftype=constants.INTERFACE_TYPE_VLAN)
+        utils.create_test_ethernet_port(
+            name='eth2',
+            host_id=ihost['id'],
+            interface_id=interface_data['id'],
+            pciaddr='0000:00:00.03',
+            dev_id=2)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'])
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(ret[0]['name'], port_mgmt['name'])
+        self.assertEqual(ret[1]['name'], port_oam['name'])
+
+    def test_platform_interfaces_no_port(self):
+        ihost = self._create_test_ihost()
+        utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'])
+        self.assertEqual(ret, [])
+
+    def test_platform_interfaces_invalid_ihost(self):
+        ihost = self._create_test_ihost()
+        interface = utils.create_test_interface(
+                ifname='mgmt',
+                forihostid=ihost['id'],
+                ihost_uuid=ihost['uuid'],
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET)
+        utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        ret = self.service.platform_interfaces(self.context, ihost['id'] + 1)
+        self.assertEqual(ret, [])
 
     def test_kube_download_images(self):
         # Create an upgrade
@@ -1012,3 +1161,268 @@ class ManagerTestCase(base.DbTestCase):
         # Verify that the host upgrade status was cleared
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
         self.assertIsNotNone(updated_host_upgrade.status)
+
+    def test_kube_upgrade_networking(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_NETWORKING,
+        )
+
+        # Upgrade kubernetes networking
+        self.service.kube_upgrade_networking(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADED_NETWORKING)
+
+    def test_kube_upgrade_networking_ansible_fail(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_NETWORKING,
+        )
+        # Fake an ansible failure
+        self.fake_subprocess_popen.returncode = 1
+
+        # Upgrade kubernetes networking
+        self.service.kube_upgrade_networking(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
+
+    def test_configure_out_of_date(self):
+        config_applied = self.service._config_set_reboot_required(uuid.uuid4())
+        config_target = self.service._config_set_reboot_required(uuid.uuid4())
+        ihost = self._create_test_ihost(config_applied=config_applied,
+                config_target=config_target)
+        os.path.isfile = mock.Mock(return_value=True)
+        cutils.is_aio_system = mock.Mock(return_value=True)
+        ihost['mgmt_mac'] = '00:11:22:33:44:55'
+        ihost['mgmt_ip'] = '1.2.3.42'
+        ihost['hostname'] = 'controller-0'
+        ihost['invprovision'] = 'provisioned'
+        ihost['personality'] = 'controller'
+        ihost['administrative'] = 'unlocked'
+        ihost['operational'] = 'available'
+        ihost['availability'] = 'online'
+        ihost['serialid'] = '1234567890abc'
+        ihost['boot_device'] = 'sda'
+        ihost['rootfs_device'] = 'sda'
+        ihost['install_output'] = 'text'
+        ihost['console'] = 'ttyS0,115200'
+        self.service.configure_ihost(self.context, ihost)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+        imsg_dict = {'config_applied': res['config_target']}
+        self.service.iconfig_update_by_ihost(self.context, ihost['uuid'], imsg_dict)
+        self.assertEqual(self.alarm_raised, False)
+
+        personalities = [constants.CONTROLLER]
+        self.service._config_update_hosts(self.context, personalities, reboot=True)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+
+        personalities = [constants.CONTROLLER]
+        self.service._config_update_hosts(self.context, personalities, reboot=False)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+        config_uuid = self.service._config_clear_reboot_required(res['config_target'])
+        imsg_dict = {'config_applied': config_uuid}
+        self.service.iconfig_update_by_ihost(self.context, ihost['uuid'], imsg_dict)
+        self.assertEqual(self.alarm_raised, True)
+
+    def _raise_alarm(self, fault):
+        self.alarm_raised = True
+
+    def _clear_alarm(self, fm_id, fm_instance):
+        self.alarm_raised = False
+
+    def _create_test_ihosts(self):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55',
+            mgmt_ip='1.2.3.4')
+        # Create controller-1
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-1',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='22:44:33:55:11:66',
+            mgmt_ip='1.2.3.5')
+        # Create compute-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='22:44:33:55:11:77',
+            mgmt_ip='1.2.3.6')
+
+    def test_get_ihost_by_macs(self):
+        self._create_test_ihosts()
+        ihost_macs = ['22:44:33:55:11:66', '22:44:33:88:11:66']
+        ihost = self.service.get_ihost_by_macs(self.context, ihost_macs)
+        self.assertEqual(ihost.mgmt_mac, '22:44:33:55:11:66')
+
+    def test_get_ihost_by_macs_no_match(self):
+        self._create_test_ihosts()
+        ihost = None
+        ihost_macs = ['22:44:33:99:11:66', '22:44:33:88:11:66']
+        ihost = self.service.get_ihost_by_macs(self.context, ihost_macs)
+        self.assertEqual(ihost, None)
+
+    def test_get_ihost_by_hostname(self):
+        self._create_test_ihosts()
+        ihost_hostname = 'controller-1'
+        ihost = self.service.get_ihost_by_hostname(self.context, ihost_hostname)
+        self.assertEqual(ihost.mgmt_mac, '22:44:33:55:11:66')
+        self.assertEqual(ihost.mgmt_ip, '1.2.3.5')
+        self.assertEqual(ihost.hostname, 'controller-1')
+
+    def test_get_ihost_by_hostname_invalid_name(self):
+        self._create_test_ihosts()
+        ihost_hostname = 'compute'
+        ihost = None
+        ihost = self.service.get_ihost_by_hostname(self.context, ihost_hostname)
+        self.assertEqual(ihost, None)
+
+    def test_pci_device_update_by_host(self):
+        # Create compute-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+        PCI_DEV_1 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_1',
+                     'pciaddr': '0000:0b:01.0',
+                     'pclass_id': '060100',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0443',
+                     'enabled': True}
+        PCI_DEV_2 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_2',
+                     'pciaddr': '0000:0c:01.0',
+                     'pclass_id': '060200',
+                     'pvendor_id': '8088',
+                     'pdevice_id': '0444',
+                     'enabled': True}
+        pci_device_dict_array = [PCI_DEV_1, PCI_DEV_2]
+
+        # create new dev
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_device_dict_array)
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_1['pciaddr'], host_id)
+        for key in PCI_DEV_1:
+            self.assertEqual(dev[key], PCI_DEV_1[key])
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+        for key in PCI_DEV_2:
+            self.assertEqual(dev[key], PCI_DEV_2[key])
+
+        # update existed dev
+        pci_dev_dict_update1 = [{'pciaddr': PCI_DEV_2['pciaddr'],
+                                'pclass_id': '060500',
+                                'pvendor_id': '8086',
+                                'pdevice_id': '0449',
+                                'pclass': '0600',
+                                'pvendor': '',
+                                'psvendor': '',
+                                'psdevice': 'qat',
+                                'sriov_totalvfs': 32,
+                                'sriov_numvfs': 4,
+                                'sriov_vfs_pci_address': '',
+                                'driver': ''}]
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update1)
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+
+        for key in pci_dev_dict_update1[0]:
+            self.assertEqual(dev[key], pci_dev_dict_update1[0][key])
+
+        # update existed dev failure case, failed to change uuid.
+        pci_dev_dict_update2 = [{'pciaddr': PCI_DEV_2['pciaddr'],
+                                'pclass_id': '060500',
+                                'pvendor_id': '8086',
+                                'pdevice_id': '0449',
+                                'pclass': '0600',
+                                'pvendor': '',
+                                'psvendor': '',
+                                'psdevice': 'qat',
+                                'sriov_totalvfs': 32,
+                                'sriov_numvfs': 4,
+                                'sriov_vfs_pci_address': '',
+                                'driver': '',
+                                'uuid': 1122}]
+
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update2)
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+        self.assertEqual(dev['uuid'], PCI_DEV_2['uuid'])
+
+    def test_inumas_update_by_ihost(self):
+        # Create compute-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+        utils.create_test_node(id=1, numa_node=0, forihostid=host_id)
+        utils.create_test_node(id=2, numa_node=1, forihostid=host_id)
+        port1 = utils.create_test_ethernet_port(
+            id=1, name="port1", host_id=host_id,
+            interface_id="1122", mac='08:00:27:43:60:11', numa_node=3)
+        self.assertEqual(port1['node_id'], None)
+        inuma_dict_array = [{'numa_node': 1}, {'numa_node': 3}]
+        self.service.inumas_update_by_ihost(self.context, host_uuid, inuma_dict_array)
+        updated_port = self.dbapi.ethernet_port_get(port1['uuid'], host_id)
+
+        self.assertEqual(updated_port['node_id'], 3)

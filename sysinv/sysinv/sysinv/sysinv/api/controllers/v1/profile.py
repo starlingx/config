@@ -1024,7 +1024,7 @@ class ProfileController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @expose('json')
     def import_profile(self, file):
-        class ProfileObj(object):
+        class ProfileObj(object):  # noqa: F823
             display = ""
             proc = None
 
@@ -1470,7 +1470,7 @@ def _create_if_profile(profile_name, profile_node):
 
             try:
                 pecan.request.dbapi.iinterface_update(i.uuid, idict)
-            except Exception as e:
+            except Exception:
                 raise wsme.exc.ClientSideError(_("Failed to link interface uses."))
     except Exception as exc:
         ihost.ethernet_ports = \

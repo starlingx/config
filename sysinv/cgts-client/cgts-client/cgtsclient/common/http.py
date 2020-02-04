@@ -528,7 +528,7 @@ class ResponseBodyIterator(object):
 
     def __iter__(self):
         while True:
-            yield self.next()
+            yield six.next()
 
     def next(self):
         chunk = self.resp.read(CHUNKSIZE)

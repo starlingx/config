@@ -13,10 +13,10 @@ from collections import OrderedDict
 import datetime
 import os
 
+from cgtsclient._i18n import _
 from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
-from cgtsclient.openstack.common.gettextutils import _
 from cgtsclient.v1 import icpu as icpu_utils
 from cgtsclient.v1 import ihost as ihost_utils
 from cgtsclient.v1 import iinterface as iinterface_utils
@@ -512,6 +512,7 @@ def _list_storage(cc, host):
                     'lvm_vg_name']
     fields = ['uuid', 'lvm_pv_name', 'disk_or_part_device_path', 'lvm_vg_name']
     utils.print_list(ipvs, fields, field_labels, sortby=0)
+
 
 """
 NOTE (neid):

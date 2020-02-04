@@ -8,26 +8,18 @@
 Tests for the API / pv / methods.
 """
 
-import mock
-import webtest.app
 from six.moves import http_client
+import webtest.app
 
 from oslo_utils import uuidutils
 from sysinv.common import constants
 
 from sysinv.tests.api import base
+from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 
 
-class FakeConductorAPI(object):
-
-    def __init__(self, dbapi):
-        self.dbapi = dbapi
-        self.create_controller_filesystems = mock.MagicMock()
-
-
-class TestPV(base.FunctionalTest):
-
+class ApiPVTestCaseMixin(object):
     # can perform API operations on this object at a sublevel of host
     HOST_PREFIX = '/ihosts'
 
@@ -73,42 +65,11 @@ class TestPV(base.FunctionalTest):
     hidden_api_fields = ['forihostid']
 
     def setUp(self):
-        super(TestPV, self).setUp()
+        super(ApiPVTestCaseMixin, self).setUp()
 
-        # Mock the conductor API
-        self.fake_conductor_api = FakeConductorAPI(self.dbapi)
-        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI')
-        self.mock_conductor_api = p.start()
-        self.mock_conductor_api.return_value = self.fake_conductor_api
-        self.addCleanup(p.stop)
-
-        # Behave as if the API is running on controller-0
-        p = mock.patch('socket.gethostname')
-        self.mock_socket_gethostname = p.start()
-        self.mock_socket_gethostname.return_value = 'controller-0'
-        self.addCleanup(p.stop)
-
-        # Behave as if running on a virtual system
-        p = mock.patch('sysinv.common.utils.is_virtual')
-        self.mock_utils_is_virtual = p.start()
-        self.mock_utils_is_virtual.return_value = True
-        self.addCleanup(p.stop)
-
-        # Create an isystem and load
-        self.system = dbutils.create_test_isystem(
-            capabilities={"cinder_backend": constants.CINDER_BACKEND_CEPH,
-                          "vswitch_type": constants.VSWITCH_TYPE_NONE,
-                          "region_config": False,
-                          "sdn_enabled": False,
-                          "shared_services": "[]"}
-        )
-        self.load = dbutils.create_test_load()
-        # Create controller-0
-        self.ihost = self._create_controller_0()
-        # Create disk on the controller
-        self.disk = self._create_disk(self.ihost.id)
+        self.disk = self.disks.get(self.host.id)
         # Create logical volume group
-        self.lvg = self._create_lvg(self.ihost.id,
+        self.lvg = self._create_lvg(self.host.id,
                                     self.lvm_vg_name)
 
     def get_single_url(self, uuid):
@@ -156,17 +117,9 @@ class TestPV(base.FunctionalTest):
         for field in self.hidden_api_fields:
             self.assertNotIn(field, api_object)
 
-    def get_post_object(self):
-        return dbutils.post_get_test_pv(forihostid=self.ihost.id,
-                                        forilvgid=self.lvg.id,
-                                        idisk_id=self.disk.id,
-                                        idisk_uuid=self.disk.uuid,
-                                        lvm_vg_name=self.lvm_vg_name,
-                                        disk_or_part_uuid=self.disk.uuid)
-
     def _create_db_object(self, obj_id=None):
         return dbutils.create_test_pv(id=obj_id,
-                                      forihostid=self.ihost.id,
+                                      forihostid=self.host.id,
                                       forilvgid=self.lvg.id,
                                       idisk_id=self.disk.id,
                                       idisk_uuid=self.disk.uuid,
@@ -174,10 +127,22 @@ class TestPV(base.FunctionalTest):
                                       disk_or_part_uuid=self.disk.uuid)
 
 
-class TestPostPV(TestPV):
+class ApiPVPostTestSuiteMixin(ApiPVTestCaseMixin):
 
     def setUp(self):
-        super(TestPostPV, self).setUp()
+        super(ApiPVPostTestSuiteMixin, self).setUp()
+        disk_1_path = '/dev/disk/by-path/pci-0000:00:0d.0-ata-2.0'
+        self.disk_1 = dbutils.create_test_idisk(device_node='/dev/sdb',
+                                                device_path=disk_1_path,
+                                                forihostid=self.host.id)
+
+    def get_post_object(self):
+        return dbutils.post_get_test_pv(forihostid=self.host.id,
+                                        forilvgid=self.lvg.id,
+                                        idisk_id=self.disk_1.id,
+                                        idisk_uuid=self.disk_1.uuid,
+                                        lvm_vg_name=self.lvm_vg_name,
+                                        disk_or_part_uuid=self.disk_1.uuid)
 
     def test_create_success(self):
         # Test creation of object
@@ -231,7 +196,7 @@ class TestPostPV(TestPV):
                           headers=self.API_HEADERS)
 
 
-class TestDeletePV(TestPV):
+class ApiPVDeleteTestSuiteMixin(ApiPVTestCaseMixin):
     """ Tests deletion.
         Typically delete APIs return NO CONTENT.
         python2 and python3 libraries may return different
@@ -239,8 +204,7 @@ class TestDeletePV(TestPV):
     """
 
     def setUp(self):
-        super(TestDeletePV, self).setUp()
-        # create a partition
+        super(ApiPVDeleteTestSuiteMixin, self).setUp()
         self.delete_object = self._create_db_object()
 
     # The PV delete is not a blocking operation.
@@ -256,12 +220,8 @@ class TestDeletePV(TestPV):
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
 
-class TestListPVs(TestPV):
-    """ PV list operations
-    """
-
-    def setUp(self):
-        super(TestListPVs, self).setUp()
+class ApiPVListTestSuiteMixin(ApiPVTestCaseMixin):
+    """ list operations """
 
     def test_empty_list(self):
         response = self.get_json(self.API_PREFIX)
@@ -278,7 +238,7 @@ class TestListPVs(TestPV):
         self.single_object = self._create_db_object()
 
         # Querying the URL scoped by host
-        response = self.get_json(self.get_host_scoped_url(self.ihost.uuid))
+        response = self.get_json(self.get_host_scoped_url(self.host.uuid))
 
         self.assertEqual(1, len(response[self.RESULT_KEY]))
         # Check the single result
@@ -292,7 +252,7 @@ class TestListPVs(TestPV):
             loop_object = self._create_db_object(obj_id=obj_id)
             result_list.append(loop_object['uuid'])
 
-        response = self.get_json(self.get_host_scoped_url(self.ihost.uuid))
+        response = self.get_json(self.get_host_scoped_url(self.host.uuid))
         self.assertEqual(len(result_list), len(response[self.RESULT_KEY]))
 
         # Verify that the sorted list of uuids is the same
@@ -300,13 +260,14 @@ class TestListPVs(TestPV):
         self.assertEqual(result_list.sort(), uuids.sort())
 
 
-class TestPatchPV(TestPV):
+class ApiPVPatchTestSuiteMixin(ApiPVTestCaseMixin):
+    """ patch operations """
     patch_path = '/lvm_pe_alloced'
     patch_field = 'lvm_pe_alloced'
     patch_value = 2
 
     def setUp(self):
-        super(TestPatchPV, self).setUp()
+        super(ApiPVPatchTestSuiteMixin, self).setUp()
         self.patch_object = self._create_db_object()
 
     def test_patch_invalid_field(self):
@@ -347,3 +308,29 @@ class TestPatchPV(TestPV):
                                    expect_errors=True)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+
+
+#  ============= IPv4 environment tests ==============
+# Tests PV Api operations for a Controller (defaults to IPv4)
+class PlatformIPv4ControllerApiPVPatchTestCase(ApiPVPatchTestSuiteMixin,
+                                               base.FunctionalTest,
+                                               dbbase.ControllerHostTestCase):
+    pass
+
+
+class PlatformIPv4ControllerApiPVListTestCase(ApiPVListTestSuiteMixin,
+                                              base.FunctionalTest,
+                                              dbbase.ControllerHostTestCase):
+    pass
+
+
+class PlatformIPv4ControllerApiPVPostTestCase(ApiPVPostTestSuiteMixin,
+                                              base.FunctionalTest,
+                                              dbbase.ControllerHostTestCase):
+    pass
+
+
+class PlatformIPv4ControllerApiPVDeleteTestCase(ApiPVDeleteTestSuiteMixin,
+                                                base.FunctionalTest,
+                                                dbbase.ControllerHostTestCase):
+    pass

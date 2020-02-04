@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -80,6 +80,22 @@ def get_kube_versions():
          'available_patches': [],
          },
     ]
+
+
+def get_kube_networking_upgrade_version(kube_upgrade):
+    """Determine the version that kubernetes networking
+       should be upgraded to."""
+    if kube_upgrade.state in [
+            KUBE_UPGRADE_STARTED,
+            KUBE_UPGRADE_DOWNLOADING_IMAGES,
+            KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
+            KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            KUBE_UPGRADING_FIRST_MASTER,
+            KUBE_UPGRADING_FIRST_MASTER_FAILED,
+            KUBE_UPGRADED_FIRST_MASTER]:
+        return kube_upgrade.from_version
+    else:
+        return kube_upgrade.to_version
 
 
 class KubeOperator(object):
@@ -386,6 +402,42 @@ class KubeOperator(object):
             LOG.error("Failed to delete custom object, Namespace %s: %s"
                       % (namespace, e))
             raise
+
+    def kube_get_control_plane_pod_ready_status(self):
+        """Returns the ready status of the control plane pods."""
+        c = self._get_kubernetesclient_core()
+
+        # First get a list of master nodes
+        master_nodes = list()
+        api_response = c.list_node(
+            label_selector="node-role.kubernetes.io/master")
+        for node in api_response.items:
+            master_nodes.append(node.metadata.name)
+
+        # Populate status dictionary
+        ready_status = dict()
+        for node_name in master_nodes:
+            for component in [KUBE_APISERVER,
+                              KUBE_CONTROLLER_MANAGER,
+                              KUBE_SCHEDULER]:
+                # Control plane pods are named by component and node.
+                # E.g. kube-apiserver-controller-0
+                pod_name = component + '-' + node_name
+                ready_status[pod_name] = None
+
+        # Retrieve the control plane pods
+        api_response = c.list_pod_for_all_namespaces(
+            label_selector="component in (%s,%s,%s)" % (
+                KUBE_APISERVER, KUBE_CONTROLLER_MANAGER, KUBE_SCHEDULER)
+        )
+        pods = api_response.items
+        for pod in pods:
+            if pod.status.conditions is not None:
+                for condition in pod.status.conditions:
+                    if condition.type == "Ready":
+                        ready_status[pod.metadata.name] = condition.status
+
+        return ready_status
 
     def kube_get_control_plane_versions(self):
         """Returns the lowest control plane component version on each

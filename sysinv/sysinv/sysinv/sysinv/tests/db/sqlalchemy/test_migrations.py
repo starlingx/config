@@ -48,14 +48,17 @@ from six.moves.urllib.parse import urlparse
 import mock
 import sqlalchemy
 import sqlalchemy.exc
+import subprocess
 
 from migrate.versioning import repository
 from oslo_db.sqlalchemy import utils as db_utils
+from oslo_concurrency import lockutils
+from oslo_config import cfg
 from oslo_log import log as logging
 from sqlalchemy import MetaData, Table
-from sysinv.openstack.common import lockutils
 
 import sysinv.db.sqlalchemy.migrate_repo
+from sysinv.tests import conf_fixture
 from sysinv.tests import utils as test_utils
 
 LOG = logging.getLogger(__name__)
@@ -198,13 +201,11 @@ class BaseMigrationTestCase(test_utils.BaseTestCase):
         super(BaseMigrationTestCase, self).tearDown()
 
     def execute_cmd(self, cmd=None):
-        from future import standard_library
-        standard_library.install_aliases()
-        from subprocess import getstatusoutput
-        status, output = getstatusoutput(cmd)
-
+        process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+        output = process.communicate()[0]
         LOG.debug(output)
-        self.assertEqual(0, status,
+        self.assertEqual(0, process.returncode,
                          "Failed to run: %s\n%s" % (cmd, output))
 
     @lockutils.synchronized('pgadmin', 'tests-', external=True)
@@ -417,8 +418,8 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
 
         self._post_downgrade_043.assert_called_with(self.engine)
 
-    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     @mock.patch.object(WalkVersionsMixin, '_migrate_down')
+    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     def test_walk_versions_all_default(self, _migrate_up, _migrate_down):
         self.REPOSITORY.latest = 20
         self.migration_api.db_version.return_value = self.INIT_VERSION
@@ -432,13 +433,13 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
 
         versions = range(self.INIT_VERSION + 1, self.REPOSITORY.latest + 1)
         upgraded = [mock.call(None, v, with_data=True) for v in versions]
-        self.assertEqual(self._migrate_up.call_args_list, upgraded)
+        self.assertEqual(_migrate_up.call_args_list, upgraded)
 
         downgraded = [mock.call(None, v - 1) for v in reversed(versions)]
-        self.assertEqual(self._migrate_down.call_args_list, downgraded)
+        self.assertEqual(_migrate_down.call_args_list, downgraded)
 
-    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     @mock.patch.object(WalkVersionsMixin, '_migrate_down')
+    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     def test_walk_versions_all_true(self, _migrate_up, _migrate_down):
         self.REPOSITORY.latest = 20
         self.migration_api.db_version.return_value = self.INIT_VERSION
@@ -453,7 +454,7 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
         upgraded.extend(
             [mock.call(self.engine, v) for v in reversed(versions)]
         )
-        self.assertEqual(upgraded, self._migrate_up.call_args_list)
+        self.assertEqual(upgraded, _migrate_up.call_args_list)
 
         downgraded_1 = [
             mock.call(self.engine, v - 1, with_data=True) for v in versions
@@ -463,10 +464,10 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
             downgraded_2.append(mock.call(self.engine, v - 1))
             downgraded_2.append(mock.call(self.engine, v - 1))
         downgraded = downgraded_1 + downgraded_2
-        self.assertEqual(self._migrate_down.call_args_list, downgraded)
+        self.assertEqual(_migrate_down.call_args_list, downgraded)
 
-    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     @mock.patch.object(WalkVersionsMixin, '_migrate_down')
+    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     def test_walk_versions_true_false(self, _migrate_up, _migrate_down):
         self.REPOSITORY.latest = 20
         self.migration_api.db_version.return_value = self.INIT_VERSION
@@ -479,15 +480,15 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
         for v in versions:
             upgraded.append(mock.call(self.engine, v, with_data=True))
             upgraded.append(mock.call(self.engine, v))
-        self.assertEqual(upgraded, self._migrate_up.call_args_list)
+        self.assertEqual(upgraded, _migrate_up.call_args_list)
 
         downgraded = [
             mock.call(self.engine, v - 1, with_data=True) for v in versions
         ]
-        self.assertEqual(self._migrate_down.call_args_list, downgraded)
+        self.assertEqual(_migrate_down.call_args_list, downgraded)
 
-    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     @mock.patch.object(WalkVersionsMixin, '_migrate_down')
+    @mock.patch.object(WalkVersionsMixin, '_migrate_up')
     def test_walk_versions_all_false(self, _migrate_up, _migrate_down):
         self.REPOSITORY.latest = 20
         self.migration_api.db_version.return_value = self.INIT_VERSION
@@ -499,7 +500,7 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
         upgraded = [
             mock.call(self.engine, v, with_data=True) for v in versions
         ]
-        self.assertEqual(upgraded, self._migrate_up.call_args_list)
+        self.assertEqual(upgraded, _migrate_up.call_args_list)
 
 
 class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
@@ -519,6 +520,8 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
 
     def setUp(self):
         super(TestMigrations, self).setUp()
+        self.useFixture(conf_fixture.ConfFixture(cfg.CONF))
+
         if six.PY2:
             version = -1
         else:
@@ -665,13 +668,11 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
     def test_postgresql_opportunistically(self):
         # Test is skipped because postgresql isn't present/configured on target
         # server and will cause errors. Skipped to prevent Jenkins notification.
-        self.skipTest("Skipping to prevent postgres from throwing error in Jenkins")
         self._test_postgresql_opportunistically()
 
     def test_postgresql_connect_fail(self):
         # Test is skipped because postgresql isn't present/configured on target
         # server and will cause errors. Skipped to prevent Jenkins notification.
-        self.skipTest("Skipping to prevent postgres from throwing error in Jenkins")
         """Test that we can trigger a postgres connection failure
 
         Test that we can fail gracefully to ensure we don't break people
@@ -744,7 +745,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'forinodeid': 'Integer', 'core': 'Integer', 'thread': 'Integer',
             'cpu_family': 'String', 'cpu_model': 'String', 'allocated_function': 'String',
             'capabilities': 'Text', 'forihostid': 'Integer',  # 'coProcessors': 'String',
-            'forinodeid': 'Integer', 'deleted_at': 'DateTime',
+            'deleted_at': 'DateTime',
             'created_at': 'DateTime', 'updated_at': 'DateTime'
         }
         for col, coltype in cpus_col.items():

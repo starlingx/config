@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2019 Wind River Systems, Inc.
+# Copyright (c) 2016-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -21,20 +21,22 @@ import yaml
 from tsconfig.tsconfig import SW_VERSION
 from tsconfig.tsconfig import PLATFORM_PATH
 
-from controllerconfig import DEFAULT_DOMAIN_NAME
 from controllerconfig import utils as cutils
-from controllerconfig.common import log
 from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
 
+from oslo_log import log
 
-LOG = log.get_logger(__name__)
+LOG = log.getLogger(__name__)
 
 POSTGRES_PATH = '/var/lib/postgresql'
 POSTGRES_DATA_DIR = os.path.join(POSTGRES_PATH, SW_VERSION)
 RABBIT_PATH = '/var/lib/rabbitmq'
 CONTROLLER_1_HOSTNAME = "controller-1"
 DB_CONNECTION = "postgresql://%s:%s@127.0.0.1/%s\n"
+
+# well-known default domain name
+DEFAULT_DOMAIN_NAME = 'Default'
 
 # Migration script actions
 ACTION_START = "start"

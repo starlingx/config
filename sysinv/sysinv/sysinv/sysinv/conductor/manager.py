@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -192,6 +192,9 @@ class ConductorManager(service.PeriodicService):
         # Timeouts for adding & removing operations
         self._pv_op_timeouts = {}
         self._stor_bck_op_timeouts = {}
+        # struct {'host_uuid':[config_uuid_0,config_uuid_1]}
+        # this will track the config w/ reboot request to apply
+        self._host_reboot_config_uuid = {}
 
     def start(self):
         self._start()
@@ -5277,12 +5280,27 @@ class ConductorManager(service.PeriodicService):
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
     def _upgrade_downgrade_kube_networking(self):
         try:
-            LOG.info(
-                "_upgrade_downgrade_kube_networking executing playbook: %s " %
-                constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK)
+            # Get the kubernetes version from the upgrade table
+            # if an upgrade exists
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            kube_version = \
+                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
+        except exception.NotFound:
+            # Not upgrading kubernetes, get the kubernetes version
+            # from the kubeadm config map
+            kube_version = self._kube.kube_get_kubernetes_version()
+
+        if not kube_version:
+            LOG.error("Unable to get the current kubernetes version.")
+            return False
+
+        try:
+            LOG.info("_upgrade_downgrade_kube_networking executing"
+                     " playbook: %s for version %s" %
+                     (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
 
             proc = subprocess.Popen(
-                ['ansible-playbook',
+                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
                  constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
                 stdout=subprocess.PIPE)
             out, _ = proc.communicate()
@@ -5632,21 +5650,25 @@ class ConductorManager(service.PeriodicService):
                      % flag_file)
             pass
 
-    def update_route_config(self, context):
+    def update_route_config(self, context, host_id):
         """add or remove a static route
 
         :param context: an admin context.
+        :param host_id: the host id
         """
 
         # update manifest files and notifiy agents to apply them
         personalities = [constants.CONTROLLER,
                          constants.WORKER,
                          constants.STORAGE]
-        config_uuid = self._config_update_hosts(context, personalities)
+        host = self.dbapi.ihost_get(host_id)
 
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host.uuid])
         config_dict = {
             "personalities": personalities,
-            "classes": 'platform::network::runtime'
+            'host_uuids': [host.uuid],
+            "classes": 'platform::network::routes::runtime'
         }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
@@ -7271,18 +7293,6 @@ class ConductorManager(service.PeriodicService):
                 data['name'], data['logical_volume'], data['size']))
             self.dbapi.controller_fs_create(data)
 
-        else:
-            values = {
-                'services': constants.SB_SVC_GLANCE,
-                'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_EXTERNAL],
-                'state': constants.SB_STATE_CONFIGURED,
-                'backend': constants.SB_TYPE_EXTERNAL,
-                'task': constants.SB_TASK_NONE,
-                'capabilities': {},
-                'forsystemid': system.id
-            }
-            self.dbapi.storage_external_create(values)
-
     def update_service_config(self, context, service=None, do_apply=False):
         """Update the service parameter configuration"""
 
@@ -7904,9 +7914,38 @@ class ConductorManager(service.PeriodicService):
             # We avoid re-raising this as it may brake critical operations after this one
             return constants.CINDER_RESIZE_FAILURE
 
+    def _remove_config_from_reboot_config_list(self, ihost_uuid, config_uuid):
+        LOG.info("_remove_config_from_reboot_config_list host: %s,config_uuid: %s" %
+                  (ihost_uuid, config_uuid))
+        if ihost_uuid in self._host_reboot_config_uuid:
+            try:
+                self._host_reboot_config_uuid[ihost_uuid].remove(config_uuid)
+            except ValueError:
+                LOG.info("_remove_config_from_reboot_config_list fail"
+                         " host:%s", ihost_uuid)
+                pass
+
+    def _clear_config_from_reboot_config_list(self, ihost_uuid):
+        LOG.info("_clear_config_from_reboot_config_list host:%s", ihost_uuid)
+        if ihost_uuid in self._host_reboot_config_uuid:
+            try:
+                del self._host_reboot_config_uuid[ihost_uuid][:]
+            except ValueError:
+                LOG.info("_clear_config_from_reboot_config_list fail"
+                         " host: %s", ihost_uuid)
+                pass
+
     def _config_out_of_date(self, ihost_obj):
         target = ihost_obj.config_target
         applied = ihost_obj.config_applied
+        applied_reboot = None
+        if applied is not None:
+            try:
+                applied_reboot = self._config_set_reboot_required(applied)
+            except ValueError:
+                # for worker node, the applied might be 'install'
+                applied_reboot = applied
+                pass
         hostname = ihost_obj.hostname
 
         if not hostname:
@@ -7917,6 +7956,7 @@ class ConductorManager(service.PeriodicService):
                      (hostname, applied))
             return False
         elif target == applied:
+            self._clear_config_from_reboot_config_list(ihost_obj.uuid)
             if ihost_obj.personality == constants.CONTROLLER:
 
                 controller_fs_list = self.dbapi.controller_fs_get_list()
@@ -7932,6 +7972,13 @@ class ConductorManager(service.PeriodicService):
             else:
                 LOG.info("%s: iconfig up to date: target %s, applied %s " %
                          (hostname, target, applied))
+                return False
+        elif target == applied_reboot:
+            if ihost_obj.uuid in self._host_reboot_config_uuid:
+                if len(self._host_reboot_config_uuid[ihost_obj.uuid]) == 0:
+                    return False
+                return True
+            else:
                 return False
         else:
             LOG.warn("%s: iconfig out of date: target %s, applied %s " %
@@ -8124,6 +8171,8 @@ class ConductorManager(service.PeriodicService):
         @cutils.synchronized(lock_name, external=False)
         def _sync_update_host_config_applied(self,
                                              context, ihost_obj, config_uuid):
+            self._remove_config_from_reboot_config_list(ihost_obj.uuid,
+                    config_uuid)
             if ihost_obj.config_applied != config_uuid:
                 ihost_obj.config_applied = config_uuid
                 ihost_obj.save(context)
@@ -8171,6 +8220,12 @@ class ConductorManager(service.PeriodicService):
 
         for host in hosts:
             if host.personality and host.personality in personalities:
+                if reboot:
+                    if host.uuid in self._host_reboot_config_uuid:
+                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
+                    else:
+                        self._host_reboot_config_uuid[host.uuid] = []
+                        self._host_reboot_config_uuid[host.uuid].append(config_uuid)
                 self._update_host_config_target(context, host, config_uuid)
 
         LOG.info("_config_update_hosts config_uuid=%s" % config_uuid)
@@ -8192,12 +8247,18 @@ class ConductorManager(service.PeriodicService):
 
         for host in hosts:
             if host.personality in personalities:
+                # Never generate hieradata for uninventoried hosts, as their
+                # interface config will be incomplete.
+                if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+                    LOG.info(
+                        "Cannot generate the configuration for %s, "
+                        "the host is not inventoried yet." % host.hostname)
                 # We will allow controller nodes to re-generate manifests
                 # when in an "provisioning" state. This will allow for
                 # example the ntp configuration to be changed on an CPE
                 # node before the "worker_config_complete" has been
                 # executed.
-                if (force or
+                elif (force or
                     host.invprovision == constants.PROVISIONED or
                     (host.invprovision == constants.PROVISIONING and
                      host.personality == constants.CONTROLLER)):
@@ -9166,19 +9227,25 @@ class ConductorManager(service.PeriodicService):
 
         return
 
-    def get_system_health(self, context, force=False, upgrade=False):
+    def get_system_health(self, context, force=False, upgrade=False,
+                          kube_upgrade=False):
         """
         Performs a system health check.
 
         :param context: request context.
         :param force: set to true to ignore minor and warning alarms
         :param upgrade: set to true to perform an upgrade health check
+        :param kube_upgrade: set to true to perform a kubernetes upgrade health
+                             check
         """
         health_util = health.Health(self.dbapi)
 
         if upgrade is True:
             return health_util.get_system_health_upgrade(context=context,
                                                          force=force)
+        elif kube_upgrade is True:
+            return health_util.get_system_health_kube_upgrade(context=context,
+                                                              force=force)
         else:
             return health_util.get_system_health(context=context,
                                                  force=force)
@@ -10450,7 +10517,7 @@ class ConductorManager(service.PeriodicService):
                 with open(f, 'rb') as file:
                     new_hash[f] = hashlib.md5(file.read()).hexdigest()
 
-            if cmp(old_hash, new_hash) != 0:
+            if old_hash != new_hash:
                 LOG.info("There has been an overrides change, setting up "
                          "reapply of %s", app.name)
                 self._app.set_reapply(app.name)
@@ -10605,7 +10672,8 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "host_uuids": [host.uuid],
-                    "classes": ['openstack::keystone::endpoint::runtime']
+                    "classes": ['openstack::keystone::endpoint::runtime',
+                                'openstack::barbican::runtime']
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict, force=True)
@@ -10976,8 +11044,26 @@ class ConductorManager(service.PeriodicService):
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
 
-        # TODO: Upgrade kubernetes networking.
-        LOG.info("Upgrade kubernetes networking here")
+        LOG.info("executing playbook: %s for version %s" %
+                 (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
+
+        proc = subprocess.Popen(
+            ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+             constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
+            stdout=subprocess.PIPE)
+        out, _ = proc.communicate()
+
+        LOG.info("ansible-playbook: %s." % out)
+
+        if proc.returncode:
+            LOG.warning("ansible-playbook returned an error: %s" %
+                        proc.returncode)
+            # Update the upgrade state
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = \
+                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
+            kube_upgrade_obj.save()
+            return
 
         # Indicate that networking upgrade is complete
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)

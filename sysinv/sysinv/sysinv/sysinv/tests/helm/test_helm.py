@@ -6,8 +6,11 @@
 import keyring
 import mock
 
+from sysinv.common import constants
+from sysinv.helm import common
 from sysinv.helm.helm import HelmOperator
 from sysinv.helm.manifest_base import ArmadaManifestOperator
+
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.tests.helm import base as helm_base
@@ -17,15 +20,38 @@ class StxOpenstackAppMixin(object):
     path_name = 'stx-openstack.tgz'
     app_name = 'stx-openstack'
 
+    def setUp(self):
+        super(StxOpenstackAppMixin, self).setUp()
+        # Label hosts with appropriate labels
+        for host in self.hosts:
+            if host.personality == constants.CONTROLLER:
+                dbutils.create_test_label(
+                    host_id=host.id,
+                    label_key=common.LABEL_CONTROLLER,
+                    label_value=common.LABEL_VALUE_ENABLED)
+            elif host.personality == constants.WORKER:
+                dbutils.create_test_label(
+                    host_id=host.id,
+                    label_key=common.LABEL_COMPUTE_LABEL,
+                    label_value=common.LABEL_VALUE_ENABLED)
 
-class HelmOperatorTestSuite(helm_base.HelmTestCaseMixin):
-    """When HelmOperatorTestSuite is added as a Mixin
+
+class StxPlatformAppMixin(object):
+    path_name = 'stx-platform.tgz'
+    app_name = 'oidc-auth-apps'
+
+    def setUp(self):
+        super(StxPlatformAppMixin, self).setUp()
+
+
+class HelmOperatorTestSuiteMixin(helm_base.HelmTestCaseMixin):
+    """When HelmOperatorTestSuiteMixin is added as a Mixin
        alongside a subclass of BaseHostTestCase
        these testcases are added to it
        This also requires an AppMixin to provide app_name
     """
     def setUp(self):
-        super(HelmOperatorTestSuite, self).setUp()
+        super(HelmOperatorTestSuiteMixin, self).setUp()
         self.app = dbutils.create_test_app(name=self.app_name)
         # If a ceph keyring entry is missing, a subprocess will be invoked
         # so a fake keyring password is being supplied here.
@@ -54,7 +80,7 @@ class HelmOperatorTestSuite(helm_base.HelmTestCaseMixin):
         self.addCleanup(write_file.stop)
 
     def tearDown(self):
-        super(HelmOperatorTestSuite, self).tearDown()
+        super(HelmOperatorTestSuiteMixin, self).tearDown()
 
     @mock.patch.object(HelmOperator, '_write_chart_overrides')
     def test_generate_helm_chart_overrides(self, mock_write_chart):
@@ -73,7 +99,7 @@ class HelmOperatorTestSuite(helm_base.HelmTestCaseMixin):
 class HelmSTXOpenstackControllerTestCase(StxOpenstackAppMixin,
                                          dbbase.BaseIPv6Mixin,
                                          dbbase.BaseCephStorageBackendMixin,
-                                         HelmOperatorTestSuite,
+                                         HelmOperatorTestSuiteMixin,
                                          dbbase.ControllerHostTestCase):
     pass
 
@@ -85,6 +111,19 @@ class HelmSTXOpenstackControllerTestCase(StxOpenstackAppMixin,
 # - stx-openstack app
 class HelmSTXOpenstackAIOTestCase(StxOpenstackAppMixin,
                                   dbbase.BaseCephStorageBackendMixin,
-                                  HelmOperatorTestSuite,
+                                  HelmOperatorTestSuiteMixin,
                                   dbbase.AIOSimplexHostTestCase):
+    pass
+
+
+# Test Configuration:
+# - Controller
+# - IPv6
+# - Ceph Storage
+# - stx-platform app
+class HelmSTXPlatformControllerTestCase(StxPlatformAppMixin,
+                                         dbbase.BaseIPv6Mixin,
+                                         dbbase.BaseCephStorageBackendMixin,
+                                         HelmOperatorTestSuiteMixin,
+                                         dbbase.ControllerHostTestCase):
     pass

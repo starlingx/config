@@ -1355,7 +1355,7 @@ GLANCE_REGISTRY_DATA_API = 'glance.db.registry.api'
 
 # kernel options for various security feature selections
 SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_V1 = 'spectre_meltdown_v1'
-SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_V1_OPTS = 'nopti nospectre_v2'
+SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_V1_OPTS = 'nopti nospectre_v2 nospectre_v1'
 SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_ALL = 'spectre_meltdown_all'
 SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_ALL_OPTS = ''
 SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_OPTS = {
@@ -1370,6 +1370,7 @@ SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS = SYSTEM_SECURITY_FEATURE_
 HELM_APP_OPENSTACK = 'stx-openstack'
 HELM_APP_PLATFORM = 'platform-integ-apps'
 HELM_APP_MONITOR = 'stx-monitor'
+HELM_APP_OIDC_AUTH = 'oidc-auth-apps'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
@@ -1389,6 +1390,7 @@ HELM_APP_APPLY_MODES = {
 
 HELM_APPS_PLATFORM_MANAGED = [
     HELM_APP_PLATFORM,
+    HELM_APP_OIDC_AUTH,
 ]
 
 # The order in which apps are listed here is important.

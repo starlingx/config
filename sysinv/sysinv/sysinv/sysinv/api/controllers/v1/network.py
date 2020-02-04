@@ -366,6 +366,7 @@ class NetworkController(rest.RestController):
             network['type'] in [constants.NETWORK_TYPE_MGMT,
                                 constants.NETWORK_TYPE_OAM,
                                 constants.NETWORK_TYPE_CLUSTER_HOST,
+                                constants.NETWORK_TYPE_PXEBOOT,
                                 constants.NETWORK_TYPE_CLUSTER_POD,
                                 constants.NETWORK_TYPE_CLUSTER_SERVICE]:
             msg = _("Cannot delete type {} network {} after initial "

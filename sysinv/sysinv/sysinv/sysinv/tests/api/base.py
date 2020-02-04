@@ -55,9 +55,6 @@ class FunctionalTest(base.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-        # mock.patch('lockutils.set_defaults',
-        #            side_effect=lambda a: lambda f: lambda *args: f(*args))
-
     def _make_app(self, enable_acl=False):
         # Determine where we are so we can set up paths in the config
         root_dir = self.path_get()
@@ -142,7 +139,9 @@ class FunctionalTest(base.TestCase):
         return response
 
     def get_json(self, path, expect_errors=False, headers=None,
-                 extra_environ=None, q=[], path_prefix=PATH_PREFIX, **params):
+                 extra_environ=None, q=None, path_prefix=PATH_PREFIX, **params):
+        if q is None:
+            q = []
         full_path = path_prefix + path
         query_params = {'q.field': [],
                         'q.value': [],

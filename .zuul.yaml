@@ -8,28 +8,28 @@
       jobs:
         - openstack-tox-linters
         - sysinv-tox-py27
-        - sysinv-tox-py35
+        - sysinv-tox-py36
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
         - controllerconfig-tox-flake8
-        - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - cgtsclient-tox-py27
+        - cgtsclient-tox-py36
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
     gate:
       jobs:
         - openstack-tox-linters
         - sysinv-tox-py27
-        - sysinv-tox-py35
+        - sysinv-tox-py36
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
         - controllerconfig-tox-flake8
-        - controllerconfig-tox-py27
         - controllerconfig-tox-pylint
         - cgtsclient-tox-py27
+        - cgtsclient-tox-py36
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
 
@@ -50,11 +50,11 @@
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
-    name: sysinv-tox-py35
+    name: sysinv-tox-py36
     parent: tox
     description: |
-      Run py35 test for sysinv
-    nodeset: ubuntu-xenial
+      Run py36 test for sysinv
+    nodeset: ubuntu-bionic
     required-projects:
       - starlingx/fault
       - starlingx/update
@@ -62,7 +62,7 @@
     files:
       - sysinv/sysinv/*
     vars:
-      tox_envlist: py35
+      tox_envlist: py36
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
@@ -113,18 +113,6 @@
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
 
 - job:
-    name: controllerconfig-tox-py27
-    parent: tox
-    description: Run py27 tests for controllerconfig
-    required-projects:
-      - starlingx/fault
-    files:
-      - controllerconfig/*
-    vars:
-      tox_envlist: py27
-      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
-
-- job:
     name: controllerconfig-tox-pylint
     parent: tox
     description: Run pylint tests for controllerconfig
@@ -170,6 +158,19 @@
     vars:
       tox_envlist: py27
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
+
+- job:
+    name: cgtsclient-tox-py36
+    parent: tox
+    description: |
+      Run py36 test for cgts-client
+    nodeset: ubuntu-bionic
+    files:
+      - sysinv/cgts-client/*
+    vars:
+      tox_envlist: py36
+      tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
+
 
 - job:
     name: cgtsclient-tox-pep8

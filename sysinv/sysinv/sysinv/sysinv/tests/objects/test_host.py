@@ -7,6 +7,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #
+import mock
 
 from sysinv.db import api as db_api
 from sysinv.db.sqlalchemy import models
@@ -26,48 +27,37 @@ class TestHostObject(base.DbTestCase):
 
     def test_load(self):
         uuid = self.fake_node['uuid']
-        self.mox.StubOutWithMock(self.dbapi, 'ihost_get')
-
-        self.dbapi.ihost_get(uuid).AndReturn(self.obj_node)
-        self.mox.ReplayAll()
-
-        objects.host.get_by_uuid(self.admin_context, uuid)
-        self.mox.VerifyAll()
-        # TODO(deva): add tests for load-on-demand info, eg. ports,
-        #             once Port objects are created
+        with mock.patch.object(self.dbapi, "ihost_get") as host_get_mock:
+            host_get_mock.return_value = self.obj_node
+            objects.host.get_by_uuid(self.admin_context, uuid)
+            host_get_mock.assert_called_once_with(uuid)
 
     def test_save(self):
         uuid = self.fake_node['uuid']
-        self.mox.StubOutWithMock(self.dbapi, 'ihost_get')
-        self.mox.StubOutWithMock(self.dbapi, 'ihost_update')
-
-        self.dbapi.ihost_get(uuid).AndReturn(self.obj_node)
-        self.dbapi.ihost_update(uuid, {'location': {"City": "property"}})
-        self.mox.ReplayAll()
-
-        n = objects.host.get_by_uuid(self.admin_context, uuid)
-        n.location = {"City": "property"}
-        n.save()
-        self.mox.VerifyAll()
+        with mock.patch.object(self.dbapi, "ihost_get") as host_get_mock:
+            host_get_mock.return_value = self.obj_node
+            with mock.patch.object(self.dbapi, "ihost_update") as host_update_mock:
+                # These next 3 lines are the unit test
+                n = objects.host.get_by_uuid(self.admin_context, uuid)
+                n.location = {"City": "property"}
+                n.save()
+                # verify the routines were called as expected
+                host_get_mock.assert_called_once_with(uuid)
+                host_update_mock.assert_called_once_with(uuid,
+                    {'location': {"City": "property"}})
 
     def test_refresh(self):
         uuid = self.fake_node['uuid']
-        self.mox.StubOutWithMock(self.dbapi, 'ihost_get')
-
         first_obj = objects.host.from_db_object(self._get_db_node(
             dict(self.fake_node, location={"City": "first"})))
         second_obj = objects.host.from_db_object(self._get_db_node(
             dict(self.fake_node, location={"City": "second"})))
-
-        self.dbapi.ihost_get(uuid).AndReturn(first_obj)
-        self.dbapi.ihost_get(uuid).AndReturn(second_obj)
-        self.mox.ReplayAll()
-
-        n = objects.host.get_by_uuid(self.admin_context, uuid)
-        self.assertEqual(n.location, {"City": "first"})
-        n.refresh()
-        self.assertEqual(n.location, {"City": "second"})
-        self.mox.VerifyAll()
+        with mock.patch.object(self.dbapi, "ihost_get") as host_get_mock:
+            host_get_mock.side_effect = iter([first_obj, second_obj])
+            n = objects.host.get_by_uuid(self.admin_context, uuid)
+            self.assertEqual(n.location, {"City": "first"})
+            n.refresh()
+            self.assertEqual(n.location, {"City": "second"})
 
     def test_objectify(self):
 

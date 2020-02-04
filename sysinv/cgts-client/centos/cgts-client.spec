@@ -18,6 +18,9 @@ Requires: python3-prettytable
 Requires: bash-completion
 Requires: python3-neutronclient
 Requires: python3-keystoneclient
+Requires: python3-oslo-i18n
+Requires: python3-oslo-serialization
+Requires: python3-oslo-utils
 # Needed for python2 and python3 compatible
 Requires: python3-six
 

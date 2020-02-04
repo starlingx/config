@@ -230,7 +230,7 @@ def things_temporarily_local():
     base.SysinvObject.indirection_api = _api
 
 
-class _TestObject(object):
+class _TestObjectMixin(object):
     def test_hydration_type_error(self):
         primitive = {'sysinv_object.name': 'MyObj',
                      'sysinv_object.namespace': 'sysinv',
@@ -298,7 +298,7 @@ class _TestObject(object):
         raised = False
         ex_out = ""
         try:
-            obj.foobar
+            obj.foobar  # pylint: disable=no-member
         except NotImplementedError as ex:
             ex_out = str(ex)
             raised = True
@@ -443,7 +443,7 @@ class _TestObject(object):
         self.assertFalse('does_not_exist' in obj)
 
 
-class TestObject(_LocalTest, _TestObject):
+class TestObject(_LocalTest, _TestObjectMixin):
     pass
 
 

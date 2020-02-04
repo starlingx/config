@@ -12,10 +12,9 @@ import datetime
 import iso8601
 
 from controllerconfig.common.exceptions import KeystoneFail
-from controllerconfig.common import log
+from oslo_log import log
 
-
-LOG = log.get_logger(__name__)
+LOG = log.getLogger(__name__)
 
 
 class Token(object):

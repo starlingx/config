@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014-2019 Wind River Systems, Inc.
+# Copyright (c) 2014-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,18 +20,8 @@ class ConfigError(Exception):
         return self.message or ""
 
 
-class ConfigFail(ConfigError):
-    """General configuration error."""
-    pass
-
-
 class ValidateFail(ConfigError):
     """Validation of data failed."""
-    pass
-
-
-class BackupFail(ConfigError):
-    """Backup error."""
     pass
 
 
@@ -40,33 +30,8 @@ class UpgradeFail(ConfigError):
     pass
 
 
-class BackupWarn(ConfigError):
-    """Backup warning."""
-    pass
-
-
-class RestoreFail(ConfigError):
-    """Backup error."""
-    pass
-
-
 class KeystoneFail(ConfigError):
     """Keystone error."""
-    pass
-
-
-class SysInvFail(ConfigError):
-    """System Inventory error."""
-    pass
-
-
-class UserQuit(ConfigError):
-    """User initiated quit operation."""
-    pass
-
-
-class CloneFail(ConfigError):
-    """Clone error."""
     pass
 
 

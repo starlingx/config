@@ -77,6 +77,7 @@ properties = {
 int_uninitialized = 999
 
 SW_VERSION = '0.0'
+SW_VERSION_NEW = '1.0'
 
 
 def get_test_node(**kw):
@@ -100,7 +101,7 @@ def create_test_node(**kw):
     if 'id' not in kw:
         del node['id']
     dbapi = db_api.get_instance()
-    return dbapi.inode_create(node)
+    return dbapi.inode_create(node['forihostid'], node)
 
 
 def post_get_test_ihost(**kw):
@@ -222,9 +223,10 @@ def create_test_isystem(**kw):
 
 def get_test_load(**kw):
     load = {
-        "software_version": SW_VERSION,
-        "compatible_version": "N/A",
+        "software_version": kw.get("software_version", SW_VERSION),
+        "compatible_version": kw.get("compatible_version", "N/A"),
         "required_patches": "N/A",
+        "state": kw.get("state", constants.ACTIVE_LOAD_STATE),
     }
     return load
 
@@ -233,6 +235,19 @@ def create_test_load(**kw):
     load = get_test_load(**kw)
     dbapi = db_api.get_instance()
     return dbapi.load_create(load)
+
+
+def get_test_upgrade(**kw):
+    upgrade = {'from_load': kw.get('from_load', 1),
+               'to_load': kw.get('to_load', 2),
+               'state': kw.get('state', constants.UPGRADE_STARTING)}
+    return upgrade
+
+
+def create_test_upgrade(**kw):
+    upgrade = get_test_upgrade(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.software_upgrade_create(upgrade)
 
 
 def post_get_test_kube_upgrade(**kw):
@@ -329,14 +344,36 @@ def create_test_user(**kw):
     return dbapi.iuser_create(user)
 
 
+# Create test helm override object
+def get_test_helm_overrides(**kw):
+    helm_overrides = {
+        'id': kw.get('id'),
+        'name': kw.get('name'),
+        'namespace': kw.get('namespace'),
+        'user_overrides': kw.get('user_overrides', None),
+        'system_overrides': kw.get('system_overrides', None),
+        'app_id': kw.get('app_id', None)
+    }
+    return helm_overrides
+
+
+def create_test_helm_overrides(**kw):
+    helm_overrides = get_test_helm_overrides(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del helm_overrides['id']
+    dbapi = db_api.get_instance()
+    return dbapi.helm_override_create(helm_overrides)
+
+
 # Create test ntp object
 def get_test_ntp(**kw):
     ntp = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
-        'enabled': kw.get('enabled'),
         'ntpservers': kw.get('ntpservers'),
-        'forisystemid': kw.get('forisystemid', None)
+        'forisystemid': kw.get('forisystemid', None),
+        'isystem_uuid': kw.get('isystem_uuid', None)
     }
     return ntp
 
@@ -348,6 +385,14 @@ def create_test_ntp(**kw):
         del ntp['id']
     dbapi = db_api.get_instance()
     return dbapi.intp_create(ntp)
+
+
+def post_get_test_ntp(**kw):
+    ntp = get_test_ntp(**kw)
+    # When invoking a POST the following fields should not be populated:
+    del ntp['uuid']
+    del ntp['id']
+    return ntp
 
 
 # Create test ptp object
@@ -391,6 +436,16 @@ def create_test_dns(**kw):
         del dns['id']
     dbapi = db_api.get_instance()
     return dbapi.idns_create(dns)
+
+
+def post_get_test_dns(**kw):
+    dns = get_test_dns(**kw)
+
+    # When invoking a POST the following fields should not be populated:
+    del dns['uuid']
+    del dns['id']
+
+    return dns
 
 
 # Create test drbd object
@@ -862,7 +917,8 @@ def get_test_ethernet_port(**kw):
         'sriov_numvfs': kw.get('sriov_numvfs'),
         'sriov_vf_driver': kw.get('sriov_vf_driver'),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id'),
-        'driver': kw.get('driver')
+        'driver': kw.get('driver'),
+        'numa_node': kw.get('numa_node', -1)
     }
     return ethernet_port
 
@@ -1169,6 +1225,7 @@ def get_test_app(**kw):
         'manifest_file': kw.get('manifest_file',
                                 constants.APP_TARFILE_NAME_PLACEHOLDER),
         'status': kw.get('status', constants.APP_UPLOAD_IN_PROGRESS),
+        'active': kw.get('active', False),
     }
     return app_data
 
@@ -1218,3 +1275,28 @@ def create_test_pci_devices(**kw):
         del pci_devices['id']
     dbapi = db_api.get_instance()
     return dbapi.pci_device_create(pci_devices['host_id'], pci_devices)
+
+
+def get_test_label(**kw):
+    label = {
+        'host_id': kw.get('host_id'),
+        'label_key': kw.get('label_key'),
+        'label_value': kw.get('label_value'),
+    }
+    return label
+
+
+def create_test_label(**kw):
+    """Create test label in DB and return label object.
+    Function to be used to create test label objects in the database.
+    :param kw: kwargs with overriding values for labels's attributes.
+    :returns: Test label DB object.
+    """
+    label = get_test_label(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.label_create(label['host_id'], label)
+
+
+def create_test_oam(**kw):
+    dbapi = db_api.get_instance()
+    return dbapi.iextoam_get_one()

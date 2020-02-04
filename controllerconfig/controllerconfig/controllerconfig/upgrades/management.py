@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2019 Wind River Systems, Inc.
+# Copyright (c) 2015-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -15,13 +15,13 @@ import subprocess
 
 import tsconfig.tsconfig as tsc
 
-from controllerconfig import backup_restore
-from controllerconfig.common import log
 from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
 from controllerconfig.upgrades import utils
 
-LOG = log.get_logger(__name__)
+from oslo_log import log
+
+LOG = log.getLogger(__name__)
 
 
 def get_upgrade_databases(shared_services):
@@ -197,8 +197,9 @@ def create_simplex_backup(software_upgrade):
     with open(metadata_filename, 'w') as metadata_file:
         metadata_file.write(json_data)
 
-    backup_filename = get_upgrade_backup_filename(software_upgrade)
-    backup_restore.backup(backup_filename, constants.BACKUPS_PATH)
+    # TODO: Switch this over to use Ansible
+    # backup_filename = get_upgrade_backup_filename(software_upgrade)
+    # backup_restore.backup(backup_filename, constants.BACKUPS_PATH)
     LOG.info("Create simplex backup complete")
 
 

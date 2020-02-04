@@ -50,6 +50,9 @@ class BaseIPv4Mixin(object):
 
     nameservers = ['8.8.8.8', '8.8.4.4']
 
+    # Used to test changing oam from ipv4 to ipv6
+    change_family_oam_subnet = netaddr.IPNetwork('fd00::/64')
+
 
 class BaseIPv6Mixin(object):
 
@@ -62,6 +65,9 @@ class BaseIPv6Mixin(object):
     multicast_subnet = netaddr.IPNetwork('ff08::1:1:0/124')
 
     nameservers = ['2001:4860:4860::8888', '2001:4860:4860::8844']
+
+    # Used to test changing oam from ipv6 to ipv4
+    change_family_oam_subnet = netaddr.IPNetwork('10.10.10.0/24')
 
 
 class BaseCephStorageBackendMixin(object):
@@ -128,6 +134,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.hosts = []
         self.address_pools = []
         self.networks = []
+        self.oam = None
 
     def _create_test_common(self):
         self._create_test_system()
@@ -140,6 +147,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_ptp()
         self._create_test_networks()
         self._create_test_static_ips()
+        self._create_test_oam()
         self._create_test_multicast_ips()
 
     def _create_test_system(self):
@@ -178,10 +186,19 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.ptp = dbutils.create_test_ptp(
             system_id=self.system.id)
 
-    def _create_test_network(self, name, nettype, subnet, ranges=None):
+    def _create_test_network(self, name, network_type, subnet, ranges=None):
+        address_pool_id = self._create_test_address_pool(name, subnet, ranges).id
+
+        network = dbutils.create_test_network(
+            type=network_type,
+            address_pool_id=address_pool_id)
+
+        self.networks.append(network)
+        return network
+
+    def _create_test_address_pool(self, name, subnet, ranges=None):
         if not ranges:
             ranges = [(str(subnet[2]), str(subnet[-2]))]
-
         pool = dbutils.create_test_address_pool(
             name=name,
             network=str(subnet.network),
@@ -189,13 +206,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             prefix=subnet.prefixlen,
             ranges=ranges)
         self.address_pools.append(pool)
-
-        network = dbutils.create_test_network(
-            type=nettype,
-            address_pool_id=pool.id)
-
-        self.networks.append(network)
-        return network
+        return pool
 
     def _create_test_networks(self):
 
@@ -226,12 +237,15 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _create_test_addresses(self, hostnames, subnet, network_type,
                                start=1, stop=None):
         ips = itertools.islice(subnet, start, stop)
+        addresses = []
         for name in hostnames:
-            dbutils.create_test_address(
-                name=utils.format_address_name(name, network_type),
-                family=subnet.version,
-                prefix=subnet.prefixlen,
-                address=str(next(ips)))
+            address = dbutils.create_test_address(
+                          name=utils.format_address_name(name, network_type),
+                          family=subnet.version,
+                          prefix=subnet.prefixlen,
+                          address=str(next(ips)))
+            addresses.append(address)
+        return addresses
 
     def _create_test_static_ips(self):
         hostnames = [
@@ -249,7 +263,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             hostnames, self.pxeboot_subnet,
             constants.NETWORK_TYPE_PXEBOOT)
 
-        self._create_test_addresses(
+        self.mgmt_addresses = self._create_test_addresses(
             hostnames + platform_hostnames,
             self.mgmt_subnet,
             constants.NETWORK_TYPE_MGMT)
@@ -261,6 +275,9 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_addresses(
             hostnames, self.cluster_host_subnet,
             constants.NETWORK_TYPE_CLUSTER_HOST)
+
+    def _create_test_oam(self):
+        self.oam = dbutils.create_test_oam()
 
     def _create_test_multicast_ips(self):
 
@@ -284,6 +301,11 @@ class BaseHostTestCase(BaseSystemTestCase):
 
     def setUp(self):
         super(BaseHostTestCase, self).setUp()
+        self.disks = {}
+
+    def tearDown(self):
+        super(BaseHostTestCase, self).tearDown()
+        self.disks = {}
 
     def _create_test_host(self, personality, subfunction=None, numa_nodes=1,
                           unit=0, **kw):
@@ -325,9 +347,10 @@ class BaseHostTestCase(BaseSystemTestCase):
             self.dbapi.imemory_create(host.id,
                 dbutils.get_test_imemory(forinodeid=node.id))
 
-        self.dbapi.idisk_create(host.id,
+        disk = self.dbapi.idisk_create(host.id,
             dbutils.get_test_idisk(device_node=self.root_disk_device_node,
                                    device_type=self.root_disk_device_type))
+        self.disks[host.id] = disk
 
         self.hosts.append(host)
 
@@ -368,6 +391,7 @@ class BaseHostTestCase(BaseSystemTestCase):
                          constants.NETWORK_TYPE_CLUSTER_HOST]
         ifnames = ['oam', 'mgmt', 'cluster']
         index = 0
+        ifaces = []
         for nt, name in zip(network_types, ifnames):
             if (host.personality == constants.WORKER and
                     nt == constants.NETWORK_TYPE_OAM):
@@ -384,11 +408,13 @@ class BaseHostTestCase(BaseSystemTestCase):
                 forihostid=host['id'],
                 ihost_uuid=host['uuid'])
             iface = self.dbapi.iinterface_get(interface['uuid'])
+            ifaces.append(iface)
             network = self.dbapi.network_get_by_type(nt)
             dbutils.create_test_interface_network(
                 interface_id=iface.id,
                 network_id=network.id)
             index = index + 1
+        return ifaces
 
 
 class ControllerHostTestCase(BaseHostTestCase):
@@ -396,6 +422,18 @@ class ControllerHostTestCase(BaseHostTestCase):
     def setUp(self):
         super(ControllerHostTestCase, self).setUp()
         self.host = self._create_test_host(constants.CONTROLLER)
+        self._create_test_host_cpus(self.host, platform=16)
+
+
+class ProvisionedControllerHostTestCase(BaseHostTestCase):
+
+    def setUp(self):
+        super(ProvisionedControllerHostTestCase, self).setUp()
+        self.host = self._create_test_host(constants.CONTROLLER,
+                                           administrative=constants.ADMIN_UNLOCKED,
+                                           operational=constants.OPERATIONAL_ENABLED,
+                                           availability=constants.AVAILABILITY_AVAILABLE,
+                                           vim_progress_status=constants.VIM_SERVICES_ENABLED)
         self._create_test_host_cpus(self.host, platform=16)
 
 
@@ -427,6 +465,20 @@ class AIOHostTestCase(BaseHostTestCase):
         self._create_test_host_cpus(self.host, platform=2, vswitch=2, application=11)
 
 
+class ProvisionedAIOHostTestCase(BaseHostTestCase):
+
+    system_mode = constants.TIS_AIO_BUILD
+
+    def setUp(self):
+        super(ProvisionedAIOHostTestCase, self).setUp()
+        self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER,
+                                           administrative=constants.ADMIN_UNLOCKED,
+                                           operational=constants.OPERATIONAL_ENABLED,
+                                           availability=constants.AVAILABILITY_AVAILABLE,
+                                           vim_progress_status=constants.VIM_SERVICES_ENABLED)
+        self._create_test_host_cpus(self.host, platform=2, vswitch=2, application=11)
+
+
 class AIOSimplexHostTestCase(AIOHostTestCase):
     system_mode = constants.SYSTEM_MODE_SIMPLEX
 
@@ -437,3 +489,30 @@ class AIODuplexHostTestCase(AIOHostTestCase):
 
 class AIODuplexDirectHostTestCase(AIOHostTestCase):
     system_mode = constants.SYSTEM_MODE_DUPLEX_DIRECT
+
+
+class AIODuplexSystemTestCase(AIODuplexHostTestCase):
+
+    def setUp(self):
+        super(AIODuplexSystemTestCase, self).setUp()
+        self.host2 = self._create_test_host(constants.CONTROLLER,
+                                            constants.WORKER,
+                                            unit=1)
+        self._create_test_host_cpus(self.host2, platform=2, vswitch=2,
+                                    application=11)
+
+
+class ProvisionedAIODuplexSystemTestCase(ProvisionedAIOHostTestCase):
+    system_mode = constants.SYSTEM_MODE_DUPLEX
+
+    def setUp(self):
+        super(ProvisionedAIODuplexSystemTestCase, self).setUp()
+        self.host2 = self._create_test_host(constants.CONTROLLER,
+                                            constants.WORKER,
+                                            unit=1,
+                                            administrative=constants.ADMIN_UNLOCKED,
+                                            operational=constants.OPERATIONAL_ENABLED,
+                                            availability=constants.AVAILABILITY_AVAILABLE,
+                                            vim_progress_status=constants.VIM_SERVICES_ENABLED)
+        self._create_test_host_cpus(self.host2, platform=2, vswitch=2,
+                                    application=11)

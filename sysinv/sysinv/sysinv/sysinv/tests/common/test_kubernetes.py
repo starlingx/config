@@ -54,6 +54,23 @@ FAKE_KUBE_VERSIONS = [
      },
 ]
 
+FAKE_POD_STATUS = kubernetes.client.V1PodStatus(
+    conditions=[
+        kubernetes.client.V1PodCondition(
+            status="True",
+            type="Initialized"),
+        kubernetes.client.V1PodCondition(
+            status="True",
+            type="Ready"),
+        kubernetes.client.V1PodCondition(
+            status="True",
+            type="ContainersReady"),
+        kubernetes.client.V1PodCondition(
+            status="True",
+            type="PodScheduled"),
+    ],
+)
+
 
 def mock_get_kube_versions():
     return FAKE_KUBE_VERSIONS
@@ -193,6 +210,7 @@ class TestKubeOperator(base.TestCase):
                             metadata=kubernetes.client.V1ObjectMeta(
                                 name="kube-apiserver-test-node-1",
                                 namespace="kube-system"),
+                            status=FAKE_POD_STATUS,
                             spec=kubernetes.client.V1PodSpec(
                                 containers=[
                                     kubernetes.client.V1Container(
@@ -213,6 +231,7 @@ class TestKubeOperator(base.TestCase):
                             metadata=kubernetes.client.V1ObjectMeta(
                                 name="kube-controller-manager-test-node-1",
                                 namespace="kube-system"),
+                            status=FAKE_POD_STATUS,
                             spec=kubernetes.client.V1PodSpec(
                                 containers=[
                                     kubernetes.client.V1Container(
@@ -233,6 +252,7 @@ class TestKubeOperator(base.TestCase):
                             metadata=kubernetes.client.V1ObjectMeta(
                                 name="kube-scheduler-test-node-1",
                                 namespace="kube-system"),
+                            status=FAKE_POD_STATUS,
                             spec=kubernetes.client.V1PodSpec(
                                 containers=[
                                     kubernetes.client.V1Container(
@@ -253,6 +273,7 @@ class TestKubeOperator(base.TestCase):
                             metadata=kubernetes.client.V1ObjectMeta(
                                 name="kube-apiserver-test-node-2",
                                 namespace="kube-system"),
+                            status=FAKE_POD_STATUS,
                             spec=kubernetes.client.V1PodSpec(
                                 containers=[
                                     kubernetes.client.V1Container(
@@ -273,6 +294,7 @@ class TestKubeOperator(base.TestCase):
                             metadata=kubernetes.client.V1ObjectMeta(
                                 name="kube-controller-manager-test-node-2",
                                 namespace="kube-system"),
+                            status=FAKE_POD_STATUS,
                             spec=kubernetes.client.V1PodSpec(
                                 containers=[
                                     kubernetes.client.V1Container(
@@ -293,6 +315,7 @@ class TestKubeOperator(base.TestCase):
                             metadata=kubernetes.client.V1ObjectMeta(
                                 name="kube-scheduler-test-node-2",
                                 namespace="kube-system"),
+                            status=FAKE_POD_STATUS,
                             spec=kubernetes.client.V1PodSpec(
                                 containers=[
                                     kubernetes.client.V1Container(
@@ -398,10 +421,106 @@ class TestKubeOperator(base.TestCase):
                 ),
         }
 
-        self.single_node_result = kubernetes.client.V1NodeList(
+        self.cp_pods_list_result = kubernetes.client.V1PodList(
             api_version="v1",
             items=[
                 kubernetes.client.V1Pod(
+                    api_version="v1",
+                    kind="Pod",
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        name="kube-apiserver-test-node-1",
+                        namespace="kube-system"),
+                    status=FAKE_POD_STATUS,
+                    spec=kubernetes.client.V1PodSpec(
+                        containers=[
+                            kubernetes.client.V1Container(
+                                name="kube-apiserver",
+                                image="test-image-1:v1.42.1"),
+                        ],
+                    ),
+                ),
+                kubernetes.client.V1Pod(
+                    api_version="v1",
+                    kind="Pod",
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        name="kube-controller-manager-test-node-1",
+                        namespace="kube-system"),
+                    status=FAKE_POD_STATUS,
+                    spec=kubernetes.client.V1PodSpec(
+                        containers=[
+                            kubernetes.client.V1Container(
+                                name="kube-controller-manager",
+                                image="test-image-2:v1.42.1"),
+                        ],
+                    ),
+                ),
+                kubernetes.client.V1Pod(
+                    api_version="v1",
+                    kind="Pod",
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        name="kube-scheduler-test-node-1",
+                        namespace="kube-system"),
+                    status=FAKE_POD_STATUS,
+                    spec=kubernetes.client.V1PodSpec(
+                        containers=[
+                            kubernetes.client.V1Container(
+                                name="kube-scheduler",
+                                image="test-image-3:v1.42.1"),
+                        ],
+                    ),
+                ),
+                kubernetes.client.V1Pod(
+                    api_version="v1",
+                    kind="Pod",
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        name="kube-apiserver-test-node-2",
+                        namespace="kube-system"),
+                    status=FAKE_POD_STATUS,
+                    spec=kubernetes.client.V1PodSpec(
+                        containers=[
+                            kubernetes.client.V1Container(
+                                name="kube-apiserver",
+                                image="test-image-1:v1.42.1"),
+                        ],
+                    ),
+                ),
+                kubernetes.client.V1Pod(
+                    api_version="v1",
+                    kind="Pod",
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        name="kube-controller-manager-test-node-2",
+                        namespace="kube-system"),
+                    status=FAKE_POD_STATUS,
+                    spec=kubernetes.client.V1PodSpec(
+                        containers=[
+                            kubernetes.client.V1Container(
+                                name="kube-controller-manager",
+                                image="test-image-2:v1.42.1"),
+                        ],
+                    ),
+                ),
+                kubernetes.client.V1Pod(
+                    api_version="v1",
+                    kind="Pod",
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        name="kube-scheduler-test-node-2",
+                        namespace="kube-system"),
+                    status=FAKE_POD_STATUS,
+                    spec=kubernetes.client.V1PodSpec(
+                        containers=[
+                            kubernetes.client.V1Container(
+                                name="kube-scheduler",
+                                image="test-image-3:v1.42.1"),
+                        ],
+                    ),
+                ),
+            ],
+        )
+
+        self.single_node_result = kubernetes.client.V1NodeList(
+            api_version="v1",
+            items=[
+                kubernetes.client.V1Node(
                     api_version="v1",
                     kind="Node",
                     metadata=kubernetes.client.V1ObjectMeta(
@@ -426,7 +545,7 @@ class TestKubeOperator(base.TestCase):
         self.multi_node_result = kubernetes.client.V1NodeList(
             api_version="v1",
             items=[
-                kubernetes.client.V1Pod(
+                kubernetes.client.V1Node(
                     api_version="v1",
                     kind="Node",
                     metadata=kubernetes.client.V1ObjectMeta(
@@ -445,7 +564,7 @@ class TestKubeOperator(base.TestCase):
                             os_image="fake-os-image",
                             system_uuid="fake-system-uuid"))
                 ),
-                kubernetes.client.V1Pod(
+                kubernetes.client.V1Node(
                     api_version="v1",
                     kind="Node",
                     metadata=kubernetes.client.V1ObjectMeta(
@@ -470,13 +589,13 @@ class TestKubeOperator(base.TestCase):
         self.config_map_result = kubernetes.client.V1ConfigMap(
             api_version="v1",
             data={"ClusterConfiguration":
-                      "apiServer:\n"
-                      "  certSANs:\n"
-                      "  - 127.0.0.1\n"
-                      "  - 192.168.206.2\n"
-                      "apiVersion: kubeadm.k8s.io/v1beta2\n"
-                      "kubernetesVersion: v1.42.4\n"
-                      "kind: ClusterStatus\n"
+                  "apiServer:\n"
+                  "  certSANs:\n"
+                  "  - 127.0.0.1\n"
+                  "  - 192.168.206.2\n"
+                  "apiVersion: kubeadm.k8s.io/v1beta2\n"
+                  "kubernetesVersion: v1.42.4\n"
+                  "kind: ClusterStatus\n"
                   },
             metadata=kubernetes.client.V1ObjectMeta(
                 name="kubeadm-config",
@@ -486,12 +605,12 @@ class TestKubeOperator(base.TestCase):
         self.config_map_result_no_version = kubernetes.client.V1ConfigMap(
             api_version="v1",
             data={"ClusterConfiguration":
-                      "apiServer:\n"
-                      "  certSANs:\n"
-                      "  - 127.0.0.1\n"
-                      "  - 192.168.206.2\n"
-                      "apiVersion: kubeadm.k8s.io/v1beta2\n"
-                      "kind: ClusterStatus\n"
+                  "apiServer:\n"
+                  "  certSANs:\n"
+                  "  - 127.0.0.1\n"
+                  "  - 192.168.206.2\n"
+                  "apiVersion: kubeadm.k8s.io/v1beta2\n"
+                  "kind: ClusterStatus\n"
                   },
             metadata=kubernetes.client.V1ObjectMeta(
                 name="kubeadm-config",
@@ -512,6 +631,15 @@ class TestKubeOperator(base.TestCase):
             'kubernetes.client.CoreV1Api.list_namespaced_pod',
             mock_list_namespaced_pod)
         self.mocked_list_namespaced_pod.start()
+
+        self.list_pod_for_all_namespaces_result = None
+
+        def mock_list_pod_for_all_namespaces(obj, label_selector=""):
+            return self.list_pod_for_all_namespaces_result
+        self.mocked_list_pod_for_all_namespaces = mock.patch(
+            'kubernetes.client.CoreV1Api.list_pod_for_all_namespaces',
+            mock_list_pod_for_all_namespaces)
+        self.mocked_list_pod_for_all_namespaces.start()
 
         self.list_node_result = None
 
@@ -537,7 +665,9 @@ class TestKubeOperator(base.TestCase):
         super(TestKubeOperator, self).tearDown()
 
         self.mocked_list_namespaced_pod.stop()
+        self.mocked_list_pod_for_all_namespaces.stop()
         self.mocked_list_node.stop()
+        self.mocked_read_namespaced_config_map.stop()
 
     def test_kube_get_image_by_pod_name(self):
 
@@ -562,6 +692,47 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_image_by_pod_name(
             'test-pod-1', 'test-namespace-1', 'test-container-1')
         assert result == "test-image-1:imageversion-1"
+
+    def test_kube_get_control_plane_pod_ready_status(self):
+
+        self.list_pod_for_all_namespaces_result = self.cp_pods_list_result
+        self.list_node_result = self.multi_node_result
+
+        result = self.kube_operator.kube_get_control_plane_pod_ready_status()
+        assert result == {'kube-apiserver-test-node-1': 'True',
+                          'kube-controller-manager-test-node-1': 'True',
+                          'kube-scheduler-test-node-1': 'True',
+                          'kube-apiserver-test-node-2': 'True',
+                          'kube-controller-manager-test-node-2': 'True',
+                          'kube-scheduler-test-node-2': 'True'}
+
+    def test_kube_get_control_plane_pod_ready_status_single_node(self):
+
+        self.list_pod_for_all_namespaces_result = self.cp_pods_list_result
+        del self.cp_pods_list_result.items[5]
+        del self.cp_pods_list_result.items[4]
+        del self.cp_pods_list_result.items[3]
+        self.list_node_result = self.single_node_result
+
+        result = self.kube_operator.kube_get_control_plane_pod_ready_status()
+        assert result == {'kube-apiserver-test-node-1': 'True',
+                          'kube-controller-manager-test-node-1': 'True',
+                          'kube-scheduler-test-node-1': 'True'}
+
+    def test_kube_get_control_plane_pod_ready_status_missing_pods(self):
+
+        self.list_pod_for_all_namespaces_result = self.cp_pods_list_result
+        del self.cp_pods_list_result.items[5]
+        del self.cp_pods_list_result.items[1]
+        self.list_node_result = self.multi_node_result
+
+        result = self.kube_operator.kube_get_control_plane_pod_ready_status()
+        assert result == {'kube-apiserver-test-node-1': 'True',
+                          'kube-controller-manager-test-node-1': None,
+                          'kube-scheduler-test-node-1': 'True',
+                          'kube-apiserver-test-node-2': 'True',
+                          'kube-controller-manager-test-node-2': 'True',
+                          'kube-scheduler-test-node-2': None}
 
     def test_kube_get_control_plane_versions(self):
 
