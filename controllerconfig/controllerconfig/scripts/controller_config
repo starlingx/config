@@ -344,6 +344,18 @@ start()
         fi
     fi
 
+    # Copy over kube api server encryption provider config
+    if [ -e $CONFIG_DIR/kubernetes/encryption-provider.yaml ]
+    then
+        cp $CONFIG_DIR/kubernetes/encryption-provider.yaml /etc/kubernetes/
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy kube api server encryption provider config file"
+        else
+            chmod 600 /etc/kubernetes/encryption-provider.yaml
+        fi
+    fi
+
     # Keep the /opt/branding directory to preserve any new files
     rm -rf /opt/branding/*.tgz
     cp $CONFIG_DIR/branding/*.tgz /opt/branding 2>/dev/null
