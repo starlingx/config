@@ -21,7 +21,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = u'stx-config'
+project = u'StarlingX Configuration'
 copyright = u'2018, StarlingX'
 author = u'StarlingX'
 

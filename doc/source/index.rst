@@ -1,32 +1,35 @@
-========================
-stx-config Documentation
-========================
+===============================
+StarlingX Configuration Project
+===============================
 
-This is the documentation for StarlingX system configuration management.
+The starlingx/config project provides system configuration management.
 
-Release Notes
+-------------
+Release notes
 -------------
 
 .. toctree::
    :maxdepth: 1
 
-   Release Notes <https://docs.starlingx.io/releasenotes/stx-config>
+   Release notes <https://docs.starlingx.io/releasenotes/config>
 
-API Reference
+-------------
+API reference
 -------------
 
 .. toctree::
    :maxdepth: 1
 
-   API Reference <https://docs.starlingx.io/api-ref/stx-config>
+   API reference <https://docs.starlingx.io/api-ref/config>
 
+-----
 Links
 -----
 
-* Source: `stx-config`_
-* Code Review: `Gerrit`_
-* Bugs: `Storyboard`_
+* Source: `starlingx/config`_
+* Code review: `Gerrit`_
+* Project tracking: `Storyboard`_
 
-.. _stx-config: https://opendev.org/starlingx/config/
+.. _starlingx/config: https://opendev.org/starlingx/config/
 .. _Gerrit: https://review.opendev.org/#/q/project:starlingx/config
 .. _Storyboard: https://storyboard.openstack.org/#!/project/starlingx/config
