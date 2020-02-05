@@ -51,9 +51,6 @@ from sysinv.db import api
 from sysinv.db.sqlalchemy import models
 
 CONF = cfg.CONF
-CONF.import_opt('connection',
-                'sysinv.openstack.common.db.sqlalchemy.session',
-                group='database')
 CONF.import_opt('journal_min_size',
                 'sysinv.api.controllers.v1.storage',
                 group='journal')

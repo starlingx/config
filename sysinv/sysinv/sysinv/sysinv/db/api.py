@@ -33,9 +33,9 @@ from oslo_log import log
 
 LOG = log.getLogger(__name__)
 
-
 _BACKEND_MAPPING = {'sqlalchemy': 'sysinv.db.sqlalchemy.api'}
-IMPL = db_api.DBAPI.from_config(cfg.CONF, backend_mapping=_BACKEND_MAPPING,
+IMPL = db_api.DBAPI.from_config(cfg.CONF,
+                                backend_mapping=_BACKEND_MAPPING,
                                 lazy=True)
 
 
