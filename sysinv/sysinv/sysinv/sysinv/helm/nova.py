@@ -388,7 +388,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         cluster_host_ip = None
         ip_family = None
         for addr in addresses:
-            if addr.interface_uuid == cluster_host_iface.uuid:
+            if addr.interface_id == cluster_host_iface.id:
                 cluster_host_ip = addr.address
                 ip_family = addr.family
 

@@ -22,7 +22,7 @@ class Address(base.SysinvObject):
     fields = {'id': int,
               'uuid': utils.uuid_or_none,
               'forihostid': utils.int_or_none,
-              'interface_uuid': utils.uuid_or_none,
+              'interface_id': utils.int_or_none,
               'pool_uuid': utils.uuid_or_none,
               'ifname': utils.str_or_none,
               'family': utils.int_or_none,
@@ -32,7 +32,7 @@ class Address(base.SysinvObject):
               'name': utils.str_or_none,
               }
 
-    _foreign_fields = {'interface_uuid': 'interface:uuid',
+    _foreign_fields = {'interface_id': 'interface:id',
                        'pool_uuid': 'address_pool:uuid',
                        'ifname': 'interface:ifname',
                        'forihostid': 'interface:forihostid'}
