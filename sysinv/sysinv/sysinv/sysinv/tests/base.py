@@ -30,7 +30,6 @@ import copy
 import fixtures
 import mock
 import os
-import shutil
 import testtools
 
 from oslo_config import cfg
@@ -38,60 +37,47 @@ from oslo_db.sqlalchemy import enginefacade
 from oslo_log import log as logging
 from oslo_utils import timeutils
 
-from sysinv.common import paths
 from sysinv.db import api as dbapi
-from sysinv.db import migration
+from sysinv.db import migration as db_migration
+from sysinv.db.sqlalchemy import migration
+
 import sysinv.helm.utils
 from sysinv.objects import base as objects_base
 from sysinv.tests import conf_fixture
 from sysinv.tests import policy_fixture
 
+sys.modules['fm_core'] = mock.Mock()
+sys.modules['rpm'] = mock.Mock()
+
 CONF = cfg.CONF
 _DB_CACHE = None
 
 
-sys.modules['fm_core'] = mock.Mock()
-sys.modules['rpm'] = mock.Mock()
-
-
 class Database(fixtures.Fixture):
 
-    def __init__(self, engine, db_migrate, sql_connection,
-                 sqlite_db, sqlite_clean_db):
+    def __init__(self, engine, db_migrate, sql_connection):
         self.sql_connection = sql_connection
-        self.sqlite_db = sqlite_db
-        self.sqlite_clean_db = sqlite_clean_db
 
         self.engine = engine
         self.engine.dispose()
         conn = self.engine.connect()
-        if sql_connection == "sqlite://":
-            if db_migrate.db_version() > db_migrate.INIT_VERSION:
-                return
-        else:
-            testdb = paths.state_path_rel(sqlite_db)
-            if os.path.exists(testdb):
-                return
-        db_migrate.db_sync()
+        self.setup_sqlite(db_migrate)
+
         self.post_migrations()
-        if sql_connection == "sqlite://":
-            conn = self.engine.connect()
-            self._DB = "".join(line for line in conn.connection.iterdump())
-            self.engine.dispose()
-        else:
-            cleandb = paths.state_path_rel(sqlite_clean_db)
-            shutil.copyfile(testdb, cleandb)
+        self._DB = "".join(line for line in conn.connection.iterdump())
+        self.engine.dispose()
+
+    def setup_sqlite(self, db_migrate):
+        if db_migrate.db_version() > db_migration.INIT_VERSION:
+            return
+        db_migrate.db_sync()
 
     def setUp(self):
         super(Database, self).setUp()
 
-        if self.sql_connection == "sqlite://":
-            conn = self.engine.connect()
-            conn.connection.executescript(self._DB)
-            self.addCleanup(self.engine.dispose)
-        else:
-            shutil.copyfile(paths.state_path_rel(self.sqlite_clean_db),
-                            paths.state_path_rel(self.sqlite_db))
+        conn = self.engine.connect()
+        conn.connection.executescript(self._DB)
+        self.addCleanup(self.engine.dispose)
 
     def post_migrations(self):
         """Any addition steps that are needed outside of the migrations."""
@@ -160,15 +146,10 @@ class TestCase(testtools.TestCase):
         logging.register_options(CONF)
 
         self.useFixture(conf_fixture.ConfFixture(CONF))
-
-        global _DB_CACHE
-        if not _DB_CACHE:
-            engine = enginefacade.get_legacy_facade().get_engine()
-            _DB_CACHE = Database(engine, migration,
-                                 sql_connection=CONF.database.connection,
-                                 sqlite_db='sysinv.sqlite',
-                                 sqlite_clean_db='clean.sqlite')
-        self.useFixture(_DB_CACHE)
+        # The fixture config is not setup when the DB_CACHE below is being constructed
+        self.config(connection="sqlite://",
+                    sqlite_synchronous=False,
+                    group='database')
 
         # NOTE(danms): Make sure to reset us back to non-remote objects
         # for each test to avoid interactions. Also, backup the object
@@ -182,6 +163,13 @@ class TestCase(testtools.TestCase):
         self.useFixture(fixtures.EnvironmentVariable('http_proxy'))
         self.policy = self.useFixture(policy_fixture.PolicyFixture())
         CONF.set_override('fatal_exception_format_errors', True)
+
+        global _DB_CACHE
+        if not _DB_CACHE:
+            engine = enginefacade.get_legacy_facade().get_engine()
+            _DB_CACHE = Database(engine, migration,
+                                 sql_connection=CONF.database.connection)
+        self.useFixture(_DB_CACHE)
 
     def tearDown(self):
         super(TestCase, self).tearDown()

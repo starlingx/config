@@ -20,16 +20,16 @@
 from oslo_config import cfg
 
 from sysinv.common import paths
-from sysinv.openstack.common.db.sqlalchemy import session as db_session
+from oslo_db import options as db_options
 from sysinv.openstack.common import rpc
 from sysinv import version
 
-_DEFAULT_SQL_CONNECTION = 'sqlite:///' + paths.state_path_def('$sqlite_db')
+_DEFAULT_SQL_CONNECTION = 'sqlite:///' + paths.state_path_def('sysinv.sqlite')
+
+db_options.set_defaults(cfg.CONF, connection=_DEFAULT_SQL_CONNECTION)
 
 
 def parse_args(argv, default_config_files=None):
-    db_session.set_defaults(sql_connection=_DEFAULT_SQL_CONNECTION,
-                            sqlite_db='sysinv.sqlite')
     rpc.set_defaults(control_exchange='sysinv')
     cfg.CONF(argv[1:],
              project='sysinv',

@@ -97,7 +97,7 @@
 
 
 #
-# Options defined in sysinv.openstack.common.db.sqlalchemy.session
+# Options defined in oslo_db
 #
 
 # the filename to use with sqlite (string value)
@@ -467,7 +467,7 @@
 
 
 #
-# Options defined in sysinv.openstack.common.db.api
+# Options defined in oslo_db
 #
 
 # The backend to use for db (string value)
@@ -479,12 +479,12 @@
 
 
 #
-# Options defined in sysinv.openstack.common.db.sqlalchemy.session
+# Options defined in oslo_db
 #
 
 # The SQLAlchemy connection string used to connect to the
 # database (string value)
-#connection=sqlite:////sysinv.openstack.common/db/$sqlite_db
+#connection=sqlite:////oslo_db/$sqlite_db
 
 # timeout before idle sql connections are reaped (integer
 # value)
