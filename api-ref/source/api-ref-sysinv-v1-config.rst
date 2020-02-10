@@ -10289,7 +10289,7 @@ Show detailed information about a host filesystem
 ***************************************************
 
 
-.. rest_method:: GET /v1/ihosts/​{host_id}​/host_fs/​{host_fs_id}​
+.. rest_method:: GET /v1/host_fs/​{host_fs_id}​
 
 **Normal response codes**
 
@@ -10355,7 +10355,7 @@ This operation does not accept a request body.
 Modifies specific host filesystem(s)
 *************************************
 
-.. rest_method:: PATCH /v1/ihosts/​{host_id}​/host_fs/​update_many
+.. rest_method:: PUT /v1/ihosts/​{host_id}​/host_fs/​update_many
 
 **Normal response codes**
 
