@@ -24,6 +24,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.common import kubernetes
 from sysinv.helm import common as helm_common
 
 import cgcs_patch.constants as patch_constants
@@ -437,6 +438,14 @@ class KubeAppController(rest.RestController):
             else:
                 mode = values['mode']
 
+            try:
+                app_helper = KubeAppHelper(pecan.request.dbapi)
+                app_helper._check_app_compatibility(db_app.name,
+                                                    db_app.app_version)
+            except exception.IncompatibleKubeVersion as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-apply rejected: " + str(e)))
+
             self._semantic_check(db_app)
 
             if db_app.status == constants.APP_APPLY_IN_PROGRESS:
@@ -596,6 +605,7 @@ class KubeAppHelper(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
+        self._kube_operator = kubernetes.KubeOperator()
 
     def _check_patching_operation(self):
         try:
@@ -651,6 +661,25 @@ class KubeAppHelper(object):
             raise exception.SysinvException(
                 "Error while reporting the patch dependencies "
                 "to patch-controller.")
+
+    def _check_app_compatibility(self, app_name, app_version):
+        """Checks whether the application is compatible
+           with the current k8s version"""
+
+        kube_min_version, kube_max_version = \
+            cutils.get_app_supported_kube_version(app_name, app_version)
+
+        if not kube_min_version and not kube_max_version:
+            return
+
+        version_states = self._kube_operator.kube_get_version_states()
+        for kube_version, state in version_states.items():
+            if state in [kubernetes.KUBE_STATE_ACTIVE,
+                         kubernetes.KUBE_STATE_PARTIAL]:
+                if not kubernetes.is_kube_version_supported(
+                        kube_version, kube_min_version, kube_max_version):
+                    raise exception.IncompatibleKubeVersion(
+                        name=app_name, version=app_version, kube_version=kube_version)
 
     def _find_manifest_file(self, app_path):
         # It is expected that there is only one manifest file

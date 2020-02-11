@@ -878,3 +878,16 @@ class TestKubeOperator(base.TestCase):
 
         result = self.kube_operator.kube_get_kubernetes_version()
         assert result is None
+
+
+class TestKubernetesUtilities(base.TestCase):
+    def test_is_kube_version_supported(self):
+        self.assertTrue(kube.is_kube_version_supported('v1.42.3', 'v1.42.1', 'v1.43.1'))
+        self.assertTrue(kube.is_kube_version_supported('v1.42.3', 'v1.42.3', 'v1.42.3'))
+        self.assertTrue(kube.is_kube_version_supported('v1.42.3', 'v1.42.1', None))
+        self.assertTrue(kube.is_kube_version_supported('v1.42.3', None, 'v1.43.1'))
+        self.assertTrue(kube.is_kube_version_supported('v1.42.3', None, None))
+        self.assertFalse(kube.is_kube_version_supported('v1.42.3', 'v1.42.1', 'v1.42.2'))
+        self.assertFalse(kube.is_kube_version_supported('v1.42.3', 'v1.42.2', 'v1.42.2'))
+        self.assertFalse(kube.is_kube_version_supported('v1.42.3', 'v1.43.1', None))
+        self.assertFalse(kube.is_kube_version_supported('v1.42.3', None, 'v1.41.5'))

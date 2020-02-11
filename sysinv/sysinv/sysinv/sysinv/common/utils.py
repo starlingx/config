@@ -2088,6 +2088,25 @@ def is_chart_enabled(dbapi, app_name, chart_name, namespace):
                                          False)
 
 
+def get_app_supported_kube_version(app_name, app_version):
+    """Get the application supported k8s version from the synced application metadata file"""
+
+    app_metadata_path = os.path.join(
+        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name,
+        app_version, constants.APP_METADATA_FILE)
+
+    kube_min_version = None
+    kube_max_version = None
+    if (os.path.exists(app_metadata_path) and
+            os.path.getsize(app_metadata_path) > 0):
+        with open(app_metadata_path, 'r') as f:
+            y = yaml.safe_load(f)
+            supported_kube_version = y.get('supported_k8s_version', {})
+            kube_min_version = supported_kube_version.get('minimum', None)
+            kube_max_version = supported_kube_version.get('maximum', None)
+    return kube_min_version, kube_max_version
+
+
 def app_reapply_flag_file(app_name):
     return "%s.%s" % (
         constants.APP_PENDING_REAPPLY_FLAG,

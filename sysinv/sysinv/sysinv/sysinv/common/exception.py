@@ -1398,6 +1398,11 @@ class InvalidHelmDockerImageSource(Invalid):
 class PlatformApplicationApplyFailure(SysinvException):
     message = _("Failed to apply %(name)s application.")
 
+
+class IncompatibleKubeVersion(SysinvException):
+    message = _("The application %(name)s (%(version)s) is incompatible with the current "
+                "Kubernetes version %(kube_version)s.")
+
 #
 # Kubernetes related exceptions
 #
