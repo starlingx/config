@@ -1347,6 +1347,29 @@ def create_test_label(**kw):
     return dbapi.label_create(label['host_id'], label)
 
 
+def get_test_service_parameter(**kw):
+    service_parameter = {
+        'section': kw.get('section'),
+        'service': kw.get('service'),
+        'name': kw.get('name'),
+        'value': kw.get('value'),
+        'resource': kw.get('resource'),
+        'personality': kw.get('personality'),
+    }
+    return service_parameter
+
+
+def create_test_service_parameter(**kw):
+    """Create test service parameter in DB and return a service_parameter object.
+    Function to be used to create test service parameter objects in the database.
+    :param kw: kwargs with overriding values for service parameter's attributes.
+    :returns: Test service parameter DB object.
+    """
+    service_parameter = get_test_service_parameter(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.service_parameter_create(service_parameter)
+
+
 def create_test_oam(**kw):
     dbapi = db_api.get_instance()
     return dbapi.iextoam_get_one()
