@@ -1373,6 +1373,14 @@ class KubeNamespaceDeleteTimeout(SysinvException):
     message = "Namespace %(name)s deletion timeout."
 
 
+class KubePodDeleteTimeout(SysinvException):
+    message = "Pod %(namespace)/%(name)s deletion timeout."
+
+
+class KubePodDeleteUnexpected(SysinvException):
+    message = "Pod %(namespace)/%(name)s was unexpectedly deleted."
+
+
 class HelmTillerFailure(SysinvException):
     message = _("Helm operation failure: %(reason)s")
 

@@ -559,3 +559,52 @@ class KubeOperator(object):
             return None
         else:
             return match.group(1)
+
+    def kube_get_all_pods(self):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.list_pod_for_all_namespaces(watch=False)
+            return api_response.items
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_pods: %s" % e)
+            raise
+
+    def kube_delete_pod(self, name, namespace, **kwargs):
+        body = {}
+
+        if kwargs:
+            body.update(kwargs)
+
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.delete_namespaced_pod(name, namespace, body)
+            LOG.debug("%s" % api_response)
+            return True
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("Pod %s/%s not found." % (namespace, name))
+                return False
+            else:
+                LOG.error("Failed to delete Pod %s/%s: "
+                          "%s" % (namespace, name, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_delete_pod: %s" % e)
+            raise
+
+    def kube_get_pod(self, name, namespace):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.read_namespaced_pod(name, namespace)
+            return api_response
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Failed to get Pod %s/%s: %s" % (namespace, name,
+                                                           e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_pod %s/%s: %s" % (namespace, name, e))
