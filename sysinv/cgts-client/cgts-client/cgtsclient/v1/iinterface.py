@@ -70,7 +70,7 @@ def _get_ports(cc, ihost, interface):
 
     if interface.iftype == 'ethernet':
         interface.dpdksupport = [p.dpdksupport for p in ports]
-    if interface.iftype == 'vlan':
+    elif interface.iftype == 'vlan':
         interfaces = cc.iinterface.list(ihost.uuid)
         for u in interface.uses:
             for j in interfaces:
@@ -91,6 +91,13 @@ def _get_ports(cc, ihost, interface):
                 if j.ifname == str(u):
                     uses_ports = cc.iinterface.list_ports(j.uuid)
                     interface.dpdksupport = [p.dpdksupport for p in uses_ports]
+    elif interface.iftype == 'vf':
+        interfaces = cc.iinterface.list(ihost.uuid)
+        for u in interface.uses:
+            u = next(j for j in interfaces if j.ifname == str(u))
+            _get_ports(cc, ihost, u)
+            if u.dpdksupport:
+                interface.dpdksupport = u.dpdksupport
 
 
 def _find_interface(cc, ihost, ifnameoruuid):
