@@ -767,6 +767,16 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         value = interface.get_sriov_interface_port(self.context, vf)
         self.assertEqual(value, port)
 
+    def test_get_sriov_interface_port_invalid(self):
+        port, iface = self._create_ethernet_test('pthru',
+            constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+            constants.NETWORK_TYPE_PCI_PASSTHROUGH)
+        self._update_context()
+        self.assertRaises(AssertionError,
+                          interface.get_sriov_interface_port,
+                          self.context,
+                          iface)
+
     def test_get_sriov_interface_vf_addrs(self):
         vf_addr1 = "0000:81:00.0"
         vf_addr2 = "0000:81:01.0"
