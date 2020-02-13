@@ -9,8 +9,6 @@ Tests for the API / controller-fs / methods.
 """
 
 import mock
-import six
-import unittest
 from six.moves import http_client
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
@@ -407,8 +405,6 @@ class ApiControllerFSPutTestSuiteMixin(ApiControllerFSTestCaseMixin):
                       "unprovisioned physical volumes on controller-0.",
                       response.json['error_message'])
 
-    # See https://bugs.launchpad.net/starlingx/+bug/1862668
-    @unittest.skipIf(six.PY3, "Not compatible with Python 3")
     def test_put_exceed_growth_limit(self):
         # Create a provisioned physical volume in database
         dbutils.create_test_pv(lvm_vg_name='cgts-vg',

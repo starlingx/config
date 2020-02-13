@@ -373,8 +373,8 @@ def _get_controller_cgtsvg_limit():
                 if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
                    ilvg.lvm_vg_size and ilvg.lvm_vg_total_pe):
                     cgtsvg0_free_mib = (int(ilvg.lvm_vg_size) *
-                                        int(ilvg.lvm_vg_free_pe) / int(
-                        ilvg.lvm_vg_total_pe)) / (1024 * 1024)
+                                        int(ilvg.lvm_vg_free_pe) // int(
+                        ilvg.lvm_vg_total_pe)) // (1024 * 1024)
                     break
 
         else:
@@ -391,22 +391,22 @@ def _get_controller_cgtsvg_limit():
                 if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
                    ilvg.lvm_vg_size and ilvg.lvm_vg_total_pe):
                     cgtsvg1_free_mib = (int(ilvg.lvm_vg_size) *
-                                        int(ilvg.lvm_vg_free_pe) / int(
-                        ilvg.lvm_vg_total_pe)) / (1024 * 1024)
+                                        int(ilvg.lvm_vg_free_pe) // int(
+                        ilvg.lvm_vg_total_pe)) // (1024 * 1024)
                     break
 
     LOG.info("_get_controller_cgtsvg_limit cgtsvg0_free_mib=%s, "
              "cgtsvg1_free_mib=%s" % (cgtsvg0_free_mib, cgtsvg1_free_mib))
 
     if cgtsvg0_free_mib > 0 and cgtsvg1_free_mib > 0:
-        cgtsvg_max_free_GiB = min(cgtsvg0_free_mib, cgtsvg1_free_mib) / 1024
+        cgtsvg_max_free_GiB = min(cgtsvg0_free_mib, cgtsvg1_free_mib) // 1024
         LOG.info("min of cgtsvg0_free_mib=%s and cgtsvg1_free_mib=%s is "
                  "cgtsvg_max_free_GiB=%s" %
                  (cgtsvg0_free_mib, cgtsvg1_free_mib, cgtsvg_max_free_GiB))
     elif cgtsvg1_free_mib > 0:
-        cgtsvg_max_free_GiB = cgtsvg1_free_mib / 1024
+        cgtsvg_max_free_GiB = cgtsvg1_free_mib // 1024
     else:
-        cgtsvg_max_free_GiB = cgtsvg0_free_mib / 1024
+        cgtsvg_max_free_GiB = cgtsvg0_free_mib // 1024
 
     LOG.info("SYS_I filesystem limits cgtsvg0_free_mib=%s, "
              "cgtsvg1_free_mib=%s, cgtsvg_max_free_GiB=%s"
@@ -462,7 +462,7 @@ def _check_controller_multi_fs_data(context, controller_fs_list_new):
             orig = int(float(lvdisplay_dict[lv]))
             new = int(fs.size)
             if fs.name == constants.FILESYSTEM_NAME_DATABASE:
-                orig = orig / 2
+                orig = orig // 2
 
             if orig > new:
                 raise wsme.exc.ClientSideError(_("'%s'  must be at least: "
