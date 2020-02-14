@@ -461,12 +461,14 @@ def get_node_cgtsvg_limit(host):
     for ilvg in ilvgs:
         if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
                 ilvg.lvm_vg_size and ilvg.lvm_vg_total_pe):
+            # Integer division in Python 2 behaves like floating point division
+            # in Python 3. Replacing / by // rectifies this behavior.
             cgtsvg_free_mib = (int(ilvg.lvm_vg_size) * int(
                 ilvg.lvm_vg_free_pe)
-                               / int(ilvg.lvm_vg_total_pe)) / (1024 * 1024)
+                               // int(ilvg.lvm_vg_total_pe)) // (1024 * 1024)
             break
 
-    cgtsvg_max_free_gib = cgtsvg_free_mib / 1024
+    cgtsvg_max_free_gib = cgtsvg_free_mib // 1024
 
     LOG.info("get_node_cgtsvg_limit host=%s, cgtsvg_max_free_gib=%s"
         % (host.hostname, cgtsvg_max_free_gib))

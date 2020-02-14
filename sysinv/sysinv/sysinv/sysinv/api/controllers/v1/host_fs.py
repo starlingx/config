@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -33,7 +33,7 @@ class HostFsPatchType(types.JsonPatchType):
 
 
 class HostFs(base.APIBase):
-    """API representation of a ilvg.
+    """API representation of a host_fs.
 
     This class enforces type checking and value constraints, and converts
     between the internal object model and the API representation of
@@ -154,7 +154,7 @@ class HostFsController(rest.RestController):
 
         marker_obj = None
         if marker:
-            marker_obj = objects.lvg.get_by_uuid(
+            marker_obj = objects.host_fs.get_by_uuid(
                 pecan.request.context,
                 marker)
 
@@ -208,7 +208,7 @@ class HostFsController(rest.RestController):
         if self._from_ihosts:
             raise exception.OperationNotPermitted
 
-        rpc_host_fs = objects.lvg.get_by_uuid(pecan.request.context,
+        rpc_host_fs = objects.host_fs.get_by_uuid(pecan.request.context,
                                               host_fs_uuid)
         return HostFs.convert_with_links(rpc_host_fs)
 
@@ -326,7 +326,7 @@ class HostFsController(rest.RestController):
                         filesystem_list=modified_fs,)
 
         except Exception as e:
-            msg = _("Failed to update filesystem size for %s" % host.name)
+            msg = _("Failed to update filesystem size for %s" % host.hostname)
             LOG.error("%s with patch %s with exception %s" % (msg, patch, e))
             raise wsme.exc.ClientSideError(msg)
 
