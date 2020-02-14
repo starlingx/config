@@ -466,21 +466,25 @@ class InterfaceController(rest.RestController):
         _check_interface_mtu(temp_interface.as_dict(), ihost)
 
         # Check SR-IOV before updating the ports
+        sriov_numvfs = None
+        sriov_vf_driver = None
         for p in patch:
             if '/ifclass' == p['path']:
                 temp_interface['ifclass'] = p['value']
             elif '/sriov_numvfs' == p['path']:
-                temp_interface['sriov_numvfs'] = p['value']
+                sriov_numvfs = p['value']
+                temp_interface['sriov_numvfs'] = sriov_numvfs
             elif '/sriov_vf_driver' == p['path']:
-                temp_interface['sriov_vf_driver'] = p['value']
+                sriov_vf_driver = p['value']
+                temp_interface['sriov_vf_driver'] = sriov_vf_driver
 
-        # If network type is not pci-sriov, reset the sriov-numvfs to zero
-        if (temp_interface['sriov_numvfs'] is not None and
-                temp_interface['ifclass'] is not None and
-                temp_interface[
-                        'ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV):
-            temp_interface['sriov_numvfs'] = None
-            temp_interface['sriov_vf_driver'] = None
+        # If the interface class is no longer pci-sriov, reset the VF
+        # parameters if they haven't been specified in the patch
+        if temp_interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
+            if sriov_numvfs is None:
+                temp_interface['sriov_numvfs'] = 0
+            if sriov_vf_driver is None:
+                temp_interface['sriov_vf_driver'] = None
 
         sriov_update = _check_interface_sriov(temp_interface.as_dict(), ihost)
 
@@ -549,6 +553,11 @@ class InterfaceController(rest.RestController):
         interface = _check("modify", interface,
                            ports=ports, ifaces=uses,
                            existing_interface=rpc_interface.as_dict())
+
+        # Clear the vf fields if class is not sriov
+        if interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
+            interface["sriov_numvfs"] = 0
+            interface["sriov_vf_driver"] = None
 
         if uses:
             # Update MAC address if uses list changed
