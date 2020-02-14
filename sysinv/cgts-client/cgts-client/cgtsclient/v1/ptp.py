@@ -48,3 +48,6 @@ class ptpManager(base.Manager):
 
     def update(self, ptp_id, patch):
         return self._update(self._path(ptp_id), patch)
+
+    def apply(self):
+        return self.api.json_request('POST', self._path() + "/apply")

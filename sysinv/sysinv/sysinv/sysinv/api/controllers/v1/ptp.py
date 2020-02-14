@@ -120,6 +120,7 @@ class PTPController(rest.RestController):
 
     _custom_actions = {
         'detail': ['GET'],
+        'apply': ['POST']
     }
 
     def _get_ptps_collection(self, marker, limit, sort_key, sort_dir,
@@ -257,3 +258,13 @@ class PTPController(rest.RestController):
     def delete(self, ptp_uuid):
         """Delete a ptp."""
         raise exception.OperationNotPermitted
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(None, status_code=204)
+    def apply(self):
+        """Apply the ptp configuration."""
+        try:
+            pecan.request.rpcapi.update_ptp_config(pecan.request.context, do_apply=True)
+        except exception.HTTPNotFound:
+            msg = _("PTP apply failed")
+            raise wsme.exc.ClientSideError(msg)
