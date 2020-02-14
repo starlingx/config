@@ -45,6 +45,7 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
+from datetime import timedelta
 
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
@@ -94,6 +95,7 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
 from sysinv.conductor import kube_app
+from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
@@ -183,6 +185,7 @@ class ConductorManager(service.PeriodicService):
         self._ceph_api = ceph.CephWrapper(
             endpoint='http://localhost:5001')
         self._kube = None
+        self._kube_pod = None
         self._fernet = None
 
         self._openstack = None
@@ -237,6 +240,7 @@ class ConductorManager(service.PeriodicService):
         self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
         self._kube = kubernetes.KubeOperator()
+        self._kube_pod = kube_pod.K8sPodOperator(self._kube)
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
@@ -248,6 +252,9 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
+
+        # Save our start time for time limited init actions
+        self._start_time = timeutils.utcnow()
 
     def periodic_tasks(self, context, raise_on_error=False):
         """ Periodic tasks are run at pre-specified intervals. """
@@ -5128,6 +5135,27 @@ class ConductorManager(service.PeriodicService):
                 ((active_ctrl.administrative != constants.ADMIN_UNLOCKED) or
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
+
+        # WORKAROUND: For k8s MatchNodeSelector issue. Call this for a limited
+        #             time (5 times over ~5 minutes) on a AIO-SX controller
+        #             configuration after conductor startup.
+        #
+        #             Upstream reports of this:
+        #             - https://github.com/kubernetes/kubernetes/issues/80745
+        #             - https://github.com/kubernetes/kubernetes/issues/85334
+        #
+        #             Outstanding PR that was tested and fixed this issue:
+        #             - https://github.com/kubernetes/kubernetes/pull/80976
+        system_mode = self.dbapi.isystem_get_one().system_mode
+        if system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            if (self._start_time + timedelta(minutes=5) >
+                    datetime.now(self._start_time.tzinfo)):
+                LOG.info("Periodic Task: _k8s_application_audit: Checking for "
+                         "MatchNodeSelector issue for %s" % str(
+                             (self._start_time + timedelta(minutes=5)) -
+                             datetime.now(self._start_time.tzinfo)))
+                self._kube_pod.delete_failed_pods_by_reason(
+                    reason='MatchNodeSelector')
 
         # Check the application state and take the approprate action
         for app_name in constants.HELM_APPS_PLATFORM_MANAGED:

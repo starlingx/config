@@ -41,6 +41,7 @@ from sysinv.common import image_versions
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
+from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.helm import common
 from sysinv.helm import helm
@@ -142,6 +143,7 @@ class AppOperator(object):
         self._kube = kubernetes.KubeOperator()
         self._utils = kube_app.KubeAppHelper(self._dbapi)
         self._image = AppImageParser()
+        self._kube_pod = kube_pod.K8sPodOperator(self._kube)
         self._lock = threading.Lock()
 
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
@@ -2025,6 +2027,16 @@ class AppOperator(object):
                                   True)
 
         self.clear_reapply(app.name)
+        # WORKAROUND: For k8s MatchNodeSelector issue. Look for and clean up any
+        #             pods that could block manifest apply
+        #
+        #             Upstream reports of this:
+        #             - https://github.com/kubernetes/kubernetes/issues/80745
+        #             - https://github.com/kubernetes/kubernetes/issues/85334
+        #
+        #             Outstanding PR that was tested and fixed this issue:
+        #             - https://github.com/kubernetes/kubernetes/pull/80976
+        self._kube_pod.delete_failed_pods_by_reason(reason='MatchNodeSelector')
 
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
