@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 
@@ -257,21 +257,9 @@ def _check_controller_multi_fs(controller_fs_new_list,
              rootfs_configured_size_GiB)
 
     if cgtsvg_growth_gib and (cgtsvg_growth_gib > cgtsvg_max_free_GiB):
-        if ceph_mon_gib_new:
-            msg = _(
-                "Total target growth size %s GiB for database "
-                "(doubled for upgrades), platform, "
-                "scratch, backup, extension and ceph-mon exceeds "
-                "growth limit of %s GiB." %
-                (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
-            )
-        else:
-            msg = _(
-                "Total target growth size %s GiB for database "
-                "(doubled for upgrades), platform, scratch, "
-                "backup and extension exceeds growth limit of %s GiB." %
-                (cgtsvg_growth_gib, cgtsvg_max_free_GiB)
-            )
+        msg = _("Total target growth size %s GiB "
+                "exceeds growth limit of %s GiB." %
+                (cgtsvg_growth_gib, cgtsvg_max_free_GiB))
         raise wsme.exc.ClientSideError(msg)
 
 

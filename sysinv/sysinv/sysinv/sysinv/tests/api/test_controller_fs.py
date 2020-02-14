@@ -444,9 +444,8 @@ class ApiControllerFSPutTestSuiteMixin(ApiControllerFSTestCaseMixin):
         # Verify appropriate exception is raised
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn("Total target growth size 9 GiB for database (doubled "
-                      "for upgrades), platform, scratch, backup and "
-                      "extension exceeds growth limit of 0 GiB.",
+        self.assertIn("Total target growth size 9 GiB "
+                      "exceeds growth limit of 0 GiB.",
                       response.json['error_message'])
 
     def test_put_update_exception(self):
