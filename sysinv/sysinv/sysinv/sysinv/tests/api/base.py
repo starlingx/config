@@ -98,6 +98,25 @@ class FunctionalTest(base.TestCase):
             print('GOT:%s' % response)
         return response
 
+    def post_with_files(self, path, params, upload_files, expect_errors=False,
+                        headers=None, method="post", extra_environ=None,
+                        status=None, path_prefix=PATH_PREFIX):
+        full_path = path_prefix + path
+        if DEBUG_PRINTING:
+            print('%s: %s %s' % (method.upper(), full_path, params))
+        response = getattr(self.app, "%s" % method)(
+            str(full_path),
+            params,
+            upload_files=upload_files,
+            headers=headers,
+            status=status,
+            extra_environ=extra_environ,
+            expect_errors=expect_errors
+        )
+        if DEBUG_PRINTING:
+            print('GOT:%s' % response)
+        return response
+
     def put_json(self, *args, **kwargs):
         kwargs['method'] = 'put'
         return self.post_json(*args, **kwargs)

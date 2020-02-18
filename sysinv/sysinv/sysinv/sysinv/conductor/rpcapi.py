@@ -1572,6 +1572,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        config_dict=config_dict,
                                        ))
 
+    def delete_certificate(self, context, mode, signature):
+        """Synchronously, have the conductor delete the certificate.
+
+        :param context: request context.
+        :param mode: the mode of the certificate
+        :param signature: the signature of the certificate.
+
+        """
+        return self.call(context,
+                         self.make_msg('delete_certificate',
+                                       mode=mode,
+                                       signature=signature,
+                                       ))
+
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.
 
