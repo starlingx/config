@@ -109,23 +109,23 @@ if [ ${DAY_LEFT_S} -lt ${NINETY_DAYS_S} ]; then
         ERR=1
     fi
 
-    # Restart docker container of k8s components to refresh the configurations within container
+    # Restart the containers of k8s components to refresh the configurations within container
     if [ ${ERR} -eq 0 ]; then
-        docker ps | awk '/k8s_kube-apiserver/{print$1}' | xargs docker restart > /dev/null
+        crictl ps | awk '/kube-apiserver/{print$1}' | xargs crictl stop > /dev/null
         if [ $? -ne 0 ]; then
             ERR=2
         fi
     fi
 
     if [ ${ERR} -eq 0 ]; then
-        docker ps | awk '/k8s_kube-controller-manager/{print$1}' | xargs docker restart > /dev/null
+        crictl ps | awk '/kube-controller-manager/{print$1}' | xargs crictl stop > /dev/null
         if [ $? -ne 0 ]; then
             ERR=2
         fi
     fi
 
     if [ ${ERR} -eq 0 ]; then
-        docker ps | awk '/k8s_kube-scheduler/{print$1}' | xargs docker restart > /dev/null
+        crictl ps | awk '/kube-scheduler/{print$1}' | xargs crictl stop > /dev/null
         if [ $? -ne 0 ]; then
             ERR=2
         fi
