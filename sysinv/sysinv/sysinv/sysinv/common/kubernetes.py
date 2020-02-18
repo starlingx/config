@@ -66,7 +66,7 @@ KUBE_HOST_UPGRADING_KUBELET_FAILED = 'upgrading-kubelet-failed'
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10
-POD_START_TIMEOUT = 60
+POD_START_TIMEOUT = 60 * 2
 POD_START_INTERVAL = 10
 
 
@@ -80,6 +80,21 @@ def get_kube_versions():
          'available_patches': [],
          },
     ]
+
+
+def is_kube_version_supported(kube_version, min_version=None, max_version=None):
+    """Check if the k8s version is supported by the application.
+
+    :param kube_version: the running or target k8s version
+    :param min_version (optional): minimum k8s version supported by the app
+    :param max_version (optional): maximum k8s version supported by the app
+
+    :returns bool: True if k8s version is supported
+    """
+    if ((min_version is not None and LooseVersion(kube_version) < LooseVersion(min_version)) or
+            (max_version is not None and LooseVersion(kube_version) > LooseVersion(max_version))):
+        return False
+    return True
 
 
 def get_kube_networking_upgrade_version(kube_upgrade):

@@ -134,6 +134,22 @@ class TestKubeUpgrade(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.mocked_kube_get_version_states.start()
         self.addCleanup(self.mocked_kube_get_version_states.stop)
 
+        # Mock utility function
+        self.kube_min_version_result, self.kube_max_version_result = 'v1.42.1', 'v1.43.1'
+
+        def mock_get_app_supported_kube_version(app_name, app_version):
+            return self.kube_min_version_result, self.kube_max_version_result
+        self.mocked_kube_min_version = mock.patch(
+            'sysinv.common.utils.get_app_supported_kube_version',
+            mock_get_app_supported_kube_version)
+        self.mocked_kube_max_version = mock.patch(
+            'sysinv.common.utils.get_app_supported_kube_version',
+            mock_get_app_supported_kube_version)
+        self.mocked_kube_min_version.start()
+        self.mocked_kube_max_version.start()
+        self.addCleanup(self.mocked_kube_min_version.stop)
+        self.addCleanup(self.mocked_kube_max_version.stop)
+
     def _create_controller_0(self, subfunction=None, numa_nodes=1, **kw):
         return self._create_test_host(
             personality=constants.CONTROLLER,
@@ -271,6 +287,30 @@ class TestPostKubeUpgrade(TestKubeUpgrade, dbbase.ControllerHostTestCase):
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("version v1.43.1 is not active",
+                      result.json['error_message'])
+
+    def test_create_installed_app_not_compatible(self):
+        # Test creation of upgrade when the installed application isn't
+        # compatible with the new kubernetes version
+
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='openstack-armada-manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
+        result = self.post_json('/kube_upgrade', create_dict,
+                                headers={'User-Agent': 'sysinv-test'},
+                                expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("incompatible with the new Kubernetes version v1.43.2",
                       result.json['error_message'])
 
     def test_create_system_unhealthy(self):

@@ -1877,7 +1877,15 @@ class AppOperator(object):
 
             with self._lock:
                 self._extract_tarfile(app)
+
+            # Copy the armada manfest and metadata file to the drbd
             shutil.copy(app.inst_armada_mfile, app.sync_armada_mfile)
+            inst_metadata_file = os.path.join(
+                app.inst_path, constants.APP_METADATA_FILE)
+            if os.path.exists(inst_metadata_file):
+                sync_metadata_file = os.path.join(
+                    app.sync_armada_mfile_dir, constants.APP_METADATA_FILE)
+                shutil.copy(inst_metadata_file, sync_metadata_file)
 
             if not self._docker.make_armada_request(
                     'validate', manifest_file=app.armada_service_mfile):
@@ -2211,6 +2219,8 @@ class AppOperator(object):
         try:
             # Upload new app tarball
             to_app = self.perform_app_upload(to_rpc_app, tarfile)
+            # Check whether the new application is compatible with the current k8s version
+            self._utils._check_app_compatibility(to_app.name, to_app.version)
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
@@ -2260,13 +2270,15 @@ class AppOperator(object):
                                                                to_app.version))
             LOG.info("Application %s update from version %s to version "
                      "%s completed." % (to_app.name, from_app.version, to_app.version))
-        except (exception.KubeAppUploadFailure,
+        except (exception.IncompatibleKubeVersion,
+                exception.KubeAppUploadFailure,
                 exception.KubeAppApplyFailure,
-                exception.KubeAppAbort):
+                exception.KubeAppAbort) as e:
             # Error occurs during app uploading or applying but before
             # armada apply process...
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger armada process
+            LOG.exception(e)
             return self._perform_app_recover(from_app, to_app,
                                              armada_process_required=False)
         except Exception as e:

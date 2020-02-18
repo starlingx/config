@@ -148,6 +148,24 @@ class KubeUpgradeController(rest.RestController):
                     "the kubernetes upgrade: %s" %
                     available_patches))
 
+    @staticmethod
+    def _check_installed_apps_compatibility(apps, kube_version):
+        """Checks whether all installed applications are compatible
+           with the new k8s version"""
+
+        for app in apps:
+            if app.status != constants.APP_APPLY_SUCCESS:
+                continue
+
+            kube_min_version, kube_max_version = \
+                cutils.get_app_supported_kube_version(app.name, app.app_version)
+
+            if not kubernetes.is_kube_version_supported(
+                    kube_version, kube_min_version, kube_max_version):
+                raise wsme.exc.ClientSideError(_(
+                    "The installed Application %s (%s) is incompatible with the "
+                    "new Kubernetes version %s." % (app.name, app.app_version, kube_version)))
+
     @wsme_pecan.wsexpose(KubeUpgradeCollection)
     def get_all(self):
         """Retrieve a list of kubernetes upgrades."""
@@ -221,7 +239,10 @@ class KubeUpgradeController(rest.RestController):
             applied_patches=target_version_obj.applied_patches,
             available_patches=target_version_obj.available_patches)
 
-        # TODO: check that all installed applications support new k8s version
+        # Check that all installed applications support new k8s version
+        apps = pecan.request.dbapi.kube_app_get_all()
+        self._check_installed_apps_compatibility(apps, to_version)
+
         # TODO: check that tiller/armada support new k8s version
 
         # The system must be healthy
