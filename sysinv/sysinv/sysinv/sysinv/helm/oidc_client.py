@@ -29,8 +29,8 @@ class OidcClientHelm(DexBaseHelm):
                     'client_secret': self._get_client_secret(),
                     'issuer': "https://%s:%s/dex" % (oam_url, self.DEX_NODE_PORT),
                     'issuer_root_ca': '/home/dex-ca.pem',
-                    'listen': 'http://0.0.0.0:5555',
-                    'redirect_uri': "http://%s:%s/callback" % (oam_url, self.OIDC_CLIENT_NODE_PORT),
+                    'listen': 'https://0.0.0.0:5555',
+                    'redirect_uri': "https://%s:%s/callback" % (oam_url, self.OIDC_CLIENT_NODE_PORT),
                 },
                 'service': {
                     'nodePort': self.OIDC_CLIENT_NODE_PORT
