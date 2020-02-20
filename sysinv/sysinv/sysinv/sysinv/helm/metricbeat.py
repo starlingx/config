@@ -89,6 +89,10 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                     "load",
                     "memory",
                     "process_summary",
+                ],
+                "cpu.metrics": [
+                    "percentages",
+                    "normalized_percentages"
                 ]
             },
             {
