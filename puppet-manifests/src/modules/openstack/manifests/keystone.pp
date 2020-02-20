@@ -84,6 +84,7 @@ class openstack::keystone (
       default_transport_url => $::platform::amqp::params::transport_url,
       service_name          => $service_name,
       token_expiration      => $token_expiration,
+      notification_driver   => 'messagingv2',
     }
 
     # create keystone policy configuration
