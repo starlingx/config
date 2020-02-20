@@ -339,7 +339,10 @@ class KubernetesPuppet(base.BasePuppet):
         interfaces = self._get_network_interfaces_by_class(ifclass)
         for iface in interfaces:
 
-            port = interface.get_sriov_interface_port(self.context, iface)
+            if ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+                port = interface.get_sriov_interface_port(self.context, iface)
+            else:
+                port = interface.get_interface_port(self.context, iface)
             if not port:
                 continue
 
