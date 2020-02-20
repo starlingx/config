@@ -214,6 +214,12 @@ class ConductorManager(service.PeriodicService):
         # changed or not. If changed, then sync it to kubernetes's secret info.
         greenthread.spawn(keystone_listener.start_keystone_listener, self._app)
 
+        # Monitor ceph to become responsive
+        if StorageBackendConfig.has_backend_configured(
+                        self.dbapi,
+                        constants.SB_TYPE_CEPH):
+            greenthread.spawn(self._init_ceph_cluster_info)
+
     def _start(self):
         self.dbapi = dbapi.get_instance()
         self.fm_api = fm_api.FaultAPIs()
@@ -237,7 +243,6 @@ class ConductorManager(service.PeriodicService):
         # ceph for the initial unlock.
         self._app = kube_app.AppOperator(self.dbapi)
         self._docker = kube_app.DockerHelper(self.dbapi)
-        self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
         self._kube = kubernetes.KubeOperator()
         self._kube_pod = kube_pod.K8sPodOperator(self._kube)
@@ -1374,7 +1379,7 @@ class ConductorManager(service.PeriodicService):
             return
         if not self.dbapi.ceph_mon_get_by_ihost(host.uuid):
             system = self.dbapi.isystem_get_one()
-            ceph_mon_gib = None
+            ceph_mon_gib = constants.SB_CEPH_MON_GIB
             ceph_mons = self.dbapi.ceph_mon_get_list()
             if ceph_mons:
                 ceph_mon_gib = ceph_mons[0].ceph_mon_gib
@@ -1399,7 +1404,14 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Deleting ceph monitor for host %s"
                      % str(host.hostname))
             self.dbapi.ceph_mon_destroy(mon[0].uuid)
-            self._ceph.remove_ceph_monitor(host.hostname)
+            # At this point self._ceph should always be set, but we check
+            # just to be sure
+            if self._ceph is not None:
+                self._ceph.remove_ceph_monitor(host.hostname)
+            else:
+                # This should never happen, but if it does, log it so
+                # there is a trace of it
+                LOG.error("Error deleting ceph monitor")
         else:
             LOG.info("No ceph monitor present for host %s. "
                      "Skipping deleting ceph monitor."
@@ -1552,8 +1564,21 @@ class ConductorManager(service.PeriodicService):
         :param host: host object
         """
 
-        # Update cluster and peers model
-        self._ceph.update_ceph_cluster(host)
+        # Update cluster and peers model.
+        # We call this function when setting the personality of a storage host.
+        # In cases where we configure the storage-backend before unlocking
+        # controller-0, and then configuring all other hosts, ceph will not be
+        # responsive (and self._ceph not be set) when setting the storage
+        # personality.
+        # But that's ok, because this function is also called when unlocking a
+        # storage node and we are guaranteed (by consistency checks) a
+        # responsive ceph cluster at that point in time and we can update the
+        # ceph cluster information succesfully.
+        if self._ceph is not None:
+            self._ceph.update_ceph_cluster(host)
+        else:
+            # It's ok, we just log a message for debug purposes
+            LOG.debug("Error updating cluster information")
 
         # Only update the manifest if the host is running the same version as
         # the active controller.
@@ -4203,6 +4228,38 @@ class ConductorManager(service.PeriodicService):
 
         return
 
+    @retry(retry_on_result=lambda x: x is False,
+           wait_fixed=(constants.INIT_CEPH_INFO_INTERVAL_SECS * 1000))
+    def _init_ceph_cluster_info(self):
+        if not self._ceph:
+            try:
+                _, fsid = self._ceph_api.fsid(body='text', timeout=10)
+            except Exception as e:
+                LOG.debug("Ceph REST API not responsive. Error = %s" % str(e))
+                return False
+            LOG.info("Ceph cluster has become responsive")
+            self._ceph = iceph.CephOperator(self.dbapi)
+
+        try:
+            # We manually check for the crushmap_applied flag because we don't
+            # want to re-fix the crushmap if it's already been fixed and the
+            # fix_crushmap function returns False if it finds the flag.
+            crushmap_flag_file = os.path.join(
+                constants.SYSINV_CONFIG_PATH,
+                constants.CEPH_CRUSH_MAP_APPLIED)
+            if not os.path.isfile(crushmap_flag_file):
+                return cceph.fix_crushmap(self.dbapi)
+            return True
+
+        except Exception as e:
+            # fix_crushmap will throw an exception if the storage_model
+            # is unclear. This happens on a standard (2+2) setup, before
+            # adding storage-0 or adding the 3rd monitor to a compute node.
+            # In such cases we just wait until the mode has become clear,
+            # so we just return False and retry.
+            LOG.debug("Error fixing crushmap. Exception %s" % str(e))
+            return False
+
     def _fix_storage_install_uuid(self):
         """
         Fixes install_uuid for storage nodes during a restore procedure
@@ -4413,10 +4470,12 @@ class ConductorManager(service.PeriodicService):
                     {'capabilities': ihost.capabilities})
 
         if availability == constants.AVAILABILITY_AVAILABLE:
-            if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
+            if (imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT) and
+                    StorageBackendConfig.has_backend_configured(
+                        self.dbapi,
+                        constants.SB_TYPE_CEPH)):
                 # This should be run once after a node boot
                 self._clear_ceph_stor_state(ihost_uuid)
-                cceph.fix_crushmap(self.dbapi)
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
@@ -5424,6 +5483,9 @@ class ConductorManager(service.PeriodicService):
                 constants.CINDER_BACKEND_CEPH):
             return 0
 
+        if self._ceph is None:
+            return 0
+
         if not self._ceph.get_ceph_cluster_info_availability():
             return 0
 
@@ -5435,6 +5497,9 @@ class ConductorManager(service.PeriodicService):
         if not StorageBackendConfig.has_backend_configured(
                 self.dbapi,
                 constants.CINDER_BACKEND_CEPH):
+            return 0
+
+        if self._ceph is None:
             return 0
 
         if not self._ceph.get_ceph_cluster_info_availability():
@@ -5451,6 +5516,9 @@ class ConductorManager(service.PeriodicService):
                 constants.CINDER_BACKEND_CEPH):
             return
 
+        if self._ceph is None:
+            return
+
         if not self._ceph.get_ceph_cluster_info_availability():
             return
 
@@ -5461,6 +5529,9 @@ class ConductorManager(service.PeriodicService):
         if not StorageBackendConfig.has_backend_configured(
                self.dbapi,
                constants.CINDER_BACKEND_CEPH):
+            return
+
+        if self._ceph is None:
             return
 
         if not self._ceph.get_ceph_cluster_info_availability():
@@ -6075,7 +6146,8 @@ class ConductorManager(service.PeriodicService):
         ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
         valid_ctrls = [ctrl for ctrl in ctrls if
                        ctrl.administrative == constants.ADMIN_UNLOCKED and
-                       ctrl.availability == constants.AVAILABILITY_AVAILABLE]
+                       ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
+                                             constants.AVAILABILITY_DEGRADED]]
         classes = ['platform::partitions::runtime',
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
@@ -6083,15 +6155,14 @@ class ConductorManager(service.PeriodicService):
                    'platform::ceph::runtime_base',
                    ]
 
+        for ctrl in valid_ctrls:
+            self._ceph_mon_create(ctrl)
+
         if cutils.is_aio_duplex_system(self.dbapi):
             # On 2 node systems we have a floating Ceph monitor.
             classes.append('platform::drbd::cephmon::runtime')
-            classes.append('platform::drbd::runtime')
 
-        # TODO (tliu) determine if this SB_SVC_CINDER section can be removed
-        if constants.SB_SVC_CINDER in services:
-            LOG.info("No cinder manifests for update_ceph_config")
-        classes.append('platform::sm::norestart::runtime')
+        classes.append('platform::sm::ceph::runtime')
         host_ids = [ctrl.uuid for ctrl in valid_ctrls]
         config_dict = {"personalities": personalities,
                        "host_uuids": host_ids,
@@ -6099,33 +6170,13 @@ class ConductorManager(service.PeriodicService):
                        puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
                        }
 
-        # TODO(oponcea) once sm supports in-service config reload always
-        # set reboot=False
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        if utils.is_host_simplex_controller(active_controller):
-            reboot = False
-        else:
-            reboot = True
-
         # Set config out-of-date for controllers
         config_uuid = self._config_update_hosts(context,
                                                 personalities,
-                                                host_uuids=host_ids,
-                                                reboot=reboot)
+                                                host_uuids=host_ids)
 
-        # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
-        # Once sm supports in-service config reload, always set config_uuid=config_uuid
-        # in _config_apply_runtime_manifest and remove code bellow.
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        if utils.is_host_simplex_controller(active_controller):
-            new_uuid = config_uuid
-        else:
-            new_uuid = str(uuid.uuid4())
-        # Apply runtime config but keep reboot required flag set in
-        # _config_update_hosts() above. Node needs a reboot to clear it.
-        new_uuid = self._config_clear_reboot_required(new_uuid)
         self._config_apply_runtime_manifest(context,
-                                            config_uuid=new_uuid,
+                                            config_uuid=config_uuid,
                                             config_dict=config_dict)
 
         tasks = {}
@@ -6870,7 +6921,7 @@ class ConductorManager(service.PeriodicService):
                 state = constants.SB_STATE_CONFIGURED
                 if cutils.is_aio_system(self.dbapi):
                     task = None
-                    cceph.fix_crushmap(self.dbapi)
+                    greenthread.spawn(self._init_ceph_cluster_info)
                 else:
                     task = constants.SB_TASK_PROVISION_STORAGE
                 values = {'state': state,
@@ -6891,7 +6942,7 @@ class ConductorManager(service.PeriodicService):
                     if host.uuid == host_uuid:
                         break
                 else:
-                    LOG.error("Host %(host) is not in the required state!" % host_uuid)
+                    LOG.error("Host %s is not in the required state!" % host_uuid)
                     host = self.dbapi.ihost_get(host_uuid)
                     if not host:
                         LOG.error("Host %s is invalid!" % host_uuid)
@@ -6911,6 +6962,7 @@ class ConductorManager(service.PeriodicService):
                 if ceph_conf.state != constants.SB_STATE_CONFIG_ERR:
                     if config_success:
                         values = {'task': constants.SB_TASK_PROVISION_STORAGE}
+                        greenthread.spawn(self._init_ceph_cluster_info)
                     else:
                         values = {'task': str(tasks)}
             self.dbapi.storage_backend_update(ceph_conf.uuid, values)
@@ -6973,7 +7025,7 @@ class ConductorManager(service.PeriodicService):
             if host.uuid == host_uuid:
                 break
         else:
-            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            LOG.error("Host %s is not in the required state!" % host_uuid)
             host = self.dbapi.ihost_get(host_uuid)
             if not host:
                 LOG.error("Host %s is invalid!" % host_uuid)
@@ -7049,7 +7101,7 @@ class ConductorManager(service.PeriodicService):
             if host.uuid == host_uuid:
                 break
         else:
-            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            LOG.error("Host %s is not in the required state!" % host_uuid)
             host = self.dbapi.ihost_get(host_uuid)
             if not host:
                 LOG.error("Host %s is invalid!" % host_uuid)

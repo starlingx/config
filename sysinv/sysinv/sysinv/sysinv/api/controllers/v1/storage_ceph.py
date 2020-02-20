@@ -492,6 +492,34 @@ def _discover_and_validate_rbd_provisioner_capabilities(caps_dict, storage_ceph)
                 raise wsme.exc.ClientSideError(msg)
 
 
+def _create_default_ceph_db_entries():
+    try:
+        isystem = pecan.request.dbapi.isystem_get_one()
+    except exception.NotFound:
+        # When adding the backend, the system DB entry should
+        # have already been created, but it's safer to just check
+        LOG.info('System is not configured. Cannot create Cluster '
+                 'DB entry')
+        return
+    LOG.info("Create new ceph cluster record")
+    # Create the default primary cluster
+    db_cluster = pecan.request.dbapi.cluster_create(
+        {'uuid': uuidutils.generate_uuid(),
+         'cluster_uuid': None,
+         'type': constants.SB_TYPE_CEPH,
+         'name': 'ceph_cluster',
+         'system_id': isystem.id})
+
+    # Create the default primary ceph storage tier
+    LOG.info("Create primary ceph tier record.")
+    pecan.request.dbapi.storage_tier_create(
+        {'forclusterid': db_cluster.id,
+         'name': constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH],
+         'type': constants.SB_TIER_TYPE_CEPH,
+         'status': constants.SB_TIER_STATUS_DEFINED,
+         'capabilities': {}})
+
+
 def _check_backend_ceph(req, storage_ceph, confirmed=False):
     # check for the backend parameters
     capabilities = storage_ceph.get('capabilities', {})
@@ -561,8 +589,21 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
                         {'name': constants.SB_TIER_DEFAULT_NAMES[
                             constants.SB_TIER_TYPE_CEPH]})
                 except exception.StorageTierNotFoundByName:
-                    raise wsme.exc.ClientSideError(
-                        _("Default tier not found for this backend."))
+                    try:
+                        # When we try to create the default storage backend
+                        # it expects the default cluster and storage tier
+                        # to be already created.
+                        # They were initially created when conductor started,
+                        # but since ceph is no longer enabled by default, we
+                        # should just create it here.
+                        _create_default_ceph_db_entries()
+                        tier = pecan.request.dbapi.storage_tier_query(
+                            {'name': constants.SB_TIER_DEFAULT_NAMES[
+                                constants.SB_TIER_TYPE_CEPH]})
+                    except Exception as e:
+                        LOG.exception(e)
+                        raise wsme.exc.ClientSideError(
+                            _("Error creating default ceph database entries"))
             else:
                 raise wsme.exc.ClientSideError(_("No tier specified for this "
                                                  "backend."))
@@ -692,7 +733,8 @@ def _check_and_update_rbd_provisioner(new_storceph, remove=False):
 def _apply_backend_changes(op, sb_obj):
     services = api_helper.getListFromServices(sb_obj.as_dict())
 
-    if op == constants.SB_API_OP_MODIFY:
+    if (op == constants.SB_API_OP_MODIFY or
+            op == constants.SB_API_OP_CREATE):
         if sb_obj.name == constants.SB_DEFAULT_NAMES[
                 constants.SB_TYPE_CEPH]:
 
@@ -820,8 +862,16 @@ def _create(storage_ceph):
     # Retrieve the main StorageBackend object.
     storage_backend_obj = pecan.request.dbapi.storage_backend_get(storage_ceph_obj.id)
 
-    # Enable the backend:
-    _apply_backend_changes(constants.SB_API_OP_CREATE, storage_backend_obj)
+    # Only apply runtime manifests if at least one controller is unlocked and
+    # available/degraded.
+    controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
+            constants.CONTROLLER)
+    valid_controller_hosts = [h for h in controller_hosts if
+                              h['administrative'] == constants.ADMIN_UNLOCKED and
+                              h['availability'] in [constants.AVAILABILITY_AVAILABLE,
+                                                     constants.AVAILABILITY_DEGRADED]]
+    if valid_controller_hosts:
+        _apply_backend_changes(constants.SB_API_OP_CREATE, storage_backend_obj)
 
     return storage_ceph_obj
 

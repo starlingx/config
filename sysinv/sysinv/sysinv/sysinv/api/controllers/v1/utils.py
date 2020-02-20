@@ -631,13 +631,10 @@ class SBApiHelper(object):
         # TODO(oponcea): Remove this once sm supports in-service config reload
         ctrls = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
         if len(ctrls) == 1:
-            if ctrls[0].administrative == constants.ADMIN_UNLOCKED:
-                if get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-                    msg = _("Storage backend operations require controller "
-                            "host to be locked.")
-                else:
-                    msg = _("Storage backend operations require both controllers "
-                            "to be enabled and available.")
+            if (ctrls[0].administrative == constants.ADMIN_UNLOCKED and
+                    get_system_mode() == constants.SYSTEM_MODE_DUPLEX):
+                msg = _("Storage backend operations require both controllers "
+                        "to be enabled and available.")
                 raise wsme.exc.ClientSideError(msg)
         else:
             for ctrl in ctrls:
