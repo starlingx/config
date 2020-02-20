@@ -6639,6 +6639,12 @@ class HostController(rest.RestController):
         cp_versions = self._kube_operator.kube_get_control_plane_versions()
         current_cp_version = cp_versions.get(host_obj.hostname)
         if current_cp_version == kube_upgrade_obj.to_version:
+            # Make sure we are not attempting to upgrade the first upgraded
+            # control plane again after networking was upgraded
+            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_NETWORKING:
+                raise wsme.exc.ClientSideError(_(
+                    "The first control plane was already upgraded."))
+
             # The control plane was already upgraded, but we didn't progress
             # to the next state, so something failed along the way.
             LOG.info("Redoing kubernetes control plane upgrade for %s" %
