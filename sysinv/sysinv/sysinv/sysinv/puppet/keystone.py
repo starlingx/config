@@ -46,8 +46,6 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
 
         return {
             'keystone::db::postgresql::user': dbuser,
-            'keystone::cache_enabled': True,
-            'keystone::cache_backend': 'dogpile.cache.memcached',
 
             'platform::client::params::admin_username': admin_username,
 
@@ -153,19 +151,27 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
         return config
 
     def get_host_config(self, host):
-        # The valid format for IPv6 addresses is: inet6:[<ip_v6>]:port
-        # Although, for IPv4, the "inet" part is not mandatory, we
-        # specify if anyway, for consistency purposes.
-        if self._get_address_by_name(
-                constants.CONTROLLER_PLATFORM_NFS,
-                constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
-            argument = "url:inet6:[%s]:11211" % host.mgmt_ip
-        else:
-            argument = "url:inet:%s:11211" % host.mgmt_ip
+        config = {}
+        # The use of caching on subclouds is not supported as the syncing of
+        # fernet keys to the subcloud results in stale cache entries.
+        if self._distributed_cloud_role() != \
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            # The valid format for IPv6 addresses is: inet6:[<ip_v6>]:port
+            # Although, for IPv4, the "inet" part is not mandatory, we
+            # specify if anyway, for consistency purposes.
+            if self._get_address_by_name(
+                    constants.CONTROLLER_PLATFORM_NFS,
+                    constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
+                argument = "url:inet6:[%s]:11211" % host.mgmt_ip
+            else:
+                argument = "url:inet:%s:11211" % host.mgmt_ip
 
-        config = {
-            'keystone::cache_backend_argument': argument
-        }
+            config.update({
+                'keystone::cache_enabled': True,
+                'keystone::cache_backend': 'dogpile.cache.memcached',
+                'keystone::cache_backend_argument': argument
+            })
+
         return config
 
     def _get_service_parameter_config(self):
