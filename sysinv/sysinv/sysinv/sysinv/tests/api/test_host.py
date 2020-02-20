@@ -955,6 +955,42 @@ class TestPostKubeUpgrades(TestHost):
         self.assertIn("control plane on this host is already being upgraded",
                       result.json['error_message'])
 
+    def test_kube_upgrade_first_control_plane_after_networking_upgraded(self):
+        # Test re-upgrading kubernetes first control plane after networking was upgraded
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
+        )
+
+        # The control plane on this host was already upgraded
+        # to the new version
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1'}
+
+        # Upgrade the first control plane
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("The first control plane was already upgraded",
+                      result.json['error_message'])
+
     def test_kube_upgrade_kubelet_controller_0(self):
         # Test upgrading kubernetes kubelet on controller-0
 
