@@ -15,7 +15,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
     CHART = common.HELM_CHART_METRICBEAT
 
     def get_overrides(self, namespace=None):
-        system_fields, system_name_for_index = self.get_system_info_overrides()
+        system_fields = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
                 'systemName': '',
@@ -33,8 +33,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                             self._get_metric_deployment_kubernetes()
                     },
                     'config': self._get_config_overrides(system_fields),
-                },
-                'systemNameForIndex': system_name_for_index,
+                }
             }
         }
 
