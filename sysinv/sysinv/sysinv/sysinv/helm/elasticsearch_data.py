@@ -31,13 +31,19 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
 
             if utils.is_aio_simplex_system(self.dbapi):
                 replicas = 1
+
+        if self._is_ipv6_cluster_service():
+            ipv6JavaOpts = "-Djava.net.preferIPv6Addresses=true "
+        else:
+            ipv6JavaOpts = ""
+
         if (utils.is_aio_system(self.dbapi) and not
                 self._is_distributed_cloud_role_system_controller()):
             esJavaOpts = \
-                "-Djava.net.preferIPv6Addresses=true -Xmx1536m -Xms1536m"
+                ipv6JavaOpts + "-Xmx1536m -Xms1536m"
         else:
             esJavaOpts = \
-                "-Djava.net.preferIPv6Addresses=true -Xmx4096m -Xms4096m"
+                ipv6JavaOpts + "-Xmx4096m -Xms4096m"
 
         overrides = {
             common.HELM_NS_MONITOR: {
