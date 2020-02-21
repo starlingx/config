@@ -73,3 +73,11 @@ def do_ptp_modify(cc, args):
         raise exc.CommandError('PTP not found: %s' % ptp.uuid)
 
     _print_ptp_show(ptp)
+
+
+def do_ptp_apply(cc, args):
+    """Apply the PTP config."""
+
+    cc.ptp.apply()
+
+    print('Applying PTP configuration')

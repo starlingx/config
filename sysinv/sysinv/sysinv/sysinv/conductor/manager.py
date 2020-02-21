@@ -5709,11 +5709,11 @@ class ConductorManager(service.PeriodicService):
                          constants.STORAGE]
         self._config_update_hosts(context, personalities, reboot=True)
 
-    def update_ptp_config(self, context):
+    def update_ptp_config(self, context, do_apply=False):
         """Update the PTP configuration"""
-        self._update_ptp_host_configs(context)
+        self._update_ptp_host_configs(context, do_apply)
 
-    def _update_ptp_host_configs(self, context):
+    def _update_ptp_host_configs(self, context, do_apply=False):
         """Issue config updates to hosts with ptp clocks"""
         personalities = [constants.CONTROLLER,
                          constants.WORKER,
@@ -5721,8 +5721,26 @@ class ConductorManager(service.PeriodicService):
 
         hosts = self.dbapi.ihost_get_list()
         ptp_hosts = [host.uuid for host in hosts if host.clock_synchronization == constants.PTP]
+
         if ptp_hosts:
-            self._config_update_hosts(context, personalities, host_uuids=ptp_hosts, reboot=True)
+            config_uuid = self._config_update_hosts(context, personalities, host_uuids=ptp_hosts)
+            if do_apply:
+                runtime_hosts = []
+                for host in hosts:
+                    if (host.clock_synchronization == constants.PTP and
+                        host.administrative == constants.ADMIN_UNLOCKED and
+                        host.operational == constants.OPERATIONAL_ENABLED and
+                        not (self._config_out_of_date(host) and
+                                 self._config_is_reboot_required(host.config_target))):
+                        runtime_hosts.append(host.uuid)
+
+                if runtime_hosts:
+                    config_dict = {
+                        "personalities": personalities,
+                        "classes": ['platform::ptp::runtime'],
+                        "host_uuids": runtime_hosts
+                    }
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_system_mode_config(self, context):
         """Update the system mode configuration"""
@@ -7409,7 +7427,7 @@ class ConductorManager(service.PeriodicService):
             # Do nothing. Does not need to update target config of any hosts
             pass
         elif service == constants.SERVICE_TYPE_PTP:
-            self._update_ptp_host_configs(context)
+            self._update_ptp_host_configs(context, do_apply=do_apply)
         else:
             # All other services
             personalities = [constants.CONTROLLER]
