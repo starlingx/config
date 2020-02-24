@@ -149,6 +149,29 @@ class BaseHelm(object):
             self.context['_system_controller_floating_address'] = sc_float_ip
         return sc_float_ip
 
+    def _is_ipv6_cluster_service(self):
+        if self.dbapi is None:
+            return False
+
+        is_ipv6_cluster_service = self.context.get(
+            '_is_ipv6_cluster_service', None)
+
+        if is_ipv6_cluster_service is None:
+            try:
+                cluster_service_network = self.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_CLUSTER_SERVICE)
+                cluster_service_network_addr_pool = self.dbapi.address_pool_get(
+                    cluster_service_network.pool_uuid)
+                is_ipv6_cluster_service = (
+                    cluster_service_network_addr_pool.family ==
+                    constants.IPV6_FAMILY)
+            except exception.NetworkTypeNotFound:
+                LOG.error("No Cluster Service Network Type found")
+                raise
+
+            self.context['_is_ipv6_cluster_service'] = is_ipv6_cluster_service
+        return is_ipv6_cluster_service
+
     def _region_name(self):
         """Returns the local region name of the system"""
         if self.dbapi is None:

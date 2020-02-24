@@ -29,11 +29,16 @@ class ElasticsearchMasterHelm(elastic.ElasticBaseHelm):
                 # pods will be master capable to form a cluster of 3 masters.
                 replicas = 1
 
+        if self._is_ipv6_cluster_service():
+            ipv6JavaOpts = "-Djava.net.preferIPv6Addresses=true "
+        else:
+            ipv6JavaOpts = ""
+
         if (utils.is_aio_system(self.dbapi) and not
                 self._is_distributed_cloud_role_system_controller()):
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx256m -Xms256m"
+            esJavaOpts = ipv6JavaOpts + "-Xmx256m -Xms256m"
         else:
-            esJavaOpts = "-Djava.net.preferIPv6Addresses=true -Xmx512m -Xms512m"
+            esJavaOpts = ipv6JavaOpts + "-Xmx512m -Xms512m"
 
         overrides = {
             common.HELM_NS_MONITOR: {
