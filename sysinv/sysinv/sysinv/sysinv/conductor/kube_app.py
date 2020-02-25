@@ -2702,22 +2702,12 @@ class DockerHelper(object):
             elif pub_img_tag.startswith(registry_info['registry_replaced']):
                 return pub_img_tag, registry_auth
 
-        # If the image is not from any of the known registries
+        # In case the image is overridden via "system helm-override-update"
+        # with a custom registry that is not from any of the known registries
         # (ie..k8s.gcr.io, gcr.io, quay.io, docker.io. docker.elastic.co)
-        # or no registry name specified in image tag, use user specified
-        # docker registry as default
-        registry = self.registries_info[
-            constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_replaced']
-        registry_auth = self.registries_info[
-            constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_auth']
-        registry_name = pub_img_tag[:pub_img_tag.find('/')]
-
-        if registry:
-            LOG.info("Registry %s not recognized or docker.io repository "
-                     "detected. Pulling from public/private registry"
-                     % registry_name)
-            return registry + '/' + pub_img_tag, registry_auth
-        return pub_img_tag, registry_auth
+        # , pull directly from the custom registry (Note: The custom registry
+        # must be unauthenticated in this case.)
+        return pub_img_tag, None
 
     def _start_armada_service(self, client):
         try:
