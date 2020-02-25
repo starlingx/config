@@ -719,6 +719,36 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
 
+    def test_get_interface_address_method_for_platform_ipv4(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['networktype'] = constants.NETWORK_TYPE_NONE
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
+
+    def test_get_interface_address_method_for_platform_ipv6(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['ipv6_mode'] = constants.IPV6_STATIC
+        self.iface['networktype'] = constants.NETWORK_TYPE_NONE
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
+
+    def test_get_interface_address_method_for_platform_invalid(self):
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
+        self.iface['networks'] = self._get_network_ids_by_type(
+            constants.NETWORK_TYPE_OAM)
+        self.host['personality'] = constants.WORKER
+        self._update_context()
+        network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_OAM)
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'dhcp')
+
     def test_get_interface_traffic_classifier_for_mgmt(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]

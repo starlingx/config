@@ -646,6 +646,13 @@ def get_interface_address_method(context, iface, network_id=None):
         # natively supported in vswitch or need to be shared with the kernel
         # because of a platform VLAN should be left as manual config
         return MANUAL_METHOD
+    elif (iface.ifclass == constants.INTERFACE_CLASS_PLATFORM and
+        networktype is None and
+        (iface.ipv4_mode == constants.IPV4_STATIC or
+            iface.ipv6_mode == constants.IPV6_STATIC)):
+        # Allow platform-class interface with ipv4 mode set to static to
+        # have static ip address
+        return STATIC_METHOD
     elif not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE \
             or not networktype:
         # Interfaces that are configured purely as a dependency from other

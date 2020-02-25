@@ -244,9 +244,6 @@ class AddressController(rest.RestController):
 
     def _check_interface_type(self, interface_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        if (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
-                interface['networktypelist'] is None):
-            raise exception.InterfaceNetworkNotSet()
         for nt in interface['networktypelist']:
             if nt not in ALLOWED_NETWORK_TYPES:
                 raise exception.UnsupportedInterfaceNetworkType(
