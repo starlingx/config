@@ -47,7 +47,7 @@ class PTPTestCase(base.FunctionalTest):
         self.ptp = self.dbapi.ptp_get_one()
         self.ptp_uuid = self.ptp.uuid
 
-    def _get_path(self, ptp_id):
+    def _get_path(self, ptp_id=None):
         if ptp_id:
             path = '/ptp/' + ptp_id
         else:
@@ -124,3 +124,15 @@ class PTPModifyTestCase(PTPTestCase):
 
         dbutils.create_test_interface(**interface)
         self.modify_ptp_failure(self.transport_udp, "Invalid system configuration for UDP based PTP transport")
+
+
+class PTPApplyTestCase(PTPTestCase):
+    def setUp(self):
+        super(PTPApplyTestCase, self).setUp()
+
+    def test_apply_ptp(self):
+        # This is basically a null operation for the API but we should test that the function exists
+        apply_path = self._get_path() + "/apply"
+        # The apply takes no parameters
+        response = self.post_json(apply_path, {})
+        self.assertEqual(http_client.NO_CONTENT, response.status_int)

@@ -4467,6 +4467,17 @@ badMediaType (415)
       "uuid":"70649b44-b462-445a-9fa5-9233a1b5842d"
    }
 
+*******************************
+Applies the PTP configuration
+*******************************
+
+.. rest_method:: POST /v1/ptp/apply
+
+**Normal response codes**
+
+204
+
+
 -------------
 External OAM
 -------------
