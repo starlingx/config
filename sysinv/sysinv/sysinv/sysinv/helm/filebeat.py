@@ -18,7 +18,9 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
         system_fields = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
-                'config': self._get_config_overrides(system_fields),
+                'filebeatConfig': {
+                    'filebeat.yml': self._get_config_overrides(system_fields),
+                },
                 'resources': self._get_resources_overrides(),
             }
         }
@@ -34,7 +36,14 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
     def _get_config_overrides(self, system_fields):
         conf = {
             'name': '${NODE_NAME}',
-            'processors': [{'add_kubernetes_metadata': {'in_cluster': True}}],
+            'processors': [
+                {
+                    'add_kubernetes_metadata': {
+                        # If kube_config is not set, KUBECONFIG environment variable will be checked
+                        # and if not present it will fall back to InCluster
+                    }
+                }
+            ],
             'filebeat.inputs': [
                 {
                     'enabled': True,

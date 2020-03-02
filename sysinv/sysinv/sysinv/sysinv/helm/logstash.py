@@ -26,19 +26,18 @@ class LogstashHelm(elastic.ElasticBaseHelm):
 
         overrides = {
             common.HELM_NS_MONITOR: {
-                'replicaCount': replicas,
+                'replicas': replicas,
                 'resources': self._get_resources_overrides(),
-                'config': self._get_config(),
             }
         }
 
         if self._is_distributed_cloud_role_subcloud():
             subcloud_settings = {
-                'elasticsearch': {
-                    'host': "http://%s" %
+                'elasticsearchHosts': "http://%s:%s%s" % (
                     self._system_controller_floating_address(),
-                    'port': self.NODE_PORT
-                },
+                    self.NODE_PORT,
+                    self.ELASTICSEARCH_CLIENT_PATH
+                ),
                 'ingress': {'enabled': False},
             }
             overrides[common.HELM_NS_MONITOR].update(subcloud_settings)
@@ -51,17 +50,7 @@ class LogstashHelm(elastic.ElasticBaseHelm):
         else:
             return overrides
 
-    def _get_config(self):
-        if self._is_distributed_cloud_role_subcloud():
-            # this does  not accept self.ELASTICSEARCH_CLIENT_PATH
-            config = {'elasticsearch.path': "/mon-elasticsearch-client"}
-        else:
-            config = {'elasticsearch.path': ""}
-
-        return config
-
     def _get_resources_overrides(self):
-
         if (utils.is_aio_system(self.dbapi) and not
                 self._is_distributed_cloud_role_system_controller()):
             cpu_limits = "500m"
@@ -70,7 +59,9 @@ class LogstashHelm(elastic.ElasticBaseHelm):
             cpu_limits = "500m"
             memory_limits = "2048Mi"
 
-        return {'limits': {
+        return {'requests': {
+                    'memory': memory_limits},
+                'limits': {
                     'cpu': cpu_limits,
                     'memory': memory_limits},
                 }
