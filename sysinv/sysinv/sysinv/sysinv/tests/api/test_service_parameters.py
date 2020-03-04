@@ -71,6 +71,30 @@ class ApiServiceParameterTestCaseMixin(object):
             'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES,
             'name': constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST,
             'value': 'localurl'
+        },
+        {
+            'service': constants.SERVICE_TYPE_KUBERNETES,
+            'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+            'name': constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
+            'value': 'wad'
+        },
+        {
+            'service': constants.SERVICE_TYPE_KUBERNETES,
+            'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+            'name': constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL,
+            'value': 'https://10.10.10.3:30556/dex'
+        },
+        {
+            'service': constants.SERVICE_TYPE_KUBERNETES,
+            'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+            'name': constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID,
+            'value': 'wad'
+        },
+        {
+            'service': constants.SERVICE_TYPE_KUBERNETES,
+            'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+            'name': constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
+            'value': 'wad'
         }
     ]
 
@@ -148,6 +172,15 @@ class ApiServiceParameterTestCaseMixin(object):
         else:
             return response.json[self.RESULT_KEY][0]
 
+    def apply(self, service, expect_errors=False):
+        data = {}
+        data['service'] = service
+        response = self.post_json(self.API_PREFIX + "/apply",
+                                  params=data,
+                                  expect_errors=expect_errors,
+                                  headers=self.API_HEADERS)
+        return response
+
     def validate_response(self, response, expect_errors, error_message, json_response=False):
         if expect_errors:
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
@@ -195,6 +228,38 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         post_object = self.service_parameter_wildcard
         response = self.post(post_object)
         self.validate_data(post_object, response)
+
+    def test_apply_kubernetes_apiserver_oidc_parameters_semantic(self):
+        # applying kubernetes service parameters with no OIDC parameters
+        # this is a valid configuration
+        response = self.apply('kubernetes')
+        self.assertEqual(http_client.NO_CONTENT, response.status_int)
+
+        # set SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM. this is an invalid config
+        # valid configs are (none)
+        # (oidc_issuer_url, oidc_client_id, oidc_username_claim)
+        # (the previous 3 plus oidc_groups_claim)
+        post_object = self.service_parameter_data[3]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+        response = self.apply('kubernetes', expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+
+        # the other 2 valid configs
+        post_object = self.service_parameter_data[4]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+        post_object = self.service_parameter_data[5]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+        response = self.apply('kubernetes')
+        self.assertEqual(http_client.NO_CONTENT, response.status_int)
+
+        post_object = self.service_parameter_data[6]
+        response = self.post(post_object)
+        self.validate_data(post_object, response)
+        response = self.apply('kubernetes')
+        self.assertEqual(http_client.NO_CONTENT, response.status_int)
 
 
 class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):

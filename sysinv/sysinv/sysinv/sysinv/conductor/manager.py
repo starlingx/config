@@ -7476,6 +7476,14 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+            elif service == constants.SERVICE_TYPE_KUBERNETES:
+                personalities = [constants.CONTROLLER]
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['platform::kubernetes::master::change_apiserver_parameters']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
             elif service == constants.SERVICE_TYPE_HTTP:
                 # the platform::config class will be applied that will
                 # configure the http port
