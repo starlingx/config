@@ -1623,7 +1623,7 @@ class AppOperator(object):
                 LOG.error(e)
                 raise
 
-    def _delete_app_specific_resources(self, app_name):
+    def _delete_app_specific_resources(self, app_name, operation_type):
         """Remove application specific k8s resources.
 
         Some applications may need resources created outside of the existing
@@ -1647,9 +1647,11 @@ class AppOperator(object):
                 raise
             self._delete_namespace(namespace)
 
-        if app_name == constants.HELM_APP_OPENSTACK:
+        if (app_name == constants.HELM_APP_OPENSTACK and
+                operation_type == constants.APP_REMOVE_OP):
             _delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-        elif app_name == constants.HELM_APP_MONITOR:
+        elif (app_name == constants.HELM_APP_MONITOR and
+              operation_type == constants.APP_DELETE_OP):
             _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
 
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
@@ -2339,7 +2341,7 @@ class AppOperator(object):
                 if app.system_app:
                     if self._storage_provisioner_required(app.name):
                         self._delete_storage_provisioner_secrets(app.name)
-                    self._delete_app_specific_resources(app.name)
+                    self._delete_app_specific_resources(app.name, constants.APP_REMOVE_OP)
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
                 LOG.exception(e)
@@ -2427,6 +2429,8 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app)
         try:
+            if app.system_app:
+                self._delete_app_specific_resources(app.name, constants.APP_DELETE_OP)
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
