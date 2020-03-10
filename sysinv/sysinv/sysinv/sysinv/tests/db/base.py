@@ -47,6 +47,7 @@ class BaseIPv4Mixin(object):
     cluster_pod_subnet = netaddr.IPNetwork('172.16.0.0/16')
     cluster_service_subnet = netaddr.IPNetwork('10.96.0.0/12')
     multicast_subnet = netaddr.IPNetwork('239.1.1.0/28')
+    storage_subnet = netaddr.IPNetwork('10.10.20.0/24')
 
     nameservers = ['8.8.8.8', '8.8.4.4']
 
@@ -63,6 +64,7 @@ class BaseIPv6Mixin(object):
     cluster_pod_subnet = netaddr.IPNetwork('fd03::/64')
     cluster_service_subnet = netaddr.IPNetwork('fd04::/112')
     multicast_subnet = netaddr.IPNetwork('ff08::1:1:0/124')
+    storage_subnet = netaddr.IPNetwork('fd05::/64')
 
     nameservers = ['2001:4860:4860::8888', '2001:4860:4860::8844']
 
@@ -234,6 +236,10 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
                                   constants.NETWORK_TYPE_CLUSTER_SERVICE,
                                   self.cluster_service_subnet)
 
+        self._create_test_network('storage',
+                                  constants.NETWORK_TYPE_STORAGE,
+                                  self.storage_subnet)
+
     def _create_test_addresses(self, hostnames, subnet, network_type,
                                start=1, stop=None):
         ips = itertools.islice(subnet, start, stop)
@@ -275,6 +281,10 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_addresses(
             hostnames, self.cluster_host_subnet,
             constants.NETWORK_TYPE_CLUSTER_HOST)
+
+        self._create_test_addresses(
+            hostnames, self.storage_subnet,
+            constants.NETWORK_TYPE_STORAGE)
 
     def _create_test_oam(self):
         self.oam = dbutils.create_test_oam()
@@ -388,8 +398,9 @@ class BaseHostTestCase(BaseSystemTestCase):
     def _create_test_host_platform_interface(self, host):
         network_types = [constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_MGMT,
-                         constants.NETWORK_TYPE_CLUSTER_HOST]
-        ifnames = ['oam', 'mgmt', 'cluster']
+                         constants.NETWORK_TYPE_CLUSTER_HOST,
+                         constants.NETWORK_TYPE_STORAGE]
+        ifnames = ['oam', 'mgmt', 'cluster', 'storage']
         index = 0
         ifaces = []
         for nt, name in zip(network_types, ifnames):

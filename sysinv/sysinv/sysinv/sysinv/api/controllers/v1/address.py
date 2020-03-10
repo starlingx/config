@@ -45,7 +45,8 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_CLUSTER_HOST,
                          constants.NETWORK_TYPE_DATA,
-                         constants.NETWORK_TYPE_IRONIC]
+                         constants.NETWORK_TYPE_IRONIC,
+                         constants.NETWORK_TYPE_STORAGE]
 
 
 class Address(base.APIBase):

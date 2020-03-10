@@ -641,12 +641,14 @@ NETWORK_TYPE_PCI_PASSTHROUGH = 'pci-passthrough'
 NETWORK_TYPE_PCI_SRIOV = 'pci-sriov'
 NETWORK_TYPE_PXEBOOT = 'pxeboot'
 NETWORK_TYPE_IRONIC = 'ironic'
+NETWORK_TYPE_STORAGE = 'storage'
 
 PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_MGMT,
                           NETWORK_TYPE_OAM,
                           NETWORK_TYPE_CLUSTER_HOST,
-                          NETWORK_TYPE_IRONIC]
+                          NETWORK_TYPE_IRONIC,
+                          NETWORK_TYPE_STORAGE]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]

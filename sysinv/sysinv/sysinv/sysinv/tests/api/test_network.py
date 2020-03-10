@@ -116,6 +116,10 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             hostnames, self.cluster_host_subnet,
             constants.NETWORK_TYPE_CLUSTER_HOST)
 
+        self._create_test_addresses(
+            hostnames, self.storage_subnet,
+            constants.NETWORK_TYPE_STORAGE)
+
 
 class TestPostMixin(NetworkTestCase):
 
@@ -221,6 +225,12 @@ class TestPostMixin(NetworkTestCase):
             constants.NETWORK_TYPE_CLUSTER_SERVICE,
             self.cluster_service_subnet)
 
+    def test_create_success_storage(self):
+        self._test_create_network_success(
+            'storage',
+            constants.NETWORK_TYPE_STORAGE,
+            self.storage_subnet)
+
     def test_create_fail_duplicate_pxeboot(self):
         self._test_create_network_fail_duplicate(
             'pxeboot',
@@ -256,6 +266,12 @@ class TestPostMixin(NetworkTestCase):
             'cluster-service',
             constants.NETWORK_TYPE_CLUSTER_SERVICE,
             self.cluster_service_subnet)
+
+    def test_create_fail_duplicate_storage(self):
+        self._test_create_network_fail_duplicate(
+            'storage',
+            constants.NETWORK_TYPE_STORAGE,
+            self.storage_subnet)
 
     def test_create_with_invalid_type(self):
         # Test creation with an invalid type
@@ -394,6 +410,14 @@ class TestDelete(NetworkTestCase):
     def test_delete_cluster_service_after_initial_config(self):
         self._test_delete_after_initial_config_not_allowed(
             constants.NETWORK_TYPE_CLUSTER_SERVICE
+        )
+
+    def test_delete_storage_subnet(self):
+        self._test_delete_allowed(constants.NETWORK_TYPE_STORAGE)
+
+    def test_delete_storage_subnet_after_initial_config(self):
+        self._test_delete_after_initial_config_not_allowed(
+            constants.NETWORK_TYPE_STORAGE
         )
 
     def test_delete_data(self):

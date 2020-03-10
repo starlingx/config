@@ -51,6 +51,7 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_CLUSTER_SERVICE,
                          constants.NETWORK_TYPE_IRONIC,
                          constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
+                         constants.NETWORK_TYPE_STORAGE,
                          ]
 
 
@@ -184,7 +185,8 @@ class NetworkController(rest.RestController):
             addresses = self._create_ironic_network_address()
         elif network['type'] == constants.NETWORK_TYPE_SYSTEM_CONTROLLER:
             addresses = self._create_system_controller_network_address(pool)
-
+        elif network['type'] == constants.NETWORK_TYPE_STORAGE:
+            addresses = self._create_storage_network_address()
         else:
             return
         self._populate_network_addresses(pool, network, addresses)
@@ -255,6 +257,13 @@ class NetworkController(rest.RestController):
         return addresses
 
     def _create_ironic_network_address(self):
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+        return addresses
+
+    def _create_storage_network_address(self):
         addresses = collections.OrderedDict()
         addresses[constants.CONTROLLER_HOSTNAME] = None
         addresses[constants.CONTROLLER_0_HOSTNAME] = None
@@ -368,7 +377,8 @@ class NetworkController(rest.RestController):
                                 constants.NETWORK_TYPE_CLUSTER_HOST,
                                 constants.NETWORK_TYPE_PXEBOOT,
                                 constants.NETWORK_TYPE_CLUSTER_POD,
-                                constants.NETWORK_TYPE_CLUSTER_SERVICE]:
+                                constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                                constants.NETWORK_TYPE_STORAGE]:
             msg = _("Cannot delete type {} network {} after initial "
                     "configuration completion"
                     .format(network['type'], network_uuid))
