@@ -28,7 +28,8 @@ PLATFORM_NETWORK_TYPES = [constants.NETWORK_TYPE_PXEBOOT,
                           constants.NETWORK_TYPE_MGMT,
                           constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.NETWORK_TYPE_OAM,
-                          constants.NETWORK_TYPE_IRONIC]
+                          constants.NETWORK_TYPE_IRONIC,
+                          constants.NETWORK_TYPE_STORAGE]
 
 DATA_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA]
 
@@ -287,6 +288,19 @@ class InterfacePuppet(base.BasePuppet):
 
             floating_ips.update({
                 constants.NETWORK_TYPE_IRONIC: ironic_floating_ip,
+            })
+        except exception.AddressNotFoundByName:
+            pass
+
+        try:
+            storage_address = self._get_address_by_name(
+                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_STORAGE)
+
+            storage_floating_ip = (str(storage_address.address) + '/' +
+                                   str(storage_address.prefix))
+
+            floating_ips.update({
+                constants.NETWORK_TYPE_STORAGE: storage_floating_ip,
             })
         except exception.AddressNotFoundByName:
             pass
@@ -667,6 +681,8 @@ def get_interface_address_method(context, iface, network_id=None):
             # statically since the controller themselves run the DHCP server.
             return STATIC_METHOD
         elif networktype == constants.NETWORK_TYPE_CLUSTER_HOST:
+            return STATIC_METHOD
+        elif networktype == constants.NETWORK_TYPE_STORAGE:
             return STATIC_METHOD
         elif networktype == constants.NETWORK_TYPE_PXEBOOT:
             # All pxeboot interfaces that exist on non-controller nodes are set
