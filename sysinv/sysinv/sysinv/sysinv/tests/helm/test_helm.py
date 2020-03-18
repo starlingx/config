@@ -6,6 +6,8 @@
 import keyring
 import mock
 
+from sysinv.common import constants
+
 from sysinv.helm.helm import HelmOperator
 from sysinv.helm.manifest_base import ArmadaManifestOperator
 
@@ -14,12 +16,12 @@ from sysinv.tests.db import utils as dbutils
 from sysinv.tests.helm import base as helm_base
 
 
-class StxPlatformAppMixin(object):
-    path_name = 'stx-platform.tgz'
-    app_name = 'oidc-auth-apps'
+class StxCertMgrAppMixin(object):
+    app_name = constants.HELM_APP_CERT_MANAGER
+    path_name = app_name + '.tgz'
 
     def setUp(self):
-        super(StxPlatformAppMixin, self).setUp()
+        super(StxCertMgrAppMixin, self).setUp()
 
 
 class HelmOperatorTestSuiteMixin(helm_base.HelmTestCaseMixin):
@@ -73,10 +75,10 @@ class HelmOperatorTestSuiteMixin(helm_base.HelmTestCaseMixin):
 # - Controller
 # - IPv6
 # - Ceph Storage
-# - stx-platform app
-class HelmSTXPlatformControllerTestCase(StxPlatformAppMixin,
-                                         dbbase.BaseIPv6Mixin,
-                                         dbbase.BaseCephStorageBackendMixin,
-                                         HelmOperatorTestSuiteMixin,
-                                         dbbase.ControllerHostTestCase):
+# - cert-manager app
+class HelmSTXCertMgrControllerTestCase(StxCertMgrAppMixin,
+                                       dbbase.BaseIPv6Mixin,
+                                       dbbase.BaseCephStorageBackendMixin,
+                                       HelmOperatorTestSuiteMixin,
+                                       dbbase.ControllerHostTestCase):
     pass

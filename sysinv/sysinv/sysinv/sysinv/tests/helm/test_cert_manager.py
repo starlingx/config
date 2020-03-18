@@ -11,8 +11,8 @@ from sysinv.tests.helm import base
 from sysinv.tests.helm import test_helm
 
 
-class CertManagerTestCase(test_helm.StxPlatformAppMixin,
-                  base.HelmTestCaseMixin):
+class CertManagerTestCase(test_helm.StxCertMgrAppMixin,
+                          base.HelmTestCaseMixin):
 
     def setUp(self):
         super(CertManagerTestCase, self).setUp()
@@ -21,7 +21,7 @@ class CertManagerTestCase(test_helm.StxPlatformAppMixin,
 
 
 class CertManagerIPv4ControllerHostTestCase(CertManagerTestCase,
-                                             dbbase.ProvisionedControllerHostTestCase):
+                                            dbbase.ProvisionedControllerHostTestCase):
 
     def test_replicas(self):
         overrides = self.operator.get_helm_chart_overrides(
