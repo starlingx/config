@@ -48,7 +48,8 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
                         "/var/log/syslog",
                         "/var/log/**/*.log"
                     ],
-                    'type': "log"
+                    'type': "log",
+                    'close_timeout': "5m"
                 }
             ]
 
