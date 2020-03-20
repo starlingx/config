@@ -28,6 +28,8 @@ import boto3
 from botocore.config import Config
 import collections
 import contextlib
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 import datetime
 import errno
 import functools
@@ -2185,3 +2187,32 @@ def get_aws_ecr_registry_credentials(dbapi, registry, username, password):
             "Failed to get AWS ECR credentials: %s" % e))
 
     return dict(username=username, password=password)
+
+
+def extract_certs_from_pem(pem_contents):
+    """
+    Extract certificates from a pem string
+
+    :param pem_contents: A string in pem format
+    :return certs: A list of x509 cert objects
+    """
+    marker = b'-----BEGIN CERTIFICATE-----'
+
+    start = 0
+    certs = []
+    while True:
+        index = pem_contents.find(marker, start)
+        if index == -1:
+            break
+        try:
+            cert = x509.load_pem_x509_certificate(pem_contents[index::],
+                                                  default_backend())
+        except Exception:
+            LOG.exception(_("Load pem x509 certificate failed at file "
+                            "location: %s") % index)
+            raise exception.SysinvException(_(
+                "Failed to load pem x509 certificate"))
+
+        certs.append(cert)
+        start = start + index + len(marker)
+    return certs

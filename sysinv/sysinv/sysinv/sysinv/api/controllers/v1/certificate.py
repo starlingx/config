@@ -27,7 +27,6 @@ import wsme
 import wsmeext.pecan as wsme_pecan
 
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 from pecan import expose
 from pecan import rest
 
@@ -42,6 +41,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.openstack.common.rpc.common import RemoteError
 from wsme import types as wtypes
 
 LOG = log.getLogger(__name__)
@@ -322,22 +322,32 @@ class CertificateController(rest.RestController):
                 error=("No certificates have been added, "
                        "invalid PEM document: %s" % e))
 
-        # Extract the certificate from the pem file
-        cert = x509.load_pem_x509_certificate(pem_contents,
-                                              default_backend())
-
-        msg = self._check_cert_validity(cert)
-        if msg is not True:
+        # Extract the certificates from the pem file
+        try:
+            certs = cutils.extract_certs_from_pem(pem_contents)
+        except Exception as e:
+            msg = "No certificates have been added, %s" % e
             return dict(success="", error=msg)
 
-        if mode == constants.CERT_MODE_OPENSTACK:
-            domain, msg = _check_endpoint_domain_exists()
-            if domain:
-                msg = _check_cert_dns_name(cert, domain)
-                if msg is not True:
-                    return dict(success="", error=msg.message)
-            elif msg:
+        if not certs:
+            msg = "No certificates have been added, " \
+                  "no valid certificates found in file."
+            LOG.info(msg)
+            return dict(success="", error=msg)
+
+        for cert in certs:
+            msg = self._check_cert_validity(cert)
+            if msg is not True:
                 return dict(success="", error=msg)
+
+            if mode == constants.CERT_MODE_OPENSTACK:
+                domain, msg = _check_endpoint_domain_exists()
+                if domain:
+                    msg = _check_cert_dns_name(cert, domain)
+                    if msg is not True:
+                        return dict(success="", error=msg.message)
+                elif msg:
+                    return dict(success="", error=msg)
 
         if mode == constants.CERT_MODE_TPM:
             try:
@@ -364,63 +374,105 @@ class CertificateController(rest.RestController):
             config_dict = {'passphrase': passphrase,
                            'mode': mode,
                            }
-            signature = pecan.request.rpcapi.config_certificate(
+            inv_certs = pecan.request.rpcapi.config_certificate(
                 pecan.request.context,
                 pem_contents,
                 config_dict)
 
-        except Exception as e:
+        except RemoteError as e:
             msg = "Exception occurred e={}".format(e)
-            LOG.info(msg)
-            return dict(success="", error=str(e), body="", certificates={})
+            LOG.warn(msg)
+            return dict(success="", error=str(e.value), body="", certificates={})
 
-        # Update with installed certificate information
-        values = {
-            'certtype': mode,
-            # TODO(jkung) 'issuer': cert.issuer,
-            'signature': signature,
-            'start_date': cert.not_valid_before,
-            'expiry_date': cert.not_valid_after,
-        }
-        LOG.info("config_certificate values=%s" % values)
+        certificates = pecan.request.dbapi.certificate_get_list()
+        # ssl and ssl_tpm certs are mutual exclusive, so
+        # if the new cert is a SSL cert, delete the existing TPM cert as well
+        # if the new cert is a TPM cert, delete the existing SSL cert as well
+        for certificate in certificates:
+            if (mode == constants.CERT_MODE_SSL
+                    and certificate.certtype == constants.CERT_MODE_TPM) or \
+                (mode == constants.CERT_MODE_TPM
+                    and certificate.certtype == constants.CERT_MODE_SSL):
+                pecan.request.dbapi.certificate_destroy(certificate.uuid)
 
-        if mode in [constants.CERT_MODE_SSL, constants.CERT_MODE_TPM]:
-            if mode == constants.CERT_MODE_SSL:
-                remove_certtype = constants.CERT_MODE_TPM
+        # Create new or update existing certificates in sysinv with the
+        # information returned from conductor manager.
+        certificate_dicts = []
+        for inv_cert in inv_certs:
+            values = {
+                'certtype': mode,
+                'signature': inv_cert.get('signature'),
+                'start_date': inv_cert.get('not_valid_before'),
+                'expiry_date': inv_cert.get('not_valid_after'),
+            }
+            LOG.info("config_certificate values=%s" % values)
+
+            # check to see if the installed cert exist in sysinv
+            uuid = None
+            for certificate in certificates:
+                if mode == constants.CERT_MODE_SSL_CA:
+                    if inv_cert.get('signature') == certificate.signature:
+                        uuid = certificate.uuid
+                        break
+                else:
+                    if mode == certificate.certtype:
+                        uuid = certificate.uuid
+                        break
+            if uuid:
+                certificate = pecan.request.dbapi.certificate_update(uuid,
+                                                                     values)
             else:
-                remove_certtype = constants.CERT_MODE_SSL
-            try:
-                remove_certificate = \
-                    pecan.request.dbapi.certificate_get_by_certtype(
-                        remove_certtype)
-                LOG.info("remove certificate certtype=%s uuid`=%s" %
-                         (remove_certtype, remove_certificate.uuid))
-                pecan.request.dbapi.certificate_destroy(
-                    remove_certificate.uuid)
-            except exception.CertificateTypeNotFound:
-                pass
-
-        try:
-            certificate = \
-                pecan.request.dbapi.certificate_get_by_certtype(
-                    mode)
-            certificate = \
-                pecan.request.dbapi.certificate_update(certificate.uuid,
-                                                       values)
-        except exception.CertificateTypeNotFound:
-            certificate = pecan.request.dbapi.certificate_create(values)
-            pass
-
-        sp_certificates_dict = certificate.as_dict()
-
-        LOG.debug("certificate_install sp_certificates={}".format(
-            sp_certificates_dict))
+                certificate = pecan.request.dbapi.certificate_create(values)
+            certificate_dict = certificate.as_dict()
+            LOG.debug("certificate_install certificate={}".format(
+                certificate_dict))
+            certificate_dicts.append(certificate_dict)
 
         log_end = cutils.timestamped("certificate_do_post_end")
         LOG.info("certificate %s" % log_end)
 
         return dict(success="", error="", body="",
-                    certificates=sp_certificates_dict)
+                    certificates=certificate_dicts)
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(Certificate, types.uuid, status_code=200)
+    def delete(self, certificate_uuid):
+        """Uninstall a certificate."""
+
+        # Only support ssl_ca cert type
+        log_start = cutils.timestamped("certificate_do_delete_start")
+
+        try:
+            certificate = pecan.request.dbapi.certificate_get(certificate_uuid)
+        except exception.InvalidParameterValue:
+            raise wsme.exc.ClientSideError(
+                _("No certificate found for %s" % certificate_uuid))
+
+        if certificate and \
+                certificate.certtype not in [constants.CERT_MODE_SSL_CA]:
+            msg = "Unupported mode: {}".format(certificate.certtype)
+            raise wsme.exc.ClientSideError(_(msg))
+
+        LOG.info("certificate %s certificate_uuid=%s" %
+                 (log_start, certificate_uuid))
+
+        try:
+            pecan.request.rpcapi.delete_certificate(pecan.request.context,
+                                                    certificate.certtype,
+                                                    certificate.signature)
+        except RemoteError as e:
+            msg = "Exception occurred e={}".format(e)
+            LOG.warn(msg)
+            raise wsme.exc.ClientSideError(
+                _("Failed to delete the certificate: %s, %s" %
+                  (certificate_uuid, str(e.value))))
+
+        pecan.request.dbapi.certificate_destroy(certificate_uuid)
+
+        log_end = cutils.timestamped("certificate_do_delete_end")
+        LOG.info("certificate %s" % log_end)
+
+        return Certificate.convert_with_links(certificate)
 
 
 def _check_endpoint_domain_exists():

@@ -1373,3 +1373,23 @@ def create_test_service_parameter(**kw):
 def create_test_oam(**kw):
     dbapi = db_api.get_instance()
     return dbapi.iextoam_get_one()
+
+
+# Create test certficate object
+def get_test_certificate(**kw):
+    certificate = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'certtype': kw.get('certtype'),
+        'signature': kw.get('signature')
+    }
+    return certificate
+
+
+def create_test_certificate(**kw):
+    certificate = get_test_certificate(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del certificate['id']
+    dbapi = db_api.get_instance()
+    return dbapi.certificate_create(certificate)

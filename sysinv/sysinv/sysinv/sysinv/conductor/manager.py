@@ -51,7 +51,6 @@ import tsconfig.tsconfig as tsc
 from collections import namedtuple
 from cgcs_patch.patch_verify import verify_files
 from controllerconfig.upgrades import management as upgrades_management
-from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -10028,24 +10027,19 @@ class ConductorManager(service.PeriodicService):
         """Extract keys from the pem contents
 
         :param mode: mode one of: ssl, tpm_mode, docker_registry
-        :param pem_contents: pem_contents
+        :param pem_contents: pem_contents in unicode
         :param cert_format: serialization.PrivateFormat
         :param passphrase: passphrase for PEM file
 
-        :returns: private_bytes, public_bytes, signature
+        :returns: A list of {cert, private_bytes, public_bytes, signature}
         """
-
-        temp_pem_file = constants.SSL_PEM_FILE + '.temp'
-        with os.fdopen(os.open(temp_pem_file, os.O_CREAT | os.O_WRONLY,
-                               constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
-                               'w') as f:
-            f.write(pem_contents)
 
         if passphrase:
             passphrase = str(passphrase)
 
         private_bytes = None
         private_mode = False
+        temp_pem_contents = pem_contents.encode("utf-8")
         if mode in [constants.CERT_MODE_SSL,
                     constants.CERT_MODE_TPM,
                     constants.CERT_MODE_DOCKER_REGISTRY,
@@ -10053,43 +10047,100 @@ class ConductorManager(service.PeriodicService):
                     ]:
             private_mode = True
 
-        with open(temp_pem_file, "r") as key_file:
-            if private_mode:
-                # extract private_key with passphrase
-                try:
-                    private_key = serialization.load_pem_private_key(
-                        key_file.read(),
-                        password=passphrase,
-                        backend=default_backend())
-                except Exception as e:
-                    raise exception.SysinvException(_("Error decrypting PEM "
-                        "file: %s" % e))
-                key_file.seek(0)
-            # extract the certificate from the pem file
-            cert = x509.load_pem_x509_certificate(key_file.read(),
-                                                  default_backend())
-        os.remove(temp_pem_file)
-
         if private_mode:
+            # extract private_key with passphrase
+            try:
+                private_key = serialization.load_pem_private_key(
+                    temp_pem_contents,
+                    password=passphrase,
+                    backend=default_backend())
+            except Exception as e:
+                raise exception.SysinvException(_("Error loading private key "
+                                                  "from PEM data: %s" % e))
+
             if not isinstance(private_key, rsa.RSAPrivateKey):
-                raise exception.SysinvException(_("Only RSA encryption based "
-                    "Private Keys are supported."))
+                raise exception.SysinvException(_(
+                    "Only RSA encryption based Private Keys are supported."))
 
-            private_bytes = private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=cert_format,
-                encryption_algorithm=serialization.NoEncryption())
+            try:
+                private_bytes = private_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=cert_format,
+                    encryption_algorithm=serialization.NoEncryption())
+            except Exception as e:
+                raise exception.SysinvException(_("Error loading private "
+                                                  "bytes from PEM data: %s"
+                                                  % e))
 
-        signature = mode + '_' + str(cert.serial_number)
-        if len(signature) > 255:
-            LOG.info("Truncating certificate serial no %s" % signature)
-            signature = signature[:255]
-        LOG.info("config_certificate signature=%s" % signature)
+        certs = cutils.extract_certs_from_pem(temp_pem_contents)
+        key_list = []
+        for cert in certs:
+            # format=serialization.PrivateFormat.TraditionalOpenSSL,
+            try:
+                public_bytes = cert.public_bytes(
+                    encoding=serialization.Encoding.PEM)
+            except Exception as e:
+                raise exception.SysinvException(_("Error loading public "
+                                                  "bytes from PEM data: %s"
+                                                  % e))
 
-        # format=serialization.PrivateFormat.TraditionalOpenSSL,
-        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+            signature = mode + '_' + str(cert.serial_number)
+            if len(signature) > 255:
+                LOG.info("Truncating certificate serial no %s" % signature)
+                signature = signature[:255]
+            LOG.info("config_certificate signature=%s" % signature)
 
-        return private_bytes, public_bytes, signature
+            key_list.append({'cert': cert,
+                             'private_bytes': private_bytes,
+                             'public_bytes': public_bytes,
+                             'signature': signature})
+
+        return key_list
+
+    @staticmethod
+    def _get_public_bytes_one(key_list):
+        """Get exactly one public bytes entry from key list"""
+
+        if len(key_list) != 1:
+            msg = "There should be exactly one certificate " \
+                  "(ie, public_bytes) in the pem contents."
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+        return key_list[0].get('public_bytes')
+
+    @staticmethod
+    def _get_private_bytes_one(key_list):
+        """Get exactly one private bytes entry from key list"""
+
+        if len(key_list) != 1:
+            msg = "There should be exactly one private key " \
+                  "(ie, private_bytes) in the pem contents."
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+        return key_list[0].get('private_bytes')
+
+    @staticmethod
+    def _consolidate_cert_files():
+        # Cat all the cert files into one CA cert file and store it in
+        # the shared directory to update system CA certs
+        try:
+            new_cert_files = \
+                os.listdir(constants.SSL_CERT_CA_LIST_SHARED_DIR)
+            with os.fdopen(
+                    os.open(constants.SSL_CERT_CA_FILE_SHARED,
+                            os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+                            constants.CONFIG_FILE_PERMISSION_DEFAULT),
+                    'wb') as f:
+                for fname in new_cert_files:
+                    fname = \
+                        os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
+                                     fname)
+                    with open(fname, "r") as infile:
+                        f.write(infile.read())
+        except Exception as e:
+            msg = "Failed to consolidate cert files: %s" % str(e)
+            LOG.warn(msg)
+            raise exception.SysinvException(_(msg))
 
     def _perform_config_certificate_tpm_mode(self, context,
                                              tpm, private_bytes, public_bytes):
@@ -10155,7 +10206,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("config_certificate mode=%s" % mode)
 
-        private_bytes, public_bytes, signature = \
+        key_list = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10168,19 +10219,23 @@ class ConductorManager(service.PeriodicService):
             pass
 
         if mode == constants.CERT_MODE_TPM:
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
             self._perform_config_certificate_tpm_mode(
                 context, tpm, private_bytes, public_bytes)
 
             file_content = public_bytes
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(file_content)
 
         elif mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
             file_content = private_bytes + public_bytes
             config_dict = {
                 'personalities': personalities,
@@ -10193,7 +10248,7 @@ class ConductorManager(service.PeriodicService):
 
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(file_content)
@@ -10214,39 +10269,74 @@ class ConductorManager(service.PeriodicService):
                                                 config_dict)
 
         elif mode == constants.CERT_MODE_SSL_CA:
-            file_content = public_bytes
-            personalities = [constants.CONTROLLER,
-                             constants.WORKER,
-                             constants.STORAGE]
-            # copy the certificate to shared directory
-            with os.fdopen(os.open(constants.SSL_CERT_CA_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
-                                   constants.CONFIG_FILE_PERMISSION_DEFAULT),
-                                   'wb') as f:
-                f.write(file_content)
+            # The list of the existing CA certs in sysinv DB.
+            certificates = self.dbapi.certificate_get_list()
+            certs_inv = [certificate.signature
+                         for certificate in certificates
+                         if certificate.certtype == mode]
+            # The list of the actual CA certs as files in FS
+            certs_file = os.listdir(constants.SSL_CERT_CA_LIST_SHARED_DIR)
 
-            config_uuid = self._config_update_hosts(context, personalities)
-            config_dict = {
-                "personalities": personalities,
-                "classes": ['platform::config::runtime']
-            }
-            self._config_apply_runtime_manifest(context,
-                                                config_uuid,
-                                                config_dict,
-                                                force=True)
+            # Remove these already installed from the key list
+            key_list_c = key_list[:]
+            for key in key_list_c:
+                if key.get('signature') in certs_inv \
+                        and key.get('signature') in certs_file:
+                    key_list.remove(key)
+
+            # Don't do anything if there are no new certs to install
+            if key_list:
+                # Save each cert in a separate file with signature as its name
+                try:
+                    for key in key_list:
+                        file_content = key.get('public_bytes')
+                        file_name = \
+                            os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
+                                         key.get('signature'))
+                        with os.fdopen(
+                                os.open(file_name,
+                                        os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+                                        constants.CONFIG_FILE_PERMISSION_DEFAULT),
+                                'wb') as f:
+                            f.write(file_content)
+                except Exception as e:
+                    msg = "Failed to save cert file: %s" % str(e)
+                    LOG.warn(msg)
+                    raise exception.SysinvException(_(msg))
+
+                # consolidate the CA cert files into ca-cert.pem to update
+                # system CA certs.
+                self._consolidate_cert_files()
+
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
+                config_uuid = self._config_update_hosts(context, personalities)
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['platform::config::runtime']
+                }
+                self._config_apply_runtime_manifest(context,
+                                                    config_uuid,
+                                                    config_dict,
+                                                    force=True)
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
-            pkcs1_private_bytes, pkcs1_public_bytes, pkcs1_signature = \
+            key_list_pkcs1 = \
                 self._extract_keys_from_pem(mode, pem_contents,
                                             serialization.PrivateFormat
                                             .TraditionalOpenSSL, passphrase)
+            pkcs1_private_bytes = self._get_private_bytes_one(key_list_pkcs1)
 
             # install certificate, key, and pkcs1 key to controllers
             config_uuid = self._config_update_hosts(context, personalities)
             key_path = constants.DOCKER_REGISTRY_KEY_FILE
             cert_path = constants.DOCKER_REGISTRY_CERT_FILE
             pkcs1_key_path = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
+
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
 
             config_dict = {
                 'personalities': personalities,
@@ -10261,17 +10351,17 @@ class ConductorManager(service.PeriodicService):
 
             # copy certificate to shared directory
             with os.fdopen(os.open(constants.DOCKER_REGISTRY_CERT_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(public_bytes)
             with os.fdopen(os.open(constants.DOCKER_REGISTRY_KEY_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(private_bytes)
             with os.fdopen(os.open(constants.DOCKER_REGISTRY_PKCS1_KEY_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(pkcs1_private_bytes)
@@ -10306,6 +10396,9 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context, personalities)
             key_path = constants.OPENSTACK_CERT_KEY_FILE
             cert_path = constants.OPENSTACK_CERT_FILE
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
+
             config_dict = {
                 'personalities': personalities,
                 'file_names': [key_path, cert_path],
@@ -10320,12 +10413,12 @@ class ConductorManager(service.PeriodicService):
                 os.makedirs(constants.CERT_OPENSTACK_SHARED_DIR)
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.OPENSTACK_CERT_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(public_bytes)
             with os.fdopen(os.open(constants.OPENSTACK_CERT_KEY_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(private_bytes)
@@ -10342,7 +10435,9 @@ class ConductorManager(service.PeriodicService):
 
         elif mode == constants.CERT_MODE_OPENSTACK_CA:
             config_uuid = self._config_update_hosts(context, personalities)
-            file_content = public_bytes
+            file_content = ''
+            for key in key_list:
+                file_content += key.get('public_bytes', '')
             config_dict = {
                 'personalities': personalities,
                 'file_names': [constants.OPENSTACK_CERT_CA_FILE],
@@ -10353,7 +10448,7 @@ class ConductorManager(service.PeriodicService):
 
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.OPENSTACK_CERT_CA_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_DEFAULT),
                                    'wb') as f:
                 f.write(file_content)
@@ -10372,7 +10467,14 @@ class ConductorManager(service.PeriodicService):
             LOG.warn(msg)
             raise exception.SysinvException(_(msg))
 
-        return signature
+        inv_certs = []
+        for key in key_list:
+            inv_cert = {'signature': key.get('signature'),
+                        'not_valid_before': key.get('cert').not_valid_before,
+                        'not_valid_after': key.get('cert').not_valid_after}
+            inv_certs.append(inv_cert)
+
+        return inv_certs
 
     def _config_selfsigned_certificate(self, context):
         """
@@ -10392,7 +10494,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("_config_selfsigned_certificate mode=%s file=%s" % (mode, certificate_file))
 
-        private_bytes, public_bytes, signature = \
+        key_list = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10400,6 +10502,8 @@ class ConductorManager(service.PeriodicService):
         personalities = [constants.CONTROLLER]
 
         config_uuid = self._config_update_hosts(context, personalities)
+        private_bytes = self._get_private_bytes_one(key_list)
+        public_bytes = self._get_public_bytes_one(key_list)
         file_content = private_bytes + public_bytes
         config_dict = {
             'personalities': personalities,
@@ -10412,12 +10516,54 @@ class ConductorManager(service.PeriodicService):
 
         # copy the certificate to shared directory
         with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
-                               os.O_CREAT | os.O_WRONLY,
+                               os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                'wb') as f:
             f.write(file_content)
 
-        return signature
+        return key_list[0].get('signature')
+
+    def delete_certificate(self, context, mode, signature):
+        """Delete a certificate by its mode and signature.
+
+        :param context: an admin context.
+        :param mode: the mode of the certificate
+        :param signature: the signature of the certificate.
+
+        Currently only ssl_ca cert can be deleted.
+        """
+        LOG.info("delete_certificate mode=%s, signature=%s" %
+                 (mode, signature))
+
+        if mode == constants.CERT_MODE_SSL_CA:
+            try:
+                cert_file = \
+                    os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
+                                 signature)
+                os.remove(cert_file)
+            except Exception as e:
+                msg = "Failed to delete cert file: %s" % str(e)
+                LOG.warn(msg)
+                raise exception.SysinvException(_(msg))
+
+            self._consolidate_cert_files()
+
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER,
+                             constants.STORAGE]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::config::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict,
+                                                force=True)
+        else:
+            msg = "delete_certificate unsupported mode=%s" % mode
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
 
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.
