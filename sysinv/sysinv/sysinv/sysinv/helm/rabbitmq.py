@@ -51,6 +51,9 @@ class RabbitmqHelm(openstack.OpenstackBaseHelm):
                     'size': "%d" % (io_thread_pool_size)
                 },
                 'endpoints': self._get_endpoints_overrides(),
+                'manifests': {
+                    'config_ipv6': self._is_ipv6_cluster_service()
+                }
             }
         }
 
