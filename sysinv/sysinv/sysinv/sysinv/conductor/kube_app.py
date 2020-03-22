@@ -2096,7 +2096,8 @@ class AppOperator(object):
                 self._abort_operation(app, constants.APP_APPLY_OP,
                                       user_initiated=True)
             else:
-                self._abort_operation(app, constants.APP_APPLY_OP, str(e))
+                self._abort_operation(app, constants.APP_APPLY_OP,
+                                      constants.APP_PROGRESS_ABORTED)
 
             if not caller:
                 # If apply is not called from update method, deregister the app's
