@@ -10284,7 +10284,8 @@ class ConductorManager(service.PeriodicService):
                         and key.get('signature') in certs_file:
                     key_list.remove(key)
 
-            # Don't do anything if there are no new certs to install
+            # Save certs in files and cat them into ca-cert.pem to apply to the
+            # system.
             if key_list:
                 # Save each cert in a separate file with signature as its name
                 try:
@@ -10308,18 +10309,18 @@ class ConductorManager(service.PeriodicService):
                 # system CA certs.
                 self._consolidate_cert_files()
 
-                personalities = [constants.CONTROLLER,
-                                 constants.WORKER,
-                                 constants.STORAGE]
-                config_uuid = self._config_update_hosts(context, personalities)
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['platform::config::runtime']
-                }
-                self._config_apply_runtime_manifest(context,
-                                                    config_uuid,
-                                                    config_dict,
-                                                    force=True)
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER,
+                             constants.STORAGE]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::config::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict,
+                                                force=True)
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
