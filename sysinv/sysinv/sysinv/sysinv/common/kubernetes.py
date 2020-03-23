@@ -171,6 +171,21 @@ class KubeOperator(object):
             LOG.error("Kubernetes exception in kube_get_nodes: %s" % e)
             raise
 
+    def kube_namespaced_pods_exist(self, namespace):
+        LOG.debug("kube_namespaced_pods_exist, namespace=%s" %
+                  (namespace))
+        try:
+            api_response = self._get_kubernetesclient_core().list_namespaced_pod(
+                namespace)
+
+            if api_response.items:
+                return True
+            else:
+                return False
+        except ApiException as e:
+            LOG.error("Kubernetes exception in list_namespaced_pod: %s" % e)
+            raise
+
     def kube_get_image_by_selector(self, template_name, namespace, container_name):
         LOG.debug("kube_get_image_by_selector template_name=%s, namespace=%s" %
                   (template_name, namespace))

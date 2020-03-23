@@ -1373,6 +1373,10 @@ class KubeNamespaceDeleteTimeout(SysinvException):
     message = "Namespace %(name)s deletion timeout."
 
 
+class KubePodTerminateTimeout(SysinvException):
+    message = "Namespace %(name)s pod termination timeout."
+
+
 class KubePodDeleteTimeout(SysinvException):
     message = "Pod %(namespace)/%(name)s deletion timeout."
 
