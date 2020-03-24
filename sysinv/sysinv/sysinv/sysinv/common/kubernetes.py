@@ -73,7 +73,7 @@ POD_START_INTERVAL = 10
 def get_kube_versions():
     """Provides a list of supported kubernetes versions."""
     return [
-        {'version': 'v1.16.2',
+        {'version': 'v1.18.1',
          'upgrade_from': [],
          'downgrade_to': [],
          'applied_patches': [],
