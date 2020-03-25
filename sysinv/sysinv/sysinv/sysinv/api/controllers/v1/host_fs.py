@@ -332,11 +332,151 @@ class HostFsController(rest.RestController):
 
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, host_fs_uuid):
-        """Delete a host_fs."""
-        raise exception.OperationNotPermitted
+        """Delete a host filesystem."""
+
+        host_fs = objects.host_fs.get_by_uuid(pecan.request.context,
+                                      host_fs_uuid).as_dict()
+        ihost_uuid = host_fs['ihost_uuid']
+        host = pecan.request.dbapi.ihost_get(ihost_uuid)
+        _delete(host_fs)
+
+        try:
+            # Host must be available to add/remove fs at runtime
+            if host.availability in [constants.AVAILABILITY_AVAILABLE,
+                                     constants.AVAILABILITY_DEGRADED]:
+                # perform rpc to conductor to perform config apply
+                pecan.request.rpcapi.update_host_filesystem_config(
+                        pecan.request.context,
+                        host=host,
+                        filesystem_list=[host_fs['name']],)
+
+        except Exception as e:
+            msg = _("Failed to delete filesystem %s" % host_fs['name'])
+            LOG.error("%s with exception %s" % (msg, e))
+            pecan.request.dbapi.host_fs_create(host.id, host_fs)
+            raise wsme.exc.ClientSideError(msg)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(HostFs, body=HostFs)
     def post(self, host_fs):
-        """Create a new host_fs."""
-        raise exception.OperationNotPermitted
+        """Create a host filesystem."""
+
+        try:
+            host_fs = host_fs.as_dict()
+            host_fs = _create(host_fs)
+
+            ihost_uuid = host_fs['ihost_uuid']
+            ihost_uuid.strip()
+
+            host = pecan.request.dbapi.ihost_get(ihost_uuid)
+        except exception.SysinvException as e:
+            LOG.exception(e)
+            raise wsme.exc.ClientSideError(_("Invalid data: failed to create a"
+                                             " filesystem"))
+        try:
+            # Host must be available to add/remove fs at runtime
+            if host.availability in [constants.AVAILABILITY_AVAILABLE,
+                                     constants.AVAILABILITY_DEGRADED]:
+                # perform rpc to conductor to perform config apply
+                pecan.request.rpcapi.update_host_filesystem_config(
+                        pecan.request.context,
+                        host=host,
+                        filesystem_list=[host_fs['name']],)
+
+        except Exception as e:
+            msg = _("Failed to add filesystem name for %s" % host.hostname)
+            LOG.error("%s with exception %s" % (msg, e))
+            pecan.request.dbapi.host_fs_destroy(host_fs['id'])
+            raise wsme.exc.ClientSideError(msg)
+
+        return HostFs.convert_with_links(host_fs)
+
+
+def _check_host_fs(host_fs):
+    """Check host state"""
+
+    if host_fs['name'] not in constants.FS_CREATION_ALLOWED:
+        raise wsme.exc.ClientSideError(
+            _("Unsupported filesystem. Only the following filesystems are supported\
+                for creation or deletion: %s" % str(constants.FS_CREATION_ALLOWED)))
+
+    ihost_uuid = host_fs['ihost_uuid']
+    ihost_uuid.strip()
+
+    try:
+        ihost = pecan.request.dbapi.ihost_get(ihost_uuid)
+    except exception.ServerNotFound:
+        raise wsme.exc.ClientSideError(_("Invalid ihost_uuid %s"
+                                        % ihost_uuid))
+
+    if ihost.personality != constants.CONTROLLER:
+        raise wsme.exc.ClientSideError(_("Filesystem can only be added "
+                                        "on controller nodes"))
+
+    # Host must be online/available/degraded to add/remove
+    # any filesystem specified in FS_CREATION_ALLOWED
+    if ihost.availability not in [constants.AVAILABILITY_AVAILABLE,
+                                  constants.AVAILABILITY_ONLINE,
+                                  constants.AVAILABILITY_DEGRADED]:
+        raise wsme.exc.ClientSideError(_("Filesystem can only be added when "
+                                        "controller node is in available/online/degraded"))
+
+
+def _create(host_fs):
+    """Create a host filesystem"""
+
+    _check_host_fs(host_fs)
+
+    ihost_uuid = host_fs['ihost_uuid']
+    ihost_uuid.strip()
+
+    ihost = pecan.request.dbapi.ihost_get(ihost_uuid)
+    # See if this filesystem name already exists
+    current_host_fs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost_uuid)
+    for fs in current_host_fs_list:
+        if fs['name'] == host_fs['name']:
+            raise wsme.exc.ClientSideError(_("Filesystem name (%s) "
+                                             "already present" %
+                                             fs['name']))
+
+    requested_growth_gib = int(float(host_fs['size']))
+
+    LOG.info("Requested growth in GiB: %s for fs %s on host %s" %
+            (requested_growth_gib, host_fs['name'], ihost_uuid))
+
+    cgtsvg_free_space_gib = utils.get_node_cgtsvg_limit(ihost)
+
+    if requested_growth_gib > cgtsvg_free_space_gib:
+        msg = _("HostFs update failed: Not enough free space on %s. "
+                "Current free space %s GiB, "
+                "requested total increase %s GiB" %
+                (constants.LVG_CGTS_VG, cgtsvg_free_space_gib, requested_growth_gib))
+        LOG.warning(msg)
+        raise wsme.exc.ClientSideError(msg)
+
+    data = {
+        'name': constants.FILESYSTEM_NAME_IMAGE_CONVERSION,
+        'size': host_fs['size'],
+        'logical_volume': constants.FILESYSTEM_LV_DICT[
+            constants.FILESYSTEM_NAME_IMAGE_CONVERSION]
+    }
+
+    forihostid = ihost['id']
+    host_fs = pecan.request.dbapi.host_fs_create(forihostid, data)
+
+    return host_fs
+
+
+def _delete(host_fs):
+    """Delete a host filesystem."""
+
+    _check_host_fs(host_fs)
+
+    ihost = pecan.request.dbapi.ihost_get(host_fs['forihostid'])
+
+    try:
+        pecan.request.dbapi.host_fs_destroy(host_fs['id'])
+    except exception.HTTPNotFound:
+        msg = _("Deleting Filesystem failed: host %s filesystem %s"
+                % (ihost.hostname, host_fs['name']))
+        raise wsme.exc.ClientSideError(msg)

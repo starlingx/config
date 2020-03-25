@@ -500,8 +500,9 @@ class ApiHostFSDeleteTestSuiteMixin(ApiHostFSTestCaseMixin):
 
         # Verify appropriate exception is raised
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, http_client.FORBIDDEN)
-        self.assertIn("Operation not permitted", response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Unsupported filesystem",
+                      response.json['error_message'])
 
 
 class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
@@ -522,5 +523,6 @@ class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
 
         # Verify appropriate exception is raised
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, http_client.FORBIDDEN)
-        self.assertIn("Operation not permitted", response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Unsupported filesystem",
+                      response.json['error_message'])
