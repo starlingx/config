@@ -5884,6 +5884,12 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    def update_controller_upgrade_flag(self, context):
+        """Update the controller upgrade flag"""
+        LOG.info("update_controller_upgrade_flag")
+
+        cutils.touch(tsc.CONTROLLER_UPGRADE_FLAG)
+
     def update_storage_config(self, context,
                               update_storage=False,
                               reinstall_required=False,
@@ -9161,31 +9167,6 @@ class ConductorManager(service.PeriodicService):
 
         controller_0 = self.dbapi.ihost_get_by_hostname(
             constants.CONTROLLER_0_HOSTNAME)
-
-        # TODO: This code is only useful for supporting R5 to R6 upgrades.
-        #       Remove in future release.
-        # update crushmap and remove cache-tier on upgrade
-        if from_version == tsc.SW_VERSION_1803:
-            ceph_backend = StorageBackendConfig.get_backend(self.dbapi, constants.CINDER_BACKEND_CEPH)
-            if ceph_backend and ceph_backend.state == constants.SB_STATE_CONFIGURED:
-                try:
-                    response, body = self._ceph_api.osd_crush_rule_rm("cache_tier_ruleset",
-                                                                      body='json')
-                    if response.ok:
-                        LOG.info("Successfully removed cache_tier_ruleset "
-                                 "[ceph osd crush rule rm cache_tier_ruleset]")
-                        try:
-                            response, body = self._ceph_api.osd_crush_remove("cache-tier",
-                                                                             body='json')
-                            if response.ok:
-                                LOG.info("Successfully removed cache_tier "
-                                         "[ceph osd crush remove cache-tier]")
-                        except exception.CephFailure:
-                            LOG.warn("Failed to remove bucket cache-tier from crushmap")
-                            pass
-                except exception.CephFailure:
-                    LOG.warn("Failed to remove rule cache-tier from crushmap")
-                    pass
 
         if state in [constants.UPGRADE_ABORTING,
                 constants.UPGRADE_ABORTING_ROLLBACK]:

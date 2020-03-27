@@ -787,6 +787,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_user_config'))
 
+    def update_controller_upgrade_flag(self, context):
+        """Synchronously, have a conductor update controller upgrade flag
+
+        :param context: request context
+         """
+        return self.call(context,
+                         self.make_msg('update_controller_upgrade_flag'))
+
     def update_storage_config(self, context, update_storage=False,
                               reinstall_required=False, reboot_required=True,
                               filesystem_list=None):

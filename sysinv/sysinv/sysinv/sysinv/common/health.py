@@ -154,7 +154,7 @@ class Health(object):
 
     def _check_license(self, version):
         """Validates the current license is valid for the specified version"""
-        check_binary = "/usr/bin/sm-license-check"
+        check_binary = "/usr/bin/verify-license"
         license_file = '/etc/platform/.license'
         system = self._dbapi.isystem_get_one()
         system_type = system.system_type

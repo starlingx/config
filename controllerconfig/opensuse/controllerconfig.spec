@@ -65,7 +65,7 @@ install -p -D -m 755 scripts/controller_config %{buildroot}%{local_etc_initd}/co
 
 # Install Upgrade scripts
 install -d -m 755 %{buildroot}%{local_etc_upgraded}
-install -p -D -m 755 upgrade-scripts/* %{buildroot}%{local_etc_upgraded}/
+# install -p -D -m 755 upgrade-scripts/* %{buildroot}%{local_etc_upgraded}/
 
 install -p -D -m 664 scripts/controllerconfig.service %{buildroot}%{_unitdir}/controllerconfig.service
 
@@ -96,7 +96,7 @@ rm -rf $RPM_BUILD_ROOT
 %{local_goenabledd}/*
 %{local_etc_initd}/*
 %dir %{local_etc_upgraded}
-%{local_etc_upgraded}/*
+# %{local_etc_upgraded}/*
 %{_unitdir}/*
 
 #%%package wheels

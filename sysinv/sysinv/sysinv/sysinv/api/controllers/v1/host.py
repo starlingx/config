@@ -2670,7 +2670,8 @@ class HostController(rest.RestController):
             # Set upgrade flag so controller-1 will upgrade after install
             # This flag is guaranteed to be written on controller-0, since
             # controller-1 must be locked to run the host-upgrade command.
-            open(tsc.CONTROLLER_UPGRADE_FLAG, "w").close()
+            # perform rpc to conductor to do the update with root privilege access
+            pecan.request.rpcapi.update_controller_upgrade_flag(pecan.request.context)
 
         return Host.convert_with_links(rpc_ihost)
 

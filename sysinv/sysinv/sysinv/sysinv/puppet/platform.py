@@ -16,9 +16,6 @@ from sysinv.puppet import base
 
 HOSTNAME_CLUSTER_HOST_SUFFIX = '-cluster-host'
 
-NOVA_UPGRADE_LEVEL_PIKE = 'pike'
-NOVA_UPGRADE_LEVELS = {'18.03': NOVA_UPGRADE_LEVEL_PIKE}
-
 
 class PlatformPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for platform configuration"""
@@ -64,7 +61,6 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_ptp_config(host))
         config.update(self._get_host_sysctl_config(host))
         config.update(self._get_host_drbd_config(host))
-        config.update(self._get_host_upgrade_config(host))
         config.update(self._get_host_tpm_config(host))
         config.update(self._get_host_cpu_config(host))
         config.update(self._get_host_memory_config(host))
@@ -175,40 +171,6 @@ class PlatformPuppet(base.BasePuppet):
         return {
             'platform::config::params::hosts': hosts
         }
-
-    def _get_host_upgrade_config(self, host):
-        config = {}
-        try:
-            upgrade = self.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            return config
-
-        upgrade_states = [constants.UPGRADE_ACTIVATING,
-                          constants.UPGRADE_ACTIVATION_FAILED,
-                          constants.UPGRADE_ACTIVATION_COMPLETE,
-                          constants.UPGRADE_COMPLETED]
-        # we don't need compatibility mode after we activate
-        if upgrade.state in upgrade_states:
-            return config
-
-        upgrade_load_id = upgrade.to_load
-
-        host_upgrade = self.dbapi.host_upgrade_get_by_host(host['id'])
-        if host_upgrade.target_load == upgrade_load_id:
-            from_load = self.dbapi.load_get(upgrade.from_load)
-            sw_version = from_load.software_version
-            nova_level = NOVA_UPGRADE_LEVELS.get(sw_version)
-
-            if not nova_level:
-                raise exception.SysinvException(
-                    ("No matching upgrade level found for version %s")
-                    % sw_version)
-
-            config.update({
-                  'nova::upgrade_level_compute': nova_level
-            })
-
-        return config
 
     def _get_amqp_config(self):
         return {
