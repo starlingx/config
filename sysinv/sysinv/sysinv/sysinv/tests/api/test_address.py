@@ -8,6 +8,7 @@
 Tests for the API / address / methods.
 """
 
+import mock
 import netaddr
 from six.moves import http_client
 
@@ -248,6 +249,8 @@ class TestDelete(AddressTestCase):
 
     def setUp(self):
         super(TestDelete, self).setUp()
+        self.worker = self._create_test_host(constants.WORKER,
+            administrative=constants.ADMIN_LOCKED)
 
     def test_delete(self):
         # Delete the API object
@@ -259,11 +262,117 @@ class TestDelete(AddressTestCase):
         # Verify the expected API response for the delete
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
-    # TODO: Add unit tests to verify deletion is rejected as expected by
-    # _check_orphaned_routes, _check_host_state, and _check_from_pool.
-    #
-    # Currently blocked by bug in dbapi preventing testcase setup:
-    #   https://bugs.launchpad.net/starlingx/+bug/1861131
+    def test_delete_address_with_interface(self):
+        interface = dbutils.create_test_interface(
+            ifname="test0",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+
+        address = dbutils.create_test_address(
+            interface_id=interface.id,
+            name="enptest01",
+            family=self.oam_subnet.version,
+            address=str(self.oam_subnet[25]),
+            prefix=self.oam_subnet.prefixlen)
+        self.assertEqual(address["interface_id"], interface.id)
+
+        response = self.delete(self.get_single_url(address.uuid),
+                               headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+    def test_orphaned_routes(self):
+        interface = dbutils.create_test_interface(
+            ifname="test0",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+
+        address = dbutils.create_test_address(
+            interface_id=interface.id,
+            name="enptest01",
+            family=self.oam_subnet.version,
+            address=str(self.oam_subnet[25]),
+            prefix=self.oam_subnet.prefixlen)
+        self.assertEqual(address["interface_id"], interface.id)
+
+        route = dbutils.create_test_route(
+            interface_id=interface.id,
+            family=4,
+            network='10.10.10.0',
+            prefix=24,
+            gateway=str(self.oam_subnet[1]),
+        )
+        self.assertEqual(route['gateway'], str(self.oam_subnet[1]))
+
+        response = self.delete(self.get_single_url(address.uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        self.assertIn(
+            "Address %s is in use by a route to %s/%d via %s" % (
+                address["address"], route["network"], route["prefix"],
+                route["gateway"]
+            ), response.json['error_message'])
+
+    def test_bad_host_state(self):
+        interface = dbutils.create_test_interface(
+            ifname="test0",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+
+        address = dbutils.create_test_address(
+            interface_id=interface.id,
+            name="enptest01",
+            family=self.oam_subnet.version,
+            address=str(self.oam_subnet[25]),
+            prefix=self.oam_subnet.prefixlen)
+        self.assertEqual(address["interface_id"], interface.id)
+
+        # unlock the worker
+        dbapi = dbutils.db_api.get_instance()
+        worker = dbapi.ihost_update(self.worker.uuid, {
+            "administrative": constants.ADMIN_UNLOCKED
+        })
+        self.assertEqual(worker['administrative'],
+            constants.ADMIN_UNLOCKED)
+
+        response = self.delete(self.get_single_url(address.uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code,
+            http_client.INTERNAL_SERVER_ERROR)
+        self.assertIn("administrative state = unlocked",
+            response.json['error_message'])
+
+    def test_delete_address_from_pool(self):
+        pool = dbutils.create_test_address_pool(
+            name='testpool',
+            network='192.168.204.0',
+            ranges=[['192.168.204.2', '192.168.204.254']],
+            prefix=24)
+        address = dbutils.create_test_address(
+            name="enptest01",
+            family=4,
+            address='192.168.204.4',
+            prefix=24,
+            address_pool_id=pool.id)
+        self.assertEqual(address['pool_uuid'], pool.uuid)
+
+        with mock.patch(
+                'sysinv.common.utils.is_initial_config_complete', lambda: True):
+            response = self.delete(self.get_single_url(address.uuid),
+                                headers=self.API_HEADERS,
+                                expect_errors=True)
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code,
+                http_client.CONFLICT)
+            self.assertIn("Address has been allocated from pool; "
+                          "cannot be manually deleted",
+                          response.json['error_message'])
 
 
 class TestList(AddressTestCase):

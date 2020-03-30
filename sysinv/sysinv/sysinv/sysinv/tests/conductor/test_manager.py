@@ -1426,3 +1426,59 @@ class ManagerTestCase(base.DbTestCase):
         updated_port = self.dbapi.ethernet_port_get(port1['uuid'], host_id)
 
         self.assertEqual(updated_port['node_id'], 3)
+
+
+class ManagerTestCaseInternal(base.BaseHostTestCase):
+
+    def setUp(self):
+        super(ManagerTestCaseInternal, self).setUp()
+
+        # Set up objects for testing
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+
+    def test_remove_lease_for_address(self):
+        # create test interface
+        ihost = self._create_test_host(
+            personality=constants.WORKER,
+            administrative=constants.ADMIN_UNLOCKED)
+        iface = utils.create_test_interface(
+                ifname="test0",
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                forihostid=ihost.id,
+                ihost_uuid=ihost.uuid)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        utils.create_test_interface_network(
+            interface_id=iface.id,
+            network_id=network.id)
+
+        # create test address associated with interface
+        address_name = cutils.format_address_name(ihost.hostname,
+            network.type)
+        self.dbapi.address_create({
+            'name': address_name,
+            'family': self.oam_subnet.version,
+            'prefix': self.oam_subnet.prefixlen,
+            'address': str(self.oam_subnet[24]),
+            'interface_id': iface.id,
+            'enable_dad': self.oam_subnet.version == 6
+        })
+
+        # stub the system i/o calls
+        self.mock_objs = [
+            mock.patch.object(
+                manager.ConductorManager, '_find_local_interface_name',
+                lambda x, y: iface.ifname),
+            mock.patch('sysinv.common.utils.get_dhcp_cid',
+                lambda x, y, z: None),
+            mock.patch.object(
+                manager.ConductorManager, '_dhcp_release',
+                lambda a, b, c, d, e: None)
+        ]
+
+        for mock_obj in self.mock_objs:
+            mock_obj.start()
+            self.addCleanup(mock_obj.stop)
+
+        self.service._remove_lease_for_address(ihost.hostname,
+            constants.NETWORK_TYPE_MGMT)

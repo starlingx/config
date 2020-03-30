@@ -1244,11 +1244,11 @@ class ConductorManager(service.PeriodicService):
                 return
 
             address = self.dbapi.address_get_by_name(address_name)
-            interface_uuid = address.interface_uuid
+            interface_id = address.interface_id
             ip_address = address.address
 
-            if interface_uuid:
-                interface = self.dbapi.iinterface_get(interface_uuid)
+            if interface_id:
+                interface = self.dbapi.iinterface_get(interface_id)
                 mac_address = interface.imac
             elif network_type == constants.NETWORK_TYPE_MGMT:
                 ihost = self.dbapi.ihost_get_by_hostname(hostname)
@@ -1796,7 +1796,6 @@ class ConductorManager(service.PeriodicService):
         :param inic_dict_array: initial values for iport objects
         :returns: pass or fail
         """
-
         LOG.debug("Entering iport_update_by_ihost %s %s" %
                   (ihost_uuid, inic_dict_array))
         ihost_uuid.strip()
@@ -2078,7 +2077,7 @@ class ConductorManager(service.PeriodicService):
                     addr_name = cutils.format_address_name(ihost.hostname,
                                                            networktype)
                     address = self.dbapi.address_get_by_name(addr_name)
-                    if address['interface_uuid'] is None:
+                    if address['interface_id'] is None:
                         self.dbapi.address_update(address['uuid'], values)
                 except exception.AddressNotFoundByName:
                     pass

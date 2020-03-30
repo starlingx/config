@@ -347,17 +347,11 @@ def add_interface_filter(query, value):
     :return: Modified query.
     """
     if utils.is_valid_mac(value):
-        return query.filter(or_(models.EthernetInterfaces.imac == value,
-                                models.AeInterfaces.imac == value,
-                                models.VlanInterfaces.imac == value))
+        return query.filter(models.Interfaces.imac == value)
     elif uuidutils.is_uuid_like(value):
-        return query.filter(or_(models.EthernetInterfaces.uuid == value,
-                                models.AeInterfaces.uuid == value,
-                                models.VlanInterfaces.uuid == value))
+        return query.filter(models.Interfaces.uuid == value)
     elif utils.is_int_like(value):
-        return query.filter(or_(models.EthernetInterfaces.id == value,
-                                models.AeInterfaces.id == value,
-                                models.VlanInterfaces.id == value))
+        return query.filter(models.Interfaces.id == value)
     else:
         return add_identity_filter(query, value, use_ifname=True)
 
