@@ -18,8 +18,10 @@ BITSTREAM_TYPE_KEY_REVOCATION = 'key-revocation'
 # Device Image Status
 DEVICE_IMAGE_UPDATE_PENDING = 'pending'
 DEVICE_IMAGE_UPDATE_IN_PROGRESS = 'in-progress'
+DEVICE_IMAGE_UPDATE_IN_PROGRESS_ABORTED = 'in-progress-aborted'
 DEVICE_IMAGE_UPDATE_COMPLETED = 'completed'
 DEVICE_IMAGE_UPDATE_FAILED = 'failed'
+DEVICE_IMAGE_UPDATE_NULL = ''
 
 # Device Image Action
 APPLY_ACTION = 'apply'

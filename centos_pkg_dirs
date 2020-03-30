@@ -3,6 +3,7 @@ controllerconfig
 storageconfig
 sysinv/cgts-client
 sysinv/sysinv-agent
+sysinv/sysinv-fpga-agent
 sysinv/sysinv
 config-gate
 tsconfig

@@ -173,8 +173,12 @@ class PCIOperator(object):
 
     def format_lspci_output(self, device):
         # hack for now
+        # NOTE: this does not properly handle the case where we have both
+        # "-r" and "-p" optional info in the lspci output.
         if device[prevision].strip() == device[pvendor].strip():
-            # no revision info
+            # no revision info reported, device[prevision] now stores the
+            # psvendor, and device[psvendor] now stores the psdevice.  We
+            # need to put things where they should be.
             device.append(device[psvendor])
             device[psvendor] = device[prevision]
             device[prevision] = "0"

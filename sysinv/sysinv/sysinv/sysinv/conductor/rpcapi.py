@@ -1947,3 +1947,44 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg('host_device_image_update_abort',
                                                 host_uuid=host_uuid))
+
+    def fpga_device_update_by_host(self, context, host_uuid,
+                                   fpga_device_dict_array):
+        """
+        Asynchronously, update information on FPGA device.
+
+        This will check whether the current state of the device matches the
+        expected state, and if it doesn't then an alarm will be raised.
+        :param context:
+        :param host_uuid:  The host_uuid for the caller.
+        :param fpga_device_dict_array:  An array of device information.
+        :return:
+        """
+        return self.cast(context,
+                         self.make_msg('fpga_device_update_by_host',
+                                       host_uuid=host_uuid,
+                                       fpga_device_dict_array=fpga_device_dict_array))
+
+    def device_update_image_status(self, context, host_uuid, transaction_id,
+                                   status, progress=None, err=None):
+        """
+        Asynchronously, update status of firmware update operation
+
+        This is used to report progress and final success/failure of an FPGA image write
+        operation.  The transaction ID maps to a unique identifier in the sysinv DB so
+        we don't need to report host_uuid or device PCI address.
+        :param context:
+        :param host_uuid:       The host_uuid for the host that is reporting the status.
+        :param transaction_id:  The transaction ID representing this image-update operation.
+        :param status:          The status of the image-update operation.
+        :param progress:        Optional progress indicator.
+        :param err:             Optional error message.
+        :return:
+        """
+        return self.cast(context,
+                         self.make_msg('device_update_image_status',
+                                       host_uuid=host_uuid,
+                                       transaction_id=transaction_id,
+                                       status=status,
+                                       progress=progress,
+                                       err=err))

@@ -3480,6 +3480,49 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def fpga_device_create(self, hostid, values):
+        """Create a new FPGA device for a host.
+
+        :param hostid: The id, uuid or database object of the host to which
+                       the device belongs.
+        :param values: A dict containing several items used to identify
+                       and track the device. For example:
+                        {
+                         'uuid': uuidutils.generate_uuid(),
+                         'pciaddr': '0000:0b:01.0',
+                         'pvendor_id': '8086',
+                         'pdevice_id': '0b30',
+                         ...etc...
+                        }
+        :returns: An FPGA device
+        """
+
+    @abc.abstractmethod
+    def fpga_device_get(self, deviceid, hostid=None):
+        """Return an FPGA device
+
+        :param deviceid: The id or uuid of an FPGA device.
+        :param hostid: The id or uuid of a host.
+        :returns: An FPGA device
+        """
+
+    @abc.abstractmethod
+    def fpga_device_update(self, deviceid, values, hostid=None):
+        """Update properties of an FPGA device.
+
+        :param deviceid: The id or uuid of an FPGA device.
+        :param values: Dict of values to update.
+                       For example:
+                        {
+                         'boot_page': 'user',
+                         'bitstream_id': '0x23000410010309',
+                        }
+        :param hostid: The id or uuid of the host to which the FPGA
+                       device belongs.
+        :returns: An FPGA device
+        """
+
+    @abc.abstractmethod
     def pci_device_create(self, hostid, values):
         """Create a new pci device for a host.
 

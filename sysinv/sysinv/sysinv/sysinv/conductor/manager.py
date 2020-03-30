@@ -102,6 +102,7 @@ from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
+from sysinv.fpga_agent import rpcapi as fpga_agent_rpcapi
 from sysinv import objects
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
@@ -11665,17 +11666,93 @@ class ConductorManager(service.PeriodicService):
                 service_affecting=False)
             self.fm_api.set_fault(fault)
 
-    def host_device_image_update(self, context, host_uuid):
-        """Update the device image on this host"""
+    def host_device_image_update_next(self, context, host_uuid):
+        # Find the first device on this host that needs updating,
+        # and trigger an update of it.
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            # This really shouldn't happen.
+            LOG.exception("Unable to update device images, invalid host_uuid %s" % host_uuid)
+            return
 
-        host_obj = objects.host.get_by_uuid(context, host_uuid)
-        LOG.info("Updating device image on %s" % host_obj.hostname)
+        device_image_states = self.dbapi.device_image_state_get_all(
+            host_id=host.id,
+            status=dconstants.DEVICE_IMAGE_UPDATE_PENDING)
+
+        # At this point we expect host.device_image_update to be either
+        # "in-progress" or "in-progress-aborted".
+        # If we've aborted the device update operation and there are device
+        # image updates left to do on this host, then set the host status
+        # back to "pending" and return.  If there are no device image updates
+        # left, then fall through to setting the host status to null below.
+        if (host.device_image_update == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS_ABORTED and
+                device_image_states):
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+            host.save(context)
+            return
+
+        # TODO: the code below needs to be updated to order the device images for a given
+        # device.  For the N3000 we want to apply any root-key image first, then
+        # any key-revocation images, then any functional images.
+
+        for device_image_state in device_image_states:
+            # get the PCI device for the pending device image update
+            pci_device = objects.pci_device.get_by_uuid(context, device_image_state.pcidevice_id)
+            # figure out the filename for the device image
+            device_image = objects.device_image.get_by_uuid(context, device_image_state.image_id)
+            filename = cutils.format_image_filename(device_image)
+            LOG.info("sending rpc req to update image for host %s, pciaddr: %s, filename: %s, id: %s" %
+                     (host.hostname, pci_device.pciaddr, filename, device_image_state.id))
+            fpga_rpcapi = fpga_agent_rpcapi.AgentAPI()
+            fpga_rpcapi.host_device_update_image(
+                context, host.hostname, pci_device.pciaddr, filename, device_image_state.id)
+            # We've kicked off a device image update, so exit the function.
+            return
+        LOG.info("no more device images to process")
+
+        # TODO: what should host.device_image_update be set to if one or more
+        # of the device image updates failed?
+
+        # Getting here should mean that we're done processing so we can
+        # clear the "this host is currently updating device images" flag.
+        host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_NULL
+        host.save(context)
+
+    def host_device_image_update(self, context, host_uuid):
+        """Update any applied device images for devices on this host"""
+
+        host = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Updating device image on %s" % host.hostname)
+
+        # Set any previously "failed" updates back to "pending" to retry them.
+        device_image_states = self.dbapi.device_image_state_get_all(
+            host_id=host.id,
+            status=dconstants.DEVICE_IMAGE_UPDATE_FAILED)
+        for device_image_state in device_image_states:
+            device_image_state.status = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+            device_image_state.update_start_time = None
+            device_image_state.save(context)
+
+        # Update the host status.
+        host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS
+        host.save()
+
+        # Find the first device on this host that needs updating,
+        # and trigger an update of it.
+        self.host_device_image_update_next(context, host_uuid)
 
     def host_device_image_update_abort(self, context, host_uuid):
         """Abort device image update on this host"""
 
-        host_obj = objects.host.get_by_uuid(context, host_uuid)
-        LOG.info("Aborting device image update on %s" % host_obj.hostname)
+        host = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Aborting device image update on %s" % host.hostname)
+
+        # If the host status is currently pending or blank or already aborted
+        # then just leave it as-is.
+        if host.device_image_update == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS_ABORTED
+            host.save(context)
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _audit_device_image_update(self, context):
@@ -11713,3 +11790,126 @@ class ConductorManager(service.PeriodicService):
             entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_SYSTEM, system_uuid)
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
                                     entity_instance_id)
+
+    def fpga_device_update_by_host(self, context,
+                                  host_uuid, fpga_device_dict_array):
+        """Create FPGA devices for an ihost with the supplied data.
+
+        This method allows records for FPGA devices for ihost to be created.
+
+        :param context: an admin context
+        :param host_uuid: host uuid
+        :param fpga_device_dict_array: initial values for device objects
+        :returns: either returns nothing or raises exception
+        """
+        LOG.info("Entering device_update_by_host %s %s" %
+                  (host_uuid, fpga_device_dict_array))
+        host_uuid.strip()
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            # This really shouldn't happen.
+            LOG.exception("Invalid host_uuid %s" % host_uuid)
+            return
+
+        for fpga_dev in fpga_device_dict_array:
+            LOG.info("Processing dev %s" % fpga_dev)
+            try:
+                dev_found = None
+                try:
+                    dev = self.dbapi.fpga_device_get(fpga_dev['pciaddr'],
+                                                    hostid=host['id'])
+                    dev_found = dev
+                except Exception:
+                    LOG.info("Attempting to create new device "
+                             "%s on host %s" % (fpga_dev, host['id']))
+
+                    # Look up the PCI device in the DB, we need the id.
+                    try:
+                        pci_dev = self.dbapi.pci_device_get(
+                            fpga_dev['pciaddr'], hostid=host['id'])
+                        fpga_dev['pci_id'] = pci_dev.id
+                    except Exception as ex:
+                        LOG.info("Unable to find pci device entry for "
+                                 "address %s on host id %s, can't create "
+                                 "fpga_device entry, ex: %s" %
+                                 (fpga_dev['pciaddr'], host['id'], str(ex)))
+                        return
+
+                    # Save the FPGA device to the DB.
+                    try:
+                        dev = self.dbapi.fpga_device_create(host['id'],
+                                                            fpga_dev)
+                    except Exception as ex:
+                        LOG.info("Unable to create fpga_device entry for "
+                                 "address %s on host id %s, ex: %s" %
+                                 (fpga_dev['pciaddr'], host['id'], str(ex)))
+                        return
+
+                # If the device existed already, update some of the fields
+                if dev_found:
+                    try:
+                        attr = {
+                            'bmc_build_version': fpga_dev['bmc_build_version'],
+                            'bmc_fw_version': fpga_dev['bmc_fw_version'],
+                            'root_key': fpga_dev['root_key'],
+                            'revoked_key_ids': fpga_dev['revoked_key_ids'],
+                            'boot_page': fpga_dev['boot_page'],
+                            'bitstream_id': fpga_dev['bitstream_id'],
+                        }
+                        LOG.info("attr: %s" % attr)
+                        dev = self.dbapi.fpga_device_update(dev['uuid'], attr)
+                    except Exception as ex:
+                        LOG.exception("Failed to update fpga fields for "
+                                      "address %s on host id %s, ex: %s" %
+                                      (dev['pciaddr'], host['id'], str(ex)))
+                        pass
+
+            except exception.NodeNotFound:
+                raise exception.SysinvException(_(
+                    "Invalid host_uuid: host not found: %s") %
+                    host_uuid)
+            except Exception:
+                pass
+
+    def device_update_image_status(self, context, host_uuid, transaction_id,
+                                   status, progress=None, err=None):
+        """Update the status of an image-update operation.
+
+        This is a status update from the agent on the node regarding a
+        previously-triggered firmware update operation.
+
+        :param context: an admin context
+        :param host_uuid: the uuid of the host calling this function
+        :param transaction_id: uuid to allow us to find the transaction
+        :param status: status of the operation
+        :param progress: optional progress value if status is in-progress
+        :param err: error string (only set if status is failure)
+        :returns: either returns nothing or raises exception
+        """
+
+        LOG.info("device_update_image_status: transaction_id: %s, status: %s, "
+                 "progress: %s, err: %s" %
+                 (transaction_id, status, progress, err))
+
+        # Save the status of the completed device image update in the db.
+        # The status should be one of dconstants.DEVICE_IMAGE_UPDATE_*
+        device_image_state = objects.device_image_state.get_by_uuid(
+            context, transaction_id)
+        device_image_state.status = status
+        if status == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            device_image_state.update_start_time = timeutils.utcnow()
+        device_image_state.save()
+
+        # If the device image update completed, someone will need to reboot
+        # the host for it to take effect.
+        if status == dconstants.DEVICE_IMAGE_UPDATE_COMPLETED:
+            host = objects.host.get_by_uuid(context, host_uuid)
+            host.reboot_needed = True
+            host.save()
+
+        if status in [dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
+                      dconstants.DEVICE_IMAGE_UPDATE_FAILED]:
+            # Find the next device on the same host that needs updating,
+            # and trigger an update of it.
+            self.host_device_image_update_next(context, host_uuid)
