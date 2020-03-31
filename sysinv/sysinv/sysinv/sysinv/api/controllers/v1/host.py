@@ -3343,6 +3343,22 @@ class HostController(rest.RestController):
 
         self._check_sriovdp_interface_datanets(interface)
 
+    def _semantic_check_unlock_kube_upgrade(self, ihost, force_unlock=False):
+        """
+        Perform semantic checks related to kubernetes upgrades prior to unlocking host.
+        """
+        if force_unlock:
+            LOG.warning("Host %s force unlock while kubelet upgrade "
+                        "in progress." % ihost['hostname'])
+            return
+
+        kube_host_upgrade = \
+            pecan.request.dbapi.kube_host_upgrade_get_by_host(ihost['uuid'])
+        if kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_KUBELET:
+            msg = _("Can not unlock %s while upgrading kubelet. "
+                    "Wait for kubelet upgrade to complete." % ihost['hostname'])
+            raise wsme.exc.ClientSideError(msg)
+
     def _semantic_check_unlock_upgrade(self, ihost, force_unlock=False):
         """
         Perform semantic checks related to upgrades prior to unlocking host.
@@ -5400,6 +5416,7 @@ class HostController(rest.RestController):
         """Pre unlock semantic checks for controller"""
         LOG.info("%s ihost check_unlock_controller" % hostupdate.displayid)
         self._semantic_check_unlock_upgrade(hostupdate.ihost_orig, force_unlock)
+        self._semantic_check_unlock_kube_upgrade(hostupdate.ihost_orig, force_unlock)
         self._semantic_check_oam_interface(hostupdate.ihost_orig)
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
         self._semantic_check_filesystem_sizes(hostupdate.ihost_orig)
@@ -5417,6 +5434,10 @@ class HostController(rest.RestController):
                 _("Can not unlock an unconfigured host %s. Please "
                   "configure host and wait for Availability State "
                   "'online' prior to unlock." % hostupdate.displayid))
+
+        # Check if kubernetes upgrade is in-progress
+        if cutils.is_std_system(pecan.request.dbapi):
+            self._semantic_check_unlock_kube_upgrade(hostupdate.ihost_orig, force_unlock)
 
         # Check whether a restore was properly completed
         self._semantic_check_restore_complete(ihost)
@@ -6618,6 +6639,12 @@ class HostController(rest.RestController):
         cp_versions = self._kube_operator.kube_get_control_plane_versions()
         current_cp_version = cp_versions.get(host_obj.hostname)
         if current_cp_version == kube_upgrade_obj.to_version:
+            # Make sure we are not attempting to upgrade the first upgraded
+            # control plane again after networking was upgraded
+            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_NETWORKING:
+                raise wsme.exc.ClientSideError(_(
+                    "The first control plane was already upgraded."))
+
             # The control plane was already upgraded, but we didn't progress
             # to the next state, so something failed along the way.
             LOG.info("Redoing kubernetes control plane upgrade for %s" %

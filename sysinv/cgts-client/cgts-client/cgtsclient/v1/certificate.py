@@ -36,3 +36,8 @@ class CertificateManager(base.Manager):
     def certificate_install(self, certificate_file, data=None):
         path = self._path("certificate_install")
         return self._upload(path, certificate_file, data=data)
+
+    def certificate_uninstall(self, uuid):
+        path = self._path(uuid)
+        _, body = self.api.json_request('DELETE', path)
+        return body

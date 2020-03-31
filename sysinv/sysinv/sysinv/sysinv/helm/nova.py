@@ -202,8 +202,12 @@ class NovaHelm(openstack.OpenstackBaseHelm):
             location = "%s.%s" % (self.NOVNCPROXY_SERVICE_NAME,
                                   str(endpoint_domain.value).lower())
         else:
-            location = "%s:%s" % (self._get_oam_address(),
-                                  self.NOVNCPROXY_NODE_PORT)
+            if self._is_ipv6_cluster_service():
+                location = "[%s]:%s" % (self._get_oam_address(),
+                                        self.NOVNCPROXY_NODE_PORT)
+            else:
+                location = "%s:%s" % (self._get_oam_address(),
+                                        self.NOVNCPROXY_NODE_PORT)
         url = "%s://%s/vnc_auto.html" % (self._get_public_protocol(),
                                          location)
         return url
@@ -388,7 +392,7 @@ class NovaHelm(openstack.OpenstackBaseHelm):
         cluster_host_ip = None
         ip_family = None
         for addr in addresses:
-            if addr.interface_uuid == cluster_host_iface.uuid:
+            if addr.interface_id == cluster_host_iface.id:
                 cluster_host_ip = addr.address
                 ip_family = addr.family
 

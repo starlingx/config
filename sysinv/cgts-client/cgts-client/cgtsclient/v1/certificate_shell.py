@@ -100,9 +100,26 @@ def do_certificate_install(cc, args):
         raise exc.CommandError('Certificate %s not installed: %s' %
                                (certificate_file, e))
     else:
-        _print_certificate_show(response.get('certificates'))
+        certificates = response.get('certificates')
+        for certificate in certificates:
+            _print_certificate_show(certificate)
         try:
             os.remove(certificate_file)
         except OSError:
             raise exc.CommandError('Error: Could not remove the '
                                    'certificate %s' % certificate_file)
+
+@utils.arg('certificate_uuid', metavar='<certificate_uuid>',
+           help="UUID of certificate to uninstall")
+@utils.arg('-m', '--mode',
+           metavar='<mode>',
+           help="Supported mode: 'ssl_ca'.")
+def do_certificate_uninstall(cc, args):
+    """Uninstall certificate."""
+
+    supported_modes = ['ssl_ca']
+    if args.mode not in supported_modes:
+        raise exc.CommandError('Unsupported mode: %s' % args.mode)
+
+    cc.certificate.certificate_uninstall(args.certificate_uuid)
+    print('Uninstalled certificate: %s' % (args.certificate_uuid))

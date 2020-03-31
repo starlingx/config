@@ -45,12 +45,12 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
+from datetime import timedelta
 
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
 from cgcs_patch.patch_verify import verify_files
 from controllerconfig.upgrades import management as upgrades_management
-from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -94,8 +94,10 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
 from sysinv.conductor import kube_app
+from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
+from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
 from sysinv import objects
 from sysinv.objects import base as objects_base
@@ -182,6 +184,7 @@ class ConductorManager(service.PeriodicService):
         self._ceph_api = ceph.CephWrapper(
             endpoint='http://localhost:5001')
         self._kube = None
+        self._kube_pod = None
         self._fernet = None
 
         self._openstack = None
@@ -204,7 +207,17 @@ class ConductorManager(service.PeriodicService):
 
         # Upgrade/Downgrade kubernetes components.
         # greenthread must be called after super.start for it to work properly.
-        greenthread.spawn(self._upgrade_downgrade_kube_components())
+        greenthread.spawn(self._upgrade_downgrade_kube_components)
+
+        # monitor keystone user update event to check whether admin password is
+        # changed or not. If changed, then sync it to kubernetes's secret info.
+        greenthread.spawn(keystone_listener.start_keystone_listener, self._app)
+
+        # Monitor ceph to become responsive
+        if StorageBackendConfig.has_backend_configured(
+                        self.dbapi,
+                        constants.SB_TYPE_CEPH):
+            greenthread.spawn(self._init_ceph_cluster_info)
 
     def _start(self):
         self.dbapi = dbapi.get_instance()
@@ -229,9 +242,9 @@ class ConductorManager(service.PeriodicService):
         # ceph for the initial unlock.
         self._app = kube_app.AppOperator(self.dbapi)
         self._docker = kube_app.DockerHelper(self.dbapi)
-        self._ceph = iceph.CephOperator(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
         self._kube = kubernetes.KubeOperator()
+        self._kube_pod = kube_pod.K8sPodOperator(self._kube)
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
@@ -243,6 +256,9 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
+
+        # Save our start time for time limited init actions
+        self._start_time = timeutils.utcnow()
 
     def periodic_tasks(self, context, raise_on_error=False):
         """ Periodic tasks are run at pre-specified intervals. """
@@ -1228,11 +1244,11 @@ class ConductorManager(service.PeriodicService):
                 return
 
             address = self.dbapi.address_get_by_name(address_name)
-            interface_uuid = address.interface_uuid
+            interface_id = address.interface_id
             ip_address = address.address
 
-            if interface_uuid:
-                interface = self.dbapi.iinterface_get(interface_uuid)
+            if interface_id:
+                interface = self.dbapi.iinterface_get(interface_id)
                 mac_address = interface.imac
             elif network_type == constants.NETWORK_TYPE_MGMT:
                 ihost = self.dbapi.ihost_get_by_hostname(hostname)
@@ -1362,7 +1378,7 @@ class ConductorManager(service.PeriodicService):
             return
         if not self.dbapi.ceph_mon_get_by_ihost(host.uuid):
             system = self.dbapi.isystem_get_one()
-            ceph_mon_gib = None
+            ceph_mon_gib = constants.SB_CEPH_MON_GIB
             ceph_mons = self.dbapi.ceph_mon_get_list()
             if ceph_mons:
                 ceph_mon_gib = ceph_mons[0].ceph_mon_gib
@@ -1387,7 +1403,14 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Deleting ceph monitor for host %s"
                      % str(host.hostname))
             self.dbapi.ceph_mon_destroy(mon[0].uuid)
-            self._ceph.remove_ceph_monitor(host.hostname)
+            # At this point self._ceph should always be set, but we check
+            # just to be sure
+            if self._ceph is not None:
+                self._ceph.remove_ceph_monitor(host.hostname)
+            else:
+                # This should never happen, but if it does, log it so
+                # there is a trace of it
+                LOG.error("Error deleting ceph monitor")
         else:
             LOG.info("No ceph monitor present for host %s. "
                      "Skipping deleting ceph monitor."
@@ -1540,8 +1563,21 @@ class ConductorManager(service.PeriodicService):
         :param host: host object
         """
 
-        # Update cluster and peers model
-        self._ceph.update_ceph_cluster(host)
+        # Update cluster and peers model.
+        # We call this function when setting the personality of a storage host.
+        # In cases where we configure the storage-backend before unlocking
+        # controller-0, and then configuring all other hosts, ceph will not be
+        # responsive (and self._ceph not be set) when setting the storage
+        # personality.
+        # But that's ok, because this function is also called when unlocking a
+        # storage node and we are guaranteed (by consistency checks) a
+        # responsive ceph cluster at that point in time and we can update the
+        # ceph cluster information succesfully.
+        if self._ceph is not None:
+            self._ceph.update_ceph_cluster(host)
+        else:
+            # It's ok, we just log a message for debug purposes
+            LOG.debug("Error updating cluster information")
 
         # Only update the manifest if the host is running the same version as
         # the active controller.
@@ -1760,7 +1796,6 @@ class ConductorManager(service.PeriodicService):
         :param inic_dict_array: initial values for iport objects
         :returns: pass or fail
         """
-
         LOG.debug("Entering iport_update_by_ihost %s %s" %
                   (ihost_uuid, inic_dict_array))
         ihost_uuid.strip()
@@ -2042,7 +2077,7 @@ class ConductorManager(service.PeriodicService):
                     addr_name = cutils.format_address_name(ihost.hostname,
                                                            networktype)
                     address = self.dbapi.address_get_by_name(addr_name)
-                    if address['interface_uuid'] is None:
+                    if address['interface_id'] is None:
                         self.dbapi.address_update(address['uuid'], values)
                 except exception.AddressNotFoundByName:
                     pass
@@ -4191,6 +4226,38 @@ class ConductorManager(service.PeriodicService):
 
         return
 
+    @retry(retry_on_result=lambda x: x is False,
+           wait_fixed=(constants.INIT_CEPH_INFO_INTERVAL_SECS * 1000))
+    def _init_ceph_cluster_info(self):
+        if not self._ceph:
+            try:
+                _, fsid = self._ceph_api.fsid(body='text', timeout=10)
+            except Exception as e:
+                LOG.debug("Ceph REST API not responsive. Error = %s" % str(e))
+                return False
+            LOG.info("Ceph cluster has become responsive")
+            self._ceph = iceph.CephOperator(self.dbapi)
+
+        try:
+            # We manually check for the crushmap_applied flag because we don't
+            # want to re-fix the crushmap if it's already been fixed and the
+            # fix_crushmap function returns False if it finds the flag.
+            crushmap_flag_file = os.path.join(
+                constants.SYSINV_CONFIG_PATH,
+                constants.CEPH_CRUSH_MAP_APPLIED)
+            if not os.path.isfile(crushmap_flag_file):
+                return cceph.fix_crushmap(self.dbapi)
+            return True
+
+        except Exception as e:
+            # fix_crushmap will throw an exception if the storage_model
+            # is unclear. This happens on a standard (2+2) setup, before
+            # adding storage-0 or adding the 3rd monitor to a compute node.
+            # In such cases we just wait until the mode has become clear,
+            # so we just return False and retry.
+            LOG.debug("Error fixing crushmap. Exception %s" % str(e))
+            return False
+
     def _fix_storage_install_uuid(self):
         """
         Fixes install_uuid for storage nodes during a restore procedure
@@ -4401,10 +4468,12 @@ class ConductorManager(service.PeriodicService):
                     {'capabilities': ihost.capabilities})
 
         if availability == constants.AVAILABILITY_AVAILABLE:
-            if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
+            if (imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT) and
+                    StorageBackendConfig.has_backend_configured(
+                        self.dbapi,
+                        constants.SB_TYPE_CEPH)):
                 # This should be run once after a node boot
                 self._clear_ceph_stor_state(ihost_uuid)
-                cceph.fix_crushmap(self.dbapi)
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
@@ -4831,6 +4900,13 @@ class ConductorManager(service.PeriodicService):
                                              host.install_state_info})
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    def _kubernetes_local_secrets_audit(self, context):
+        # Audit kubernetes local registry secrets info
+        LOG.debug("Sysinv Conductor running periodic audit task for k8s local registry secrets.")
+        if self._app:
+            self._app.audit_local_registry_secrets()
+
+    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _conductor_audit(self, context):
         # periodically, perform audit of inventory
         LOG.debug("Sysinv Conductor running periodic audit task.")
@@ -5117,6 +5193,27 @@ class ConductorManager(service.PeriodicService):
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
 
+        # WORKAROUND: For k8s MatchNodeSelector issue. Call this for a limited
+        #             time (5 times over ~5 minutes) on a AIO-SX controller
+        #             configuration after conductor startup.
+        #
+        #             Upstream reports of this:
+        #             - https://github.com/kubernetes/kubernetes/issues/80745
+        #             - https://github.com/kubernetes/kubernetes/issues/85334
+        #
+        #             Outstanding PR that was tested and fixed this issue:
+        #             - https://github.com/kubernetes/kubernetes/pull/80976
+        system_mode = self.dbapi.isystem_get_one().system_mode
+        if system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            if (self._start_time + timedelta(minutes=5) >
+                    datetime.now(self._start_time.tzinfo)):
+                LOG.info("Periodic Task: _k8s_application_audit: Checking for "
+                         "MatchNodeSelector issue for %s" % str(
+                             (self._start_time + timedelta(minutes=5)) -
+                             datetime.now(self._start_time.tzinfo)))
+                self._kube_pod.delete_failed_pods_by_reason(
+                    reason='MatchNodeSelector')
+
         # Check the application state and take the approprate action
         for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
 
@@ -5384,6 +5481,9 @@ class ConductorManager(service.PeriodicService):
                 constants.CINDER_BACKEND_CEPH):
             return 0
 
+        if self._ceph is None:
+            return 0
+
         if not self._ceph.get_ceph_cluster_info_availability():
             return 0
 
@@ -5395,6 +5495,9 @@ class ConductorManager(service.PeriodicService):
         if not StorageBackendConfig.has_backend_configured(
                 self.dbapi,
                 constants.CINDER_BACKEND_CEPH):
+            return 0
+
+        if self._ceph is None:
             return 0
 
         if not self._ceph.get_ceph_cluster_info_availability():
@@ -5411,6 +5514,9 @@ class ConductorManager(service.PeriodicService):
                 constants.CINDER_BACKEND_CEPH):
             return
 
+        if self._ceph is None:
+            return
+
         if not self._ceph.get_ceph_cluster_info_availability():
             return
 
@@ -5421,6 +5527,9 @@ class ConductorManager(service.PeriodicService):
         if not StorageBackendConfig.has_backend_configured(
                self.dbapi,
                constants.CINDER_BACKEND_CEPH):
+            return
+
+        if self._ceph is None:
             return
 
         if not self._ceph.get_ceph_cluster_info_availability():
@@ -5598,12 +5707,38 @@ class ConductorManager(service.PeriodicService):
                          constants.STORAGE]
         self._config_update_hosts(context, personalities, reboot=True)
 
-    def update_ptp_config(self, context):
+    def update_ptp_config(self, context, do_apply=False):
         """Update the PTP configuration"""
+        self._update_ptp_host_configs(context, do_apply)
+
+    def _update_ptp_host_configs(self, context, do_apply=False):
+        """Issue config updates to hosts with ptp clocks"""
         personalities = [constants.CONTROLLER,
                          constants.WORKER,
                          constants.STORAGE]
-        self._config_update_hosts(context, personalities)
+
+        hosts = self.dbapi.ihost_get_list()
+        ptp_hosts = [host.uuid for host in hosts if host.clock_synchronization == constants.PTP]
+
+        if ptp_hosts:
+            config_uuid = self._config_update_hosts(context, personalities, host_uuids=ptp_hosts)
+            if do_apply:
+                runtime_hosts = []
+                for host in hosts:
+                    if (host.clock_synchronization == constants.PTP and
+                        host.administrative == constants.ADMIN_UNLOCKED and
+                        host.operational == constants.OPERATIONAL_ENABLED and
+                        not (self._config_out_of_date(host) and
+                                 self._config_is_reboot_required(host.config_target))):
+                        runtime_hosts.append(host.uuid)
+
+                if runtime_hosts:
+                    config_dict = {
+                        "personalities": personalities,
+                        "classes": ['platform::ptp::runtime'],
+                        "host_uuids": runtime_hosts
+                    }
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_system_mode_config(self, context):
         """Update the system mode configuration"""
@@ -5689,7 +5824,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host_uuid],
-            "classes": 'platform::network::runtime',
+            "classes": 'platform::interfaces::sriov::runtime',
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
         }
@@ -6027,7 +6162,8 @@ class ConductorManager(service.PeriodicService):
         ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
         valid_ctrls = [ctrl for ctrl in ctrls if
                        ctrl.administrative == constants.ADMIN_UNLOCKED and
-                       ctrl.availability == constants.AVAILABILITY_AVAILABLE]
+                       ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
+                                             constants.AVAILABILITY_DEGRADED]]
         classes = ['platform::partitions::runtime',
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
@@ -6035,15 +6171,14 @@ class ConductorManager(service.PeriodicService):
                    'platform::ceph::runtime_base',
                    ]
 
+        for ctrl in valid_ctrls:
+            self._ceph_mon_create(ctrl)
+
         if cutils.is_aio_duplex_system(self.dbapi):
             # On 2 node systems we have a floating Ceph monitor.
             classes.append('platform::drbd::cephmon::runtime')
-            classes.append('platform::drbd::runtime')
 
-        # TODO (tliu) determine if this SB_SVC_CINDER section can be removed
-        if constants.SB_SVC_CINDER in services:
-            LOG.info("No cinder manifests for update_ceph_config")
-        classes.append('platform::sm::norestart::runtime')
+        classes.append('platform::sm::ceph::runtime')
         host_ids = [ctrl.uuid for ctrl in valid_ctrls]
         config_dict = {"personalities": personalities,
                        "host_uuids": host_ids,
@@ -6051,33 +6186,13 @@ class ConductorManager(service.PeriodicService):
                        puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_BACKEND_CONFIG,
                        }
 
-        # TODO(oponcea) once sm supports in-service config reload always
-        # set reboot=False
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        if utils.is_host_simplex_controller(active_controller):
-            reboot = False
-        else:
-            reboot = True
-
         # Set config out-of-date for controllers
         config_uuid = self._config_update_hosts(context,
                                                 personalities,
-                                                host_uuids=host_ids,
-                                                reboot=reboot)
+                                                host_uuids=host_ids)
 
-        # TODO(oponcea): Set config_uuid to a random value to keep Config out-of-date.
-        # Once sm supports in-service config reload, always set config_uuid=config_uuid
-        # in _config_apply_runtime_manifest and remove code bellow.
-        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
-        if utils.is_host_simplex_controller(active_controller):
-            new_uuid = config_uuid
-        else:
-            new_uuid = str(uuid.uuid4())
-        # Apply runtime config but keep reboot required flag set in
-        # _config_update_hosts() above. Node needs a reboot to clear it.
-        new_uuid = self._config_clear_reboot_required(new_uuid)
         self._config_apply_runtime_manifest(context,
-                                            config_uuid=new_uuid,
+                                            config_uuid=config_uuid,
                                             config_dict=config_dict)
 
         tasks = {}
@@ -6822,7 +6937,7 @@ class ConductorManager(service.PeriodicService):
                 state = constants.SB_STATE_CONFIGURED
                 if cutils.is_aio_system(self.dbapi):
                     task = None
-                    cceph.fix_crushmap(self.dbapi)
+                    greenthread.spawn(self._init_ceph_cluster_info)
                 else:
                     task = constants.SB_TASK_PROVISION_STORAGE
                 values = {'state': state,
@@ -6843,7 +6958,7 @@ class ConductorManager(service.PeriodicService):
                     if host.uuid == host_uuid:
                         break
                 else:
-                    LOG.error("Host %(host) is not in the required state!" % host_uuid)
+                    LOG.error("Host %s is not in the required state!" % host_uuid)
                     host = self.dbapi.ihost_get(host_uuid)
                     if not host:
                         LOG.error("Host %s is invalid!" % host_uuid)
@@ -6863,6 +6978,7 @@ class ConductorManager(service.PeriodicService):
                 if ceph_conf.state != constants.SB_STATE_CONFIG_ERR:
                     if config_success:
                         values = {'task': constants.SB_TASK_PROVISION_STORAGE}
+                        greenthread.spawn(self._init_ceph_cluster_info)
                     else:
                         values = {'task': str(tasks)}
             self.dbapi.storage_backend_update(ceph_conf.uuid, values)
@@ -6925,7 +7041,7 @@ class ConductorManager(service.PeriodicService):
             if host.uuid == host_uuid:
                 break
         else:
-            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            LOG.error("Host %s is not in the required state!" % host_uuid)
             host = self.dbapi.ihost_get(host_uuid)
             if not host:
                 LOG.error("Host %s is invalid!" % host_uuid)
@@ -7001,7 +7117,7 @@ class ConductorManager(service.PeriodicService):
             if host.uuid == host_uuid:
                 break
         else:
-            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            LOG.error("Host %s is not in the required state!" % host_uuid)
             host = self.dbapi.ihost_get(host_uuid)
             if not host:
                 LOG.error("Host %s is invalid!" % host_uuid)
@@ -7308,6 +7424,8 @@ class ConductorManager(service.PeriodicService):
         elif service == constants.SERVICE_TYPE_OPENSTACK:
             # Do nothing. Does not need to update target config of any hosts
             pass
+        elif service == constants.SERVICE_TYPE_PTP:
+            self._update_ptp_host_configs(context, do_apply=do_apply)
         else:
             # All other services
             personalities = [constants.CONTROLLER]
@@ -7353,6 +7471,14 @@ class ConductorManager(service.PeriodicService):
                 config_dict = {
                     "personalities": personalities,
                     "classes": ['openstack::barbican::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+            elif service == constants.SERVICE_TYPE_KUBERNETES:
+                personalities = [constants.CONTROLLER]
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['platform::kubernetes::master::change_apiserver_parameters']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -9900,24 +10026,19 @@ class ConductorManager(service.PeriodicService):
         """Extract keys from the pem contents
 
         :param mode: mode one of: ssl, tpm_mode, docker_registry
-        :param pem_contents: pem_contents
+        :param pem_contents: pem_contents in unicode
         :param cert_format: serialization.PrivateFormat
         :param passphrase: passphrase for PEM file
 
-        :returns: private_bytes, public_bytes, signature
+        :returns: A list of {cert, private_bytes, public_bytes, signature}
         """
-
-        temp_pem_file = constants.SSL_PEM_FILE + '.temp'
-        with os.fdopen(os.open(temp_pem_file, os.O_CREAT | os.O_WRONLY,
-                               constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
-                               'w') as f:
-            f.write(pem_contents)
 
         if passphrase:
             passphrase = str(passphrase)
 
         private_bytes = None
         private_mode = False
+        temp_pem_contents = pem_contents.encode("utf-8")
         if mode in [constants.CERT_MODE_SSL,
                     constants.CERT_MODE_TPM,
                     constants.CERT_MODE_DOCKER_REGISTRY,
@@ -9925,43 +10046,100 @@ class ConductorManager(service.PeriodicService):
                     ]:
             private_mode = True
 
-        with open(temp_pem_file, "r") as key_file:
-            if private_mode:
-                # extract private_key with passphrase
-                try:
-                    private_key = serialization.load_pem_private_key(
-                        key_file.read(),
-                        password=passphrase,
-                        backend=default_backend())
-                except Exception as e:
-                    raise exception.SysinvException(_("Error decrypting PEM "
-                        "file: %s" % e))
-                key_file.seek(0)
-            # extract the certificate from the pem file
-            cert = x509.load_pem_x509_certificate(key_file.read(),
-                                                  default_backend())
-        os.remove(temp_pem_file)
-
         if private_mode:
+            # extract private_key with passphrase
+            try:
+                private_key = serialization.load_pem_private_key(
+                    temp_pem_contents,
+                    password=passphrase,
+                    backend=default_backend())
+            except Exception as e:
+                raise exception.SysinvException(_("Error loading private key "
+                                                  "from PEM data: %s" % e))
+
             if not isinstance(private_key, rsa.RSAPrivateKey):
-                raise exception.SysinvException(_("Only RSA encryption based "
-                    "Private Keys are supported."))
+                raise exception.SysinvException(_(
+                    "Only RSA encryption based Private Keys are supported."))
 
-            private_bytes = private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=cert_format,
-                encryption_algorithm=serialization.NoEncryption())
+            try:
+                private_bytes = private_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=cert_format,
+                    encryption_algorithm=serialization.NoEncryption())
+            except Exception as e:
+                raise exception.SysinvException(_("Error loading private "
+                                                  "bytes from PEM data: %s"
+                                                  % e))
 
-        signature = mode + '_' + str(cert.serial_number)
-        if len(signature) > 255:
-            LOG.info("Truncating certificate serial no %s" % signature)
-            signature = signature[:255]
-        LOG.info("config_certificate signature=%s" % signature)
+        certs = cutils.extract_certs_from_pem(temp_pem_contents)
+        key_list = []
+        for cert in certs:
+            # format=serialization.PrivateFormat.TraditionalOpenSSL,
+            try:
+                public_bytes = cert.public_bytes(
+                    encoding=serialization.Encoding.PEM)
+            except Exception as e:
+                raise exception.SysinvException(_("Error loading public "
+                                                  "bytes from PEM data: %s"
+                                                  % e))
 
-        # format=serialization.PrivateFormat.TraditionalOpenSSL,
-        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+            signature = mode + '_' + str(cert.serial_number)
+            if len(signature) > 255:
+                LOG.info("Truncating certificate serial no %s" % signature)
+                signature = signature[:255]
+            LOG.info("config_certificate signature=%s" % signature)
 
-        return private_bytes, public_bytes, signature
+            key_list.append({'cert': cert,
+                             'private_bytes': private_bytes,
+                             'public_bytes': public_bytes,
+                             'signature': signature})
+
+        return key_list
+
+    @staticmethod
+    def _get_public_bytes_one(key_list):
+        """Get exactly one public bytes entry from key list"""
+
+        if len(key_list) != 1:
+            msg = "There should be exactly one certificate " \
+                  "(ie, public_bytes) in the pem contents."
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+        return key_list[0].get('public_bytes')
+
+    @staticmethod
+    def _get_private_bytes_one(key_list):
+        """Get exactly one private bytes entry from key list"""
+
+        if len(key_list) != 1:
+            msg = "There should be exactly one private key " \
+                  "(ie, private_bytes) in the pem contents."
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+        return key_list[0].get('private_bytes')
+
+    @staticmethod
+    def _consolidate_cert_files():
+        # Cat all the cert files into one CA cert file and store it in
+        # the shared directory to update system CA certs
+        try:
+            new_cert_files = \
+                os.listdir(constants.SSL_CERT_CA_LIST_SHARED_DIR)
+            with os.fdopen(
+                    os.open(constants.SSL_CERT_CA_FILE_SHARED,
+                            os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+                            constants.CONFIG_FILE_PERMISSION_DEFAULT),
+                    'wb') as f:
+                for fname in new_cert_files:
+                    fname = \
+                        os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
+                                     fname)
+                    with open(fname, "r") as infile:
+                        f.write(infile.read())
+        except Exception as e:
+            msg = "Failed to consolidate cert files: %s" % str(e)
+            LOG.warn(msg)
+            raise exception.SysinvException(_(msg))
 
     def _perform_config_certificate_tpm_mode(self, context,
                                              tpm, private_bytes, public_bytes):
@@ -10027,7 +10205,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("config_certificate mode=%s" % mode)
 
-        private_bytes, public_bytes, signature = \
+        key_list = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10040,19 +10218,23 @@ class ConductorManager(service.PeriodicService):
             pass
 
         if mode == constants.CERT_MODE_TPM:
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
             self._perform_config_certificate_tpm_mode(
                 context, tpm, private_bytes, public_bytes)
 
             file_content = public_bytes
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(file_content)
 
         elif mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
             file_content = private_bytes + public_bytes
             config_dict = {
                 'personalities': personalities,
@@ -10065,7 +10247,7 @@ class ConductorManager(service.PeriodicService):
 
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(file_content)
@@ -10086,17 +10268,49 @@ class ConductorManager(service.PeriodicService):
                                                 config_dict)
 
         elif mode == constants.CERT_MODE_SSL_CA:
-            file_content = public_bytes
+            # The list of the existing CA certs in sysinv DB.
+            certificates = self.dbapi.certificate_get_list()
+            certs_inv = [certificate.signature
+                         for certificate in certificates
+                         if certificate.certtype == mode]
+            # The list of the actual CA certs as files in FS
+            certs_file = os.listdir(constants.SSL_CERT_CA_LIST_SHARED_DIR)
+
+            # Remove these already installed from the key list
+            key_list_c = key_list[:]
+            for key in key_list_c:
+                if key.get('signature') in certs_inv \
+                        and key.get('signature') in certs_file:
+                    key_list.remove(key)
+
+            # Save certs in files and cat them into ca-cert.pem to apply to the
+            # system.
+            if key_list:
+                # Save each cert in a separate file with signature as its name
+                try:
+                    for key in key_list:
+                        file_content = key.get('public_bytes')
+                        file_name = \
+                            os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
+                                         key.get('signature'))
+                        with os.fdopen(
+                                os.open(file_name,
+                                        os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+                                        constants.CONFIG_FILE_PERMISSION_DEFAULT),
+                                'wb') as f:
+                            f.write(file_content)
+                except Exception as e:
+                    msg = "Failed to save cert file: %s" % str(e)
+                    LOG.warn(msg)
+                    raise exception.SysinvException(_(msg))
+
+                # consolidate the CA cert files into ca-cert.pem to update
+                # system CA certs.
+                self._consolidate_cert_files()
+
             personalities = [constants.CONTROLLER,
                              constants.WORKER,
                              constants.STORAGE]
-            # copy the certificate to shared directory
-            with os.fdopen(os.open(constants.SSL_CERT_CA_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
-                                   constants.CONFIG_FILE_PERMISSION_DEFAULT),
-                                   'wb') as f:
-                f.write(file_content)
-
             config_uuid = self._config_update_hosts(context, personalities)
             config_dict = {
                 "personalities": personalities,
@@ -10109,16 +10323,20 @@ class ConductorManager(service.PeriodicService):
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
-            pkcs1_private_bytes, pkcs1_public_bytes, pkcs1_signature = \
+            key_list_pkcs1 = \
                 self._extract_keys_from_pem(mode, pem_contents,
                                             serialization.PrivateFormat
                                             .TraditionalOpenSSL, passphrase)
+            pkcs1_private_bytes = self._get_private_bytes_one(key_list_pkcs1)
 
             # install certificate, key, and pkcs1 key to controllers
             config_uuid = self._config_update_hosts(context, personalities)
             key_path = constants.DOCKER_REGISTRY_KEY_FILE
             cert_path = constants.DOCKER_REGISTRY_CERT_FILE
             pkcs1_key_path = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
+
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
 
             config_dict = {
                 'personalities': personalities,
@@ -10133,17 +10351,17 @@ class ConductorManager(service.PeriodicService):
 
             # copy certificate to shared directory
             with os.fdopen(os.open(constants.DOCKER_REGISTRY_CERT_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(public_bytes)
             with os.fdopen(os.open(constants.DOCKER_REGISTRY_KEY_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(private_bytes)
             with os.fdopen(os.open(constants.DOCKER_REGISTRY_PKCS1_KEY_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(pkcs1_private_bytes)
@@ -10178,6 +10396,9 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context, personalities)
             key_path = constants.OPENSTACK_CERT_KEY_FILE
             cert_path = constants.OPENSTACK_CERT_FILE
+            private_bytes = self._get_private_bytes_one(key_list)
+            public_bytes = self._get_public_bytes_one(key_list)
+
             config_dict = {
                 'personalities': personalities,
                 'file_names': [key_path, cert_path],
@@ -10192,12 +10413,12 @@ class ConductorManager(service.PeriodicService):
                 os.makedirs(constants.CERT_OPENSTACK_SHARED_DIR)
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.OPENSTACK_CERT_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(public_bytes)
             with os.fdopen(os.open(constants.OPENSTACK_CERT_KEY_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(private_bytes)
@@ -10214,7 +10435,9 @@ class ConductorManager(service.PeriodicService):
 
         elif mode == constants.CERT_MODE_OPENSTACK_CA:
             config_uuid = self._config_update_hosts(context, personalities)
-            file_content = public_bytes
+            file_content = ''
+            for key in key_list:
+                file_content += key.get('public_bytes', '')
             config_dict = {
                 'personalities': personalities,
                 'file_names': [constants.OPENSTACK_CERT_CA_FILE],
@@ -10225,7 +10448,7 @@ class ConductorManager(service.PeriodicService):
 
             # copy the certificate to shared directory
             with os.fdopen(os.open(constants.OPENSTACK_CERT_CA_FILE_SHARED,
-                                   os.O_CREAT | os.O_WRONLY,
+                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                    constants.CONFIG_FILE_PERMISSION_DEFAULT),
                                    'wb') as f:
                 f.write(file_content)
@@ -10244,7 +10467,14 @@ class ConductorManager(service.PeriodicService):
             LOG.warn(msg)
             raise exception.SysinvException(_(msg))
 
-        return signature
+        inv_certs = []
+        for key in key_list:
+            inv_cert = {'signature': key.get('signature'),
+                        'not_valid_before': key.get('cert').not_valid_before,
+                        'not_valid_after': key.get('cert').not_valid_after}
+            inv_certs.append(inv_cert)
+
+        return inv_certs
 
     def _config_selfsigned_certificate(self, context):
         """
@@ -10264,7 +10494,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("_config_selfsigned_certificate mode=%s file=%s" % (mode, certificate_file))
 
-        private_bytes, public_bytes, signature = \
+        key_list = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10272,6 +10502,8 @@ class ConductorManager(service.PeriodicService):
         personalities = [constants.CONTROLLER]
 
         config_uuid = self._config_update_hosts(context, personalities)
+        private_bytes = self._get_private_bytes_one(key_list)
+        public_bytes = self._get_public_bytes_one(key_list)
         file_content = private_bytes + public_bytes
         config_dict = {
             'personalities': personalities,
@@ -10284,12 +10516,54 @@ class ConductorManager(service.PeriodicService):
 
         # copy the certificate to shared directory
         with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
-                               os.O_CREAT | os.O_WRONLY,
+                               os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
                                constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                'wb') as f:
             f.write(file_content)
 
-        return signature
+        return key_list[0].get('signature')
+
+    def delete_certificate(self, context, mode, signature):
+        """Delete a certificate by its mode and signature.
+
+        :param context: an admin context.
+        :param mode: the mode of the certificate
+        :param signature: the signature of the certificate.
+
+        Currently only ssl_ca cert can be deleted.
+        """
+        LOG.info("delete_certificate mode=%s, signature=%s" %
+                 (mode, signature))
+
+        if mode == constants.CERT_MODE_SSL_CA:
+            try:
+                cert_file = \
+                    os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
+                                 signature)
+                os.remove(cert_file)
+            except Exception as e:
+                msg = "Failed to delete cert file: %s" % str(e)
+                LOG.warn(msg)
+                raise exception.SysinvException(_(msg))
+
+            self._consolidate_cert_files()
+
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER,
+                             constants.STORAGE]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::config::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict,
+                                                force=True)
+        else:
+            msg = "delete_certificate unsupported mode=%s" % mode
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
 
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.

@@ -68,7 +68,8 @@ VALID_NETWORK_TYPES = [constants.NETWORK_TYPE_NONE,
                        constants.NETWORK_TYPE_DATA,
                        constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                        constants.NETWORK_TYPE_PCI_SRIOV,
-                       constants.NETWORK_TYPE_IRONIC]
+                       constants.NETWORK_TYPE_IRONIC,
+                       constants.NETWORK_TYPE_STORAGE]
 
 VALID_INTERFACE_CLASS = [constants.INTERFACE_CLASS_PLATFORM,
                          constants.INTERFACE_CLASS_DATA,
@@ -466,21 +467,25 @@ class InterfaceController(rest.RestController):
         _check_interface_mtu(temp_interface.as_dict(), ihost)
 
         # Check SR-IOV before updating the ports
+        sriov_numvfs = None
+        sriov_vf_driver = None
         for p in patch:
             if '/ifclass' == p['path']:
                 temp_interface['ifclass'] = p['value']
             elif '/sriov_numvfs' == p['path']:
-                temp_interface['sriov_numvfs'] = p['value']
+                sriov_numvfs = p['value']
+                temp_interface['sriov_numvfs'] = sriov_numvfs
             elif '/sriov_vf_driver' == p['path']:
-                temp_interface['sriov_vf_driver'] = p['value']
+                sriov_vf_driver = p['value']
+                temp_interface['sriov_vf_driver'] = sriov_vf_driver
 
-        # If network type is not pci-sriov, reset the sriov-numvfs to zero
-        if (temp_interface['sriov_numvfs'] is not None and
-                temp_interface['ifclass'] is not None and
-                temp_interface[
-                        'ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV):
-            temp_interface['sriov_numvfs'] = None
-            temp_interface['sriov_vf_driver'] = None
+        # If the interface class is no longer pci-sriov, reset the VF
+        # parameters if they haven't been specified in the patch
+        if temp_interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
+            if sriov_numvfs is None:
+                temp_interface['sriov_numvfs'] = 0
+            if sriov_vf_driver is None:
+                temp_interface['sriov_vf_driver'] = None
 
         sriov_update = _check_interface_sriov(temp_interface.as_dict(), ihost)
 
@@ -549,6 +554,11 @@ class InterfaceController(rest.RestController):
         interface = _check("modify", interface,
                            ports=ports, ifaces=uses,
                            existing_interface=rpc_interface.as_dict())
+
+        # Clear the vf fields if class is not sriov
+        if interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
+            interface["sriov_numvfs"] = 0
+            interface["sriov_vf_driver"] = None
 
         if uses:
             # Update MAC address if uses list changed
@@ -842,17 +852,8 @@ def _check_interface_sriov(interface, ihost, from_profile=False):
 
 
 def _check_host(ihost):
-    if utils.is_aio_simplex_host_unlocked(ihost):
+    if ihost['administrative'] != constants.ADMIN_LOCKED:
         raise wsme.exc.ClientSideError(_("Host must be locked."))
-    elif ihost['administrative'] != 'locked' and not \
-            utils.is_host_simplex_controller(ihost):
-        unlocked = False
-        current_ihosts = pecan.request.dbapi.ihost_get_list()
-        for h in current_ihosts:
-            if h['administrative'] != 'locked' and h['hostname'] != ihost['hostname']:
-                unlocked = True
-        if unlocked:
-            raise wsme.exc.ClientSideError(_("Host must be locked."))
 
 
 def _check_interface_class_and_host_type(ihost, interface):
@@ -1949,6 +1950,5 @@ def _is_interface_address_allowed(interface):
     elif interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         return True
     elif interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
-        if any(nt in address.ALLOWED_NETWORK_TYPES for nt in interface['networktypelist'] or []):
-            return True
+        return True
     return False

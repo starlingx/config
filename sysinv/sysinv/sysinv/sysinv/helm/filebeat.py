@@ -15,11 +15,10 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
     CHART = common.HELM_CHART_FILEBEAT
 
     def get_overrides(self, namespace=None):
-        system_fields, system_name_for_index = self.get_system_info_overrides()
+        system_fields = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
                 'config': self._get_config_overrides(system_fields),
-                'systemNameForIndex': system_name_for_index,
                 'resources': self._get_resources_overrides(),
             }
         }
@@ -49,7 +48,8 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
                         "/var/log/syslog",
                         "/var/log/**/*.log"
                     ],
-                    'type': "log"
+                    'type': "log",
+                    'close_timeout': "5m"
                 }
             ]
 

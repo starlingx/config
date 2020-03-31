@@ -1373,6 +1373,14 @@ class KubeNamespaceDeleteTimeout(SysinvException):
     message = "Namespace %(name)s deletion timeout."
 
 
+class KubePodDeleteTimeout(SysinvException):
+    message = "Pod %(namespace)/%(name)s deletion timeout."
+
+
+class KubePodDeleteUnexpected(SysinvException):
+    message = "Pod %(namespace)/%(name)s was unexpectedly deleted."
+
+
 class HelmTillerFailure(SysinvException):
     message = _("Helm operation failure: %(reason)s")
 
@@ -1397,6 +1405,11 @@ class InvalidHelmDockerImageSource(Invalid):
 
 class PlatformApplicationApplyFailure(SysinvException):
     message = _("Failed to apply %(name)s application.")
+
+
+class IncompatibleKubeVersion(SysinvException):
+    message = _("The application %(name)s (%(version)s) is incompatible with the current "
+                "Kubernetes version %(kube_version)s.")
 
 #
 # Kubernetes related exceptions

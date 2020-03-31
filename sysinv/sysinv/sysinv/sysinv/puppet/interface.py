@@ -28,7 +28,8 @@ PLATFORM_NETWORK_TYPES = [constants.NETWORK_TYPE_PXEBOOT,
                           constants.NETWORK_TYPE_MGMT,
                           constants.NETWORK_TYPE_CLUSTER_HOST,
                           constants.NETWORK_TYPE_OAM,
-                          constants.NETWORK_TYPE_IRONIC]
+                          constants.NETWORK_TYPE_IRONIC,
+                          constants.NETWORK_TYPE_STORAGE]
 
 DATA_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA]
 
@@ -287,6 +288,19 @@ class InterfacePuppet(base.BasePuppet):
 
             floating_ips.update({
                 constants.NETWORK_TYPE_IRONIC: ironic_floating_ip,
+            })
+        except exception.AddressNotFoundByName:
+            pass
+
+        try:
+            storage_address = self._get_address_by_name(
+                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_STORAGE)
+
+            storage_floating_ip = (str(storage_address.address) + '/' +
+                                   str(storage_address.prefix))
+
+            floating_ips.update({
+                constants.NETWORK_TYPE_STORAGE: storage_floating_ip,
             })
         except exception.AddressNotFoundByName:
             pass
@@ -646,6 +660,13 @@ def get_interface_address_method(context, iface, network_id=None):
         # natively supported in vswitch or need to be shared with the kernel
         # because of a platform VLAN should be left as manual config
         return MANUAL_METHOD
+    elif (iface.ifclass == constants.INTERFACE_CLASS_PLATFORM and
+        networktype is None and
+        (iface.ipv4_mode == constants.IPV4_STATIC or
+            iface.ipv6_mode == constants.IPV6_STATIC)):
+        # Allow platform-class interface with ipv4 mode set to static to
+        # have static ip address
+        return STATIC_METHOD
     elif not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE \
             or not networktype:
         # Interfaces that are configured purely as a dependency from other
@@ -660,6 +681,8 @@ def get_interface_address_method(context, iface, network_id=None):
             # statically since the controller themselves run the DHCP server.
             return STATIC_METHOD
         elif networktype == constants.NETWORK_TYPE_CLUSTER_HOST:
+            return STATIC_METHOD
+        elif networktype == constants.NETWORK_TYPE_STORAGE:
             return STATIC_METHOD
         elif networktype == constants.NETWORK_TYPE_PXEBOOT:
             # All pxeboot interfaces that exist on non-controller nodes are set
@@ -1004,14 +1027,13 @@ def get_sriov_config(context, iface):
     if not port:
         return {}
 
+    vf_addr_list = ''
     vf_addrs = port.get('sriov_vfs_pci_address', None)
-    if not vf_addrs:
-        return {}
-
-    vf_addr_list = vf_addrs.split(',')
-    vf_addr_list = interface.get_sriov_interface_vf_addrs(
-        context, iface, vf_addr_list)
-    vf_addr_list = ",".join(vf_addr_list)
+    if vf_addrs:
+        vf_addr_list = vf_addrs.split(',')
+        vf_addr_list = interface.get_sriov_interface_vf_addrs(
+            context, iface, vf_addr_list)
+        vf_addr_list = ",".join(vf_addr_list)
 
     if vf_driver:
         if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
@@ -1027,10 +1049,20 @@ def get_sriov_config(context, iface):
 
     # Format the vf addresses as quoted strings in order to prevent
     # puppet from treating the address as a time/date value
-    vf_addrs = [quoted_str(addr.strip()) for addr in vf_addr_list.split(",")]
+    vf_addrs = [quoted_str(addr.strip())
+        for addr in vf_addr_list.split(",") if addr]
+
+    # Include the desired number of VFs if the device supports SR-IOV
+    # config via sysfs and is not a sub-interface
+    num_vfs = None
+    if (not is_a_mellanox_cx3_device(context, iface)
+            and iface['iftype'] != constants.INTERFACE_TYPE_VF):
+        num_vfs = iface['sriov_numvfs']
 
     config = {
         'ifname': iface['ifname'],
+        'pf_addr': quoted_str(port['pciaddr'].strip()),
+        'num_vfs': num_vfs,
         'vf_driver': vf_driver,
         'vf_addrs': vf_addrs
     }

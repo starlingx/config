@@ -30,7 +30,9 @@ from migrate.versioning.repository import Repository
 
 _REPOSITORY = None
 
-get_engine = enginefacade.get_legacy_facade().get_engine
+
+def get_engine():
+    return enginefacade.get_legacy_facade().get_engine()
 
 
 def db_sync(version=None):

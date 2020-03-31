@@ -45,7 +45,8 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_CLUSTER_HOST,
                          constants.NETWORK_TYPE_DATA,
-                         constants.NETWORK_TYPE_IRONIC]
+                         constants.NETWORK_TYPE_IRONIC,
+                         constants.NETWORK_TYPE_STORAGE]
 
 
 class Address(base.APIBase):
@@ -87,7 +88,13 @@ class Address(base.APIBase):
     "The UUID of the address pool from which this address was allocated"
 
     def __init__(self, **kwargs):
-        self.fields = objects.address.fields.keys()
+        # The interface_uuid in this `Address` type is kept to avoid changes to
+        # API/CLI. However, `self.field` refers to `objects.address.field` which
+        # doesn't include 'interface_uuid', and therefore it is added manually.
+        # Otherwise, controller `Address.as_dict()` will not include `interface_uuid`
+        # despite the field being present.
+        self.fields = list(objects.address.fields.keys())
+        self.fields.append('interface_uuid')
         for k in self.fields:
             if not hasattr(self, k):
                 # Skip fields that we choose to hide
@@ -110,6 +117,9 @@ class Address(base.APIBase):
     @classmethod
     def convert_with_links(cls, rpc_address, expand=True):
         address = Address(**rpc_address.as_dict())
+        if rpc_address.interface_id:
+            address.interface_uuid = pecan.request.dbapi.iinterface_get(
+                rpc_address.interface_id).uuid
         if not expand:
             address.unset_fields_except(['uuid', 'address',
                                          'prefix', 'interface_uuid', 'ifname',
@@ -244,9 +254,6 @@ class AddressController(rest.RestController):
 
     def _check_interface_type(self, interface_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)
-        if (interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM and
-                interface['networktypelist'] is None):
-            raise exception.InterfaceNetworkNotSet()
         for nt in interface['networktypelist']:
             if nt not in ALLOWED_NETWORK_TYPES:
                 raise exception.UnsupportedInterfaceNetworkType(
@@ -288,7 +295,7 @@ class AddressController(rest.RestController):
                 raise exception.AddressInSameSubnetExists(
                     **{'address': entry['address'],
                        'prefix': entry['prefix'],
-                       'interface': entry['interface_uuid']})
+                       'interface': entry['interface_id']})
 
     def _check_address_count(self, interface_id, host_id):
         interface = pecan.request.dbapi.iinterface_get(interface_id)

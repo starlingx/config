@@ -8,7 +8,9 @@ from __future__ import absolute_import
 from eventlet.green import subprocess
 import json
 import netaddr
+import os
 import re
+import tempfile
 
 from oslo_log import log as logging
 from sysinv.common import constants
@@ -83,18 +85,28 @@ class KubernetesPuppet(base.BasePuppet):
             if host.personality == constants.CONTROLLER:
                 # Upload the certificates used during kubeadm join
                 # The cert key will be printed in the last line of the output
+                # We will create a temp file with the kubeadm config
+                # We need this because the kubeadm config could have changed
+                # since bootstrap. Reading the kubeadm config each time
+                # it is needed ensures we are not using stale data
+                fd, temp_kubeadm_config_view = tempfile.mkstemp(dir='/tmp', suffix='.yaml')
+                with os.fdopen(fd, 'w') as f:
+                    cmd = ['kubeadm', 'config', 'view']
+                    subprocess.check_call(cmd, stdout=f)
                 cmd = ['kubeadm', 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
-                       '/etc/kubernetes/kubeadm.yaml']
+                       temp_kubeadm_config_view]
                 cmd_output = subprocess.check_output(cmd)
                 cert_key = cmd_output.strip().split('\n')[-1]
                 join_cmd_additions = " --control-plane --certificate-key %s" % cert_key
+                os.unlink(temp_kubeadm_config_view)
 
             cmd = ['kubeadm', 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
             join_cmd = subprocess.check_output(cmd)
             join_cmd_additions += " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
-        except subprocess.CalledProcessError:
+        except Exception:
+            LOG.exception("Exception generating bootstrap token")
             raise exception.SysinvException('Failed to generate bootstrap token')
 
         config.update({'platform::kubernetes::params::join_cmd': join_cmd})
@@ -339,7 +351,10 @@ class KubernetesPuppet(base.BasePuppet):
         interfaces = self._get_network_interfaces_by_class(ifclass)
         for iface in interfaces:
 
-            port = interface.get_sriov_interface_port(self.context, iface)
+            if ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+                port = interface.get_sriov_interface_port(self.context, iface)
+            else:
+                port = interface.get_interface_port(self.context, iface)
             if not port:
                 continue
 

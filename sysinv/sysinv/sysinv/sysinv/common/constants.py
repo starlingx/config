@@ -479,6 +479,7 @@ SB_CEPH_MON_GIB_MIN = 20
 SB_CEPH_MON_GIB_MAX = 40
 
 SB_CONFIGURATION_TIMEOUT = 1200
+INIT_CEPH_INFO_INTERVAL_SECS = 30
 
 # Ceph storage deployment model
 # Controller model: OSDs are on controllers, no storage nodes can
@@ -640,12 +641,14 @@ NETWORK_TYPE_PCI_PASSTHROUGH = 'pci-passthrough'
 NETWORK_TYPE_PCI_SRIOV = 'pci-sriov'
 NETWORK_TYPE_PXEBOOT = 'pxeboot'
 NETWORK_TYPE_IRONIC = 'ironic'
+NETWORK_TYPE_STORAGE = 'storage'
 
 PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_MGMT,
                           NETWORK_TYPE_OAM,
                           NETWORK_TYPE_CLUSTER_HOST,
-                          NETWORK_TYPE_IRONIC]
+                          NETWORK_TYPE_IRONIC,
+                          NETWORK_TYPE_STORAGE]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]
@@ -931,6 +934,12 @@ SERVICE_TYPE_DOCKER = 'docker'
 SERVICE_TYPE_HTTP = 'http'
 SERVICE_TYPE_OPENSTACK = 'openstack'
 SERVICE_TYPE_KUBERNETES = 'kubernetes'
+SERVICE_TYPE_PTP = 'ptp'
+
+# For service parameter sections that include a wildcard, any 'name' field will be
+# allowed by the API. The wildcard card name will only be matched if no other matches
+# are found first.
+SERVICE_PARAM_NAME_WILDCARD = '*wildcard*'
 
 SERVICE_PARAM_SECTION_IDENTITY_CONFIG = 'config'
 
@@ -1036,6 +1045,28 @@ DEFAULT_REGISTRIES_INFO = {
 # kubernetes parameters
 SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES = 'certificates'
 SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST = 'apiserver_certsan'
+
+SERVICE_PARAM_SECTION_KUBERNETES_APISERVER = 'kube_apiserver'
+SERVICE_PARAM_NAME_OIDC_ISSUER_URL = 'oidc_issuer_url'
+SERVICE_PARAM_NAME_OIDC_CLIENT_ID = 'oidc_client_id'
+SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM = 'oidc_username_claim'
+SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM = 'oidc_groups_claim'
+
+# ptp service parameters
+SERVICE_PARAM_SECTION_PTP_GLOBAL = 'global'
+SERVICE_PARAM_SECTION_PTP_PHC2SYS = 'phc2sys'
+SERVICE_PARAM_NAME_PTP_UPDATE_RATE = 'update-rate'
+SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES = 'summary-updates'
+
+PTP_PHC2SYS_DEFAULTS = {
+    SERVICE_PARAM_NAME_PTP_UPDATE_RATE: 10,
+    SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES: 600
+}
+
+PTP_PHC2SYS_OPTIONS_MAP = {
+    SERVICE_PARAM_NAME_PTP_UPDATE_RATE: 'R',
+    SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES: 'u'
+}
 
 # default filesystem size to 25 MB
 SERVICE_PARAM_RADOSGW_FS_SIZE_MB_DEFAULT = 25
@@ -1269,6 +1300,7 @@ DOCKER_REGISTRY_PKCS1_KEY_FILE_SHARED = os.path.join(tsc.CONFIG_PATH,
 SSL_CERT_CA_DIR = "/etc/pki/ca-trust/source/anchors/"
 SSL_CERT_CA_FILE = os.path.join(SSL_CERT_CA_DIR, CERT_CA_FILE)
 SSL_CERT_CA_FILE_SHARED = os.path.join(tsc.CONFIG_PATH, CERT_CA_FILE)
+SSL_CERT_CA_LIST_SHARED_DIR = os.path.join(tsc.CONFIG_PATH, "ssl_ca")
 
 KUBERNETES_PKI_SHARED_DIR = os.path.join(tsc.CONFIG_PATH, "kubernetes/pki")
 
@@ -1528,6 +1560,7 @@ CLOCK_SYNCHRONIZATION = [
 # PTP transport modes
 PTP_TRANSPORT_UDP = 'udp'
 PTP_TRANSPORT_L2 = 'l2'
+PTP_NETWORK_TRANSPORT_IEEE_802_3 = 'L2'
 
 # Backup & Restore
 FIX_INSTALL_UUID_INTERVAL_SECS = 30

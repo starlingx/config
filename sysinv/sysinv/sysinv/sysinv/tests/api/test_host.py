@@ -955,6 +955,42 @@ class TestPostKubeUpgrades(TestHost):
         self.assertIn("control plane on this host is already being upgraded",
                       result.json['error_message'])
 
+    def test_kube_upgrade_first_control_plane_after_networking_upgraded(self):
+        # Test re-upgrading kubernetes first control plane after networking was upgraded
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
+        )
+
+        # The control plane on this host was already upgraded
+        # to the new version
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2',
+            'controller-1': 'v1.42.1'}
+
+        # Upgrade the first control plane
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            {}, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("The first control plane was already upgraded",
+                      result.json['error_message'])
+
     def test_kube_upgrade_kubelet_controller_0(self):
         # Test upgrading kubernetes kubelet on controller-0
 
@@ -1977,6 +2013,64 @@ class TestPatch(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+
+    def test_unlock_action_controller_while_upgrading_kubelet(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        # Create a kube upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Mark the kube host as kubelet upgrading
+        values = {'status': kubernetes.KUBE_HOST_UPGRADING_KUBELET}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Unlock host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertIn("Can not unlock controller-0 while upgrading "
+                      "kubelet", response.json['error_message'])
+
+    def test_force_unlock_action_controller_while_upgrading_kubelet(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        # Create a kube upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Mark the kube host as kubelet upgrading
+        values = {'status': kubernetes.KUBE_HOST_UPGRADING_KUBELET}
+        self.dbapi.kube_host_upgrade_update(1, values)
+
+        # Unlock host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.FORCE_UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
 
     def test_unlock_action_worker(self):
         # Create controller-0

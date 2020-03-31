@@ -33,7 +33,7 @@ class OidcClientTestCase(test_helm.StxPlatformAppMixin,
         parameters = {
             'config': {
                 'issuer': 'https://%s:30556/dex' % oam_url,
-                'redirect_uri': "http://%s:30555/callback" % oam_url,
+                'redirect_uri': "https://%s:30555/callback" % oam_url,
             }
         }
         self.assertOverridesParameters(overrides, parameters)

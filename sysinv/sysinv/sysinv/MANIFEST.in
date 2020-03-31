@@ -22,5 +22,4 @@ graft etc
 include sysinv/db/sqlalchemy/migrate_repo/migrate.cfg
 include sysinv/openstack/common/config/generator.py
 include sysinv/tests/policy.json
-include sysinv/tests/db/sqlalchemy/test_migrations.conf
 graft tools

@@ -51,7 +51,8 @@ NONASSIGNABLE_NETWORK_TYPES = (constants.NETWORK_TYPE_DATA,
 NONDUPLICATE_NETWORK_TYPES = (constants.NETWORK_TYPE_MGMT,
                               constants.NETWORK_TYPE_OAM,
                               constants.NETWORK_TYPE_CLUSTER_HOST,
-                              constants.NETWORK_TYPE_PXEBOOT)
+                              constants.NETWORK_TYPE_PXEBOOT,
+                              constants.NETWORK_TYPE_STORAGE)
 
 
 class InterfaceNetwork(base.APIBase):
@@ -413,6 +414,8 @@ def _update_host_address(host, interface, network_type):
         _update_host_cluster_address(host, interface)
     elif network_type == constants.NETWORK_TYPE_IRONIC:
         _update_host_ironic_address(host, interface)
+    elif network_type == constants.NETWORK_TYPE_STORAGE:
+        _update_host_storage_address(host, interface)
     if host.personality == constants.CONTROLLER:
         if network_type == constants.NETWORK_TYPE_OAM:
             _update_host_oam_address(host, interface)
@@ -499,6 +502,23 @@ def _update_host_ironic_address(host, interface):
     address = pecan.request.dbapi.address_get_by_name(address_name)
     updates = {'interface_id': interface['id']}
     pecan.request.dbapi.address_update(address.uuid, updates)
+
+
+def _update_host_storage_address(host, interface):
+    address_name = cutils.format_address_name(host.hostname,
+                                              constants.NETWORK_TYPE_STORAGE)
+    try:
+        address = pecan.request.dbapi.address_get_by_name(address_name)
+        updates = {'interface_id': interface['id']}
+        pecan.request.dbapi.address_update(address.uuid, updates)
+    except exception.AddressNotFoundByName:
+        # For non-controller hosts, allocate address from pool if dynamic
+        storage_network = pecan.request.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_STORAGE)
+        if storage_network.dynamic:
+            _allocate_pool_address(interface['id'],
+                                   storage_network.pool_uuid,
+                                   address_name)
 
 
 def _update_host_mgmt_mac(host, mgmt_mac):

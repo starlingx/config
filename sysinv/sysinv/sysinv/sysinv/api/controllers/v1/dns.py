@@ -143,7 +143,7 @@ class DNSCollection(collection.Collection):
 ##############
 # UTILS
 ##############
-def _check_dns_data(dns):
+def _check_dns_data(dns, ip_family):
     # Get data
     nameservers = dns['nameservers']
     idns_nameservers_list = []
@@ -157,20 +157,25 @@ def _check_dns_data(dns):
         ntp_list = pecan.request.dbapi.intp_get_by_isystem(dns['isystem_uuid'])
 
     if nameservers:
-        for nameservers in [n.strip() for n in nameservers.split(',')]:
+        for nameserver in [n.strip() for n in nameservers.split(',')]:
             # Semantic check each server as IP
             try:
-                idns_nameservers_list.append(str(IPAddress(nameservers)))
+                idns_nameservers_list.append(str(IPAddress(nameserver)))
+                if ip_family and IPAddress(nameserver).version != ip_family:
+                    raise wsme.exc.ClientSideError(_(
+                        "IP version mismatch: was expecting "
+                        "IPv%d, IPv%d received") % (ip_family,
+                            IPAddress(nameserver).version))
             except (AddrFormatError, ValueError):
 
-                if nameservers == 'NC':
+                if nameserver == 'NC':
                     idns_nameservers_list.append(str(""))
                     break
 
                 raise wsme.exc.ClientSideError(_(
                            "Invalid DNS nameserver target address %s "
                            "Please configure a valid DNS "
-                           "address.") % (nameservers))
+                           "address.") % (nameserver))
 
     if len(idns_nameservers_list) == 0 or idns_nameservers_list == [""]:
         if ntp_list:
@@ -336,8 +341,16 @@ class DNSController(rest.RestController):
         except utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
 
-        LOG.warn("dns %s" % dns.as_dict())
-        dns = _check_dns_data(dns.as_dict())
+        # Since dns requests on the controller go over the oam network,
+        # check the ip version of the oam address pool in the database
+        oam_network = pecan.request.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_OAM)
+        oam_address_pool = pecan.request.dbapi.address_pool_get(
+            oam_network.pool_uuid)
+        ip_family = oam_address_pool.family
+
+        LOG.info("dns %s; ip_family: ipv%d" % (dns.as_dict(), ip_family))
+        dns = _check_dns_data(dns.as_dict(), ip_family)
 
         try:
             # Update only the fields that have changed

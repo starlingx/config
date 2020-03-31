@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -323,6 +323,31 @@ def create_test_kube_host_upgrade():
     dbapi = db_api.get_instance()
     hostid = 1
     return dbapi.kube_host_upgrade_create(hostid, upgrade)
+
+
+# Create test controller file system object
+def get_test_controller_fs(**kw):
+    controller_fs = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'name': kw.get('name'),
+        'forisystemid': kw.get('forisystemid', None),
+        'state': kw.get('state'),
+        'size': kw.get('size'),
+        'logical_volume': kw.get('logical_volume'),
+        'replicated': kw.get('replicated'),
+        'isystem_uuid': kw.get('isystem_uuid', None)
+    }
+    return controller_fs
+
+
+def create_test_controller_fs(**kw):
+    controller_fs = get_test_controller_fs(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del controller_fs['id']
+    dbapi = db_api.get_instance()
+    return dbapi.controller_fs_create(controller_fs)
 
 
 # Create test user object
@@ -725,11 +750,35 @@ def get_test_mon(**kw):
     return mon
 
 
+def get_test_host_fs(**kw):
+    host_fs = {
+        'id': kw.get('id', 2),
+        'uuid': kw.get('uuid'),
+        'name': kw.get('name'),
+        'size': kw.get('size', 2029),
+        'logical_volume': kw.get('logical_volume', 'scratch-lv'),
+        'forihostid': kw.get('forihostid', 1),
+    }
+    return host_fs
+
+
+def create_test_host_fs(**kw):
+    host_fs = get_test_host_fs(**kw)
+    if 'uuid' not in kw:
+        del host_fs['uuid']
+    dbapi = db_api.get_instance()
+    forihostid = host_fs['forihostid']
+    return dbapi.host_fs_create(forihostid, host_fs)
+
+
 def get_test_lvg(**kw):
     lvg = {
         'id': kw.get('id', 2),
         'uuid': kw.get('uuid'),
         'lvm_vg_name': kw.get('lvm_vg_name'),
+        'lvm_vg_size': kw.get('lvm_vg_size', 202903650304),
+        'lvm_vg_total_pe': kw.get('lvm_vg_total_pe', 6047),
+        'lvm_vg_free_pe': kw.get('lvm_vg_free_pe', 1541),
         'forihostid': kw.get('forihostid', 2),
     }
     return lvg
@@ -754,6 +803,7 @@ def get_test_pv(**kw):
     pv = {
         'id': kw.get('id', 2),
         'uuid': kw.get('uuid'),
+        'pv_state': kw.get('pv_state', 'unprovisioned'),
         'lvm_vg_name': kw.get('lvm_vg_name'),
         'disk_or_part_uuid': kw.get('disk_or_part_uuid', str(uuid.uuid4())),
         'disk_or_part_device_path': kw.get('disk_or_part_device_path',
@@ -1297,6 +1347,49 @@ def create_test_label(**kw):
     return dbapi.label_create(label['host_id'], label)
 
 
+def get_test_service_parameter(**kw):
+    service_parameter = {
+        'section': kw.get('section'),
+        'service': kw.get('service'),
+        'name': kw.get('name'),
+        'value': kw.get('value'),
+        'resource': kw.get('resource'),
+        'personality': kw.get('personality'),
+    }
+    return service_parameter
+
+
+def create_test_service_parameter(**kw):
+    """Create test service parameter in DB and return a service_parameter object.
+    Function to be used to create test service parameter objects in the database.
+    :param kw: kwargs with overriding values for service parameter's attributes.
+    :returns: Test service parameter DB object.
+    """
+    service_parameter = get_test_service_parameter(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.service_parameter_create(service_parameter)
+
+
 def create_test_oam(**kw):
     dbapi = db_api.get_instance()
     return dbapi.iextoam_get_one()
+
+
+# Create test certficate object
+def get_test_certificate(**kw):
+    certificate = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'certtype': kw.get('certtype'),
+        'signature': kw.get('signature')
+    }
+    return certificate
+
+
+def create_test_certificate(**kw):
+    certificate = get_test_certificate(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del certificate['id']
+    dbapi = db_api.get_instance()
+    return dbapi.certificate_create(certificate)

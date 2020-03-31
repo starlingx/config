@@ -8,6 +8,7 @@
 Tests for the API / address / methods.
 """
 
+import mock
 import netaddr
 from six.moves import http_client
 
@@ -77,20 +78,24 @@ class AddressTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             self.assertNotIn(field, api_object)
 
     def get_post_object(self, name='test_address', ip_address='127.0.0.1',
-                        prefix=8, address_pool_id=None, interface_id=None):
+                        prefix=8, address_pool_id=None, interface_uuid=None):
         addr = netaddr.IPAddress(ip_address)
         addr_db = dbutils.get_test_address(
             address=str(addr),
             prefix=prefix,
             name=name,
             address_pool_id=address_pool_id,
-            interface_id=interface_id,
         )
+
+        if self.oam_subnet.version == 6:
+            addr_db["enable_dad"] = True
 
         # pool_uuid in api corresponds to address_pool_id in db
         addr_db['pool_uuid'] = addr_db.pop('address_pool_id')
-        addr_db['interface_uuid'] = addr_db.pop('interface_id')
-        addr_db.pop('family')
+        addr_db['interface_uuid'] = interface_uuid
+
+        del addr_db['family']
+        del addr_db['interface_id']
 
         return addr_db
 
@@ -99,15 +104,16 @@ class TestPostMixin(AddressTestCase):
 
     def setUp(self):
         super(TestPostMixin, self).setUp()
+        self.worker = self._create_test_host(constants.WORKER,
+            administrative=constants.ADMIN_LOCKED)
 
     def _test_create_address_success(self, name, ip_address, prefix,
-                                     address_pool_id, interface_id):
+                                     address_pool_id, interface_uuid):
         # Test creation of object
-
         addr_db = self.get_post_object(name=name, ip_address=ip_address,
                                        prefix=prefix,
                                        address_pool_id=address_pool_id,
-                                       interface_id=interface_id)
+                                       interface_uuid=interface_uuid)
         response = self.post_json(self.API_PREFIX,
                                   addr_db,
                                   headers=self.API_HEADERS)
@@ -121,14 +127,14 @@ class TestPostMixin(AddressTestCase):
                          addr_db[self.COMMON_FIELD])
 
     def _test_create_address_fail(self, name, ip_address, prefix,
-                                  address_pool_id, interface_id,
-                                  status_code, error_message):
+                                  address_pool_id, status_code,
+                                  error_message, interface_uuid=None):
         # Test creation of object
 
         addr_db = self.get_post_object(name=name, ip_address=ip_address,
                                        prefix=prefix,
                                        address_pool_id=address_pool_id,
-                                       interface_id=interface_id)
+                                       interface_uuid=interface_uuid)
         response = self.post_json(self.API_PREFIX,
                                   addr_db,
                                   headers=self.API_HEADERS,
@@ -143,8 +149,7 @@ class TestPostMixin(AddressTestCase):
         self._test_create_address_success(
             "fake-address",
             str(self.oam_subnet[25]), self.oam_subnet.prefixlen,
-            address_pool_id=self.address_pools[2].uuid,
-            interface_id=None,
+            address_pool_id=self.address_pools[2].uuid, interface_uuid=None
         )
 
     def test_create_address_wrong_address_pool(self):
@@ -152,7 +157,6 @@ class TestPostMixin(AddressTestCase):
             "fake-address",
             str(self.oam_subnet[25]), self.oam_subnet.prefixlen,
             address_pool_id=self.address_pools[1].uuid,
-            interface_id=None,
             status_code=http_client.CONFLICT,
             error_message="does not match pool network",
         )
@@ -162,7 +166,6 @@ class TestPostMixin(AddressTestCase):
             "fake-address",
             str(self.oam_subnet[25]), self.oam_subnet.prefixlen - 1,
             address_pool_id=self.address_pools[2].uuid,
-            interface_id=None,
             status_code=http_client.CONFLICT,
             error_message="does not match pool network",
         )
@@ -174,7 +177,6 @@ class TestPostMixin(AddressTestCase):
             "fake-address",
             str(self.oam_subnet[25]), 0,
             address_pool_id=self.address_pools[2].uuid,
-            interface_id=None,
             status_code=http_client.INTERNAL_SERVER_ERROR,
             error_message=error_message,
         )
@@ -189,7 +191,6 @@ class TestPostMixin(AddressTestCase):
             "fake-address",
             zero_address, self.oam_subnet.prefixlen,
             address_pool_id=self.address_pools[2].uuid,
-            interface_id=None,
             status_code=http_client.INTERNAL_SERVER_ERROR,
             error_message=error_message,
         )
@@ -199,7 +200,6 @@ class TestPostMixin(AddressTestCase):
             "fake_address",
             str(self.oam_subnet[25]), self.oam_subnet.prefixlen,
             address_pool_id=self.address_pools[2].uuid,
-            interface_id=None,
             status_code=http_client.BAD_REQUEST,
             error_message="Please configure valid hostname.",
         )
@@ -209,10 +209,35 @@ class TestPostMixin(AddressTestCase):
             "fake-address",
             str(self.multicast_subnet[1]), self.oam_subnet.prefixlen,
             address_pool_id=self.address_pools[2].uuid,
-            interface_id=None,
             status_code=http_client.INTERNAL_SERVER_ERROR,
             error_message="Address must be a unicast address",
         )
+
+    def test_create_address_platform_interface(self):
+        if self.oam_subnet.version == 4:
+            ipv4_mode, ipv6_mode = (constants.IPV4_STATIC, constants.IPV6_DISABLED)
+        else:
+            ipv4_mode, ipv6_mode = (constants.IPV4_DISABLED, constants.IPV6_STATIC)
+
+        # Create platform interface, patch to make static
+        interface = dbutils.create_test_interface(
+            ifname="platformip",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+        response = self.patch_dict_json(
+                '%s/%s' % (self.IFACE_PREFIX, interface['uuid']),
+                ipv4_mode=ipv4_mode, ipv6_mode=ipv6_mode)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['ifclass'], 'platform')
+        self.assertEqual(response.json['ipv4_mode'], ipv4_mode)
+        self.assertEqual(response.json['ipv6_mode'], ipv6_mode)
+
+        # Verify an address associated with the interface can be created
+        self._test_create_address_success('platformtest',
+            str(self.oam_subnet[25]), self.oam_subnet.prefixlen,
+            None, interface.uuid)
 
 
 class TestDelete(AddressTestCase):
@@ -224,6 +249,8 @@ class TestDelete(AddressTestCase):
 
     def setUp(self):
         super(TestDelete, self).setUp()
+        self.worker = self._create_test_host(constants.WORKER,
+            administrative=constants.ADMIN_LOCKED)
 
     def test_delete(self):
         # Delete the API object
@@ -235,11 +262,117 @@ class TestDelete(AddressTestCase):
         # Verify the expected API response for the delete
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
-    # TODO: Add unit tests to verify deletion is rejected as expected by
-    # _check_orphaned_routes, _check_host_state, and _check_from_pool.
-    #
-    # Currently blocked by bug in dbapi preventing testcase setup:
-    #   https://bugs.launchpad.net/starlingx/+bug/1861131
+    def test_delete_address_with_interface(self):
+        interface = dbutils.create_test_interface(
+            ifname="test0",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+
+        address = dbutils.create_test_address(
+            interface_id=interface.id,
+            name="enptest01",
+            family=self.oam_subnet.version,
+            address=str(self.oam_subnet[25]),
+            prefix=self.oam_subnet.prefixlen)
+        self.assertEqual(address["interface_id"], interface.id)
+
+        response = self.delete(self.get_single_url(address.uuid),
+                               headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+    def test_orphaned_routes(self):
+        interface = dbutils.create_test_interface(
+            ifname="test0",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+
+        address = dbutils.create_test_address(
+            interface_id=interface.id,
+            name="enptest01",
+            family=self.oam_subnet.version,
+            address=str(self.oam_subnet[25]),
+            prefix=self.oam_subnet.prefixlen)
+        self.assertEqual(address["interface_id"], interface.id)
+
+        route = dbutils.create_test_route(
+            interface_id=interface.id,
+            family=4,
+            network='10.10.10.0',
+            prefix=24,
+            gateway=str(self.oam_subnet[1]),
+        )
+        self.assertEqual(route['gateway'], str(self.oam_subnet[1]))
+
+        response = self.delete(self.get_single_url(address.uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        self.assertIn(
+            "Address %s is in use by a route to %s/%d via %s" % (
+                address["address"], route["network"], route["prefix"],
+                route["gateway"]
+            ), response.json['error_message'])
+
+    def test_bad_host_state(self):
+        interface = dbutils.create_test_interface(
+            ifname="test0",
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.worker.id,
+            ihost_uuid=self.worker.uuid)
+
+        address = dbutils.create_test_address(
+            interface_id=interface.id,
+            name="enptest01",
+            family=self.oam_subnet.version,
+            address=str(self.oam_subnet[25]),
+            prefix=self.oam_subnet.prefixlen)
+        self.assertEqual(address["interface_id"], interface.id)
+
+        # unlock the worker
+        dbapi = dbutils.db_api.get_instance()
+        worker = dbapi.ihost_update(self.worker.uuid, {
+            "administrative": constants.ADMIN_UNLOCKED
+        })
+        self.assertEqual(worker['administrative'],
+            constants.ADMIN_UNLOCKED)
+
+        response = self.delete(self.get_single_url(address.uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code,
+            http_client.INTERNAL_SERVER_ERROR)
+        self.assertIn("administrative state = unlocked",
+            response.json['error_message'])
+
+    def test_delete_address_from_pool(self):
+        pool = dbutils.create_test_address_pool(
+            name='testpool',
+            network='192.168.204.0',
+            ranges=[['192.168.204.2', '192.168.204.254']],
+            prefix=24)
+        address = dbutils.create_test_address(
+            name="enptest01",
+            family=4,
+            address='192.168.204.4',
+            prefix=24,
+            address_pool_id=pool.id)
+        self.assertEqual(address['pool_uuid'], pool.uuid)
+
+        with mock.patch(
+                'sysinv.common.utils.is_initial_config_complete', lambda: True):
+            response = self.delete(self.get_single_url(address.uuid),
+                                headers=self.API_HEADERS,
+                                expect_errors=True)
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code,
+                http_client.CONFLICT)
+            self.assertIn("Address has been allocated from pool; "
+                          "cannot be manually deleted",
+                          response.json['error_message'])
 
 
 class TestList(AddressTestCase):

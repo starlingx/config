@@ -19,7 +19,6 @@ class LogstashHelm(elastic.ElasticBaseHelm):
     CHART = common.HELM_CHART_LOGSTASH
 
     def get_overrides(self, namespace=None):
-        system_fields, system_name_for_index = self.get_system_info_overrides()
         if utils.is_aio_simplex_system(self.dbapi):
             replicas = 1
         else:
@@ -30,7 +29,6 @@ class LogstashHelm(elastic.ElasticBaseHelm):
                 'replicaCount': replicas,
                 'resources': self._get_resources_overrides(),
                 'config': self._get_config(),
-                'systemNameForIndex': system_name_for_index,
             }
         }
 

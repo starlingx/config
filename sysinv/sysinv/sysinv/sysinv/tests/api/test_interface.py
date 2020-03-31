@@ -470,6 +470,7 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
+        return response
 
     def _post_and_check(self, ndict, expect_errors=False, error_message=None):
         response = self.post_json('%s' % self._get_path(), ndict,
@@ -627,14 +628,11 @@ class InterfaceControllerVlanOverEthernet(InterfaceTestCase):
 class InterfaceWorkerEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # worker and all interfaces are ethernet interfaces.
         self._create_host(constants.CONTROLLER, admin=constants.ADMIN_UNLOCKED)
         self._create_datanetworks()
-        self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
-        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are ethernet interfaces.
         self._create_host(constants.WORKER, constants.WORKER,
                           admin=constants.ADMIN_LOCKED)
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
@@ -682,19 +680,8 @@ class InterfaceWorkerEthernet(InterfaceTestCase):
 class InterfaceWorkerVlanOverEthernet(InterfaceTestCase):
 
     def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # controller and all interfaces are vlan interfaces over ethernet
-        # interfaces.
         self._create_host(constants.CONTROLLER)
         self._create_datanetworks()
-        port, iface = self._create_ethernet(
-            'pxeboot', constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan('oam', constants.NETWORK_TYPE_OAM,
-                          constants.INTERFACE_CLASS_PLATFORM, 1, iface)
-        self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
-                          constants.INTERFACE_CLASS_PLATFORM, 2, iface)
-        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
-                          constants.INTERFACE_CLASS_PLATFORM, 3, iface)
 
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are vlan interfaces over ethernet
@@ -728,13 +715,8 @@ class InterfaceWorkerVlanOverEthernet(InterfaceTestCase):
 class InterfaceWorkerBond(InterfaceTestCase):
 
     def _setup_configuration(self):
-        # Setup a sample configuration where all platform interfaces are
-        # aggregated ethernet interfaces.
         self._create_host(constants.CONTROLLER, admin=constants.ADMIN_UNLOCKED)
         self._create_datanetworks()
-        self._create_bond('oam', constants.NETWORK_TYPE_OAM)
-        self._create_bond('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_bond('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are aggregated ethernet interfaces.
@@ -766,14 +748,6 @@ class InterfaceWorkerVlanOverBond(InterfaceTestCase):
     def _setup_configuration(self):
         self._create_host(constants.CONTROLLER)
         self._create_datanetworks()
-        bond = self._create_bond('pxeboot', constants.NETWORK_TYPE_PXEBOOT,
-                                 constants.INTERFACE_CLASS_PLATFORM)
-        self._create_vlan('oam', constants.NETWORK_TYPE_OAM,
-                          constants.INTERFACE_CLASS_PLATFORM, 1, bond)
-        self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
-                          constants.INTERFACE_CLASS_PLATFORM, 2, bond)
-        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
-                          constants.INTERFACE_CLASS_PLATFORM, 3, bond)
 
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are vlan interfaces over aggregated
@@ -817,11 +791,6 @@ class InterfaceWorkerVlanOverDataEthernet(InterfaceTestCase):
     def _setup_configuration(self):
         self._create_host(constants.CONTROLLER)
         self._create_datanetworks()
-        bond = self._create_bond('pxeboot', constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan('oam', constants.NETWORK_TYPE_OAM,
-                          constants.INTERFACE_CLASS_PLATFORM, 1, bond)
-        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
-        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
 
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are vlan interfaces over data ethernet
@@ -1188,15 +1157,16 @@ class TestList(InterfaceTestCase):
     def setUp(self):
         super(TestList, self).setUp()
         self._create_host(constants.CONTROLLER)
+        self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
 
     def test_empty_interface(self):
-        data = self.get_json('/ihosts/%s/iinterfaces' % self.hosts[0].uuid)
+        data = self.get_json('/ihosts/%s/iinterfaces' % self.worker.uuid)
         self.assertEqual([], data['iinterfaces'])
 
     def test_one(self):
         ndict = self._post_get_test_interface(ifname='eth0',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=self.hosts[0].id, ihost_uuid=self.hosts[0].uuid)
+            forihostid=self.worker.id, ihost_uuid=self.worker.uuid)
         data = self.post_json('%s' % self._get_path(), ndict)
 
         # Verify that the interface was created with the expected attributes
@@ -1243,7 +1213,7 @@ class TestPatchMixin(object):
         self._create_datanetworks()
 
     def test_modify_ifname(self):
-        interface = dbutils.create_test_interface(forihostid='1')
+        interface = dbutils.create_test_interface(forihostid=self.worker.id)
         response = self.patch_dict_json(
             '%s' % self._get_path(interface.uuid),
             ifname='new_name')
@@ -1252,7 +1222,7 @@ class TestPatchMixin(object):
         self.assertEqual('new_name', response.json['ifname'])
 
     def test_modify_mtu(self):
-        interface = dbutils.create_test_interface(forihostid='1')
+        interface = dbutils.create_test_interface(forihostid=self.worker.id)
         response = self.patch_dict_json(
             '%s' % self._get_path(interface.uuid),
             imtu=1600)
@@ -1352,10 +1322,10 @@ class TestPatchMixin(object):
         self.assertTrue(response.json['error_message'])
 
     def _create_sriov_vf_driver_valid(self, vf_driver, expect_errors=False):
-        interface = dbutils.create_test_interface(forihostid='1',
+        interface = dbutils.create_test_interface(forihostid=self.worker.id,
                                                   datanetworks='group0-data0')
         dbutils.create_test_ethernet_port(
-            id=1, name='eth1', host_id=1, interface_id=interface.id,
+            id=1, name='eth1', host_id=self.worker.id, interface_id=interface.id,
             pciaddr='0000:00:00.11', dev_id=0, sriov_totalvfs=1, sriov_numvfs=1,
             driver='i40e',
             sriov_vf_driver='i40evf')
@@ -1374,16 +1344,16 @@ class TestPatchMixin(object):
             self.assertEqual(vf_driver, response.json['sriov_vf_driver'])
 
     def test_create_sriov_vf_driver_netdevice_valid(self):
-        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT, host=self.worker)
         self._create_sriov_vf_driver_valid(
             constants.SRIOV_DRIVER_TYPE_NETDEVICE)
 
     def test_create_sriov_vf_driver_vfio_valid(self):
-        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT, host=self.worker)
         self._create_sriov_vf_driver_valid(constants.SRIOV_DRIVER_TYPE_VFIO)
 
     def test_create_sriov_vf_driver_invalid(self):
-        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT, host=self.worker)
         self._create_sriov_vf_driver_valid('bad_driver', expect_errors=True)
 
     def test_create_sriov_no_mgmt(self):
@@ -1454,7 +1424,8 @@ class TestPostMixin(object):
     def test_address_mode_pool_valid(self):
         port, interface = self._create_ethernet(
             'mgmt', constants.NETWORK_TYPE_MGMT,
-            ifclass=constants.INTERFACE_CLASS_PLATFORM)
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            host=self.worker)
         network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         pool = self._find_address_pool_by_uuid(network['pool_uuid'])
         if pool.family == constants.IPV4_FAMILY:
@@ -1475,7 +1446,8 @@ class TestPostMixin(object):
     def test_address_mode_static_valid(self):
         port, interface = self._create_ethernet(
             'mgmt', constants.NETWORK_TYPE_MGMT,
-            ifclass=constants.INTERFACE_CLASS_PLATFORM)
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            host=self.worker)
         network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         pool = self._find_address_pool_by_uuid(network['pool_uuid'])
         if pool.family == constants.IPV4_FAMILY:
@@ -1564,7 +1536,8 @@ class TestPostMixin(object):
     def test_address_pool_family_mismatch_invalid(self):
         port, interface = self._create_ethernet(
             'mgmt', constants.NETWORK_TYPE_MGMT,
-            ifclass=constants.INTERFACE_CLASS_PLATFORM)
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            host=self.worker)
         network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         pool = self._find_address_pool_by_uuid(network['pool_uuid'])
         if pool.family == constants.IPV4_FAMILY:
@@ -1662,17 +1635,19 @@ class TestPostMixin(object):
 
     def test_aemode_invalid_platform(self):
         ndict = self._post_get_test_interface(
-            ihost_uuid=self.controller.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='name',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_AE,
             aemode='bad_aemode',
             txhashpolicy='layer2')
-        self._post_and_check_failure(ndict)
+        response = self._post_and_check_failure(ndict)
+        self.assertIn("Invalid aggregated ethernet mode 'bad_aemode'",
+            response.json['error_message'])
 
     def test_setting_mgmt_mtu_allowed(self):
         ndict = self._post_get_test_interface(
-            ihost_uuid=self.controller.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='mgmt0',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
@@ -1681,7 +1656,7 @@ class TestPostMixin(object):
 
     def test_setting_cluster_host_mtu_allowed(self):
         ndict = self._post_get_test_interface(
-            ihost_uuid=self.controller.uuid,
+            ihost_uuid=self.worker.uuid,
             ifname='cluster0',
             ifclass=constants.INTERFACE_CLASS_PLATFORM,
             iftype=constants.INTERFACE_TYPE_ETHERNET,
@@ -1826,9 +1801,11 @@ class TestPostMixin(object):
 
     # Expected message: Name must be unique
     def test_create_invalid_ae_name(self):
-        self._create_ethernet('enp0s9', constants.NETWORK_TYPE_NONE)
+        self._create_ethernet('enp0s9', constants.NETWORK_TYPE_NONE,
+            host=self.worker)
         self._create_bond('enp0s9', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM,
+                          host=self.worker,
                           expect_errors=True)
 
     # Expected message:
@@ -2131,6 +2108,27 @@ class TestAIOPatch(InterfaceTestCase):
                           admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
 
+    def _setup_sriov_interface_w_numvfs(self, numvfs=5):
+        # create sriov interface
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
+        interface = dbutils.create_test_interface(forihostid='1')
+        dbutils.create_test_ethernet_port(
+            id=1, name='eth1', host_id=1, interface_id=interface.id,
+            pciaddr='0000:00:00.11', dev_id=0, sriov_totalvfs=5, sriov_numvfs=1,
+            driver='i40e',
+            sriov_vf_driver='i40evf')
+
+        # patch to set numvfs
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            sriov_numvfs=numvfs,
+            expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(response.json['sriov_numvfs'], numvfs)
+
+        return interface
+
     # Expected error: Value for number of SR-IOV VFs must be > 0.
     def test_invalid_sriov_numvfs(self):
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
@@ -2144,6 +2142,100 @@ class TestAIOPatch(InterfaceTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertIn('Value for number of SR-IOV VFs must be > 0.',
             response.json['error_message'])
+
+    # Expected error: Number of SR-IOV VFs is specified but
+    # interface class is not pci-sriov.
+    def test_invalid_numvfs_data_class(self):
+        # class data -> class data but with numvfs
+        interface = dbutils.create_test_interface(
+            forihostid='1',
+            ifclass=constants.INTERFACE_CLASS_DATA)
+
+        # case 1: non-sriov class has numvfs
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_numvfs=1,
+            expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertIn('Number of SR-IOV VFs is specified but interface '
+                      'class is not pci-sriov.',
+                      response.json['error_message'])
+
+    def test_invalid_vf_driver_data_class(self):
+        # class data -> class data but with sriov_vf_driver
+        interface = dbutils.create_test_interface(
+            forihostid='1',
+            ifclass=constants.INTERFACE_CLASS_DATA)
+
+        # case 2: non-sriov class has vf_driver
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_vf_driver=constants.SRIOV_DRIVER_TYPE_NETDEVICE,
+            expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertIn('SR-IOV VF driver is specified but interface '
+                      'class is not pci-sriov.',
+                      response.json['error_message'])
+
+    def test_invalid_numvfs_sriov_to_data(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+        # patch to change interface class to data with numvfs, and verify bad numvfs
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_numvfs=5,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertIn('Number of SR-IOV VFs is specified but interface class is not pci-sriov',
+            response.json['error_message'])
+
+    def test_invalid_vfdriver_sriov_to_data(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+        # patch to change interface class to data with sriov_vf_driver,
+        # and verify bad sriov_vf_driver
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            sriov_vf_driver=constants.SRIOV_DRIVER_TYPE_NETDEVICE,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertIn('SR-IOV VF driver is specified but interface class is not pci-sriov',
+            response.json['error_message'])
+
+    def test_clear_numvfs_when_no_longer_sriov_class(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+        # patch to change interface class to data, and verify numvfs is 0
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(response.json["sriov_numvfs"], 0)
+
+    def test_clear_vfdriver_when_no_longer_sriov_class(self):
+        interface = self._setup_sriov_interface_w_numvfs()
+
+        # patch to change interface vf driver to netdevice
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            sriov_vf_driver=constants.SRIOV_DRIVER_TYPE_NETDEVICE,
+            expect_errors=False)
+        self.assertEqual(response.json["sriov_vf_driver"],
+            constants.SRIOV_DRIVER_TYPE_NETDEVICE)
+
+        # patch to change interface class to data, and verify numvfs is 0
+        response = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(response.json["sriov_vf_driver"], None)
 
     # Expected error: SR-IOV can't be configured on this interface
     def test_invalid_sriov_totalvfs_zero(self):

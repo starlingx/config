@@ -66,7 +66,7 @@ KUBE_HOST_UPGRADING_KUBELET_FAILED = 'upgrading-kubelet-failed'
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10
-POD_START_TIMEOUT = 60
+POD_START_TIMEOUT = 60 * 2
 POD_START_INTERVAL = 10
 
 
@@ -80,6 +80,21 @@ def get_kube_versions():
          'available_patches': [],
          },
     ]
+
+
+def is_kube_version_supported(kube_version, min_version=None, max_version=None):
+    """Check if the k8s version is supported by the application.
+
+    :param kube_version: the running or target k8s version
+    :param min_version (optional): minimum k8s version supported by the app
+    :param max_version (optional): maximum k8s version supported by the app
+
+    :returns bool: True if k8s version is supported
+    """
+    if ((min_version is not None and LooseVersion(kube_version) < LooseVersion(min_version)) or
+            (max_version is not None and LooseVersion(kube_version) > LooseVersion(max_version))):
+        return False
+    return True
 
 
 def get_kube_networking_upgrade_version(kube_upgrade):
@@ -234,14 +249,22 @@ class KubeOperator(object):
                       "kube_get_namespace %s: %s" % (namespace, e))
             raise
 
+    def kube_get_namespace_name_list(self):
+        c = self._get_kubernetesclient_core()
+        try:
+            ns_list = c.list_namespace()
+            return list(set(ns.metadata.name for ns in ns_list.items))
+        except Exception as e:
+            LOG.error("Failed to get Namespace list: %s" % e)
+            raise
+
     def kube_get_secret(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:
-            c.read_namespaced_secret(name, namespace)
-            return True
+            return c.read_namespaced_secret(name, namespace)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
-                return False
+                return None
             else:
                 LOG.error("Failed to get Secret %s under "
                           "Namespace %s: %s" % (name, namespace, e.body))
@@ -268,6 +291,15 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Failed to copy Secret %s from Namespace %s to Namespace "
                       "%s: %s" % (name, src_namespace, dst_namespace, e))
+            raise
+
+    def kube_patch_secret(self, name, namespace, body):
+        c = self._get_kubernetesclient_core()
+        try:
+            c.patch_namespaced_secret(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch Secret %s under Namespace %s: "
+                      "%s" % (name, namespace, e))
             raise
 
     def kube_delete_persistent_volume_claim(self, namespace, **kwargs):
@@ -542,3 +574,52 @@ class KubeOperator(object):
             return None
         else:
             return match.group(1)
+
+    def kube_get_all_pods(self):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.list_pod_for_all_namespaces(watch=False)
+            return api_response.items
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_pods: %s" % e)
+            raise
+
+    def kube_delete_pod(self, name, namespace, **kwargs):
+        body = {}
+
+        if kwargs:
+            body.update(kwargs)
+
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.delete_namespaced_pod(name, namespace, body)
+            LOG.debug("%s" % api_response)
+            return True
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("Pod %s/%s not found." % (namespace, name))
+                return False
+            else:
+                LOG.error("Failed to delete Pod %s/%s: "
+                          "%s" % (namespace, name, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_delete_pod: %s" % e)
+            raise
+
+    def kube_get_pod(self, name, namespace):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.read_namespaced_pod(name, namespace)
+            return api_response
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Failed to get Pod %s/%s: %s" % (namespace, name,
+                                                           e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_pod %s/%s: %s" % (namespace, name, e))

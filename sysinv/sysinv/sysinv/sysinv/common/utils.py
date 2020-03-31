@@ -28,6 +28,8 @@ import boto3
 from botocore.config import Config
 import collections
 import contextlib
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 import datetime
 import errno
 import functools
@@ -2088,6 +2090,25 @@ def is_chart_enabled(dbapi, app_name, chart_name, namespace):
                                          False)
 
 
+def get_app_supported_kube_version(app_name, app_version):
+    """Get the application supported k8s version from the synced application metadata file"""
+
+    app_metadata_path = os.path.join(
+        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name,
+        app_version, constants.APP_METADATA_FILE)
+
+    kube_min_version = None
+    kube_max_version = None
+    if (os.path.exists(app_metadata_path) and
+            os.path.getsize(app_metadata_path) > 0):
+        with open(app_metadata_path, 'r') as f:
+            y = yaml.safe_load(f)
+            supported_kube_version = y.get('supported_k8s_version', {})
+            kube_min_version = supported_kube_version.get('minimum', None)
+            kube_max_version = supported_kube_version.get('maximum', None)
+    return kube_min_version, kube_max_version
+
+
 def app_reapply_flag_file(app_name):
     return "%s.%s" % (
         constants.APP_PENDING_REAPPLY_FLAG,
@@ -2166,3 +2187,32 @@ def get_aws_ecr_registry_credentials(dbapi, registry, username, password):
             "Failed to get AWS ECR credentials: %s" % e))
 
     return dict(username=username, password=password)
+
+
+def extract_certs_from_pem(pem_contents):
+    """
+    Extract certificates from a pem string
+
+    :param pem_contents: A string in pem format
+    :return certs: A list of x509 cert objects
+    """
+    marker = b'-----BEGIN CERTIFICATE-----'
+
+    start = 0
+    certs = []
+    while True:
+        index = pem_contents.find(marker, start)
+        if index == -1:
+            break
+        try:
+            cert = x509.load_pem_x509_certificate(pem_contents[index::],
+                                                  default_backend())
+        except Exception:
+            LOG.exception(_("Load pem x509 certificate failed at file "
+                            "location: %s") % index)
+            raise exception.SysinvException(_(
+                "Failed to load pem x509 certificate"))
+
+        certs.append(cert)
+        start = start + index + len(marker)
+    return certs

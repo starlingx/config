@@ -41,6 +41,7 @@ from sysinv.common import image_versions
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
+from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.helm import common
 from sysinv.helm import helm
@@ -142,6 +143,7 @@ class AppOperator(object):
         self._kube = kubernetes.KubeOperator()
         self._utils = kube_app.KubeAppHelper(self._dbapi)
         self._image = AppImageParser()
+        self._kube_pod = kube_pod.K8sPodOperator(self._kube)
         self._lock = threading.Lock()
 
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
@@ -946,7 +948,7 @@ class AppOperator(object):
         for ns in namespaces:
             if (ns in [common.HELM_NS_HELM_TOOLKIT,
                        common.HELM_NS_STORAGE_PROVISIONER] or
-                    self._kube.kube_get_secret(pool_secret, ns)):
+                    self._kube.kube_get_secret(pool_secret, ns) is not None):
                 # Secret already exist
                 continue
 
@@ -1012,7 +1014,7 @@ class AppOperator(object):
             list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
         for ns in namespaces:
             if (ns == common.HELM_NS_HELM_TOOLKIT or
-                 self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns)):
+                 self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns) is not None):
                 # Secret already exist
                 continue
 
@@ -1062,6 +1064,81 @@ class AppOperator(object):
             except Exception as e:
                 LOG.error(e)
                 raise
+
+    def audit_local_registry_secrets(self):
+        """
+        local registry uses admin's username&password for authentication.
+        K8s stores the authentication info in secrets in order to access
+        local registry, while admin's password is saved in keyring.
+        Admin's password could be changed by openstack client cmd outside of
+        sysinv and K8s. It will cause info mismatch between keyring and
+        k8s's secrets, and leads to authentication failure.
+        There are two ways to keep k8s's secrets updated with data in keyring:
+        1. Polling. Use a periodic task to sync info from keyring to secrets.
+        2. Notification. Keystone send out notification when there is password
+           update, and notification receiver to do the data sync.
+        To ensure k8s's secrets are timely and always synced with keyring, both
+        methods are used here. And this function will be called in both cases
+        to audit password info between keyring and registry-local-secret, and
+        update keyring's password to all local registry secrets if need.
+        """
+
+        # Use lock to synchronize call from timer and notification
+        lock_name = "AUDIT_LOCAL_REGISTRY_SECRETS"
+
+        @cutils.synchronized(lock_name, external=False)
+        def _sync_audit_local_registry_secrets(self):
+            try:
+                secret = self._kube.kube_get_secret("registry-local-secret", kubernetes.NAMESPACE_KUBE_SYSTEM)
+                if secret is None:
+                    return
+                secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
+                secret_auth_info = (secret_auth_body.split('auth":')[1]).split('"')[1]
+                registry_auth = cutils.get_local_docker_registry_auth()
+                registry_auth_info = '{0}:{1}'.format(registry_auth['username'],
+                                                      registry_auth['password'])
+                if secret_auth_info == base64.b64encode(registry_auth_info):
+                    LOG.debug("Auth info is the same, no update is needed for k8s secret.")
+                    return
+            except Exception as e:
+                LOG.error(e)
+                return
+            try:
+                # update secret with new auth info
+                token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
+                        constants.DOCKER_REGISTRY_SERVER, base64.b64encode(registry_auth_info))
+                secret.data['.dockerconfigjson'] = base64.b64encode(token)
+                self._kube.kube_patch_secret("registry-local-secret", kubernetes.NAMESPACE_KUBE_SYSTEM, secret)
+                LOG.info("Secret registry-local-secret under Namespace kube-system is updated")
+            except Exception as e:
+                LOG.error("Failed to update Secret %s under Namespace kube-system: %s"
+                      % ("registry-local-secret", e))
+                return
+
+            # update "default-registry-key" secret info under all namespaces
+            try:
+                ns_list = self._kube.kube_get_namespace_name_list()
+                for ns in ns_list:
+                    secret = self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns)
+                    if secret is None:
+                        continue
+
+                    try:
+                        secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
+                        if constants.DOCKER_REGISTRY_SERVER in secret_auth_body:
+                            secret.data['.dockerconfigjson'] = base64.b64encode(token)
+                            self._kube.kube_patch_secret(DOCKER_REGISTRY_SECRET, ns, secret)
+                            LOG.info("Secret %s under Namespace %s is updated"
+                                     % (DOCKER_REGISTRY_SECRET, ns))
+                    except Exception as e:
+                        LOG.error("Failed to update Secret %s under Namespace %s: %s"
+                                  % (DOCKER_REGISTRY_SECRET, ns, e))
+                        continue
+            except Exception as e:
+                LOG.error(e)
+                return
+
+        _sync_audit_local_registry_secrets(self)
 
     def _delete_namespace(self, namespace):
         loop_timeout = 1
@@ -1546,7 +1623,7 @@ class AppOperator(object):
                 LOG.error(e)
                 raise
 
-    def _delete_app_specific_resources(self, app_name):
+    def _delete_app_specific_resources(self, app_name, operation_type):
         """Remove application specific k8s resources.
 
         Some applications may need resources created outside of the existing
@@ -1570,9 +1647,11 @@ class AppOperator(object):
                 raise
             self._delete_namespace(namespace)
 
-        if app_name == constants.HELM_APP_OPENSTACK:
+        if (app_name == constants.HELM_APP_OPENSTACK and
+                operation_type == constants.APP_REMOVE_OP):
             _delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-        elif app_name == constants.HELM_APP_MONITOR:
+        elif (app_name == constants.HELM_APP_MONITOR and
+              operation_type == constants.APP_DELETE_OP):
             _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
 
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
@@ -1800,7 +1879,15 @@ class AppOperator(object):
 
             with self._lock:
                 self._extract_tarfile(app)
+
+            # Copy the armada manfest and metadata file to the drbd
             shutil.copy(app.inst_armada_mfile, app.sync_armada_mfile)
+            inst_metadata_file = os.path.join(
+                app.inst_path, constants.APP_METADATA_FILE)
+            if os.path.exists(inst_metadata_file):
+                sync_metadata_file = os.path.join(
+                    app.sync_armada_mfile_dir, constants.APP_METADATA_FILE)
+                shutil.copy(inst_metadata_file, sync_metadata_file)
 
             if not self._docker.make_armada_request(
                     'validate', manifest_file=app.armada_service_mfile):
@@ -1950,6 +2037,16 @@ class AppOperator(object):
                                   True)
 
         self.clear_reapply(app.name)
+        # WORKAROUND: For k8s MatchNodeSelector issue. Look for and clean up any
+        #             pods that could block manifest apply
+        #
+        #             Upstream reports of this:
+        #             - https://github.com/kubernetes/kubernetes/issues/80745
+        #             - https://github.com/kubernetes/kubernetes/issues/85334
+        #
+        #             Outstanding PR that was tested and fixed this issue:
+        #             - https://github.com/kubernetes/kubernetes/pull/80976
+        self._kube_pod.delete_failed_pods_by_reason(reason='MatchNodeSelector')
 
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
@@ -1999,7 +2096,8 @@ class AppOperator(object):
                 self._abort_operation(app, constants.APP_APPLY_OP,
                                       user_initiated=True)
             else:
-                self._abort_operation(app, constants.APP_APPLY_OP, str(e))
+                self._abort_operation(app, constants.APP_APPLY_OP,
+                                      constants.APP_PROGRESS_ABORTED)
 
             if not caller:
                 # If apply is not called from update method, deregister the app's
@@ -2124,6 +2222,8 @@ class AppOperator(object):
         try:
             # Upload new app tarball
             to_app = self.perform_app_upload(to_rpc_app, tarfile)
+            # Check whether the new application is compatible with the current k8s version
+            self._utils._check_app_compatibility(to_app.name, to_app.version)
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
@@ -2173,13 +2273,15 @@ class AppOperator(object):
                                                                to_app.version))
             LOG.info("Application %s update from version %s to version "
                      "%s completed." % (to_app.name, from_app.version, to_app.version))
-        except (exception.KubeAppUploadFailure,
+        except (exception.IncompatibleKubeVersion,
+                exception.KubeAppUploadFailure,
                 exception.KubeAppApplyFailure,
-                exception.KubeAppAbort):
+                exception.KubeAppAbort) as e:
             # Error occurs during app uploading or applying but before
             # armada apply process...
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger armada process
+            LOG.exception(e)
             return self._perform_app_recover(from_app, to_app,
                                              armada_process_required=False)
         except Exception as e:
@@ -2240,7 +2342,7 @@ class AppOperator(object):
                 if app.system_app:
                     if self._storage_provisioner_required(app.name):
                         self._delete_storage_provisioner_secrets(app.name)
-                    self._delete_app_specific_resources(app.name)
+                    self._delete_app_specific_resources(app.name, constants.APP_REMOVE_OP)
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
                 LOG.exception(e)
@@ -2328,6 +2430,8 @@ class AppOperator(object):
 
         app = AppOperator.Application(rpc_app)
         try:
+            if app.system_app:
+                self._delete_app_specific_resources(app.name, constants.APP_DELETE_OP)
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
@@ -2603,22 +2707,12 @@ class DockerHelper(object):
             elif pub_img_tag.startswith(registry_info['registry_replaced']):
                 return pub_img_tag, registry_auth
 
-        # If the image is not from any of the known registries
+        # In case the image is overridden via "system helm-override-update"
+        # with a custom registry that is not from any of the known registries
         # (ie..k8s.gcr.io, gcr.io, quay.io, docker.io. docker.elastic.co)
-        # or no registry name specified in image tag, use user specified
-        # docker registry as default
-        registry = self.registries_info[
-            constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_replaced']
-        registry_auth = self.registries_info[
-            constants.SERVICE_PARAM_SECTION_DOCKER_DOCKER_REGISTRY]['registry_auth']
-        registry_name = pub_img_tag[:pub_img_tag.find('/')]
-
-        if registry:
-            LOG.info("Registry %s not recognized or docker.io repository "
-                     "detected. Pulling from public/private registry"
-                     % registry_name)
-            return registry + '/' + pub_img_tag, registry_auth
-        return pub_img_tag, registry_auth
+        # , pull directly from the custom registry (Note: The custom registry
+        # must be unauthenticated in this case.)
+        return pub_img_tag, None
 
     def _start_armada_service(self, client):
         try:

@@ -56,7 +56,7 @@ from sysinv.common import utils as cutils
 import xml.etree.ElementTree as et
 from lxml import etree
 from sysinv.api.controllers.v1 import profile_utils
-from sysinv.openstack.common.db import exception as dbException
+from oslo_db import exception as dbException
 from wsme import types as wtypes
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 

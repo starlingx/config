@@ -237,7 +237,8 @@ class ServiceParameterController(rest.RestController):
         schema = service_parameter.SERVICE_PARAMETER_SCHEMA[service][section]
         parameters = (schema.get(service_parameter.SERVICE_PARAM_MANDATORY, []) +
                       schema.get(service_parameter.SERVICE_PARAM_OPTIONAL, []))
-        if name not in parameters:
+        has_wildcard = (constants.SERVICE_PARAM_NAME_WILDCARD in parameters)
+        if name not in parameters and not has_wildcard:
             msg = _("The parameter name %s is invalid for "
                     "service %s section %s"
                     % (name, service, section))
@@ -649,6 +650,53 @@ class ServiceParameterController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("Host %s must be unlocked and enabled." % host_id))
 
+    @staticmethod
+    def _service_parameter_apply_semantic_check_kubernetes():
+        """Semantic checks for the Platform Kubernetes Service Type """
+        try:
+            oidc_issuer_url = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_KUBERNETES,
+                section=constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+                name=constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL)
+        except exception.NotFound:
+            oidc_issuer_url = None
+
+        try:
+            oidc_client_id = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_KUBERNETES,
+                section=constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+                name=constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID)
+        except exception.NotFound:
+            oidc_client_id = None
+
+        try:
+            oidc_username_claim = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_KUBERNETES,
+                section=constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+                name=constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM)
+        except exception.NotFound:
+            oidc_username_claim = None
+
+        try:
+            oidc_groups_claim = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_KUBERNETES,
+                section=constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+                name=constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM)
+        except exception.NotFound:
+            oidc_groups_claim = None
+
+        if not ((not oidc_issuer_url and not oidc_client_id and
+                 not oidc_username_claim and not oidc_groups_claim) or
+                (oidc_issuer_url and oidc_client_id and
+                 oidc_username_claim and not oidc_groups_claim) or
+                (oidc_issuer_url and oidc_client_id and
+                 oidc_username_claim and oidc_groups_claim)):
+            msg = _("Unable to apply service parameters. Please choose one of "
+                    "the valid Kubernetes OIDC parameter setups: (None) or "
+                    "(oidc_issuer_url, oidc_client_id, oidc_username_claim) or "
+                    "(the previous 3 plus oidc_groups_claim)")
+            raise wsme.exc.ClientSideError(msg)
+
     def _service_parameter_apply_semantic_check(self, service):
         """Semantic checks for the service-parameter-apply command """
 
@@ -669,8 +717,11 @@ class ServiceParameterController(rest.RestController):
         if service == constants.SERVICE_TYPE_PLATFORM:
             self._service_parameter_apply_semantic_check_mtce()
 
-        if service == constants.SERVICE_TYPE_HTTP:
+        elif service == constants.SERVICE_TYPE_HTTP:
             self._service_parameter_apply_semantic_check_http()
+
+        elif service == constants.SERVICE_TYPE_KUBERNETES:
+            self._service_parameter_apply_semantic_check_kubernetes()
 
     def _get_service(self, body):
         service = body.get('service') or ""

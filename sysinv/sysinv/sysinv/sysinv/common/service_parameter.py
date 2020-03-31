@@ -12,6 +12,7 @@ import pecan
 import wsme
 
 from oslo_log import log
+from six.moves.urllib.parse import urlparse
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
@@ -143,6 +144,17 @@ def _validate_SAN_list(name, value):
             raise wsme.exc.ClientSideError(_(
                 "The value provided is not a domain name or IP address. (%s)"
                 % entry))
+
+
+def _validate_oidc_issuer_url(name, value):
+    """Check if oidc issuer address is valid"""
+
+    # is_valid_domain_or_ip does not work with entire urls
+    # for example, the 'https://' needs to be removed
+    parsed_value = urlparse(value)
+    if not parsed_value.netloc or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid address or domain." % name))
 
 
 def _get_network_pool_from_ip_address(ip, networks):
@@ -517,6 +529,28 @@ KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
 }
 
+KUBERNETES_APISERVER_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL,
+    constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID,
+    constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
+    constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
+]
+
+KUBERNETES_APISERVER_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL: _validate_oidc_issuer_url,
+}
+
+KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL:
+        'platform::kubernetes::params::oidc_issuer_url',
+    constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID:
+        'platform::kubernetes::params::oidc_client_id',
+    constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM:
+        'platform::kubernetes::params::oidc_username_claim',
+    constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM:
+        'platform::kubernetes::params::oidc_groups_claim',
+}
+
 HTTPD_PORT_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_HTTP_PORT_HTTP,
     constants.SERVICE_PARAM_HTTP_PORT_HTTPS,
@@ -543,6 +577,25 @@ OPENSTACK_HELM_PARAMETER_VALIDATOR = {
 OPENSTACK_HELM_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_ENDPOINT_DOMAIN:
         'openstack::helm::params::endpoint_domain',
+}
+
+PTP_GLOBAL_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+PTP_GLOBAL_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
+}
+
+PTP_PHC2SYS_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_PTP_UPDATE_RATE,
+    constants.SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES
+]
+
+PTP_PHC2SYS_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_PTP_UPDATE_RATE: _validate_float,
+    # phc2sys summary-updates accepts a range of 0 to UNIT_MAX (ie 2^32 - 1)
+    constants.SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES: lambda name, value: _validate_range(name, value, 0, 2 ** 32 - 1)
 }
 
 # Service Parameter Schema
@@ -627,6 +680,21 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: KUBERNETES_CERTIFICATES_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: KUBERNETES_CERTIFICATES_PARAMETER_RESOURCE,
             SERVICE_PARAM_DATA_FORMAT: KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT,
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_APISERVER_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_APISERVER_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_APISERVER_PARAMETER_RESOURCE,
+        },
+    },
+    constants.SERVICE_TYPE_PTP: {
+        constants.SERVICE_PARAM_SECTION_PTP_GLOBAL: {
+            SERVICE_PARAM_OPTIONAL: PTP_GLOBAL_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PTP_GLOBAL_PARAMETER_VALIDATOR
+        },
+        constants.SERVICE_PARAM_SECTION_PTP_PHC2SYS: {
+            SERVICE_PARAM_OPTIONAL: PTP_PHC2SYS_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PTP_PHC2SYS_PARAMETER_VALIDATOR
         },
     },
     constants.SERVICE_TYPE_HTTP: {

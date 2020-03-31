@@ -25,7 +25,7 @@ class Dex(DexBaseHelm):
 
         oidc_client = {
             'id': self._get_client_id(),
-            'redirectURIs': ["http://%s:%s/callback" %
+            'redirectURIs': ["https://%s:%s/callback" %
                 (self._format_url_address(self._get_oam_address()), self.OIDC_CLIENT_NODE_PORT)],
             'name': 'STX OIDC Client app',
             'secret': self._get_client_secret()

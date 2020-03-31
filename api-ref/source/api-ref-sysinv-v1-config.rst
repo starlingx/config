@@ -4467,6 +4467,17 @@ badMediaType (415)
       "uuid":"70649b44-b462-445a-9fa5-9233a1b5842d"
    }
 
+*******************************
+Applies the PTP configuration
+*******************************
+
+.. rest_method:: POST /v1/ptp/apply
+
+**Normal response codes**
+
+204
+
+
 -------------
 External OAM
 -------------
@@ -10289,7 +10300,7 @@ Show detailed information about a host filesystem
 ***************************************************
 
 
-.. rest_method:: GET /v1/ihosts/​{host_id}​/host_fs/​{host_fs_id}​
+.. rest_method:: GET /v1/host_fs/​{host_fs_id}​
 
 **Normal response codes**
 
@@ -10355,7 +10366,7 @@ This operation does not accept a request body.
 Modifies specific host filesystem(s)
 *************************************
 
-.. rest_method:: PATCH /v1/ihosts/​{host_id}​/host_fs/​update_many
+.. rest_method:: PUT /v1/ihosts/​{host_id}​/host_fs/​update_many
 
 **Normal response codes**
 
@@ -10906,7 +10917,7 @@ Install System Certificate
 
 .. rest_method:: POST /v1/certificate/certificate_install
 
-Accepts a PEM file containing the X509 certificate.
+Accepts a PEM file containing the X509 certificates.
 
 For security reasons, the original certificate, containing the private
 key, will be removed, once the private key is processed.
@@ -11010,6 +11021,59 @@ itemNotFound (404)
                "controller-1": "tpm-config-applied"
            }
        }
+   }
+
+This operation does not accept a request body.
+
+**************************
+Deletes a CA certificate
+**************************
+
+.. rest_method:: DELETE /v1/certificate/​{uuid}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "URI", "csapi:UUID", "The unique identifier of the CA Certificate."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "certtype (Optional)", "plain", "xsd:string", "The type of the certificate."
+   "signature (Optional)", "plain", "xsd:string", "The signature of the certificate."
+   "details (Optional)", "plain", "xsd:string", "A dictionary of the certificate details."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "start_date (Optional)", "plain", "xsd:dateTime", "The time when the certificate becomes valid."
+   "expiry_date (Optional)", "plain", "xsd:dateTime", "The time when the certificate expires."
+
+::
+
+   {
+       "uuid": "32e8053a-04de-468c-a3c3-6bf55be4d0e6",
+       "certtype": "ssl_ca",
+       "expiry_date": "2022-12-14T15:08:25+00:00",
+       "details": null,
+       "signature": "ssl_ca_9552807080826043442",
+       "start_date":"2020-02-24T15:08:25+00:00",
+       "issuer": null
    }
 
 This operation does not accept a request body.

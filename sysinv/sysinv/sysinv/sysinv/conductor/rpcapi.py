@@ -749,12 +749,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_ntp_config'))
 
-    def update_ptp_config(self, context):
+    def update_ptp_config(self, context, do_apply=False):
         """Synchronously, have the conductor update the PTP configuration.
 
         :param context: request context.
+        :param do_apply: If the config should be applied via runtime manifests
         """
-        return self.call(context, self.make_msg('update_ptp_config'))
+        return self.call(context, self.make_msg('update_ptp_config', do_apply=do_apply))
 
     def update_system_mode_config(self, context):
         """Synchronously, have the conductor update the system mode
@@ -1569,6 +1570,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('config_certificate',
                                        pem_contents=pem_contents,
                                        config_dict=config_dict,
+                                       ))
+
+    def delete_certificate(self, context, mode, signature):
+        """Synchronously, have the conductor delete the certificate.
+
+        :param context: request context.
+        :param mode: the mode of the certificate
+        :param signature: the signature of the certificate.
+
+        """
+        return self.call(context,
+                         self.make_msg('delete_certificate',
+                                       mode=mode,
+                                       signature=signature,
                                        ))
 
     def get_helm_chart_namespaces(self, context, chart_name):
