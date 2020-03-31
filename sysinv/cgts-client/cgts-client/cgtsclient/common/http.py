@@ -15,12 +15,12 @@
 #    under the License.
 #
 
+import httplib2
 import logging
 import os
 import requests
+from requests_toolbelt import MultipartEncoder
 import socket
-
-import httplib2
 
 import six
 from six.moves.urllib.parse import urlparse
@@ -291,6 +291,19 @@ class HTTPClient(httplib2.Http):
         data = kwargs.get('data')
         req = requests.post(connection_url, headers=headers, files=files,
                             data=data)
+        return req.json()
+
+    def upload_request_with_multipart(self, method, url, **kwargs):
+        self.authenticate_and_fetch_endpoint_url()
+        connection_url = self._get_connection_url(url)
+        fields = kwargs.get('data')
+        fields['file'] = (kwargs['body'], open(kwargs['body'], 'rb'))
+        enc = MultipartEncoder(fields)
+        headers = {'Content-Type': enc.content_type,
+                   "X-Auth-Token": self.auth_token}
+        req = requests.post(connection_url,
+                            data=enc,
+                            headers=headers)
         return req.json()
 
     #################

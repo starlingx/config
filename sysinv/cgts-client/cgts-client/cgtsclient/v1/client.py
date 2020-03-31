@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 
@@ -26,6 +26,9 @@ from cgtsclient.v1 import certificate
 from cgtsclient.v1 import cluster
 from cgtsclient.v1 import controller_fs
 from cgtsclient.v1 import datanetwork
+from cgtsclient.v1 import device_image
+from cgtsclient.v1 import device_image_state
+from cgtsclient.v1 import device_label
 from cgtsclient.v1 import drbdconfig
 from cgtsclient.v1 import ethernetport
 from cgtsclient.v1 import fernet
@@ -165,3 +168,6 @@ class Client(http.HTTPClient):
         self.kube_version = kube_version.KubeVersionManager(self)
         self.kube_upgrade = kube_upgrade.KubeUpgradeManager(self)
         self.kube_host_upgrade = kube_host_upgrade.KubeHostUpgradeManager(self)
+        self.device_image = device_image.DeviceImageManager(self)
+        self.device_image_state = device_image_state.DeviceImageStateManager(self)
+        self.device_label = device_label.DeviceLabelManager(self)

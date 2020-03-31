@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -233,6 +233,9 @@ class ihost(Base):
     vsc_controllers = Column(String(255))
     ttys_dcd = Column(Boolean)
     iscsi_initiator_name = Column(String(64))
+
+    device_image_update = Column(String(64))
+    reboot_needed = Column(Boolean, nullable=False, default=False)
 
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))
@@ -1459,9 +1462,168 @@ class PciDevice(Base):
     enabled = Column(Boolean)
     extra_info = Column(Text)
 
-    host = relationship("ihost", lazy="joined", join_depth=1)
+    status = Column(String(128))
+    needs_firmware_update = Column(Boolean, nullable=False, default=False)
 
+    host = relationship("ihost", lazy="joined", join_depth=1)
+    fpga = relationship("FpgaDevice", lazy="joined", uselist=False, join_depth=1)
     UniqueConstraint('pciaddr', 'host_id', name='u_pciaddrhost')
+
+
+class FpgaDevice(Base):
+    __tablename__ = 'fpga_devices'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36))
+    host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
+    pci_id = Column(Integer, ForeignKey('pci_devices.id', ondelete='CASCADE'))
+    pciaddr = Column(String(32))
+    bmc_build_version = Column(String(32))
+    bmc_fw_version = Column(String(32))
+    root_key = Column(String(128))
+    revoked_key_ids = Column(String(512))
+    boot_page = Column(String(16))
+    bitstream_id = Column(String(32))
+
+    host = relationship("ihost", lazy="joined", join_depth=1)
+    pcidevice = relationship("PciDevice", lazy="joined", join_depth=1)
+    UniqueConstraint('pciaddr', 'host_id', name='u_pciaddrhost')
+
+
+class FpgaPorts(Base):
+    __tablename__ = 'fpga_ports'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36), unique=True)
+
+    port_id = Column(Integer, ForeignKey('ports.id', ondelete='CASCADE'))
+    fpga_id = Column(Integer,
+                     ForeignKey('fpga_devices.id', ondelete='CASCADE'))
+
+    ports = relationship("Ports", lazy="joined", join_depth=1)
+    fpga_device = relationship("FpgaDevice", lazy="joined",
+                               backref="fpga_ports", join_depth=1)
+    UniqueConstraint('port_id', 'fpga_id', name='u_port_id@fpga_id')
+
+
+class DeviceImage(Base):
+    __tablename__ = 'device_images'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+
+    bitstream_type = Column(String(255))
+    pci_vendor = Column(String(4))
+    pci_device = Column(String(4))
+    name = Column(String(255))
+    description = Column(String(255))
+    image_version = Column(String(255))
+    applied = Column(Boolean, nullable=False, default=False)
+    capabilities = Column(JSONEncodedDict)
+    __mapper_args__ = {
+        'polymorphic_identity': 'deviceimage',
+        'polymorphic_on': bitstream_type,
+        'with_polymorphic': '*',
+    }
+
+
+class DeviceImageCommon(object):
+    @declared_attr
+    def id(cls):
+        return Column(Integer,
+                      ForeignKey('device_images.id', ondelete="CASCADE"),
+                      primary_key=True, nullable=False)
+
+
+class DeviceImageRootKey(DeviceImageCommon, DeviceImage):
+    __tablename__ = 'device_images_rootkey'
+
+    key_signature = Column(String(255), nullable=True)
+    __mapper_args__ = {
+        'polymorphic_identity': 'root-key',
+    }
+
+
+class DeviceImageFunctional(DeviceImageCommon, DeviceImage):
+    __tablename__ = 'device_images_functional'
+
+    bitstream_id = Column(String(255), nullable=True)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'functional',
+    }
+
+
+class DeviceImageKeyRevocation(DeviceImageCommon, DeviceImage):
+    __tablename__ = 'device_images_keyrevocation'
+
+    revoke_key_id = Column(Integer, nullable=True)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'key-revocation',
+    }
+
+
+class DeviceLabel(Base):
+    __tablename__ = 'device_labels'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36))
+    host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
+    pcidevice_id = Column(Integer, ForeignKey('pci_devices.id',
+                                              ondelete='CASCADE'))
+    fpgadevice_id = Column(Integer, ForeignKey('fpga_devices.id',
+                                               ondelete='CASCADE'))
+    capabilities = Column(JSONEncodedDict)
+
+    host = relationship("ihost", lazy="joined", join_depth=1)
+    pcidevice = relationship("PciDevice", lazy="joined", join_depth=1)
+    fpgadevice = relationship("FpgaDevice", lazy="joined", join_depth=1)
+    label_key = Column(String(384))
+    label_value = Column(String(128))
+    UniqueConstraint('pcidevice_id', 'label_key', name='u_pcidevice_id@label_key')
+
+
+class DeviceImageLabel(Base):
+    __tablename__ = 'device_image_labels'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36), unique=True)
+
+    image_id = Column(
+        Integer, ForeignKey('device_images.id', ondelete='CASCADE'))
+    label_id = Column(
+        Integer, ForeignKey('device_labels.id', ondelete='CASCADE'))
+    status = Column(String(128))
+    capabilities = Column(JSONEncodedDict)
+
+    image = relationship(
+        "DeviceImage", lazy="joined", backref="device_image_labels")
+    label = relationship(
+        "DeviceLabel", lazy="joined", backref="device_image_labels")
+    UniqueConstraint('image_id', 'label_id', name='u_image_id@label_id')
+
+
+class DeviceImageState(Base):
+    __tablename__ = 'device_image_state'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36), unique=True)
+
+    host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
+    pcidevice_id = Column(
+        Integer, ForeignKey('pci_devices.id', ondelete='CASCADE'))
+    image_id = Column(
+        Integer, ForeignKey('device_images.id', ondelete='CASCADE'))
+    status = Column(String(128))
+    update_start_time = Column(DateTime(timezone=False))
+    capabilities = Column(JSONEncodedDict)
+
+    host = relationship("ihost", lazy="joined", join_depth=1)
+    pcidevice = relationship(
+        "PciDevice", lazy="joined", backref="device_image_state")
+    image = relationship(
+        "DeviceImage", lazy="joined", backref="device_image_state")
 
 
 class SoftwareUpgrade(Base):

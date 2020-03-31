@@ -81,6 +81,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
+from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import image_versions
 from sysinv.common import fm
@@ -11376,3 +11377,37 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_NETWORKING
         kube_upgrade_obj.save()
+
+    def store_bitstream_file(self, context, filename):
+        """Store FPGA bitstream file """
+        image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)
+        image_tmp_path = os.path.join(dconstants.DEVICE_IMAGE_TMP_PATH, filename)
+        try:
+            os.makedirs(dconstants.DEVICE_IMAGE_PATH)
+        except OSError as oe:
+            if (oe.errno != errno.EEXIST or
+                    not os.path.isdir(dconstants.DEVICE_IMAGE_PATH)):
+                LOG.error("Failed to create dir %s" % dconstants.DEVICE_IMAGE_PATH)
+                raise
+        shutil.copyfile(image_tmp_path, image_file_path)
+        LOG.info("copied %s to %s" % (image_tmp_path, image_file_path))
+
+    def delete_bitstream_file(self, context, filename):
+        """Delete FPGA bitstream file"""
+        image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)
+        try:
+            os.remove(image_file_path)
+        except OSError:
+            LOG.exception("Failed to delete bitstream file %s" % image_file_path)
+
+    def host_device_image_update(self, context, host_uuid):
+        """Update the device image on this host"""
+
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Updating device image on %s" % host_obj.hostname)
+
+    def host_device_image_update_abort(self, context, host_uuid):
+        """Abort device image update on this host"""
+
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Aborting device image update on %s" % host_obj.hostname)

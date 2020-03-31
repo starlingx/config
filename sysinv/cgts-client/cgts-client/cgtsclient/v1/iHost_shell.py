@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -39,7 +39,8 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
                   'boot_device', 'rootfs_device', 'install_output', 'console',
                   'tboot', 'vim_progress_status', 'software_load',
                   'install_state', 'install_state_info', 'inv_state',
-                  'clock_synchronization']
+                  'clock_synchronization',
+                  'device_image_update', 'reboot_needed']
         optional_fields = ['vsc_controllers', 'ttys_dcd']
         if ihost.subfunctions != ihost.personality:
             fields.append('subfunctions')
@@ -848,3 +849,31 @@ def do_kube_host_upgrade(cc, args):
     data = dict(data_list)
     ordereddata = OrderedDict(sorted(data.items(), key=lambda t: t[0]))
     utils.print_dict(ordereddata, wrap=72)
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of host")
+def do_host_device_image_update(cc, args):
+    """Update device image on a host."""
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    try:
+        host = cc.ihost.device_image_update(ihost.uuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError(
+            'Device image update failed: host %s' % args.hostnameorid)
+    _print_ihost_show(host)
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of host")
+def do_host_device_image_update_abort(cc, args):
+    """Abort device image update on a host."""
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    try:
+        host = cc.ihost.device_image_update_abort(ihost.uuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError(
+            'Device image update-abort failed: host %s' % args.hostnameorid)
+    _print_ihost_show(host)

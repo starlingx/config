@@ -2216,3 +2216,11 @@ def extract_certs_from_pem(pem_contents):
         certs.append(cert)
         start = start + index + len(marker)
     return certs
+
+
+def format_image_filename(device_image):
+    """ Format device image filename """
+    return "{}-{}-{}-{}.bit".format(device_image.bitstream_type,
+                                    device_image.pci_vendor,
+                                    device_image.pci_device,
+                                    device_image.uuid)

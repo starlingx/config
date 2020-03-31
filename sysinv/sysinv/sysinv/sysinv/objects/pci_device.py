@@ -1,11 +1,7 @@
 #
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
-#
-
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-# coding=utf-8
 #
 
 from sysinv.db import api as db_api
@@ -39,10 +35,34 @@ class PCIDevice(base.SysinvObject):
             'driver': utils.str_or_none,
             'enabled': utils.bool_or_none,
             'extra_info': utils.str_or_none,
+
+            'bmc_build_version': utils.str_or_none,
+            'bmc_fw_version': utils.str_or_none,
+            'root_key': utils.str_or_none,
+            'revoked_key_ids': utils.str_or_none,
+            'boot_page': utils.str_or_none,
+            'bitstream_id': utils.str_or_none,
+            'status': utils.str_or_none,
+            'needs_firmware_update': utils.bool_or_none,
              }
 
     _foreign_fields = {
-        'host_uuid': 'host:uuid'
+        'host_uuid': 'host:uuid',
+        'bmc_build_version': 'fpga:bmc_build_version',
+        'bmc_fw_version': 'fpga:bmc_fw_version',
+        'root_key': 'fpga:root_key',
+        'revoked_key_ids': 'fpga:revoked_key_ids',
+        'boot_page': 'fpga:boot_page',
+        'bitstream_id': 'fpga:bitstream_id',
+    }
+
+    _optional_fields = {
+        'bmc_build_version',
+        'bmc_fw_version',
+        'root_key',
+        'revoked_key_ids',
+        'boot_page',
+        'bitstream_id',
     }
 
     @base.remotable_classmethod

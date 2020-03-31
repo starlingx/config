@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 """
@@ -1891,3 +1891,43 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg('kube_upgrade_networking',
                                                 kube_version=kube_version))
+
+    def store_bitstream_file(self, context, filename):
+        """Asynchronously, have the conductor store the device image
+        on this host.
+
+        :param context: request context
+        :param filename: name of the bitstream file
+        """
+        return self.cast(context, self.make_msg('store_bitstream_file',
+                                                filename=filename))
+
+    def delete_bitstream_file(self, context, filename):
+        """Asynchronously, have the conductor remove the device image
+        on this host.
+
+        :param context: request context
+        :param filename: name of the bitstream file
+        """
+        return self.cast(context, self.make_msg('delete_bitstream_file',
+                                                filename=filename))
+
+    def host_device_image_update(self, context, host_uuid):
+        """Asynchronously, have the conductor update the device image
+        on this host.
+
+        :param context: request context
+        :param host_uuid: uuid or id of the host
+        """
+        return self.cast(context, self.make_msg('host_device_image_update',
+                                                host_uuid=host_uuid))
+
+    def host_device_image_update_abort(self, context, host_uuid):
+        """Asynchronously, have the conductor abort the device image update
+        on this host.
+
+        :param context: request context
+        :param host_uuid: uuid or id of the host
+        """
+        return self.cast(context, self.make_msg('host_device_image_update_abort',
+                                                host_uuid=host_uuid))

@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 
@@ -28,7 +28,12 @@ from sysinv.objects import community
 from sysinv.objects import controller_fs
 from sysinv.objects import cpu
 from sysinv.objects import datanetwork
+from sysinv.objects import device_image
+from sysinv.objects import device_image_label
+from sysinv.objects import device_image_state
+from sysinv.objects import device_label
 from sysinv.objects import disk
+from sysinv.objects import fpga_device
 from sysinv.objects import partition
 from sysinv.objects import dns
 from sysinv.objects import drbdconfig
@@ -195,6 +200,11 @@ kube_upgrade = kube_upgrade.KubeUpgrade
 kube_version = kube_version.KubeVersion
 datanetwork = datanetwork.DataNetwork
 host_fs = host_fs.HostFS
+device_image = device_image.DeviceImage
+device_image_label = device_image_label.DeviceImageLabel
+device_image_state = device_image_state.DeviceImageState
+device_label = device_label.DeviceLabel
+fpga_device = fpga_device.FPGADevice
 
 __all__ = (system,
            cluster,
@@ -268,6 +278,10 @@ __all__ = (system,
            datanetwork,
            interface_network,
            host_fs,
+           device_image,
+           device_image_label,
+           device_label,
+           fpga_device,
            # alias objects for RPC compatibility
            ihost,
            ilvg,

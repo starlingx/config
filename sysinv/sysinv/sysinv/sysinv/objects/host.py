@@ -89,6 +89,8 @@ class Host(base.SysinvObject):
             'install_state': utils.str_or_none,
             'install_state_info': utils.str_or_none,
             'iscsi_initiator_name': utils.str_or_none,
+            'device_image_update': utils.str_or_none,
+            'reboot_needed': utils.bool_or_none,
              }
 
     _foreign_fields = {
