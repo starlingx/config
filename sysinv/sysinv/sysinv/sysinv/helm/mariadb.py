@@ -27,6 +27,11 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
                     }
                 },
                 'endpoints': self._get_endpoints_overrides(),
+                'conf': {
+                    'database': {
+                        'config_override': self._get_database_config_override()
+                    }
+                }
             }
         }
 
@@ -37,6 +42,18 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
                                                  namespace=namespace)
         else:
             return overrides
+
+    def _get_database_config_override(self):
+        listen_host = "0.0.0.0"
+        if self._is_ipv6_cluster_service():
+            listen_host = "::"
+        return "[mysqld]\n" \
+               "bind_address=::\n" \
+               "wsrep_provider_options=\"evs.suspect_timeout=PT30S; " \
+               "gmcast.peer_timeout=PT15S; " \
+               "gmcast.listen_addr=tcp://%s:{{ tuple \"oslo_db\" " \
+               "\"direct\" \"wsrep\" . | " \
+               "include \"helm-toolkit.endpoints.endpoint_port_lookup\" }}\"" % listen_host
 
     def _get_endpoints_overrides(self):
         return {
