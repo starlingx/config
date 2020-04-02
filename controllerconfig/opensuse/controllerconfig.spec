@@ -56,6 +56,7 @@ Configuration for the Controller node.
 
 install -d -m 755 %{buildroot}%{local_bindir}
 install -p -D -m 700 scripts/openstack_update_admin_password %{buildroot}%{local_bindir}/openstack_update_admin_password
+install -p -D -m 700 scripts/upgrade_swact_migration.py %{buildroot}%{local_bindir}/upgrade_swact_migration.py
 
 install -d -m 755 %{buildroot}%{local_goenabledd}
 install -p -D -m 700 scripts/config_goenabled_check.sh %{buildroot}%{local_goenabledd}/config_goenabled_check.sh

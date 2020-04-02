@@ -24,7 +24,7 @@ from oslo_log import log
 LOG = log.getLogger(__name__)
 
 
-def get_upgrade_databases(shared_services):
+def get_upgrade_databases(system_role, shared_services):
 
     UPGRADE_DATABASES = ('postgres', 'template1', 'sysinv',
                          'barbican')
@@ -33,6 +33,13 @@ def get_upgrade_databases(shared_services):
                                     'sysinv': ('i_alarm',),
                                     'barbican': ()}
 
+    if system_role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        UPGRADE_DATABASES += ('dcmanager', 'dcorch',)
+        UPGRADE_DATABASE_SKIP_TABLES.update({
+            'dcmanager': ('subcloud_alarms',),
+            'dcorch': ()
+        })
+
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         UPGRADE_DATABASES += ('keystone',)
         UPGRADE_DATABASE_SKIP_TABLES.update({'keystone': ('token',)})
@@ -40,12 +47,12 @@ def get_upgrade_databases(shared_services):
     return UPGRADE_DATABASES, UPGRADE_DATABASE_SKIP_TABLES
 
 
-def export_postgres(dest_dir, shared_services):
+def export_postgres(dest_dir, system_role, shared_services):
     """ Export postgres databases """
     devnull = open(os.devnull, 'w')
     try:
         upgrade_databases, upgrade_database_skip_tables = \
-            get_upgrade_databases(shared_services)
+            get_upgrade_databases(system_role, shared_services)
         # Dump roles, table spaces and schemas for databases.
         subprocess.check_call([('sudo -u postgres pg_dumpall --clean ' +
                                 '--schema-only > %s/%s' %
@@ -101,7 +108,7 @@ def prepare_upgrade(from_load, to_load, i_system):
 
     # Export databases
     shared_services = i_system.capabilities.get("shared_services", "")
-    export_postgres(dest_dir, shared_services)
+    export_postgres(dest_dir, i_system.distributed_cloud_role, shared_services)
     export_vim(dest_dir)
 
     # Export filesystems so controller-1 can access them
@@ -234,6 +241,9 @@ def abort_upgrade(from_load, to_load, upgrade):
     # Remove upgrade directories
     upgrade_dirs = [
         os.path.join(tsc.PLATFORM_PATH, "config", to_load),
+        os.path.join(tsc.PLATFORM_PATH, "armada", to_load),
+        os.path.join(tsc.PLATFORM_PATH, "helm", to_load),
+        os.path.join(tsc.ETCD_PATH, to_load),
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, to_load),
         os.path.join(utils.RABBIT_PATH, to_load),
