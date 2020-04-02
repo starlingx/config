@@ -26,32 +26,12 @@ LOG = log.getLogger(__name__)
 
 def get_upgrade_databases(shared_services):
 
-    UPGRADE_DATABASES = ('postgres', 'template1', 'nova', 'sysinv',
-                         'ceilometer', 'neutron', 'heat', 'nova_api', 'aodh',
-                         'magnum', 'ironic', 'barbican')
+    UPGRADE_DATABASES = ('postgres', 'template1', 'sysinv',
+                         'barbican')
 
     UPGRADE_DATABASE_SKIP_TABLES = {'postgres': (), 'template1': (),
-                                    'heat': (), 'nova': (), 'nova_api': (),
                                     'sysinv': ('i_alarm',),
-                                    'neutron': (),
-                                    'aodh': (),
-                                    'magnum': (),
-                                    'ironic': (),
-                                    'barbican': (),
-                                    'ceilometer': ('metadata_bool',
-                                                   'metadata_float',
-                                                   'metadata_int',
-                                                   'metadata_text',
-                                                   'meter', 'sample', 'fault',
-                                                   'resource')}
-
-    if sysinv_constants.SERVICE_TYPE_VOLUME not in shared_services:
-        UPGRADE_DATABASES += ('cinder',)
-        UPGRADE_DATABASE_SKIP_TABLES.update({'cinder': ()})
-
-    if sysinv_constants.SERVICE_TYPE_IMAGE not in shared_services:
-        UPGRADE_DATABASES += ('glance',)
-        UPGRADE_DATABASE_SKIP_TABLES.update({'glance': ()})
+                                    'barbican': ()}
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         UPGRADE_DATABASES += ('keystone',)
@@ -257,12 +237,10 @@ def abort_upgrade(from_load, to_load, upgrade):
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, to_load),
         os.path.join(utils.RABBIT_PATH, to_load),
-        os.path.join(tsc.PLATFORM_PATH, "ironic", to_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", to_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", to_load),
         os.path.join(tsc.PLATFORM_PATH, "puppet", to_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", to_load),
-        os.path.join(tsc.PLATFORM_PATH, "ceilometer", to_load),
         os.path.join(tsc.CONFIG_PATH, 'upgrades')
     ]
 
@@ -328,15 +306,11 @@ def complete_upgrade(from_load, to_load):
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, from_load),
         os.path.join(utils.RABBIT_PATH, from_load),
-        os.path.join(tsc.PLATFORM_PATH, "ironic", from_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", from_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", from_load),
         os.path.join(tsc.PLATFORM_PATH, "puppet", from_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", from_load),
     ]
-
-    upgrade_dirs.append(
-        os.path.join(tsc.PLATFORM_PATH, "ceilometer", from_load))
 
     for directory in upgrade_dirs:
         try:
