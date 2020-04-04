@@ -22,7 +22,6 @@ tempest-lib<0.5.0,>=0.4.0
 ipaddr
 pytest
 pyudev
-libvirt-python>=1.2.5
 migrate
 python-ldap>=3.1.0
 markupsafe
