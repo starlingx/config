@@ -111,7 +111,7 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
                                              path=self.SERVICE_PATH)
 
     def get_admin_url(self):
-        return self._format_private_endpoint(self.SERVICE_PORT,
+        return self._format_admin_endpoint(self.SERVICE_PORT,
                                              path=self.SERVICE_PATH)
 
     def get_region_name(self):

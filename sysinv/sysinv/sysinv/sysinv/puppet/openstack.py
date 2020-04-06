@@ -6,6 +6,7 @@
 
 import abc
 import keyring
+import os
 
 from sysinv.common import constants
 
@@ -116,6 +117,23 @@ class OpenstackBasePuppet(base.BasePuppet):
     def _get_private_protocol(self):
         return 'http'
 
+    def _get_admin_protocol(self):
+        # Turn admin endpoint protocol to be https only after ansible
+        # bootstrap is completed. This is because https enabled admin
+        # endpoints work only after haproxy is properly configured,
+        # which will happen when puppet manifest apply during
+        # controller unlock. So if https is turned on during bootstrap
+        # (by services' endpoint reconfiguration), the system commands
+        # to add networks etc during ansible bootstrap will fail as
+        # haproxy has not been configured yet.
+        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) and \
+            (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
+                self._distributed_cloud_role() ==
+                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            return 'https'
+        return 'http'
+
     def _format_public_endpoint(self, port, address=None, path=None):
         protocol = self._get_public_protocol()
         if address is None:
@@ -127,6 +145,15 @@ class OpenstackBasePuppet(base.BasePuppet):
         if address is None:
             address = self._format_url_address(self._get_management_address())
         return self._format_keystone_endpoint(protocol, port, address, path)
+
+    def _format_admin_endpoint(self, port, address=None, path=None):
+        protocol = self._get_admin_protocol()
+        s_port = port
+        if address is None:
+            address = self._format_url_address(self._get_management_address())
+        if protocol == 'https':
+            s_port = s_port + 1
+        return self._format_keystone_endpoint(protocol, s_port, address, path)
 
     def _keystone_auth_address(self):
         return self._operator.keystone.get_auth_address()
