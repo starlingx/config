@@ -1,4 +1,4 @@
-Summary: Titanium Cloud Config Info
+Summary: StarlingX Config Info
 Name: tsconfig
 Version: 1.0
 Release: %{tis_patch_ver}%{?_tis_dist}
@@ -15,7 +15,7 @@ BuildRequires: python2-pip
 BuildRequires: python2-wheel
 
 %description
-Titanium Cloud Config Info
+StarlingX Config Info
 
 %define local_dir /usr/
 %define local_bindir %{local_dir}/bin/
