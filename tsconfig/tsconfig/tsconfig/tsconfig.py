@@ -11,9 +11,6 @@ import io
 import logging
 
 SW_VERSION = ""
-SW_VERSION_1610 = '16.10'
-SW_VERSION_1706 = '17.06'
-SW_VERSION_1803 = '18.03'
 
 nodetype = None
 subfunctions = []
