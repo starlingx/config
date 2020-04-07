@@ -9,6 +9,7 @@
 
 """Helm utilities and helper functions."""
 
+import os
 from eventlet.green import subprocess
 import ruamel.yaml as yaml
 from oslo_log import log as logging
@@ -43,15 +44,56 @@ def retrieve_helm_releases():
     by querying helm tiller
     :return: a dict of deployed helm releases
     """
+    deployed_releases = {}
+
+    # Helm v3 releases
     helm_list = subprocess.Popen(
         ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-         'list', '--output', 'yaml'],
+         'list', '--all-namespaces', '--output', 'yaml'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, helm_list.kill)
 
     try:
         releases = {}
-        deployed_releases = {}
+
+        timer.start()
+        out, err = helm_list.communicate()
+        if out and not err:
+            releases = yaml.safe_load(out)
+        elif err and not out:
+            raise exception.HelmTillerFailure(
+                reason="Failed to retrieve releases: %s" % err)
+        elif not err and not out:
+            err_msg = "Failed to retrieve releases. " \
+                      "Helm tiller response timeout."
+            raise exception.HelmTillerFailure(reason=err_msg)
+
+        for r in releases:
+            r_name = r.get('name')
+            r_version = r.get('revision')
+            r_namespace = r.get('namespace')
+
+            deployed_releases.setdefault(r_name, {}).update(
+                {r_namespace: r_version})
+    except Exception as e:
+        raise exception.HelmTillerFailure(
+            reason="Failed to retrieve releases: %s" % e)
+    finally:
+        timer.cancel()
+
+    # Helm v2 releases
+    env = os.environ.copy()
+    env['PATH'] = '/usr/local/sbin:' + env['PATH']
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+    helm_list = subprocess.Popen(
+        ['helmv2-cli', '--',
+         'helm',
+         'list', '--output', 'yaml'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    timer = threading.Timer(20, helm_list.kill)
+
+    try:
+        releases = {}
 
         timer.start()
         out, err = helm_list.communicate()
@@ -78,6 +120,7 @@ def retrieve_helm_releases():
             reason="Failed to retrieve releases: %s" % e)
     finally:
         timer.cancel()
+
     return deployed_releases
 
 
@@ -93,10 +136,16 @@ def delete_helm_release(release):
 
     :param release: the name of the helm release
     """
+    # NOTE: This mechanism deletes armada/tiller managed releases.
+    # This could be adapted to also delete helm v3 releases using
+    # 'helm uninstall'.
+    env = os.environ.copy()
+    env['PATH'] = '/usr/local/sbin:' + env['PATH']
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
     helm_cmd = subprocess.Popen(
-        ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-         'delete', release],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ['helmv2-cli', '--',
+         'helm', 'delete', release],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, helm_cmd.kill)
 
     try:
@@ -122,51 +171,14 @@ def delete_helm_release(release):
 
 
 def get_openstack_pending_install_charts():
+    env = os.environ.copy()
+    env['PATH'] = '/usr/local/sbin:' + env['PATH']
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
     try:
         return subprocess.check_output(
-            ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-             'list', '--namespace', 'openstack', '--pending'])
+            ['helmv2-cli', '--',
+             'helm', 'list', '--namespace', 'openstack', '--pending'],
+            env=env)
     except Exception as e:
         raise exception.HelmTillerFailure(
             reason="Failed to obtain pending charts list: %s" % e)
-
-
-def helm_upgrade_tiller(image):
-    LOG.info("Attempt to update image to %s" % image)
-    try:
-
-        # Adding temporary workaround using helm init command with
-        # sed command until helm and tiller provide a fix for
-        # https://github.com/helm/helm/issues/6374
-        workaround_part1 = '--skip-refresh ' \
-                    '--service-account tiller ' \
-                    '--node-selectors "node-role.kubernetes.io/master"="" ' \
-                    '--override spec.template.spec.hostNetwork=true ' \
-                    '--override spec.selector.matchLabels.app=helm ' \
-                    '--override spec.selector.matchLabels.name=tiller ' \
-                    '--output yaml'
-        workaround_part2 = \
-            '| sed "s@apiVersion: extensions/v1beta1@apiVersion: apps/v1@" ' \
-            '| kubectl --kubeconfig {} replace --force -f -'.format(
-                kubernetes.KUBERNETES_ADMIN_CONF)
-
-        cmd = '{} {} {} {} {} {}'.format(
-            'helm init --upgrade --kubeconfig',
-            kubernetes.KUBERNETES_ADMIN_CONF,
-            '--tiller-image',
-            image,
-            workaround_part1,
-            workaround_part2)
-
-        LOG.info("Execute command: %s" % cmd)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = proc.communicate()
-        if err:
-            raise exception.HelmTillerFailure(
-                reason="Failed to upgrade/downgrade image: %s" % err)
-
-        LOG.info("Image was updated to %s" % image)
-
-    except Exception as e:
-        raise exception.HelmTillerFailure(
-            reason="Failed to upgrade/downgrade image: %s" % e)

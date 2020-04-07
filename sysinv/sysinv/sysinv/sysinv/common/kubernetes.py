@@ -21,6 +21,7 @@ from kubernetes import config
 from kubernetes import client
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
 from six.moves import http_client as httplib
 
 from oslo_log import log as logging
@@ -652,3 +653,48 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Kubernetes exception in "
                       "kube_get_pod %s/%s: %s" % (namespace, name, e))
+
+    def kube_get_pods_by_selector(self, namespace, label_selector,
+                                  field_selector):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.list_namespaced_pod(namespace,
+                label_selector="%s" % label_selector,
+                field_selector="%s" % field_selector)
+            LOG.debug("Response: %s" % api_response)
+            return api_response.items
+        except ApiException as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_pods_by_selector %s/%s/%s: %s",
+                      namespace, label_selector, field_selector, e)
+            raise
+
+    # NOTE: This is desired method to exec commands in a container.
+    # The minimal usage example indicates this can get separate streams for
+    # stdout and stderr. The code below produces a string of merged output,
+    # so we cannot deduce whether the provided exec_command is failing.
+    # This API can replace Popen/poll/kubectl exec calls if we peek at
+    # api_response. We require ability to poll, read and flush output from
+    # long running commands, wait for command completion, and timeout.
+    # See the following documentation:
+    # https://github.com/kubernetes-client/python/blob/master/examples/pod_exec.py
+    # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/CoreV1Api.md
+    def kube_exec_container_stream(self, name, namespace, exec_command, container=None):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = stream(c.connect_get_namespaced_pod_exec,
+                name,
+                namespace,
+                container=container,
+                command=exec_command,
+                stderr=True, stdin=False,
+                stdout=True, tty=False)
+            return api_response
+        except ApiException as e:
+            LOG.error("Failed to exec Pod %s/%s: %s" % (namespace, name,
+                                                        e.body))
+            raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_exec_container %s/%s: %s" % (namespace, name, e))
+            raise
