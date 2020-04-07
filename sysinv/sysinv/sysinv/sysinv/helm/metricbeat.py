@@ -20,20 +20,16 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             common.HELM_NS_MONITOR: {
                 'systemName': '',
                 'resources': self._get_resources_overrides(),
-                'daemonset': {
-                    'modules': {
-                        'system': self._get_metric_system(),
-                        'kubernetes': self._get_metric_kubernetes(),
-                    },
-                    'config': self._get_config_overrides(system_fields),
+                'metricbeatConfig': {
+                    'metricbeat.yml': self._get_config_overrides(
+                        system_fields,
+                        self._get_daemonset_module_config()
+                    ),
+                    'kube-state-metrics-metricbeat.yml': self._get_config_overrides(
+                        system_fields,
+                        self._get_deployment_module_config()
+                    ),
                 },
-                'deployment': {
-                    'modules': {
-                        'kubernetes':
-                            self._get_metric_deployment_kubernetes()
-                    },
-                    'config': self._get_config_overrides(system_fields),
-                }
             }
         }
 
@@ -45,13 +41,14 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
         else:
             return overrides
 
-    def _get_config_overrides(self, system_fields):
+    def _get_config_overrides(self, system_fields, modules):
         conf = {
             'name': '${NODE_NAME}',
             'fields_under_root': True,
             'fields': {
                 "system": system_fields
-            }
+            },
+            'metricbeat.modules': modules,
         }
 
         if self._is_distributed_cloud_role_subcloud():
@@ -70,17 +67,23 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
 
         return conf
 
-    def _get_metric_system(self):
-        conf = {
-            "enabled": True,
-            "config": self._get_metric_module_config()
-        }
-        return conf
+    def _get_daemonset_module_config(self):
+        modules = [
+            self._get_metric_kubernetes(),
+        ] + self._get_metric_system()
+        return modules
 
-    def _get_metric_module_config(self):
+    def _get_deployment_module_config(self):
+        modules = [
+            self._get_metric_deployment_kubernetes(),
+        ]
+        return modules
+
+    def _get_metric_system(self):
         conf = [
             {
                 "module": "system",
+                "enabled": True,
                 "period": "60s",
                 "metricsets": [
                     "cpu",
@@ -96,6 +99,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             },
             {
                 "module": "system",
+                "enabled": True,
                 "period": "60s",
                 "metricsets": [
                     "process"
@@ -117,6 +121,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             },
             {
                 "module": "system",
+                "enabled": True,
                 "period": "60s",
                 "metricsets": [
                     "network"
@@ -144,6 +149,7 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             },
             {
                 "module": "system",
+                "enabled": True,
                 "period": "5m",
                 "metricsets": [
                     "filesystem",
@@ -163,64 +169,57 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
 
     def _get_metric_kubernetes(self):
         conf = {
+            "module": "kubernetes",
             "enabled": True,
-            "config": [
-                {
-                    "module": "kubernetes",
-                    "in_cluster": True,
-                    "add_metadata": True,
-                    "metricsets": [
-                        "node",
-                        "system",
-                        "pod",
-                        "container"
-                    ],
-                    "period": "10s",
-                    "host": "${NODE_NAME}",
-                    "hosts": [
-                        "https://${HOSTNAME}:10250"
-                    ],
-                    "bearer_token_file":
-                        "/var/run/secrets/kubernetes.io/serviceaccount/token",
-                    "ssl.verification_mode": "none",
-                    "ssl.certificate_authorities": [
-                        "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-                    ]
-                }
+            # If kube_config is not set, KUBECONFIG environment variable will be checked
+            # and if not present it will fall back to InCluster
+            "add_metadata": True,
+            "metricsets": [
+                "node",
+                "system",
+                "pod",
+                "container"
+            ],
+            "period": "10s",
+            "host": "${NODE_NAME}",
+            "hosts": [
+                "https://${HOSTNAME}:10250"
+            ],
+            "bearer_token_file":
+                "/var/run/secrets/kubernetes.io/serviceaccount/token",
+            "ssl.verification_mode": "none",
+            "ssl.certificate_authorities": [
+                "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
             ]
         }
         return conf
 
     def _get_metric_deployment_kubernetes(self):
         conf = {
+            "module": "kubernetes",
             "enabled": True,
-            "config": [
-                {
-                    "module": "kubernetes",
-                    "in_cluster": True,
-                    "add_metadata": True,
-                    "metricsets": [
-                        "state_node",
-                        "state_deployment",
-                        "state_replicaset",
-                        "state_pod",
-                        "state_container",
-                        "event",
-                        "state_statefulset"
-                    ],
-                    "period": "60s",
-                    "host": "${NODE_NAME}",
-                    "hosts": [
-                        "${KUBE_STATE_METRICS_HOST}:8080"
-                    ]
-                }
+            # If kube_config is not set, KUBECONFIG environment variable will be checked
+            # and if not present it will fall back to InCluster
+            "add_metadata": True,
+            "metricsets": [
+                "state_node",
+                "state_deployment",
+                "state_replicaset",
+                "state_pod",
+                "state_container",
+                "event",
+                "state_statefulset"
+            ],
+            "period": "60s",
+            "host": "${NODE_NAME}",
+            "hosts": [
+                "${KUBE_STATE_METRICS_HOSTS}"
             ]
         }
         return conf
 
     @staticmethod
     def _get_resources_overrides():
-
         cpu_request = "50m"
         cpu_limit = "180m"   # overload at 150m
         memory_limit = "512Mi"
