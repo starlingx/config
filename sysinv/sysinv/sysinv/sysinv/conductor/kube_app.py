@@ -1163,6 +1163,28 @@ class AppOperator(object):
             LOG.error(e)
             raise
 
+    def _wait_for_pod_termination(self, namespace):
+        loop_timeout = 0
+        loop_check_interval = 10
+        timeout = 300
+        try:
+            LOG.info("Waiting for pod termination in namespace %s ..." % namespace)
+
+            # Pod termination timeout 5mins
+            while(loop_timeout <= timeout):
+                if not self._kube.kube_namespaced_pods_exist(namespace):
+                    # Pods have terminated
+                    break
+                loop_timeout += loop_check_interval
+                time.sleep(loop_check_interval)
+
+            if loop_timeout > timeout:
+                raise exception.KubePodTerminateTimeout(name=namespace)
+            LOG.info("Pod termination in Namespace %s completed." % namespace)
+        except Exception as e:
+            LOG.error(e)
+            raise
+
     def _delete_persistent_volume_claim(self, namespace):
         try:
             LOG.info("Deleting Persistent Volume Claim "
@@ -1650,9 +1672,11 @@ class AppOperator(object):
         if (app_name == constants.HELM_APP_OPENSTACK and
                 operation_type == constants.APP_REMOVE_OP):
             _delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-        elif (app_name == constants.HELM_APP_MONITOR and
-              operation_type == constants.APP_DELETE_OP):
-            _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
+        elif app_name == constants.HELM_APP_MONITOR:
+            if operation_type == constants.APP_DELETE_OP:
+                _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
+            elif (operation_type == constants.APP_REMOVE_OP):
+                self._wait_for_pod_termination(common.HELM_NS_MONITOR)
 
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
         """Perform application recover
