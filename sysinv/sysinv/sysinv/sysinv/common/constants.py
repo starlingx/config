@@ -1051,6 +1051,9 @@ SERVICE_PARAM_NAME_OIDC_ISSUER_URL = 'oidc_issuer_url'
 SERVICE_PARAM_NAME_OIDC_CLIENT_ID = 'oidc_client_id'
 SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM = 'oidc_username_claim'
 SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM = 'oidc_groups_claim'
+SERVICE_PARAM_NAME_ADMISSION_PLUGINS = 'admission_plugins'
+
+VALID_ADMISSION_PLUGINS = ['PodSecurityPolicy']
 
 # ptp service parameters
 SERVICE_PARAM_SECTION_PTP_GLOBAL = 'global'
