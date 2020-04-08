@@ -133,9 +133,7 @@ class KubeOperator(object):
 
     def _load_kube_config(self):
         if not is_k8s_configured():
-            raise exception.SysinvException(
-                "Kubernetes is not configured. API operations will not be "
-                "available.")
+            raise exception.KubeNotConfigured()
 
         config.load_kube_config(KUBERNETES_ADMIN_CONF)
 
