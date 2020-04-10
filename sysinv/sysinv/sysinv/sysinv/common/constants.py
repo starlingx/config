@@ -1599,3 +1599,6 @@ HOST_BM_VALID_PROVISIONED_TYPE_LIST = [HOST_BM_TYPE_DYNAMIC,
 DEVICE_PLUGINS_FILE = "enabled_kube_plugins"
 ENABLED_KUBE_PLUGINS = os.path.join(tsc.CONFIG_PATH, DEVICE_PLUGINS_FILE)
 KUBE_INTEL_GPU_DEVICE_PLUGIN_LABEL = "intelgpu=enabled"
+
+# Port on which ceph manager and ceph-mgr listens
+CEPH_MGR_PORT = 7999
