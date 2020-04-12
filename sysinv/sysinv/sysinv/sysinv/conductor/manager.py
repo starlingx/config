@@ -953,32 +953,27 @@ class ConductorManager(service.PeriodicService):
             install_output_arg = "-t"
         install_opts += [install_output_arg]
 
-        # This version check MUST be present. The -u option does not exists
-        # prior to v17.00. This method is also called during upgrades to
+        # This method is called during upgrades to
         # re-generate the host's pxe config files to the appropriate host's
         # software version. It is required specifically when we downgrade a
         # host or when we lock/unlock a host.
-        if sw_version != tsc.SW_VERSION_1610:
-            host_uuid = host.get('uuid')
-            notify_url = \
-                "http://pxecontroller:%d/v1/ihosts/%s/install_progress" % \
-                (CONF.sysinv_api_port, host_uuid)
-            install_opts += ['-u', notify_url]
+        host_uuid = host.get('uuid')
+        notify_url = \
+            "http://pxecontroller:%d/v1/ihosts/%s/install_progress" % \
+            (CONF.sysinv_api_port, host_uuid)
+        install_opts += ['-u', notify_url]
 
         system = self.dbapi.isystem_get_one()
 
-        # This version check MUST be present. The -s option
-        # (security profile) does not exist 17.06 and below.
-        if sw_version != tsc.SW_VERSION_1706:
-            secprofile = system.security_profile
-            # ensure that the securtiy profile selection is valid
-            if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
-                                  constants.SYSTEM_SECURITY_PROFILE_EXTENDED]:
-                LOG.error("Security Profile (%s) not a valid selection. "
-                          "Defaulting to: %s" % (secprofile,
-                           constants.SYSTEM_SECURITY_PROFILE_STANDARD))
-                secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
-            install_opts += ['-s', secprofile]
+        secprofile = system.security_profile
+        # ensure that the securtiy profile selection is valid
+        if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
+                              constants.SYSTEM_SECURITY_PROFILE_EXTENDED]:
+            LOG.error("Security Profile (%s) not a valid selection. "
+                      "Defaulting to: %s" % (secprofile,
+                                             constants.SYSTEM_SECURITY_PROFILE_STANDARD))
+            secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
+        install_opts += ['-s', secprofile]
 
         # If 'console' is not present in ihost_obj, we want to use the default.
         # If, however, it is present and is explicitly set to None or "", then
@@ -996,11 +991,7 @@ class ConductorManager(service.PeriodicService):
             if tboot is not None and tboot != "":
                 install_opts += ['-T', tboot]
 
-        # This version check MUST be present. The -k option
-        # (extra_kernel_args) does not exist 18.03 and below.
-        if sw_version != tsc.SW_VERSION_1706 and \
-           sw_version != tsc.SW_VERSION_1803:
-            install_opts += ['-k', system.security_feature]
+        install_opts += ['-k', system.security_feature]
 
         base_url = "http://pxecontroller:%d" % cutils.get_http_port(self.dbapi)
         install_opts += ['-l', base_url]
