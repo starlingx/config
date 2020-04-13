@@ -58,6 +58,10 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
                         "/var/log/**/*.log"
                     ],
                     'type': "log",
+                    'exclude_files': [
+                        "^/var/log/containers/",
+                        "^/var/log/pods/"
+                    ],
                     'close_timeout': "5m"
                 }
             ]
