@@ -27,6 +27,13 @@ def create_host_overrides(filename):
         dbapi = api.get_instance()
         data = {}
 
+        # Get the distributed cloud role info
+        system = dbapi.isystem_get_one()
+        if system.distributed_cloud_role:
+            data.update({'distributed_cloud_role': system.distributed_cloud_role})
+        else:
+            data.update({'distributed_cloud_role': 'none'})
+
         # Get the DNS info
         dns = dbapi.idns_get_one()
         if dns.nameservers:
