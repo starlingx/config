@@ -44,13 +44,13 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
                     }
                 }
             ],
+            'fields_under_root': True,
+            'fields': {
+                "system": system_fields
+            },
             'filebeat.inputs': [
                 {
                     'enabled': True,
-                    'fields_under_root': True,
-                    'fields': {
-                        "system": system_fields
-                    },
                     'paths': [
                         "/var/log/*.log",
                         "/var/log/messages",
