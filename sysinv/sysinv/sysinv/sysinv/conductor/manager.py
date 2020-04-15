@@ -182,7 +182,7 @@ class ConductorManager(service.PeriodicService):
         self._app = None
         self._ceph = None
         self._ceph_api = ceph.CephWrapper(
-            endpoint='http://localhost:5001')
+            endpoint='http://localhost:{}'.format(constants.CEPH_MGR_PORT))
         self._kube = None
         self._kube_pod = None
         self._fernet = None

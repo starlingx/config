@@ -49,7 +49,7 @@ class CephOperator(object):
         self._fm_api = fm_api.FaultAPIs()
         self._db_api = db_api
         self._ceph_api = ceph.CephWrapper(
-            endpoint='http://localhost:5001')
+            endpoint='http://localhost:{}'.format(constants.CEPH_MGR_PORT))
         self._db_cluster = None
         self._db_primary_tier = None
         self._cluster_name = 'ceph_cluster'
