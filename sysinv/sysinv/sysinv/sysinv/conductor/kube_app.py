@@ -707,7 +707,6 @@ class AppOperator(object):
 
         start = time.time()
         try:
-            local_registry_auth = cutils.get_local_docker_registry_auth()
             with self._lock:
                 self._docker._retrieve_specified_registries()
         except Exception as e:
@@ -719,7 +718,7 @@ class AppOperator(object):
             pool = greenpool.GreenPool(size=threads)
             for tag, success in pool.imap(
                     functools.partial(self._docker.download_an_image,
-                                      app.name, local_registry_auth),
+                                      app.name),
                     images_to_download):
                 if success:
                     continue
@@ -2955,7 +2954,7 @@ class DockerHelper(object):
             # Failed to get a docker client
             LOG.error("Failed to stop Armada service : %s " % e)
 
-    def download_an_image(self, app_name, local_registry_auth, img_tag):
+    def download_an_image(self, app_name, img_tag):
 
         rc = True
 
@@ -2968,6 +2967,7 @@ class DockerHelper(object):
 
                 LOG.info("Image %s download started from local registry" % img_tag)
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
+                local_registry_auth = cutils.get_local_docker_registry_auth()
                 auth = '{0}:{1}'.format(local_registry_auth['username'],
                                         local_registry_auth['password'])
                 subprocess.check_call(["crictl", "pull", "--creds", auth, img_tag])
@@ -2990,6 +2990,9 @@ class DockerHelper(object):
                 try:
                     # Tag and push the image to the local registry
                     client.tag(target_img_tag, img_tag)
+                    # admin password may be changed by openstack client cmd in parallel.
+                    # So we cannot cache auth info, need refresh it each time.
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
                     client.push(img_tag, auth_config=local_registry_auth)
                 except Exception as e:
                     rc = False

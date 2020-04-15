@@ -5333,13 +5333,11 @@ class ConductorManager(service.PeriodicService):
                          "Upgrade in progress."
                          % image_versions.TILLER_IMAGE_VERSION)
                 download_image = running_image_name + ":" + image_versions.TILLER_IMAGE_VERSION
-                local_registry_auth = cutils.get_local_docker_registry_auth()
                 self._docker._retrieve_specified_registries()
 
                 # download the image
                 try:
                     img_tag, ret = self._docker.download_an_image("helm",
-                                                                  local_registry_auth,
                                                                   download_image)
                     if not ret:
                         raise Exception
