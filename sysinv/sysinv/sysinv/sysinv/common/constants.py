@@ -1550,6 +1550,8 @@ ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-networking.yml'
 ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/push_k8s_images.yml'
+ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
+    '/usr/share/ansible/stx-ansible/playbooks/backup.yml'
 
 # Clock synchronization types
 NTP = 'ntp'

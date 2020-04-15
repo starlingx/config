@@ -177,9 +177,18 @@ def create_simplex_backup(software_upgrade):
     with open(metadata_filename, 'w') as metadata_file:
         metadata_file.write(json_data)
 
-    # TODO: Switch this over to use Ansible
-    # backup_filename = get_upgrade_backup_filename(software_upgrade)
-    # backup_restore.backup(backup_filename, constants.BACKUPS_PATH)
+    backup_filename = get_upgrade_backup_filename(software_upgrade)
+    backup_vars = "platform_backup_file=%s.tgz backup_dir=%s" % (
+        backup_filename, constants.BACKUPS_PATH)
+    args = [
+        'ansible-playbook',
+        '-e', backup_vars,
+        sysinv_constants.ANSIBLE_PLATFORM_BACKUP_PLAYBOOK]
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE)
+    out, _ = proc.communicate()
+    LOG.info(out)
+    if proc.returncode:
+        raise subprocess.CalledProcessError(proc.returncode, args)
     LOG.info("Create simplex backup complete")
 
 
