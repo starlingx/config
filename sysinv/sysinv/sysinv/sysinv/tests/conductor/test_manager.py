@@ -468,6 +468,64 @@ class ManagerTestCase(base.DbTestCase):
         ret = self.service.ilvg_get_nova_ilvg_by_ihost(self.context, ihost['uuid'])
         self.assertEqual(ret, [])
 
+    def test_lldp_neighbour_tlv_update_exceed_length(self):
+        # Set up
+        ihost = self._create_test_ihost()
+        interface = utils.create_test_interface(
+            ifname='mgmt',
+            forihostid=ihost['id'],
+            ihost_uuid=ihost['uuid'],
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port = utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        # create fake neighbour
+        neighbour = self.dbapi.lldp_neighbour_create(
+            port.id, ihost.id, {
+                "msap": "08:00:27:82:35:fb,08:00:27:0d:ac:03"
+            })
+
+        # create tlv with excessive size
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        bad_size = (
+            'enp0s8.100, enp0s8.101, enp0s8.102, enp0s8.103,'
+            ' enp0s8.104, enp0s8.105, enp0s8.106, enp0s8.107,'
+            ' enp0s8.108, enp0s8.109, enp0s8.110, enp0s8.111,'
+            ' enp0s8.112, enp0s8.113, enp0s8.114, enp0s8.115,'
+            ' enp0s8.116, enp0s8.117, enp0s8.118, enp0s8.119,'
+            ' enp0s8.120, enp0s8.121, enp0s8.122, enp0s8.12,'
+            ' enp0s8.123'
+        )
+        vlan_list = bad_size
+        self.service.lldp_neighbour_tlv_update({
+            constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES: vlan_list
+        }, neighbour)
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        self.assertEqual(tlv_list[0]['value'][-3:], "...")
+        self.assertTrue(len(tlv_list[0]['value']) <= 255)
+
+        # update tlv to acceptable size
+        vlan_list = 'enp0s8.100'
+        self.service.lldp_neighbour_tlv_update({
+            constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES: vlan_list
+        }, neighbour)
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        self.assertEqual(tlv_list[0]['value'], vlan_list)
+
+        # update tlv to excessive size
+        vlan_list = bad_size
+        self.service.lldp_neighbour_tlv_update({
+            constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES: vlan_list
+        }, neighbour)
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        self.assertEqual(tlv_list[0]['value'][-3:], "...")
+        self.assertTrue(len(tlv_list[0]['value']) <= 255)
+
     def test_platform_interfaces(self):
         ihost = self._create_test_ihost()
         interface = utils.create_test_interface(

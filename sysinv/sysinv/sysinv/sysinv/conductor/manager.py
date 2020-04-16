@@ -2177,9 +2177,27 @@ class ConductorManager(service.PeriodicService):
 
         tlvs = self.dbapi.lldp_tlv_get_by_neighbour(neighbour_uuid)
         for k, v in tlv_dict.items():
+
+            # Since "dot1_vlan_names" has 255 char limit in DB, it
+            # is necessary to ensure the vlan list from the tlv
+            # packets does not have length greater than 255 before
+            # shoving it into DB
+            if k == constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES:
+                # trim the listed vlans to 252 char max
+                if len(v) >= 256:
+                    # if not perfect trim, remove incomplete ending
+                    perfect_trim = v[252] in list(', ')
+                    v = v[:252]
+                    if not perfect_trim:
+                        v = v[:v.rfind(',') + 1]
+
+                    # add '...' to indicate there's more
+                    v += '...'
+                    LOG.info("tlv_value trimmed: %s", v)
+
             for tlv in tlvs:
                 if tlv['type'] == k:
-                    tlv_value = tlv_dict.get(tlv['type'])
+                    tlv_value = v
                     entry = {'type': tlv['type'],
                              'value': tlv_value}
                     if tlv['value'] != tlv_value:
