@@ -39,6 +39,8 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
             'processors': [
                 {
                     'add_kubernetes_metadata': {
+                        'labels.dedot': True,
+                        'annotations.dedot': True
                         # If kube_config is not set, KUBECONFIG environment variable will be checked
                         # and if not present it will fall back to InCluster
                     }
