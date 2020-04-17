@@ -57,7 +57,7 @@ def do_storage_backend_show(cc, args):
 
 @utils.arg('backend',
            metavar='<backend>',
-           choices=['ceph', 'ceph-external', 'file', 'lvm', 'external'],
+           choices=['ceph', 'ceph-external', 'file', 'lvm', 'external', 'ceph-rook'],
            help='The storage backend to add [REQUIRED]')
 @utils.arg('-s', '--services',
            metavar='<services>',

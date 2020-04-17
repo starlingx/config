@@ -900,6 +900,18 @@ class StorageCephExternal(StorageBackend):
     }
 
 
+class StorageCephRook(StorageBackend):
+    __tablename__ = 'storage_ceph_rook'
+
+    id = Column(Integer, ForeignKey('storage_backend.id'), primary_key=True,
+                nullable=False)
+    ceph_conf = Column(JSONEncodedDict)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'ceph-rook',
+    }
+
+
 class CephMon(Base):
     __tablename__ = 'ceph_mon'
 

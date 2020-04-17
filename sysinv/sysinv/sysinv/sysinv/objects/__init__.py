@@ -95,6 +95,7 @@ from sysinv.objects import storage_file
 from sysinv.objects import storage_external
 from sysinv.objects import storage_tier
 from sysinv.objects import storage_ceph_external
+from sysinv.objects import storage_ceph_rook
 from sysinv.objects import host_fs
 
 
@@ -187,6 +188,7 @@ storage_file = storage_file.StorageFile
 storage_external = storage_external.StorageExternal
 storage_tier = storage_tier.StorageTier
 storage_ceph_external = storage_ceph_external.StorageCephExternal
+storage_ceph_rook = storage_ceph_rook.StorageCephRook
 helm_overrides = helm_overrides.HelmOverrides
 label = label.Label
 kube_app = kube_app.KubeApp
@@ -261,6 +263,7 @@ __all__ = ("system",
            "objectify",
            "storage_file",
            "storage_external",
+           "storage_ceph_rook",
            "storage_tier",
            "storage_ceph_external",
            "helm_overrides",

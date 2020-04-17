@@ -192,6 +192,11 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         return config
 
     def get_host_config(self, host):
+        ceph_backend = StorageBackendConfig.get_backend_conf(
+            self.dbapi, constants.CINDER_BACKEND_CEPH)
+        if not ceph_backend:
+            return {}  # ceph is not configured
+
         config = {}
         if host.personality in [constants.CONTROLLER, constants.STORAGE]:
             config.update(self._get_ceph_osd_config(host))

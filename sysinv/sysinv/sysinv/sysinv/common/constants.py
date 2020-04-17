@@ -420,12 +420,14 @@ SB_TYPE_LVM = 'lvm'
 SB_TYPE_CEPH = 'ceph'
 SB_TYPE_CEPH_EXTERNAL = 'ceph-external'
 SB_TYPE_EXTERNAL = 'external'
+SB_TYPE_CEPH_ROOK = 'ceph-rook'
 
 SB_SUPPORTED = [SB_TYPE_FILE,
                 SB_TYPE_LVM,
                 SB_TYPE_CEPH,
                 SB_TYPE_CEPH_EXTERNAL,
-                SB_TYPE_EXTERNAL]
+                SB_TYPE_EXTERNAL,
+                SB_TYPE_CEPH_ROOK]
 
 # Storage backend default names
 SB_DEFAULT_NAME_SUFFIX = "-store"
@@ -434,6 +436,7 @@ SB_DEFAULT_NAMES = {
     SB_TYPE_LVM: SB_TYPE_LVM + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_CEPH: SB_TYPE_CEPH + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_CEPH_EXTERNAL: SB_TYPE_CEPH_EXTERNAL + SB_DEFAULT_NAME_SUFFIX,
+    SB_TYPE_CEPH_ROOK: SB_TYPE_CEPH_ROOK + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_EXTERNAL: 'shared_services'
 }
 
@@ -455,6 +458,7 @@ SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT,
                           SB_SVC_NOVA, SB_SVC_RBD_PROVISIONER]
 SB_CEPH_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE, SB_SVC_NOVA]
 SB_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE]
+SB_CEPH_ROOK_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_NOVA]
 
 # Storage backend: Service specific backend nomenclature
 CINDER_BACKEND_CEPH = SB_TYPE_CEPH
@@ -1492,6 +1496,7 @@ HELM_APPS_PLATFORM_MANAGED = [
     HELM_APP_PLATFORM,
     HELM_APP_OIDC_AUTH,
     HELM_APP_CERT_MANAGER,
+    HELM_APP_ROOK_CEPH,
 ]
 
 # The order in which apps are listed here is important.
@@ -1636,6 +1641,8 @@ ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
                                                 ".bootstrap_completed")
 UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
 INVENTORY_WAIT_TIMEOUT_IN_SECS = 90
+
+ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_rook")
 
 # Ansible playbooks
 ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \

@@ -1343,6 +1343,27 @@ class ConductorManager(service.PeriodicService):
         self._remove_leases_by_mac_address(host.mgmt_mac)
         self._generate_dnsmasq_hosts_file(deleted_host=host)
 
+    def _update_host_lvm_config(self, context, host, force=False):
+        personalities = [host.personality]
+        # For rook must update lvm filter
+        config_dict = {
+            "host_uuids": [host.uuid],
+        }
+
+        if host.personality == constants.CONTROLLER:
+            config_dict["personalities"] = [constants.CONTROLLER]
+            config_dict["classes"] = ['platform::lvm::controller::runtime']
+        elif host.personality == constants.WORKER:
+            config_dict["personalities"] = [constants.WORKER]
+            config_dict["classes"] = ['platform::lvm::compute::runtime']
+
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host.uuid])
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict,
+                                            force=force)
+
     def _configure_controller_host(self, context, host):
         """Configure a controller host with the supplied data.
 
@@ -3479,6 +3500,25 @@ class ConductorManager(service.PeriodicService):
         # Purge the database records for volume groups that have been
         # removed
         for ilvg in ilvgs:
+            if ilvg.lvm_vg_name.startswith("ceph-"):
+                found = False
+                for i in ilvg_dict_array:
+                    if ilvg.lvm_vg_name == i['lvm_vg_name']:
+                        found = True
+
+                if not found:
+                    try:
+                        LOG.info("remove out-of-date rook provisioned lv %s" % ilvg.lvm_vg_name)
+                        ipvs = self.dbapi.ipv_get_by_ihost(ihost_uuid)
+                        for ipv in ipvs:
+                            if ipv.lvm_vg_name == ilvg.lvm_vg_name:
+                                LOG.info("remove out-of-date rook provisioned pv %s" % ipv.lvm_vg_name)
+                                self._ipv_handle_phys_storage_removal(ipv, ilvg.lvm_vg_name)
+
+                        self.dbapi.ilvg_destroy(ilvg.id)
+                    except Exception:
+                        LOG.exception("Local Volume Group removal failed")
+
             if ilvg.vg_state == constants.LVG_DEL:
                 # Make sure that the agent hasn't reported that it is
                 # still present on the host
@@ -4222,6 +4262,79 @@ class ConductorManager(service.PeriodicService):
                         self._ipv_handle_phys_storage_removal(ipv, 'idisk')
                     break
 
+            # Create the physical volume if it doesn't currently exist for rook
+            if ((not found) and ('forilvgid' in pv_dict) and
+                    pv_dict['lvm_vg_name'].startswith("ceph-")):
+
+                # Lookup the uuid of the disk
+                pv_dict['disk_or_part_uuid'] = None
+                pv_dict['disk_or_part_device_node'] = None
+
+                # Determine the volume type => look for a partition number.
+                if "nvme" not in i["lvm_pv_name"]:
+                    if regex.match(i['lvm_pv_name']):
+                        pv_dict['pv_type'] = constants.PV_TYPE_PARTITION
+                    else:
+                        pv_dict['pv_type'] = constants.PV_TYPE_DISK
+                else:
+                    # for nvme disk, it named with /dev/nvme0n1
+                    # for nvme partition, it name with /dev/nvme0n1p0, /dev/nvme0n1p1
+                    nvme_regex = re.compile("^/dev/nvme.*p[1-9][0-9]?$")
+                    if nvme_regex.match(i['lvm_pv_name']):
+                        pv_dict['pv_type'] = constants.PV_TYPE_PARTITION
+                    else:
+                        pv_dict['pv_type'] = constants.PV_TYPE_DISK
+
+                LOG.info("add rook provisioned node %s, type %s" % (i['lvm_pv_name'], pv_dict['pv_type']))
+
+                # Lookup the uuid of the disk
+                pv_dict['disk_or_part_uuid'] = None
+                pv_dict['disk_or_part_device_node'] = None
+
+                if pv_dict['pv_type'] == constants.PV_TYPE_DISK:
+                    idisk = self.dbapi.idisk_get_by_ihost(ihost_uuid)
+                    for d in idisk:
+                        if d.device_node in i['lvm_pv_name']:
+                            pv_dict['disk_or_part_uuid'] = d.uuid
+                            pv_dict['disk_or_part_device_node'] = d.device_node
+                            pv_dict['disk_or_part_device_path'] = d.device_path
+                elif pv_dict['pv_type'] == constants.PV_TYPE_PARTITION:
+                    ipartition = self.dbapi.partition_get_by_ihost(ihost_uuid)
+                    for p in ipartition:
+                        if p.device_node in i['lvm_pv_name']:
+                            pv_dict['disk_or_part_uuid'] = p.uuid
+                            pv_dict['disk_or_part_device_node'] = p.device_node
+                            pv_dict['disk_or_part_device_path'] = p.device_path
+
+                LOG.info("pv_dict %s" % pv_dict)
+                pv_dict['pv_state'] = constants.PROVISIONED
+
+                # Create the Physical Volume
+                pv = None
+                try:
+                    pv = self.dbapi.ipv_create(forihostid, pv_dict)
+                except Exception:
+                    LOG.exception("PV Volume Creation failed")
+
+                if pv.get('pv_type') == constants.PV_TYPE_PARTITION:
+                    try:
+                        self.dbapi.partition_update(
+                            pv.disk_or_part_uuid,
+                            {'foripvid': pv.id,
+                             'status': constants.PARTITION_IN_USE_STATUS})
+                    except Exception:
+                        LOG.exception("Updating partition (%s) for ipv id "
+                                      "failed (%s)" % (pv.disk_or_part_uuid,
+                                                       pv.uuid))
+                elif pv.get('pv_type') == constants.PV_TYPE_DISK:
+                    try:
+                        self.dbapi.idisk_update(pv.disk_or_part_uuid,
+                                                {'foripvid': pv.id})
+                    except Exception:
+                        LOG.exception("Updating idisk (%s) for ipv id "
+                                      "failed (%s)" % (pv.disk_or_part_uuid,
+                                                       pv.uuid))
+
             # Special Case: DRBD has provisioned the cinder partition. Update the existing PV partition
             if not found and i['lvm_pv_name'] == constants.CINDER_DRBD_DEVICE:
                 if cinder_pv_id:
@@ -4382,6 +4495,11 @@ class ConductorManager(service.PeriodicService):
                             # mapping in the DB. Use a different PV state for
                             # standby controller
                             continue
+                        if ipv.lvm_vg_name.startswith("ceph-"):
+                            # rook removed osd, destroy the standby PV
+                            LOG.info("remove out-of-date rook provisioned pv %s" % ipv.lvm_pv_name)
+                            self._prepare_for_ipv_removal(ipv)
+                            self.dbapi.ipv_destroy(ipv.id)
             else:
                 if (ipv.pv_state == constants.PV_ERR and
                         ipv.lvm_vg_name == ipv_in_agent['lvm_vg_name']):
@@ -6649,6 +6767,51 @@ class ConductorManager(service.PeriodicService):
                       'task': None}
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
 
+    def update_ceph_rook_config(self, context, sb_uuid, services):
+        """Update the manifests for Rook Ceph backend and services"""
+
+        personalities = [constants.CONTROLLER]
+
+        # Update service table
+        self.update_service_table_for_cinder()
+
+        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        valid_ctrls = [ctrl for ctrl in ctrls if
+                       ctrl.administrative == constants.ADMIN_UNLOCKED and
+                       ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
+                                             constants.AVAILABILITY_DEGRADED]]
+
+        classes = ['platform::rook::runtime']
+        if cutils.is_aio_duplex_system(self.dbapi):
+            # On 2 node systems we have a floating Ceph monitor.
+            classes.append('platform::drbd::rookmon::runtime')
+            classes.append('platform::sm::ceph::runtime')
+
+        host_ids = [ctrl.uuid for ctrl in valid_ctrls]
+        config_dict = {"personalities": personalities,
+                       "host_uuids": host_ids,
+                       "classes": classes,
+                       puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_ROOK_CONFIG,
+                       }
+
+        # Set config out-of-date for controllers
+        config_uuid = self._config_update_hosts(context,
+                                                personalities,
+                                                host_uuids=host_ids)
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid=config_uuid,
+                                            config_dict=config_dict)
+
+        tasks = {}
+        for ctrl in valid_ctrls:
+            tasks[ctrl.hostname] = constants.SB_TASK_APPLY_MANIFESTS
+
+        # Update initial task states
+        values = {'state': constants.SB_STATE_CONFIGURING,
+                  'task': str(tasks)}
+        self.dbapi.storage_ceph_rook_update(sb_uuid, values)
+
     def _update_image_conversion_alarm(self, alarm_state, fs_name, reason_text=None):
         """ Raise conversion configuration alarm"""
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_IMAGE_CONVERSION,
@@ -6844,6 +7007,20 @@ class ConductorManager(service.PeriodicService):
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
                 success = True
+        elif reported_cfg == puppet_common.REPORT_CEPH_ROOK_CONFIG:
+            host_uuid = iconfig['host_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                success = True
+                self.report_ceph_rook_config_success(context, host_uuid)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Configuration has failed
+                self.report_ceph_rook_config_failure(host_uuid, error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -7062,6 +7239,18 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
+    def _update_config_for_rook_ceph(self, context):
+        rpcapi = agent_rpcapi.AgentAPI()
+        controller_hosts = \
+            self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        worker_hosts = \
+            self.dbapi.ihost_get_by_personality(constants.WORKER)
+        hosts = controller_hosts + worker_hosts
+
+        for host in hosts:
+            rpcapi.update_host_lvm(context, host.uuid)
+            self._update_host_lvm_config(context, host)
+
     def report_lvm_cinder_config_success(self, context, host_uuid):
         """ Callback for Sysinv Agent
 
@@ -7255,6 +7444,80 @@ class ConductorManager(service.PeriodicService):
         reason = "Ceph external configuration failed to apply on host: %(host)s" % args
         self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
                                            constants.CINDER_BACKEND_CEPH,
+                                           reason)
+
+    def report_ceph_rook_config_success(self, context, host_uuid):
+        """ Callback for Sysinv Agent
+
+        Configuring Ceph Rook was successful, finalize operation.
+        The Agent calls this if Ceph manifests are applied correctly.
+        Both controllers have to get their manifests applied before accepting
+        the entire operation as successful.
+        """
+        LOG.info("Ceph manifests success on host: %s" % host_uuid)
+
+        # As we can have multiple rook_ceph backends, need to find the one
+        # that is in configuring state.
+        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
+            self.dbapi, target=constants.SB_TYPE_CEPH_ROOK)
+
+        if ceph_conf:
+            config_done = True
+            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+            if not utils.is_host_simplex_controller(active_controller):
+                ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+                for host in ctrls:
+                    if host.uuid == host_uuid:
+                        break
+                else:
+                    LOG.error("Host %s is not a controller?" % host_uuid)
+                    return
+                tasks = eval(ceph_conf.get('task', '{}'))
+                if tasks:
+                    tasks[host.hostname] = None
+                else:
+                    tasks = {host.hostname: None}
+
+                for h in ctrls:
+                    if tasks[h.hostname]:
+                        config_done = False
+                        break
+
+            if config_done:
+                values = {'state': constants.SB_STATE_CONFIGURED,
+                          'task': None}
+
+                # Clear alarm, if any
+                self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                                   constants.SB_TYPE_CEPH_ROOK)
+            else:
+                values = {'task': str(tasks)}
+
+            self.dbapi.storage_backend_update(ceph_conf.uuid, values)
+
+    def report_ceph_rook_config_failure(self, host_uuid, error):
+        """ Callback for Sysinv Agent
+
+        Configuring Rook Ceph backend failed, set backend to err and raise alarm
+        The agent calls this if Ceph manifests failed to apply
+        """
+
+        args = {'host': host_uuid, 'error': error}
+        LOG.error("Ceph rook manifests failed on host: %(host)s. Error: %(error)s" % args)
+
+        # As we can have multiple rook_ceph backends, need to find the one
+        # that is in configuring state.
+        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
+            self.dbapi, target=constants.SB_TYPE_CEPH_ROOK)
+
+        # Set ceph backend to error state
+        values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
+        self.dbapi.storage_backend_update(ceph_conf.uuid, values)
+
+        # Raise alarm
+        reason = "Ceph rook configuration failed to apply on host: %(host)s" % args
+        self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                           constants.SB_TYPE_CEPH_ROOK,
                                            reason)
 
     def report_ceph_config_success(self, context, host_uuid):

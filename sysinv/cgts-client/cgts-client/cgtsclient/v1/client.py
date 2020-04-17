@@ -79,6 +79,7 @@ from cgtsclient.v1 import sm_servicegroup
 from cgtsclient.v1 import storage_backend
 from cgtsclient.v1 import storage_ceph
 from cgtsclient.v1 import storage_ceph_external
+from cgtsclient.v1 import storage_ceph_rook
 from cgtsclient.v1 import storage_external
 from cgtsclient.v1 import storage_file
 from cgtsclient.v1 import storage_lvm
@@ -122,6 +123,7 @@ class Client(http.HTTPClient):
         self.storage_file = storage_file.StorageFileManager(self)
         self.storage_external = storage_external.StorageExternalManager(self)
         self.storage_ceph = storage_ceph.StorageCephManager(self)
+        self.storage_ceph_rook = storage_ceph_rook.StorageCephRookManager(self)
         self.ceph_mon = ceph_mon.CephMonManager(self)
         self.drbdconfig = drbdconfig.drbdconfigManager(self)
         self.iprofile = iprofile.iprofileManager(self)

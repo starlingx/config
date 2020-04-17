@@ -4068,6 +4068,8 @@ class Connection(api.Connection):
             backend = models.StorageLvm()
         elif values['backend'] == constants.SB_TYPE_EXTERNAL:
             backend = models.StorageExternal()
+        elif values['backend'] == constants.SB_TYPE_CEPH_ROOK:
+            backend = models.StorageCephRook()
         else:
             raise exception.InvalidParameterValue(
                 err="Invalid backend setting: %s" % values['backend'])
@@ -4144,6 +4146,8 @@ class Connection(api.Connection):
             return objects.storage_lvm.from_db_object(result)
         elif result['backend'] == constants.SB_TYPE_EXTERNAL:
             return objects.storage_external.from_db_object(result)
+        elif result['backend'] == constants.SB_TYPE_CEPH_ROOK:
+            return objects.storage_ceph_rook.from_db_object(result)
         else:
             return objects.storage_backend.from_db_object(result)
 
@@ -4180,6 +4184,9 @@ class Connection(api.Connection):
                                                   marker, sort_key, sort_dir)
         elif backend_type == constants.SB_TYPE_EXTERNAL:
             return self._storage_backend_get_list(models.StorageExternal, limit,
+                                                  marker, sort_key, sort_dir)
+        elif backend_type == constants.SB_TYPE_CEPH_ROOK:
+            return self._storage_backend_get_list(models.StorageCephRook, limit,
                                                   marker, sort_key, sort_dir)
         else:
             entity = with_polymorphic(models.StorageBackend, '*')
@@ -4231,6 +4238,8 @@ class Connection(api.Connection):
                 return self._storage_backend_update(models.StorageLvm, storage_backend_id, values)
             elif result.backend == constants.SB_TYPE_EXTERNAL:
                 return self._storage_backend_update(models.StorageExternal, storage_backend_id, values)
+            elif result.backend == constants.SB_TYPE_CEPH_ROOK:
+                return self._storage_backend_update(models.StorageCephRook, storage_backend_id, values)
             else:
                 return self._storage_backend_update(models.StorageBackend, storage_backend_id, values)
 
@@ -4401,6 +4410,34 @@ class Connection(api.Connection):
     def storage_ceph_external_destroy(self, storage_ceph_external_id):
         return self._storage_backend_destroy(models.StorageCephExternal,
                                              storage_ceph_external_id)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_create(self, values):
+        backend = models.StorageCephRook()
+        return self._storage_backend_create(backend, values)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_get(self, storage_ceph_rook_id):
+        return self._storage_backend_get_by_cls(models.StorageCephRook,
+                                                storage_ceph_rook_id)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+        return self._storage_backend_get_list(models.StorageCephRook, limit,
+                                              marker,
+                                              sort_key, sort_dir)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_update(self, storage_ceph_rook_id, values):
+        return self._storage_backend_update(models.StorageCephRook,
+                                            storage_ceph_rook_id,
+                                            values)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_destroy(self, storage_ceph_rook_id):
+        return self._storage_backend_destroy(models.StorageCephRook,
+                                             storage_ceph_rook_id)
 
     def _drbdconfig_get(self, server):
         query = model_query(models.drbdconfig)

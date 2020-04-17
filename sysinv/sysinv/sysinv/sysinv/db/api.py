@@ -2490,6 +2490,45 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def storage_ceph_rook_create(self, values):
+        """Create a new storage_ceph_rook
+
+        :param values: A dict containing several items used to identify
+                       and track the storage_ceph_rook.
+        :returns: An storage_ceph_rook.
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_rook_get(self, storage_ceph_rook_id):
+        """Return a storage_ceph_rook.
+
+        :param storage_ceph_rook_id: The id or uuid of an storage_ceph_rook.
+        :returns: A storage_ceph_rook.
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_rook_get_list(self, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        """Return a list of storage_ceph_rook.
+
+        :param limit: Maximum number of storage_ceph_rook to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_rook_update(self, stor_ceph_rook_id, values):
+        """Update properties of a storage_ceph_rook.
+
+        :param storage_ceph_rook: The id or uuid of an storage_ceph_rook.
+        :param values: Dict of values to update. May be a partial list.
+        :returns: A storage_ceph_rook.
+        """
+
+    @abc.abstractmethod
     def drbdconfig_create(self, values):
         """Create a new drbdconfig for an isystem
 

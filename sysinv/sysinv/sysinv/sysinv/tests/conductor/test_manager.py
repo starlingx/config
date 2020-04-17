@@ -1267,6 +1267,7 @@ class ManagerTestCase(base.DbTestCase):
         config_applied = self.service._config_set_reboot_required(uuid.uuid4())
         config_target = self.service._config_set_reboot_required(uuid.uuid4())
         ihost = self._create_test_ihost(
+            uuid=str(uuid.uuid4()),
             config_applied=config_applied,
             config_target=config_target)
         ihost['mgmt_mac'] = '00:11:22:33:44:55'

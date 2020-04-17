@@ -36,7 +36,7 @@ class PVOperator(object):
         LOG.error("%s @ %s:%s" % (e, traceback.tb_frame.f_code.co_filename,
                                   traceback.tb_lineno))
 
-    def ipv_get(self, cinder_device=None):
+    def ipv_get(self, cinder_device=None, get_rook_device=False):
         '''Enumerate physical volume topology based on:
 
         :param self
@@ -56,6 +56,10 @@ class PVOperator(object):
         pvdisplay_command = 'pvdisplay -C --separator=";" -o pv_name,vg_name,pv_uuid'\
                             ',pv_size,pv_pe_count,pv_pe_alloc_count'\
                             ' --units B --nosuffix --noheadings'
+
+        if get_rook_device:
+            disable_filter = ' --config \'devices/global_filter=["a|.*|"]\''
+            pvdisplay_command = pvdisplay_command + disable_filter
 
         # Execute the command
         try:
@@ -105,6 +109,9 @@ class PVOperator(object):
                     self.handle_exception("Could not execute vgreduce: %s" % e)
                 continue
 
+            if (get_rook_device and ("ceph-" not in row)):
+                continue
+
             # get the values of fields as strings
             values = row.split(';')
             values = [v.strip() for v in values]
@@ -128,6 +135,13 @@ class PVOperator(object):
                         break
                 else:
                     ipv.append(attr)
+
+        if not get_rook_device:
+            rook_pv = self.ipv_get(get_rook_device=True)
+
+            for i in rook_pv:
+                if i not in ipv:
+                    ipv.append(i)
 
         LOG.debug("ipv= %s" % ipv)
 

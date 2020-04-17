@@ -63,6 +63,11 @@ class StorageBackendConfig(object):
             storage_ceph_externals = api.storage_ceph_external_get_list()
             if storage_ceph_externals:
                 return storage_ceph_externals[0]
+        elif target == constants.SB_TYPE_CEPH_ROOK:
+            # Support multiple ceph rook backends
+            storage_ceph_rook = api.storage_ceph_rook_get_list()
+            if storage_ceph_rook:
+                return storage_ceph_rook[0]
 
         return None
 

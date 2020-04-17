@@ -319,3 +319,15 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                       'refresh_helm_repo_information'))
 
         return retval
+
+    def update_host_lvm(self, context, host_uuid):
+        """Synchronously, update LVM physical volume
+
+        :param context: an admin context
+        :param host_uuid: ihost uuid unique id
+        :returns: pass or fail
+        """
+
+        return self.call(context,
+                         self.make_msg('update_host_lvm',
+                                       host_uuid=host_uuid))

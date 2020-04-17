@@ -1406,22 +1406,6 @@ class AgentManager(service.PeriodicService):
             if self._ihost_personality != constants.STORAGE:
                 self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
 
-            # Update physical volumes
-            ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
-            if ((self._prev_pv is None) or
-                    (self._prev_pv != ipv)):
-                self._prev_pv = ipv
-                try:
-                    rpcapi.ipv_update_by_ihost(icontext,
-                                               self._ihost_uuid,
-                                               ipv)
-                    self._inventory_reported.add(self.PV)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ipv"
-                                  "conductor.")
-                    self._prev_pv = None
-                    pass
-
             # Update local volume groups
             ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
             if ((self._prev_lvg is None) or
@@ -1436,6 +1420,22 @@ class AgentManager(service.PeriodicService):
                     LOG.exception("Sysinv Agent exception updating ilvg"
                                   "conductor.")
                     self._prev_lvg = None
+                    pass
+
+            # Update physical volumes
+            ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
+            if ((self._prev_pv is None) or
+                    (self._prev_pv != ipv)):
+                self._prev_pv = ipv
+                try:
+                    rpcapi.ipv_update_by_ihost(icontext,
+                                               self._ihost_uuid,
+                                               ipv)
+                    self._inventory_reported.add(self.PV)
+                except exception.SysinvException:
+                    LOG.exception("Sysinv Agent exception updating ipv"
+                                  "conductor.")
+                    self._prev_pv = None
                     pass
 
             self._create_host_filesystems(rpcapi, icontext)
@@ -2103,3 +2103,42 @@ class AgentManager(service.PeriodicService):
                 except subprocess.CalledProcessError:
                     # Just log an error. Don't stop any callers from further execution.
                     LOG.warn("Failed to update helm repo data for user sysadmin.")
+
+    def update_host_lvm(self, context, host_uuid):
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            rpcapi = conductor_rpcapi.ConductorAPI(
+                topic=conductor_rpcapi.MANAGER_TOPIC)
+
+            ipartition = self._ipartition_operator.ipartition_get(skip_gpt_check=True)
+            try:
+                rpcapi.ipartition_update_by_ihost(
+                    context, self._ihost_uuid, ipartition)
+            except AttributeError:
+                # safe to ignore during upgrades
+                LOG.warn("Skip updating ipartition rook conductor. "
+                         "Upgrade in progress?")
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating rook"
+                              "ipartition conductor.")
+
+            # Update local volume groups
+            ilvg = self._ilvg_operator.ilvg_get()
+            try:
+                rpcapi.ilvg_update_by_ihost(context,
+                                            self._ihost_uuid,
+                                            ilvg)
+                self._inventory_reported.add(self.LVG)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ilvg"
+                              "conductor.")
+
+            # Update physical volumes
+            ipv = self._ipv_operator.ipv_get()
+            try:
+                rpcapi.ipv_update_by_ihost(context,
+                                           self._ihost_uuid,
+                                           ipv)
+                self._inventory_reported.add(self.PV)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ipv"
+                              "conductor.")

@@ -69,13 +69,13 @@ class PartitionOperator(object):
         return sgdisk_part_info
 
     @utils.skip_udev_partition_probe
-    def get_partition_info(self, device_path, device_node):
+    def get_partition_info(self, device_path, device_node, skip_gpt_check=False):
         """Obtain all information needed for the partitions on a disk.
         :param:   device_path: the disk's device path
         :param:   device_node: the disk's device node
         :returns: list of partitions"""
         # Check that partition table format is GPT. Return 0 if not.
-        if not utils.disk_is_gpt(device_node=device_node):
+        if ((not utils.disk_is_gpt(device_node=device_node)) and (not skip_gpt_check)):
             LOG.debug("Format of disk node %s is not GPT." % device_node)
             return None
 
@@ -116,7 +116,7 @@ class PartitionOperator(object):
 
         return ipartitions
 
-    def ipartition_get(self):
+    def ipartition_get(self, skip_gpt_check=False):
         """Enumerate partitions
         :param self
         :returns list of partitions and attributes
@@ -136,7 +136,8 @@ class PartitionOperator(object):
 
                 try:
                     new_partitions = self.get_partition_info(device_path=device_path,
-                                                             device_node=device_node)
+                                                             device_node=device_node,
+                                                             skip_gpt_check=skip_gpt_check)
                 except IOError as e:
                     LOG.error("Error getting new partitions for: %s. Reason: %s" %
                               (device_node, str(e)))
