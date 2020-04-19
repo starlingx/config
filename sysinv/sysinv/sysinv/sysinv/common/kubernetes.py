@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 from distutils.version import LooseVersion
 import json
+import os
 import re
 
 from kubernetes import config
@@ -26,6 +27,9 @@ from oslo_log import log as logging
 from sysinv.common import exception
 
 LOG = logging.getLogger(__name__)
+
+# Kubernetes Files
+KUBERNETES_ADMIN_CONF = '/etc/kubernetes/admin.conf'
 
 # Possible states for each supported kubernetes version
 KUBE_STATE_AVAILABLE = 'available'
@@ -113,6 +117,13 @@ def get_kube_networking_upgrade_version(kube_upgrade):
         return kube_upgrade.to_version
 
 
+def is_k8s_configured():
+    """Check to see if the k8s admin config file exists."""
+    if os.path.isfile(KUBERNETES_ADMIN_CONF):
+        return True
+    return False
+
+
 class KubeOperator(object):
 
     def __init__(self):
@@ -121,7 +132,12 @@ class KubeOperator(object):
         self._kube_client_custom_objects = None
 
     def _load_kube_config(self):
-        config.load_kube_config('/etc/kubernetes/admin.conf')
+        if not is_k8s_configured():
+            raise exception.SysinvException(
+                "Kubernetes is not configured. API operations will not be "
+                "available.")
+
+        config.load_kube_config(KUBERNETES_ADMIN_CONF)
 
         # Workaround: Turn off SSL/TLS verification
         c = Configuration()

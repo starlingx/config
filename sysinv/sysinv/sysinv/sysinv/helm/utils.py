@@ -13,6 +13,7 @@ from eventlet.green import subprocess
 import ruamel.yaml as yaml
 from oslo_log import log as logging
 from sysinv.agent import rpcapi as agent_rpcapi
+from sysinv.common import kubernetes
 from sysinv.common import exception
 from sysinv.openstack.common import context
 import threading
@@ -43,7 +44,7 @@ def retrieve_helm_releases():
     :return: a dict of deployed helm releases
     """
     helm_list = subprocess.Popen(
-        ['helm', '--kubeconfig', '/etc/kubernetes/admin.conf',
+        ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
          'list', '--output', 'yaml'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, helm_list.kill)
@@ -93,7 +94,7 @@ def delete_helm_release(release):
     :param release: the name of the helm release
     """
     helm_cmd = subprocess.Popen(
-        ['helm', '--kubeconfig', '/etc/kubernetes/admin.conf',
+        ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
          'delete', release],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, helm_cmd.kill)
@@ -123,7 +124,7 @@ def delete_helm_release(release):
 def get_openstack_pending_install_charts():
     try:
         return subprocess.check_output(
-            ['helm', '--kubeconfig', '/etc/kubernetes/admin.conf',
+            ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
              'list', '--namespace', 'openstack', '--pending'])
     except Exception as e:
         raise exception.HelmTillerFailure(
@@ -138,18 +139,21 @@ def helm_upgrade_tiller(image):
         # sed command until helm and tiller provide a fix for
         # https://github.com/helm/helm/issues/6374
         workaround_part1 = '--skip-refresh ' \
-                      '--service-account tiller ' \
-                      '--node-selectors "node-role.kubernetes.io/master"="" ' \
-                      '--override spec.template.spec.hostNetwork=true ' \
-                      '--override spec.selector.matchLabels.app=helm ' \
-                      '--override spec.selector.matchLabels.name=tiller ' \
-                      '--output yaml'
+                    '--service-account tiller ' \
+                    '--node-selectors "node-role.kubernetes.io/master"="" ' \
+                    '--override spec.template.spec.hostNetwork=true ' \
+                    '--override spec.selector.matchLabels.app=helm ' \
+                    '--override spec.selector.matchLabels.name=tiller ' \
+                    '--output yaml'
         workaround_part2 = \
             '| sed "s@apiVersion: extensions/v1beta1@apiVersion: apps/v1@" ' \
-            '| kubectl --kubeconfig /etc/kubernetes/admin.conf replace --force -f -'
+            '| kubectl --kubeconfig {} replace --force -f -'.format(
+                kubernetes.KUBERNETES_ADMIN_CONF)
 
-        cmd = '{} {} {} {}'.format(
-            'helm init --upgrade --kubeconfig /etc/kubernetes/admin.conf --tiller-image',
+        cmd = '{} {} {} {} {} {}'.format(
+            'helm init --upgrade --kubeconfig',
+            kubernetes.KUBERNETES_ADMIN_CONF,
+            '--tiller-image',
             image,
             workaround_part1,
             workaround_part2)

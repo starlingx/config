@@ -624,6 +624,13 @@ class TestKubeOperator(base.TestCase):
 
         self.list_namespaced_pod_result = None
 
+        def mock_is_k8s_configured():
+            return True
+        self.mocked_is_k8s_configured = mock.patch(
+            'sysinv.common.kubernetes.is_k8s_configured',
+            mock_is_k8s_configured)
+        self.mocked_is_k8s_configured.start()
+
         def mock_list_namespaced_pod(obj, namespace, field_selector=""):
             pod_name = field_selector.split('metadata.name=', 1)[1]
             return self.list_namespaced_pod_result[pod_name]
