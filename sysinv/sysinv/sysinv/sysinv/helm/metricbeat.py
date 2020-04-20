@@ -174,6 +174,8 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             # If kube_config is not set, KUBECONFIG environment variable will be checked
             # and if not present it will fall back to InCluster
             "add_metadata": True,
+            "labels.dedot": True,
+            "annotations.dedot": True,
             "metricsets": [
                 "node",
                 "system",
@@ -201,6 +203,8 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             # If kube_config is not set, KUBECONFIG environment variable will be checked
             # and if not present it will fall back to InCluster
             "add_metadata": True,
+            "labels.dedot": True,
+            "annotations.dedot": True,
             "metricsets": [
                 "state_node",
                 "state_deployment",
