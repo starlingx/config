@@ -2060,7 +2060,7 @@ class AppOperator(object):
                                   True)
 
         self.clear_reapply(app.name)
-        # WORKAROUND: For k8s MatchNodeSelector issue. Look for and clean up any
+        # WORKAROUND: For k8s NodeAffinity issue. Look for and clean up any
         #             pods that could block manifest apply
         #
         #             Upstream reports of this:
@@ -2069,7 +2069,7 @@ class AppOperator(object):
         #
         #             Outstanding PR that was tested and fixed this issue:
         #             - https://github.com/kubernetes/kubernetes/pull/80976
-        self._kube_pod.delete_failed_pods_by_reason(reason='MatchNodeSelector')
+        self._kube_pod.delete_failed_pods_by_reason(reason='NodeAffinity')
 
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 

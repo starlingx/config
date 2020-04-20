@@ -5184,9 +5184,11 @@ class ConductorManager(service.PeriodicService):
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
 
-        # WORKAROUND: For k8s MatchNodeSelector issue. Call this for a limited
-        #             time (5 times over ~5 minutes) on a AIO-SX controller
-        #             configuration after conductor startup.
+        # WORKAROUND: For k8s NodeAffinity issue. Call this for a limited time
+        #             (5 times over ~5 minutes). As of k8s upgrade to v1.18.1,
+        #             this condition is occurring on simplex and duplex
+        #             controller scenarios and has been observed with initial
+        #             unlocks and uncontrolled system reboots
         #
         #             Upstream reports of this:
         #             - https://github.com/kubernetes/kubernetes/issues/80745
@@ -5194,16 +5196,14 @@ class ConductorManager(service.PeriodicService):
         #
         #             Outstanding PR that was tested and fixed this issue:
         #             - https://github.com/kubernetes/kubernetes/pull/80976
-        system_mode = self.dbapi.isystem_get_one().system_mode
-        if system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            if (self._start_time + timedelta(minutes=5) >
-                    datetime.now(self._start_time.tzinfo)):
-                LOG.info("Periodic Task: _k8s_application_audit: Checking for "
-                         "MatchNodeSelector issue for %s" % str(
-                             (self._start_time + timedelta(minutes=5)) -
-                             datetime.now(self._start_time.tzinfo)))
-                self._kube_pod.delete_failed_pods_by_reason(
-                    reason='MatchNodeSelector')
+        if (self._start_time + timedelta(minutes=5) >
+                datetime.now(self._start_time.tzinfo)):
+            LOG.info("Periodic Task: _k8s_application_audit: Checking for "
+                     "NodeAffinity issue for %s" % str(
+                         (self._start_time + timedelta(minutes=5)) -
+                         datetime.now(self._start_time.tzinfo)))
+            self._kube_pod.delete_failed_pods_by_reason(
+                reason='NodeAffinity')
 
         # Check the application state and take the approprate action
         for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
