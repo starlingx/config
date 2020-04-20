@@ -205,17 +205,6 @@ class Health(object):
         success = running_instances == 0
         return success, running_instances
 
-    def _check_simplex_available_space(self):
-        """Ensures there is free space for the backup"""
-
-        # TODO: Switch this over to use Ansible
-        # try:
-        #    backup_restore.check_size("/opt/backups", True)
-        # except backup_restore.BackupFail:
-        #    return False
-        # return True
-        LOG.info("Skip the check of the enough free space.")
-
     def _check_kube_nodes_ready(self):
         """Checks that each kubernetes node is ready"""
         fail_node_list = []
@@ -417,13 +406,6 @@ class Health(object):
                 if not success:
                     output += _('Number of instances on controller-1: %s\n') \
                               % (running_instances)
-
-            health_ok = health_ok and success
-        else:
-            success = self._check_simplex_available_space()
-            output += \
-                _('Sufficient free space for upgrade: [%s]\n') \
-                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
             health_ok = health_ok and success
 
