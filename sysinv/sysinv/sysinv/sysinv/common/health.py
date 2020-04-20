@@ -156,14 +156,10 @@ class Health(object):
         """Validates the current license is valid for the specified version"""
         check_binary = "/usr/bin/verify-license"
         license_file = '/etc/platform/.license'
-        system = self._dbapi.isystem_get_one()
-        system_type = system.system_type
-        system_mode = system.system_mode
 
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call([check_binary, license_file, version,
-                                       system_type, system_mode],
+                subprocess.check_call([check_binary, license_file, version],
                                       stdout=fnull, stderr=fnull)
             except subprocess.CalledProcessError:
                 return False
