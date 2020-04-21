@@ -1312,9 +1312,9 @@ class ConductorManager(service.PeriodicService):
         :param context: request context
         :param host: host object
         """
-        # Only update the config if the host is running the same version as
-        # the active controller.
         if self.host_load_matches_sw_version(host):
+            # update the config if the host is running the same version as
+            # the active controller.
             if (host.administrative == constants.ADMIN_UNLOCKED or
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
@@ -1322,8 +1322,20 @@ class ConductorManager(service.PeriodicService):
                 # Update host configuration
                 self._puppet.update_host_config(host)
         else:
-            LOG.info("Host %s is not running active load. "
-                     "Skipping manifest generation" % host.hostname)
+            # from active controller, update hieradata for upgrade
+            host_uuids = [host.uuid]
+            config_uuid = self._config_update_hosts(
+                context,
+                [constants.CONTROLLER],
+                host_uuids,
+                reboot=True)
+            host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
+            target_load = self.dbapi.load_get(host_upgrade.target_load)
+            self._puppet.update_host_config_upgrade(
+                host,
+                target_load.software_version,
+                config_uuid
+            )
 
         self._allocate_addresses_for_host(context, host)
         # Set up the PXE config file for this host so it can run the installer
@@ -1580,7 +1592,6 @@ class ConductorManager(service.PeriodicService):
             if (host.administrative == constants.ADMIN_UNLOCKED or
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
-
                 # Generate host configuration files
                 self._puppet.update_host_config(host)
         else:
@@ -8792,7 +8803,8 @@ class ConductorManager(service.PeriodicService):
 
         for upgrade_element in upgrade_paths:
             valid_from_version = upgrade_element.findtext('version')
-            if valid_from_version == current_version:
+            valid_from_versions = valid_from_version.split(",")
+            if current_version in valid_from_versions:
                 path_found = True
                 upgrade_path = upgrade_element
                 break
@@ -9403,7 +9415,7 @@ class ConductorManager(service.PeriodicService):
         """
         Checks if the host is running the same load as the active controller
         :param host: a host object
-        :return: true if host target load matches active sw_version
+        :return: True if host target load matches active sw_version
         """
         host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
         target_load = self.dbapi.load_get(host_upgrade.target_load)

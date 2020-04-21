@@ -23,7 +23,6 @@ import tempfile
 import time
 import yaml
 
-
 from sysinv.common import constants as sysinv_constants
 
 
@@ -104,7 +103,8 @@ def get_db_credentials(shared_services, from_release):
 
 
 def get_shared_services():
-    """ Get the list of shared services from the sysinv database """
+    """ Get the list of shared services from the sysinv database"""
+
     shared_services = []
     DEFAULT_SHARED_SERVICES = []
 
@@ -115,6 +115,7 @@ def get_shared_services():
     if row is None:
         LOG.error("Failed to fetch i_system data")
         raise psycopg2.ProgrammingError("Failed to fetch i_system data")
+
     cap_obj = json.loads(row[0])
     region_config = cap_obj.get('region_config', None)
     if region_config:
@@ -261,6 +262,50 @@ def migrate_pxeboot_config(from_release, to_release):
             stdout=devnull)
     except subprocess.CalledProcessError:
         LOG.exception("Failed to migrate %s" % source_pxelinux)
+        raise
+
+
+def migrate_armada_config(from_release, to_release):
+    """ Migrates armada configuration. """
+
+    LOG.info("Migrating armada config")
+    devnull = open(os.devnull, 'w')
+
+    # Copy the entire armada.cfg directory to pick up any changes made
+    # after the data was migrated (i.e. updates to the controller-1 load).
+    source_armada = os.path.join(PLATFORM_PATH, "armada", from_release)
+    dest_armada = os.path.join(PLATFORM_PATH, "armada", to_release)
+    try:
+        subprocess.check_call(
+            ["cp",
+             "-a",
+             os.path.join(source_armada),
+             os.path.join(dest_armada)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to migrate %s" % source_armada)
+        raise
+
+
+def migrate_helm_config(from_release, to_release):
+    """ Migrates helm configuration. """
+
+    LOG.info("Migrating helm config")
+    devnull = open(os.devnull, 'w')
+
+    # Copy the entire helm.cfg directory to pick up any changes made
+    # after the data was migrated (i.e. updates to the controller-1 load).
+    source_helm = os.path.join(PLATFORM_PATH, "helm", from_release)
+    dest_helm = os.path.join(PLATFORM_PATH, "helm", to_release)
+    try:
+        subprocess.check_call(
+            ["cp",
+             "-a",
+             os.path.join(source_helm),
+             os.path.join(dest_helm)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to migrate %s" % source_helm)
         raise
 
 
@@ -665,6 +710,14 @@ def upgrade_controller(from_release, to_release):
     print("Migrating pxeboot configuration...")
     migrate_pxeboot_config(from_release, to_release)
 
+    # Migrate armada config
+    print("Migrating armada configuration...")
+    migrate_armada_config(from_release, to_release)
+
+    # Migrate helm config
+    print("Migrating helm configuration...")
+    migrate_helm_config(from_release, to_release)
+
     # Migrate sysinv data.
     print("Migrating sysinv configuration...")
     migrate_sysinv_data(from_release, to_release)
@@ -764,6 +817,18 @@ def upgrade_controller(from_release, to_release):
     except Exception as e:
         LOG.exception(e)
         LOG.info("Failed to update hiera configuration")
+        raise
+
+    # Prepare for swact
+    LOG.info("Prepare for swact to controller-1")
+    try:
+        subprocess.check_call(['/usr/bin/upgrade_swact_migration.py',
+                               'prepare_swact',
+                               from_release,
+                               to_release],
+                              stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed upgrade_swact_migration prepare_swact")
         raise
 
     print("Shutting down upgrade processes...")

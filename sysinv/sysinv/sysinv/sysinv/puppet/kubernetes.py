@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -73,11 +73,53 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
+    def get_host_config_upgrade(self, host):
+        """Updates the config for upgrade with updated kubernetes params
+
+        :param host: host object
+        """
+        config = {}
+
+        # Generate the join command for this host
+        config.update(self._get_host_join_command(host))
+
+        # Get the kubernetes version
+        config.update(self._get_active_kubernetes_version())
+
+        LOG.info("get_host_config_upgrade kubernetes config=%s" % config)
+
+        return config
+
+    @staticmethod
+    def _get_active_kubernetes_version():
+        """Get the active kubernetes version
+        """
+        # During a platform upgrade, the version is still None
+        # when N+1 controller-1 is creating hieradata.
+        # The version is updated from the running kubernetes version.
+        config = {}
+
+        kube_operator = kubernetes.KubeOperator()
+        kube_version = kube_operator.kube_get_kubernetes_version()
+
+        config.update({
+            'platform::kubernetes::params::version': kube_version,
+        })
+
+        return config
+
     def _get_host_join_command(self, host):
         config = {}
         if not utils.is_initial_config_complete():
             return config
 
+        join_cmd = self._get_kubernetes_join_cmd(host)
+        config.update({'platform::kubernetes::params::join_cmd': join_cmd})
+
+        return config
+
+    @staticmethod
+    def _get_kubernetes_join_cmd(host):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
@@ -85,33 +127,41 @@ class KubernetesPuppet(base.BasePuppet):
             if host.personality == constants.CONTROLLER:
                 # Upload the certificates used during kubeadm join
                 # The cert key will be printed in the last line of the output
+
                 # We will create a temp file with the kubeadm config
                 # We need this because the kubeadm config could have changed
                 # since bootstrap. Reading the kubeadm config each time
                 # it is needed ensures we are not using stale data
-                fd, temp_kubeadm_config_view = tempfile.mkstemp(dir='/tmp', suffix='.yaml')
+
+                fd, temp_kubeadm_config_view = tempfile.mkstemp(
+                    dir='/tmp', suffix='.yaml')
                 with os.fdopen(fd, 'w') as f:
                     cmd = ['kubeadm', 'config', 'view']
                     subprocess.check_call(cmd, stdout=f)
-                cmd = ['kubeadm', 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
+
+                cmd = ['kubeadm', 'init', 'phase', 'upload-certs',
+                       '--upload-certs', '--config',
                        temp_kubeadm_config_view]
+
                 cmd_output = subprocess.check_output(cmd)
                 cert_key = cmd_output.strip().split('\n')[-1]
-                join_cmd_additions = " --control-plane --certificate-key %s" % cert_key
+                join_cmd_additions = \
+                    " --control-plane --certificate-key %s" % cert_key
                 os.unlink(temp_kubeadm_config_view)
 
             cmd = ['kubeadm', 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
             join_cmd = subprocess.check_output(cmd)
-            join_cmd_additions += " --cri-socket /var/run/containerd/containerd.sock"
+            join_cmd_additions += \
+                " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
+            LOG.info('get_kubernetes_join_cmd join_cmd=%s' % join_cmd)
         except Exception:
             LOG.exception("Exception generating bootstrap token")
-            raise exception.SysinvException('Failed to generate bootstrap token')
+            raise exception.SysinvException(
+                'Failed to generate bootstrap token')
 
-        config.update({'platform::kubernetes::params::join_cmd': join_cmd})
-
-        return config
+        return join_cmd
 
     def _get_etcd_endpoint(self):
         addr = self._format_url_address(self._get_cluster_host_address())

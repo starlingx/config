@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -66,6 +66,11 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_memory_config(host))
         config.update(self._get_kvm_timer_advance_config(host))
         config.update(self._get_host_lldp_config(host))
+        return config
+
+    def get_host_config_upgrade(self, host):
+        config = {}
+        config.update(self._get_host_platform_config_upgrade(host, self.config_uuid))
         return config
 
     def _get_static_software_config(self):
@@ -326,6 +331,17 @@ class PlatformPuppet(base.BasePuppet):
                 cpu_count,
         })
 
+        return config
+
+    def _get_host_platform_config_upgrade(self, host, config_uuid):
+        config = {}
+        if not config_uuid:
+            config_uuid = host.config_target
+
+        if config_uuid:
+            config.update({
+                'platform::config::params::config_uuid': config_uuid
+            })
         return config
 
     def _get_host_ntp_config(self, host):
