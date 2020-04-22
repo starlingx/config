@@ -2757,7 +2757,7 @@ class DockerHelper(object):
                 # is a work around the permission issue in Armada container.
                 kube_config = os.path.join(constants.APP_SYNCED_ARMADA_DATA_PATH,
                                            'admin.conf')
-                shutil.copy('/etc/kubernetes/admin.conf', kube_config)
+                shutil.copy(kubernetes.KUBERNETES_ADMIN_CONF, kube_config)
                 os.chown(kube_config, 1000, grp.getgrnam("sys_protected").gr_gid)
 
                 overrides_dir = common.HELM_OVERRIDES_PATH
@@ -2799,6 +2799,9 @@ class DockerHelper(object):
                     command=None)
                 LOG.info("Armada service started!")
                 return container
+            except IOError as ie:
+                if not kubernetes.is_k8s_configured():
+                    LOG.error("Unable to start Armada service: %s" % ie)
             except OSError as oe:
                 LOG.error("Unable to make kubernetes config accessible to "
                           "armada: %s" % oe)

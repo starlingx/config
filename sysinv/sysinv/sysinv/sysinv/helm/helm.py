@@ -20,6 +20,7 @@ from stevedore import extension
 
 from oslo_log import log as logging
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.helm import common
 
@@ -451,7 +452,7 @@ class HelmOperator(object):
                     cmd.extend(['--set', value_set])
 
         env = os.environ.copy()
-        env['KUBECONFIG'] = '/etc/kubernetes/admin.conf'
+        env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
 
         # Make a temporary directory with a fake chart in it
         try:

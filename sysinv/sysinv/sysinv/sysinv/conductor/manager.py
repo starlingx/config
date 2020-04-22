@@ -68,6 +68,7 @@ from oslo_utils import excutils
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 from platform_util.license import license
+from ruamel import yaml
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
 from sysinv._i18n import _
@@ -5278,6 +5279,52 @@ class ConductorManager(service.PeriodicService):
                 return
         self.reapply_app(context, app_name)
 
+    def _patch_tiller_deployment(self):
+        """ Ensure tiller is patched with restart logic."""
+        LOG.info("Attempt to patch tiller deployment")
+        try:
+            # We have a race condition that may cause the tiller pod to not have
+            # its environment set up correctly. This will patch the tiller
+            # deployment to ensure that tiller can recover if that occurs. The
+            # deployment is patched during the initial ansible run. This will
+            # re-patch the deployment in the case when tiller has been removed
+            # and reinstalled in the cluster after the system has been
+            # installed. If tiller is already patched then the patch execution
+            # is successful causing no change to the deployment.
+            patch = {
+                'spec': {
+                    'template': {
+                        'spec': {
+                            'containers': [{
+                                'name': 'tiller',
+                                'command': [
+                                    '/bin/sh',
+                                    '-cex',
+                                    '#!/bin/sh\n'
+                                    'env | grep -q -e ^TILLER_DEPLOY || exit\n'
+                                    'env | grep -q -e ^KUBE_DNS || exit\n'
+                                    'env | grep -q -e ^KUBERNETES_PORT || exit\n'
+                                    'env | grep -q -e ^KUBERNETES_SERVICE || exit\n'
+                                    '/tiller\n'
+                                ]
+                            }]
+                        }
+                    }
+                }
+            }
+            cmd = ['kubectl',
+                   '--kubeconfig={}'.format(kubernetes.KUBERNETES_ADMIN_CONF),
+                   'patch', 'deployment', '-n', 'kube-system', 'tiller-deploy',
+                   '-p', yaml.dump(patch)]
+            stdout, stderr = cutils.execute(*cmd, run_as_root=False)
+
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException(
+                _("Error patching the tiller deployment, "
+                  "Details: %s") % str(e))
+
+        LOG.info("Tiller deployment has been patched")
+
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_tiller()
         self._upgrade_downgrade_kube_networking()
@@ -5371,6 +5418,16 @@ class ConductorManager(service.PeriodicService):
             LOG.error("{}. Failed to upgrade/downgrade tiller.".format(e))
             return False
 
+        # Patch tiller to allow restarts if the environment is incomplete
+        #
+        # NOTE: This patch along with this upgrade functionality can be removed
+        # once StarlingX moves to Helm v3
+        try:
+            self._patch_tiller_deployment()
+        except Exception as e:
+            LOG.error("{}. Failed to patch tiller deployment.".format(e))
+            return False
+
         return True
 
     @retry(retry_on_result=lambda x: x is False,
@@ -5449,7 +5506,8 @@ class ConductorManager(service.PeriodicService):
         :returns: list of namespaces
         """
         try:
-            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+            cmd = ['kubectl',
+                   '--kubeconfig={}'.format(kubernetes.KUBERNETES_ADMIN_CONF),
                    'get', 'namespaces', '-o',
                    'go-template=\'{{range .items}}{{.metadata.name}}\'{{end}}\'']
             stdout, stderr = cutils.execute(*cmd, run_as_root=False)
