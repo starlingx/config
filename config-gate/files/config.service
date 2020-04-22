@@ -1,5 +1,5 @@
 [Unit]
-Description=General TIS config gate
+Description=General StarlingX config gate
 After=sw-patch.service
 Before=serial-getty@ttyS0.service getty@tty1.service
 # Each config service must have a Before statement against config.service, to ensure ordering
