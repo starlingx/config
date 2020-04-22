@@ -269,10 +269,12 @@ class KubernetesPuppet(base.BasePuppet):
             host, function=constants.ISOLATED_FUNCTION, threads=True)
         isol_cpuset = set([c.cpu for c in isol_cpus])
 
-        # determine platform reserved number of logical cpus
-        k8s_reserved_cpus = len(platform_cpuset)
-
-        k8s_isol_cpus = len(vswitch_cpuset) + len(isol_cpuset)
+        # determine reserved sets of logical cpus in a string range set format
+        # to pass as options to kubelet
+        k8s_platform_cpuset = utils.format_range_set(platform_cpuset)
+        k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
+                                                         vswitch_cpuset |
+                                                         isol_cpuset)
 
         # determine platform reserved memory
         k8s_reserved_mem = 0
@@ -324,10 +326,10 @@ class KubernetesPuppet(base.BasePuppet):
              "\"%s\"" % k8s_cpuset,
              'platform::kubernetes::params::k8s_nodeset':
              "\"%s\"" % k8s_nodeset,
-             'platform::kubernetes::params::k8s_reserved_cpus':
-             k8s_reserved_cpus,
-             'platform::kubernetes::params::k8s_isol_cpus':
-             k8s_isol_cpus,
+             'platform::kubernetes::params::k8s_platform_cpuset':
+             k8s_platform_cpuset,
+             'platform::kubernetes::params::k8s_all_reserved_cpuset':
+             k8s_all_reserved_cpuset,
              'platform::kubernetes::params::k8s_reserved_mem':
              k8s_reserved_mem,
              })
