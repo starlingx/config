@@ -6,9 +6,6 @@
 from eventlet.green import subprocess
 import os
 
-
-from fm_api import fm_api
-
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import ceph
@@ -99,20 +96,15 @@ class Health(object):
 
     def _check_alarms(self, context, force=False):
         """Checks that no alarms are active"""
-        db_alarms = fmclient(context).alarm.list(include_suppress=True)
+        alarms = fmclient(context).alarm.list(include_suppress=True)
 
         success = True
         allowed = 0
         affecting = 0
-        # Only fail if we find alarms past their affecting threshold
-        for db_alarm in db_alarms:
-            if isinstance(db_alarm, tuple):
-                alarm = db_alarm[0]
-                mgmt_affecting = db_alarm[constants.DB_MGMT_AFFECTING]
-            else:
-                alarm = db_alarm
-                mgmt_affecting = db_alarm.mgmt_affecting
-            if fm_api.FaultAPIs.alarm_allowed(alarm.severity, mgmt_affecting):
+        # Separate alarms that are mgmt affecting
+        for alarm in alarms:
+            mgmt_affecting = alarm.mgmt_affecting == "True"
+            if not mgmt_affecting:
                 allowed += 1
                 if not force:
                     success = False
@@ -125,18 +117,13 @@ class Health(object):
     def get_alarms_degrade(self, context, alarm_ignore_list=None,
             entity_instance_id_filter=""):
         """Return all the alarms that cause the degrade"""
-        db_alarms = fmclient(context).alarm.list(include_suppress=True)
+        alarms = fmclient(context).alarm.list(include_suppress=True)
         degrade_alarms = []
         if alarm_ignore_list is None:
             alarm_ignore_list = []
 
-        for db_alarm in db_alarms:
-            if isinstance(db_alarm, tuple):
-                alarm = db_alarm[0]
-                degrade_affecting = db_alarm[constants.DB_DEGRADE_AFFECTING]
-            else:
-                alarm = db_alarm
-                degrade_affecting = db_alarm.degrade_affecting
+        for alarm in alarms:
+            degrade_affecting = alarm.degrade_affecting
             # Ignore alarms that are part of the ignore list sent as parameter
             # and also filter the alarms bases on entity instance id.
             # If multiple alarms with the same ID exist, we only return the ID
