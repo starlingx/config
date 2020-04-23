@@ -496,9 +496,19 @@ class KubeAppController(rest.RestController):
         version = body.get('app_version', '')
         name, version, mname, mfile = self._check_tarfile(tarfile, name, version,
                                                           constants.APP_UPDATE_OP)
-        reuse_overrides = False
-        if body.get('reuse_user_overrides') in ['true', 'True']:
+
+        reuse_overrides_flag = body.get('reuse_user_overrides', None)
+        if reuse_overrides_flag is None:
+            # None means let the application decide
+            reuse_overrides = None
+        elif reuse_overrides_flag in ['true', 'True']:
             reuse_overrides = True
+        elif reuse_overrides_flag in ['false', 'False']:
+            reuse_overrides = False
+        else:
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: "
+                "invalid reuse_user_overrides setting."))
 
         try:
             applied_app = objects.kube_app.get_by_name(pecan.request.context, name)
