@@ -87,9 +87,9 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
 
     @staticmethod
     def _get_resources_overrides():
-        cpu_request = "40m"
-        cpu_limit = "80m"
-        memory_size = "256Mi"
+        cpu_request = "50m"
+        cpu_limit = "180m"
+        memory_size = "512Mi"
 
         return {'requests': {
                     'cpu': cpu_request},
