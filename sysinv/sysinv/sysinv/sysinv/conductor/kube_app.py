@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1417,7 +1417,7 @@ class AppOperator(object):
         # This function gets the "maintain_user_overrides"
         # parameter from application metadata
         reuse_overrides = False
-        metadata_file = os.path.join(app.path,
+        metadata_file = os.path.join(app.inst_path,
                                      constants.APP_METADATA_FILE)
         if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
             with open(metadata_file, 'r') as f:
