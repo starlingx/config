@@ -7312,10 +7312,11 @@ class ConductorManager(service.PeriodicService):
             #
             #  The absolute minimum disk size for these default settings:
             #      0.5 G - /boot
+            #     10.0 G - /opt/platform-backup
             #     20.0 G - /
             #    160.0 G - cgts-vg PV
             #   -------
-            #    180.5 G min size disk
+            #    190.5 G min size disk
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
@@ -7353,10 +7354,11 @@ class ConductorManager(service.PeriodicService):
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
+            #    10.0 G - /opt/platform-backup
             #    20.0 G - /
             #   145.0 G - cgts-vg PV
             #   -------
-            #   165.5 G min size disk
+            #   175.5 G min size disk
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
