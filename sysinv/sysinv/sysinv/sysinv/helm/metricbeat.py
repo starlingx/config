@@ -88,12 +88,9 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                 "metricsets": [
                     "cpu",
                     "diskio",
-                    "load",
                     "memory",
-                    "process_summary",
                 ],
                 "cpu.metrics": [
-                    "percentages",
                     "normalized_percentages"
                 ]
             },
@@ -153,7 +150,6 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
                 "period": "5m",
                 "metricsets": [
                     "filesystem",
-                    "fsstat",
                 ],
                 "processors": [
                     {"drop_event.when": {
@@ -178,11 +174,10 @@ class MetricbeatHelm(elastic.ElasticBaseHelm):
             "annotations.dedot": True,
             "metricsets": [
                 "node",
-                "system",
                 "pod",
                 "container"
             ],
-            "period": "10s",
+            "period": "60s",
             "host": "${NODE_NAME}",
             "hosts": [
                 "https://${HOSTNAME}:10250"
