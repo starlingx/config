@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -319,7 +319,7 @@ def check_core_allocations(host, cpu_counts):
                  constants.APPLICATION_FUNCTION))
 
     reserved_for_applications = len(host.cpus) - total_platform_cores - \
-                       total_vswitch_cores
+                       total_vswitch_cores - total_isolated_cores
     if reserved_for_applications <= 0:
         raise wsme.exc.ClientSideError(
             "There must be at least one unused core for %s." %
