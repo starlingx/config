@@ -1933,7 +1933,7 @@ class TestPatch(TestHost):
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertTrue(response.json['error_message'])
 
-    def test_lock_action_controller(self):
+    def _test_lock_action_controller(self):
         # Create controller-0
         self._create_controller_0(
             invprovision=constants.PROVISIONED,
@@ -1974,6 +1974,48 @@ class TestPatch(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+
+    def test_lock_action_controller(self):
+        self._test_lock_action_controller()
+
+    def test_lock_action_controller_during_upgrade_starting(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        upgrade = dbutils.create_test_upgrade(
+            state=constants.UPGRADE_STARTING
+        )
+        # Verify the error response on lock controller attempt
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.LOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("host-lock %s is not allowed during upgrade state '%s'. "
+                      "Upgrade state must be '%s'." %
+                      (c1_host['hostname'],
+                       upgrade.state,
+                       constants.UPGRADE_STARTED),
+                      response.json['error_message'])
+
+    def test_lock_action_controller_during_upgrade_started(self):
+        dbutils.create_test_upgrade(
+            state=constants.UPGRADE_STARTED
+        )
+        self._test_lock_action_controller()
 
     def test_force_lock_action_controller(self):
         # Create controller-0

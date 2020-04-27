@@ -5392,6 +5392,28 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _("%s" % response['error_details']))
 
+            self._check_lock_controller_during_upgrade(hostupdate.ihost_orig['hostname'])
+
+    @staticmethod
+    def _check_lock_controller_during_upgrade(hostname):
+        # Check to ensure in valid upgrade state for host-lock
+        try:
+            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            return
+
+        if (upgrade.state in [constants.UPGRADE_STARTING] and
+                hostname == constants.CONTROLLER_1_HOSTNAME):
+            # Lock of controller-1 is not allowed during
+            # the UPGRADE_STARTING state
+            raise wsme.exc.ClientSideError(
+                _("host-lock %s is not allowed during upgrade state '%s'. "
+                  "Upgrade state must be '%s'.") %
+                (hostname,
+                 constants.UPGRADE_STARTING,
+                 constants.UPGRADE_STARTED))
+
     def check_unlock_application(self, hostupdate, force_unlock=False):
         LOG.info("%s ihost check_unlock_application" % hostupdate.displayid)
         apps = pecan.request.dbapi.kube_app_get_all()
