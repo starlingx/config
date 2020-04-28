@@ -319,6 +319,30 @@ start()
         fi
     fi
 
+    if [ -e $CONFIG_DIR/admin-ep-cert.pem ]
+    then
+        cp $CONFIG_DIR/admin-ep-cert.pem /etc/ssl/private/
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/admin-ep-cert.pem to certificates dir"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/dc-adminep-root-ca.crt ]
+    then
+        cp $CONFIG_DIR/dc-adminep-root-ca.crt /etc/pki/ca-trust/source/anchors/
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/dc-adminep-root-ca.crt to certificates dir"
+        fi
+        # Update system trusted CA cert list with the new CA cert.
+        update-ca-trust extract
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to update system trusted CA certificate list"
+        fi
+    fi
+
     if [ -e $CONFIG_DIR/openstack ]
     then
         if [ ! -e /etc/ssl/private/openstack ]
