@@ -192,7 +192,7 @@ class InterfaceNetworkController(rest.RestController):
                     ethernet_port_mac = tmp_interface['imac']
                 _update_host_mgmt_mac(host, ethernet_port_mac)
                 cutils.perform_distributed_cloud_config(pecan.request.dbapi,
-                                                        interface_uuid)
+                                                        interface_id)
 
         return InterfaceNetwork.convert_with_links(result)
 
