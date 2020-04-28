@@ -52,8 +52,7 @@ class ElasticsearchMasterHelm(elastic.ElasticBaseHelm):
                     'accessModes': ["ReadWriteOnce"],
                     'resources': {
                         'requests': {'storage': '4Gi'}
-                    },
-                    'storageClass': 'general'
+                    }
                 },
             }
         }
