@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -1443,3 +1443,8 @@ class KubeUpgradeNotFound(NotFound):
 
 class KubeVersionNotFound(NotFound):
     message = _("Kubernetes version %(version)s not found")
+
+
+class KubeNotConfigured(SysinvException):
+    message = _("Kubernetes is not configured. API operations "
+                "will not be available.")

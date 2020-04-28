@@ -3,11 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import base64
 import keyring
 import os
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils
 
 from tsconfig import tsconfig
@@ -50,6 +52,7 @@ class PlatformPuppet(base.BasePuppet):
     def get_secure_system_config(self):
         config = {}
         config.update(self._get_user_config())
+        config.update(self._get_dc_root_ca_config())
         return config
 
     def get_host_config(self, host):
@@ -874,6 +877,44 @@ class PlatformPuppet(base.BasePuppet):
             config.update({
                 'platform::config::certs::params::ssl_ca_cert':
                     utils.get_file_content(constants.SSL_CERT_CA_FILE_SHARED),
+            })
+
+        return config
+
+    def _get_dc_root_ca_config(self):
+        config = {}
+        system = self._get_system()
+        if system.distributed_cloud_role == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and \
+                os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+
+            kube = kubernetes.KubeOperator()
+            try:
+                secret = kube.kube_get_secret('dc-adminep-root-ca-certificate', 'dc-cert')
+            except exception.KubeNotConfigured:
+                # kubernetes admin config file does not exist, skip
+                return config
+
+            if not hasattr(secret, 'data'):
+                raise Exception('Invalid secret dc-adminep-root-ca-certificate')
+
+            data = secret.data
+            if 'ca.crt' not in data or \
+                    'tls.crt' not in data or 'tls.key' not in data:
+
+                raise Exception("Invalid admin endpoint certificate data.")
+
+            try:
+                ca_crt = base64.b64decode(data['ca.crt'])
+                tls_crt = base64.b64decode(data['tls.crt'])
+                tls_key = base64.b64decode(data['tls.key'])
+            except TypeError:
+                raise Exception('admin endpoint root ca certification is invalid')
+
+            config.update({
+                'platform::config::dccert::params::dc_root_ca_crt': ca_crt,
+                'platform::config::dccert::params::dc_adminep_crt':
+                    "%s%s" % (tls_key, tls_crt)
             })
 
         return config
