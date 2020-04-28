@@ -48,11 +48,11 @@ class StoragePuppet(base.BasePuppet):
                     'platform::drbd::extension::params::lv_size':
                         controller_fs.size
                 })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_PATCH_VAULT:
+            elif controller_fs.name == constants.FILESYSTEM_NAME_DC_VAULT:
                 config.update({
-                    'platform::drbd::patch_vault::params::service_enabled':
+                    'platform::drbd::dc_vault::params::service_enabled':
                         True,
-                    'platform::drbd::patch_vault::params::lv_size':
+                    'platform::drbd::dc_vault::params::lv_size':
                         controller_fs.size,
                 })
             elif controller_fs.name == constants.FILESYSTEM_NAME_ETCD:
