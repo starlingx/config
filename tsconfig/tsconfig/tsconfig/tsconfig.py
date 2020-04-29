@@ -173,6 +173,7 @@ KEYRING_PATH = PLATFORM_PATH + "/.keyring/" + SW_VERSION
 DEPLOY_PATH = PLATFORM_PATH + "/deploy/" + SW_VERSION
 ETCD_PATH = "/opt/etcd"
 EXTENSION_PATH = "/opt/extension"
+IMAGE_CONVERSION_PATH = "/opt/conversion"
 PLATFORM_CEPH_CONF_PATH = CONFIG_PATH + 'ceph-config'
 PLATFORM_BACKUP_PATH = '/opt/platform-backup'
 

@@ -1,9 +1,10 @@
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import tsconfig.tsconfig as tsc
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common.storage_backend_conf import StorageBackendConfig
@@ -21,10 +22,30 @@ class CinderHelm(openstack.OpenstackBaseHelm):
     SERVICE_TYPE = 'volume'
     AUTH_USERS = ['cinder']
 
+    def _get_mount_overrides(self):
+        overrides = {
+            'volumes': [],
+            'volumeMounts': []
+        }
+        overrides['volumes'].append({
+            'name': 'newvolume',
+            'hostPath': {'path': tsc.IMAGE_CONVERSION_PATH}
+        })
+        overrides['volumeMounts'].append({
+            'name': 'newvolume',
+            'mountPath': tsc.IMAGE_CONVERSION_PATH
+        })
+        return overrides
+
     def get_overrides(self, namespace=None):
         overrides = {
             common.HELM_NS_OPENSTACK: {
                 'pod': {
+                    'mounts': {
+                        'cinder_volume': {
+                            'cinder_volume': self._get_mount_overrides()
+                        }
+                    },
                     'replicas': {
                         'api': self._num_controllers(),
                         'volume': self._num_controllers(),
@@ -99,6 +120,17 @@ class CinderHelm(openstack.OpenstackBaseHelm):
                     str(b.name.encode('utf8', 'strict').decode('utf-8')) for b in backends)
             },
         }
+        current_host_fs_list = self.dbapi.host_fs_get_list()
+
+        chosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        chosts_fs = [fs for fs in current_host_fs_list
+                            if fs['name'] == constants.FILESYSTEM_NAME_IMAGE_CONVERSION]
+
+        # conversion overrides should be generated only if each controller node
+        # configured has the conversion partition added
+        if len(chosts) == len(chosts_fs):
+            conf_cinder['DEFAULT']['image_conversion_dir'] = \
+                tsc.IMAGE_CONVERSION_PATH
 
         # Always set the default_volume_type to the volume type associated with the
         # primary Ceph backend/tier which is available on all StarlingX platform
