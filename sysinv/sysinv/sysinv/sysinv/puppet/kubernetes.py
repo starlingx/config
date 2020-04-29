@@ -7,8 +7,10 @@
 from __future__ import absolute_import
 from eventlet.green import subprocess
 import json
+import keyring
 import netaddr
 import os
+import random
 import re
 import tempfile
 
@@ -26,6 +28,10 @@ LOG = logging.getLogger(__name__)
 # Offset aligns with kubeadm DNS IP allocation scheme:
 # kubenetes/cmd/kubeadm/app/constants/constants.go:GetDNSIP
 CLUSTER_SERVICE_DNS_IP_OFFSET = 10
+
+# certificate keyring params
+CERTIFICATE_KEY_SERVICE = "kubernetes"
+CERTIFICATE_KEY_USER = "certificate-key"
 
 
 class KubernetesPuppet(base.BasePuppet):
@@ -90,6 +96,25 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
+    def get_secure_static_config(self):
+        """Update the hiera configuration to add certificate-key"""
+
+        key = keyring.get_password(CERTIFICATE_KEY_SERVICE,
+                CERTIFICATE_KEY_USER)
+        if not key:
+            key = '{:64x}'.format(random.getrandbits(8 * 32))
+            keyring.set_password(CERTIFICATE_KEY_SERVICE,
+                    CERTIFICATE_KEY_USER, key)
+            LOG.info('storing kubernetes_kubeadm_certificate_key')
+
+        config = {}
+
+        config.update({
+                'kubernetes::kubeadm::certificate-key': key,
+        })
+
+        return config
+
     @staticmethod
     def _get_active_kubernetes_version():
         """Get the active kubernetes version
@@ -139,14 +164,23 @@ class KubernetesPuppet(base.BasePuppet):
                     cmd = ['kubeadm', 'config', 'view']
                     subprocess.check_call(cmd, stdout=f)
 
+                # We will use a custom key to encrypt kubeadm certificates
+                # to make sure all hosts decrypt using the same key
+
+                key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
+                        CERTIFICATE_KEY_USER))
+                with open(temp_kubeadm_config_view, "a") as f:
+                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta2\r\n"
+                            "kind: InitConfiguration\r\ncertificateKey: "
+                            "{}".format(key))
+
                 cmd = ['kubeadm', 'init', 'phase', 'upload-certs',
                        '--upload-certs', '--config',
                        temp_kubeadm_config_view]
 
-                cmd_output = subprocess.check_output(cmd)
-                cert_key = cmd_output.strip().split('\n')[-1]
+                subprocess.check_call(cmd)
                 join_cmd_additions = \
-                    " --control-plane --certificate-key %s" % cert_key
+                    " --control-plane --certificate-key %s" % key
                 os.unlink(temp_kubeadm_config_view)
 
             cmd = ['kubeadm', 'token', 'create', '--print-join-command',
