@@ -15,7 +15,6 @@ import subprocess
 
 import tsconfig.tsconfig as tsc
 
-from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
 from controllerconfig.upgrades import utils
 
@@ -186,7 +185,7 @@ def create_simplex_backup(software_upgrade):
 
     backup_filename = get_upgrade_backup_filename(software_upgrade)
     backup_vars = "platform_backup_file=%s.tgz backup_dir=%s" % (
-        backup_filename, constants.BACKUPS_PATH)
+        backup_filename, tsc.PLATFORM_BACKUP_PATH)
     args = [
         'ansible-playbook',
         '-e', backup_vars,
@@ -271,7 +270,7 @@ def abort_upgrade(from_load, to_load, upgrade):
 
     simplex_backup_filename = get_upgrade_backup_filename(upgrade) + "*"
     simplex_backup_files = glob.glob(os.path.join(
-        constants.BACKUPS_PATH, simplex_backup_filename))
+        tsc.PLATFORM_BACKUP_PATH, simplex_backup_filename))
 
     for file in simplex_backup_files:
         try:

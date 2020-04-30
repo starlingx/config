@@ -174,6 +174,7 @@ DEPLOY_PATH = PLATFORM_PATH + "/deploy/" + SW_VERSION
 ETCD_PATH = "/opt/etcd"
 EXTENSION_PATH = "/opt/extension"
 PLATFORM_CEPH_CONF_PATH = CONFIG_PATH + 'ceph-config'
+PLATFORM_BACKUP_PATH = '/opt/platform-backup'
 
 # Controller configuration flags
 
