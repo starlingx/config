@@ -1177,8 +1177,8 @@ def get_test_interface_datanetwork(**kw):
     inv = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
-        'interface_uuid': kw.get('interface_uuid'),
-        'datanetwork_uuid': kw.get('datanetwork_uuid'),
+        'interface_id': kw.get('interface_id'),
+        'datanetwork_id': kw.get('datanetwork_id'),
     }
     return inv
 

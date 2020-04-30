@@ -492,7 +492,7 @@ class KubernetesPuppet(base.BasePuppet):
                     pf_name_list.append(port['name'])
 
                 if interface.is_a_mellanox_device(self.context, iface):
-                    resource['isRdma'] = True
+                    resource['selectors']['isRdma'] = True
 
                 resources[dn_name] = resource
 
