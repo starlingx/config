@@ -16,10 +16,10 @@ class CephPoolsAuditHelm(base.BaseHelm):
 
     CHART = common.HELM_CHART_CEPH_POOLS_AUDIT
     SUPPORTED_NAMESPACES = base.BaseHelm.SUPPORTED_NAMESPACES + \
-        [common.HELM_NS_STORAGE_PROVISIONER]
+        [common.HELM_NS_RBD_PROVISIONER]
     SUPPORTED_APP_NAMESPACES = {
         constants.HELM_APP_PLATFORM:
-            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_STORAGE_PROVISIONER],
+            base.BaseHelm.SUPPORTED_NAMESPACES + [common.HELM_NS_RBD_PROVISIONER],
     }
 
     SERVICE_NAME = 'ceph-pools'
@@ -28,7 +28,7 @@ class CephPoolsAuditHelm(base.BaseHelm):
         # On application load this chart is enabled. Only disable if specified
         # by the user
         if not self._is_enabled(operator.APP, self.CHART,
-                                common.HELM_NS_STORAGE_PROVISIONER):
+                                common.HELM_NS_RBD_PROVISIONER):
             operator.chart_group_chart_delete(
                 operator.CHART_GROUPS_LUT[self.CHART],
                 operator.CHARTS_LUT[self.CHART])
@@ -72,7 +72,7 @@ class CephPoolsAuditHelm(base.BaseHelm):
             tiers_cfg.append(tier_cfg)
 
         overrides = {
-            common.HELM_NS_STORAGE_PROVISIONER: {
+            common.HELM_NS_RBD_PROVISIONER: {
                 'conf': {
                     'ceph': {
                         'monitors': monitors,
