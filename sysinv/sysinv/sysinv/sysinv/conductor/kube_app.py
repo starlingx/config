@@ -41,6 +41,7 @@ from sysinv.common import image_versions
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
+from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.helm import common
@@ -914,10 +915,17 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
-    def _storage_provisioner_required(self, app_name):
-        check_storage_provisioner_apps = [constants.HELM_APP_MONITOR]
+    def _rbd_provisioner_required(self, app_name):
+        """ Check if Ceph's RBD provisioner is required """
+        # Since RBD provisioner requires Ceph, return false when not enabled
+        if not StorageBackendConfig.has_backend(
+            self._dbapi,
+            constants.SB_TYPE_CEPH
+        ):
+            return False
 
-        if app_name not in check_storage_provisioner_apps:
+        check_rbd_provisioner_apps = [constants.HELM_APP_MONITOR]
+        if app_name not in check_rbd_provisioner_apps:
             return True
 
         system = self._dbapi.isystem_get_one()
@@ -927,8 +935,8 @@ class AppOperator(object):
         else:
             return True
 
-    def _create_storage_provisioner_secrets(self, app_name):
-        """ Provide access to the system persistent storage provisioner.
+    def _create_rbd_provisioner_secrets(self, app_name):
+        """ Provide access to the system persistent RBD provisioner.
 
         The rbd-provsioner is installed as part of system provisioning and has
         created secrets for all common default namespaces. Copy the secret to
@@ -946,7 +954,7 @@ class AppOperator(object):
             list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
         for ns in namespaces:
             if (ns in [common.HELM_NS_HELM_TOOLKIT,
-                       common.HELM_NS_STORAGE_PROVISIONER] or
+                       common.HELM_NS_RBD_PROVISIONER] or
                     self._kube.kube_get_secret(pool_secret, ns) is not None):
                 # Secret already exist
                 continue
@@ -955,13 +963,13 @@ class AppOperator(object):
                 if not self._kube.kube_get_namespace(ns):
                     self._kube.kube_create_namespace(ns)
                 self._kube.kube_copy_secret(
-                    pool_secret, common.HELM_NS_STORAGE_PROVISIONER, ns)
+                    pool_secret, common.HELM_NS_RBD_PROVISIONER, ns)
             except Exception as e:
                 LOG.error(e)
                 raise
 
-    def _delete_storage_provisioner_secrets(self, app_name):
-        """ Remove access to the system persistent storage provisioner.
+    def _delete_rbd_provisioner_secrets(self, app_name):
+        """ Remove access to the system persistent RBD provisioner.
 
         As part of launching a supported application, secrets were created to
         allow access to the provisioner from the application namespaces. This
@@ -980,7 +988,7 @@ class AppOperator(object):
 
         for ns in namespaces:
             if (ns == common.HELM_NS_HELM_TOOLKIT or
-                    ns == common.HELM_NS_STORAGE_PROVISIONER):
+                    ns == common.HELM_NS_RBD_PROVISIONER):
                 continue
 
             try:
@@ -1638,7 +1646,7 @@ class AppOperator(object):
                 # Copy the latest config map
                 self._kube.kube_copy_config_map(
                     self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                    common.HELM_NS_STORAGE_PROVISIONER,
+                    common.HELM_NS_RBD_PROVISIONER,
                     common.HELM_NS_OPENSTACK)
             except Exception as e:
                 LOG.error(e)
@@ -2082,8 +2090,8 @@ class AppOperator(object):
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
 
-                if self._storage_provisioner_required(app.name):
-                    self._create_storage_provisioner_secrets(app.name)
+                if self._rbd_provisioner_required(app.name):
+                    self._create_rbd_provisioner_secrets(app.name)
                 self._create_app_specific_resources(app.name)
 
             self._update_app_status(
@@ -2363,8 +2371,8 @@ class AppOperator(object):
             try:
                 self._delete_local_registry_secrets(app.name)
                 if app.system_app:
-                    if self._storage_provisioner_required(app.name):
-                        self._delete_storage_provisioner_secrets(app.name)
+                    if self._rbd_provisioner_required(app.name):
+                        self._delete_rbd_provisioner_secrets(app.name)
                     self._delete_app_specific_resources(app.name, constants.APP_REMOVE_OP)
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
