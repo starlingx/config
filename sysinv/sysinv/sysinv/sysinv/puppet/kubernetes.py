@@ -102,7 +102,7 @@ class KubernetesPuppet(base.BasePuppet):
         key = keyring.get_password(CERTIFICATE_KEY_SERVICE,
                 CERTIFICATE_KEY_USER)
         if not key:
-            key = '{:64x}'.format(random.getrandbits(8 * 32))
+            key = '{:064x}'.format(random.getrandbits(8 * 32))
             keyring.set_password(CERTIFICATE_KEY_SERVICE,
                     CERTIFICATE_KEY_USER, key)
             LOG.info('storing kubernetes_kubeadm_certificate_key')
