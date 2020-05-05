@@ -150,8 +150,6 @@ CFS_DRBDADM_RECONFIGURED = os.path.join(
     tsc.PLATFORM_CONF_PATH, ".cfs_drbdadm_reconfigured")
 
 # volatile flags
-CONFIG_CONTROLLER_ACTIVATE_FLAG = os.path.join(tsc.VOLATILE_PATH,
-                                               ".config_controller_activate")
 CONFIG_CONTROLLER_FINI_FLAG = os.path.join(tsc.VOLATILE_PATH,
                                            ".config_controller_fini")
 CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
@@ -4647,11 +4645,11 @@ class ConductorManager(service.PeriodicService):
 
         if (active_host and active_host.config_target and
            active_host.config_applied == active_host.config_target):
-            # active controller has applied target, apply pending config
-
-            if not os.path.isfile(CONFIG_CONTROLLER_ACTIVATE_FLAG):
-                cutils.touch(CONFIG_CONTROLLER_ACTIVATE_FLAG)
-                # apply keystone changes to current active controller
+            # active controller has applied target,
+            # apply pending config if required
+            oam_config_runtime_apply_file = self._get_oam_runtime_apply_file()
+            if os.path.isfile(oam_config_runtime_apply_file):
+                # apply oam config changes to the current active controller
                 personalities = [constants.CONTROLLER]
                 config_uuid = self._config_update_hosts(context, personalities,
                                                         host_uuids=[active_host.uuid])
@@ -4663,6 +4661,9 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict)
+
+                os.remove(oam_config_runtime_apply_file)
+                LOG.info("oam config applied %s" % config_dict)
 
             # apply filesystem config changes if all controllers at target
             standby_config_target_flipped = None
@@ -5934,6 +5935,21 @@ class ConductorManager(service.PeriodicService):
             self._destroy_tpm_config(context)
             self._destroy_certificates(context)
 
+    @staticmethod
+    def _get_oam_runtime_apply_file(standby_controller=False):
+        """Get the file which indicates a runtime oam manifest apply is
+        required for a controller.
+        """
+        if standby_controller:
+            hostname = cutils.get_mate_controller_hostname()
+        else:
+            hostname = cutils.get_local_controller_hostname()
+
+        oam_config_required_flag = os.path.join(
+            tsc.CONFIG_PATH, '.oam_config_required_') + hostname
+
+        return oam_config_required_flag
+
     def update_oam_config(self, context):
         """Update the OAM network configuration"""
 
@@ -5943,6 +5959,10 @@ class ConductorManager(service.PeriodicService):
 
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
+
+        if utils.get_system_mode(self.dbapi) != constants.SYSTEM_MODE_SIMPLEX:
+            cutils.touch(
+                self._get_oam_runtime_apply_file(standby_controller=True))
 
     def update_user_config(self, context):
         """Update the user configuration"""
