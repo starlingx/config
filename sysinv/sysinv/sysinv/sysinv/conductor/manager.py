@@ -5309,9 +5309,18 @@ class ConductorManager(service.PeriodicService):
             # re-patch the deployment in the case when tiller has been removed
             # and reinstalled in the cluster after the system has been
             # installed. If tiller is already patched then the patch execution
-            # is successful causing no change to the deployment.
+            # is successful causing no change to the deployment. Specify the
+            # update strategy to allow tiller deployment patching in a simplex
+            # controller configuration.
             patch = {
                 'spec': {
+                    'strategy': {
+                        'type': 'RollingUpdate',
+                        'rollingUpdate': {
+                            'maxUnavailable': 1,
+                            'maxSurge': 1,
+                        }
+                    },
                     'template': {
                         'spec': {
                             'containers': [{
