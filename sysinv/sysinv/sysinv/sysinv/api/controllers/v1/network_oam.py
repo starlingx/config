@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2017 Wind River Systems, Inc.
 #
 
 import copy
@@ -411,8 +411,6 @@ class OAMNetworkController(rest.RestController):
         """Update the current OAM configuration."""
         if self._from_isystems:
             raise exception.OperationNotPermitted
-
-        utils.check_disallow_during_upgrades()
 
         rpc_extoam = objects.oam_network.get_by_uuid(pecan.request.context,
                                                      extoam_uuid)
