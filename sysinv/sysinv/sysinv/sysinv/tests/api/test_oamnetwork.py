@@ -13,10 +13,8 @@ from six.moves import http_client
 
 from oslo_utils import uuidutils
 
-from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
-from sysinv.tests.db import utils as dbutils
 
 
 class OAMNetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
@@ -327,38 +325,6 @@ class TestPatchMixin(OAMNetworkTestCase):
         }
         error_message = ("Invalid oam_c1_ip=%s. Please configure a valid"
                          " IP address in range") % str(oam_c1_ip)
-        self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
-                              error_message)
-
-    def test_patch_oam_during_platform_upgrade(self):
-        oam_floating_ip = self.oam_subnet[2]
-        oam_c0_ip = self.oam_subnet[3]
-        oam_c1_ip = self.oam_subnet[4]
-        patch_obj = {
-            'oam_floating_ip': str(oam_floating_ip),
-            'oam_c0_ip': str(oam_c0_ip),
-            'oam_c1_ip': str(oam_c1_ip),
-        }
-        dbutils.create_test_upgrade(
-            state=constants.UPGRADE_STARTING
-        )
-        error_message = "Action rejected while a " \
-                        "platform upgrade is in progress"
-        self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
-                              error_message)
-
-    def test_patch_oam_during_kubernetes_upgrade(self):
-        oam_floating_ip = self.oam_subnet[2]
-        oam_c0_ip = self.oam_subnet[3]
-        oam_c1_ip = self.oam_subnet[4]
-        patch_obj = {
-            'oam_floating_ip': str(oam_floating_ip),
-            'oam_c0_ip': str(oam_c0_ip),
-            'oam_c1_ip': str(oam_c1_ip),
-        }
-        dbutils.create_test_kube_upgrade()
-        error_message = "Action rejected while a " \
-                        "kubernetes upgrade is in progress"
         self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
                               error_message)
 
