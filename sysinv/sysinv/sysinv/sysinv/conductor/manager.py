@@ -5353,6 +5353,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Tiller deployment has been patched")
 
     def _upgrade_downgrade_kube_components(self):
+        self._upgrade_downgrade_static_images()
         self._upgrade_downgrade_tiller()
         self._upgrade_downgrade_kube_networking()
 
@@ -5493,6 +5494,46 @@ class ConductorManager(service.PeriodicService):
         except Exception as e:
             LOG.error("Failed to upgrade/downgrade kubernetes "
                       "networking images: {}".format(e))
+            return False
+
+        return True
+
+    @retry(retry_on_result=lambda x: x is False,
+           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
+    def _upgrade_downgrade_static_images(self):
+        try:
+            # Get the kubernetes version from the upgrade table
+            # if an upgrade exists
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            kube_version = \
+                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
+        except exception.NotFound:
+            # Not upgrading kubernetes, get the kubernetes version
+            # from the kubeadm config map
+            kube_version = self._kube.kube_get_kubernetes_version()
+
+        if not kube_version:
+            LOG.error("Unable to get the current kubernetes version.")
+            return False
+
+        try:
+            LOG.info("_upgrade_downgrade_kube_static_images executing"
+                     " playbook: %s for version %s" %
+                     (constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK, kube_version))
+
+            proc = subprocess.Popen(
+                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                 constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK],
+                stdout=subprocess.PIPE)
+            out, _ = proc.communicate()
+
+            LOG.info("ansible-playbook: %s." % out)
+
+            if proc.returncode:
+                raise Exception("ansible-playbook returned an error: %s" % proc.returncode)
+        except Exception as e:
+            LOG.error("Failed to upgrade/downgrade kubernetes "
+                      "static images: {}".format(e))
             return False
 
         return True

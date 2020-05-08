@@ -1560,6 +1560,8 @@ ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/push_k8s_images.yml'
 ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/backup.yml'
+ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK = \
+    '/usr/share/ansible/stx-ansible/playbooks/upgrade-static-images.yml'
 
 # Clock synchronization types
 NTP = 'ntp'
