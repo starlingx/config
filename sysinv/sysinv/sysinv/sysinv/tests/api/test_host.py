@@ -18,6 +18,7 @@ from six.moves import http_client
 
 from oslo_utils import uuidutils
 from sysinv.common import constants
+from sysinv.common import device
 from sysinv.common import kubernetes
 
 from cephclient import wrapper as ceph
@@ -2552,6 +2553,78 @@ class TestPatchStdDuplexControllerAction(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+
+    def test_lock_action_worker_while_updating_device_image(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Set the in-progress flag on the worker node which is normally set
+        # by fpga-agent
+        values = {'device_image_update': device.DEVICE_IMAGE_UPDATE_IN_PROGRESS}
+        self.dbapi.ihost_update(w0_host.uuid, values)
+
+        # Lock worker host
+        response = self._patch_host_action(w0_host['hostname'],
+                                           constants.LOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Rejected: Cannot lock %s while device image update "
+                      "is in progress." % w0_host['hostname'],
+                      response.json['error_message'])
+
+    def test_swact_action_controller_while_updating_device_image(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Set the in-progress flag on the worker node which is normally set
+        # by the fpga-agent
+        values = {'device_image_update': device.DEVICE_IMAGE_UPDATE_IN_PROGRESS}
+        self.dbapi.ihost_update(c1_host.uuid, values)
+
+        # Swact controller host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Rejected: Cannot swact %s while %s is updating device "
+                      "images." % (c0_host['hostname'], c1_host['hostname']),
+                      response.json['error_message'])
 
 
 class TestPatchStdDuplexControllerVIM(TestHost):
