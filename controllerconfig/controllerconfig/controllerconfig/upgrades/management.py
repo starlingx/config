@@ -146,6 +146,22 @@ def prepare_upgrade(from_load, to_load, i_system):
                                                             "config"))
         raise
 
+    # Copy /etc/kubernetes/admin.conf so controller-1 can access
+    # during its upgrade
+    try:
+        subprocess.check_call(
+            ["cp",
+             os.path.join(utils.KUBERNETES_CONF_PATH,
+                          utils.KUBERNETES_ADMIN_CONF_FILE),
+             os.path.join(tsc.PLATFORM_PATH, "config", to_load,
+                          "kubernetes", utils.KUBERNETES_ADMIN_CONF_FILE)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to copy %s" %
+                      os.path.join(utils.KUBERNETES_CONF_PATH,
+                                   utils.KUBERNETES_ADMIN_CONF_FILE))
+        raise
+
     # Remove branding tar files from the release N+1 directory as branding
     # files are not compatible between releases.
     branding_files = os.path.join(
