@@ -4947,6 +4947,9 @@ class ConductorManager(service.PeriodicService):
         # Audit kubernetes node labels
         self._audit_kubernetes_labels(hosts)
 
+        # Audit image conversion
+        self._audit_image_conversion(hosts)
+
         for host in hosts:
             # only audit configured hosts
             if not host.personality:
@@ -5015,6 +5018,49 @@ class ConductorManager(service.PeriodicService):
                         self.set_backend_to_err(bk)
             elif bk.backend in self._stor_bck_op_timeouts:
                 del self._stor_bck_op_timeouts[bk.backend]
+
+    def _audit_image_conversion(self, hosts):
+        """
+        Raise alarm if:
+           - image-conversion is not added on both controllers;
+           - the size of the filesystem is not the same
+             on both controllers
+        """
+        chosts = [h for h in hosts if h.personality == constants.CONTROLLER]
+        if len(chosts) <= 1:
+            # No alarm is raised if setup has only one controller
+            return
+
+        conversion_list = []
+        for host in chosts:
+            hostfs_list = self.dbapi.host_fs_get_by_ihost(host.uuid)
+            for host_fs in hostfs_list:
+                if host_fs['name'] == constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
+                    conversion_list.append(host_fs['size'])
+
+        reason_text = "image-conversion must be added on both controllers"
+        if not conversion_list:
+            # If no conversion filesystem is present on any host
+            # any alarm present is cleared
+            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                               constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
+        elif (len(conversion_list) == 1):
+            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                               constants.FILESYSTEM_NAME_IMAGE_CONVERSION,
+                                               reason_text)
+        else:
+            # If conversion filesystem is present on both controllers
+            # with different sizes
+            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                        constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
+            if (conversion_list[0] != conversion_list[1]):
+                reason_text = "image-conversion size must be the same on both controllers"
+                self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                             constants.FILESYSTEM_NAME_IMAGE_CONVERSION,
+                                             reason_text)
+            elif conversion_list[0] == conversion_list[1]:
+                self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                             constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
 
     def _auto_upload_managed_app(self, context, app_name):
         if self._patching_operation_is_occurring():
@@ -6471,6 +6517,31 @@ class ConductorManager(service.PeriodicService):
             values = {'state': constants.SB_STATE_CONFIGURED,
                       'task': None}
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
+
+    def _update_image_conversion_alarm(self, alarm_state, fs_name, reason_text=None):
+        """ Raise conversion configuration alarm"""
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_IMAGE_CONVERSION,
+                                        fs_name)
+
+        if alarm_state == fm_constants.FM_ALARM_STATE_SET:
+            fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_IMAGE_CONVERSION,
+                alarm_state=alarm_state,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_IMAGE_CONVERSION,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_CRITICAL,
+                reason_text=reason_text,
+                alarm_type=fm_constants.FM_ALARM_TYPE_4,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_7,
+                proposed_repair_action=_("Add image-conversion filesystem on both controllers."
+                                         "Consult the System Administration Manual "
+                                         "for more details. If problem persists, "
+                                         "contact next level of support."),
+                service_affecting=True)
+            self.fm_api.set_fault(fault)
+        else:
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_IMAGE_CONVERSION,
+                                    entity_instance_id)
 
     def _update_storage_backend_alarm(self, alarm_state, backend, reason_text=None):
         """ Update storage backend configuration alarm"""
