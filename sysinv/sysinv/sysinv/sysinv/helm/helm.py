@@ -63,13 +63,12 @@ def suppress_stevedore_errors(manager, entrypoint, exception):
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
+    # Define the stevedore namespaces that will need to be managed for plugins
+    STEVEDORE_APPS = 'systemconfig.helm_applications'
+    STEVEDORE_ARMADA = 'systemconfig.armada.manifest_ops'
+
     def __init__(self, dbapi=None):
         self.dbapi = dbapi
-
-        # Initialize the plugins
-        self.helm_system_applications = {}
-        self.chart_operators = {}
-        self.armada_manifest_operators = {}
 
         # Find all plugins for apps, charts per app, and armada manifest
         # operators
@@ -77,19 +76,85 @@ class HelmOperator(object):
 
     def discover_plugins(self):
         """ Scan for all available plugins """
+
+        LOG.info("HelmOperator: Loading available helm and armada plugins.")
+
+        # Initialize the plugins
+        self.helm_system_applications = {}
+        self.chart_operators = {}
+        self.armada_manifest_operators = {}
+
+        # Need to purge the stevedore plugin cache so that when we discover the
+        # plugins, new plugin resources are found. If the cache exists, then no
+        # new plugins are discoverable.
+        self.purge_cache()
+
         # dict containing sequence of helm charts per app
         self.helm_system_applications = self._load_helm_applications()
 
         # dict containing Armada manifest operators per app
         self.armada_manifest_operators = self._load_armada_manifest_operators()
 
+    def purge_cache_by_location(self, install_location):
+        """Purge the stevedore entry point cache."""
+        for armada_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]:
+            if armada_ep.dist.location == install_location:
+                extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
+                break
+        else:
+            LOG.info("Couldn't find endpoint distribution located at %s for "
+                     "%s" % (install_location, armada_ep.dist))
+
+        for app_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
+            if app_ep.dist.location == install_location:
+                namespace = app_ep.module_name
+
+                purged_list = []
+                for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
+                    if helm_ep.dist.location != install_location:
+                        purged_list.append(helm_ep)
+
+                if purged_list:
+                    extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
+                else:
+                    del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
+                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
+                    LOG.info("Removed stevedore namespace: %s" % namespace)
+
+    def purge_cache(self):
+        """Purge the stevedore entry point cache."""
+        if self.STEVEDORE_APPS in extension.ExtensionManager.ENTRY_POINT_CACHE:
+            for entry_point in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
+                namespace = entry_point.module_name
+                try:
+                    del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
+                    LOG.debug("Deleted entry points for %s." % namespace)
+                except KeyError:
+                    LOG.info("No entry points for %s found." % namespace)
+
+            try:
+                del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]
+                LOG.debug("Deleted entry points for %s." % self.STEVEDORE_APPS)
+            except KeyError:
+                LOG.info("No entry points for %s found." % self.STEVEDORE_APPS)
+
+        else:
+            LOG.info("No entry points for %s found." % self.STEVEDORE_APPS)
+
+        try:
+            del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]
+            LOG.debug("Deleted entry points for %s." % self.STEVEDORE_ARMADA)
+        except KeyError:
+            LOG.info("No entry points for %s found." % self.STEVEDORE_ARMADA)
+
     def _load_armada_manifest_operators(self):
         """Build a dictionary of armada manifest operators"""
 
         operators_dict = {}
+        dist_info_dict = {}
 
         armada_manifest_operators = extension.ExtensionManager(
-            namespace='systemconfig.armada.manifest_ops',
+            namespace=self.STEVEDORE_ARMADA,
             invoke_on_load=True, invoke_args=())
 
         sorted_armada_manifest_operators = sorted(
@@ -99,12 +164,20 @@ class HelmOperator(object):
             if (op.name[-(ARMADA_PLUGIN_SUFFIX_LENGTH - 1):].isdigit() and
                     op.name[-ARMADA_PLUGIN_SUFFIX_LENGTH:-3] == '_'):
                 op_name = op.name[0:-ARMADA_PLUGIN_SUFFIX_LENGTH]
-                LOG.info("_load_armada_manifest_operators op.name=%s "
-                         "adjust to op_name=%s" % (op.name, op_name))
             else:
                 op_name = op.name
-
             operators_dict[op_name] = op.obj
+
+            # Extract distribution information for logging
+            dist_info_dict[op_name] = {
+                'name': op.entry_point.dist.project_name,
+                'location': op.entry_point.dist.location,
+            }
+
+        # Provide some log feedback on plugins being used
+        for (app_name, info) in iteritems(dist_info_dict):
+            LOG.info("Plugins for %-20s: loaded from %-20s - %s." % (app_name,
+                info['name'], info['location']))
 
         return operators_dict
 
@@ -122,7 +195,7 @@ class HelmOperator(object):
 
         helm_application_dict = {}
         helm_applications = extension.ExtensionManager(
-            namespace='systemconfig.helm_applications',
+            namespace=self.STEVEDORE_APPS,
             on_load_failure_callback=suppress_stevedore_errors
         )
         for entry_point in helm_applications.list_entry_points():
@@ -135,6 +208,11 @@ class HelmOperator(object):
                 namespace=namespace, invoke_on_load=True, invoke_args=(self,))
             sorted_helm_plugins = sorted(helm_plugins.extensions, key=lambda x: x.name)
             for plugin in sorted_helm_plugins:
+                LOG.debug("%s: helm plugin %s loaded from %s - %s." % (name,
+                    plugin.name,
+                    plugin.entry_point.dist.project_name,
+                    plugin.entry_point.dist.location))
+
                 plugin_name = plugin.name[HELM_PLUGIN_PREFIX_LENGTH:]
                 self.chart_operators.update({plugin_name: plugin.obj})
                 # Remove duplicates, keeping last occurrence only
@@ -471,7 +549,7 @@ class HelmOperator(object):
 
             # Extract the info we want.
             values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
-                                  '\nCOMPUTED VALUES:')[0]
+                '\nCOMPUTED VALUES:')[0]
         except Exception:
             raise
         finally:
