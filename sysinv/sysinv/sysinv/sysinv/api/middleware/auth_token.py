@@ -13,7 +13,6 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import json
 import re
 
 from keystonemiddleware import auth_token
@@ -61,40 +60,4 @@ class AuthTokenMiddleware(auth_token.AuthProtocol):
             LOG.debug("Found match request")
             return self._sysinv_app(env, start_response)
 
-        response = super(AuthTokenMiddleware, self).__call__(env, start_response)
-
-        # The response could have error code 401 (unauthorized) for two cases:
-        # First case is that the token (user token) of the request is invalid.
-        # Second case is that sysinv's own token is invalid for reason such as
-        # its user ID or project ID or assignment changed, where keystone will
-        # return 404 but keystonemiddleware converts it into 401 as well. There
-        # is no obvious way to distinguish these two cases outside of
-        # keystonemiddleware, so here we setup sysinv to re-authenticate against
-        # keystone to get a new token for its own and retry the request as long
-        # as the response is errored with 401.
-        try:
-            resp_m = json.loads(response[0])
-        except Exception as e:
-            LOG.debug("Request response is not in json format: %s" % e)
-            pass
-        else:
-            k_error = 'error'
-            k_code = 'code'
-            if (k_error in resp_m) and (k_code in resp_m[k_error]) and \
-                    (resp_m[k_error][k_code] == 401) and \
-                            'HTTP_X_AUTH_TOKEN' in env:
-                # Need to clear the cached value for this token since it
-                # is marked as invalid in the cache in the previous process.
-                user_token = env['HTTP_X_AUTH_TOKEN']
-                token_hashes = self._token_hashes(user_token)
-                self._token_cache.set(token_hashes[0], None)
-
-                # Sysinv re-authenticate against keystone to get a new token
-                # for itself.
-                self._auth = self._create_auth_plugin()
-                self._session = self._create_session()
-                self._identity_server = self._create_identity_server()
-
-                # Retry and retry only once of the request from client.
-                response = super(AuthTokenMiddleware, self).__call__(env, start_response)
-        return response
+        return super(AuthTokenMiddleware, self).__call__(env, start_response)
