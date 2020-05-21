@@ -552,6 +552,7 @@ class Host(base.APIBase):
                           'software_load', 'target_load', 'peers', 'peer_id',
                           'install_state', 'install_state_info',
                           'iscsi_initiator_name',
+                          'device_image_update', 'reboot_needed',
                           'inv_state', 'clock_synchronization']
 
         fields = minimum_fields if not expand else None
@@ -5798,6 +5799,22 @@ class HostController(rest.RestController):
         # Check for new hardware since upgrade-start
         self._semantic_check_upgrade_refresh(upgrade, to_host, force_swact)
 
+    def _check_swact_device_image_update(self, from_host, to_host, force=False):
+        if force:
+            LOG.info("device image update swact check bypassed with force option")
+            return
+        if (from_host['device_image_update'] ==
+                device.DEVICE_IMAGE_UPDATE_IN_PROGRESS):
+            raise wsme.exc.ClientSideError(_(
+                "Rejected: Cannot swact %s while %s is updating device "
+                "images.") % (from_host['hostname'], from_host['hostname']))
+
+        if (to_host['device_image_update'] ==
+                device.DEVICE_IMAGE_UPDATE_IN_PROGRESS):
+            raise wsme.exc.ClientSideError(_(
+                "Rejected: Cannot swact %s while %s is updating device "
+                "images.") % (from_host['hostname'], to_host.hostname))
+
     def check_swact(self, hostupdate, force_swact=False):
         """Pre swact semantic checks for controller"""
 
@@ -5861,6 +5878,10 @@ class HostController(rest.RestController):
 
                 # deny swact if storage backend not ready
                 self._semantic_check_storage_backend(ihost_ctr)
+
+                # deny swact if one of the controllers is updating device image
+                self._check_swact_device_image_update(hostupdate.ihost_orig,
+                                                      ihost_ctr, force_swact)
 
                 if ihost_ctr.config_target:
                     if ihost_ctr.config_target != ihost_ctr.config_applied:
@@ -6022,6 +6043,13 @@ class HostController(rest.RestController):
         system = pecan.request.dbapi.isystem_get_one()
         system_mode = system.system_mode
         system_type = system.system_type
+
+        # Check if host is in the process of updating device image
+        if (hostupdate.ihost_orig['device_image_update'] ==
+                device.DEVICE_IMAGE_UPDATE_IN_PROGRESS):
+            raise wsme.exc.ClientSideError(_(
+                "Rejected: Cannot lock %s while device image update is in "
+                "progress.") % hostupdate.displayid)
 
         if system_mode == constants.SYSTEM_MODE_SIMPLEX:
             return
@@ -6861,10 +6889,13 @@ class HostController(rest.RestController):
         LOG.info("device_image_update host_uuid=%s " % host_uuid)
         host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
 
-        # Set the flag indicating the host is in progress of
-        # updating device image
-        host_obj = pecan.request.dbapi.ihost_update(host_uuid,
-            {'device_image_update': device.DEVICE_IMAGE_UPDATE_IN_PROGRESS})
+        # The host must be unlocked/enabled to update device images
+        if (host_obj.administrative != constants.ADMIN_UNLOCKED or
+                host_obj.operational != constants.OPERATIONAL_ENABLED):
+            raise wsme.exc.ClientSideError(_(
+                "The host %s must be unlocked and enabled to update the "
+                "device images." % host_obj.hostname))
+
         # Call rpcapi to tell conductor to begin device image update
         pecan.request.rpcapi.host_device_image_update(
             pecan.request.context, host_uuid)
@@ -6881,10 +6912,6 @@ class HostController(rest.RestController):
         LOG.info("device_image_update_abort host_uuid=%s " % host_uuid)
         host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
 
-        # Set the flag indicating the host is no longer updating the device
-        # image
-        pecan.request.dbapi.ihost_update(host_uuid,
-            {'device_image_update': device.DEVICE_IMAGE_UPDATE_PENDING})
         # Call rpcapi to tell conductor to abort device image update
         pecan.request.rpcapi.host_device_image_update_abort(
             pecan.request.context, host_uuid)
