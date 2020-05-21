@@ -15,7 +15,6 @@ import subprocess
 
 import tsconfig.tsconfig as tsc
 
-from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
 from controllerconfig.upgrades import utils
 
@@ -24,34 +23,21 @@ from oslo_log import log
 LOG = log.getLogger(__name__)
 
 
-def get_upgrade_databases(shared_services):
+def get_upgrade_databases(system_role, shared_services):
 
-    UPGRADE_DATABASES = ('postgres', 'template1', 'nova', 'sysinv',
-                         'ceilometer', 'neutron', 'heat', 'nova_api', 'aodh',
-                         'magnum', 'ironic', 'barbican')
+    UPGRADE_DATABASES = ('postgres', 'template1', 'sysinv',
+                         'barbican')
 
     UPGRADE_DATABASE_SKIP_TABLES = {'postgres': (), 'template1': (),
-                                    'heat': (), 'nova': (), 'nova_api': (),
                                     'sysinv': ('i_alarm',),
-                                    'neutron': (),
-                                    'aodh': (),
-                                    'magnum': (),
-                                    'ironic': (),
-                                    'barbican': (),
-                                    'ceilometer': ('metadata_bool',
-                                                   'metadata_float',
-                                                   'metadata_int',
-                                                   'metadata_text',
-                                                   'meter', 'sample', 'fault',
-                                                   'resource')}
+                                    'barbican': ()}
 
-    if sysinv_constants.SERVICE_TYPE_VOLUME not in shared_services:
-        UPGRADE_DATABASES += ('cinder',)
-        UPGRADE_DATABASE_SKIP_TABLES.update({'cinder': ()})
-
-    if sysinv_constants.SERVICE_TYPE_IMAGE not in shared_services:
-        UPGRADE_DATABASES += ('glance',)
-        UPGRADE_DATABASE_SKIP_TABLES.update({'glance': ()})
+    if system_role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        UPGRADE_DATABASES += ('dcmanager', 'dcorch',)
+        UPGRADE_DATABASE_SKIP_TABLES.update({
+            'dcmanager': ('subcloud_alarms',),
+            'dcorch': ()
+        })
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         UPGRADE_DATABASES += ('keystone',)
@@ -60,12 +46,12 @@ def get_upgrade_databases(shared_services):
     return UPGRADE_DATABASES, UPGRADE_DATABASE_SKIP_TABLES
 
 
-def export_postgres(dest_dir, shared_services):
+def export_postgres(dest_dir, system_role, shared_services):
     """ Export postgres databases """
     devnull = open(os.devnull, 'w')
     try:
         upgrade_databases, upgrade_database_skip_tables = \
-            get_upgrade_databases(shared_services)
+            get_upgrade_databases(system_role, shared_services)
         # Dump roles, table spaces and schemas for databases.
         subprocess.check_call([('sudo -u postgres pg_dumpall --clean ' +
                                 '--schema-only > %s/%s' %
@@ -121,7 +107,7 @@ def prepare_upgrade(from_load, to_load, i_system):
 
     # Export databases
     shared_services = i_system.capabilities.get("shared_services", "")
-    export_postgres(dest_dir, shared_services)
+    export_postgres(dest_dir, i_system.distributed_cloud_role, shared_services)
     export_vim(dest_dir)
 
     # Export filesystems so controller-1 can access them
@@ -197,9 +183,18 @@ def create_simplex_backup(software_upgrade):
     with open(metadata_filename, 'w') as metadata_file:
         metadata_file.write(json_data)
 
-    # TODO: Switch this over to use Ansible
-    # backup_filename = get_upgrade_backup_filename(software_upgrade)
-    # backup_restore.backup(backup_filename, constants.BACKUPS_PATH)
+    backup_filename = get_upgrade_backup_filename(software_upgrade)
+    backup_vars = "platform_backup_file=%s.tgz backup_dir=%s" % (
+        backup_filename, tsc.PLATFORM_BACKUP_PATH)
+    args = [
+        'ansible-playbook',
+        '-e', backup_vars,
+        sysinv_constants.ANSIBLE_PLATFORM_BACKUP_PLAYBOOK]
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE)
+    out, _ = proc.communicate()
+    LOG.info(out)
+    if proc.returncode:
+        raise subprocess.CalledProcessError(proc.returncode, args)
     LOG.info("Create simplex backup complete")
 
 
@@ -254,15 +249,16 @@ def abort_upgrade(from_load, to_load, upgrade):
     # Remove upgrade directories
     upgrade_dirs = [
         os.path.join(tsc.PLATFORM_PATH, "config", to_load),
+        os.path.join(tsc.PLATFORM_PATH, "armada", to_load),
+        os.path.join(tsc.PLATFORM_PATH, "helm", to_load),
+        os.path.join(tsc.ETCD_PATH, to_load),
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, to_load),
         os.path.join(utils.RABBIT_PATH, to_load),
-        os.path.join(tsc.PLATFORM_PATH, "ironic", to_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", to_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", to_load),
         os.path.join(tsc.PLATFORM_PATH, "puppet", to_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", to_load),
-        os.path.join(tsc.PLATFORM_PATH, "ceilometer", to_load),
         os.path.join(tsc.CONFIG_PATH, 'upgrades')
     ]
 
@@ -274,7 +270,7 @@ def abort_upgrade(from_load, to_load, upgrade):
 
     simplex_backup_filename = get_upgrade_backup_filename(upgrade) + "*"
     simplex_backup_files = glob.glob(os.path.join(
-        constants.BACKUPS_PATH, simplex_backup_filename))
+        tsc.PLATFORM_BACKUP_PATH, simplex_backup_filename))
 
     for file in simplex_backup_files:
         try:
@@ -328,15 +324,11 @@ def complete_upgrade(from_load, to_load):
         os.path.join(utils.POSTGRES_PATH, "upgrade"),
         os.path.join(utils.POSTGRES_PATH, from_load),
         os.path.join(utils.RABBIT_PATH, from_load),
-        os.path.join(tsc.PLATFORM_PATH, "ironic", from_load),
         os.path.join(tsc.PLATFORM_PATH, "nfv/vim", from_load),
         os.path.join(tsc.PLATFORM_PATH, ".keyring", from_load),
         os.path.join(tsc.PLATFORM_PATH, "puppet", from_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", from_load),
     ]
-
-    upgrade_dirs.append(
-        os.path.join(tsc.PLATFORM_PATH, "ceilometer", from_load))
 
     for directory in upgrade_dirs:
         try:

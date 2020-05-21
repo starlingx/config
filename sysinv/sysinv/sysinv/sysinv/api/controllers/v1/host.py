@@ -88,6 +88,7 @@ from sysinv.api.controllers.v1 import patch_api
 
 from sysinv.common import ceph
 from sysinv.common import constants
+from sysinv.common import device
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
@@ -514,6 +515,12 @@ class Host(base.APIBase):
 
     iscsi_initiator_name = wtypes.text
     "The iscsi initiator name (only used for worker hosts)"
+
+    device_image_update = wtypes.text
+    "Represent the status of device image update of this ihost."
+
+    reboot_needed = types.boolean
+    " Represent whether a reboot is needed after device image update"
 
     def __init__(self, **kwargs):
         self.fields = list(objects.host.fields.keys())
@@ -1088,6 +1095,8 @@ class HostController(rest.RestController):
         'wipe_osds': ['GET'],
         'kube_upgrade_control_plane': ['POST'],
         'kube_upgrade_kubelet': ['POST'],
+        'device_image_update': ['POST'],
+        'device_image_update_abort': ['POST'],
     }
 
     def __init__(self, from_isystem=False):
@@ -2670,7 +2679,8 @@ class HostController(rest.RestController):
             # Set upgrade flag so controller-1 will upgrade after install
             # This flag is guaranteed to be written on controller-0, since
             # controller-1 must be locked to run the host-upgrade command.
-            open(tsc.CONTROLLER_UPGRADE_FLAG, "w").close()
+            # perform rpc to conductor to do the update with root privilege access
+            pecan.request.rpcapi.update_controller_upgrade_flag(pecan.request.context)
 
         return Host.convert_with_links(rpc_ihost)
 
@@ -5391,6 +5401,28 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _("%s" % response['error_details']))
 
+            self._check_lock_controller_during_upgrade(hostupdate.ihost_orig['hostname'])
+
+    @staticmethod
+    def _check_lock_controller_during_upgrade(hostname):
+        # Check to ensure in valid upgrade state for host-lock
+        try:
+            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            return
+
+        if (upgrade.state in [constants.UPGRADE_STARTING] and
+                hostname == constants.CONTROLLER_1_HOSTNAME):
+            # Lock of controller-1 is not allowed during
+            # the UPGRADE_STARTING state
+            raise wsme.exc.ClientSideError(
+                _("host-lock %s is not allowed during upgrade state '%s'. "
+                  "Upgrade state must be '%s'.") %
+                (hostname,
+                 constants.UPGRADE_STARTING,
+                 constants.UPGRADE_STARTED))
+
     def check_unlock_application(self, hostupdate, force_unlock=False):
         LOG.info("%s ihost check_unlock_application" % hostupdate.displayid)
         apps = pecan.request.dbapi.kube_app_get_all()
@@ -6817,6 +6849,45 @@ class HostController(rest.RestController):
 
         LOG.info("Upgrading kubernetes kubelet on host %s" %
                  host_obj.hostname)
+        return Host.convert_with_links(host_obj)
+
+    # POST ihosts/<uuid>/device_image_update
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(Host, types.uuid)
+    def device_image_update(self, host_uuid):
+        """ Update device image on the specified host.
+            :param host_uuid: UUID of the host
+        """
+        LOG.info("device_image_update host_uuid=%s " % host_uuid)
+        host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
+
+        # Set the flag indicating the host is in progress of
+        # updating device image
+        host_obj = pecan.request.dbapi.ihost_update(host_uuid,
+            {'device_image_update': device.DEVICE_IMAGE_UPDATE_IN_PROGRESS})
+        # Call rpcapi to tell conductor to begin device image update
+        pecan.request.rpcapi.host_device_image_update(
+            pecan.request.context, host_uuid)
+        return Host.convert_with_links(host_obj)
+
+    # POST ihosts/<uuid>/device_image_update_abort
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(Host, types.uuid)
+    def device_image_update_abort(self, host_uuid):
+        """ Abort device image update on the specified host.
+            :param host_uuid: UUID of the host
+            :param install_uuid: install_uuid.
+        """
+        LOG.info("device_image_update_abort host_uuid=%s " % host_uuid)
+        host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
+
+        # Set the flag indicating the host is no longer updating the device
+        # image
+        pecan.request.dbapi.ihost_update(host_uuid,
+            {'device_image_update': device.DEVICE_IMAGE_UPDATE_PENDING})
+        # Call rpcapi to tell conductor to abort device image update
+        pecan.request.rpcapi.host_device_image_update_abort(
+            pecan.request.context, host_uuid)
         return Host.convert_with_links(host_obj)
 
 

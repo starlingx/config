@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -28,6 +28,9 @@ from sysinv.api.controllers.v1 import cluster
 from sysinv.api.controllers.v1 import community
 from sysinv.api.controllers.v1 import controller_fs
 from sysinv.api.controllers.v1 import cpu
+from sysinv.api.controllers.v1 import device_image
+from sysinv.api.controllers.v1 import device_image_state
+from sysinv.api.controllers.v1 import device_label
 from sysinv.api.controllers.v1 import disk
 from sysinv.api.controllers.v1 import datanetwork
 from sysinv.api.controllers.v1 import interface_datanetwork
@@ -260,6 +263,15 @@ class V1(base.APIBase):
 
     kube_host_upgrades = [link.Link]
     "Links to the kube_host_upgrade resource"
+
+    device_images = [link.Link]
+    "Links to the device images resource"
+
+    device_image_state = [link.Link]
+    "Links to the device image state resource"
+
+    device_labels = [link.Link]
+    "Links to the device labels resource"
 
     @classmethod
     def convert(self):
@@ -809,6 +821,26 @@ class V1(base.APIBase):
                                                      'kube_host_upgrades', '',
                                                      bookmark=True)]
 
+        v1.device_images = [link.Link.make_link('self', pecan.request.host_url,
+                                                'device_images', ''),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'device_images', '',
+                                                bookmark=True)]
+
+        v1.device_image_state = [link.Link.make_link('self', pecan.request.host_url,
+                                                     'device_image_state', ''),
+                                 link.Link.make_link('bookmark',
+                                                     pecan.request.host_url,
+                                                     'device_image_state', '',
+                                                     bookmark=True)]
+
+        v1.device_labels = [link.Link.make_link('self', pecan.request.host_url,
+                                                'device_labels', ''),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'device_labels', '',
+                                                bookmark=True)]
         return v1
 
 
@@ -880,6 +912,9 @@ class Controller(rest.RestController):
     kube_versions = kube_version.KubeVersionController()
     kube_upgrade = kube_upgrade.KubeUpgradeController()
     kube_host_upgrades = kube_host_upgrade.KubeHostUpgradeController()
+    device_images = device_image.DeviceImageController()
+    device_image_state = device_image_state.DeviceImageStateController()
+    device_labels = device_label.DeviceLabelController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

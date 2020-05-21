@@ -1,5 +1,5 @@
 [Unit]
-Description=Titanium Cloud System Inventory Agent
+Description=StarlingX System Inventory Agent
 After=nfscommon.service sw-patch.service
 After=network-online.target systemd-udev-settle.service
 Before=pmon.service

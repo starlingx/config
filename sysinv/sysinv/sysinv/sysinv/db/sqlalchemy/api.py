@@ -15,7 +15,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -45,6 +45,7 @@ from oslo_utils import uuidutils
 from sysinv._i18n import _
 from sysinv import objects
 from sysinv.common import constants
+from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.db import api
@@ -1149,6 +1150,26 @@ def add_host_fs_filter_by_ihost(query, value):
         return query.filter(models.ihost.uuid == value)
 
 
+def add_deviceimage_filter(query, value):
+    """Adds a deviceimage-specific filter to a query.
+
+    :param query: Initial query to add filter to.
+    :param value: Value for filtering results by.
+    :return: Modified query.
+    """
+
+    if uuidutils.is_uuid_like(value):
+        return query.filter(or_(models.DeviceImageRootKey.uuid == value,
+                                models.DeviceImageFunctional.uuid == value,
+                                models.DeviceImageKeyRevocation.uuid == value))
+    elif utils.is_int_like(value):
+        return query.filter(or_(models.DeviceImageRootKey.id == value,
+                                models.DeviceImageFunctional.id == value,
+                                models.DeviceImageKeyRevocation.id == value))
+    else:
+        return add_identity_filter(query, value, use_name=True)
+
+
 class Connection(api.Connection):
     """SqlAlchemy connection."""
 
@@ -1792,6 +1813,87 @@ class Connection(api.Connection):
                             session=session).\
                             filter_by(id=memory_id).\
                             delete()
+
+    @objects.objectify(objects.fpga_device)
+    def fpga_device_create(self, hostid, values):
+
+        if utils.is_int_like(hostid):
+            host = self.ihost_get(int(hostid))
+        elif utils.is_uuid_like(hostid):
+            host = self.ihost_get(hostid.strip())
+        elif isinstance(hostid, models.ihost):
+            host = hostid
+        else:
+            raise exception.NodeNotFound(node=hostid)
+
+        values['host_id'] = host['id']
+
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+
+        fpga_device = models.FpgaDevice()
+        fpga_device.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(fpga_device)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add FPGA device (uuid: %s), FPGA device with PCI "
+                          "address %s on host %s already exists" %
+                          (values['uuid'],
+                           values['pciaddr'],
+                           values['host_id']))
+                raise exception.PCIAddrAlreadyExists(pciaddr=values['pciaddr'],
+                                                     host=values['host_id'])
+            return self._fpga_device_get(values['pciaddr'], values['host_id'])
+
+    def _fpga_device_get(self, pciaddr, hostid=None):
+        query = model_query(models.FpgaDevice)
+        if hostid:
+            query = query.filter_by(host_id=hostid)
+        query = add_identity_filter(query, pciaddr, use_pciaddr=True)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.PCIAddrNotFound(pciaddr=pciaddr)
+
+        return result
+
+    @objects.objectify(objects.fpga_device)
+    def fpga_device_get(self, deviceid, hostid=None):
+        return self._fpga_device_get(deviceid, hostid)
+
+    @objects.objectify(objects.fpga_device)
+    def fpga_device_update(self, device_id, values, forihostid=None):
+        with _session_for_write() as session:
+            # May need to reserve in multi controller system; ref sysinv
+            query = model_query(models.FpgaDevice, read_deleted="no",
+                                session=session)
+
+            if forihostid:
+                query = query.filter_by(host_id=forihostid)
+
+            try:
+                query = add_identity_filter(query, device_id)
+                result = query.one()
+                for k, v in values.items():
+                    setattr(result, k, v)
+            except NoResultFound:
+                raise exception.InvalidParameterValue(
+                    err="No entry found for device %s" % device_id)
+            except MultipleResultsFound:
+                raise exception.InvalidParameterValue(
+                    err="Multiple entries found for device %s" % device_id)
+
+            return query.one()
+
+    @objects.objectify(objects.fpga_device)
+    def fpga_device_get_by_host(self, host, limit=None, marker=None,
+                               sort_key=None, sort_dir=None):
+        query = model_query(models.FpgaDevice)
+        query = add_device_filter_by_host(query, host)
+        return _paginate_query(models.FpgaDevice, limit, marker,
+                               sort_key, sort_dir, query)
 
     @objects.objectify(objects.pci_device)
     def pci_device_create(self, hostid, values):
@@ -8259,3 +8361,423 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.KubeUpgradeNotFound(upgrade_id=upgrade_id)
             query.delete()
+
+    def _deviceimage_get(self, model_class, deviceimage_id, obj=None):
+        session = None
+        if obj:
+            session = inspect(obj).session
+        query = model_query(model_class, session=session)
+
+        query = add_deviceimage_filter(query, deviceimage_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DeviceImageNotFound(
+                deviceimage_uuid=deviceimage_id)
+        except MultipleResultsFound:
+            raise exception.InvalidParameterValue(
+                    err="Multiple entries found for deviceimage %s" % deviceimage_id)
+        return result
+
+    def _deviceimage_get_one(self, deviceimage_id, deviceimage=None):
+        entity = with_polymorphic(models.DeviceImage, '*')
+        query = model_query(entity)
+        query = add_deviceimage_filter(query, deviceimage_id)
+        if deviceimage is not None:
+            query = query.filter_by(network_type=deviceimage)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DeviceImageNotFound(
+                deviceimage_uuid=deviceimage_id)
+        except MultipleResultsFound:
+            raise exception.InvalidParameterValue(
+                err="Multiple entries found for deviceimage %s" % deviceimage_id)
+
+        return result
+
+    def _deviceimage_create(self, obj, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+
+        with _session_for_write() as session:
+            # The id is null for ae interfaces with more than one member interface
+            temp_id = obj.id
+            obj.update(values)
+            if obj.id is None:
+                obj.id = temp_id
+
+            try:
+                session.add(obj)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add deviceimage (uuid: %s), "
+                          "name %s already exists." %
+                          (values['uuid'], values.get('name')))
+
+                raise exception.DeviceImageAlreadyExists(
+                    name=values.get('name'))
+
+        return self._deviceimage_get(type(obj), values['uuid'])
+
+    @objects.objectify(objects.device_image)
+    def deviceimage_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+
+        bitstream_type = values.get('bitstream_type')
+        if bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:
+            deviceimage = models.DeviceImageRootKey()
+        elif bitstream_type == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
+            deviceimage = models.DeviceImageFunctional()
+        elif bitstream_type == dconstants.BITSTREAM_TYPE_KEY_REVOCATION:
+            deviceimage = models.DeviceImageKeyRevocation()
+        else:
+            raise exception.DeviceImageTypeUnsupported(
+                bitstream_type=bitstream_type)
+        return self._deviceimage_create(deviceimage, values)
+
+    @objects.objectify(objects.device_image)
+    def deviceimage_get(self, deviceimage_id):
+        return self._deviceimage_get_one(deviceimage_id)
+
+    def _add_deviceimage_filters(self, query, filters):
+        if filters is None:
+            filters = dict()
+        supported_filters = {'bitstream_type',
+                             'name',
+                             }
+        unsupported_filters = set(filters).difference(supported_filters)
+        if unsupported_filters:
+            msg = _("SqlAlchemy API does not support "
+                    "filtering by %s") % ', '.join(unsupported_filters)
+            raise ValueError(msg)
+
+        for field in supported_filters:
+            if field in filters:
+                query = query.filter_by(**{field: filters[field]})
+
+        return query
+
+    @objects.objectify(objects.device_image)
+    def deviceimages_get_all(self, filters=None, limit=None, marker=None,
+                             sort_key=None, sort_dir=None):
+
+        with _session_for_read() as session:
+            deviceimages = with_polymorphic(models.DeviceImage, '*')
+            query = model_query(deviceimages, session=session)
+            query = self._add_deviceimage_filters(query, filters)
+
+        return _paginate_query(models.DeviceImage, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.device_image)
+    def deviceimage_update(self, deviceimage_uuid, values):
+        with _session_for_write() as session:
+            query = model_query(models.DeviceImage, session=session)
+            query = add_identity_filter(query, deviceimage_uuid)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.DeviceImageNotFound(
+                    deviceimage_uuid=deviceimage_uuid)
+            return query.one()
+
+    def deviceimage_destroy(self, deviceimage_uuid):
+        query = model_query(models.DeviceImage)
+        query = add_identity_filter(query, deviceimage_uuid)
+        try:
+            query.one()
+        except NoResultFound:
+            raise exception.DeviceImageNotFound(
+                deviceimage_uuid=deviceimage_uuid)
+        query.delete()
+
+    def _device_label_get(self, device_label_id):
+        query = model_query(models.DeviceLabel)
+        query = add_identity_filter(query, device_label_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DeviceLabelNotFound(uuid=device_label_id)
+        return result
+
+    @objects.objectify(objects.device_label)
+    def device_label_create(self, device_uuid, values):
+
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        values['device_uuid'] = device_uuid
+
+        host_device_label = models.DeviceLabel()
+        host_device_label.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(host_device_label)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error("Failed to add host device label %s. "
+                          "Already exists with this uuid" %
+                          (values['label_key']))
+                raise exception.DeviceLabelAlreadyExists(
+                    label=values['label_key'], host=values['host_uuid'])
+            return self._device_label_get(values['uuid'])
+
+    @objects.objectify(objects.device_label)
+    def device_label_get(self, uuid):
+        query = model_query(models.DeviceLabel)
+        query = query.filter_by(uuid=uuid)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.InvalidParameterValue(
+                err="No device label entry found for %s" % uuid)
+        return result
+
+    @objects.objectify(objects.device_label)
+    def device_label_get_all(self, deviceid=None):
+        query = model_query(models.DeviceLabel, read_deleted="no")
+        if deviceid:
+            query = query.filter_by(device_id=deviceid)
+        return query.all()
+
+    @objects.objectify(objects.device_label)
+    def device_label_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+        return _paginate_query(models.DeviceLabel, limit, marker,
+                               sort_key, sort_dir)
+
+    @objects.objectify(objects.device_label)
+    def device_label_get_by_label(self, label_key, label_value,
+                                  limit=None, marker=None,
+                                  sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceLabel)
+        query = query.filter_by(label_key=label_key,
+                                label_value=label_value)
+        return query.all()
+
+    @objects.objectify(objects.device_label)
+    def device_label_update(self, uuid, values):
+        with _session_for_write() as session:
+            query = model_query(models.DeviceLabel, session=session)
+            query = query.filter_by(uuid=uuid)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count == 0:
+                raise exception.DeviceLabelNotFound(uuid)
+            return query.one()
+
+    def device_label_destroy(self, uuid):
+        with _session_for_write() as session:
+            query = model_query(models.DeviceLabel, session=session)
+            query = query.filter_by(uuid=uuid)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.DeviceLabelNotFound(uuid)
+            query.delete()
+
+    @objects.objectify(objects.device_label)
+    def device_label_get_by_device(self, device_uuid,
+                          limit=None, marker=None,
+                          sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceLabel)
+        query = query.filter_by(pcidevice_uuid=device_uuid)
+        return _paginate_query(models.DeviceLabel, limit, marker,
+                               sort_key, sort_dir, query)
+
+    def _device_label_query(self, device_id, label_key, session=None):
+        query = model_query(models.DeviceLabel, session=session)
+        query = query.filter(models.DeviceLabel.pcidevice_id == device_id)
+        query = query.filter(models.DeviceLabel.label_key == label_key)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DeviceLabelNotFoundByKey(label=label_key)
+        return result
+
+    @objects.objectify(objects.device_label)
+    def device_label_query(self, device_id, label_key):
+        return self._device_label_query(device_id, label_key)
+
+    def count_hosts_by_device_label(self, device_label):
+        query = model_query(models.DeviceLabel, read_deleted="no")
+        query = query.filter(models.DeviceLabel.label_key == device_label)
+        return query.count()
+
+    def _device_image_label_get(self, device_image_label_id):
+        query = model_query(models.DeviceImageLabel)
+        query = add_identity_filter(query, device_image_label_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DeviceLabelNotFound(uuid=device_image_label_id)
+        return result
+
+    @objects.objectify(objects.device_image_label)
+    def device_image_label_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+
+        device_image_label = models.DeviceImageLabel()
+        device_image_label.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(device_image_label)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.DeviceImageLabelAlreadyExists(
+                    uuid=values['uuid'])
+            return self._device_image_label_get(values['uuid'])
+
+    @objects.objectify(objects.device_image_label)
+    def device_image_label_get(self, uuid):
+        query = model_query(models.DeviceImageLabel)
+        query = query.filter_by(uuid=uuid)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.InvalidParameterValue(
+                err="No device image label entry found for %s" % uuid)
+        return result
+
+    @objects.objectify(objects.device_image_label)
+    def device_image_label_update(self, uuid, values):
+        with _session_for_write() as session:
+            query = model_query(models.DeviceImageLabel, session=session)
+            query = query.filter_by(uuid=uuid)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count == 0:
+                raise exception.DeviceImageLabelNotFound(uuid)
+            return query.one()
+
+    @objects.objectify(objects.device_image_label)
+    def device_image_label_get_by_image(self, image_id,
+                                  limit=None, marker=None,
+                                  sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceImageLabel)
+        query = query.filter_by(image_id=image_id)
+        return query.all()
+
+    @objects.objectify(objects.device_image_label)
+    def device_image_label_get_by_image_label(self, image_id, label_id,
+                                  limit=None, marker=None,
+                                  sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceImageLabel)
+        query = query.filter_by(image_id=image_id, label_id=label_id)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.DeviceImageLabelNotFoundByKey(
+                image_id=image_id, label_id=label_id)
+
+    def device_image_label_destroy(self, id):
+        with _session_for_write() as session:
+            query = model_query(models.DeviceImageLabel, session=session)
+            query = add_identity_filter(query, id)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.DeviceImageLabelNotFound(uuid=id)
+            query.delete()
+
+    def _device_image_state_get(self, id):
+        query = model_query(models.DeviceImageState)
+        query = add_identity_filter(query, id)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.DeviceImageStateNotFound(id=id)
+
+    @objects.objectify(objects.device_image_state)
+    def device_image_state_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        device_image_state = models.DeviceImageState()
+        device_image_state.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(device_image_state)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.DeviceImageStateAlreadyExists(uuid=values['uuid'])
+            return self._device_image_state_get(values['uuid'])
+
+    @objects.objectify(objects.device_image_state)
+    def device_image_state_get(self, id):
+        return self._device_image_state_get(id)
+
+    @objects.objectify(objects.device_image_state)
+    def device_image_state_get_one(self):
+        query = model_query(models.DeviceImageState)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.device_image_state)
+    def device_image_state_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+
+        query = model_query(models.DeviceImageState)
+
+        return _paginate_query(models.DeviceImageState, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.device_image_state)
+    def device_image_state_update(self, id, values):
+        with _session_for_write() as session:
+            query = model_query(models.DeviceImageState, session=session)
+            query = add_identity_filter(query, id)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.DeviceImageStateNotFound(id=id)
+            return query.one()
+
+    def device_image_state_destroy(self, id):
+        with _session_for_write() as session:
+            query = model_query(models.DeviceImageState, session=session)
+            query = add_identity_filter(query, id)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.DeviceImageStateNotFound(id=id)
+            query.delete()
+
+    @objects.objectify(objects.device_image_state)
+    def device_image_state_get_by_image_device(self, image_id, pcidevice_id,
+                                               limit=None, marker=None,
+                                               sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceImageState)
+        query = query.filter_by(image_id=image_id,
+                                pcidevice_id=pcidevice_id)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.DeviceImageStateNotFoundByKey(image_id=image_id,
+                    device_id=pcidevice_id)
+
+    @objects.objectify(objects.device_image_state)
+    def device_image_state_get_all(self, host_id=None, pcidevice_id=None,
+                                   image_id=None, status=None,
+                                   limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceImageState)
+        if host_id:
+            query = query.filter_by(host_id=host_id)
+        if pcidevice_id:
+            query = query.filter_by(pcidevice_id=pcidevice_id)
+        if image_id:
+            query = query.filter_by(image_id=image_id)
+        if status:
+            query = query.filter_by(status=status)
+        return query.all()

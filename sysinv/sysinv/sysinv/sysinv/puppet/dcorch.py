@@ -110,8 +110,19 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
                 self.get_proxy_public_url(self.PATCHING_SERVICE_PORT,
                                           self.PATCHING_SERVICE_PATH),
             'dcorch::keystone::auth::identity_proxy_public_url':
-                self.get_proxy_internal_url(self.IDENTITY_SERVICE_PORT,
-                                            self.IDENTITY_SERVICE_PATH),
+                self.get_proxy_public_url(self.IDENTITY_SERVICE_PORT,
+                                          self.IDENTITY_SERVICE_PATH),
+
+            'dcorch::keystone::auth::sysinv_proxy_admin_url':
+                self.get_proxy_admin_url(self.PLATFORM_SERVICE_PORT,
+                                         self.PLATFORM_SERVICE_PATH),
+            'dcorch::keystone::auth::identity_proxy_admin_url':
+                self.get_proxy_admin_url(self.IDENTITY_SERVICE_PORT,
+                                         self.IDENTITY_SERVICE_PATH),
+            'dcorch::keystone::auth::patching_proxy_admin_url':
+                self.get_proxy_admin_url(self.PATCHING_SERVICE_PORT,
+                                         self.PATCHING_SERVICE_PATH),
+
             'dcorch::keystone::auth::region': self.get_region_name(),
             'dcorch::keystone::auth::auth_name': ksuser,
             'dcorch::keystone::auth::service_name': self.SERVICE_NAME,
@@ -197,6 +208,9 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
 
     def get_proxy_public_url(self, port, service_path):
         return self._format_public_endpoint(port, path=service_path)
+
+    def get_proxy_admin_url(self, port, service_path):
+        return self._format_admin_endpoint(port, path=service_path)
 
     def get_region_name(self):
         return self._get_service_region_name(self.SERVICE_NAME)

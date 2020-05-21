@@ -242,7 +242,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
                     self.SERVICE_TYPE in self._get_shared_services()):
             return self._get_admin_url_from_service_config(self.SERVICE_NAME)
         else:
-            return self._format_private_endpoint(self.SERVICE_PORT)
+            return self._format_admin_endpoint(self.SERVICE_PORT)
 
     def get_auth_address(self):
         if self._region_config():

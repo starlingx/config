@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,8 +7,10 @@
 from __future__ import absolute_import
 from eventlet.green import subprocess
 import json
+import keyring
 import netaddr
 import os
+import random
 import re
 import tempfile
 
@@ -26,6 +28,10 @@ LOG = logging.getLogger(__name__)
 # Offset aligns with kubeadm DNS IP allocation scheme:
 # kubenetes/cmd/kubeadm/app/constants/constants.go:GetDNSIP
 CLUSTER_SERVICE_DNS_IP_OFFSET = 10
+
+# certificate keyring params
+CERTIFICATE_KEY_SERVICE = "kubernetes"
+CERTIFICATE_KEY_USER = "certificate-key"
 
 
 class KubernetesPuppet(base.BasePuppet):
@@ -73,11 +79,72 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
+    def get_host_config_upgrade(self, host):
+        """Updates the config for upgrade with updated kubernetes params
+
+        :param host: host object
+        """
+        config = {}
+
+        # Generate the join command for this host
+        config.update(self._get_host_join_command(host))
+
+        # Get the kubernetes version
+        config.update(self._get_active_kubernetes_version())
+
+        LOG.info("get_host_config_upgrade kubernetes config=%s" % config)
+
+        return config
+
+    def get_secure_static_config(self):
+        """Update the hiera configuration to add certificate-key"""
+
+        key = keyring.get_password(CERTIFICATE_KEY_SERVICE,
+                CERTIFICATE_KEY_USER)
+        if not key:
+            key = '{:064x}'.format(random.getrandbits(8 * 32))
+            keyring.set_password(CERTIFICATE_KEY_SERVICE,
+                    CERTIFICATE_KEY_USER, key)
+            LOG.info('storing kubernetes_kubeadm_certificate_key')
+
+        config = {}
+
+        config.update({
+                'kubernetes::kubeadm::certificate-key': key,
+        })
+
+        return config
+
+    @staticmethod
+    def _get_active_kubernetes_version():
+        """Get the active kubernetes version
+        """
+        # During a platform upgrade, the version is still None
+        # when N+1 controller-1 is creating hieradata.
+        # The version is updated from the running kubernetes version.
+        config = {}
+
+        kube_operator = kubernetes.KubeOperator()
+        kube_version = kube_operator.kube_get_kubernetes_version()
+
+        config.update({
+            'platform::kubernetes::params::version': kube_version,
+        })
+
+        return config
+
     def _get_host_join_command(self, host):
         config = {}
         if not utils.is_initial_config_complete():
             return config
 
+        join_cmd = self._get_kubernetes_join_cmd(host)
+        config.update({'platform::kubernetes::params::join_cmd': join_cmd})
+
+        return config
+
+    @staticmethod
+    def _get_kubernetes_join_cmd(host):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
@@ -85,33 +152,50 @@ class KubernetesPuppet(base.BasePuppet):
             if host.personality == constants.CONTROLLER:
                 # Upload the certificates used during kubeadm join
                 # The cert key will be printed in the last line of the output
+
                 # We will create a temp file with the kubeadm config
                 # We need this because the kubeadm config could have changed
                 # since bootstrap. Reading the kubeadm config each time
                 # it is needed ensures we are not using stale data
-                fd, temp_kubeadm_config_view = tempfile.mkstemp(dir='/tmp', suffix='.yaml')
+
+                fd, temp_kubeadm_config_view = tempfile.mkstemp(
+                    dir='/tmp', suffix='.yaml')
                 with os.fdopen(fd, 'w') as f:
                     cmd = ['kubeadm', 'config', 'view']
                     subprocess.check_call(cmd, stdout=f)
-                cmd = ['kubeadm', 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
+
+                # We will use a custom key to encrypt kubeadm certificates
+                # to make sure all hosts decrypt using the same key
+
+                key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
+                        CERTIFICATE_KEY_USER))
+                with open(temp_kubeadm_config_view, "a") as f:
+                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta2\r\n"
+                            "kind: InitConfiguration\r\ncertificateKey: "
+                            "{}".format(key))
+
+                cmd = ['kubeadm', 'init', 'phase', 'upload-certs',
+                       '--upload-certs', '--config',
                        temp_kubeadm_config_view]
-                cmd_output = subprocess.check_output(cmd)
-                cert_key = cmd_output.strip().split('\n')[-1]
-                join_cmd_additions = " --control-plane --certificate-key %s" % cert_key
+
+                subprocess.check_call(cmd)
+                join_cmd_additions = \
+                    " --control-plane --certificate-key %s" % key
                 os.unlink(temp_kubeadm_config_view)
 
             cmd = ['kubeadm', 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
             join_cmd = subprocess.check_output(cmd)
-            join_cmd_additions += " --cri-socket /var/run/containerd/containerd.sock"
+            join_cmd_additions += \
+                " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
+            LOG.info('get_kubernetes_join_cmd join_cmd=%s' % join_cmd)
         except Exception:
             LOG.exception("Exception generating bootstrap token")
-            raise exception.SysinvException('Failed to generate bootstrap token')
+            raise exception.SysinvException(
+                'Failed to generate bootstrap token')
 
-        config.update({'platform::kubernetes::params::join_cmd': join_cmd})
-
-        return config
+        return join_cmd
 
     def _get_etcd_endpoint(self):
         addr = self._format_url_address(self._get_cluster_host_address())
@@ -219,10 +303,12 @@ class KubernetesPuppet(base.BasePuppet):
             host, function=constants.ISOLATED_FUNCTION, threads=True)
         isol_cpuset = set([c.cpu for c in isol_cpus])
 
-        # determine platform reserved number of logical cpus
-        k8s_reserved_cpus = len(platform_cpuset)
-
-        k8s_isol_cpus = len(vswitch_cpuset) + len(isol_cpuset)
+        # determine reserved sets of logical cpus in a string range set format
+        # to pass as options to kubelet
+        k8s_platform_cpuset = utils.format_range_set(platform_cpuset)
+        k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
+                                                         vswitch_cpuset |
+                                                         isol_cpuset)
 
         # determine platform reserved memory
         k8s_reserved_mem = 0
@@ -274,10 +360,10 @@ class KubernetesPuppet(base.BasePuppet):
              "\"%s\"" % k8s_cpuset,
              'platform::kubernetes::params::k8s_nodeset':
              "\"%s\"" % k8s_nodeset,
-             'platform::kubernetes::params::k8s_reserved_cpus':
-             k8s_reserved_cpus,
-             'platform::kubernetes::params::k8s_isol_cpus':
-             k8s_isol_cpus,
+             'platform::kubernetes::params::k8s_platform_cpuset':
+             k8s_platform_cpuset,
+             'platform::kubernetes::params::k8s_all_reserved_cpuset':
+             k8s_all_reserved_cpuset,
              'platform::kubernetes::params::k8s_reserved_mem':
              k8s_reserved_mem,
              })

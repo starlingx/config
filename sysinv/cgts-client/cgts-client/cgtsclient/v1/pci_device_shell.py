@@ -1,17 +1,15 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
-#
-
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
-# All Rights Reserved.
 #
 
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
+
+# PCI Device Class ID in hexadecimal string
+PCI_DEVICE_CLASS_FPGA = '120000'
 
 
 def _print_device_show(device):
@@ -25,6 +23,15 @@ def _print_device_show(device):
               'enabled', 'sriov_totalvfs', 'sriov_numvfs',
               'sriov_vfs_pci_address', 'extra_info', 'created_at',
               'updated_at']
+
+    pclass_id = getattr(device, 'pclass_id')
+    if pclass_id == PCI_DEVICE_CLASS_FPGA:
+        fields += ['needs_firmware_update', 'status', 'root_key',
+                   'revoked_key_ids', 'boot_page', 'bitstream_id',
+                   'bmc_build_version', 'bmc_fw_version']
+        labels += ['needs_firmware_update', 'status', 'root_key',
+                   'revoked_key_ids', 'boot_page', 'bitstream_id',
+                   'bmc_build_version', 'bmc_fw_version']
 
     data = [(f, getattr(device, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)

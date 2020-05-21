@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,6 +41,7 @@ from sysinv.common import image_versions
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
+from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.helm import common
@@ -707,7 +708,6 @@ class AppOperator(object):
 
         start = time.time()
         try:
-            local_registry_auth = cutils.get_local_docker_registry_auth()
             with self._lock:
                 self._docker._retrieve_specified_registries()
         except Exception as e:
@@ -719,7 +719,7 @@ class AppOperator(object):
             pool = greenpool.GreenPool(size=threads)
             for tag, success in pool.imap(
                     functools.partial(self._docker.download_an_image,
-                                      app.name, local_registry_auth),
+                                      app.name),
                     images_to_download):
                 if success:
                     continue
@@ -915,10 +915,17 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
-    def _storage_provisioner_required(self, app_name):
-        check_storage_provisioner_apps = [constants.HELM_APP_MONITOR]
+    def _rbd_provisioner_required(self, app_name):
+        """ Check if Ceph's RBD provisioner is required """
+        # Since RBD provisioner requires Ceph, return false when not enabled
+        if not StorageBackendConfig.has_backend(
+            self._dbapi,
+            constants.SB_TYPE_CEPH
+        ):
+            return False
 
-        if app_name not in check_storage_provisioner_apps:
+        check_rbd_provisioner_apps = [constants.HELM_APP_MONITOR]
+        if app_name not in check_rbd_provisioner_apps:
             return True
 
         system = self._dbapi.isystem_get_one()
@@ -928,8 +935,8 @@ class AppOperator(object):
         else:
             return True
 
-    def _create_storage_provisioner_secrets(self, app_name):
-        """ Provide access to the system persistent storage provisioner.
+    def _create_rbd_provisioner_secrets(self, app_name):
+        """ Provide access to the system persistent RBD provisioner.
 
         The rbd-provsioner is installed as part of system provisioning and has
         created secrets for all common default namespaces. Copy the secret to
@@ -947,7 +954,7 @@ class AppOperator(object):
             list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
         for ns in namespaces:
             if (ns in [common.HELM_NS_HELM_TOOLKIT,
-                       common.HELM_NS_STORAGE_PROVISIONER] or
+                       common.HELM_NS_RBD_PROVISIONER] or
                     self._kube.kube_get_secret(pool_secret, ns) is not None):
                 # Secret already exist
                 continue
@@ -956,13 +963,13 @@ class AppOperator(object):
                 if not self._kube.kube_get_namespace(ns):
                     self._kube.kube_create_namespace(ns)
                 self._kube.kube_copy_secret(
-                    pool_secret, common.HELM_NS_STORAGE_PROVISIONER, ns)
+                    pool_secret, common.HELM_NS_RBD_PROVISIONER, ns)
             except Exception as e:
                 LOG.error(e)
                 raise
 
-    def _delete_storage_provisioner_secrets(self, app_name):
-        """ Remove access to the system persistent storage provisioner.
+    def _delete_rbd_provisioner_secrets(self, app_name):
+        """ Remove access to the system persistent RBD provisioner.
 
         As part of launching a supported application, secrets were created to
         allow access to the provisioner from the application namespaces. This
@@ -981,7 +988,7 @@ class AppOperator(object):
 
         for ns in namespaces:
             if (ns == common.HELM_NS_HELM_TOOLKIT or
-                    ns == common.HELM_NS_STORAGE_PROVISIONER):
+                    ns == common.HELM_NS_RBD_PROVISIONER):
                 continue
 
             try:
@@ -1159,6 +1166,28 @@ class AppOperator(object):
             if loop_timeout > timeout:
                 raise exception.KubeNamespaceDeleteTimeout(name=namespace)
             LOG.info("Namespace %s delete completed." % namespace)
+        except Exception as e:
+            LOG.error(e)
+            raise
+
+    def _wait_for_pod_termination(self, namespace):
+        loop_timeout = 0
+        loop_check_interval = 10
+        timeout = 300
+        try:
+            LOG.info("Waiting for pod termination in namespace %s ..." % namespace)
+
+            # Pod termination timeout 5mins
+            while(loop_timeout <= timeout):
+                if not self._kube.kube_namespaced_pods_exist(namespace):
+                    # Pods have terminated
+                    break
+                loop_timeout += loop_check_interval
+                time.sleep(loop_check_interval)
+
+            if loop_timeout > timeout:
+                raise exception.KubePodTerminateTimeout(name=namespace)
+            LOG.info("Pod termination in Namespace %s completed." % namespace)
         except Exception as e:
             LOG.error(e)
             raise
@@ -1396,7 +1425,7 @@ class AppOperator(object):
         # This function gets the "maintain_user_overrides"
         # parameter from application metadata
         reuse_overrides = False
-        metadata_file = os.path.join(app.path,
+        metadata_file = os.path.join(app.inst_path,
                                      constants.APP_METADATA_FILE)
         if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
             with open(metadata_file, 'r') as f:
@@ -1617,7 +1646,7 @@ class AppOperator(object):
                 # Copy the latest config map
                 self._kube.kube_copy_config_map(
                     self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                    common.HELM_NS_STORAGE_PROVISIONER,
+                    common.HELM_NS_RBD_PROVISIONER,
                     common.HELM_NS_OPENSTACK)
             except Exception as e:
                 LOG.error(e)
@@ -1650,9 +1679,11 @@ class AppOperator(object):
         if (app_name == constants.HELM_APP_OPENSTACK and
                 operation_type == constants.APP_REMOVE_OP):
             _delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-        elif (app_name == constants.HELM_APP_MONITOR and
-              operation_type == constants.APP_DELETE_OP):
-            _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
+        elif app_name == constants.HELM_APP_MONITOR:
+            if operation_type == constants.APP_DELETE_OP:
+                _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
+            elif (operation_type == constants.APP_REMOVE_OP):
+                self._wait_for_pod_termination(common.HELM_NS_MONITOR)
 
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
         """Perform application recover
@@ -2037,7 +2068,7 @@ class AppOperator(object):
                                   True)
 
         self.clear_reapply(app.name)
-        # WORKAROUND: For k8s MatchNodeSelector issue. Look for and clean up any
+        # WORKAROUND: For k8s NodeAffinity issue. Look for and clean up any
         #             pods that could block manifest apply
         #
         #             Upstream reports of this:
@@ -2046,7 +2077,7 @@ class AppOperator(object):
         #
         #             Outstanding PR that was tested and fixed this issue:
         #             - https://github.com/kubernetes/kubernetes/pull/80976
-        self._kube_pod.delete_failed_pods_by_reason(reason='MatchNodeSelector')
+        self._kube_pod.delete_failed_pods_by_reason(reason='NodeAffinity')
 
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
@@ -2059,8 +2090,8 @@ class AppOperator(object):
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
 
-                if self._storage_provisioner_required(app.name):
-                    self._create_storage_provisioner_secrets(app.name)
+                if self._rbd_provisioner_required(app.name):
+                    self._create_rbd_provisioner_secrets(app.name)
                 self._create_app_specific_resources(app.name)
 
             self._update_app_status(
@@ -2340,8 +2371,8 @@ class AppOperator(object):
             try:
                 self._delete_local_registry_secrets(app.name)
                 if app.system_app:
-                    if self._storage_provisioner_required(app.name):
-                        self._delete_storage_provisioner_secrets(app.name)
+                    if self._rbd_provisioner_required(app.name):
+                        self._delete_rbd_provisioner_secrets(app.name)
                     self._delete_app_specific_resources(app.name, constants.APP_REMOVE_OP)
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
@@ -2734,7 +2765,7 @@ class DockerHelper(object):
                 # is a work around the permission issue in Armada container.
                 kube_config = os.path.join(constants.APP_SYNCED_ARMADA_DATA_PATH,
                                            'admin.conf')
-                shutil.copy('/etc/kubernetes/admin.conf', kube_config)
+                shutil.copy(kubernetes.KUBERNETES_ADMIN_CONF, kube_config)
                 os.chown(kube_config, 1000, grp.getgrnam("sys_protected").gr_gid)
 
                 overrides_dir = common.HELM_OVERRIDES_PATH
@@ -2776,6 +2807,9 @@ class DockerHelper(object):
                     command=None)
                 LOG.info("Armada service started!")
                 return container
+            except IOError as ie:
+                if not kubernetes.is_k8s_configured():
+                    LOG.error("Unable to start Armada service: %s" % ie)
             except OSError as oe:
                 LOG.error("Unable to make kubernetes config accessible to "
                           "armada: %s" % oe)
@@ -2931,7 +2965,7 @@ class DockerHelper(object):
             # Failed to get a docker client
             LOG.error("Failed to stop Armada service : %s " % e)
 
-    def download_an_image(self, app_name, local_registry_auth, img_tag):
+    def download_an_image(self, app_name, img_tag):
 
         rc = True
 
@@ -2944,6 +2978,7 @@ class DockerHelper(object):
 
                 LOG.info("Image %s download started from local registry" % img_tag)
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
+                local_registry_auth = cutils.get_local_docker_registry_auth()
                 auth = '{0}:{1}'.format(local_registry_auth['username'],
                                         local_registry_auth['password'])
                 subprocess.check_call(["crictl", "pull", "--creds", auth, img_tag])
@@ -2966,6 +3001,9 @@ class DockerHelper(object):
                 try:
                     # Tag and push the image to the local registry
                     client.tag(target_img_tag, img_tag)
+                    # admin password may be changed by openstack client cmd in parallel.
+                    # So we cannot cache auth info, need refresh it each time.
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
                     client.push(img_tag, auth_config=local_registry_auth)
                 except Exception as e:
                     rc = False

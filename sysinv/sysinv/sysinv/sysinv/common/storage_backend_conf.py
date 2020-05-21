@@ -17,7 +17,6 @@ import pecan
 from oslo_log import log
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import utils as cutils
 
 LOG = log.getLogger(__name__)
 
@@ -485,20 +484,3 @@ class K8RbdProvisioner(object):
 
         base_name = 'ceph-pool'
         return str(base_name + '-' + name)
-
-    @staticmethod
-    def get_k8s_secret(secret_name, namespace=None):
-        try:
-            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
-                   'get', 'secrets', secret_name]
-            if namespace:
-                cmd.append('--namespace=%s' % namespace)
-            stdout, _ = cutils.execute(*cmd, run_as_root=False)
-        except exception.ProcessExecutionError as e:
-            if "not found" in e.stderr.lower():
-                return None
-            raise exception.SysinvException(
-                "Error getting secret: %s in namespace: %s, "
-                "Details: %s" % (secret_name, namespace, str(e)))
-
-        return stdout

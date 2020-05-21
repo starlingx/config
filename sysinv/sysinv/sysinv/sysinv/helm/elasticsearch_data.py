@@ -55,8 +55,7 @@ class ElasticsearchDataHelm(elastic.ElasticBaseHelm):
                     'accessModes': ["ReadWriteOnce"],
                     'resources': {
                         'requests': {'storage': str(self.DATA_VOLUME_SIZE_GB) + 'Gi'}
-                    },
-                    'storageClass': 'general'
+                    }
                 },
                 'nodeSelector': {common.LABEL_MONITOR_DATA: "enabled"},
                 'antiAffinity': "hard",

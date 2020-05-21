@@ -1,4 +1,4 @@
-Summary: CGCS Host Inventory Init Package
+Summary: StarlingX Host Inventory Init Package
 Name: sysinv-agent
 Version: 1.0
 Release: %{tis_patch_ver}%{?_tis_dist}
@@ -11,7 +11,7 @@ Source0: %{name}-%{version}.tar.gz
 BuildRequires: systemd-devel
 
 %description
-CGCS Host Inventory Init Package
+StarlingX Inventory Init Package
 
 %define local_etc_initd /etc/init.d/
 %define local_etc_pmond /etc/pmon.d/

@@ -1327,6 +1327,38 @@ def create_test_pci_devices(**kw):
     return dbapi.pci_device_create(pci_devices['host_id'], pci_devices)
 
 
+def get_test_fpga_device(**kw):
+    fpga_device = {
+        'id': kw.get('id', 2345),
+        'host_id': kw.get('host_id', 2),
+        'pci_id': kw.get('pci_id', 2),
+        'pciaddr': kw.get('pciaddr', '0000:00:02.0'),
+        'bmc_build_version': kw.get('bmc_build_version'),
+        'bmc_fw_version': kw.get('bmc_fw_version'),
+        'root_key': kw.get('root_key'),
+        'revoked_key_ids': kw.get('revoked_key_ids'),
+        'boot_page': kw.get('boot_page'),
+        'bitstream_id': kw.get('bitstream_id'),
+        'needs_firmware_update': kw.get('needs_firmware_update', False),
+        'status': kw.get('status'),
+    }
+    return fpga_device
+
+
+def create_test_fpga_device(**kw):
+    """Create test fpga devices entry in DB and return FPGADevice DB object.
+    Function to be used to create test fpga device objects in the database.
+    :param kw: kwargs with overriding values for fpga device attributes.
+    :returns: Test FPGADevice DB object.
+    """
+    fpga_device = get_test_fpga_device(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del fpga_device['id']
+    dbapi = db_api.get_instance()
+    return dbapi.fpga_device_create(fpga_device['host_id'], fpga_device)
+
+
 def get_test_label(**kw):
     label = {
         'host_id': kw.get('host_id'),
@@ -1393,3 +1425,44 @@ def create_test_certificate(**kw):
         del certificate['id']
     dbapi = db_api.get_instance()
     return dbapi.certificate_create(certificate)
+
+
+# Create test device image object
+def get_test_device_image(**kw):
+    device_image = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'bitstream_type': kw.get('bitstream_type'),
+        'pci_vendor': kw.get('pci_vendor'),
+        'pci_device': kw.get('pci_device'),
+        'bitstream_id': kw.get('bitstream_id'),
+        'key_signature': kw.get('key_signature'),
+        'revoke_key_id': kw.get('revoke_key_id'),
+        'name': kw.get('name'),
+        'description': kw.get('description'),
+        'version': kw.get('version'),
+    }
+    return device_image
+
+
+def post_get_test_device_image(**kw):
+    device_image = get_test_device_image(**kw)
+    del device_image['id']
+    del device_image['uuid']
+    return device_image
+
+
+def create_test_device_image(**kw):
+    """Create test device image in DB and return device_image object.
+    Function to be used to create test device image objects in the database.
+    :param kw: kwargs with overriding values for device_image's attributes.
+    :returns: Test device_image DB object.
+    """
+    device_image = get_test_device_image(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in device_image:
+        del device_image['id']
+    if 'uuid' in device_image:
+        del device_image['uuid']
+    dbapi = db_api.get_instance()
+    return dbapi.deviceimage_create(device_image)

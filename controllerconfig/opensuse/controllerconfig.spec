@@ -56,6 +56,7 @@ Configuration for the Controller node.
 
 install -d -m 755 %{buildroot}%{local_bindir}
 install -p -D -m 700 scripts/openstack_update_admin_password %{buildroot}%{local_bindir}/openstack_update_admin_password
+install -p -D -m 700 scripts/upgrade_swact_migration.py %{buildroot}%{local_bindir}/upgrade_swact_migration.py
 
 install -d -m 755 %{buildroot}%{local_goenabledd}
 install -p -D -m 700 scripts/config_goenabled_check.sh %{buildroot}%{local_goenabledd}/config_goenabled_check.sh
@@ -65,7 +66,7 @@ install -p -D -m 755 scripts/controller_config %{buildroot}%{local_etc_initd}/co
 
 # Install Upgrade scripts
 install -d -m 755 %{buildroot}%{local_etc_upgraded}
-install -p -D -m 755 upgrade-scripts/* %{buildroot}%{local_etc_upgraded}/
+# install -p -D -m 755 upgrade-scripts/* %{buildroot}%{local_etc_upgraded}/
 
 install -p -D -m 664 scripts/controllerconfig.service %{buildroot}%{_unitdir}/controllerconfig.service
 
@@ -96,7 +97,7 @@ rm -rf $RPM_BUILD_ROOT
 %{local_goenabledd}/*
 %{local_etc_initd}/*
 %dir %{local_etc_upgraded}
-%{local_etc_upgraded}/*
+# %{local_etc_upgraded}/*
 %{_unitdir}/*
 
 #%%package wheels

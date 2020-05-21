@@ -44,7 +44,8 @@ SYSINV_ROUTE_MAX_PATHS = 4
 # Defines the list of interface network types that support routes
 ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA,
                          constants.NETWORK_TYPE_MGMT,
-                         constants.NETWORK_TYPE_CLUSTER_HOST]
+                         constants.NETWORK_TYPE_CLUSTER_HOST,
+                         constants.NETWORK_TYPE_STORAGE]
 
 
 class Route(base.APIBase):

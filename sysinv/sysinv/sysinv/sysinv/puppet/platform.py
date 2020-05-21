@@ -1,13 +1,15 @@
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import base64
 import keyring
 import os
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils
 
 from tsconfig import tsconfig
@@ -15,9 +17,6 @@ from tsconfig import tsconfig
 from sysinv.puppet import base
 
 HOSTNAME_CLUSTER_HOST_SUFFIX = '-cluster-host'
-
-NOVA_UPGRADE_LEVEL_PIKE = 'pike'
-NOVA_UPGRADE_LEVELS = {'18.03': NOVA_UPGRADE_LEVEL_PIKE}
 
 
 class PlatformPuppet(base.BasePuppet):
@@ -53,6 +52,7 @@ class PlatformPuppet(base.BasePuppet):
     def get_secure_system_config(self):
         config = {}
         config.update(self._get_user_config())
+        config.update(self._get_dc_root_ca_config())
         return config
 
     def get_host_config(self, host):
@@ -64,12 +64,16 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_ptp_config(host))
         config.update(self._get_host_sysctl_config(host))
         config.update(self._get_host_drbd_config(host))
-        config.update(self._get_host_upgrade_config(host))
         config.update(self._get_host_tpm_config(host))
         config.update(self._get_host_cpu_config(host))
         config.update(self._get_host_memory_config(host))
         config.update(self._get_kvm_timer_advance_config(host))
         config.update(self._get_host_lldp_config(host))
+        return config
+
+    def get_host_config_upgrade(self, host):
+        config = {}
+        config.update(self._get_host_platform_config_upgrade(host, self.config_uuid))
         return config
 
     def _get_static_software_config(self):
@@ -175,40 +179,6 @@ class PlatformPuppet(base.BasePuppet):
         return {
             'platform::config::params::hosts': hosts
         }
-
-    def _get_host_upgrade_config(self, host):
-        config = {}
-        try:
-            upgrade = self.dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            return config
-
-        upgrade_states = [constants.UPGRADE_ACTIVATING,
-                          constants.UPGRADE_ACTIVATION_FAILED,
-                          constants.UPGRADE_ACTIVATION_COMPLETE,
-                          constants.UPGRADE_COMPLETED]
-        # we don't need compatibility mode after we activate
-        if upgrade.state in upgrade_states:
-            return config
-
-        upgrade_load_id = upgrade.to_load
-
-        host_upgrade = self.dbapi.host_upgrade_get_by_host(host['id'])
-        if host_upgrade.target_load == upgrade_load_id:
-            from_load = self.dbapi.load_get(upgrade.from_load)
-            sw_version = from_load.software_version
-            nova_level = NOVA_UPGRADE_LEVELS.get(sw_version)
-
-            if not nova_level:
-                raise exception.SysinvException(
-                    ("No matching upgrade level found for version %s")
-                    % sw_version)
-
-            config.update({
-                  'nova::upgrade_level_compute': nova_level
-            })
-
-        return config
 
     def _get_amqp_config(self):
         return {
@@ -364,6 +334,17 @@ class PlatformPuppet(base.BasePuppet):
                 cpu_count,
         })
 
+        return config
+
+    def _get_host_platform_config_upgrade(self, host, config_uuid):
+        config = {}
+        if not config_uuid:
+            config_uuid = host.config_target
+
+        if config_uuid:
+            config.update({
+                'platform::config::params::config_uuid': config_uuid
+            })
         return config
 
     def _get_host_ntp_config(self, host):
@@ -896,6 +877,44 @@ class PlatformPuppet(base.BasePuppet):
             config.update({
                 'platform::config::certs::params::ssl_ca_cert':
                     utils.get_file_content(constants.SSL_CERT_CA_FILE_SHARED),
+            })
+
+        return config
+
+    def _get_dc_root_ca_config(self):
+        config = {}
+        system = self._get_system()
+        if system.distributed_cloud_role == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and \
+                os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+
+            kube = kubernetes.KubeOperator()
+            try:
+                secret = kube.kube_get_secret('dc-adminep-root-ca-certificate', 'dc-cert')
+            except exception.KubeNotConfigured:
+                # kubernetes admin config file does not exist, skip
+                return config
+
+            if not hasattr(secret, 'data'):
+                raise Exception('Invalid secret dc-adminep-root-ca-certificate')
+
+            data = secret.data
+            if 'ca.crt' not in data or \
+                    'tls.crt' not in data or 'tls.key' not in data:
+
+                raise Exception("Invalid admin endpoint certificate data.")
+
+            try:
+                ca_crt = base64.b64decode(data['ca.crt'])
+                tls_crt = base64.b64decode(data['tls.crt'])
+                tls_key = base64.b64decode(data['tls.key'])
+            except TypeError:
+                raise Exception('admin endpoint root ca certification is invalid')
+
+            config.update({
+                'platform::config::dccert::params::dc_root_ca_crt': ca_crt,
+                'platform::config::dccert::params::dc_adminep_crt':
+                    "%s%s" % (tls_key, tls_crt)
             })
 
         return config

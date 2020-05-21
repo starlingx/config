@@ -18,7 +18,9 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
         system_fields = self.get_system_info_overrides()
         overrides = {
             common.HELM_NS_MONITOR: {
-                'config': self._get_config_overrides(system_fields),
+                'filebeatConfig': {
+                    'filebeat.yml': self._get_config_overrides(system_fields),
+                },
                 'resources': self._get_resources_overrides(),
             }
         }
@@ -34,14 +36,23 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
     def _get_config_overrides(self, system_fields):
         conf = {
             'name': '${NODE_NAME}',
-            'processors': [{'add_kubernetes_metadata': {'in_cluster': True}}],
+            'processors': [
+                {
+                    'add_kubernetes_metadata': {
+                        'labels.dedot': True,
+                        'annotations.dedot': True
+                        # If kube_config is not set, KUBECONFIG environment variable will be checked
+                        # and if not present it will fall back to InCluster
+                    }
+                }
+            ],
+            'fields_under_root': True,
+            'fields': {
+                "system": system_fields
+            },
             'filebeat.inputs': [
                 {
                     'enabled': True,
-                    'fields_under_root': True,
-                    'fields': {
-                        "system": system_fields
-                    },
                     'paths': [
                         "/var/log/*.log",
                         "/var/log/messages",
@@ -49,6 +60,10 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
                         "/var/log/**/*.log"
                     ],
                     'type': "log",
+                    'exclude_files': [
+                        "^/var/log/containers/",
+                        "^/var/log/pods/"
+                    ],
                     'close_timeout': "5m"
                 }
             ]
@@ -72,9 +87,9 @@ class FilebeatHelm(elastic.ElasticBaseHelm):
 
     @staticmethod
     def _get_resources_overrides():
-        cpu_request = "40m"
-        cpu_limit = "80m"
-        memory_size = "256Mi"
+        cpu_request = "50m"
+        cpu_limit = "180m"
+        memory_size = "512Mi"
 
         return {'requests': {
                     'cpu': cpu_request},

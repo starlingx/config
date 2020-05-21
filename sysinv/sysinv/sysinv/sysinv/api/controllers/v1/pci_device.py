@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,6 +18,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
+from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
@@ -103,6 +104,30 @@ class PCIDevice(base.APIBase):
     enabled = types.boolean
     "Represent the enabled status of the device"
 
+    bmc_build_version = wtypes.text
+    "Represent the BMC build version of the fpga device"
+
+    bmc_fw_version = wtypes.text
+    "Represent the BMC firmware version of the fpga device"
+
+    root_key = wtypes.text
+    "Represent the root key of the fpga device"
+
+    revoked_key_ids = wtypes.text
+    "Represent the key revocation ids of the fpga device"
+
+    boot_page = wtypes.text
+    "Represent the boot page of the fpga device"
+
+    bitstream_id = wtypes.text
+    "Represent the bitstream id of the fpga device"
+
+    needs_firmware_update = types.boolean
+    "Represent whether firmware update is required for the fpga device"
+
+    status = wtypes.text
+    "Represent the status of the fpga device"
+
     links = [link.Link]
     "Represent a list containing a self link and associated device links"
 
@@ -123,11 +148,24 @@ class PCIDevice(base.APIBase):
                                         'sriov_totalvfs', 'sriov_numvfs',
                                         'sriov_vfs_pci_address', 'driver',
                                         'host_uuid', 'enabled',
+                                        'bmc_build_version', 'bmc_fw_version',
+                                        'root_key', 'revoked_key_ids',
+                                        'boot_page', 'bitstream_id',
+                                        'needs_firmware_update', 'status',
                                         'created_at', 'updated_at'])
 
         # do not expose the id attribute
         device.host_id = wtypes.Unset
         device.node_id = wtypes.Unset
+
+        # if not FPGA device, hide these attributes
+        if device.pclass_id != dconstants.PCI_DEVICE_CLASS_FPGA:
+            device.bmc_build_version = wtypes.Unset
+            device.bmc_fw_version = wtypes.Unset
+            device.root_key = wtypes.Unset
+            device.revoked_key_ids = wtypes.Unset
+            device.boot_page = wtypes.Unset
+            device.bitstream_id = wtypes.Unset
 
         device.links = [link.Link.make_link('self', pecan.request.host_url,
                                             'pci_devices', device.uuid),
@@ -241,6 +279,7 @@ class PCIDeviceController(rest.RestController):
 
         rpc_device = objects.pci_device.get_by_uuid(
             pecan.request.context, device_uuid)
+
         return PCIDevice.convert_with_links(rpc_device)
 
     @cutils.synchronized(LOCK_NAME)

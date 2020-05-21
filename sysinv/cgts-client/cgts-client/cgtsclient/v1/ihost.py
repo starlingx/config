@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -136,6 +136,16 @@ class ihostManager(base.Manager):
         resp, body = self.api.json_request(
             'POST', self._path(hostid) + "/kube_upgrade_kubelet",
             body=post_body)
+        return self.resource_class(self, body)
+
+    def device_image_update(self, hostid):
+        path = self._path(hostid) + "/device_image_update"
+        resp, body = self.api.json_request('POST', path)
+        return self.resource_class(self, body)
+
+    def device_image_update_abort(self, hostid):
+        path = self._path(hostid) + "/device_image_update_abort"
+        resp, body = self.api.json_request('POST', path)
         return self.resource_class(self, body)
 
 

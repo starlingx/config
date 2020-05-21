@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,6 +14,7 @@ import tempfile
 import yaml
 
 from stevedore import extension
+from tsconfig import tsconfig
 
 from oslo_log import log as logging
 from sysinv.puppet import common
@@ -148,6 +149,36 @@ class PuppetOperator(object):
 
         self._write_host_config(host, config)
 
+    @puppet_context
+    def update_host_config_upgrade(self, host, target_load, config_uuid):
+        """Update the host hiera configuration files for the supplied host
+           and upgrade target load
+        """
+        self.config_uuid = config_uuid
+        self.context['config_upgrade'] = config = {}
+        for puppet_plugin in self.puppet_plugins:
+            config.update(puppet_plugin.obj.get_host_config_upgrade(host))
+
+        self._merge_host_config(host, target_load, config)
+        LOG.info("Updating hiera for host: %s with config_uuid: %s "
+                 "target_load: %s config: %s" %
+                 (host.hostname, config_uuid, target_load, config))
+
+    def _merge_host_config(self, host, target_load, config):
+        filename = host.mgmt_ip + '.yaml'
+        path = os.path.join(
+            tsconfig.PLATFORM_PATH,
+            'puppet',
+            target_load,
+            'hieradata')
+
+        with open(os.path.join(path, filename), 'r') as yaml_file:
+            host_config = yaml.load(yaml_file)
+
+        host_config.update(config)
+
+        self._write_host_config(host, host_config, path)
+
     def remove_host_config(self, host):
         """Remove the configuration for the supplied host"""
         try:
@@ -156,15 +187,17 @@ class PuppetOperator(object):
         except Exception:
             LOG.exception("failed to remove host config: %s" % host.uuid)
 
-    def _write_host_config(self, host, config):
+    def _write_host_config(self, host, config, path=None):
         """Update the configuration for a specific host"""
         filename = "%s.yaml" % host.mgmt_ip
-        self._write_config(filename, config)
+        self._write_config(filename, config, path)
 
-    def _write_config(self, filename, config):
-        filepath = os.path.join(self.path, filename)
+    def _write_config(self, filename, config, path=None):
+        if path is None:
+            path = self.path
+        filepath = os.path.join(path, filename)
         try:
-            fd, tmppath = tempfile.mkstemp(dir=self.path, prefix=filename,
+            fd, tmppath = tempfile.mkstemp(dir=path, prefix=filename,
                                            text=True)
             with open(tmppath, 'w') as f:
                 yaml.dump(config, f, default_flow_style=False)

@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -385,6 +385,10 @@ class MACAlreadyExists(Conflict):
 class PCIAddrAlreadyExists(Conflict):
     message = _("A Device with PCI address %(pciaddr)s "
                 "for %(host)s already exists.")
+
+
+class PCIAddrNotFound(Conflict):
+    message = _("A Device with PCI address %(pciaddr)s could not be found.")
 
 
 class LvmLvgAlreadyExists(Conflict):
@@ -1318,6 +1322,83 @@ class FilesystemAlreadyExists(Conflict):
 class FilesystemNotFound(NotFound):
     message = _("Host FS with id %(fs_id)s not found")
 
+
+# Device image
+class UnsupportedDeviceImageBitstreamType(Conflict):
+    message = _("Device image with bitstream type '%(bitstream_type)s' "
+                "is not supported.")
+
+
+class DeviceImageNotFound(NotFound):
+    message = _("Device image %(deviceimage_uuid)s could not be found.")
+
+
+class DeviceImageTypeNotFound(NotFound):
+    message = _("Device image of type %(bitstream_type)s could not be found.")
+
+
+class DeviceImageIDNotFound(NotFound):
+    message = _("Device image with id %(id)s could not be found.")
+
+
+class DeviceImageNameNotFound(NotFound):
+    message = _("Device image with name %(name)s could not be found.")
+
+
+class DeviceImageAlreadyExists(Conflict):
+    message = _("Device image of name %(name)s already exists.")
+
+
+class DeviceImageTypeUnsupported(Conflict):
+    message = _("Device image of type %(bitstream_type)s is not supported.")
+
+
+# Device Label
+class DeviceLabelNotFound(NotFound):
+    message = _("Device label %(uuid)s could not be found.")
+
+
+class DeviceLabelAlreadyExists(Conflict):
+    message = _("Device label %(label)s already "
+                "exists on this host %(host)s.")
+
+
+class DeviceLabelNotFoundByKey(NotFound):
+    message = _("Device label %(label)s could not be found.")
+
+
+class DeviceLabelInvalid(Invalid):
+    message = _("Device label is invalid. Reason: %(reason)s")
+
+
+# Device Image Label
+class DeviceImageLabelNotFound(NotFound):
+    message = _("Device image label %(uuid)s could not be found.")
+
+
+class DeviceImageLabelAlreadyExists(Conflict):
+    message = _("Device image is already applied to label %(uuid)s.")
+
+
+class DeviceImageLabelNotFoundByKey(NotFound):
+    message = _("Device image  %(image_id)s "
+                "and label ID %(label_id)s not found")
+
+
+# Device Image State
+class DeviceImageStateAlreadyExists(Conflict):
+    message = _(
+        "A device to image mapping with id %(uuid)s already exists.")
+
+
+class DeviceImageStateNotFound(NotFound):
+    message = _("A device to image mapping with id %(id)s not found")
+
+
+class DeviceImageStateNotFoundByKey(NotFound):
+    message = _("Device image  %(image_id)s "
+                "and device ID %(device_id)s not found")
+
 #
 # Kubernetes application and Helm related exceptions
 #
@@ -1371,6 +1452,10 @@ class KubeAppProgressMonitorTimeout(SysinvException):
 
 class KubeNamespaceDeleteTimeout(SysinvException):
     message = "Namespace %(name)s deletion timeout."
+
+
+class KubePodTerminateTimeout(SysinvException):
+    message = "Namespace %(name)s pod termination timeout."
 
 
 class KubePodDeleteTimeout(SysinvException):
@@ -1439,3 +1524,8 @@ class KubeUpgradeNotFound(NotFound):
 
 class KubeVersionNotFound(NotFound):
     message = _("Kubernetes version %(version)s not found")
+
+
+class KubeNotConfigured(SysinvException):
+    message = _("Kubernetes is not configured. API operations "
+                "will not be available.")

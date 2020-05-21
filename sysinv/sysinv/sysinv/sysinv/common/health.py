@@ -6,9 +6,6 @@
 from eventlet.green import subprocess
 import os
 
-
-from fm_api import fm_api
-
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import ceph
@@ -99,20 +96,15 @@ class Health(object):
 
     def _check_alarms(self, context, force=False):
         """Checks that no alarms are active"""
-        db_alarms = fmclient(context).alarm.list(include_suppress=True)
+        alarms = fmclient(context).alarm.list(include_suppress=True)
 
         success = True
         allowed = 0
         affecting = 0
-        # Only fail if we find alarms past their affecting threshold
-        for db_alarm in db_alarms:
-            if isinstance(db_alarm, tuple):
-                alarm = db_alarm[0]
-                mgmt_affecting = db_alarm[constants.DB_MGMT_AFFECTING]
-            else:
-                alarm = db_alarm
-                mgmt_affecting = db_alarm.mgmt_affecting
-            if fm_api.FaultAPIs.alarm_allowed(alarm.severity, mgmt_affecting):
+        # Separate alarms that are mgmt affecting
+        for alarm in alarms:
+            mgmt_affecting = alarm.mgmt_affecting == "True"
+            if not mgmt_affecting:
                 allowed += 1
                 if not force:
                     success = False
@@ -125,18 +117,13 @@ class Health(object):
     def get_alarms_degrade(self, context, alarm_ignore_list=None,
             entity_instance_id_filter=""):
         """Return all the alarms that cause the degrade"""
-        db_alarms = fmclient(context).alarm.list(include_suppress=True)
+        alarms = fmclient(context).alarm.list(include_suppress=True)
         degrade_alarms = []
         if alarm_ignore_list is None:
             alarm_ignore_list = []
 
-        for db_alarm in db_alarms:
-            if isinstance(db_alarm, tuple):
-                alarm = db_alarm[0]
-                degrade_affecting = db_alarm[constants.DB_DEGRADE_AFFECTING]
-            else:
-                alarm = db_alarm
-                degrade_affecting = db_alarm.degrade_affecting
+        for alarm in alarms:
+            degrade_affecting = alarm.degrade_affecting
             # Ignore alarms that are part of the ignore list sent as parameter
             # and also filter the alarms bases on entity instance id.
             # If multiple alarms with the same ID exist, we only return the ID
@@ -154,16 +141,12 @@ class Health(object):
 
     def _check_license(self, version):
         """Validates the current license is valid for the specified version"""
-        check_binary = "/usr/bin/sm-license-check"
+        check_binary = "/usr/bin/verify-license"
         license_file = '/etc/platform/.license'
-        system = self._dbapi.isystem_get_one()
-        system_type = system.system_type
-        system_mode = system.system_mode
 
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call([check_binary, license_file, version,
-                                       system_type, system_mode],
+                subprocess.check_call([check_binary, license_file, version],
                                       stdout=fnull, stderr=fnull)
             except subprocess.CalledProcessError:
                 return False
@@ -204,17 +187,6 @@ class Health(object):
 
         success = running_instances == 0
         return success, running_instances
-
-    def _check_simplex_available_space(self):
-        """Ensures there is free space for the backup"""
-
-        # TODO: Switch this over to use Ansible
-        # try:
-        #    backup_restore.check_size("/opt/backups", True)
-        # except backup_restore.BackupFail:
-        #    return False
-        # return True
-        LOG.info("Skip the check of the enough free space.")
 
     def _check_kube_nodes_ready(self):
         """Checks that each kubernetes node is ready"""
@@ -417,13 +389,6 @@ class Health(object):
                 if not success:
                     output += _('Number of instances on controller-1: %s\n') \
                               % (running_instances)
-
-            health_ok = health_ok and success
-        else:
-            success = self._check_simplex_available_space()
-            output += \
-                _('Sufficient free space for upgrade: [%s]\n') \
-                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
             health_ok = health_ok and success
 

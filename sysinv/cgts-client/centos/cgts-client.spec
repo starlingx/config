@@ -21,6 +21,7 @@ Requires: python3-keystoneclient
 Requires: python3-oslo-i18n
 Requires: python3-oslo-serialization
 Requires: python3-oslo-utils
+Requires: python3-requests-toolbelt
 # Needed for python2 and python3 compatible
 Requires: python3-six
 

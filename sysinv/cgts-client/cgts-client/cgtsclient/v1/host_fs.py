@@ -9,6 +9,8 @@
 from cgtsclient.common import base
 from cgtsclient import exc
 
+CREATION_ATTRIBUTES = ['name', 'ihost_uuid', 'size']
+
 
 class HostFs(base.Resource):
     def __repr__(self):
@@ -40,6 +42,21 @@ class HostFsManager(base.Manager):
             'PUT', path, body=patch)
         if body:
             return self.resource_class(self, body)
+
+    def delete(self, fs_id):
+        path = '/v1/host_fs/%s' % fs_id
+        return self._delete(path)
+
+    def create(self, **kwargs):
+        path = '/v1/host_fs'
+        valid_list = []
+        new = {}
+        for (key, value) in kwargs.items():
+            if key in CREATION_ATTRIBUTES:
+                new[key] = value
+            else:
+                raise exc.InvalidAttribute('%s' % key)
+        return self._create(path, new)
 
 
 def _find_fs(cc, ihost, host_fs):

@@ -96,3 +96,56 @@ def do_host_fs_modify(cc, args):
         raise exc.CommandError('Failed to modify filesystems')
 
     _print_fs_list(cc, ihost.uuid)
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of the host [REQUIRED]")
+@utils.arg('name',
+           metavar='<fs name>',
+           help="Name of the Filesystem [REQUIRED]")
+def do_host_fs_delete(cc, args):
+    """Delete a host filesystem."""
+
+    # Get the ihost object
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    host_fs = fs_utils._find_fs(cc, ihost, args.name)
+
+    try:
+        cc.host_fs.delete(host_fs.uuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Filesystem delete failed: host %s: '
+                               'name %s' % (args.hostnameorid,
+                                            args.name))
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of the host [REQUIRED]")
+@utils.arg('name',
+           metavar='<fs name=size>',
+           nargs=1,
+           action='append',
+           help="Name of the Filesystem [REQUIRED]")
+def do_host_fs_add(cc, args):
+    """Add a host filesystem"""
+    fields = {}
+    # Get the ihost object
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    for attr in args.name[0]:
+        try:
+            fs_name, size = attr.split("=", 1)
+
+            fields['name'] = fs_name
+            fields['size'] = size
+        except ValueError:
+            raise exc.CommandError('Filesystem creation attributes must be '
+                                   'FS_NAME=SIZE not "%s"' % attr)
+    try:
+        fields['ihost_uuid'] = ihost.uuid
+        fs = cc.host_fs.create(**fields)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Failed to create filesystem: host %s: fields %s' %
+                               (args.hostnameorid, fields))
+
+    _print_fs_show(fs)

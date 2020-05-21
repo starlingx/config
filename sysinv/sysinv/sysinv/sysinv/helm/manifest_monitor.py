@@ -114,9 +114,6 @@ class MonitorArmadaManifestOperator(base.ArmadaManifestOperator):
             # remove the chart_groups not needed in this configuration
             self.chart_group_remove(dbapi,
                                     common.HELM_NS_MONITOR,
-                                    self.CHART_GROUP_NGINX)
-            self.chart_group_remove(dbapi,
-                                    common.HELM_NS_MONITOR,
                                     self.CHART_GROUP_KIBANA)
             self.chart_group_remove(dbapi,
                                     common.HELM_NS_MONITOR,

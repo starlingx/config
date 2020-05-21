@@ -27,6 +27,25 @@ def create_host_overrides(filename):
         dbapi = api.get_instance()
         data = {}
 
+        # Get the distributed cloud role info
+        system = dbapi.isystem_get_one()
+        if system.distributed_cloud_role:
+            data.update({'distributed_cloud_role': system.distributed_cloud_role})
+        else:
+            data.update({'distributed_cloud_role': 'none'})
+
+        # region_config and region_name are overriden for subclouds
+        if (system.distributed_cloud_role and
+                system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            data.update({'region_config': True})
+            data.update({'region_name': system.region_name})
+
+        data.update({'system_mode': system.system_mode})
+        if system.location:
+            data.update({'location': system.location})
+        if system.description:
+            data.update({'description': system.description})
+
         # Get the DNS info
         dns = dbapi.idns_get_one()
         if dns.nameservers:
@@ -106,6 +125,18 @@ def create_host_overrides(filename):
                                  'external_oam_node_1_address': pool.controller1_address,
                                  }
                     data.update(pool_data)
+
+            elif pool.name == 'system-controller-subnet':
+                pool_data = {'system_controller_subnet': subnet,
+                             'system_controller_floating_address': pool.floating_address,
+                             }
+                data.update(pool_data)
+
+            elif pool.name == 'system-controller-oam-subnet':
+                pool_data = {'system_controller_oam_subnet': subnet,
+                             'system_controller_oam_floating_address': pool.floating_address,
+                             }
+                data.update(pool_data)
 
         docker_list = dbapi.service_parameter_get_all(service=constants.SERVICE_TYPE_DOCKER,
                                                       section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY)

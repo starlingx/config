@@ -48,11 +48,11 @@ class StoragePuppet(base.BasePuppet):
                     'platform::drbd::extension::params::lv_size':
                         controller_fs.size
                 })
-            elif controller_fs.name == constants.FILESYSTEM_NAME_PATCH_VAULT:
+            elif controller_fs.name == constants.FILESYSTEM_NAME_DC_VAULT:
                 config.update({
-                    'platform::drbd::patch_vault::params::service_enabled':
+                    'platform::drbd::dc_vault::params::service_enabled':
                         True,
-                    'platform::drbd::patch_vault::params::lv_size':
+                    'platform::drbd::dc_vault::params::lv_size':
                         controller_fs.size,
                 })
             elif controller_fs.name == constants.FILESYSTEM_NAME_ETCD:
@@ -233,8 +233,27 @@ class StoragePuppet(base.BasePuppet):
         filters = ['"a|%s|"' % f for f in devices] + ['"r|.*|"']
         return '[ %s ]' % ', '.join(filters)
 
+    def _is_image_conversion_filesystem_enabled(self, host):
+        filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
+        config = {}
+
+        for fs in filesystems:
+            if fs.name == constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
+                config.update({
+                    'platform::filesystem::conversion::params::conversion_enabled': True,
+                    'platform::filesystem::conversion::params::lv_size': fs.size,
+                })
+                return config
+
+        config.update({
+            'platform::filesystem::conversion::params::conversion_enabled': False,
+        })
+        return config
+
     def _get_host_fs_config(self, host):
         config = {}
+        conversion_config = self._is_image_conversion_filesystem_enabled(host)
+        config.update(conversion_config)
 
         filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
         for fs in filesystems:

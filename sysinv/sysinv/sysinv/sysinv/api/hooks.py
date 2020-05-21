@@ -215,6 +215,8 @@ class AuditLogging(hooks.PecanHook):
         url_path = urlparse(state.request.path_qs).path
 
         def json_post_data(rest_state):
+            if 'form-data' in rest_state.request.headers.get('Content-Type'):
+                return " POST: {}".format(rest_state.request.params)
             if not hasattr(rest_state.request, 'json'):
                 return ""
             return " POST: {}".format(rest_state.request.json)

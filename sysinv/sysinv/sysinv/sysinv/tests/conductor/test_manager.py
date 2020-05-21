@@ -103,6 +103,14 @@ class ManagerTestCase(base.DbTestCase):
         self.service.fm_api.set_fault.side_effect = self._raise_alarm
         self.service.fm_api.clear_fault.side_effect = self._clear_alarm
 
+        # Mock sw_version check since tox tsc.SW_VERSION is "TEST.SW_VERSION"
+        self.host_load_matches_sw_version_patcher = mock.patch.object(
+            manager.ConductorManager, 'host_load_matches_sw_version')
+        self.mock_host_load_matches_sw_version = \
+            self.host_load_matches_sw_version_patcher.start()
+        self.mock_host_load_matches_sw_version.return_value = True
+        self.addCleanup(self.host_load_matches_sw_version_patcher.stop)
+
         self.fail_config_apply_runtime_manifest = False
 
         def mock_config_apply_runtime_manifest(obj, context, config_uuid,
@@ -467,6 +475,64 @@ class ManagerTestCase(base.DbTestCase):
         ihost = self._create_test_ihost()
         ret = self.service.ilvg_get_nova_ilvg_by_ihost(self.context, ihost['uuid'])
         self.assertEqual(ret, [])
+
+    def test_lldp_neighbour_tlv_update_exceed_length(self):
+        # Set up
+        ihost = self._create_test_ihost()
+        interface = utils.create_test_interface(
+            ifname='mgmt',
+            forihostid=ihost['id'],
+            ihost_uuid=ihost['uuid'],
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_ETHERNET)
+        port = utils.create_test_ethernet_port(
+            name='eth0',
+            host_id=ihost['id'],
+            interface_id=interface['id'],
+            pciaddr='0000:00:00.01',
+            dev_id=0)
+
+        # create fake neighbour
+        neighbour = self.dbapi.lldp_neighbour_create(
+            port.id, ihost.id, {
+                "msap": "08:00:27:82:35:fb,08:00:27:0d:ac:03"
+            })
+
+        # create tlv with excessive size
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        bad_size = (
+            'enp0s8.100, enp0s8.101, enp0s8.102, enp0s8.103,'
+            ' enp0s8.104, enp0s8.105, enp0s8.106, enp0s8.107,'
+            ' enp0s8.108, enp0s8.109, enp0s8.110, enp0s8.111,'
+            ' enp0s8.112, enp0s8.113, enp0s8.114, enp0s8.115,'
+            ' enp0s8.116, enp0s8.117, enp0s8.118, enp0s8.119,'
+            ' enp0s8.120, enp0s8.121, enp0s8.122, enp0s8.12,'
+            ' enp0s8.123'
+        )
+        vlan_list = bad_size
+        self.service.lldp_neighbour_tlv_update({
+            constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES: vlan_list
+        }, neighbour)
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        self.assertEqual(tlv_list[0]['value'][-3:], "...")
+        self.assertTrue(len(tlv_list[0]['value']) <= 255)
+
+        # update tlv to acceptable size
+        vlan_list = 'enp0s8.100'
+        self.service.lldp_neighbour_tlv_update({
+            constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES: vlan_list
+        }, neighbour)
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        self.assertEqual(tlv_list[0]['value'], vlan_list)
+
+        # update tlv to excessive size
+        vlan_list = bad_size
+        self.service.lldp_neighbour_tlv_update({
+            constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES: vlan_list
+        }, neighbour)
+        tlv_list = self.dbapi.lldp_tlv_get_list()
+        self.assertEqual(tlv_list[0]['value'][-3:], "...")
+        self.assertTrue(len(tlv_list[0]['value']) <= 255)
 
     def test_platform_interfaces(self):
         ihost = self._create_test_ihost()
@@ -1196,26 +1262,57 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
 
-    def test_configure_out_of_date(self):
+    def _create_test_controller_config_out_of_date(self, hostname):
         config_applied = self.service._config_set_reboot_required(uuid.uuid4())
         config_target = self.service._config_set_reboot_required(uuid.uuid4())
-        ihost = self._create_test_ihost(config_applied=config_applied,
-                config_target=config_target)
-        os.path.isfile = mock.Mock(return_value=True)
-        cutils.is_aio_system = mock.Mock(return_value=True)
+        ihost = self._create_test_ihost(
+            config_applied=config_applied,
+            config_target=config_target)
         ihost['mgmt_mac'] = '00:11:22:33:44:55'
         ihost['mgmt_ip'] = '1.2.3.42'
-        ihost['hostname'] = 'controller-0'
+        ihost['hostname'] = hostname
         ihost['invprovision'] = 'provisioned'
         ihost['personality'] = 'controller'
         ihost['administrative'] = 'unlocked'
-        ihost['operational'] = 'available'
+        ihost['operational'] = 'disabled'
         ihost['availability'] = 'online'
         ihost['serialid'] = '1234567890abc'
         ihost['boot_device'] = 'sda'
         ihost['rootfs_device'] = 'sda'
         ihost['install_output'] = 'text'
         ihost['console'] = 'ttyS0,115200'
+
+        return ihost
+
+    def test_configure_out_of_date(self):
+        os.path.isfile = mock.Mock(return_value=True)
+        cutils.is_aio_system = mock.Mock(return_value=True)
+        ihost = self._create_test_controller_config_out_of_date('controller-0')
+        self.service.configure_ihost(self.context, ihost)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+        imsg_dict = {'config_applied': res['config_target']}
+        self.service.iconfig_update_by_ihost(self.context, ihost['uuid'], imsg_dict)
+        self.assertEqual(self.alarm_raised, False)
+
+        personalities = [constants.CONTROLLER]
+        self.service._config_update_hosts(self.context, personalities, reboot=True)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+
+        personalities = [constants.CONTROLLER]
+        self.service._config_update_hosts(self.context, personalities, reboot=False)
+        res = self.dbapi.ihost_get(ihost['uuid'])
+        config_uuid = self.service._config_clear_reboot_required(res['config_target'])
+        imsg_dict = {'config_applied': config_uuid}
+        self.service.iconfig_update_by_ihost(self.context, ihost['uuid'], imsg_dict)
+        self.assertEqual(self.alarm_raised, True)
+
+    def test_configure_out_of_date_upgrade(self):
+        os.path.isfile = mock.Mock(return_value=True)
+        cutils.is_aio_system = mock.Mock(return_value=True)
+
+        # Check upgrade where the target sw_version does not match
+        self.mock_host_load_matches_sw_version.return_value = False
+        ihost = self._create_test_controller_config_out_of_date('controller-1')
         self.service.configure_ihost(self.context, ihost)
         res = self.dbapi.ihost_get(ihost['uuid'])
         imsg_dict = {'config_applied': res['config_target']}

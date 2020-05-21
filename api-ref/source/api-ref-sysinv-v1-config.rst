@@ -2036,7 +2036,7 @@ itemNotFound (404)
 
 ::
 
-   { 
+   {
       "istors":[
          {
             "function":"osd",
@@ -5721,6 +5721,14 @@ itemNotFound (404)
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "needs_firmware_update (optional) ", "plain", "xsd:string", "Indicates whether the device requires firmware update."
+   "status (optional) ", "plain", "xsd:string", "The status of firmware update of the device."
+   "root_key (optional) ", "plain", "xsd:string", "The root key of the FPGA device."
+   "revoked_key_ids (optional) ", "plain", "xsd:string", "The revoked key ids of the FPGA device."
+   "boot_page (optional) ", "plain", "xsd:string", "The boot page of the FPGA device."
+   "bitstream_id (optional) ", "plain", "xsd:string", "The bitstream id of the FPGA device."
+   "bmc_build_version (optional) ", "plain", "xsd:string", "The BMC build version of the FPGA device."
+   "bmc_fw_version (optional) ", "plain", "xsd:string", "The BMC firmware version of the FPGA device."
 
 ::
 
@@ -6109,7 +6117,47 @@ itemNotFound (404)
          "psvendor": "",
          "enabled": "False",
          "name": "pci_0000_00_0b_0"
-       }
+       },
+       {
+         "links": [
+           {
+             "href": "http://192.168.204.1:6385/v1/pci_devices/3ab614a6-3906-4c55-8114-4d78a6dde445",
+             "rel": "self"
+           },
+           {
+             "href": "http://192.168.204.1:6385/pci_devices/3ab614a6-3906-4c55-8114-4d78a6dde445",
+             "rel": "bookmark"
+           }
+         ],
+         "enabled": true,
+         "updated_at": "2020-05-04T18:54:03.679744+00:00",
+         "needs_firmware_update": false,
+         "bitstream_id": null,
+         "uuid": "3ab614a6-3906-4c55-8114-4d78a6dde445",
+         "pdevice": "Device 0b30",
+         "boot_page": null,
+         "psvendor": "Intel Corporation",
+         "psdevice": "Device 0000",
+         "pclass_id": "120000",
+         "pvendor": "Intel Corporation",
+         "status": null,
+         "sriov_numvfs": 0,
+         "driver": "intel-fpga-pci",
+         "bmc_fw_version": null,
+         "root_key": null,
+         "host_uuid": "35436a7d-ce05-4e5f-87ac-706fe7513ece",
+         "bmc_build_version": null,
+         "name": "pci_0000_b3_00_0",
+         "revoked_key_ids": null,
+         "numa_node": 1,
+         "created_at": "2020-05-04T18:23:34.697710+00:00",
+         "pdevice_id": "0b30",
+         "pclass": "Processing accelerators",
+         "sriov_vfs_pci_address": "",
+         "sriov_totalvfs": 1,
+         "pciaddr": "0000:b3:00.0",
+         "pvendor_id": "8086"
+       },
      ]
    }
 
@@ -6309,6 +6357,531 @@ badMediaType (415)
      "pciaddr": "0000:09:00.0",
      "pvendor_id": "8086"
    }
+
+--------------
+Device images
+--------------
+
+************************
+List the device images
+************************
+
+.. rest_method:: GET /v1/device_images
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "device_images (Optional)", "plain", "xsd:list", "The list of device images."
+   "bitstream_type (Optional)", "plain", "xsd:string", "The bitstream type of the device image."
+   "pci_vendor (Optional)", "plain", "xsd:string", "The vendor ID of the pci device."
+   "pci_device (Optional)", "plain", "xsd:string", "The device ID of the pci device."
+   "bitstream_id (Optional)", "plain", "xsd:string", "The bitstream id of the functional device image."
+   "key_signature (Optional)", "plain", "xsd:string", "The key signature of the root-key device image."
+   "revoked_key_id (Optional)", "plain", "xsd:string", "The key revocation id of the key revocation device image."
+   "name (Optional)", "plain", "xsd:string", "The name of the device image."
+   "description (Optional)", "plain", "xsd:string", "The description of the device image."
+   "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+
+::
+
+   {
+      "device_images": [
+         {
+            "uuid": "7e794693-2060-4e9e-b0bd-b281b059e8e4",
+            "pci_vendor": "8086",
+            "pci_device": "0b30",
+            "bitstream_type": "functional",
+            "bitstream_id": "1234",
+            "key_signature": null,
+            "revoke_key_id": null,
+            "description": null,
+            "name": null,
+            "image_version": null,
+            "applied_labels":
+               {
+                  "key1": "value1",
+                  "key2": "value2"
+               },
+         },
+         {
+            "uuid": "09100124-5ae9-44d8-aefc-a192b8f27360",
+            "pci_vendor": "8086",
+            "pci_device": "0b30",
+            "bitstream_type": "root-key",
+            "bitstream_id": null
+            "key_signature": "a123",
+            "revoke_key_id": null,
+            "name": "Image name",
+            "description": null,
+            "image_version": null,
+            "applied_labels": null,
+         },
+         {
+            "uuid": "ef4c39b1-81e9-42dd-b850-06fc8833b47c",
+            "pci_vendor": "8086",
+            "pci_device": "0b30",
+            "bitstream_type": "key-revocation",
+            "bitstream_id": null
+            "key_signature": null,
+            "revoke_key_id": 123,
+            "name": "Image name",
+            "description": null,
+            "image_version": null,
+            "applied_labels": null,
+         },
+      ]
+   }
+
+This operation does not accept a request body.
+
+**************************************************
+Shows attributes of the Device Image object
+**************************************************
+
+.. rest_method:: GET /v1/device_images/​{image_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "image_id", "URI", "csapi:UUID", "The unique identifier of a device image."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "device_images (Optional)", "plain", "xsd:list", "The list of device images."
+   "bitstream_type (Optional)", "plain", "xsd:string", "The bitstream type of the device image."
+   "pci_vendor (Optional)", "plain", "xsd:string", "The vendor ID of the pci device ."
+   "pci_device (Optional)", "plain", "xsd:string", "The device ID of the pci device."
+   "bitstream_id (Optional)", "plain", "xsd:string", "The bitstream id of the functional device image."
+   "key_signature (Optional)", "plain", "xsd:string", "The key id of the root-key device image."
+   "revoked_key_id (Optional)", "plain", "xsd:string", "The key revocation id of the key revocation device image."
+   "name (Optional)", "plain", "xsd:string", "The name of the device image."
+   "description (Optional)", "plain", "xsd:string", "The description of the device image."
+   "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+
+::
+
+   {
+      "device_images": [
+         {
+            "uuid": "7e794693-2060-4e9e-b0bd-b281b059e8e4",
+            "pci_vendor": "8086",
+            "pci_device": "0b30",
+            "bitstream_type": "functional",
+            "bitstream_id": "1234",
+            "key_signature": null,
+            "revoke_key_id": null,
+            "description": null,
+            "name": null,
+            "image_version": null,
+            "applied_labels":
+               {
+                  "key1": "value1",
+                  "key2": "value2"
+               },
+         }
+      ]
+   }
+
+************************
+Creates a device image
+************************
+
+.. rest_method:: POST /v1/device_image
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "bitstream_type ", "plain", "xsd:string", "The bitstream type of the device image. Valid types are ``functional``, ``root-key``, ``key-revocation``"
+   "pci_vendor ", "plain", "xsd:string", "The vendor ID of the pci device."
+   "pci_device ", "plain", "xsd:string", "The device ID of the pci device."
+   "bitstream_id (Optional)", "plain", "xsd:string", "The bitstream id of the functional device image. Required for bitstream type ``functional`` "
+   "key_signature (Optional)", "plain", "xsd:string", "The key id of the root-key device image."
+   "revoked_key_id (Optional)", "plain", "xsd:string", "The key revocation id of the key revocation device image."
+   "name (Optional)", "plain", "xsd:string", "The name of the device image."
+   "description (Optional)", "plain", "xsd:string", "The description of the device image."
+   "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "bitstream_type ", "plain", "xsd:string", "The bitstream type of the device image."
+   "pci_vendor ", "plain", "xsd:string", "The vendor ID of the pci device ."
+   "pci_device ", "plain", "xsd:string", "The device ID of the pci device."
+   "bitstream_id (Optional)", "plain", "xsd:string", "The bitstream id of the functional device image."
+   "key_signature (Optional)", "plain", "xsd:string", "The key id of the root-key device image."
+   "revoked_key_id (Optional)", "plain", "xsd:string", "The key revocation id of the key revocation device image."
+   "name (Optional)", "plain", "xsd:string", "The name of the device image."
+   "description (Optional)", "plain", "xsd:string", "The description of the device image."
+   "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+
+::
+
+   {
+      "device_images": [
+         {
+            "uuid": "7e794693-2060-4e9e-b0bd-b281b059e8e4",
+            "pci_vendor": "8086",
+            "pci_device": "0b30",
+            "bitstream_type": "functional",
+            "bitstream_id": "1234",
+            "key_signature": null,
+            "revoke_key_id": null,
+            "description": null,
+            "name": null,
+            "image_version": null,
+            "applied_labels": null
+         }
+      ]
+   }
+
+************************************************
+Applies the device image to all hosts or label
+************************************************
+
+.. rest_method:: PATCH /v1/device_images/​{image_id}​?action=apply
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "image_id", "URI", "csapi:UUID", "The unique identifier of a device image."
+   "device_label (Optional)", "plain", "xsd:string", "The key-value paired device label assigned to a device."
+
+::
+
+   {
+      "key1": "value1"
+   }
+
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "bitstream_type ", "plain", "xsd:string", "The bitstream type of the device image."
+   "pci_vendor ", "plain", "xsd:string", "The vendor ID of the pci device ."
+   "pci_device ", "plain", "xsd:string", "The device ID of the pci device."
+   "bitstream_id (Optional)", "plain", "xsd:string", "The bitstream id of the functional device image."
+   "key_signature (Optional)", "plain", "xsd:string", "The key id of the root-key device image."
+   "revoked_key_id (Optional)", "plain", "xsd:string", "The key revocation id of the key revocation device image."
+   "name (Optional)", "plain", "xsd:string", "The name of the device image."
+   "description (Optional)", "plain", "xsd:string", "The description of the device image."
+   "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+
+::
+
+   {
+      "device_images": [
+         {
+            "uuid": "7e794693-2060-4e9e-b0bd-b281b059e8e4",
+            "pci_vendor": "8086",
+            "pci_device": "0b30",
+            "bitstream_type": "functional",
+            "bitstream_id": "1234",
+            "key_signature": null,
+            "revoke_key_id": null,
+            "description": null,
+            "name": null,
+            "image_version": null,
+            "applied_labels":
+               {
+                  "key1": "value1"
+               },
+         }
+      ]
+   }
+
+
+*******************************************
+Remove the device image from host or label
+*******************************************
+
+.. rest_method:: PATCH /v1/device_images/​{image_id}​?action=remove
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "image_id", "URI", "csapi:UUID", "The unique identifier of a device image."
+   "device_label (Optional)", "plain", "xsd:string", "The key-value paired device label assigned to a device."
+
+::
+
+   {
+      "key1": "value1"
+   }
+
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "bitstream_type ", "plain", "xsd:string", "The bitstream type of the device image."
+   "pci_vendor ", "plain", "xsd:string", "The vendor ID of the pci device ."
+   "pci_device ", "plain", "xsd:string", "The device ID of the pci device."
+   "bitstream_id (Optional)", "plain", "xsd:string", "The bitstream id of the functional device image."
+   "key_signature (Optional)", "plain", "xsd:string", "The key id of the root-key device image."
+   "revoked_key_id (Optional)", "plain", "xsd:string", "The key revocation id of the key revocation device image."
+   "name (Optional)", "plain", "xsd:string", "The name of the device image."
+   "description (Optional)", "plain", "xsd:string", "The description of the device image."
+   "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+
+::
+
+   {
+      "device_images": [
+         {
+            "uuid": "7e794693-2060-4e9e-b0bd-b281b059e8e4",
+            "pci_vendor": "8086",
+            "pci_device": "0b30",
+            "bitstream_type": "functional",
+            "bitstream_id": "1234",
+            "key_signature": null,
+            "revoke_key_id": null,
+            "description": null,
+            "name": null,
+            "image_version": null,
+            "applied_labels": null
+         }
+      ]
+   }
+
+*****************************
+Deletes a device image
+*****************************
+
+.. rest_method:: DELETE /v1/device_images/​{image_id}​
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "image_id", "URI", "csapi:UUID", "The unique identifier of a device image."
+
+This operation does not accept a request body.
+
+--------------
+Device labels
+--------------
+
+************************
+List the device labels
+************************
+
+.. rest_method:: GET /v1/device_labels
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "device_labels ", "plain", "xsd:list", "The list of device labels."
+   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
+   "pcidevice_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the pci device object."
+   "host_uuid ", "plain", "csapi:UUID", "The universally unique identifier for the host object."
+   "label_key ", "plain", "xsd:string", "The key of the device label."
+   "label_value ", "plain", "xsd:string", "The value of the device label."
+
+::
+
+   {
+      "device_labels": [
+         {
+            "uuid": "fe26ca98-35d4-43b7-8c51-f0ca957b35e1",
+            "pcidevice_uuid": "64641c6d-4fdd-4ecb-9c66-a68982267b6d",
+            "host_uuid": "32be8077-1174-46cf-8309-48c107765ffc"
+            "label_key": "key1",
+            "label_value": "value1",
+         },
+         {
+            "uuid": "60342a18-a686-48c4-8e71-13a005ffda1b",
+            "pcidevice_uuid": "9d69d492-9888-4d85-90d0-e52def926b17",
+            "host_uuid": "32be8077-1174-46cf-8309-48c107765ffc"
+            "label_key": "key5",
+            "label_value": "value5",
+         },
+      ]
+   }
+
+*************************************
+Assign device label to a pci device
+*************************************
+
+.. rest_method:: POST /v1/device_labels
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "pcidevice_uuid", "URI", "csapi:UUID", "The unique identifier of a pci device."
+   "device_labels", "URI", "xsd:list", "List of key-value paired of device labels."
+
+::
+
+   {
+      "pcidevice_uuid": "da98f600-49cf-4f0e-b14e-15ef91069fe8",
+      "key1": "value1",
+      "key2": "value2"
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "URI", "csapi:UUID", "The unique identifier of the device label object."
+   "pcidevice_uuid", "URI", "csapi:UUID", "The unique identifier of a pci device."
+   "label_key", "URI", "xsd:string", "The label key of device labels."
+   "label_value", "URI", "xsd:string", "The label value of device labels."
+
+::
+
+   {
+      "device_labels": [
+         {
+            "uuid": "66daffb1-72ee-4e6e-9489-206c5eeaec94",
+            "pcidevice_uuid": "da98f600-49cf-4f0e-b14e-15ef91069fe8",
+            "label_key": "key1",
+            "label_value": "value1",
+         },
+         {
+            "uuid": "2e7821ed-e373-4cb8-a47b-f70ff2558dfd",
+            "pcidevice_uuid": "da98f600-49cf-4f0e-b14e-15ef91069fe8",
+            "label_key": "key2",
+            "label_value": "value2",
+         }
+      ]
+   }
+
+************************
+Deletes a device label
+************************
+
+.. rest_method:: DELETE /v1/device_labels/​{device_label_uuid}​
+
+**Normal response codes**
+
+204
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "device_label_uuid", "URI", "csapi:UUID", "The unique identifier of a device label."
+
+This operation does not accept a request body.
 
 ------------------
 Service Parameter

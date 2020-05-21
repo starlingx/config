@@ -57,6 +57,11 @@ class Manager(object):
             'POST', url, body=body, data=data)
         return resp
 
+    def _upload_multipart(self, url, body, data=None):
+        resp = self.api.upload_request_with_multipart(
+            'POST', url, body=body, data=data)
+        return resp
+
     def _json_get(self, url, body=None):
         """send a GET request and return a json serialized object"""
         _, body = self.api.json_request('GET', url, body=body)

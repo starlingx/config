@@ -324,6 +324,19 @@ def _validate_domain(name, value):
             (name, value)))
 
 
+def _validate_admission_plugins(name, value):
+    """Check if specified plugins are supported"""
+    if not value:
+        raise wsme.exc.ClientSideError(_(
+            "Please specify at least 1 plugin"))
+
+    plugins = value.split(',')
+    for plugin in plugins:
+        if plugin not in constants.VALID_ADMISSION_PLUGINS:
+            raise wsme.exc.ClientSideError(_(
+                "Invalid admission plugin: '%s'" % plugin))
+
+
 IDENTITY_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION,
 ]
@@ -534,10 +547,12 @@ KUBERNETES_APISERVER_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID,
     constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
     constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
+    constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS,
 ]
 
 KUBERNETES_APISERVER_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL: _validate_oidc_issuer_url,
+    constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS: _validate_admission_plugins,
 }
 
 KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
@@ -549,6 +564,8 @@ KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
         'platform::kubernetes::params::oidc_username_claim',
     constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM:
         'platform::kubernetes::params::oidc_groups_claim',
+    constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS:
+        'platform::kubernetes::params::admission_plugins',
 }
 
 HTTPD_PORT_PARAMETER_OPTIONAL = [

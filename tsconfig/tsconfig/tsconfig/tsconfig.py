@@ -11,9 +11,6 @@ import io
 import logging
 
 SW_VERSION = ""
-SW_VERSION_1610 = '16.10'
-SW_VERSION_1706 = '17.06'
-SW_VERSION_1803 = '18.03'
 
 nodetype = None
 subfunctions = []
@@ -173,8 +170,12 @@ PUPPET_PATH = PLATFORM_PATH + "/puppet/" + SW_VERSION + "/"
 ARMADA_PATH = PLATFORM_PATH + "/armada/" + SW_VERSION
 HELM_OVERRIDES_PATH = PLATFORM_PATH + "/helm/" + SW_VERSION
 KEYRING_PATH = PLATFORM_PATH + "/.keyring/" + SW_VERSION
+DEPLOY_PATH = PLATFORM_PATH + "/deploy/" + SW_VERSION
+ETCD_PATH = "/opt/etcd"
 EXTENSION_PATH = "/opt/extension"
+IMAGE_CONVERSION_PATH = "/opt/conversion"
 PLATFORM_CEPH_CONF_PATH = CONFIG_PATH + 'ceph-config'
+PLATFORM_BACKUP_PATH = '/opt/platform-backup'
 
 # Controller configuration flags
 

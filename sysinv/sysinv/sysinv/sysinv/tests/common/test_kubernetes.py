@@ -80,7 +80,12 @@ def mock_load_kube_config(path):
     return
 
 
+def mock_os_path_isfile(path):
+    return True
+
+
 @mock.patch('kubernetes.config.load_kube_config', mock_load_kube_config)
+@mock.patch('os.path.isfile', mock_os_path_isfile)
 @mock.patch('sysinv.common.kubernetes.get_kube_versions',
             mock_get_kube_versions)
 class TestKubeOperator(base.TestCase):
@@ -623,6 +628,13 @@ class TestKubeOperator(base.TestCase):
         self.setup_result()
 
         self.list_namespaced_pod_result = None
+
+        def mock_is_k8s_configured():
+            return True
+        self.mocked_is_k8s_configured = mock.patch(
+            'sysinv.common.kubernetes.is_k8s_configured',
+            mock_is_k8s_configured)
+        self.mocked_is_k8s_configured.start()
 
         def mock_list_namespaced_pod(obj, namespace, field_selector=""):
             pod_name = field_selector.split('metadata.name=', 1)[1]

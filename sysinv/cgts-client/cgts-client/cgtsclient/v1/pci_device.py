@@ -1,13 +1,11 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-# -*- encoding: utf-8 -*-
-#
-
 from cgtsclient.common import base
+from cgtsclient import exc
 
 
 class PciDevice(base.Resource):
@@ -43,3 +41,13 @@ def get_pci_device_display_name(p):
         return p.name
     else:
         return '(' + str(p.uuid)[-8:] + ')'
+
+
+def find_device(cc, host, nameorpciaddr):
+    devices = cc.pci_device.list(host.uuid)
+    for d in devices:
+        if d.name == nameorpciaddr or d.pciaddr == nameorpciaddr:
+            return d
+    else:
+        raise exc.CommandError('PCI device not found: host %s device %s' %
+                               (host.hostname, nameorpciaddr))

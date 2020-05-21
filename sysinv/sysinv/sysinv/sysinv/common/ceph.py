@@ -38,7 +38,7 @@ class CephApiOperator(object):
 
     def __init__(self):
         self._ceph_api = ceph.CephWrapper(
-                endpoint='http://localhost:5001')
+                endpoint='http://localhost:{}'.format(constants.CEPH_MGR_PORT))
         self._default_tier = constants.SB_TIER_DEFAULT_NAMES[
             constants.SB_TIER_TYPE_CEPH]
 

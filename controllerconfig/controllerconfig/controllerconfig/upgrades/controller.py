@@ -23,7 +23,6 @@ import tempfile
 import time
 import yaml
 
-
 from sysinv.common import constants as sysinv_constants
 
 
@@ -52,6 +51,7 @@ LOG = log.getLogger(__name__)
 POSTGRES_MOUNT_PATH = '/mnt/postgresql'
 POSTGRES_DUMP_MOUNT_PATH = '/mnt/db_dump'
 DB_CONNECTION_FORMAT = "connection=postgresql://%s:%s@127.0.0.1/%s\n"
+DB_BARBICAN_CONNECTION_FORMAT = "postgresql://%s:%s@127.0.0.1/%s"
 
 restore_patching_complete = '/etc/platform/.restore_patching_complete'
 restore_compute_ready = '/var/run/.restore_compute_ready'
@@ -103,7 +103,8 @@ def get_db_credentials(shared_services, from_release):
 
 
 def get_shared_services():
-    """ Get the list of shared services from the sysinv database """
+    """ Get the list of shared services from the sysinv database"""
+
     shared_services = []
     DEFAULT_SHARED_SERVICES = []
 
@@ -114,6 +115,7 @@ def get_shared_services():
     if row is None:
         LOG.error("Failed to fetch i_system data")
         raise psycopg2.ProgrammingError("Failed to fetch i_system data")
+
     cap_obj = json.loads(row[0])
     region_config = cap_obj.get('region_config', None)
     if region_config:
@@ -127,7 +129,10 @@ def get_connection_string(db_credentials, database):
     """ Generates a connection string for a given database"""
     username = db_credentials[database]['username']
     password = db_credentials[database]['password']
-    return DB_CONNECTION_FORMAT % (username, password, database)
+    if database == 'barbican':
+        return DB_BARBICAN_CONNECTION_FORMAT % (username, password, database)
+    else:
+        return DB_CONNECTION_FORMAT % (username, password, database)
 
 
 def create_temp_filesystem(vgname, lvname, mountpoint, size):
@@ -257,6 +262,50 @@ def migrate_pxeboot_config(from_release, to_release):
             stdout=devnull)
     except subprocess.CalledProcessError:
         LOG.exception("Failed to migrate %s" % source_pxelinux)
+        raise
+
+
+def migrate_armada_config(from_release, to_release):
+    """ Migrates armada configuration. """
+
+    LOG.info("Migrating armada config")
+    devnull = open(os.devnull, 'w')
+
+    # Copy the entire armada.cfg directory to pick up any changes made
+    # after the data was migrated (i.e. updates to the controller-1 load).
+    source_armada = os.path.join(PLATFORM_PATH, "armada", from_release)
+    dest_armada = os.path.join(PLATFORM_PATH, "armada", to_release)
+    try:
+        subprocess.check_call(
+            ["cp",
+             "-a",
+             os.path.join(source_armada),
+             os.path.join(dest_armada)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to migrate %s" % source_armada)
+        raise
+
+
+def migrate_helm_config(from_release, to_release):
+    """ Migrates helm configuration. """
+
+    LOG.info("Migrating helm config")
+    devnull = open(os.devnull, 'w')
+
+    # Copy the entire helm.cfg directory to pick up any changes made
+    # after the data was migrated (i.e. updates to the controller-1 load).
+    source_helm = os.path.join(PLATFORM_PATH, "helm", from_release)
+    dest_helm = os.path.join(PLATFORM_PATH, "helm", to_release)
+    try:
+        subprocess.check_call(
+            ["cp",
+             "-a",
+             os.path.join(source_helm),
+             os.path.join(dest_helm)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to migrate %s" % source_helm)
         raise
 
 
@@ -425,45 +474,44 @@ def create_databases(from_release, to_release, db_credentials):
     """ Creates databases. """
     LOG.info("Creating new databases")
 
-    if from_release == '18.03':
-        # Create databases that are new in this release
+    # Create databases that are new in this release
 
-        conn = psycopg2.connect('dbname=postgres user=postgres')
+    conn = psycopg2.connect('dbname=postgres user=postgres')
 
-        # Postgres won't allow transactions around database create operations
-        # so we set the connection to autocommit
-        conn.set_isolation_level(
-            psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+    # Postgres won't allow transactions around database create operations
+    # so we set the connection to autocommit
+    conn.set_isolation_level(
+        psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
 
-        databases_to_create = []
-        if not databases_to_create:
-            return
+    databases_to_create = []
+    if not databases_to_create:
+        return
 
-        with conn:
-            with conn.cursor() as cur:
-                for database in databases_to_create:
-                    print("Creating %s database" % database)
-                    username = psycopg2.extensions.AsIs(
-                        '\"%s\"' % db_credentials[database]['username'])
-                    db_name = psycopg2.extensions.AsIs('\"%s\"' % database)
-                    password = db_credentials[database]['password']
+    with conn:
+        with conn.cursor() as cur:
+            for database in databases_to_create:
+                print("Creating %s database" % database)
+                username = psycopg2.extensions.AsIs(
+                    '\"%s\"' % db_credentials[database]['username'])
+                db_name = psycopg2.extensions.AsIs('\"%s\"' % database)
+                password = db_credentials[database]['password']
 
-                    try:
-                        # Here we create the new database and the role for it
-                        # The role will be used by the dbsync command to
-                        # connect to the database. This ensures any new tables
-                        # are added with the correct owner
-                        cur.execute('CREATE DATABASE %s', (db_name,))
-                        cur.execute('CREATE ROLE %s', (username,))
-                        cur.execute('ALTER ROLE %s LOGIN PASSWORD %s',
-                                    (username, password))
-                        cur.execute('GRANT ALL ON DATABASE %s TO %s',
-                                    (db_name, username))
-                    except Exception as ex:
-                        LOG.exception("Failed to create database and role. " +
-                                      "(%s : %s) Exception: %s" %
-                                      (database, username, ex))
-                        raise
+                try:
+                    # Here we create the new database and the role for it
+                    # The role will be used by the dbsync command to
+                    # connect to the database. This ensures any new tables
+                    # are added with the correct owner
+                    cur.execute('CREATE DATABASE %s', (db_name,))
+                    cur.execute('CREATE ROLE %s', (username,))
+                    cur.execute('ALTER ROLE %s LOGIN PASSWORD %s',
+                                (username, password))
+                    cur.execute('GRANT ALL ON DATABASE %s TO %s',
+                                (db_name, username))
+                except Exception as ex:
+                    LOG.exception("Failed to create database and role. " +
+                                  "(%s : %s) Exception: %s" %
+                                  (database, username, ex))
+                    raise
 
 
 def migrate_sysinv_database():
@@ -497,15 +545,11 @@ def migrate_databases(from_release, shared_services, db_credentials,
             f.write("[database]\n")
             f.write(get_connection_string(db_credentials, 'keystone'))
 
-    with open("/etc/barbican/barbican-dbsync.conf", "w") as f:
-        f.write("[database]\n")
-        f.write(get_connection_string(db_credentials, 'barbican'))
-
     migrate_commands = [
         # Migrate barbican
         ('barbican',
-         'barbican-manage --config-file /etc/barbican/barbican-dbsync.conf ' +
-         'db upgrade'),
+         'barbican-manage db upgrade ' +
+         '--db-url %s' % get_connection_string(db_credentials, 'barbican')),
     ]
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
@@ -616,20 +660,19 @@ def migrate_hiera_data(from_release, to_release):
         shutil.copy(os.path.join(from_hiera_path, f), to_hiera_path)
 
     # Make any necessary updates to the static yaml files.
-    if from_release == "18.03":
-        # Update the static.yaml file
-        static_file = os.path.join(constants.HIERADATA_PERMDIR, "static.yaml")
-        with open(static_file, 'r') as yaml_file:
-            static_config = yaml.load(yaml_file)
-        static_config.update({
-            'platform::params::software_version': SW_VERSION,
-            'platform::client::credentials::params::keyring_directory':
-                KEYRING_PATH,
-            'platform::client::credentials::params::keyring_file':
-                os.path.join(KEYRING_PATH, '.CREDENTIAL'),
-        })
-        with open(static_file, 'w') as yaml_file:
-            yaml.dump(static_config, yaml_file, default_flow_style=False)
+    # Update the static.yaml file
+    static_file = os.path.join(constants.HIERADATA_PERMDIR, "static.yaml")
+    with open(static_file, 'r') as yaml_file:
+        static_config = yaml.load(yaml_file)
+    static_config.update({
+        'platform::params::software_version': SW_VERSION,
+        'platform::client::credentials::params::keyring_directory':
+            KEYRING_PATH,
+        'platform::client::credentials::params::keyring_file':
+            os.path.join(KEYRING_PATH, '.CREDENTIAL'),
+    })
+    with open(static_file, 'w') as yaml_file:
+        yaml.dump(static_config, yaml_file, default_flow_style=False)
 
 
 def upgrade_controller(from_release, to_release):
@@ -666,6 +709,14 @@ def upgrade_controller(from_release, to_release):
     # Migrate pxeboot config
     print("Migrating pxeboot configuration...")
     migrate_pxeboot_config(from_release, to_release)
+
+    # Migrate armada config
+    print("Migrating armada configuration...")
+    migrate_armada_config(from_release, to_release)
+
+    # Migrate helm config
+    print("Migrating helm configuration...")
+    migrate_helm_config(from_release, to_release)
 
     # Migrate sysinv data.
     print("Migrating sysinv configuration...")
@@ -766,6 +817,18 @@ def upgrade_controller(from_release, to_release):
     except Exception as e:
         LOG.exception(e)
         LOG.info("Failed to update hiera configuration")
+        raise
+
+    # Prepare for swact
+    LOG.info("Prepare for swact to controller-1")
+    try:
+        subprocess.check_call(['/usr/bin/upgrade_swact_migration.py',
+                               'prepare_swact',
+                               from_release,
+                               to_release],
+                              stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed upgrade_swact_migration prepare_swact")
         raise
 
     print("Shutting down upgrade processes...")

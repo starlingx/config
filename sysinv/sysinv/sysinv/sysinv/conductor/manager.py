@@ -68,6 +68,7 @@ from oslo_utils import excutils
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 from platform_util.license import license
+from ruamel import yaml
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
 from sysinv._i18n import _
@@ -80,6 +81,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
+from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import image_versions
 from sysinv.common import fm
@@ -182,7 +184,7 @@ class ConductorManager(service.PeriodicService):
         self._app = None
         self._ceph = None
         self._ceph_api = ceph.CephWrapper(
-            endpoint='http://localhost:5001')
+            endpoint='http://localhost:{}'.format(constants.CEPH_MGR_PORT))
         self._kube = None
         self._kube_pod = None
         self._fernet = None
@@ -953,32 +955,27 @@ class ConductorManager(service.PeriodicService):
             install_output_arg = "-t"
         install_opts += [install_output_arg]
 
-        # This version check MUST be present. The -u option does not exists
-        # prior to v17.00. This method is also called during upgrades to
+        # This method is called during upgrades to
         # re-generate the host's pxe config files to the appropriate host's
         # software version. It is required specifically when we downgrade a
         # host or when we lock/unlock a host.
-        if sw_version != tsc.SW_VERSION_1610:
-            host_uuid = host.get('uuid')
-            notify_url = \
-                "http://pxecontroller:%d/v1/ihosts/%s/install_progress" % \
-                (CONF.sysinv_api_port, host_uuid)
-            install_opts += ['-u', notify_url]
+        host_uuid = host.get('uuid')
+        notify_url = \
+            "http://pxecontroller:%d/v1/ihosts/%s/install_progress" % \
+            (CONF.sysinv_api_port, host_uuid)
+        install_opts += ['-u', notify_url]
 
         system = self.dbapi.isystem_get_one()
 
-        # This version check MUST be present. The -s option
-        # (security profile) does not exist 17.06 and below.
-        if sw_version != tsc.SW_VERSION_1706:
-            secprofile = system.security_profile
-            # ensure that the securtiy profile selection is valid
-            if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
-                                  constants.SYSTEM_SECURITY_PROFILE_EXTENDED]:
-                LOG.error("Security Profile (%s) not a valid selection. "
-                          "Defaulting to: %s" % (secprofile,
-                           constants.SYSTEM_SECURITY_PROFILE_STANDARD))
-                secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
-            install_opts += ['-s', secprofile]
+        secprofile = system.security_profile
+        # ensure that the securtiy profile selection is valid
+        if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
+                              constants.SYSTEM_SECURITY_PROFILE_EXTENDED]:
+            LOG.error("Security Profile (%s) not a valid selection. "
+                      "Defaulting to: %s" % (secprofile,
+                                             constants.SYSTEM_SECURITY_PROFILE_STANDARD))
+            secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
+        install_opts += ['-s', secprofile]
 
         # If 'console' is not present in ihost_obj, we want to use the default.
         # If, however, it is present and is explicitly set to None or "", then
@@ -996,11 +993,7 @@ class ConductorManager(service.PeriodicService):
             if tboot is not None and tboot != "":
                 install_opts += ['-T', tboot]
 
-        # This version check MUST be present. The -k option
-        # (extra_kernel_args) does not exist 18.03 and below.
-        if sw_version != tsc.SW_VERSION_1706 and \
-           sw_version != tsc.SW_VERSION_1803:
-            install_opts += ['-k', system.security_feature]
+        install_opts += ['-k', system.security_feature]
 
         base_url = "http://pxecontroller:%d" % cutils.get_http_port(self.dbapi)
         install_opts += ['-l', base_url]
@@ -1321,9 +1314,9 @@ class ConductorManager(service.PeriodicService):
         :param context: request context
         :param host: host object
         """
-        # Only update the config if the host is running the same version as
-        # the active controller.
         if self.host_load_matches_sw_version(host):
+            # update the config if the host is running the same version as
+            # the active controller.
             if (host.administrative == constants.ADMIN_UNLOCKED or
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
@@ -1331,8 +1324,20 @@ class ConductorManager(service.PeriodicService):
                 # Update host configuration
                 self._puppet.update_host_config(host)
         else:
-            LOG.info("Host %s is not running active load. "
-                     "Skipping manifest generation" % host.hostname)
+            # from active controller, update hieradata for upgrade
+            host_uuids = [host.uuid]
+            config_uuid = self._config_update_hosts(
+                context,
+                [constants.CONTROLLER],
+                host_uuids,
+                reboot=True)
+            host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
+            target_load = self.dbapi.load_get(host_upgrade.target_load)
+            self._puppet.update_host_config_upgrade(
+                host,
+                target_load.software_version,
+                config_uuid
+            )
 
         self._allocate_addresses_for_host(context, host)
         # Set up the PXE config file for this host so it can run the installer
@@ -1589,7 +1594,6 @@ class ConductorManager(service.PeriodicService):
             if (host.administrative == constants.ADMIN_UNLOCKED or
                     host.action == constants.FORCE_UNLOCK_ACTION or
                     host.action == constants.UNLOCK_ACTION):
-
                 # Generate host configuration files
                 self._puppet.update_host_config(host)
         else:
@@ -2186,9 +2190,27 @@ class ConductorManager(service.PeriodicService):
 
         tlvs = self.dbapi.lldp_tlv_get_by_neighbour(neighbour_uuid)
         for k, v in tlv_dict.items():
+
+            # Since "dot1_vlan_names" has 255 char limit in DB, it
+            # is necessary to ensure the vlan list from the tlv
+            # packets does not have length greater than 255 before
+            # shoving it into DB
+            if k == constants.LLDP_TLV_TYPE_DOT1_VLAN_NAMES:
+                # trim the listed vlans to 252 char max
+                if len(v) >= 256:
+                    # if not perfect trim, remove incomplete ending
+                    perfect_trim = v[252] in list(', ')
+                    v = v[:252]
+                    if not perfect_trim:
+                        v = v[:v.rfind(',') + 1]
+
+                    # add '...' to indicate there's more
+                    v += '...'
+                    LOG.info("tlv_value trimmed: %s", v)
+
             for tlv in tlvs:
                 if tlv['type'] == k:
-                    tlv_value = tlv_dict.get(tlv['type'])
+                    tlv_value = v
                     entry = {'type': tlv['type'],
                              'value': tlv_value}
                     if tlv['value'] != tlv_value:
@@ -4925,6 +4947,9 @@ class ConductorManager(service.PeriodicService):
         # Audit kubernetes node labels
         self._audit_kubernetes_labels(hosts)
 
+        # Audit image conversion
+        self._audit_image_conversion(hosts)
+
         for host in hosts:
             # only audit configured hosts
             if not host.personality:
@@ -4993,6 +5018,49 @@ class ConductorManager(service.PeriodicService):
                         self.set_backend_to_err(bk)
             elif bk.backend in self._stor_bck_op_timeouts:
                 del self._stor_bck_op_timeouts[bk.backend]
+
+    def _audit_image_conversion(self, hosts):
+        """
+        Raise alarm if:
+           - image-conversion is not added on both controllers;
+           - the size of the filesystem is not the same
+             on both controllers
+        """
+        chosts = [h for h in hosts if h.personality == constants.CONTROLLER]
+        if len(chosts) <= 1:
+            # No alarm is raised if setup has only one controller
+            return
+
+        conversion_list = []
+        for host in chosts:
+            hostfs_list = self.dbapi.host_fs_get_by_ihost(host.uuid)
+            for host_fs in hostfs_list:
+                if host_fs['name'] == constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
+                    conversion_list.append(host_fs['size'])
+
+        reason_text = "image-conversion must be added on both controllers"
+        if not conversion_list:
+            # If no conversion filesystem is present on any host
+            # any alarm present is cleared
+            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                               constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
+        elif (len(conversion_list) == 1):
+            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                               constants.FILESYSTEM_NAME_IMAGE_CONVERSION,
+                                               reason_text)
+        else:
+            # If conversion filesystem is present on both controllers
+            # with different sizes
+            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                        constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
+            if (conversion_list[0] != conversion_list[1]):
+                reason_text = "image-conversion size must be the same on both controllers"
+                self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                             constants.FILESYSTEM_NAME_IMAGE_CONVERSION,
+                                             reason_text)
+            elif conversion_list[0] == conversion_list[1]:
+                self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                             constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
 
     def _auto_upload_managed_app(self, context, app_name):
         if self._patching_operation_is_occurring():
@@ -5193,9 +5261,11 @@ class ConductorManager(service.PeriodicService):
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
 
-        # WORKAROUND: For k8s MatchNodeSelector issue. Call this for a limited
-        #             time (5 times over ~5 minutes) on a AIO-SX controller
-        #             configuration after conductor startup.
+        # WORKAROUND: For k8s NodeAffinity issue. Call this for a limited time
+        #             (5 times over ~5 minutes). As of k8s upgrade to v1.18.1,
+        #             this condition is occurring on simplex and duplex
+        #             controller scenarios and has been observed with initial
+        #             unlocks and uncontrolled system reboots
         #
         #             Upstream reports of this:
         #             - https://github.com/kubernetes/kubernetes/issues/80745
@@ -5203,16 +5273,14 @@ class ConductorManager(service.PeriodicService):
         #
         #             Outstanding PR that was tested and fixed this issue:
         #             - https://github.com/kubernetes/kubernetes/pull/80976
-        system_mode = self.dbapi.isystem_get_one().system_mode
-        if system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            if (self._start_time + timedelta(minutes=5) >
-                    datetime.now(self._start_time.tzinfo)):
-                LOG.info("Periodic Task: _k8s_application_audit: Checking for "
-                         "MatchNodeSelector issue for %s" % str(
-                             (self._start_time + timedelta(minutes=5)) -
-                             datetime.now(self._start_time.tzinfo)))
-                self._kube_pod.delete_failed_pods_by_reason(
-                    reason='MatchNodeSelector')
+        if (self._start_time + timedelta(minutes=5) >
+                datetime.now(self._start_time.tzinfo)):
+            LOG.info("Periodic Task: _k8s_application_audit: Checking for "
+                     "NodeAffinity issue for %s" % str(
+                         (self._start_time + timedelta(minutes=5)) -
+                         datetime.now(self._start_time.tzinfo)))
+            self._kube_pod.delete_failed_pods_by_reason(
+                reason='NodeAffinity')
 
         # Check the application state and take the approprate action
         for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
@@ -5276,7 +5344,63 @@ class ConductorManager(service.PeriodicService):
                 return
         self.reapply_app(context, app_name)
 
+    def _patch_tiller_deployment(self):
+        """ Ensure tiller is patched with restart logic."""
+        LOG.info("Attempt to patch tiller deployment")
+        try:
+            # We have a race condition that may cause the tiller pod to not have
+            # its environment set up correctly. This will patch the tiller
+            # deployment to ensure that tiller can recover if that occurs. The
+            # deployment is patched during the initial ansible run. This will
+            # re-patch the deployment in the case when tiller has been removed
+            # and reinstalled in the cluster after the system has been
+            # installed. If tiller is already patched then the patch execution
+            # is successful causing no change to the deployment. Specify the
+            # update strategy to allow tiller deployment patching in a simplex
+            # controller configuration.
+            patch = {
+                'spec': {
+                    'strategy': {
+                        'type': 'RollingUpdate',
+                        'rollingUpdate': {
+                            'maxUnavailable': 1,
+                            'maxSurge': 1,
+                        }
+                    },
+                    'template': {
+                        'spec': {
+                            'containers': [{
+                                'name': 'tiller',
+                                'command': [
+                                    '/bin/sh',
+                                    '-cex',
+                                    '#!/bin/sh\n'
+                                    'env | grep -q -e ^TILLER_DEPLOY || exit\n'
+                                    'env | grep -q -e ^KUBE_DNS || exit\n'
+                                    'env | grep -q -e ^KUBERNETES_PORT || exit\n'
+                                    'env | grep -q -e ^KUBERNETES_SERVICE || exit\n'
+                                    '/tiller\n'
+                                ]
+                            }]
+                        }
+                    }
+                }
+            }
+            cmd = ['kubectl',
+                   '--kubeconfig={}'.format(kubernetes.KUBERNETES_ADMIN_CONF),
+                   'patch', 'deployment', '-n', 'kube-system', 'tiller-deploy',
+                   '-p', yaml.dump(patch)]
+            stdout, stderr = cutils.execute(*cmd, run_as_root=False)
+
+        except exception.ProcessExecutionError as e:
+            raise exception.SysinvException(
+                _("Error patching the tiller deployment, "
+                  "Details: %s") % str(e))
+
+        LOG.info("Tiller deployment has been patched")
+
     def _upgrade_downgrade_kube_components(self):
+        self._upgrade_downgrade_static_images()
         self._upgrade_downgrade_tiller()
         self._upgrade_downgrade_kube_networking()
 
@@ -5342,13 +5466,11 @@ class ConductorManager(service.PeriodicService):
                          "Upgrade in progress."
                          % image_versions.TILLER_IMAGE_VERSION)
                 download_image = running_image_name + ":" + image_versions.TILLER_IMAGE_VERSION
-                local_registry_auth = cutils.get_local_docker_registry_auth()
                 self._docker._retrieve_specified_registries()
 
                 # download the image
                 try:
                     img_tag, ret = self._docker.download_an_image("helm",
-                                                                  local_registry_auth,
                                                                   download_image)
                     if not ret:
                         raise Exception
@@ -5369,6 +5491,16 @@ class ConductorManager(service.PeriodicService):
 
         except Exception as e:
             LOG.error("{}. Failed to upgrade/downgrade tiller.".format(e))
+            return False
+
+        # Patch tiller to allow restarts if the environment is incomplete
+        #
+        # NOTE: This patch along with this upgrade functionality can be removed
+        # once StarlingX moves to Helm v3
+        try:
+            self._patch_tiller_deployment()
+        except Exception as e:
+            LOG.error("{}. Failed to patch tiller deployment.".format(e))
             return False
 
         return True
@@ -5413,6 +5545,46 @@ class ConductorManager(service.PeriodicService):
 
         return True
 
+    @retry(retry_on_result=lambda x: x is False,
+           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
+    def _upgrade_downgrade_static_images(self):
+        try:
+            # Get the kubernetes version from the upgrade table
+            # if an upgrade exists
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            kube_version = \
+                kubernetes.get_kube_networking_upgrade_version(kube_upgrade)
+        except exception.NotFound:
+            # Not upgrading kubernetes, get the kubernetes version
+            # from the kubeadm config map
+            kube_version = self._kube.kube_get_kubernetes_version()
+
+        if not kube_version:
+            LOG.error("Unable to get the current kubernetes version.")
+            return False
+
+        try:
+            LOG.info("_upgrade_downgrade_kube_static_images executing"
+                     " playbook: %s for version %s" %
+                     (constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK, kube_version))
+
+            proc = subprocess.Popen(
+                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                 constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK],
+                stdout=subprocess.PIPE)
+            out, _ = proc.communicate()
+
+            LOG.info("ansible-playbook: %s." % out)
+
+            if proc.returncode:
+                raise Exception("ansible-playbook returned an error: %s" % proc.returncode)
+        except Exception as e:
+            LOG.error("Failed to upgrade/downgrade kubernetes "
+                      "static images: {}".format(e))
+            return False
+
+        return True
+
     def check_nodes_stable(self):
         hosts = self.dbapi.ihost_get_list()
         if (utils.is_host_simplex_controller(hosts[0]) and
@@ -5449,7 +5621,8 @@ class ConductorManager(service.PeriodicService):
         :returns: list of namespaces
         """
         try:
-            cmd = ['kubectl', '--kubeconfig=/etc/kubernetes/admin.conf',
+            cmd = ['kubectl',
+                   '--kubeconfig={}'.format(kubernetes.KUBERNETES_ADMIN_CONF),
                    'get', 'namespaces', '-o',
                    'go-template=\'{{range .items}}{{.metadata.name}}\'{{end}}\'']
             stdout, stderr = cutils.execute(*cmd, run_as_root=False)
@@ -5883,6 +6056,12 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    def update_controller_upgrade_flag(self, context):
+        """Update the controller upgrade flag"""
+        LOG.info("update_controller_upgrade_flag")
+
+        cutils.touch(tsc.CONTROLLER_UPGRADE_FLAG)
+
     def update_storage_config(self, context,
                               update_storage=False,
                               reinstall_required=False,
@@ -5926,8 +6105,8 @@ class ConductorManager(service.PeriodicService):
                         'platform::drbd::platform::runtime',
                     constants.FILESYSTEM_NAME_EXTENSION:
                         'platform::drbd::extension::runtime',
-                    constants.FILESYSTEM_NAME_PATCH_VAULT:
-                        'platform::drbd::patch_vault::runtime',
+                    constants.FILESYSTEM_NAME_DC_VAULT:
+                        'platform::drbd::dc_vault::runtime',
                     constants.FILESYSTEM_NAME_ETCD:
                         'platform::drbd::etcd::runtime',
                 }
@@ -5969,6 +6148,8 @@ class ConductorManager(service.PeriodicService):
                     'platform::filesystem::docker::runtime',
                 constants.FILESYSTEM_NAME_KUBELET:
                     'platform::filesystem::kubelet::runtime',
+                constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
+                    'platform::filesystem::conversion::runtime',
             }
 
             puppet_class = [classmap.get(fs) for fs in filesystem_list]
@@ -6336,6 +6517,31 @@ class ConductorManager(service.PeriodicService):
             values = {'state': constants.SB_STATE_CONFIGURED,
                       'task': None}
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
+
+    def _update_image_conversion_alarm(self, alarm_state, fs_name, reason_text=None):
+        """ Raise conversion configuration alarm"""
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_IMAGE_CONVERSION,
+                                        fs_name)
+
+        if alarm_state == fm_constants.FM_ALARM_STATE_SET:
+            fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_IMAGE_CONVERSION,
+                alarm_state=alarm_state,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_IMAGE_CONVERSION,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_CRITICAL,
+                reason_text=reason_text,
+                alarm_type=fm_constants.FM_ALARM_TYPE_4,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_7,
+                proposed_repair_action=_("Add image-conversion filesystem on both controllers."
+                                         "Consult the System Administration Manual "
+                                         "for more details. If problem persists, "
+                                         "contact next level of support."),
+                service_affecting=True)
+            self.fm_api.set_fault(fault)
+        else:
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_IMAGE_CONVERSION,
+                                    entity_instance_id)
 
     def _update_storage_backend_alarm(self, alarm_state, backend, reason_text=None):
         """ Update storage backend configuration alarm"""
@@ -7219,10 +7425,6 @@ class ConductorManager(service.PeriodicService):
 
             # Defaults: 500G root disk
             #
-            # Min size of the cgts-vg PV is:
-            #   167.0 G - PV for cgts-vg (specified in the kickstart)
-            # or
-            #   163.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
@@ -7245,32 +7447,18 @@ class ConductorManager(service.PeriodicService):
             #         16 G - /var/lib/docker-distribution (--kubernetes)
             #          5 G - /opt/etcd (--kubernetes)
             #         20 G - /var/lib/ceph/mon (--kubernetes)
-            #          8 G - /opt/patch-vault (DRBD ctlr manifest for
-            #                   Distributed Cloud System Controller non-AIO only)
+            #         15 G - /opt/dc-vault (DRBD ctlr manifest for
+            #                   Distributed Cloud System Controller)
             #        -----
-            #        163 G (for DCSC non-AIO) or 167
+            #        160 G
             #
             #  The absolute minimum disk size for these default settings:
             #      0.5 G - /boot
+            #     10.0 G - /opt/platform-backup
             #     20.0 G - /
-            #    167.0 G - cgts-vg PV
-            # or 163.0 G - (DCSC non-AIO)
+            #    160.0 G - cgts-vg PV
             #   -------
-            #    183.5 G => ~184G min size disk
-            # or
-            #    187.5 G => ~188G min size disk
-            #
-            # If required disk is size 500G:
-            #   1) Standard controller - will use all free space for the PV
-            #       0.5 G - /boot
-            #      20.0 G - /
-            #     479.5 G - cgts-vg PV
-            #
-            #   2) AIO - will leave unused space for further partitioning
-            #       0.5 G - /boot
-            #      20.0 G - /
-            #     167.0 G - cgts-vg PV
-            #     312.5 G - unpartitioned free space
+            #    190.5 G min size disk
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
@@ -7280,10 +7468,6 @@ class ConductorManager(service.PeriodicService):
 
             # Small disk: under 240G root disk
             #
-            # Min size of the cgts-vg PV is:
-            #   135.0 G - PV for cgts-vg (specified in the kickstart)
-            # or
-            #   133.0 G - (for DCSC non-AIO)
             #          8 G - /var/log (reserved in kickstart)
             #          8 G - /scratch (reserved in kickstart)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
@@ -7306,31 +7490,17 @@ class ConductorManager(service.PeriodicService):
             #         16 G - /var/lib/docker-distribution (--kubernetes)
             #         20 G - /var/lib/ceph/mon (--kubernetes)
             #          5 G - /opt/etcd (--kubernetes)
-            #          8 G - /opt/patch-vault (DRBD ctlr manifest for DCSC non-AIO only)
+            #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        138 G (for DCSC non-AIO) or 140 G
+            #        145 G
             #
             #  The absolute minimum disk size for these default settings:
             #     0.5 G - /boot
+            #    10.0 G - /opt/platform-backup
             #    20.0 G - /
-            #   140.0 G - cgts-vg PV
-            # or
-            #   138.0 G - (for DCSC non-AIO)
+            #   145.0 G - cgts-vg PV
             #   -------
-            #   160.5 G => ~156G min size disk
-            # or
-            #   158.5 G => ~154G min size disk
-            #
-            # If required disk is size 240G:
-            #   1) Standard controller - will use all free space for the PV
-            #       0.5 G - /boot
-            #      20.0 G - /
-            #     219.5 G - cgts-vg PV
-            #   2) AIO - will leave unused space for further partitioning
-            #       0.5 G - /boot
-            #      20.0 G - /
-            #     151.0 G - cgts-vg PV
-            #      68.5 G - unpartitioned free space
+            #   175.5 G min size disk
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
@@ -7399,10 +7569,10 @@ class ConductorManager(service.PeriodicService):
 
         if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             data = {
-                'name': constants.FILESYSTEM_NAME_PATCH_VAULT,
-                'size': constants.DEFAULT_PATCH_VAULT_STOR_SIZE,
+                'name': constants.FILESYSTEM_NAME_DC_VAULT,
+                'size': constants.DEFAULT_DC_VAULT_STOR_SIZE,
                 'logical_volume': constants.FILESYSTEM_LV_DICT[
-                    constants.FILESYSTEM_NAME_PATCH_VAULT],
+                    constants.FILESYSTEM_NAME_DC_VAULT],
                 'replicated': True,
             }
             LOG.info("Creating FS:%s:%s %d" % (
@@ -7692,8 +7862,8 @@ class ConductorManager(service.PeriodicService):
                 fs.append(constants.DRBD_PLATFORM)
             if "drbd-extension" in row and ("SyncSource" in row or "PausedSyncS" in row):
                 fs.append(constants.DRBD_EXTENSION)
-            if "drbd-patch-vault" in row and ("SyncSource" in row or "PausedSyncS" in row):
-                fs.append(constants.DRBD_PATCH_VAULT)
+            if "drbd-dc-vault" in row and ("SyncSource" in row or "PausedSyncS" in row):
+                fs.append(constants.DRBD_DC_VAULT)
             if "drbd-etcd" in row and ("SyncSource" in row or "PausedSyncS" in row):
                 fs.append(constants.DRBD_ETCD)
             if "drbd-dockerdistribution" in row and ("SyncSource" in row or "PausedSyncS" in row):
@@ -7706,7 +7876,7 @@ class ConductorManager(service.PeriodicService):
         drbd_dict = [_f for _f in drbd_dict.split('\n') if _f]
 
         drbd_patch_size = 0
-        patch_lv_size = 0
+        dc_lv_size = 0
         dockerdistribution_size = 0
         dockerdistribution_lv_size = 0
         drbd_etcd_size = 0
@@ -7734,7 +7904,7 @@ class ConductorManager(service.PeriodicService):
                     drbd_platform_size = size
                 if 'drbd-extension' in row:
                     drbd_extension_size = size
-                if 'drbd-patch-vault' in row:
+                if 'drbd-dc-vault' in row:
                     drbd_patch_size = size
                 if 'drbd-etcd' in row:
                     drbd_etcd_size = size
@@ -7748,21 +7918,21 @@ class ConductorManager(service.PeriodicService):
             platform_lv_size = float(lvdisplay_dict['platform-lv'])
         if lvdisplay_dict.get('extension-lv', None):
             extension_lv_size = float(lvdisplay_dict['extension-lv'])
-        if lvdisplay_dict.get('patch-vault-lv', None):
-            patch_lv_size = float(lvdisplay_dict['patch-vault-lv'])
+        if lvdisplay_dict.get('dc-vault-lv', None):
+            dc_lv_size = float(lvdisplay_dict['dc-vault-lv'])
         if lvdisplay_dict.get('etcd-lv', None):
             etcd_lv_size = float(lvdisplay_dict['etcd-lv'])
         if lvdisplay_dict.get('dockerdistribution-lv', None):
             dockerdistribution_lv_size = float(lvdisplay_dict['dockerdistribution-lv'])
 
         LOG.info("drbd-overview: pgsql-%s, platform-%s, extension-%s,"
-                 " patch-vault-%s, etcd-%s, dockerdistribution-%s",
+                 " dc-vault-%s, etcd-%s, dockerdistribution-%s",
                  drbd_pgsql_size, drbd_platform_size, drbd_extension_size,
                  drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
         LOG.info("lvdisplay: pgsql-%s, platform-%s, extension-%s,"
-                 " patch-vault-%s, etcd-%s, dockerdistribution-%s",
+                 " dc-vault-%s, etcd-%s, dockerdistribution-%s",
                  pgsql_lv_size, platform_lv_size, extension_lv_size,
-                 patch_lv_size, etcd_lv_size, dockerdistribution_lv_size)
+                 dc_lv_size, etcd_lv_size, dockerdistribution_lv_size)
 
         drbd_fs_updated = []
         if math.ceil(drbd_pgsql_size) < math.ceil(pgsql_lv_size):
@@ -7771,8 +7941,8 @@ class ConductorManager(service.PeriodicService):
             drbd_fs_updated.append(constants.DRBD_PLATFORM)
         if math.ceil(drbd_extension_size) < math.ceil(extension_lv_size):
             drbd_fs_updated.append(constants.DRBD_EXTENSION)
-        if math.ceil(drbd_patch_size) < math.ceil(patch_lv_size):
-            drbd_fs_updated.append(constants.DRBD_PATCH_VAULT)
+        if math.ceil(drbd_patch_size) < math.ceil(dc_lv_size):
+            drbd_fs_updated.append(constants.DRBD_DC_VAULT)
         if math.ceil(drbd_etcd_size) < math.ceil(etcd_lv_size):
             drbd_fs_updated.append(constants.DRBD_ETCD)
         if math.ceil(dockerdistribution_size) < math.ceil(dockerdistribution_lv_size):
@@ -7848,11 +8018,11 @@ class ConductorManager(service.PeriodicService):
                                 LOG.info("Performed %s" % progress)
                                 extension_resized = True
 
-                        if constants.DRBD_PATCH_VAULT in drbd_fs_updated:
+                        if constants.DRBD_DC_VAULT in drbd_fs_updated:
                             if (not patch_resized and
                                 (not standby_host or (standby_host and
-                                 constants.DRBD_PATCH_VAULT in self._drbd_fs_sync()))):
-                                # patch_gib /opt/patch-vault
+                                 constants.DRBD_DC_VAULT in self._drbd_fs_sync()))):
+                                # patch_gib /opt/dc-vault
                                 progress = "resize2fs drbd6"
                                 cmd = ["resize2fs", "/dev/drbd6"]
                                 stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
@@ -7893,7 +8063,7 @@ class ConductorManager(service.PeriodicService):
                                 all_resized = False
                             elif drbd == constants.DRBD_EXTENSION and not extension_resized:
                                 all_resized = False
-                            elif drbd == constants.DRBD_PATCH_VAULT and not patch_resized:
+                            elif drbd == constants.DRBD_DC_VAULT and not patch_resized:
                                 all_resized = False
                             elif drbd == constants.DRBD_ETCD and not etcd_resized:
                                 all_resized = False
@@ -8797,7 +8967,8 @@ class ConductorManager(service.PeriodicService):
 
         for upgrade_element in upgrade_paths:
             valid_from_version = upgrade_element.findtext('version')
-            if valid_from_version == current_version:
+            valid_from_versions = valid_from_version.split(",")
+            if current_version in valid_from_versions:
                 path_found = True
                 upgrade_path = upgrade_element
                 break
@@ -8934,9 +9105,9 @@ class ConductorManager(service.PeriodicService):
                     "Failure during sw-patch del-release"))
 
         # delete the central patch vault if it exists
-        patch_vault = '/opt/patch-vault/' + load.software_version
-        if os.path.exists(patch_vault):
-            shutil.rmtree(patch_vault)
+        dc_vault = '/opt/dc-vault/' + load.software_version
+        if os.path.exists(dc_vault):
+            shutil.rmtree(dc_vault)
 
         cleanup_script = constants.DELETE_LOAD_SCRIPT
         if os.path.isfile(cleanup_script):
@@ -9160,31 +9331,6 @@ class ConductorManager(service.PeriodicService):
 
         controller_0 = self.dbapi.ihost_get_by_hostname(
             constants.CONTROLLER_0_HOSTNAME)
-
-        # TODO: This code is only useful for supporting R5 to R6 upgrades.
-        #       Remove in future release.
-        # update crushmap and remove cache-tier on upgrade
-        if from_version == tsc.SW_VERSION_1803:
-            ceph_backend = StorageBackendConfig.get_backend(self.dbapi, constants.CINDER_BACKEND_CEPH)
-            if ceph_backend and ceph_backend.state == constants.SB_STATE_CONFIGURED:
-                try:
-                    response, body = self._ceph_api.osd_crush_rule_rm("cache_tier_ruleset",
-                                                                      body='json')
-                    if response.ok:
-                        LOG.info("Successfully removed cache_tier_ruleset "
-                                 "[ceph osd crush rule rm cache_tier_ruleset]")
-                        try:
-                            response, body = self._ceph_api.osd_crush_remove("cache-tier",
-                                                                             body='json')
-                            if response.ok:
-                                LOG.info("Successfully removed cache_tier "
-                                         "[ceph osd crush remove cache-tier]")
-                        except exception.CephFailure:
-                            LOG.warn("Failed to remove bucket cache-tier from crushmap")
-                            pass
-                except exception.CephFailure:
-                    LOG.warn("Failed to remove rule cache-tier from crushmap")
-                    pass
 
         if state in [constants.UPGRADE_ABORTING,
                 constants.UPGRADE_ABORTING_ROLLBACK]:
@@ -9433,7 +9579,7 @@ class ConductorManager(service.PeriodicService):
         """
         Checks if the host is running the same load as the active controller
         :param host: a host object
-        :return: true if host target load matches active sw_version
+        :return: True if host target load matches active sw_version
         """
         host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
         target_load = self.dbapi.load_get(host_upgrade.target_load)
@@ -9486,7 +9632,7 @@ class ConductorManager(service.PeriodicService):
                             '/dev/cgts-vg/dockerdistribution-lv '
 
         if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/patch-vault-lv '
+            lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/dc-vault-lv '
 
         lvdisplay_dict = {}
         # Execute the command.
@@ -11343,3 +11489,37 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_NETWORKING
         kube_upgrade_obj.save()
+
+    def store_bitstream_file(self, context, filename):
+        """Store FPGA bitstream file """
+        image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)
+        image_tmp_path = os.path.join(dconstants.DEVICE_IMAGE_TMP_PATH, filename)
+        try:
+            os.makedirs(dconstants.DEVICE_IMAGE_PATH)
+        except OSError as oe:
+            if (oe.errno != errno.EEXIST or
+                    not os.path.isdir(dconstants.DEVICE_IMAGE_PATH)):
+                LOG.error("Failed to create dir %s" % dconstants.DEVICE_IMAGE_PATH)
+                raise
+        shutil.copyfile(image_tmp_path, image_file_path)
+        LOG.info("copied %s to %s" % (image_tmp_path, image_file_path))
+
+    def delete_bitstream_file(self, context, filename):
+        """Delete FPGA bitstream file"""
+        image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)
+        try:
+            os.remove(image_file_path)
+        except OSError:
+            LOG.exception("Failed to delete bitstream file %s" % image_file_path)
+
+    def host_device_image_update(self, context, host_uuid):
+        """Update the device image on this host"""
+
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Updating device image on %s" % host_obj.hostname)
+
+    def host_device_image_update_abort(self, context, host_uuid):
+        """Abort device image update on this host"""
+
+        host_obj = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Aborting device image update on %s" % host_obj.hostname)
