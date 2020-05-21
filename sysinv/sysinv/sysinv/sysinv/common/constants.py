@@ -1412,6 +1412,7 @@ HELM_APP_OPENSTACK = 'stx-openstack'
 HELM_APP_PLATFORM = 'platform-integ-apps'
 HELM_APP_MONITOR = 'stx-monitor'
 HELM_APP_OIDC_AUTH = 'oidc-auth-apps'
+HELM_APP_CERT_MANAGER = 'cert-manager'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
@@ -1432,6 +1433,7 @@ HELM_APP_APPLY_MODES = {
 HELM_APPS_PLATFORM_MANAGED = [
     HELM_APP_PLATFORM,
     HELM_APP_OIDC_AUTH,
+    HELM_APP_CERT_MANAGER,
 ]
 
 # The order in which apps are listed here is important.
