@@ -19,6 +19,7 @@ import shlex
 from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.common import constants
+from sysinv.common import device as dconstants
 from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
@@ -34,7 +35,8 @@ KNOWN_PCI_DEVICES = [{"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
                       {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
                       "device_id": constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE,
                       "class_id": constants.NOVA_PCI_ALIAS_QAT_CLASS},
-                     {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS}]
+                     {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS},
+                     {"class_id": dconstants.PCI_DEVICE_CLASS_FPGA}]
 
 # PCI-SIG 0x06 bridge devices to not inventory.
 IGNORE_BRIDGE_PCI_CLASSES = ['bridge', 'isa bridge', 'host bridge']
@@ -156,6 +158,8 @@ class PCIDevice(object):
         self.sriov_totalvfs = kwargs.get('sriov_totalvfs')
         self.sriov_numvfs = kwargs.get('sriov_numvfs')
         self.sriov_vfs_pci_address = kwargs.get('sriov_vfs_pci_address')
+        self.sriov_vf_driver = kwargs.get('sriov_vf_driver')
+        self.sriov_vf_pdevice_id = kwargs.get('sriov_vf_pdevice_id')
         self.driver = kwargs.get('driver')
         self.enabled = kwargs.get('enabled')
         self.extra_info = kwargs.get('extra_info')
@@ -250,8 +254,8 @@ class PCIOperator(object):
                 with open(fdevice, 'r') as f:
                     # Device id is a 16 bit hex value.  Strip off the hex
                     # identifier and trailing whitespace
-                    vf_device_id = hex(int(f.readline().rstrip(), 16))[2:]
-                    if len(vf_device_id) <= 4:
+                    vf_device_id = f.readline().rstrip()[2:]
+                    if len(vf_device_id) < 4:
                         # Should never happen
                         raise ValueError(_(
                             "Device Id must be a 16 bit hex value"))
@@ -281,7 +285,7 @@ class PCIOperator(object):
 
             for line in output.split('\n'):
                 pci_attr = shlex.split(line.strip())
-                if (pci_attr and len(pci_attr) == 2 and 'Module' in pci_attr[0]):
+                if (pci_attr and len(pci_attr) == 2 and 'Driver' in pci_attr[0]):
                     vf_driver = pci_attr[1]
                     break
 
@@ -396,6 +400,7 @@ class PCIOperator(object):
                 sriov_totalvfs = self.get_pci_sriov_totalvfs(a)
                 sriov_numvfs = self.get_pci_sriov_numvfs(a)
                 sriov_vfs_pci_address = self.get_pci_sriov_vfs_pci_address(a, sriov_numvfs)
+                sriov_vf_driver = self.get_pci_sriov_vf_driver_name(a, sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
                 fclass = dirpcideva + '/class'
@@ -423,6 +428,8 @@ class PCIOperator(object):
                     pclass_id = None
 
                 name = "pci_" + a.replace(':', '_').replace('.', '_')
+                sriov_vf_pdevice_id = self.get_pci_sriov_vf_device_id(
+                    a, sriov_vfs_pci_address)
 
                 attrs = {
                     "name": name,
@@ -435,6 +442,8 @@ class PCIOperator(object):
                     "sriov_numvfs": sriov_numvfs,
                     "sriov_vfs_pci_address":
                         ','.join(str(x) for x in sriov_vfs_pci_address),
+                    "sriov_vf_driver": sriov_vf_driver,
+                    "sriov_vf_pdevice_id": sriov_vf_pdevice_id,
                     "driver": driver,
                     "enabled": self.pci_get_enabled_attr(pclass_id,
                         pvendor_id, pdevice_id),

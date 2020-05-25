@@ -1118,10 +1118,23 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         if vf_addrs is None:
             vf_addrs = []
         config = {'ifname': ifname,
-                  'pf_addr': pf_addr if pf_addr else self.port['pciaddr'],
+                  'addr': pf_addr if pf_addr else self.port['pciaddr'],
                   'num_vfs': num_vfs,
-                  'vf_driver': vf_driver,
-                  'vf_addrs': vf_addrs}
+                  'vf_config': {}}
+        if vf_addrs:
+            for addr in vf_addrs:
+                vf_config = config['vf_config']
+                if addr in vf_config.keys():
+                    vf_config.update({addr: {
+                        'addr': addr,
+                        'driver': vf_driver
+                    }})
+                else:
+                    vf_config[addr] = {
+                        'addr': addr,
+                        'driver': vf_driver
+                    }
+
         return config
 
     def _get_loopback_config(self):

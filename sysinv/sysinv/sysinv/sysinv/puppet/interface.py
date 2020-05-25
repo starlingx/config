@@ -1022,6 +1022,7 @@ def get_sriov_config(context, iface):
     Returns an SR-IOV interface config dictionary.
     """
     vf_driver = iface['sriov_vf_driver']
+    vf_config = {}
 
     port = interface.get_sriov_interface_port(context, iface)
     if not port:
@@ -1052,6 +1053,14 @@ def get_sriov_config(context, iface):
     vf_addrs = [quoted_str(addr.strip())
         for addr in vf_addr_list.split(",") if addr]
 
+    for addr in vf_addrs:
+        vf_config.update({
+            addr: {
+                'addr': addr,
+                'driver': vf_driver
+            }
+        })
+
     # Include the desired number of VFs if the device supports SR-IOV
     # config via sysfs and is not a sub-interface
     num_vfs = None
@@ -1061,10 +1070,9 @@ def get_sriov_config(context, iface):
 
     config = {
         'ifname': iface['ifname'],
-        'pf_addr': quoted_str(port['pciaddr'].strip()),
+        'addr': quoted_str(port['pciaddr'].strip()),
         'num_vfs': num_vfs,
-        'vf_driver': vf_driver,
-        'vf_addrs': vf_addrs
+        'vf_config': vf_config
     }
     return config
 

@@ -2542,8 +2542,23 @@ class ConductorManager(service.PeriodicService):
                             'sriov_numvfs': pci_dev['sriov_numvfs'],
                             'sriov_vfs_pci_address':
                                 pci_dev['sriov_vfs_pci_address'],
+                            'sriov_vf_driver': pci_dev.get('sriov_vf_driver', None),
+                            'sriov_vf_pdevice_id':
+                                pci_dev.get('sriov_vf_pdevice_id', None),
                             'driver': pci_dev['driver']}
                         LOG.info("attr: %s" % attr)
+                        if (host['administrative'] == constants.ADMIN_LOCKED and
+                                pci_dev['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+                            # For the FPGA FEC device, the actual VF driver
+                            # is only updated on an unlocked host. The set
+                            # of VF PCI addresses may not be known when the
+                            # value of sriov_numvfs changes and is applied
+                            # to create the VFs on a puppet runtime manifest
+                            # apply.  This prevents the intended VF driver
+                            # from being reported as None (reset) when the
+                            # binding of the intended driver has not had a
+                            # chance to be applied.
+                            del attr['sriov_vf_driver']
                         dev = self.dbapi.pci_device_update(dev['uuid'], attr)
                     except Exception:
                         LOG.exception("Failed to update port %s" %
@@ -5980,7 +5995,8 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host_uuid],
-            "classes": 'platform::interfaces::sriov::runtime',
+            "classes": ['platform::interfaces::sriov::runtime',
+                        'platform::devices::fpga::fec::runtime'],
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
         }

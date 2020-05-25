@@ -3354,6 +3354,52 @@ class HostController(rest.RestController):
 
         self._check_sriovdp_interface_datanets(interface)
 
+    def _semantic_check_fpga_fec_device(self, host, dev, force_unlock=False):
+        """
+        Perform semantic checks on an FPGA FEC device.
+        """
+        if (force_unlock or
+                dev.pdevice_id != device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+            return
+
+        sriov_numvfs = dev.sriov_numvfs
+        if not sriov_numvfs:
+            return
+        if (dev.sriov_vfs_pci_address and
+                sriov_numvfs == len(dev.sriov_vfs_pci_address.split(','))):
+                LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
+                         (sriov_numvfs, dev.sriov_vfs_pci_address))
+        else:
+            msg = (_("Expecting number of FPGA device sriov_numvfs=%s. "
+                     "Please wait a few minutes for inventory update and "
+                     "retry host-unlock." %
+                     sriov_numvfs))
+            LOG.info(msg)
+            pecan.request.rpcapi.update_sriov_config(
+                pecan.request.context,
+                host['uuid'])
+            raise wsme.exc.ClientSideError(msg)
+
+    def _semantic_check_fpga_device(self, host, dev, force_unlock=False):
+        """
+        Perform semantic checks on an FPGA device.
+        """
+        if dev.pclass_id != device.PCI_DEVICE_CLASS_FPGA:
+            return
+
+        if dev.pdevice_id == device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF:
+            self._semantic_check_fpga_fec_device(host, dev, force_unlock)
+
+    def _semantic_check_devices(self, host, force_unlock=False):
+        """
+        Perform semantic checks on pci devices.
+        """
+        devices = (
+            pecan.request.dbapi.pci_device_get_by_host(host['uuid']))
+        for dev in devices:
+            if dev.pclass_id == device.PCI_DEVICE_CLASS_FPGA:
+                self._semantic_check_fpga_device(host, dev, force_unlock)
+
     def _semantic_check_unlock_kube_upgrade(self, ihost, force_unlock=False):
         """
         Perform semantic checks related to kubernetes upgrades prior to unlocking host.
@@ -5477,6 +5523,9 @@ class HostController(rest.RestController):
         # Disable certain worker unlock checks in a kubernetes config
         self._semantic_check_data_interfaces(ihost,
                                              force_unlock)
+
+        # Check whether a device has completed configuration
+        self._semantic_check_devices(ihost, force_unlock)
 
         # Check if cpu assignments are valid
         self._semantic_check_worker_cpu_assignments(ihost)

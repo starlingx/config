@@ -176,7 +176,7 @@ class LabelAssignTestCase(LabelTestCase):
     @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
                 mock_get_system_enabled_k8s_plugins_return_plugins)
     def test_create_plugin_labels_on_supported_node(self):
-        dbutils.create_test_pci_devices(
+        dbutils.create_test_pci_device(
             host_id=self.worker.id,
             pclass='VGA compatible controller',
             driver='i915',)
@@ -190,7 +190,7 @@ class LabelAssignTestCase(LabelTestCase):
     @mock.patch('sysinv.api.controllers.v1.label._get_system_enabled_k8s_plugins',
                 mock_get_system_enabled_k8s_plugins_return_plugins)
     def test_create_plugin_labels_on_unsupported_node(self):
-        dbutils.create_test_pci_devices(
+        dbutils.create_test_pci_device(
             host_id=self.worker.id,
             pclass='VGA compatible controller',
             driver='',)

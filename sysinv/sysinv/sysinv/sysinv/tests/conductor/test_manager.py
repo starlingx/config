@@ -1468,6 +1468,8 @@ class ManagerTestCase(base.DbTestCase):
                                 'psdevice': 'qat',
                                 'sriov_totalvfs': 32,
                                 'sriov_numvfs': 4,
+                                'sriov_vf_driver': None,
+                                'sriov_vf_pdevice_id': '0450',
                                 'sriov_vfs_pci_address': '',
                                 'driver': ''}]
         self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update1)
@@ -1488,6 +1490,8 @@ class ManagerTestCase(base.DbTestCase):
                                 'psdevice': 'qat',
                                 'sriov_totalvfs': 32,
                                 'sriov_numvfs': 4,
+                                'sriov_vf_driver': None,
+                                'sriov_vf_pdevice_id': '0450',
                                 'sriov_vfs_pci_address': '',
                                 'driver': '',
                                 'uuid': 1122}]

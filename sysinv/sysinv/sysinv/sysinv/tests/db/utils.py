@@ -1294,8 +1294,8 @@ def create_test_app(**kw):
     return dbapi.kube_app_create(app_data)
 
 
-def get_test_pci_devices(**kw):
-    pci_devices = {
+def get_test_pci_device(**kw):
+    pci_device = {
         'id': kw.get('id', 2345),
         'host_id': kw.get('host_id', 2),
         'name': kw.get('name', 'pci_0000_00_02_0 '),
@@ -1308,23 +1308,28 @@ def get_test_pci_devices(**kw):
         'pdevice': kw.get('pdevice', 'Iris Plus Graphics 655'),
         'numa_node': kw.get('numa_node', -1),
         'enabled': kw.get('enabled', True),
-        'driver': kw.get('driver', '')
+        'driver': kw.get('driver', None),
+        'sriov_totalvfs': kw.get('sriov_totalvfs', None),
+        'sriov_numvfs': kw.get('sriov_numvfs', 0),
+        'sriov_vfs_pci_address': kw.get('sriov_vfs_pci_address', ''),
+        'sriov_vf_driver': kw.get('sriov_vf_driver', None),
+        'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None)
     }
-    return pci_devices
+    return pci_device
 
 
-def create_test_pci_devices(**kw):
+def create_test_pci_device(**kw):
     """Create test pci devices entry in DB and return PciDevice DB object.
     Function to be used to create test pci device objects in the database.
     :param kw: kwargs with overriding values for pci device attributes.
     :returns: Test PciDevice DB object.
     """
-    pci_devices = get_test_pci_devices(**kw)
+    pci_device = get_test_pci_device(**kw)
     # Let DB generate ID if it isn't specified explicitly
     if 'id' not in kw:
-        del pci_devices['id']
+        del pci_device['id']
     dbapi = db_api.get_instance()
-    return dbapi.pci_device_create(pci_devices['host_id'], pci_devices)
+    return dbapi.pci_device_create(pci_device['host_id'], pci_device)
 
 
 def get_test_fpga_device(**kw):
