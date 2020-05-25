@@ -696,7 +696,7 @@ class AppOperator(object):
             images_list = yaml.safe_load(f)
         return images_list
 
-    def _download_images(self, app):
+    def download_images(self, app):
         if os.path.isdir(app.inst_images_dir):
             return self._register_embedded_images(app)
 
@@ -2144,7 +2144,7 @@ class AppOperator(object):
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
 
-                self._download_images(app)
+                self.download_images(app)
             else:
                 ready = False
         except Exception as e:

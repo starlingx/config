@@ -202,6 +202,9 @@ class ConductorManager(service.PeriodicService):
         # this will track the config w/ reboot request to apply
         self._host_reboot_config_uuid = {}
 
+        # Guard for a run once function
+        self._requested_restore = False
+
     def start(self):
         self._start()
         # accept API calls and run periodic tasks after
@@ -5280,6 +5283,46 @@ class ConductorManager(service.PeriodicService):
         app.save()
         self._auto_apply_managed_app(context, app_name)
 
+    def _k8s_application_images_audit(self, context):
+        """
+        Make sure that the required images for k8s applications are present
+        """
+
+        LOG.debug("Helper Task: _k8s_application_images_audit: Starting")
+
+        try:
+            for kapp in self.dbapi.kube_app_get_all():
+                if kapp.status == constants.APP_RESTORE_REQUESTED:
+                    app = kubeapp_obj.get_by_name(context, kapp.name)
+
+                    LOG.info("Request downloading images for %s: " % kapp.name)
+                    app.status = constants.APP_APPLY_IN_PROGRESS
+                    app.progress = constants.APP_PROGRESS_DOWNLOAD_IMAGES
+                    app.save()
+
+                    greenthread.spawn(self._restore_download_images, app)
+
+            self._requested_restore = True
+        except Exception as e:
+            LOG.info("Helper Task: _k8s_application_images_audit: Will retry")
+            LOG.exception(e)
+
+        LOG.debug("Helper Task: _k8s_application_images_audit: Finished")
+
+    def _restore_download_images(self, app):
+        try:
+            rapp = self._app.Application(app)
+            self._app.download_images(rapp)
+
+            app.status = constants.APP_APPLY_SUCCESS
+            app.progress = constants.APP_PROGRESS_COMPLETED
+            app.save()
+        except Exception as e:
+            LOG.exception(e)
+            app.status = constants.APP_APPLY_FAILURE
+            app.progress = constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED
+            app.save()
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
@@ -5294,6 +5337,9 @@ class ConductorManager(service.PeriodicService):
                 ((active_ctrl.administrative != constants.ADMIN_UNLOCKED) or
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
+
+        if not self._requested_restore:
+            self._k8s_application_images_audit(context)
 
         # WORKAROUND: For k8s NodeAffinity issue. Call this for a limited time
         #             (5 times over ~5 minutes). As of k8s upgrade to v1.18.1,
