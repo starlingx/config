@@ -297,7 +297,13 @@ class HTTPClient(httplib2.Http):
         self.authenticate_and_fetch_endpoint_url()
         connection_url = self._get_connection_url(url)
         fields = kwargs.get('data')
-        fields['file'] = (kwargs['body'], open(kwargs['body'], 'rb'))
+        files = kwargs['body']
+
+        if fields is None:
+            fields = dict()
+        for k, v in files.items():
+            fields[k] = (v, open(v, 'rb'),)
+
         enc = MultipartEncoder(fields)
         headers = {'Content-Type': enc.content_type,
                    "X-Auth-Token": self.auth_token}

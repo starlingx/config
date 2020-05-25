@@ -19,6 +19,7 @@
 #
 
 import jsonpatch
+import os
 import pecan
 from pecan import rest
 import six
@@ -28,13 +29,14 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from oslo_log import log
+from pecan import expose
+from pecan import request
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
-from sysinv.common.constants import ACTIVE_LOAD_STATE
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -222,7 +224,7 @@ class LoadController(rest.RestController):
 
         patch = load.as_dict()
         self._new_load_semantic_checks(patch)
-        patch['state'] = ACTIVE_LOAD_STATE
+        patch['state'] = constants.ACTIVE_LOAD_STATE
 
         try:
             new_load = pecan.request.dbapi.load_create(patch)
@@ -246,41 +248,120 @@ class LoadController(rest.RestController):
 
         return load.convert_with_links(new_load)
 
-    @wsme_pecan.wsexpose(Load, body=LoadImportType)
-    def import_load(self, body):
+    @staticmethod
+    def _upload_file(file_item):
+        dst = None
+        try:
+            staging_dir = constants.LOAD_FILES_STAGING_DIR
+            if not os.path.isdir(staging_dir):
+                os.makedirs(staging_dir)
+
+            fn = os.path.join(staging_dir,
+                              os.path.basename(file_item.filename))
+            if hasattr(file_item.file, 'fileno'):
+                # Large iso file
+                dst = os.open(fn, os.O_WRONLY | os.O_CREAT)
+                src = file_item.file.fileno()
+                size = 64 * 1024
+                n = size
+                while n >= size:
+                    s = os.read(src, size)
+                    n = os.write(dst, s)
+                os.close(dst)
+            else:
+                # Small signature file
+                with open(fn, 'wb') as sigfile:
+                    sigfile.write(file_item.file.read())
+        except Exception:
+            if dst:
+                os.close(dst)
+            LOG.exception("Failed to upload load file %s" % file_item.filename)
+            return None
+
+        return fn
+
+    @expose('json')
+    @cutils.synchronized(LOCK_NAME)
+    def import_load(self):
         """Create a new Load."""
+
+        err_msg = None
 
         # Only import loads on controller-0. This is required because the load
         # is only installed locally and we will be booting controller-1 from
         # this load during the upgrade.
         if socket.gethostname() != constants.CONTROLLER_0_HOSTNAME:
-            raise wsme.exc.ClientSideError(_(
-                "load-import rejected: A load can only be imported "
-                "when %s is active." % constants.CONTROLLER_0_HOSTNAME))
+            err_msg = _("A load can only be imported when %s is "
+                        "active. ") % constants.CONTROLLER_0_HOSTNAME
+        else:
+            loads = pecan.request.dbapi.load_get_list()
 
-        import_data = body.as_dict()
-        path_to_iso = import_data['path_to_iso']
-        path_to_sig = import_data['path_to_sig']
+            # Only 2 loads are allowed at one time: the active load
+            # and an imported load regardless of its current state
+            # (e.g. importing, error, deleting).
+            if len(loads) > constants.IMPORTED_LOAD_MAX_COUNT:
+                for load in loads:
+                    if load.state == constants.ACTIVE_LOAD_STATE:
+                        pass
+                    elif load.state == constants.ERROR_LOAD_STATE:
+                        err_msg = _("Please remove the load in error state "
+                                    "before importing a new one.")
+                    elif load.state == constants.DELETING_LOAD_STATE:
+                        err_msg = _("Please wait for the current load delete "
+                                    "to complete before importing a new one.")
+                    else:
+                        # Already imported or being imported
+                        err_msg = _("Max number of loads (2) reached. Please "
+                                    "remove the old or unused load before "
+                                    "importing a new one.")
+        if err_msg:
+            return dict(error=err_msg)
 
+        load_files = dict()
+        for f in constants.IMPORT_LOAD_FILES:
+            if f not in request.POST:
+                err_msg = _("Missing required file for %s") % f
+                return dict(error=err_msg)
+
+            file_item = request.POST[f]
+            if not file_item.filename:
+                err_msg = _("No %s file uploaded") % f
+                return dict(error=err_msg)
+
+            fn = self._upload_file(file_item)
+            if fn:
+                load_files.update({f: fn})
+            else:
+                err_msg = _("Failed to save file %s to disk. Please check "
+                            "sysinv logs for details." % file_item.filename)
+                return dict(error=err_msg)
+
+        LOG.info("Load files: %s saved to disk." % load_files)
         try:
             new_load = pecan.request.rpcapi.start_import_load(
-                pecan.request.context, path_to_iso, path_to_sig)
+                pecan.request.context,
+                load_files[constants.LOAD_ISO],
+                load_files[constants.LOAD_SIGNATURE])
         except common.RemoteError as e:
             # Keep only the message raised originally by sysinv conductor.
-            raise wsme.exc.ClientSideError(str(e.value))
+            return dict(error=str(e.value))
 
         if new_load is None:
-            raise wsme.exc.ClientSideError(
-                _("Error importing load. Load not found"))
+            return dict(error=_("Error importing load. Load not found"))
 
+        # Signature and upgrade path checks have passed, make rpc call
+        # to the conductor to run import script in the background.
         try:
             pecan.request.rpcapi.import_load(
-                pecan.request.context, path_to_iso, new_load)
+                pecan.request.context,
+                load_files[constants.LOAD_ISO],
+                new_load)
         except common.RemoteError as e:
             # Keep only the message raised originally by sysinv conductor.
-            raise wsme.exc.ClientSideError(str(e.value))
+            return dict(error=str(e.value))
 
-        return Load.convert_with_links(new_load)
+        new_load_dict = new_load.as_dict()
+        return dict(new_load=new_load_dict)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(six.text_type, [LoadPatchType])
@@ -315,7 +396,7 @@ class LoadController(rest.RestController):
         return Load.convert_with_links(rpc_load)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, six.text_type, status_code=204)
+    @wsme_pecan.wsexpose(Load, six.text_type, status_code=200)
     def delete(self, load_id):
         """Delete a load."""
 
@@ -342,3 +423,5 @@ class LoadController(rest.RestController):
         cutils.validate_load_for_delete(load)
 
         pecan.request.rpcapi.delete_load(pecan.request.context, load_id)
+
+        return Load.convert_with_links(load)

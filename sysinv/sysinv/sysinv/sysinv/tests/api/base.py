@@ -18,6 +18,7 @@
 """Base classes for API tests."""
 
 from oslo_config import cfg
+import os.path
 import mock
 import pecan
 import pecan.testing
@@ -72,7 +73,7 @@ class FunctionalTest(base.TestCase):
                 'acl_public_routes': ['/', '/v1'],
             },
         }
-
+        os.path.isdir = mock.Mock(return_value=True)
         return pecan.testing.load_test_app(self.config)
 
     def tearDown(self):

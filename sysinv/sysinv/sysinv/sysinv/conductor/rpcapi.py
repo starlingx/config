@@ -1220,14 +1220,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('delete_load',
                                        load_id=load_id))
 
-    def finalize_delete_load(self, context):
+    def finalize_delete_load(self, context, sw_version):
         """Asynchronously, delete the load from the database
 
         :param context: request context.
+        :param sw_version: software version of load to be deleted
         :returns: none.
         """
         return self.cast(context,
-                         self.make_msg('finalize_delete_load'))
+                         self.make_msg('finalize_delete_load',
+                                       sw_version=sw_version))
 
     def load_update_by_host(self, context, ihost_id, version):
         """Update the host_upgrade table with the running SW_VERSION
