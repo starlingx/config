@@ -60,6 +60,7 @@ HELM_CHART_NGINX_PORTS_CONTROL = "nginx-ports-control"
 HELM_CHART_DCDBSYNC = 'dcdbsync'
 HELM_CHART_DEX = 'dex'
 HELM_CHART_OIDC_CLIENT = 'oidc-client'
+HELM_CHART_CERT_MANAGER = 'cert-manager'
 
 HELM_CHART_ELASTICSEARCH_MASTER = 'elasticsearch-master'
 HELM_CHART_ELASTICSEARCH_DATA = 'elasticsearch-data'
@@ -81,6 +82,7 @@ HELM_NS_OPENSTACK = 'openstack'
 HELM_NS_HELM_TOOLKIT = 'helm-toolkit'
 HELM_NS_MONITOR = 'monitor'
 HELM_NS_RBD_PROVISIONER = HELM_NS_KUBE_SYSTEM
+HELM_NS_CERT_MANAGER = 'cert-manager'
 
 # Services
 # Matches configassistant.py value => Should change to STARLINGX
