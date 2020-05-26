@@ -27,6 +27,7 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.store_bitstream_file = mock.MagicMock()
         self.delete_bitstream_file = mock.MagicMock()
+        self.apply_device_image = mock.MagicMock()
 
 
 class TestDeviceImage(base.FunctionalTest, dbbase.BaseHostTestCase):

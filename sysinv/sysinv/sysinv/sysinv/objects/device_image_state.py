@@ -4,9 +4,20 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from oslo_log import log
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
+
+LOG = log.getLogger(__name__)
+
+
+def get_bitstream_type(field, db_object):
+    """Retrieves the bitstream type from the device image object"""
+    device_image = getattr(db_object, 'image', None)
+    if device_image:
+        return device_image.bitstream_type
+    return None
 
 
 class DeviceImageState(base.SysinvObject):
@@ -22,6 +33,7 @@ class DeviceImageState(base.SysinvObject):
               'pcidevice_uuid': utils.uuid_or_none,
               'image_id': utils.int_or_none,
               'image_uuid': utils.uuid_or_none,
+              'bitstream_type': utils.str_or_none,
               'status': utils.str_or_none,
               'update_start_time': utils.datetime_or_str_or_none,
               'capabilities': utils.dict_or_none,
@@ -31,6 +43,7 @@ class DeviceImageState(base.SysinvObject):
         'host_uuid': 'host:uuid',
         'pcidevice_uuid': 'pcidevice:uuid',
         'image_uuid': 'image:uuid',
+        'bitstream_type': get_bitstream_type,
     }
 
     @base.remotable_classmethod

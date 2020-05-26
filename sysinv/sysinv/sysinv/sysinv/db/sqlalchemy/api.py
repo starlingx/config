@@ -1331,7 +1331,8 @@ class Connection(api.Connection):
 
     def count_hosts_matching_criteria(
             self, personality=None, administrative=None,
-            operational=None, availability=None, vim_progress_status=None):
+            operational=None, availability=None, vim_progress_status=None,
+            reboot_needed=None):
         query = model_query(models.ihost)
         query = add_host_options(query)
         query = query.filter_by(recordtype="standard")
@@ -1361,6 +1362,12 @@ class Connection(api.Connection):
                     models.ihost.vim_progress_status.in_(vim_progress_status))
             else:
                 query = query.filter_by(vim_progress_status=vim_progress_status)
+        if reboot_needed:
+            if isinstance(reboot_needed, list):
+                query = query.filter(
+                    models.ihost.reboot_needed.in_(reboot_needed))
+            else:
+                query = query.filter_by(reboot_needed=reboot_needed)
         return query.count()
 
     @objects.objectify(objects.host)

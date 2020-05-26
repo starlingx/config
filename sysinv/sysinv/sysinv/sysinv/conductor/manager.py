@@ -138,6 +138,12 @@ conductor_opts = [
        cfg.IntOpt('kube_upgrade_downgrade_retry_interval',
                   default=3600,
                   help='Interval in seconds between retries to upgrade/downgrade kubernetes components'),
+       cfg.IntOpt('fw_update_large_timeout',
+                  default=3600,
+                  help='Timeout interval in seconds for a large device image'),
+       cfg.IntOpt('fw_update_small_timeout',
+                  default=300,
+                  help='Timeout interval in seconds for a small device image'),
                   ]
 
 CONF = cfg.CONF
@@ -4541,6 +4547,17 @@ class ConductorManager(service.PeriodicService):
             for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
                 if cutils.is_app_applied(self.dbapi, app_name):
                     self.evaluate_app_reapply(context, app_name)
+
+        # Clear any "reboot needed" DB entry for the host if it is set.
+        # If there are no more pending device image update entries in the DB
+        # for any host, and if no host has the "reboot needed" DB entry set,
+        # then the "device image update in progress" alarm is cleared.
+        if availability == constants.AVAILABILITY_AVAILABLE:
+            if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
+                if ihost.reboot_needed:
+                    ihost.reboot_needed = False
+                    ihost.save(context)
+                self._clear_device_image_alarm(context)
 
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):
@@ -11552,6 +11569,32 @@ class ConductorManager(service.PeriodicService):
         except OSError:
             LOG.exception("Failed to delete bitstream file %s" % image_file_path)
 
+    def apply_device_image(self, context, host_uuid):
+        """Apply device image"""
+        host = objects.host.get_by_uuid(context, host_uuid)
+        if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+            host.save()
+
+        # Raise device image update alarm if not already exists
+        alarm_id = fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS
+        system_uuid = self.dbapi.isystem_get_one().uuid
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_SYSTEM, system_uuid)
+        if not self.fm_api.get_fault(alarm_id, entity_instance_id):
+            fault = fm_api.Fault(
+                alarm_id=alarm_id,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_SYSTEM,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+                reason_text="Device image update operation in progress ",
+                alarm_type=fm_constants.FM_ALARM_TYPE_5,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_65,
+                proposed_repair_action="Complete reboots of affected hosts",
+                suppression=False,
+                service_affecting=False)
+            self.fm_api.set_fault(fault)
+
     def host_device_image_update(self, context, host_uuid):
         """Update the device image on this host"""
 
@@ -11563,3 +11606,40 @@ class ConductorManager(service.PeriodicService):
 
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         LOG.info("Aborting device image update on %s" % host_obj.hostname)
+
+    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    def _audit_device_image_update(self, context):
+        """Check if device image update is stuck in 'in-progress'"""
+        dev_img_list = self.dbapi.device_image_state_get_all(
+            status=dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS)
+        for img in dev_img_list:
+            if img['bitstream_type'] == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
+                timeout = CONF.conductor.fw_update_large_timeout
+            else:
+                timeout = CONF.conductor.fw_update_small_timeout
+            tz = img.update_start_time.tzinfo
+            if ((datetime.now(tz) - img.update_start_time).total_seconds() >=
+                    timeout):
+                # Mark the status as failed
+                img.status = dconstants.DEVICE_IMAGE_UPDATE_FAILED
+                img.save(context)
+                host = objects.host.get_by_uuid(context, img.host_uuid)
+                pci = objects.pci_device.get_by_uuid(context, img.pcidevice_uuid)
+                LOG.error("Device image update timed out host={} "
+                            "device={} image={}".format(host.hostname,
+                                                        pci.pciaddr,
+                                                        img.image_uuid))
+
+    def _clear_device_image_alarm(self, context):
+        # If there are no more pending device image update in the DB
+        # for any host, and if no host has the "reboot needed" DB entry set,
+        # then the "Device image update in progress" alarm is cleared.
+        dev_img_list = self.dbapi.device_image_state_get_all(
+            status=dconstants.DEVICE_IMAGE_UPDATE_PENDING)
+        if not dev_img_list:
+            if self.dbapi.count_hosts_matching_criteria(reboot_needed=True) > 0:
+                return
+            system_uuid = self.dbapi.isystem_get_one().uuid
+            entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_SYSTEM, system_uuid)
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
+                                    entity_instance_id)

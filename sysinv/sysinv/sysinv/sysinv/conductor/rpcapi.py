@@ -1914,6 +1914,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('delete_bitstream_file',
                                                 filename=filename))
 
+    def apply_device_image(self, context, host_uuid):
+        """Asynchronously, have the conductor apply the device image
+        on this host.
+
+        :param context: request context
+        :param host_uuid: uuid or id of the host
+        """
+        return self.cast(context, self.make_msg('apply_device_image',
+                                                host_uuid=host_uuid))
+
     def host_device_image_update(self, context, host_uuid):
         """Asynchronously, have the conductor update the device image
         on this host.

@@ -6889,6 +6889,11 @@ class HostController(rest.RestController):
         LOG.info("device_image_update host_uuid=%s " % host_uuid)
         host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
 
+        if host_obj.device_image_update == device.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            raise wsme.exc.ClientSideError(_(
+                "The host %s is already in the process of updating the "
+                "device images." % host_obj.hostname))
+
         # The host must be unlocked/enabled to update device images
         if (host_obj.administrative != constants.ADMIN_UNLOCKED or
                 host_obj.operational != constants.OPERATIONAL_ENABLED):
@@ -6911,6 +6916,11 @@ class HostController(rest.RestController):
         """
         LOG.info("device_image_update_abort host_uuid=%s " % host_uuid)
         host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
+
+        if host_obj.device_image_update != device.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            raise wsme.exc.ClientSideError(_(
+                "Abort rejected. The host %s is not in the process of "
+                "updating the device images." % host_obj.hostname))
 
         # Call rpcapi to tell conductor to abort device image update
         pecan.request.rpcapi.host_device_image_update_abort(
