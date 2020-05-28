@@ -13,7 +13,7 @@ from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.helm import common
-from sysinv.helm import swift
+
 from sysinv.puppet import openstack
 
 LOG = logging.getLogger(__name__)
@@ -28,6 +28,11 @@ class CephPuppet(openstack.OpenstackBasePuppet):
     SERVICE_NAME_RGW = 'swift'
     SERVICE_PORT_RGW = 7480  # civetweb port
     SERVICE_PATH_RGW = 'swift/v1'
+
+    RADOSGW_SERVICE_DOMAIN_NAME = 'service'
+    RADOSGW_SERVICE_PROJECT_NAME = 'service'
+
+    HELM_CHART_SWIFT = 'ceph-rgw'
 
     def get_static_config(self):
         cluster_uuid = str(uuid.uuid4())
@@ -129,7 +134,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         if (utils.is_openstack_applied(self.dbapi) and
                 utils.is_chart_enabled(self.dbapi,
                                        constants.HELM_APP_OPENSTACK,
-                                       common.HELM_CHART_SWIFT,
+                                       self.HELM_CHART_SWIFT,
                                        common.HELM_NS_OPENSTACK)):
             app = self.dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
             override = self.dbapi.helm_override_get(
@@ -147,9 +152,9 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 config.update({'platform::ceph::rgw::keystone::rgw_admin_password':
                                swift_auth_password})
                 config.update({'platform::ceph::rgw::keystone::rgw_admin_domain':
-                               swift.RADOSGW_SERVICE_DOMAIN_NAME})
+                               self.RADOSGW_SERVICE_DOMAIN_NAME})
                 config.update({'platform::ceph::rgw::keystone::rgw_admin_project':
-                               swift.RADOSGW_SERVICE_PROJECT_NAME})
+                               self.RADOSGW_SERVICE_PROJECT_NAME})
             else:
                 raise exception.SysinvException(
                     "Unable to retreive containerized swift auth password")

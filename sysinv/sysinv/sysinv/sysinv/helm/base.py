@@ -28,9 +28,6 @@ class BaseHelm(object):
     CEPH_MON_SERVICE_PORT = 6789
     SUPPORTED_NAMESPACES = []
     SUPPORTED_APP_NAMESPACES = {}
-    SYSTEM_CONTROLLER_SERVICES = [
-        common.HELM_CHART_KEYSTONE_API_PROXY,
-    ]
 
     def __init__(self, operator):
         self._operator = operator

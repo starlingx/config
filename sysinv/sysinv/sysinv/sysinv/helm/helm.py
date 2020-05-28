@@ -829,9 +829,20 @@ class HelmOperator(object):
 class HelmOperatorData(HelmOperator):
     """Class to allow retrieval of helm managed data"""
 
+    # TODO (rchurch): decouple. Plugin chart names. This class needs to be
+    # delivered as a plugin.
+    HELM_CHART_KEYSTONE = 'keystone'
+    HELM_CHART_NOVA = 'nova'
+    HELM_CHART_CINDER = 'cinder'
+    HELM_CHART_GLANCE = 'glance'
+    HELM_CHART_NEUTRON = 'neutron'
+    HELM_CHART_HEAT = 'heat'
+    HELM_CHART_CEILOMETER = 'ceilometer'
+    HELM_CHART_DCDBSYNC = 'dcdbsync'
+
     @helm_context
     def get_keystone_auth_data(self):
-        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
         auth_data = {
             'admin_user_name':
                 keystone_operator.get_admin_user_name(),
@@ -850,7 +861,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_keystone_endpoint_data(self):
-        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
         endpoint_data = {
             'endpoint_override':
                 'http://keystone.openstack.svc.cluster.local:80',
@@ -861,9 +872,9 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_keystone_oslo_db_data(self):
-        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
         endpoints_overrides = keystone_operator.\
-            _get_endpoints_oslo_db_overrides(common.HELM_CHART_KEYSTONE,
+            _get_endpoints_oslo_db_overrides(self.HELM_CHART_KEYSTONE,
                                              ['keystone'])
 
         password = endpoints_overrides['keystone']['password']
@@ -879,7 +890,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_endpoint_data(self):
-        nova_operator = self.chart_operators[common.HELM_CHART_NOVA]
+        nova_operator = self.chart_operators[self.HELM_CHART_NOVA]
         endpoint_data = {
             'endpoint_override':
                 'http://nova-api.openstack.svc.cluster.local:8774',
@@ -890,7 +901,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_oslo_messaging_data(self):
-        nova_operator = self.chart_operators[common.HELM_CHART_NOVA]
+        nova_operator = self.chart_operators[self.HELM_CHART_NOVA]
         endpoints_overrides = nova_operator._get_endpoints_overrides()
         auth_data = {
             'host':
@@ -910,7 +921,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_cinder_endpoint_data(self):
-        cinder_operator = self.chart_operators[common.HELM_CHART_CINDER]
+        cinder_operator = self.chart_operators[self.HELM_CHART_CINDER]
         endpoint_data = {
             'region_name':
                 cinder_operator.get_region_name(),
@@ -923,7 +934,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_glance_endpoint_data(self):
-        glance_operator = self.chart_operators[common.HELM_CHART_GLANCE]
+        glance_operator = self.chart_operators[self.HELM_CHART_GLANCE]
         endpoint_data = {
             'region_name':
                 glance_operator.get_region_name(),
@@ -936,7 +947,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_neutron_endpoint_data(self):
-        neutron_operator = self.chart_operators[common.HELM_CHART_NEUTRON]
+        neutron_operator = self.chart_operators[self.HELM_CHART_NEUTRON]
         endpoint_data = {
             'region_name':
                 neutron_operator.get_region_name(),
@@ -945,7 +956,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_heat_endpoint_data(self):
-        heat_operator = self.chart_operators[common.HELM_CHART_HEAT]
+        heat_operator = self.chart_operators[self.HELM_CHART_HEAT]
         endpoint_data = {
             'region_name':
                 heat_operator.get_region_name(),
@@ -955,7 +966,7 @@ class HelmOperatorData(HelmOperator):
     @helm_context
     def get_ceilometer_endpoint_data(self):
         ceilometer_operator = \
-            self.chart_operators[common.HELM_CHART_CEILOMETER]
+            self.chart_operators[self.HELM_CHART_CEILOMETER]
         endpoint_data = {
             'region_name':
                 ceilometer_operator.get_region_name(),
@@ -964,7 +975,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_dcdbsync_endpoint_data(self):
-        dcdbsync_operator = self.chart_operators[common.HELM_CHART_DCDBSYNC]
+        dcdbsync_operator = self.chart_operators[self.HELM_CHART_DCDBSYNC]
         endpoints_overrides = dcdbsync_operator._get_endpoints_overrides()
         endpoint_data = {
             'keystone_password':
