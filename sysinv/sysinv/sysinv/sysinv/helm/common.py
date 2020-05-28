@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -51,8 +51,6 @@ HELM_CHART_OPENVSWITCH = 'openvswitch'
 HELM_CHART_PANKO = 'panko'
 HELM_CHART_PLACEMENT = 'placement'
 HELM_CHART_RABBITMQ = 'rabbitmq'
-HELM_CHART_RBD_PROVISIONER = 'rbd-provisioner'
-HELM_CHART_CEPH_POOLS_AUDIT = 'ceph-pools-audit'
 HELM_CHART_HELM_TOOLKIT = 'helm-toolkit'
 HELM_CHART_KEYSTONE_API_PROXY = 'keystone-api-proxy'
 HELM_CHART_SWIFT = 'ceph-rgw'
