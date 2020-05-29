@@ -158,7 +158,10 @@ def _get_applied_labels(device_image):
         applied_labels = {}
         for image_label in image_labels:
             label = pecan.request.dbapi.device_label_get(image_label.label_uuid)
-            applied_labels[label.label_key] = label.label_value
+            applied_labels.setdefault(label.label_key, [])
+            if label.label_value not in applied_labels[label.label_key]:
+                applied_labels[label.label_key].append(label.label_value)
+
         device_image.applied_labels = applied_labels
 
     return device_image
@@ -259,10 +262,16 @@ class DeviceImageController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, deviceimage_uuid):
         """Delete a device image."""
-
-        # TODO Only allow delete if there are no devices using the image
         device_image = objects.device_image.get_by_uuid(
             pecan.request.context, deviceimage_uuid)
+
+        # Check if the image has been written to any of the devices
+        if pecan.request.dbapi.device_image_state_get_all(
+                image_id=device_image.id,
+                status=dconstants.DEVICE_IMAGE_UPDATE_COMPLETED):
+            raise wsme.exc.ClientSideError(_(
+                "Delete failed: device image has already been written to devices"))
+
         filename = cutils.format_image_filename(device_image)
         pecan.request.rpcapi.delete_bitstream_file(pecan.request.context,
                                                    filename)
@@ -466,10 +475,6 @@ def delete_device_image_state(pcidevice_id, device_image):
 
 
 def modify_flags(pcidevice_id, host_id):
-    # Set flag for pci_device indicating device requires image update
-    pecan.request.dbapi.pci_device_update(pcidevice_id,
-                                          {'needs_firmware_update': True},
-                                          host_id)
     # Set flag for host indicating device image update is pending if it is
     # not already in progress
     host = pecan.request.dbapi.ihost_get(host_id)

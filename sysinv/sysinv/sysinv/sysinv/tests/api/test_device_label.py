@@ -83,21 +83,23 @@ class DeviceLabelAssignTestCase(DeviceLabelTestCase):
         self.validate_labels(new_input_values, response_data)
 
     def test_overwrite_device_labels_failure(self):
-        self.assign_labels(self.generic_labels)
+        label1 = {
+            'pcidevice_uuid': self.pci_device.uuid,
+            'key1': 'value1',
+        }
+        self.assign_labels(label1)
+
+        label2 = {
+            'pcidevice_uuid': self.pci_device.uuid,
+            'key1': 'value2',
+        }
+        self.assign_labels(label2)
 
         new_input_values = {
             'pcidevice_uuid': self.pci_device.uuid,
             'key1': 'string1',
-            'key2': 'string2'
         }
-        # Default value should be overwrite=False
-        self.assign_labels_failure(new_input_values)
-        # Test explicit overwrite=False
-        self.assign_labels_failure(new_input_values, parameters={'overwrite': False})
-
-        # Labels should be unchanged from initial values
-        response_data = self.get_device_labels()
-        self.validate_labels(self.generic_labels, response_data)
+        self.assign_labels_failure(new_input_values, parameters={'overwrite': True})
 
     def test_create_validated_device_labels_success(self):
         label1 = {

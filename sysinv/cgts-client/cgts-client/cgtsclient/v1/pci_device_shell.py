@@ -26,11 +26,11 @@ def _print_device_show(device):
 
     pclass_id = getattr(device, 'pclass_id')
     if pclass_id == PCI_DEVICE_CLASS_FPGA:
-        fields += ['needs_firmware_update', 'status', 'root_key',
-                   'revoked_key_ids', 'boot_page', 'bitstream_id',
+        fields += ['root_key', 'revoked_key_ids',
+                   'boot_page', 'bitstream_id',
                    'bmc_build_version', 'bmc_fw_version']
-        labels += ['needs_firmware_update', 'status', 'root_key',
-                   'revoked_key_ids', 'boot_page', 'bitstream_id',
+        labels += ['root_key', 'revoked_key_ids',
+                   'boot_page', 'bitstream_id',
                    'bmc_build_version', 'bmc_fw_version']
 
     data = [(f, getattr(device, f, '')) for f in fields]

@@ -122,12 +122,6 @@ class PCIDevice(base.APIBase):
     bitstream_id = wtypes.text
     "Represent the bitstream id of the fpga device"
 
-    needs_firmware_update = types.boolean
-    "Represent whether firmware update is required for the fpga device"
-
-    status = wtypes.text
-    "Represent the status of the fpga device"
-
     links = [link.Link]
     "Represent a list containing a self link and associated device links"
 
@@ -151,7 +145,6 @@ class PCIDevice(base.APIBase):
                                         'bmc_build_version', 'bmc_fw_version',
                                         'root_key', 'revoked_key_ids',
                                         'boot_page', 'bitstream_id',
-                                        'needs_firmware_update', 'status',
                                         'created_at', 'updated_at'])
 
         # do not expose the id attribute

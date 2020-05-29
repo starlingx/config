@@ -329,10 +329,6 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(dconstants.DEVICE_IMAGE_UPDATE_PENDING,
                          dev_img_state.status)
 
-        # Verify that needs_firmware_update flag is updated in pci_device
-        pci_dev = self.dbapi.pci_device_get(self.pci_device.id)
-        self.assertEqual(pci_dev['needs_firmware_update'], True)
-
     def test_device_image_apply_invalid_image(self):
         # Test applying device image with non-existing image
 
@@ -366,17 +362,13 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(response.json['pci_vendor'], '80ee')
         self.assertEqual(response.json['pci_device'], 'beef')
         self.assertEqual(response.json['bitstream_id'], '12345')
-        self.assertEqual(response.json['applied_labels'], {'key1': 'value1'})
+        self.assertEqual(response.json['applied_labels'], {'key1': ['value1']})
 
         # Verify that the image to device mapping is updated
         dev_img_state = self.dbapi.device_image_state_get_by_image_device(
             self.device_image.id, self.pci_device.id)
         self.assertEqual(dconstants.DEVICE_IMAGE_UPDATE_PENDING,
                          dev_img_state.status)
-
-        # Verify that needs_firmware_update flag is updated in pci_device
-        pci_dev = self.dbapi.pci_device_get(self.pci_device.id)
-        self.assertEqual(pci_dev['needs_firmware_update'], True)
 
     def test_device_image_apply_invalid_label(self):
         # Test applying device image with non-existing device label
@@ -428,10 +420,6 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(response.json['pci_vendor'], '80ee')
         self.assertEqual(response.json['pci_device'], 'beef')
         self.assertEqual(response.json['bitstream_id'], '12345')
-
-        # Verify that needs_firmware_update flag is updated in pci_device
-        pci_dev = self.dbapi.pci_device_get(self.pci_device.id)
-        self.assertEqual(pci_dev['needs_firmware_update'], False)
 
     def test_device_image_remove_by_label(self):
         # Test removing device image by device label

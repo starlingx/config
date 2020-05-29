@@ -8592,11 +8592,7 @@ class Connection(api.Connection):
         query = model_query(models.DeviceLabel, session=session)
         query = query.filter(models.DeviceLabel.pcidevice_id == device_id)
         query = query.filter(models.DeviceLabel.label_key == label_key)
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.DeviceLabelNotFoundByKey(label=label_key)
-        return result
+        return query.all()
 
     @objects.objectify(objects.device_label)
     def device_label_query(self, device_id, label_key):
@@ -8661,6 +8657,14 @@ class Connection(api.Connection):
                                   sort_key=None, sort_dir=None):
         query = model_query(models.DeviceImageLabel)
         query = query.filter_by(image_id=image_id)
+        return query.all()
+
+    @objects.objectify(objects.device_image_label)
+    def device_image_label_get_by_label(self, label_id,
+                                  limit=None, marker=None,
+                                  sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceImageLabel)
+        query = query.filter_by(label_id=label_id)
         return query.all()
 
     @objects.objectify(objects.device_image_label)

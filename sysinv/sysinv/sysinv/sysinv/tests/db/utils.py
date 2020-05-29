@@ -1339,8 +1339,6 @@ def get_test_fpga_device(**kw):
         'revoked_key_ids': kw.get('revoked_key_ids'),
         'boot_page': kw.get('boot_page'),
         'bitstream_id': kw.get('bitstream_id'),
-        'needs_firmware_update': kw.get('needs_firmware_update', False),
-        'status': kw.get('status'),
     }
     return fpga_device
 
