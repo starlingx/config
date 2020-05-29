@@ -758,6 +758,22 @@ def upgrade_controller(from_release, to_release):
                                  "python_keyring"),
                     "/tmp/python_keyring")
 
+    # Copy admin.conf file from /opt/platform to /etc/kubernetes/admin.conf
+    # during upgrade
+    try:
+        subprocess.check_call(
+            ["cp",
+             os.path.join(PLATFORM_PATH, "config", to_release,
+                          "kubernetes", utils.KUBERNETES_ADMIN_CONF_FILE),
+             os.path.join(utils.KUBERNETES_CONF_PATH,
+                          utils.KUBERNETES_ADMIN_CONF_FILE)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to copy %s" %
+                      os.path.join(utils.KUBERNETES_CONF_PATH,
+                                   utils.KUBERNETES_ADMIN_CONF_FILE))
+        raise
+
     # Migrate hiera data
     migrate_hiera_data(from_release, to_release)
     utils.add_upgrade_entries_to_hiera_data(from_release)
@@ -818,6 +834,16 @@ def upgrade_controller(from_release, to_release):
         LOG.exception(e)
         LOG.info("Failed to update hiera configuration")
         raise
+
+    # Remove /etc/kubernetes/admin.conf after it is used to generate
+    # the hiera data
+    admin_conf = os.path.join(utils.KUBERNETES_CONF_PATH,
+                              utils.KUBERNETES_ADMIN_CONF_FILE)
+    try:
+        subprocess.check_call(["rm -f %s" % admin_conf], shell=True,
+                              stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to remove file %s" % admin_conf)
 
     # Prepare for swact
     LOG.info("Prepare for swact to controller-1")
@@ -1418,7 +1444,7 @@ def simplex_main():
 
     # Enforce that the command is being run from the console
     if cutils.is_ssh_parent():
-        print (
+        print(
             "Error attempting upgrade. Ensure this command is run from the"
             " console.")
         exit(1)
