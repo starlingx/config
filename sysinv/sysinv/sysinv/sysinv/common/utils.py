@@ -24,6 +24,7 @@
 
 """Utilities and helper functions."""
 
+import base64
 import boto3
 from botocore.config import Config
 import collections
@@ -71,6 +72,7 @@ from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.helm import common as helm_common
+from sysinv.common import kubernetes
 
 
 try:
@@ -2224,3 +2226,69 @@ def format_image_filename(device_image):
                                     device_image.pci_vendor,
                                     device_image.pci_device,
                                     device_image.uuid)
+
+
+def format_admin_endpoint_cert(tls_key, tls_cert):
+    return '%s\n%s' % (tls_key.strip('\n'), tls_cert.strip('\n'))
+
+
+def get_admin_ep_cert(dc_role):
+    """
+    Get endpoint certificate data from kubernetes
+    :param dc_role:
+    :return: data dict {'dc_root_ca_crt': '<dc root ca crt>,
+                        'admin_ep_crt': '<admin endpoint crt> }
+             or None if the node is not a DC controller
+    raise KubeNotConfigured exception when kubernetes is not configured
+    raise Exception for kubernetes data errors
+    """
+    if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        endpoint_cert_secret_name = 'dc-adminep-root-ca-certificate'
+        endpoint_cert_secret_ns = 'dc-cert'
+    elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+        endpoint_cert_secret_name = 'sc-adminep-certificate'
+        endpoint_cert_secret_ns = 'sc-cert'
+    else:
+        return None
+
+    secret_data = {'ca_crt': None, 'admin_ep_crt': None}
+    kube = kubernetes.KubeOperator()
+    secret = kube.kube_get_secret(
+        endpoint_cert_secret_name, endpoint_cert_secret_ns)
+
+    if not hasattr(secret, 'data'):
+        raise Exception('Invalid secret %s\\%s' % (
+            endpoint_cert_secret_ns, endpoint_cert_secret_name
+        ))
+
+    data = secret.data
+    if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+        and 'ca.crt' not in data) or \
+            'tls.crt' not in data or 'tls.key' not in data:
+        raise Exception("Invalid admin endpoint certificate data.")
+
+    ca_crt = None
+    try:
+        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            ca_crt = base64.b64decode(data['ca.crt'])
+        tls_crt = base64.b64decode(data['tls.crt'])
+        tls_key = base64.b64decode(data['tls.key'])
+    except TypeError:
+        raise Exception('admin endpoint root ca certification is invalid')
+
+    if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+        try:
+            with open(constants.DC_ROOT_CA_CONFIG_PATH, 'r') as f:
+                ca_crt = f.read()
+        except Exception as e:
+            # this is an error condition, but would be likely to be repaired
+            # when intermediate or root ca is renewed.
+            # but the operation should not stop here, b/c if admin endpoint
+            # certificate is not updated, system controller may lost
+            # access to the subcloud admin endpoints which will make the situation
+            # impossible to recover.
+            LOG.error('Cannot read DC root CA certificate %s' % e)
+
+    secret_data['dc_root_ca_crt'] = ca_crt
+    secret_data['admin_ep_crt'] = "%s%s" % (tls_key, tls_crt)
+    return secret_data

@@ -19,6 +19,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from six.moves import http_client
 from sysinv.api.controllers.v1 import certificate as cert_api
+from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 
@@ -35,6 +36,9 @@ class FakeConductorAPI(object):
 
     def setup_config_certificate(self, data):
         self.config_certificate_return = data
+
+    def update_admin_ep_certificate(self, context):
+        return True
 
 
 class CertificateTestCase(base.FunctionalTest):
@@ -284,6 +288,16 @@ class ApiCertificatePostTestSuite(ApiCertificateTestCaseMixin,
                         str(in_cert.not_valid_after):
                     found_match = True
             self.assertTrue(found_match)
+
+    def test_renew_certificate(self):
+        certtype = constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT
+        data = {'certtype': certtype}
+        response = self.post_json('%s/%s' % (self.API_PREFIX, 'renew_certificate'),
+                                        data,
+                                        headers=self.API_HEADERS,
+                                        expect_errors=True)
+
+        self.assertTrue(response)
 
     # Test successful POST operation to install 2 CA certificate
     def test_install_two_CA_certificate(self):

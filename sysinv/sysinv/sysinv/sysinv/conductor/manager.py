@@ -10766,6 +10766,61 @@ class ConductorManager(service.PeriodicService):
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
 
+    def update_admin_ep_certificate(self, context):
+        """
+        Update admin endpoint certificate
+        :param context: an admin context.
+        :return:
+        """
+        update_required = False
+        system = self.dbapi.isystem_get_one()
+        system_dc_role = system.get('distributed_cloud_role', None)
+        cert_data = cutils.get_admin_ep_cert(system_dc_role)
+
+        if cert_data is None:
+            return
+
+        ca_crt = cert_data['dc_root_ca_crt']
+        admin_ep_cert = cert_data['admin_ep_crt']
+        if os.path.isfile(constants.ADMIN_EP_CERT_FILENAME):
+            with open(constants.ADMIN_EP_CERT_FILENAME, mode='r') as f:
+                endpoint_cert = f.read()
+            if admin_ep_cert not in endpoint_cert:
+                update_required = True
+        else:
+            update_required = True
+
+        if os.path.isfile(constants.DC_ROOT_CA_CERT_PATH):
+            with open(constants.DC_ROOT_CA_CERT_PATH, mode='r') as f:
+                dc_root_ca_cert = f.read()
+            if ca_crt not in dc_root_ca_cert:
+                update_required = True
+        else:
+            update_required = True
+
+        if update_required:
+            m = hashlib.md5()
+            m.update(ca_crt)
+            m.update(admin_ep_cert)
+            md5sum = m.hexdigest()
+
+            LOG.info('Updating admin endpoint cert, md5sum %s' % md5sum)
+
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::config::dc_root_ca::runtime',
+                            'platform::haproxy::runtime']
+            }
+
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict,
+                                                force=True)
+
+        return update_required
+
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.
 

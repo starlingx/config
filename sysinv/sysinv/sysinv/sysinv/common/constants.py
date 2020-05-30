@@ -1631,3 +1631,16 @@ CEPH_MGR_PORT = 7999
 
 # Tempdir for temporary storage of large post data
 SYSINV_TMPDIR = '/scratch/sysinv-tmpdir'
+
+# Unique name of certificate
+CERTIFICATE_TYPE_ADMIN_ENDPOINT = 'admin-endpoint-cert'
+
+ADMIN_EP_CERT_FILENAME = os.path.join(SSL_CERT_DIR, 'admin-ep-cert.pem')
+
+DC_ROOT_CA_CERT_FILE = 'dc-adminep-root-ca.crt'
+DC_ROOT_CA_CERT_PATH = \
+    os.path.join(SSL_CERT_CA_DIR, DC_ROOT_CA_CERT_FILE)
+
+DC_ROOT_CA_CONFIG_PATH = \
+    os.path.join(tsc.CONFIG_PATH, DC_ROOT_CA_CERT_FILE)
+ADMIN_EP_CERT_FORMAT = '{tls_key}'

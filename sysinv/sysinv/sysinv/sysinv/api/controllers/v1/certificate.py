@@ -53,6 +53,18 @@ class CertificatePatchType(types.JsonPatchType):
         return []
 
 
+class RequestResult(base.APIBase):
+    result = wtypes.text
+    message = wtypes.text
+
+
+class RenewCertificate(base.APIBase):
+    certtype = wtypes.text
+    root_ca_crt = wtypes.text
+    sc_ca_cert = wtypes.text
+    sc_ca_key = wtypes.text
+
+
 class Certificate(base.APIBase):
     """API representation of CERTIFICATE Configuration.
 
@@ -192,7 +204,8 @@ LOCK_NAME = 'CertificateController'
 class CertificateController(rest.RestController):
     """REST controller for certificates."""
 
-    _custom_actions = {'certificate_install': ['POST']}
+    _custom_actions = {'certificate_install': ['POST'],
+                       'certificate_renew': ['POST']}
 
     def __init__(self):
         self._api_token = None
@@ -433,6 +446,31 @@ class CertificateController(rest.RestController):
 
         return dict(success="", error="", body="",
                     certificates=certificate_dicts)
+
+    @wsme_pecan.wsexpose(RequestResult, body=RenewCertificate)
+    def certificate_renew(self, data):
+        LOG.info('refresh_admin_endpoint_certificate %s' % data.certtype)
+        if data.certtype == constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT:
+            return self._update_admin_endpoint_cert(data)
+        else:
+            raise wsme.exc.ClientSideError(_("Not implemented"))
+
+    @staticmethod
+    def _update_admin_endpoint_cert(data):
+        role = utils.get_distributed_cloud_role()
+        if role not in [constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD,
+                        constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER]:
+            raise wsme.exc.ClientSideError(
+                _("Update admin endpoint certificate is supported "
+                  "in Distributed Cloud only"))
+
+        pecan.request.rpcapi.update_admin_ep_certificate(
+            pecan.request.context)
+
+        res = RequestResult()
+        res.result = 'OK'
+
+        return res
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Certificate, types.uuid, status_code=200)
