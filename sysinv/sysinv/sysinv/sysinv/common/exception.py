@@ -894,6 +894,15 @@ class DockerRegistryCredentialNotFound(NotFound):
                 "for user %(name)s could not be found.")
 
 
+class DockerRegistrySSLException(SysinvException):
+    message = _("Registry certificate signed by an unknown CA. "
+                "Install a trusted CA with 'system certificate-install -m ssl_ca'")
+
+
+class DockerRegistryAPIException(SysinvException):
+    message = _("Error communicating with the docker registry")
+
+
 class SDNNotEnabled(SysinvException):
     message = _("SDN configuration is not enabled.")
 

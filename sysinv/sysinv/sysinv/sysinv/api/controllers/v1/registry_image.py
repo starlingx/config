@@ -15,6 +15,7 @@ from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.common import utils as cutils
+from sysinv.openstack.common.rpc import common as rpc_common
 
 
 LOG = log.getLogger(__name__)
@@ -70,13 +71,20 @@ class RegistryImageController(rest.RestController):
 
     @wsme_pecan.wsexpose(RegistryImageCollection, wtypes.text)
     def get_all(self, image_name=None):
+        try:
+            # no image_name provided, list images
+            if image_name is None:
+                images = pecan.request.rpcapi.docker_registry_image_list(
+                             pecan.request.context)
+            # image_name provided, list tags of provided image
+            else:
+                images = pecan.request.rpcapi.docker_registry_image_tags(
+                             pecan.request.context, image_name)
+        # DockerRegistrySSLException and DockerRegistryAPIException
+        # come in as RemoteError from the RPC handler
+        except rpc_common.RemoteError as e:
+            raise wsme.exc.ClientSideError(_(e.value))
 
-        # no image_name provided, list images
-        if image_name is None:
-            images = pecan.request.rpcapi.docker_registry_image_list(pecan.request.context)
-        # image_name provided, list tags of provided image
-        else:
-            images = pecan.request.rpcapi.docker_registry_image_tags(pecan.request.context, image_name)
         return RegistryImageCollection.convert_with_links(images)
 
     @cutils.synchronized(LOCK_NAME)
@@ -88,13 +96,26 @@ class RegistryImageController(rest.RestController):
         """
 
         if len(image_name_and_tag.split(":")) != 2:
-            raise wsme.exc.ClientSideError(_("Image name and tag must be of form name:tag"))
+            raise wsme.exc.ClientSideError(_("Image name and tag must be of "
+                                             "form name:tag"))
 
-        return pecan.request.rpcapi.docker_registry_image_delete(pecan.request.context, image_name_and_tag)
+        try:
+            return pecan.request.rpcapi.docker_registry_image_delete(
+                       pecan.request.context, image_name_and_tag)
+        # DockerRegistrySSLException and DockerRegistryAPIException
+        # come in as RemoteError from the RPC handler
+        except rpc_common.RemoteError as e:
+            raise wsme.exc.ClientSideError(_(e.value))
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, wtypes.text)
     def post(self, garbage_collect=None):
         """Run the registry garbage collector"""
         if garbage_collect is not None:
-            pecan.request.rpcapi.docker_registry_garbage_collect(pecan.request.context)
+            try:
+                pecan.request.rpcapi.docker_registry_garbage_collect(
+                    pecan.request.context)
+            # DockerRegistrySSLException and DockerRegistryAPIException
+            # come in as RemoteError from the RPC handler
+            except rpc_common.RemoteError as e:
+                raise wsme.exc.ClientSideError(_(e.value))

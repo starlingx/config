@@ -37,6 +37,7 @@ import hashlib
 import math
 import os
 import re
+import requests
 import shutil
 import socket
 import tempfile
@@ -1443,7 +1444,15 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def docker_registry_image_list(self, context):
-        image_list_response = docker_registry.docker_registry_get("_catalog")
+        try:
+            image_list_response = docker_registry.docker_registry_get("_catalog")
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to get docker registry catalog")
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to get docker registry catalog")
+            raise exception.DockerRegistryAPIException()
+
         if image_list_response.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
                 % image_list_response.status_code)
@@ -1465,8 +1474,15 @@ class ConductorManager(service.PeriodicService):
         return images
 
     def docker_registry_image_tags(self, context, image_name):
-        image_tags_response = docker_registry.docker_registry_get(
-            "%s/tags/list" % image_name)
+        try:
+            image_tags_response = docker_registry.docker_registry_get(
+                "%s/tags/list" % image_name)
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to get docker registry image tags")
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to get docker registry image tags")
+            raise exception.DockerRegistryAPIException()
 
         if image_tags_response.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
@@ -1494,8 +1510,17 @@ class ConductorManager(service.PeriodicService):
         image_name_and_tag = image_name_and_tag.split(":")
 
         # first get the image digest for the image name and tag provided
-        digest_resp = docker_registry.docker_registry_get("%s/manifests/%s"
-            % (image_name_and_tag[0], image_name_and_tag[1]))
+        try:
+            digest_resp = docker_registry.docker_registry_get("%s/manifests/%s"
+                % (image_name_and_tag[0], image_name_and_tag[1]))
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistryAPIException()
 
         if digest_resp.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
@@ -1505,8 +1530,17 @@ class ConductorManager(service.PeriodicService):
         image_digest = digest_resp.headers['Docker-Content-Digest']
 
         # now delete the image
-        image_delete_response = docker_registry.docker_registry_delete(
-            "%s/manifests/%s" % (image_name_and_tag[0], image_digest))
+        try:
+            image_delete_response = docker_registry.docker_registry_delete(
+                "%s/manifests/%s" % (image_name_and_tag[0], image_digest))
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistryAPIException()
 
         if image_delete_response.status_code != 202:
             LOG.error("Bad response from docker registry: %s"

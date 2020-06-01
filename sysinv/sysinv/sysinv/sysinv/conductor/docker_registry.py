@@ -11,7 +11,8 @@ import requests
 from sysinv.common import constants
 from sysinv.common import exception
 
-CERT_PATH = '/etc/ssl/private/registry-cert.crt'
+DOCKER_CERT_PATH = '/etc/ssl/private/registry-cert.crt'
+SYSTEM_CERT_PATH = '/etc/ssl/certs/ca-bundle.crt'
 KEYRING_SERVICE = 'CGCS'
 REGISTRY_USERNAME = 'admin'
 REGISTRY_BASEURL = 'https://%s/v2/' % constants.DOCKER_REGISTRY_SERVER
@@ -68,10 +69,19 @@ def docker_registry_authenticate(www_authenticate):
     # are passed as params
     auth_string = base64.b64encode("%s:%s" % (REGISTRY_USERNAME, get_registry_password()))
     token_server_request_headers = {"authorization": "Basic %s" % auth_string}
-    token_server_response = requests.get(auth_headers['realm'], verify=CERT_PATH,
-                                                                params=auth_headers,
-                                                                headers=token_server_request_headers)
-
+    # we need try twice.
+    # SYSTEM_CERT_PATH if the docker registry cert is signed by a trusted CA
+    # DOCKER_CERT_PATH if the registry certificate is self-signed
+    try:
+        token_server_response = requests.get(auth_headers['realm'],
+                                             verify=SYSTEM_CERT_PATH,
+                                             params=auth_headers,
+                                             headers=token_server_request_headers)
+    except requests.exceptions.SSLError:
+        token_server_response = requests.get(auth_headers['realm'],
+                                             verify=DOCKER_CERT_PATH,
+                                             params=auth_headers,
+                                             headers=token_server_request_headers)
     if token_server_response.status_code == 200:
         auth_headers['Authorization'] = "Bearer %s" % token_server_response.json().get("access_token")
 
@@ -82,13 +92,23 @@ def docker_registry_get(path, registry_url=REGISTRY_BASEURL):
     # we need to have this header to get the correct digest when giving the tag
     headers = {"Accept": "application/vnd.docker.distribution.manifest.v2+json"}
 
-    resp = requests.get("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
+    try:
+        resp = requests.get("%s%s" % (registry_url, path),
+                            verify=SYSTEM_CERT_PATH, headers=headers)
+    except requests.exceptions.SSLError:
+        resp = requests.get("%s%s" % (registry_url, path),
+                            verify=DOCKER_CERT_PATH, headers=headers)
 
     # authenticated registry, need to do auth with token server
     if resp.status_code == 401:
         auth_headers = docker_registry_authenticate(resp.headers["Www-Authenticate"])
         headers.update(auth_headers)
-        resp = requests.get("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
+        try:
+            resp = requests.get("%s%s" % (registry_url, path),
+                                verify=SYSTEM_CERT_PATH, headers=headers)
+        except requests.exceptions.SSLError:
+            resp = requests.get("%s%s" % (registry_url, path),
+                                verify=DOCKER_CERT_PATH, headers=headers)
 
     return resp
 
@@ -96,12 +116,23 @@ def docker_registry_get(path, registry_url=REGISTRY_BASEURL):
 def docker_registry_delete(path, registry_url=REGISTRY_BASEURL):
     headers = {}
 
-    resp = requests.delete("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
+    try:
+        resp = requests.delete("%s%s" % (registry_url, path),
+                               verify=SYSTEM_CERT_PATH, headers=headers)
+    except requests.exceptions.SSLError:
+        resp = requests.delete("%s%s" % (registry_url, path),
+                               verify=DOCKER_CERT_PATH, headers=headers)
 
     # authenticated registry, need to do auth with token server
     if resp.status_code == 401:
         auth_headers = docker_registry_authenticate(resp.headers["Www-Authenticate"])
         headers.update(auth_headers)
-        resp = requests.delete("%s%s" % (registry_url, path), verify=CERT_PATH, headers=headers)
+
+        try:
+            resp = requests.delete("%s%s" % (registry_url, path),
+                                   verify=SYSTEM_CERT_PATH, headers=headers)
+        except requests.exceptions.SSLError:
+            resp = requests.delete("%s%s" % (registry_url, path),
+                                   verify=DOCKER_CERT_PATH, headers=headers)
 
     return resp
