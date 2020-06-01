@@ -103,6 +103,7 @@ from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
 from sysinv.fpga_agent import rpcapi as fpga_agent_rpcapi
+from sysinv.fpga_agent import constants as fpga_constants
 from sysinv import objects
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
@@ -2558,6 +2559,29 @@ class ConductorManager(service.PeriodicService):
                     host_uuid)
             except Exception:
                 pass
+
+        # Now clean up N3000 devices that have changed addresses.
+        self.cleanup_stale_n3000_devices(host, pci_device_dict_array)
+
+    def cleanup_stale_n3000_devices(self, host, pci_device_dict_array):
+        # Special-case the N3000 FPGA because we know it might change
+        # PCI addresses.  We want to delete any N3000 devices for this host
+        # in the DB which are not listed in pci_device_dict_array.
+        update_addrs = [dev['pciaddr'] for dev in pci_device_dict_array]
+        LOG.debug("update_addrs: %s" % update_addrs)
+        devices = self.dbapi.pci_device_get_all(hostid=host.id)
+        LOG.debug("db_addrs: %s" % [dev.pciaddr for dev in devices])
+        for device in devices:
+            LOG.debug("looking at device %s, %s, %s" %
+                      (device.pciaddr, device.pvendor_id, device.pdevice_id))
+            if (device.pvendor_id != fpga_constants.N3000_VENDOR or
+                    device.pdevice_id != fpga_constants.N3000_DEVICE):
+                continue
+            if device.pciaddr not in update_addrs:
+                LOG.info("Deleting stale device at address %s" % device.pciaddr)
+                self.dbapi.pci_device_destroy(device.id)
+            else:
+                LOG.debug("Found device at address %s in DB" % device.pciaddr)
 
     def inumas_update_by_ihost(self, context,
                                ihost_uuid, inuma_dict_array):

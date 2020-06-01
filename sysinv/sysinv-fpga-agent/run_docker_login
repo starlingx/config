@@ -1,0 +1,39 @@
+#!/bin/bash
+#
+# Copyright (c) 2020 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+DOCKER_USERNAME=$1
+DOCKER_PASSWORD=$2
+
+LNAME=$(readlink -n -f $0)
+NAME=$(basename $LNAME)
+
+# Log info message to /var/log/daemon.log
+function LOG {
+    logger -p daemon.info -t "${NAME}($$): " "$@"
+}
+
+
+# Wait around for the "registry.local" name to resolve
+LOG "Waiting for registry.local to resolve"
+while true
+do
+    nslookup registry.local &> /dev/null
+    if [ $? -eq 0 ]
+    then
+        LOG "registry.local resolved, continuing with docker login"
+        break
+    fi
+    sleep 1
+done
+
+
+docker login --password-stdin -u ${DOCKER_USERNAME} registry.local:9001 <<< ${DOCKER_PASSWORD}
+if [ $? -eq 0 ]
+then
+    LOG "docker login to registry.local completed successfully"
+    touch /var/run/docker_login_done
+fi
