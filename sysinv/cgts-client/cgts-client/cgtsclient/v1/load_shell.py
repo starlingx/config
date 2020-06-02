@@ -11,6 +11,12 @@
 from cgtsclient.common import utils
 from cgtsclient import exc
 import os.path
+from oslo_utils._i18n import _
+import sys
+import threading
+import time
+
+IMPORTED_LOAD_MAX_COUNT = 1
 
 
 def _print_load_show(load):
@@ -71,23 +77,64 @@ def do_load_import(cc, args):
     if not os.path.isabs(args.sigpath):
         args.sigpath = os.path.abspath(args.sigpath)
 
-    # Here we pass the path_to_iso to the API
-    # The API will perform any required actions to import the provided iso
+    if not os.path.isfile(args.isopath):
+        raise exc.CommandError(_("File %s does not exist." % args.isopath))
+
+    if not os.path.isfile(args.sigpath):
+        raise exc.CommandError(_("File %s does not exist." % args.sigpath))
+
+    # The following logic is taken from sysinv api as it takes a while for
+    # this large POST request to reach the server.
+    #
+    # Ensure the request does not exceed load import limit before sending.
+    loads = cc.load.list()
+    if len(loads) > IMPORTED_LOAD_MAX_COUNT:
+        raise exc.CommandError(_(
+            "Max number of loads (2) reached. Please remove the "
+            "old or unused load before importing a new one."))
+
     patch = {'path_to_iso': args.isopath, 'path_to_sig': args.sigpath}
 
     try:
-        new_load = cc.load.import_load(**patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Load import failed')
-
-    if new_load:
-        uuid = new_load["uuid"]
+        print("This operation will take a while. Please wait.")
+        wait_task = WaitThread()
+        wait_task.start()
+        resp = cc.load.import_load(**patch)
+        wait_task.join()
+        error = resp.get('error')
+        if error:
+            raise exc.CommandError("%s" % error)
+    except Exception as e:
+        wait_task.join()
+        raise exc.CommandError(_("Load import failed. Reason: %s" % e))
     else:
-        raise exc.CommandError('load was not created')
+        new_load = resp.get('new_load')
+        if new_load:
+            uuid = new_load["uuid"]
+        else:
+            raise exc.CommandError(_("Load was not created."))
 
-    try:
-        load = cc.load.get(uuid)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('load UUID not found: %s' % uuid)
+        try:
+            load = cc.load.get(uuid)
+        except exc.HTTPNotFound:
+            raise exc.CommandError(_("Load UUID not found: %s" % uuid))
 
-    _print_load_show(load)
+        _print_load_show(load)
+
+
+class WaitThread(threading.Thread):
+    def __init__(self):
+        super(WaitThread, self).__init__()
+        self.stop = threading.Event()
+
+    def run(self):
+        while not self.stop.is_set():
+            sys.stdout.write(".")
+            sys.stdout.flush()
+            time.sleep(10)
+
+    def join(self, timeout=None):  # pylint: disable=arguments-differ
+        self.stop.set()
+        super(WaitThread, self).join(timeout)
+        sys.stdout.write("\n")
+        sys.stdout.flush()

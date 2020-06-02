@@ -27,6 +27,7 @@ import webob
 from oslo_config import cfg
 from oslo_serialization import jsonutils
 from oslo_log import log
+from oslo_utils import uuidutils
 from pecan import hooks
 
 from sysinv._i18n import _
@@ -41,6 +42,10 @@ LOG = log.getLogger(__name__)
 
 audit_log_name = "{}.{}".format(__name__, "auditor")
 auditLOG = log.getLogger(audit_log_name)
+
+
+def generate_request_id():
+    return 'req-%s' % uuidutils.generate_uuid()
 
 
 class ConfigHook(hooks.PecanHook):
@@ -198,7 +203,11 @@ class AuditLogging(hooks.PecanHook):
             return
 
         now = time.time()
-        elapsed = now - state.request.start_time
+        try:
+            elapsed = now - state.request.start_time
+        except AttributeError:
+            LOG.info("Start time is not in request, setting it to 0.")
+            elapsed = 0
 
         environ = state.request.environ
         server_protocol = environ["SERVER_PROTOCOL"]
@@ -210,7 +219,12 @@ class AuditLogging(hooks.PecanHook):
         tenant_id = state.request.headers.get('X-Tenant-Id')
         tenant = state.request.headers.get('X-Tenant', tenant_id)
         domain_name = state.request.headers.get('X-User-Domain-Name')
-        request_id = state.request.context.request_id
+        try:
+            request_id = state.request.context.request_id
+        except AttributeError:
+            LOG.info("Request id is not in request, setting it to an "
+                     "auto generated id.")
+            request_id = generate_request_id()
 
         url_path = urlparse(state.request.path_qs).path
 
@@ -241,6 +255,19 @@ class AuditLogging(hooks.PecanHook):
                                                       user_name,
                                                       tenant,
                                                       domain_name)
+
+        def cleanup(environ):
+            post_vars, body_file = environ['webob._parsed_post_vars']
+            # for large post request, the body is also copied to a tempfile by webob
+            if not isinstance(body_file, bytes):
+                body_file.close()
+            for f in post_vars.keys():
+                item = post_vars[f]
+                if hasattr(item, 'file'):
+                    item.file.close()
+
+        if 'webob._parsed_post_vars' in state.request.environ:
+            cleanup(state.request.environ)
 
         # The following ctx object will be output in the logger as
         # something like this:

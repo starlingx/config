@@ -51,8 +51,8 @@ class LoadManager(base.Manager):
                 new[key] = value
             else:
                 raise exc.InvalidAttribute(key)
-        res, body = self.api.json_request('POST', path, body=new)
-        return body
+
+        return self._upload_multipart(path, body=new)
 
     def delete(self, load_id):
         path = '/v1/loads/%s' % load_id

@@ -752,6 +752,11 @@ ERROR_LOAD_STATE = 'error'
 DELETING_LOAD_STATE = 'deleting'
 
 DELETE_LOAD_SCRIPT = '/etc/sysinv/upgrades/delete_load.sh'
+IMPORTED_LOAD_MAX_COUNT = 1
+LOAD_ISO = 'path_to_iso'
+LOAD_SIGNATURE = 'path_to_sig'
+IMPORT_LOAD_FILES = [LOAD_ISO, LOAD_SIGNATURE]
+LOAD_FILES_STAGING_DIR = '/scratch/tmp_load'
 
 # Ceph
 CEPH_HEALTH_OK = 'HEALTH_OK'
@@ -1619,3 +1624,6 @@ KUBE_INTEL_GPU_DEVICE_PLUGIN_LABEL = "intelgpu=enabled"
 
 # Port on which ceph manager and ceph-mgr listens
 CEPH_MGR_PORT = 7999
+
+# Tempdir for temporary storage of large post data
+SYSINV_TMPDIR = '/scratch/sysinv-tmpdir'

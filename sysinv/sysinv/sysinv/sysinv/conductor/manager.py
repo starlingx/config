@@ -9096,6 +9096,10 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Failure during sw-patch init-release"))
 
+        # Remove load files in staging dir
+        shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+
+        LOG.info("Load import completed.")
         return True
 
     def delete_load(self, context, load_id):
@@ -9124,7 +9128,9 @@ class ConductorManager(service.PeriodicService):
         except exception.NodeNotFound:
             # The mate controller has not been configured so complete the
             # deletion of the load now.
-            self.finalize_delete_load(context)
+            self.finalize_delete_load(context, load.software_version)
+
+        LOG.info("Load (%s) deleted." % load.software_version)
 
     def _cleanup_load(self, load):
         # Run the sw-patch del-release commands
@@ -9137,11 +9143,6 @@ class ConductorManager(service.PeriodicService):
             except subprocess.CalledProcessError:
                 raise exception.SysinvException(_(
                     "Failure during sw-patch del-release"))
-
-        # delete the central patch vault if it exists
-        dc_vault = '/opt/dc-vault/' + load.software_version
-        if os.path.exists(dc_vault):
-            shutil.rmtree(dc_vault)
 
         cleanup_script = constants.DELETE_LOAD_SCRIPT
         if os.path.isfile(cleanup_script):
@@ -9157,10 +9158,15 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "Cleanup script %s does not exist.") % cleanup_script)
 
-    def finalize_delete_load(self, context):
+    def finalize_delete_load(self, context, sw_version):
+        # Clean up the staging directory in case an error occur during the
+        # import and this directoy did not get cleaned up.
+        if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
+            shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+
         loads = self.dbapi.load_get_list()
         for load in loads:
-            if load.state == constants.DELETING_LOAD_STATE:
+            if load.software_version == sw_version:
                 self.dbapi.load_destroy(load.id)
 
     def upgrade_ihost_pxe_config(self, context, host, load):

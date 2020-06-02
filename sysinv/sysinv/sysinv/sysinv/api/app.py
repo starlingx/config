@@ -17,12 +17,14 @@
 #    under the License.
 
 from oslo_config import cfg
+import os
 import pecan
 
 from sysinv.api import acl
 from sysinv.api import config
 from sysinv.api import hooks
 from sysinv.api import middleware
+from sysinv.common import constants
 from sysinv.common import policy
 
 auth_opts = [
@@ -39,6 +41,14 @@ def get_pecan_config():
     # Set up the pecan configuration
     filename = config.__file__.replace('.pyc', '.py')
     return pecan.configuration.conf_from_file(filename)
+
+
+def make_tempdir():
+    # Set up sysinv-api tempdir for large POST request
+    tempdir = constants.SYSINV_TMPDIR
+    if not os.path.isdir(tempdir):
+        os.makedirs(tempdir)
+    os.environ['TMPDIR'] = tempdir
 
 
 def setup_app(pecan_config=None, extra_hooks=None):
@@ -61,6 +71,8 @@ def setup_app(pecan_config=None, extra_hooks=None):
         app_hooks.append(hooks.AdminAuthHook())
 
     pecan.configuration.set_config(dict(pecan_config), overwrite=True)
+
+    make_tempdir()
 
     app = pecan.make_app(
         pecan_config.app.root,

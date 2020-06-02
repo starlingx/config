@@ -1750,7 +1750,7 @@ class AgentManager(service.PeriodicService):
                     else:
                         rpcapi = conductor_rpcapi.ConductorAPI(
                             topic=conductor_rpcapi.MANAGER_TOPIC)
-                        rpcapi.finalize_delete_load(context)
+                        rpcapi.finalize_delete_load(context, software_version)
             else:
                 LOG.error("Cleanup script %s does not exist." % cleanup_script)
 
