@@ -10838,7 +10838,7 @@ class ConductorManager(service.PeriodicService):
         """
         Update admin endpoint certificate
         :param context: an admin context.
-        :return:
+        :return: true if certificate is renewed
         """
         update_required = False
         system = self.dbapi.isystem_get_one()
@@ -10846,7 +10846,7 @@ class ConductorManager(service.PeriodicService):
         cert_data = cutils.get_admin_ep_cert(system_dc_role)
 
         if cert_data is None:
-            return
+            return False
 
         ca_crt = cert_data['dc_root_ca_crt']
         admin_ep_cert = cert_data['admin_ep_crt']
@@ -10858,17 +10858,19 @@ class ConductorManager(service.PeriodicService):
         else:
             update_required = True
 
-        if os.path.isfile(constants.DC_ROOT_CA_CERT_PATH):
-            with open(constants.DC_ROOT_CA_CERT_PATH, mode='r') as f:
-                dc_root_ca_cert = f.read()
-            if ca_crt not in dc_root_ca_cert:
+        if ca_crt is not None:
+            if os.path.isfile(constants.DC_ROOT_CA_CERT_PATH):
+                with open(constants.DC_ROOT_CA_CERT_PATH, mode='r') as f:
+                    dc_root_ca_cert = f.read()
+                if ca_crt not in dc_root_ca_cert:
+                    update_required = True
+            else:
                 update_required = True
-        else:
-            update_required = True
 
         if update_required:
             m = hashlib.md5()
-            m.update(ca_crt)
+            if ca_crt is not None:
+                m.update(ca_crt)
             m.update(admin_ep_cert)
             md5sum = m.hexdigest()
 

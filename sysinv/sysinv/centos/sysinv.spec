@@ -156,6 +156,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/sysinv-puppet
 %{_bindir}/sysinv-helm
 %{_bindir}/sysinv-utils
+%{_bindir}/cert-mon
 
 %package wheels
 Summary: %{name} wheels

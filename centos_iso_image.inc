@@ -14,6 +14,9 @@ controllerconfig
 # storageconfig
 storageconfig
 
+# cert-mon
+cert-mon
+
 # cgts-client
 cgts-client
 

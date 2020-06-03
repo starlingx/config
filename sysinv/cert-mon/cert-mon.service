@@ -1,0 +1,15 @@
+[Unit]
+Description=Certificate Monitor
+After=network-online.target syslog-ng.service config.service sysinv-api.service
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+User=root
+Environment=OCF_ROOT=/usr/lib/ocf
+ExecStart=/usr/lib/ocf/resource.d/platform/cert-mon start
+ExecStop=/usr/lib/ocf/resource.d/platform/cert-mon stop
+PIDFile=/var/run/cert-mon.pid
+
+[Install]
+WantedBy=multi-user.target
