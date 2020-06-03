@@ -222,8 +222,8 @@ class HelmOperator(object):
 
         return supported_helm_applications
 
-    def get_helm_applications(self):
-        """ Get the system applications and charts """
+    def get_active_helm_applications(self):
+        """ Get the active system applications and charts """
         return self.helm_system_applications
 
     @property

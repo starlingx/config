@@ -10757,7 +10757,8 @@ class ConductorManager(service.PeriodicService):
         """
         return self._helm.get_helm_chart_namespaces(chart_name)
 
-    def get_helm_chart_overrides(self, context, chart_name, cnamespace=None):
+    def get_helm_chart_overrides(self, context, app_name, chart_name,
+                                 cnamespace=None):
         """Get the overrides for a supported chart.
 
         This method retrieves overrides for a supported chart. Overrides for
@@ -10765,6 +10766,7 @@ class ConductorManager(service.PeriodicService):
         is requested.
 
         :param context: request context.
+        :param app_name: name of a supported application
         :param chart_name: name of a supported chart
         :param cnamespace: (optional) namespace
         :returns: dict of overrides.
@@ -10794,16 +10796,30 @@ class ConductorManager(service.PeriodicService):
             }
         }
         """
-        return self._helm.get_helm_chart_overrides(chart_name,
-                                                   cnamespace)
 
-    def get_helm_applications(self, context):
-        """Get supported applications.
+        app = kubeapp_obj.get_by_name(context, app_name)
+        if app.status in [constants.APP_APPLY_IN_PROGRESS,
+                          constants.APP_APPLY_SUCCESS,
+                          constants.APP_APPLY_FAILURE]:
+            overrides = self._helm.get_helm_chart_overrides(chart_name,
+                                                            cnamespace)
+        else:
+            self._app.activate_app_plugins(app)
+            overrides = self._helm.get_helm_chart_overrides(chart_name,
+                                                            cnamespace)
+            self._app.deactivate_app_plugins(app)
 
-        :returns: a list of suppotred applications that associated overrides may
-            be provided.
+        return overrides
+
+    def app_has_system_plugins(self, context, app_name):
+
+        """Determine if the application has system plugin support.
+
+        :returns: True if the application has system plugins and can generate
+                  system overrides.
         """
-        return self._helm.get_helm_applications()
+        app = kubeapp_obj.get_by_name(context, app_name)
+        return self._app.app_has_system_plugins(app)
 
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.

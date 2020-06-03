@@ -160,6 +160,21 @@ class AppOperator(object):
         # applications
         self._plugins.audit_plugins()
 
+    def activate_app_plugins(self, rpc_app):
+        app = AppOperator.Application(rpc_app)
+        self._plugins.activate_plugins(app)
+
+    def deactivate_app_plugins(self, rpc_app):
+        app = AppOperator.Application(rpc_app)
+        self._plugins.deactivate_plugins(app)
+
+    def app_has_system_plugins(self, rpc_app):
+        app = AppOperator.Application(rpc_app)
+        # TODO(rchurch): Update once apps are decoupled
+        return (app.system_app or
+                app.name == constants.HELM_APP_CERT_MANAGER or
+                app.name == constants.HELM_APP_OIDC_AUTH)
+
     def _clear_armada_locks(self):
         lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
                                       ARMADA_LOCK_GROUP,
@@ -3228,7 +3243,8 @@ class PluginHelper(object):
     # An enabled plugin will have a python path configuration file name with the
     # following format: stx_app-platform-integ-apps-1.0-8.pth
     PTH_PREFIX = 'stx_app-'
-    PTH_PATTERN = re.compile("{}/([\w-]+)/(\d+\.\d+-\d+)".format(common.HELM_OVERRIDES_PATH))
+    PTH_PATTERN = re.compile("{}/([\w-]+)/(\d+\.\d+-\d+.*)/plugins".format(
+        common.HELM_OVERRIDES_PATH))
 
     def __init__(self, dbapi, helm_op):
         self._dbapi = dbapi
@@ -3267,6 +3283,7 @@ class PluginHelper(object):
         discoverable_pths = glob.glob(pattern)
         LOG.debug("PluginHelper: Discoverable app plugins: %s" % discoverable_pths)
 
+        # Examine existing pth files to make sure they are still valid
         for pth in discoverable_pths:
             with open(pth, 'r') as f:
                 contents = f.readlines()
@@ -3286,7 +3303,8 @@ class PluginHelper(object):
                         else:
                             LOG.warning("PluginHelper: Stale plugin pth file "
                                         "found %s: Wrong plugin version "
-                                        "enabled %s." % (pth, ver))
+                                        "enabled %s != %s." % (
+                                            pth, ver, app_obj.app_version))
                     except exception.KubeAppNotFound:
                         LOG.warning("PluginHelper: Stale plugin pth file found"
                                     " %s: App is not active." % pth)
@@ -3299,6 +3317,17 @@ class PluginHelper(object):
 
             LOG.info("PluginHelper: Removing invalid plugin pth: %s" % pth)
             os.remove(pth)
+
+        # Examine existing applications in an applying state and make sure they
+        # are activated
+        apps = self._dbapi.kube_app_get_all()
+        for app in apps:
+            # If the app is in some form of apply the the plugins should be
+            # enabled
+            if app.status in [constants.APP_APPLY_IN_PROGRESS,
+                              constants.APP_APPLY_SUCCESS,
+                              constants.APP_APPLY_FAILURE]:
+                self.activate_plugins(AppOperator.Application(app))
 
     def install_plugins(self, app):
         """ Install application plugins. """
@@ -3340,9 +3369,15 @@ class PluginHelper(object):
                      "need to remove." % app.sync_plugins_dir)
 
     def activate_plugins(self, app):
+        pth_fqpn = self._get_pth_fqpn(app)
+
+        # If this isn't an app with plugins or the plugin path is already
+        # active, skip activation
+        if not app.system_app or os.path.isfile(pth_fqpn):
+            return
+
         # Add a .pth file to a site-packages directory so the plugin is picked
         # automatically on a conductor restart
-        pth_fqpn = self._get_pth_fqpn(app)
         with open(pth_fqpn, 'w') as f:
             f.write(app.sync_plugins_dir + '\n')
             LOG.info("PluginHelper: Enabled plugin directory %s: created %s" % (
@@ -3362,6 +3397,10 @@ class PluginHelper(object):
             self._helm_op.discover_plugins()
 
     def deactivate_plugins(self, app):
+        # If the application doesn't have any plugins, skip deactivation
+        if not app.system_app:
+            return
+
         pth_fqpn = self._get_pth_fqpn(app)
         if os.path.exists(pth_fqpn):
             # Remove the pth file, so on a conductor restart this installed
