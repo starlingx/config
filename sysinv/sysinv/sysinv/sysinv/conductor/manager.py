@@ -2960,12 +2960,6 @@ class ConductorManager(service.PeriodicService):
             # numa_node is not stored against imemory table
             mem_dict.pop('numa_node', None)
 
-            # clear the pending hugepage number for unlocked nodes
-            if ihost.administrative == constants.ADMIN_UNLOCKED:
-                mem_dict['vm_hugepages_nr_2M_pending'] = None
-                mem_dict['vm_hugepages_nr_1G_pending'] = None
-                mem_dict['vswitch_hugepages_reqd'] = None
-
             try:
                 imems = self.dbapi.imemory_get_by_ihost_inode(ihost_uuid,
                                                               inode_uuid)
@@ -2983,6 +2977,20 @@ class ConductorManager(service.PeriodicService):
                                  constants.NUM_4K_PER_MiB)
                             mem_dict['memtotal_mib'] += vm_4K_mib
                             mem_dict['memavail_mib'] += vm_4K_mib
+
+                        if imem.vswitch_hugepages_reqd is not None \
+                                and imem.vswitch_hugepages_reqd == mem_dict.get('vswitch_hugepages_nr'):
+                            # vswitch_hugepages_reqd matches the current config, so clear it
+                            mem_dict['vswitch_hugepages_reqd'] = None
+                        if imem.vm_hugepages_nr_2M_pending is not None \
+                                and imem.vm_hugepages_nr_2M_pending == mem_dict.get('vm_hugepages_nr_2M'):
+                            # vm_hugepages_nr_2M_pending matches the current config, so clear it
+                            mem_dict['vm_hugepages_nr_2M_pending'] = None
+                        if imem.vm_hugepages_nr_1G_pending is not None \
+                                and imem.vm_hugepages_nr_1G_pending == mem_dict.get('vm_hugepages_nr_1G'):
+                            # vm_hugepages_nr_1G_pending matches the current config, so clear it
+                            mem_dict['vm_hugepages_nr_1G_pending'] = None
+
                         self.dbapi.imemory_update(imem['uuid'],
                                                          mem_dict)
             except Exception:
