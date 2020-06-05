@@ -315,8 +315,8 @@ class DeviceImageController(rest.RestController):
                     update_device_image_state(device_label.host_id,
                         device_label.pcidevice_id,
                         device_image.id, dconstants.DEVICE_IMAGE_UPDATE_PENDING)
-                    # Update flags in pci_device and host
-                    modify_flags(device_label.pcidevice_id, device_label.host_id)
+                    pecan.request.rpcapi.apply_device_image(
+                        pecan.request.context, device_label.host_uuid)
                 elif action == dconstants.REMOVE_ACTION:
                     try:
                         img_lbl = pecan.request.dbapi.device_image_label_get_by_image_label(
@@ -343,8 +343,8 @@ class DeviceImageController(rest.RestController):
                         update_device_image_state(host.id,
                             dev.pci_id, device_image.id,
                             dconstants.DEVICE_IMAGE_UPDATE_PENDING)
-                        # Update flags in pci_device and host
-                        modify_flags(dev.pci_id, dev.host_id)
+                        pecan.request.rpcapi.apply_device_image(
+                            pecan.request.context, host.uuid)
                     elif action == dconstants.REMOVE_ACTION:
                         delete_device_image_state(dev.pci_id, device_image)
 
@@ -472,12 +472,3 @@ def delete_device_image_state(pcidevice_id, device_image):
         pecan.request.dbapi.device_image_state_destroy(dev_img.uuid)
     except exception.DeviceImageStateNotFoundByKey:
         pass
-
-
-def modify_flags(pcidevice_id, host_id):
-    # Set flag for host indicating device image update is pending if it is
-    # not already in progress
-    host = pecan.request.dbapi.ihost_get(host_id)
-    if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
-        pecan.request.dbapi.ihost_update(host_id,
-            {'device_image_update': dconstants.DEVICE_IMAGE_UPDATE_PENDING})
