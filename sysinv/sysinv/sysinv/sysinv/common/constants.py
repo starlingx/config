@@ -1486,6 +1486,7 @@ APP_REMOVE_FAILURE = 'remove-failed'
 APP_INACTIVE_STATE = 'inactive'
 APP_UPDATE_IN_PROGRESS = 'updating'
 APP_RECOVER_IN_PROGRESS = 'recovering'
+APP_RESTORE_REQUESTED = 'restore-requested'
 
 # Operation constants
 APP_UPLOAD_OP = 'upload'
