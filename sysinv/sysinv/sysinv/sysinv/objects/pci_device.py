@@ -42,8 +42,6 @@ class PCIDevice(base.SysinvObject):
             'revoked_key_ids': utils.str_or_none,
             'boot_page': utils.str_or_none,
             'bitstream_id': utils.str_or_none,
-            'status': utils.str_or_none,
-            'needs_firmware_update': utils.bool_or_none,
              }
 
     _foreign_fields = {

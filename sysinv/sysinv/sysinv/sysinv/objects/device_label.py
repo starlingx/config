@@ -23,8 +23,6 @@ class DeviceLabel(base.SysinvObject):
         'label_value': utils.str_or_none,
         'pcidevice_id': utils.int_or_none,
         'pcidevice_uuid': utils.str_or_none,
-        'fpgadevice_id': utils.int_or_none,
-        'fpgadevice_uuid': utils.str_or_none,
         'capabilities': utils.dict_or_none,
     }
 

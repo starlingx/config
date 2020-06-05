@@ -1462,9 +1462,6 @@ class PciDevice(Base):
     enabled = Column(Boolean)
     extra_info = Column(Text)
 
-    status = Column(String(128))
-    needs_firmware_update = Column(Boolean, nullable=False, default=False)
-
     host = relationship("ihost", lazy="joined", join_depth=1)
     fpga = relationship("FpgaDevice", lazy="joined", uselist=False, join_depth=1)
     UniqueConstraint('pciaddr', 'host_id', name='u_pciaddrhost')
@@ -1572,16 +1569,12 @@ class DeviceLabel(Base):
     host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
     pcidevice_id = Column(Integer, ForeignKey('pci_devices.id',
                                               ondelete='CASCADE'))
-    fpgadevice_id = Column(Integer, ForeignKey('fpga_devices.id',
-                                               ondelete='CASCADE'))
     capabilities = Column(JSONEncodedDict)
 
     host = relationship("ihost", lazy="joined", join_depth=1)
     pcidevice = relationship("PciDevice", lazy="joined", join_depth=1)
-    fpgadevice = relationship("FpgaDevice", lazy="joined", join_depth=1)
     label_key = Column(String(384))
     label_value = Column(String(128))
-    UniqueConstraint('pcidevice_id', 'label_key', name='u_pcidevice_id@label_key')
 
 
 class DeviceImageLabel(Base):
