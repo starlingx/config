@@ -55,7 +55,7 @@ def export_postgres(dest_dir, system_role, shared_services):
         # Dump roles, table spaces and schemas for databases.
         subprocess.check_call([('sudo -u postgres pg_dumpall --clean ' +
                                 '--schema-only > %s/%s' %
-                                (dest_dir, 'postgres.sql.config'))],
+                                (dest_dir, 'postgres.postgreSql.config'))],
                               shell=True, stderr=devnull)
 
         # Dump data for databases.
@@ -68,7 +68,7 @@ def export_postgres(dest_dir, system_role, shared_services):
                     enumerate(upgrade_database_skip_tables[db_elem]):
                 db_cmd += '--exclude-table=%s ' % table_elem
 
-            db_cmd += '> %s/%s.sql.data' % (dest_dir, db_elem)
+            db_cmd += '> %s/%s.postgreSql.data' % (dest_dir, db_elem)
 
             subprocess.check_call([db_cmd], shell=True, stderr=devnull)
 
