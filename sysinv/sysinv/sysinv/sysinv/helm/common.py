@@ -25,10 +25,6 @@ HELM_REPO_FOR_PLATFORM = 'stx-platform'
 HELM_CHART_ATTR_ENABLED = 'enabled'
 HELM_CHART_ATTRS = [HELM_CHART_ATTR_ENABLED]
 
-# Chart defs needed for platform integration
-# These values match the names in the chart package's Chart.yaml
-HELM_CHART_CERT_MANAGER = 'cert-manager'
-
 # TODO(rchurch): These are still needed for _check_monitor_labels(). This method
 # should migrated to the monitor application with the application framework
 # providing a hook to call for app specific label checking.
