@@ -77,13 +77,12 @@ class HelmChartsController(rest.RestController):
         except exception.HelmOverrideNotFound:
             user_overrides = None
 
-        system_apps = pecan.request.rpcapi.get_helm_applications(
-            pecan.request.context)
-        if app_name in system_apps:
+        if pecan.request.rpcapi.app_has_system_plugins(pecan.request.context,
+                                                       app_name):
             # Get any system overrides for system app.
             try:
                 system_overrides = pecan.request.rpcapi.get_helm_chart_overrides(
-                    pecan.request.context, name, namespace)
+                    pecan.request.context, app_name, name, namespace)
                 system_overrides = yaml.safe_dump(system_overrides) \
                     if system_overrides else None
             except Exception as e:

@@ -1610,10 +1610,12 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('get_helm_chart_namespaces',
                                        chart_name=chart_name))
 
-    def get_helm_chart_overrides(self, context, chart_name, cnamespace=None):
+    def get_helm_chart_overrides(self, context, app_name, chart_name,
+                                 cnamespace=None):
         """Get the overrides for a supported chart.
 
         :param context: request context.
+        :param app_name: name of a supported application
         :param chart_name: name of a supported chart
         :param cnamespace: (optional) namespace
         :returns: dict of overrides.
@@ -1621,18 +1623,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('get_helm_chart_overrides',
+                                       app_name=app_name,
                                        chart_name=chart_name,
                                        cnamespace=cnamespace))
 
-    def get_helm_applications(self, context):
+    def app_has_system_plugins(self, context, app_name):
 
-        """Get supported applications.
+        """Determine if the application has system plugin support.
 
-        :returns: a list of suppotred applications that associated overrides may
-            be provided.
+        :returns: True if the application has system plugins and can generate
+                  system overrides.
         """
         return self.call(context,
-                         self.make_msg('get_helm_applications'))
+                         self.make_msg('app_has_system_plugins',
+                                       app_name=app_name))
 
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.
