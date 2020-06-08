@@ -143,8 +143,7 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
-    @staticmethod
-    def _get_kubernetes_join_cmd(host):
+    def _get_kubernetes_join_cmd(self, host):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
@@ -182,6 +181,13 @@ class KubernetesPuppet(base.BasePuppet):
                 join_cmd_additions = \
                     " --control-plane --certificate-key %s" % key
                 os.unlink(temp_kubeadm_config_view)
+
+                # Configure the IP address of the API Server for the controller host.
+                # If not set the default network interface will be used, which does not
+                # ensure it will be the Cluster IP address of this host.
+                host_cluster_ip = self._get_host_cluster_address(host)
+                join_cmd_additions += \
+                    " --apiserver-advertise-address %s" % host_cluster_ip
 
             cmd = ['kubeadm', 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
@@ -262,6 +268,12 @@ class KubernetesPuppet(base.BasePuppet):
 
         config.update({'platform::kubernetes::params::version': version})
         return config
+
+    def _get_host_cluster_address(self, host):
+        """Retrieve the named host address for the cluster host network"""
+        address = self._get_address_by_name(
+            host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+        return address.address
 
     def _get_host_node_config(self, host):
         node_ip = self._get_address_by_name(
