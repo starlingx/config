@@ -1,0 +1,15 @@
+[Unit]
+Description=StarlingX FPGA Agent
+After=nfscommon.service sw-patch.service
+After=network-online.target systemd-udev-settle.service sysinv-agent.service
+Before=pmon.service
+
+[Service]
+Type=forking
+RemainAfterExit=yes
+ExecStart=/etc/init.d/sysinv-fpga-agent start
+ExecStop=/etc/init.d/sysinv-fpga-agent stop
+PIDFile=/var/run/sysinv-fpga-agent.pid
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,120 @@
+#! /bin/sh
+#
+# Copyright (c) 2020 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
+# chkconfig: 2345 76 25
+#
+### BEGIN INIT INFO
+# Provides:          sysinv-fpga-agent
+# Default-Start:     3 5
+# Required-Start:
+# Required-Stop:
+# Default-Stop:      0 1 2 6
+# Short-Description: Daemon to handle FPGA device updates
+### END INIT INFO
+
+. /etc/init.d/functions
+. /etc/build.info
+
+
+DAEMON_NAME="sysinv-fpga-agent"
+SYSINVFPGAAGENT="/usr/bin/${DAEMON_NAME}"
+SYSINV_CONF_DIR="/etc/sysinv"
+SYSINV_CONF_FILE="${SYSINV_CONF_DIR}/sysinv.conf"
+DELAY_SEC=20
+
+daemon_pidfile="/var/run/${DAEMON_NAME}.pid"
+
+if [ ! -e "${SYSINVFPGAAGENT}" ] ; then
+    logger "$0: ${SYSINVFPGAAGENT} is missing"
+    exit 1
+fi
+
+RETVAL=0
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin
+export PATH
+
+case "$1" in
+    start)
+        # Check for installation failure
+        if [ -f /etc/platform/installation_failed ] ; then
+            logger "$0: /etc/platform/installation_failed flag is set. Aborting."
+            exit 1
+        fi
+
+	if [ -e ${daemon_pidfile} ] ; then
+	    echo "Killing existing process before starting new"
+	    pid=`cat ${daemon_pidfile}`
+	    kill -TERM $pid
+	    rm -f ${daemon_pidfile}
+	fi
+
+	# Assume that sysinv-agent will ensure that the sysinv.conf file is available.
+        echo -n "Waiting for sysinv config file"
+	while [ ! -e ${SYSINV_CONF_FILE} ]
+	do
+	    sleep 1
+	done
+
+	echo -n "Starting sysinv-fpga-agent: "
+	/bin/sh -c "${SYSINVFPGAAGENT}"' >> /dev/null 2>&1 & echo $!' > ${daemon_pidfile}
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ] ; then
+	    echo "OK"
+	    touch /var/lock/subsys/${DAEMON_NAME}
+	else
+	    echo "FAIL"
+	fi
+        ;;
+
+    stop)
+	echo -n "Stopping sysinv-fpga-agent: "
+	if [ -e ${daemon_pidfile} ] ; then
+	    pid=`cat ${daemon_pidfile}`
+	    kill -TERM $pid
+	    rm -f ${daemon_pidfile}
+	    rm -f /var/lock/subsys/${DAEMON_NAME}
+	    echo "OK"
+	else
+	    echo "FAIL"
+	fi
+        ;;
+
+    restart)
+        $0 stop
+        sleep 1
+        $0 start
+        ;;
+
+    status)
+        if [ -e ${daemon_pidfile} ] ; then
+            pid=`cat ${daemon_pidfile}`
+            ps -p $pid | grep -v "PID TTY" >> /dev/null 2>&1
+            if [ $? -eq 0 ] ; then
+               echo "sysinv-fpga-agent is running"
+               RETVAL=0
+            else
+               echo "sysinv-fpga-agent  is not running"
+               RETVAL=1
+            fi
+        else
+            echo "sysinv-fpga-agent is not running ; no pidfile"
+            RETVAL=1
+        fi
+        ;;
+
+    condrestart)
+        [ -f /var/lock/subsys/$DAEMON_NAME ] && $0 restart
+        ;;
+
+    *)
+        echo "usage: $0 { start | stop | status | restart | condrestart | status }"
+        ;;
+esac
+
+exit $RETVAL

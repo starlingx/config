@@ -108,6 +108,7 @@ install -m 644 -p -D scripts/sysinv-conductor.service %{buildroot}%{_unitdir}/sy
 
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-api %{buildroot}/usr/bin/sysinv-api
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-agent %{buildroot}/usr/bin/sysinv-agent
+#install -p -D -m 755 %{buildroot}/usr/bin/sysinv-fpga-agent %{buildroot}/usr/bin/sysinv-fpga-agent
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-conductor %{buildroot}/usr/bin/sysinv-conductor
 
 install -d -m 755 %{buildroot}%{local_bindir}
@@ -145,6 +146,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_unitdir}/sysinv-conductor.service
 
 %{_bindir}/sysinv-agent
+%{_bindir}/sysinv-fpga-agent
 %{_bindir}/sysinv-api
 %{_bindir}/sysinv-conductor
 %{_bindir}/sysinv-dbsync

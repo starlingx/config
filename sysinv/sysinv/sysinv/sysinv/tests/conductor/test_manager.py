@@ -27,6 +27,7 @@ import os.path
 import uuid
 
 from sysinv.common import constants
+from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
@@ -1523,6 +1524,147 @@ class ManagerTestCase(base.DbTestCase):
         updated_port = self.dbapi.ethernet_port_get(port1['uuid'], host_id)
 
         self.assertEqual(updated_port['node_id'], 3)
+
+    def test_fpga_device_update_by_host(self):
+        # Create compute-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+        PCI_DEV_1 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_1',
+                     'pciaddr': '0000:0b:01.0',
+                     'pclass_id': '060100',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0443',
+                     'enabled': True}
+        PCI_DEV_2 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_2',
+                     'pciaddr': '0000:0c:01.0',
+                     'pclass_id': '012000',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0b30',
+                     'enabled': True}
+        pci_device_dict_array = [PCI_DEV_1, PCI_DEV_2]
+
+        # create new PCI dev
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_device_dict_array)
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_1['pciaddr'], host_id)
+        for key in PCI_DEV_1:
+            self.assertEqual(dev[key], PCI_DEV_1[key])
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+        for key in PCI_DEV_2:
+            self.assertEqual(dev[key], PCI_DEV_2[key])
+
+        FPGA_DEV_1 = {
+            'pciaddr': PCI_DEV_1['pciaddr'],
+            'bmc_build_version': 'D.2.0.6',
+            'bmc_fw_version': 'D.2.0.21',
+            'boot_page': 'user',
+            'bitstream_id': '0x2383A62A010504',
+            'root_key': '0x2973c55fc739e8181b16b9b51b786a39c0860159df8fb94652b0fbca87223bc7',
+            'revoked_key_ids': '2,10,50-51',
+        }
+        fpga_device_dict_array = [FPGA_DEV_1]
+
+        # Create new FPGA device.
+        self.service.fpga_device_update_by_host(self.context, host_uuid,
+                                                fpga_device_dict_array)
+        dev = self.dbapi.fpga_device_get(FPGA_DEV_1['pciaddr'], host_id)
+        for key in FPGA_DEV_1:
+            self.assertEqual(dev[key], FPGA_DEV_1[key])
+
+        # Update existing FPGA device.
+        fpga_dev_dict_update = {
+            'pciaddr': FPGA_DEV_1['pciaddr'],
+            'bmc_build_version': 'D.2.0.7',
+            'bmc_fw_version': 'D.2.0.22',
+            'boot_page': 'factory',
+            'bitstream_id': '0x2383A62A010504',
+            'root_key': '',
+            'revoked_key_ids': '',
+        }
+        fpga_dev_dict_update_array = [fpga_dev_dict_update]
+        self.service.fpga_device_update_by_host(self.context, host_uuid,
+                                                fpga_dev_dict_update_array)
+        dev = self.dbapi.fpga_device_get(FPGA_DEV_1['pciaddr'], host_id)
+        for key in fpga_dev_dict_update:
+            self.assertEqual(dev[key], fpga_dev_dict_update[key])
+
+    def test_device_update_image_status(self):
+
+        mock_host_device_image_update_next = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.host_device_image_update_next',
+            mock_host_device_image_update_next)
+        p.start()
+        self.addCleanup(p.stop)
+
+        # Create compute-0 node
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+        )
+
+        host_uuid = ihost.uuid
+        host_id = ihost.id
+
+        # Make sure we start with this set to false.
+        self.dbapi.ihost_update(host_uuid, {'reboot_needed': False})
+
+        DEV_IMG_STATE = {
+            'host_id': host_id,
+            'pcidevice_id': 5,
+            'image_id': 11,
+            'status': '',
+        }
+        device_image_state = self.dbapi.device_image_state_create(
+            DEV_IMG_STATE)
+        for key in DEV_IMG_STATE:
+            self.assertEqual(device_image_state[key], DEV_IMG_STATE[key])
+
+        # set status to "in-progress"
+        self.service.device_update_image_status(self.context,
+            host_uuid, device_image_state.uuid,
+            dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS)
+
+        mock_host_device_image_update_next.assert_not_called()
+
+        device_image_state = self.dbapi.device_image_state_get(
+            device_image_state.id)
+        self.assertEqual(device_image_state.status,
+                         dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS)
+        ihost = self.dbapi.ihost_get(host_id)
+        self.assertEqual(ihost.reboot_needed, False)
+
+        # set status to "completed"
+        self.service.device_update_image_status(self.context,
+            host_uuid, device_image_state.uuid,
+            dconstants.DEVICE_IMAGE_UPDATE_COMPLETED)
+
+        mock_host_device_image_update_next.assert_called_with(
+            self.context, host_uuid)
+
+        device_image_state = self.dbapi.device_image_state_get(
+            device_image_state.id)
+        self.assertEqual(device_image_state.status,
+                         dconstants.DEVICE_IMAGE_UPDATE_COMPLETED)
+        ihost = self.dbapi.ihost_get(host_id)
+        self.assertEqual(ihost.reboot_needed, True)
 
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):

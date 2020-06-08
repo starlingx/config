@@ -1951,3 +1951,53 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in memorys_cols.items():
             self.assertTrue(isinstance(memorys.c[col].type,
                             getattr(sqlalchemy.types, coltype)))
+
+    def _check_104(self, engine, data):
+        # 104_fpga_devices.py
+
+        # Assert data types for new columns in table "pci_devices"
+        pci_devices = db_utils.get_table(engine, 'pci_devices')
+        pci_devices_cols = {
+            'status': 'String',
+            'needs_firmware_update': 'Boolean',
+        }
+        for col, coltype in pci_devices_cols.items():
+            self.assertTrue(isinstance(pci_devices.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))
+
+        # Assert data types for new table "fpga_devices"
+        fpga_devices = db_utils.get_table(engine, 'fpga_devices')
+        fpga_devices_cols = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'host_id': 'Integer',
+            'pci_id': 'Integer',
+            'pciaddr': 'String',
+            'bmc_build_version': 'String',
+            'bmc_fw_version': 'String',
+            'root_key': 'String',
+            'revoked_key_ids': 'String',
+            'boot_page': 'String',
+            'bitstream_id': 'String',
+        }
+        for col, coltype in fpga_devices_cols.items():
+            self.assertTrue(isinstance(fpga_devices.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))
+
+        # Assert data types for new table "fpga_ports"
+        fpga_ports = db_utils.get_table(engine, 'fpga_ports')
+        fpga_ports_cols = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'port_id': 'Integer',
+            'fpga_id': 'Integer',
+        }
+        for col, coltype in fpga_ports_cols.items():
+            self.assertTrue(isinstance(fpga_ports.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))
