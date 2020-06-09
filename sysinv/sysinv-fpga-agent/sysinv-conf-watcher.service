@@ -1,0 +1,11 @@
+[Unit]
+Description=StarlingX conf watcher
+After=sysinv-fpga-agent.service
+Before=pmon.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart sysinv-fpga-agent.service
+
+[Install]
+WantedBy=multi-user.target
