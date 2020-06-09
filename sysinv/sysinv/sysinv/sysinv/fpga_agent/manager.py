@@ -42,20 +42,23 @@ import os
 import shlex
 import shutil
 import time
-import tsconfig.tsconfig as tsc
 import urllib
 
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import uuidutils
 
+from sysinv.agent import pci
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import service
+from sysinv.common import utils
 from sysinv.conductor import rpcapi as conductor_rpcapi
+from sysinv.fpga_agent import constants
 from sysinv.objects import base as objects_base
 from sysinv.openstack.common import context as ctx
 
+import tsconfig.tsconfig as tsc
 
 MANAGER_TOPIC = 'sysinv.fpga_agent_manager'
 
@@ -74,19 +77,20 @@ agent_opts = [
 CONF = cfg.CONF
 CONF.register_opts(agent_opts, 'fpga_agent')
 
-# Currently we only support the following FPGA.  In the future we may need to
-# expand this to a list of devices, each with their own special set of
-# device-specific information.
-FPGA_VENDOR = "8086"
-FPGA_DEVICE = "0b30"
-
 # TODO: Make this specified in the config file.
 # This is the docker image containing the OPAE tools to access the FPGA device.
 OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
 
+# This is a flag file created by puppet after doing a "docker login".
+# We need to wait for it to exist before trying to run docker images.
+DOCKER_LOGIN_FLAG = "/var/run/docker_login_done"
+
 # This is the location where we cache the device image file while
 # writing it to the hardware.
 DEVICE_IMAGE_CACHE_DIR = "/usr/local/share/applications/sysinv"
+
+# Volatile flag file so we only reset the N3000s once after bootup.
+N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
 
 SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
 FME_PATH = "/fpga/intel-fpga-dev.*/intel-fpga-fme.*/"
@@ -101,6 +105,14 @@ CANCELLED_CSKS_PATH = "ifpga_sec_mgr/ifpga_sec*/security/sr_canceled_csks"
 IMAGE_LOAD_PATH = "fpga_flash_ctrl/fpga_image_load"
 BMC_FW_VER_PATH = "bmcfw_flash_ctrl/bmcfw_version"
 BMC_BUILD_VER_PATH = "max10_version"
+
+
+def wait_for_docker_login():
+    # TODO: add a timeout
+    LOG.info("Waiting for docker login flag.")
+    while not os.path.exists(DOCKER_LOGIN_FLAG):
+        time.sleep(1)
+    LOG.info("Found docker login flag, continuing.")
 
 
 def ensure_device_image_cache_exists():
@@ -170,6 +182,33 @@ def write_device_image_n3000(filename, pci_addr):
         msg = ("Failed to update device image %s for device %s, "
                "return code is %d, command output: %s." %
                (filename, pci_addr, exc.returncode,
+                exc.output.decode('utf-8')))
+        LOG.error(msg)
+        LOG.error("Check for intel-max10 kernel logs.")
+        raise exception.SysinvException(msg)
+
+
+def reset_device_n3000(pci_addr):
+    # Reset the N3000 FPGA at the specified PCI address.
+    try:
+        # Build up the command to perform the reset.
+        # Note the hack to work around OPAE tool locale issues
+        cmd = ("docker run -t --privileged -e LC_ALL=en_US.UTF-8 "
+               "-e LANG=en_US.UTF-8 " + OPAE_IMG +
+               " rsu bmcimg " + pci_addr)
+
+        # Issue the command to perform the firmware update.
+        subprocess.check_output(shlex.split(cmd),
+                                         stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as exc:
+        # "docker run" return code will be:
+        #    125 if the error is with Docker daemon itself
+        #    126 if the contained command cannot be invoked
+        #    127 if the contained command cannot be found
+        #    Exit code of contained command otherwise
+        msg = ("Failed to reset device %s, "
+               "return code is %d, command output: %s." %
+               (pci_addr, exc.returncode,
                 exc.output.decode('utf-8')))
         LOG.error(msg)
         LOG.error("Check for intel-max10 kernel logs.")
@@ -279,6 +318,94 @@ def get_n3000_bmc_build_version(pci_addr):
     return get_n3000_bmc_version(pci_addr, BMC_BUILD_VER_PATH)
 
 
+def get_n3000_devices():
+    # First get the PCI addresses of each supported FPGA device
+    cmd = ["lspci", "-Dm", "-d " + constants.N3000_VENDOR + ":" +
+           constants.N3000_DEVICE]
+
+    try:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as exc:
+        msg = ("Failed to get pci devices with vendor %s and device %s, "
+               "return code is %d, command output: %s." %
+               (constants.N3000_VENDOR, constants.N3000_DEVICE, exc.returncode, exc.output))
+        LOG.warn(msg)
+        raise exception.SysinvException(msg)
+
+    # Parse the output of the lspci command and grab the PCI address
+    fpga_addrs = []
+    for line in output.splitlines():
+        line = shlex.split(line.strip())
+        fpga_addrs.append(line[0])
+    return fpga_addrs
+
+
+def reset_n3000_fpgas():
+    # We only want to do this once after host startup.
+    if not os.path.exists(N3000_RESET_FLAG):
+        # Reset all N3000 FPGAs on the system.
+        # TODO: make this run in parallel if there are multiple devices.
+        LOG.info("Resetting N3000 FPGAs.")
+        got_exception = False
+        fpga_addrs = get_n3000_devices()
+        for fpga_addr in fpga_addrs:
+            try:
+                reset_device_n3000(fpga_addr)
+            except Exception:
+                got_exception = True
+        LOG.info("Done resetting N3000 FPGAs.")
+        if not got_exception:
+            utils.touch(N3000_RESET_FLAG)
+
+
+def get_n3000_pci_info():
+    """ Query PCI information about N3000 PCI devices.
+
+    This needs to exactly mirror what sysinv-agent does as far as PCI
+    updates.  We could potentially modify sysinv-agent to do the PCI
+    updates when triggered by an RPC cast, but we don't need to rescan
+    all PCI devices, just the N3000 devices.
+    """
+    pci_devs = []
+    pci_device_list = []
+    try:
+        pci_operator = pci.PCIOperator()
+        pci_devices = pci_operator.pci_devices_get(
+            vendor=constants.N3000_VENDOR, device=constants.N3000_DEVICE)
+        for pci_dev in pci_devices:
+            pci_dev_array = pci_operator.pci_get_device_attrs(
+                pci_dev.pciaddr)
+            for dev in pci_dev_array:
+                pci_devs.append(pci.PCIDevice(pci_dev, **dev))
+
+        for dev in pci_devs:
+            pci_dev_dict = {'name': dev.name,
+                            'pciaddr': dev.pci.pciaddr,
+                            'pclass_id': dev.pclass_id,
+                            'pvendor_id': dev.pvendor_id,
+                            'pdevice_id': dev.pdevice_id,
+                            'pclass': dev.pci.pclass,
+                            'pvendor': dev.pci.pvendor,
+                            'pdevice': dev.pci.pdevice,
+                            'prevision': dev.pci.prevision,
+                            'psvendor': dev.pci.psvendor,
+                            'psdevice': dev.pci.psdevice,
+                            'numa_node': dev.numa_node,
+                            'sriov_totalvfs': dev.sriov_totalvfs,
+                            'sriov_numvfs': dev.sriov_numvfs,
+                            'sriov_vfs_pci_address': dev.sriov_vfs_pci_address,
+                            'driver': dev.driver,
+                            'enabled': dev.enabled,
+                            'extra_info': dev.extra_info}
+            LOG.debug('Sysinv FPGA Agent dev {}'.format(pci_dev_dict))
+            pci_device_list.append(pci_dev_dict)
+    except Exception:
+        LOG.exception("Unable to query FPGA pci information, "
+                      "sysinv DB will be stale")
+
+    return pci_device_list
+
+
 def watchdog_action(action):
     if action not in ["stop", "start"]:
         LOG.warn("watchdog_action called with invalid action: %s", action)
@@ -324,12 +451,24 @@ class FpgaAgentManager(service.PeriodicService):
             LOG.info('No config file for sysinv-fpga-agent found.')
             raise exception.ConfigNotFound(message="Unable to find sysinv config file!")
 
+        # Wait for puppet to log in to the local docker registry
+        wait_for_docker_login()
+
+        # Trigger reset of N3000 FPGAs.  This is needed because the PCI address
+        # changes on the first reset after boot.
+        reset_n3000_fpgas()
+
         # Wait around until someone else updates the platform.conf file
         # with our host UUID.
         self.wait_for_host_uuid()
 
-        # Collect FPGA inventory and report to conductor at startup.
         context = ctx.get_admin_context()
+
+        # Collect updated PCI device information for N3000 FPGAs
+        # and send it to sysinv-conductor
+        self.fpga_pci_update(context)
+
+        # Collect FPGA inventory and report to conductor.
         self.report_fpga_inventory(context)
 
     def periodic_tasks(self, context, raise_on_error=False):
@@ -372,40 +511,25 @@ class FpgaAgentManager(service.PeriodicService):
         rpcapi = conductor_rpcapi.ConductorAPI(
             topic=conductor_rpcapi.MANAGER_TOPIC)
 
-        fpgainfo_list = self.fpga_scan()
+        fpgainfo_list = self.get_fpga_info()
 
+        LOG.info("reporting FPGA inventory for host %s: %s" %
+                 (host_uuid, fpgainfo_list))
         try:
-            LOG.info("reporting FPGA inventory for host %s: %s" %
-                     (host_uuid, fpgainfo_list))
             rpcapi.fpga_device_update_by_host(context, host_uuid, fpgainfo_list)
         except exception.SysinvException:
             LOG.exception("Exception updating fpga devices.")
             pass
 
-    def fpga_scan(self):
+    def get_fpga_info(self):
+        # For now we only support the N3000, eventually we may need to support
+        # other FPGA devices.
 
-        # First get the PCI addresses of each supported FPGA device
-        cmd = ["lspci", "-Dm", "-d " + FPGA_VENDOR + ":" + FPGA_DEVICE]
+        # Get a list of N3000 FPGA device addresses.
+        fpga_addrs = get_n3000_devices()
 
-        try:
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as exc:
-            msg = ("Failed to get pci devices with vendor %s and device %s, "
-                   "return code is %d, command output: %s." %
-                   (FPGA_VENDOR, FPGA_DEVICE, exc.returncode, exc.output))
-            LOG.warn(msg)
-            raise exception.SysinvException(msg)
-
-        # Parse the output of the lspci command and grab the PCI address
-        fpga_addrs = []
-        for line in output.splitlines():
-            line = shlex.split(line.strip())
-            fpga_addrs.append(line[0])
-
+        # Next, get additional information information for devices in the list.
         fpgainfo_list = []
-
-        # Next, break down the PCI address into parts and use that to call the
-        # FPGA tools to get additional information
         for addr in fpga_addrs:
             # Store information for this FPGA
             fpgainfo = {'pciaddr': addr}
@@ -422,6 +546,41 @@ class FpgaAgentManager(service.PeriodicService):
             fpgainfo_list.append(fpgainfo)
 
         return fpgainfo_list
+
+    def fpga_pci_update(self, context):
+        """Collect FPGA PCI data for this host.
+
+        We know that the PCI address of the N3000 can change the first time
+        We reset it after boot, so we need to gather the new PCI device
+        information and send it to sysinv-conductor.
+
+        This needs to exactly mirror what sysinv-agent does as far as PCI
+        updates.  We could potentially modify sysinv-agent to do the PCI
+        updates when triggered by an RPC cast, but we don't need to rescan
+        all PCI devices, just the N3000 devices.
+
+        :param:   context: an admin context
+        :returns: nothing
+        """
+
+        LOG.info("Updating N3000 PCI info.")
+        pci_device_list = get_n3000_pci_info()
+
+        rpcapi = conductor_rpcapi.ConductorAPI(
+            topic=conductor_rpcapi.MANAGER_TOPIC)
+
+        host_uuid = self.host_uuid
+        try:
+            if pci_device_list:
+                LOG.info("reporting N3000 PCI devices for host %s: %s" %
+                         (host_uuid, pci_device_list))
+                rpcapi.pci_device_update_by_host(context,
+                                                 host_uuid,
+                                                 pci_device_list)
+        except Exception:
+            LOG.exception("Exception updating n3000 PCI devices, "
+                          "this will likely cause problems.")
+            pass
 
     def device_update_image(self, context, pci_addr, filename, transaction_id):
         """Write the device image to the device at the specified address.

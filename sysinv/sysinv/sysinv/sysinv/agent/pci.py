@@ -306,9 +306,13 @@ class PCIOperator(object):
         LOG.debug("driver: %s" % driver)
         return driver
 
-    def pci_devices_get(self):
-
-        p = subprocess.Popen(["lspci", "-Dm"], stdout=subprocess.PIPE)
+    def pci_devices_get(self, vendor=None, device=None):
+        cmd = ["lspci", "-Dm"]
+        # See if the caller wants to limit us to a specific vendor/device.
+        if vendor and device:
+            option = "-d " + vendor + ":" + device
+            cmd.append(option)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
         pci_devices = []
         for line in p.stdout:
