@@ -11716,11 +11716,13 @@ class ConductorManager(service.PeriodicService):
             host.save(context)
             return
 
-        # TODO: the code below needs to be updated to order the device images for a given
-        # device.  For the N3000 we want to apply any root-key image first, then
+        # TODO: the code below needs to be updated to order the device images
+        # for a given device to handle simultaneous update of multiple devices.
+        # For the N3000 we want to apply any root-key image first, then
         # any key-revocation images, then any functional images.
 
-        for device_image_state in device_image_states:
+        for device_image_state in sorted(device_image_states,
+                                         key=device_image_state_sort_key):
             # get the PCI device for the pending device image update
             pci_device = objects.pci_device.get_by_uuid(context, device_image_state.pcidevice_id)
             # figure out the filename for the device image
@@ -11937,3 +11939,12 @@ class ConductorManager(service.PeriodicService):
             # Find the next device on the same host that needs updating,
             # and trigger an update of it.
             self.host_device_image_update_next(context, host_uuid)
+
+
+def device_image_state_sort_key(dev_img_state):
+    if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:
+        return 0
+    elif dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_KEY_REVOCATION:
+        return 1
+    else:  # if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
+        return 2
