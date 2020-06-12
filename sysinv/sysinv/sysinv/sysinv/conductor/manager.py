@@ -69,7 +69,6 @@ from oslo_utils import excutils
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 from platform_util.license import license
-from ruamel import yaml
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
 from sysinv._i18n import _
@@ -84,7 +83,6 @@ from sysinv.common import constants
 from sysinv.common import ceph as cceph
 from sysinv.common import device as dconstants
 from sysinv.common import exception
-from sysinv.common import image_versions
 from sysinv.common import fm
 from sysinv.common import fernet
 from sysinv.common import health
@@ -113,7 +111,6 @@ from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import common as helm_common
 from sysinv.helm import helm
-from sysinv.helm import utils as helm_utils
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -5412,6 +5409,19 @@ class ConductorManager(service.PeriodicService):
             self._kube_pod.delete_failed_pods_by_reason(
                 reason='NodeAffinity')
 
+        # Ensure that armada pod is running.
+        pods = self._kube.kube_get_pods_by_selector("armada",
+                                                    "application=armada",
+                                                    "status.phase=Running")
+        if not pods:
+            LOG.warning("armada pod not present")
+            return
+
+        # Disable application apply during upgrades
+        if self.is_upgrade_in_progress():
+            LOG.info("Upgrade in progress - disable audit")
+            return
+
         # Check the application state and take the approprate action
         for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
 
@@ -5474,166 +5484,9 @@ class ConductorManager(service.PeriodicService):
                 return
         self.reapply_app(context, app_name)
 
-    def _patch_tiller_deployment(self):
-        """ Ensure tiller is patched with restart logic."""
-        LOG.info("Attempt to patch tiller deployment")
-        try:
-            # We have a race condition that may cause the tiller pod to not have
-            # its environment set up correctly. This will patch the tiller
-            # deployment to ensure that tiller can recover if that occurs. The
-            # deployment is patched during the initial ansible run. This will
-            # re-patch the deployment in the case when tiller has been removed
-            # and reinstalled in the cluster after the system has been
-            # installed. If tiller is already patched then the patch execution
-            # is successful causing no change to the deployment. Specify the
-            # update strategy to allow tiller deployment patching in a simplex
-            # controller configuration.
-            patch = {
-                'spec': {
-                    'strategy': {
-                        'type': 'RollingUpdate',
-                        'rollingUpdate': {
-                            'maxUnavailable': 1,
-                            'maxSurge': 1,
-                        }
-                    },
-                    'template': {
-                        'spec': {
-                            'containers': [{
-                                'name': 'tiller',
-                                'command': [
-                                    '/bin/sh',
-                                    '-cex',
-                                    '#!/bin/sh\n'
-                                    'env | grep -q -e ^TILLER_DEPLOY || exit\n'
-                                    'env | grep -q -e ^KUBE_DNS || exit\n'
-                                    'env | grep -q -e ^KUBERNETES_PORT || exit\n'
-                                    'env | grep -q -e ^KUBERNETES_SERVICE || exit\n'
-                                    '/tiller\n'
-                                ]
-                            }]
-                        }
-                    }
-                }
-            }
-            cmd = ['kubectl',
-                   '--kubeconfig={}'.format(kubernetes.KUBERNETES_ADMIN_CONF),
-                   'patch', 'deployment', '-n', 'kube-system', 'tiller-deploy',
-                   '-p', yaml.dump(patch)]
-            stdout, stderr = cutils.execute(*cmd, run_as_root=False)
-
-        except exception.ProcessExecutionError as e:
-            raise exception.SysinvException(
-                _("Error patching the tiller deployment, "
-                  "Details: %s") % str(e))
-
-        LOG.info("Tiller deployment has been patched")
-
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_static_images()
-        self._upgrade_downgrade_tiller()
         self._upgrade_downgrade_kube_networking()
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    def _upgrade_downgrade_tiller(self):
-        """Check if tiller needs to be upgraded or downgraded"""
-        LOG.info("_upgrade_downgrade_tiller")
-
-        FIVE_MIN_IN_SECS = 300
-        in_progress_statuses = [constants.APP_APPLY_IN_PROGRESS,
-                                constants.APP_UPLOAD_IN_PROGRESS,
-                                constants.APP_REMOVE_IN_PROGRESS,
-                                constants.APP_UPDATE_IN_PROGRESS,
-                                constants.APP_RECOVER_IN_PROGRESS]
-
-        # Check if we are in the middle of an application apply. If so wait
-        # 5 minutes and retry.
-        while True:
-            try:
-                in_progress = False
-                for app in self.dbapi.kube_app_get_all():
-                    if app.status in in_progress_statuses:
-                        LOG.info("_upgrade_downgrade_tiller kubernetes application "
-                                 "'%s' in progress, status is '%s'" %
-                                 (app.name, app.status))
-                        in_progress = True
-                        break
-                if in_progress:
-                    greenthread.sleep(FIVE_MIN_IN_SECS)
-                    continue
-
-            except Exception as e:
-                LOG.error("{}. Failed to get kubernetes application list.".format(e))
-            break
-
-        # Upgrade or downgrade the tiller image
-        try:
-            running_image = self._kube.kube_get_image_by_selector(
-                image_versions.TILLER_SELECTOR_NAME,
-                helm_common.HELM_NS_KUBE_SYSTEM,
-                image_versions.TILLER_CONTAINER_NAME)
-
-            if running_image is None:
-                LOG.warning("Failed to get tiller image")
-                return False
-
-            LOG.info("Running tiller image: %s" % running_image)
-            LOG.info("Requested tiller version: %s" % image_versions.TILLER_IMAGE_VERSION)
-
-            # Grab the version from the image name. Version is preceded
-            # by a ":" e.g.
-            #    registry.local:9001/gcr.io/kubernetes-helm/tiller:v2.13.0
-            running_image_name, running_version = running_image.rsplit(":", 1)
-            if not running_version:
-                LOG.warning("Failed to get version from tiller image")
-                return False
-
-            # Verify the tiller version running
-            if running_version != image_versions.TILLER_IMAGE_VERSION:
-
-                LOG.info("Running version of tiller does not match patching version of %s. "
-                         "Upgrade in progress."
-                         % image_versions.TILLER_IMAGE_VERSION)
-                download_image = running_image_name + ":" + image_versions.TILLER_IMAGE_VERSION
-                self._docker._retrieve_specified_registries()
-
-                # download the image
-                try:
-                    img_tag, ret = self._docker.download_an_image("helm",
-                                                                  download_image)
-                    if not ret:
-                        raise Exception
-                except Exception as e:
-                    LOG.warning("Failed to download image '%s'. %s" % (download_image, e))
-                    return False
-
-                # reset the cached registries
-                self._docker._reset_registries_info()
-
-                # Update the new image
-                try:
-                    helm_utils.helm_upgrade_tiller(download_image)
-
-                except Exception as e:
-                    LOG.warning("Failed to update the new image: %s" % e)
-                    return False
-
-        except Exception as e:
-            LOG.error("{}. Failed to upgrade/downgrade tiller.".format(e))
-            return False
-
-        # Patch tiller to allow restarts if the environment is incomplete
-        #
-        # NOTE: This patch along with this upgrade functionality can be removed
-        # once StarlingX moves to Helm v3
-        try:
-            self._patch_tiller_deployment()
-        except Exception as e:
-            LOG.error("{}. Failed to patch tiller deployment.".format(e))
-            return False
-
-        return True
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
@@ -6848,8 +6701,24 @@ class ConductorManager(service.PeriodicService):
                       " report_config_status! iconfig: %(iconfig)s" %
                       {'iconfig': iconfig, 'cfg': reported_cfg})
 
+        # Skip application reapply during upgrades
+        if self.is_upgrade_in_progress():
+            LOG.info("Upgrade in progress - skip pending app reapply")
+            return
+
         if success:
             self.check_pending_app_reapply(context)
+
+    def is_upgrade_in_progress(self):
+        """ Check if there is an upgrade in progress.
+        """
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            return False
+        else:
+            return True
 
     def report_partition_mgmt_success(self, host_uuid, idisk_uuid,
                                       partition_uuid):

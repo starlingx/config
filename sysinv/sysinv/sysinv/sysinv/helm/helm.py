@@ -19,6 +19,7 @@ from six import iteritems
 from stevedore import extension
 
 from oslo_log import log as logging
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
@@ -423,7 +424,15 @@ class HelmOperator(object):
         if chart_tarfile is None:
             # TODO: Clean up the assumption
             chart_tarfile = chart_name + '-0.1.0'
-        return 'http://controller:{}/helm_charts/{}/{}.tgz'.format(
+        # Set the location based on ip address since
+        # http://controller does not resolve in armada container.
+        sys_controller_network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+        sys_controller_network_addr_pool = self.dbapi.address_pool_get(sys_controller_network.pool_uuid)
+        sc_float_ip = sys_controller_network_addr_pool.floating_address
+        if utils.is_valid_ipv6(sc_float_ip):
+            sc_float_ip = '[' + sc_float_ip + ']'
+        return 'http://{}:{}/helm_charts/{}/{}.tgz'.format(
+            sc_float_ip,
             utils.get_http_port(self.dbapi), repo_name, chart_tarfile)
 
     def _add_armada_override_header(self, chart_name, chart_metadata_name, repo_name,
@@ -503,7 +512,7 @@ class HelmOperator(object):
         # specified by system or user, values from files and values passed in
         # via --set .  We need to ensure that we call helm using the same
         # mechanisms to ensure the same behaviour.
-        cmd = ['helm', 'install', '--dry-run', '--debug']
+        cmd = ['helm', 'install', '--dry-run', '--debug', '--generate-name']
 
         # Process the newly-passed-in override values
         tmpfiles = []
