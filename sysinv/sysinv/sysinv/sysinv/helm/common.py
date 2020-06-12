@@ -27,8 +27,6 @@ HELM_CHART_ATTRS = [HELM_CHART_ATTR_ENABLED]
 
 # Chart defs needed for platform integration
 # These values match the names in the chart package's Chart.yaml
-HELM_CHART_DEX = 'dex'
-HELM_CHART_OIDC_CLIENT = 'oidc-client'
 HELM_CHART_CERT_MANAGER = 'cert-manager'
 
 # TODO(rchurch): These are still needed for _check_monitor_labels(). This method
