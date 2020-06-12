@@ -13,6 +13,10 @@
 # subclouds to ensure successful startup and operation of dcmanager
 # when the system controller hosts are upgraded to 20.06.
 #
+# Add dc-cert subcloud status endpoint, to indicate admin endpoint
+# certificate sync status. Start with in-sync, becase subclouds
+# bootstrap with in-synced certificate.
+#
 # This script can be removed in the release that follows 20.06.
 #
 
@@ -80,27 +84,33 @@ def update_subcloud_status():
             cur.execute("SELECT * from subcloud_status where "
                         "endpoint_type = 'load'")
             load_status_records = cur.fetchall()
-            if load_status_records:
+            if not load_status_records:
+                cur.execute("SELECT * from subcloud_status where "
+                            "endpoint_type = 'patching'")
+                patching_status_records = cur.fetchall()
+                if not patching_status_records:
+                    LOG.exception("Failed to fetch subcloud status data.")
+                    raise
+
+                for record in patching_status_records:
+                    # Insert a record for load endpoint type for each
+                    # subcloud based on data of patching record.
+                    cur.execute("INSERT into subcloud_status (subcloud_id, "
+                                "endpoint_type, sync_status, created_at, "
+                                "deleted) values (%d, 'load', "
+                                "'%s', '%s', 0)"
+                                % (record['subcloud_id'],
+                                   record['sync_status'],
+                                   record['created_at']))
+            else:
                 LOG.info("Nothing to do - load status records already exist.")
-                return
 
-            cur.execute("SELECT * from subcloud_status where "
-                        "endpoint_type = 'patching'")
-            patching_status_records = cur.fetchall()
-            if not patching_status_records:
-                LOG.exception("Failed to fetch subcloud status data.")
-                raise
-
-            for record in patching_status_records:
-                # Insert a record for load endpoint type for each
-                # subcloud based on data of patching record.
-                cur.execute("INSERT into subcloud_status (subcloud_id, "
-                            "endpoint_type, sync_status, created_at, "
-                            "deleted) values (%d, 'load', "
-                            "'%s', '%s', 0)"
-                            % (record['subcloud_id'],
-                               record['sync_status'],
-                               record['created_at']))
+            cur.execute("INSERT into subcloud_status("
+                        "subcloud_id, endpoint_type, sync_status) "
+                        "select id, 'dc-cert', 'in-sync' "
+                        "from subclouds where id not in "
+                        "(select subcloud_id from subcloud_status "
+                        "where endpoint_type = 'dc-cert')")
 
     LOG.info("Subcloud status data migration completed.")
 
