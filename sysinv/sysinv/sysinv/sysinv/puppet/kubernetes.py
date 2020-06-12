@@ -33,6 +33,9 @@ CLUSTER_SERVICE_DNS_IP_OFFSET = 10
 CERTIFICATE_KEY_SERVICE = "kubernetes"
 CERTIFICATE_KEY_USER = "certificate-key"
 
+# kubeadm configuration option
+KUBECONFIG = "--kubeconfig=%s" % kubernetes.KUBERNETES_ADMIN_CONF
+
 
 class KubernetesPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for kubernetes configuration"""
@@ -160,7 +163,7 @@ class KubernetesPuppet(base.BasePuppet):
                 fd, temp_kubeadm_config_view = tempfile.mkstemp(
                     dir='/tmp', suffix='.yaml')
                 with os.fdopen(fd, 'w') as f:
-                    cmd = ['kubeadm', 'config', 'view']
+                    cmd = ['kubeadm', KUBECONFIG, 'config', 'view']
                     subprocess.check_call(cmd, stdout=f)
 
                 # We will use a custom key to encrypt kubeadm certificates
@@ -189,7 +192,7 @@ class KubernetesPuppet(base.BasePuppet):
                 join_cmd_additions += \
                     " --apiserver-advertise-address %s" % host_cluster_ip
 
-            cmd = ['kubeadm', 'token', 'create', '--print-join-command',
+            cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
             join_cmd = subprocess.check_output(cmd)
             join_cmd_additions += \
