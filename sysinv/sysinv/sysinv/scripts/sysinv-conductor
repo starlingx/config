@@ -192,6 +192,11 @@ sysinv_conductor_start () {
         fi
     fi
 
+    # Remove any existing application containers in case they were not shut
+    # down cleanly. sysinv-conductor will start these on demand with first use.
+    ocf_log info "${proc} Cleaning up any stale application containers before start. (sysinv-conductor)"
+    sysinv_remove_application_containers
+
     if [ ${OCF_RESKEY_dbg} = "true" ] ; then
         RUN_OPT_DEBUG="--debug"
     else
@@ -247,17 +252,21 @@ sysinv_remove_application_containers() {
         # does the container exist
         id=$(docker container ls -qf name=${c} 2>/dev/null)
         if [ ! -n "$id" ]; then
-            ocf_log info "${proc} Container $c is not present, skipping container actions. (sysinv-conductor)"
-            continue
+            ocf_log info "${proc} Container $c is not started, skipping stop action. (sysinv-conductor)"
+        else
+            # Graceful shutdown (default is 10 sec, then kill)
+            ocf_log info "${proc} About to stop container $c... (sysinv-conductor)"
+            docker stop $c 2>&1 >> /dev/null
         fi
 
-        # Graceful shutdown (default is 10 sec, then kill)
-        ocf_log info "${proc} About to stop container $c... (sysinv-conductor)"
-        docker stop $c 2>&1 >> /dev/null
-
-        # Cleanup the container. Use force just in case.
-        ocf_log info "${proc} About to remove container $c... (sysinv-conductor)"
-        docker rm -f $c 2>&1 >> /dev/null
+        id=$(docker container ls -aqf name=${c} 2>/dev/null)
+        if [ ! -n "$id" ]; then
+            ocf_log info "${proc} Container $c is not present, skipping remove action. (sysinv-conductor)"
+        else
+            # Cleanup the container. Use force just in case.
+            ocf_log info "${proc} About to remove container $c... (sysinv-conductor)"
+            docker rm -f $c 2>&1 >> /dev/null
+        fi
     done
 }
 
