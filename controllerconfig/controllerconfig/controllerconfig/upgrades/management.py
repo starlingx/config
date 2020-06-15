@@ -35,8 +35,8 @@ def get_upgrade_databases(system_role, shared_services):
     if system_role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
         UPGRADE_DATABASES += ('dcmanager', 'dcorch',)
         UPGRADE_DATABASE_SKIP_TABLES.update({
-            'dcmanager': ('subcloud_alarms',),
-            'dcorch': ()
+            'dcmanager': (),
+            'dcorch': ('service', 'orch_job', 'orch_request',)
         })
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
