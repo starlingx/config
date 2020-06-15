@@ -96,12 +96,12 @@ def update_subcloud_status():
                 # subcloud based on data of patching record.
                 cur.execute("INSERT into subcloud_status (subcloud_id, "
                             "endpoint_type, sync_status, created_at, "
-                            "updated_at, deleted) values (%d, 'load', "
-                            "'%s', '%s', '%s', 0)"
+                            "deleted) values (%d, 'load', "
+                            "'%s', '%s', 0)"
                             % (record['subcloud_id'],
                                record['sync_status'],
-                               record['created_at'],
-                               record['updated_at']))
+                               record['created_at']))
+
     LOG.info("Subcloud status data migration completed.")
 
 
