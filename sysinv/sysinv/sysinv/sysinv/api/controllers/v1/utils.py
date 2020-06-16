@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -473,6 +473,30 @@ def get_node_cgtsvg_limit(host):
     LOG.info("get_node_cgtsvg_limit host=%s, cgtsvg_max_free_gib=%s"
         % (host.hostname, cgtsvg_max_free_gib))
     return cgtsvg_max_free_gib
+
+
+def check_disallow_during_upgrades():
+    """
+    Check for upgrades in progress, and raise error if found.
+    """
+
+    # There must not already be a platform upgrade in progress
+    try:
+        pecan.request.dbapi.software_upgrade_get_one()
+    except exception.NotFound:
+        pass
+    else:
+        raise wsme.exc.ClientSideError(_(
+            "Action rejected while a platform upgrade is in progress"))
+
+    # There must not already be a kubernetes upgrade in progress
+    try:
+        pecan.request.dbapi.kube_upgrade_get_one()
+    except exception.NotFound:
+        pass
+    else:
+        raise wsme.exc.ClientSideError(_(
+            "Action rejected while a kubernetes upgrade is in progress"))
 
 
 def check_node_ceph_mon_growth(host, ceph_mon_gib, cgtsvg_max_free_gib):

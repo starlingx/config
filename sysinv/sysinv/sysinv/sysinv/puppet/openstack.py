@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,9 +9,9 @@ import keyring
 import os
 
 from sysinv.common import constants
-
-from sysinv.puppet import base
+from sysinv.common import utils as cutils
 from sysinv.helm import common
+from sysinv.puppet import base
 
 
 class OpenstackBasePuppet(base.BasePuppet):
@@ -130,8 +130,11 @@ class OpenstackBasePuppet(base.BasePuppet):
             (self._distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
                 self._distributed_cloud_role() ==
-                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+
+            cutils.touch(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
             return 'https'
+
         return 'http'
 
     def _format_public_endpoint(self, port, address=None, path=None):
