@@ -36,7 +36,7 @@ class DeviceImageManager(base.Manager):
         except IndexError:
             return None
 
-    def create(self, file, **kwargs):
+    def upload(self, file, **kwargs):
         data = {}
         for (key, value) in kwargs.items():
             if key in CREATION_ATTRIBUTES:

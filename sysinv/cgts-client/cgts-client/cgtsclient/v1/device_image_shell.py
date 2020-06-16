@@ -78,8 +78,8 @@ def do_device_image_list(cc, args):
 @utils.arg('-u', '--uuid',
            metavar='<uuid>',
            help='UUID of the device image')
-def do_device_image_create(cc, args):
-    """Create a device image."""
+def do_device_image_upload(cc, args):
+    """Upload a device image."""
 
     if not os.path.isfile(args.bitstream_file):
         raise exc.CommandError('Bitstream file does not exist: %s' %
@@ -94,15 +94,15 @@ def do_device_image_create(cc, args):
                        if k in field_list and not (v is None))
 
     try:
-        response = cc.device_image.create(args.bitstream_file, **user_fields)
+        response = cc.device_image.upload(args.bitstream_file, **user_fields)
         error = response.get('error')
         if error:
             raise exc.CommandError("%s" % error)
     except exc.HTTPNotFound:
         raise exc.CommandError(
-            'Device image not created for %s. No response.' % args.bitstream_file)
+            'Device image not uploaded for %s. No response.' % args.bitstream_file)
     except Exception as e:
-        raise exc.CommandError('Device image not created for %s: %s' %
+        raise exc.CommandError('Device image not uploaded for %s: %s' %
                                (args.bitstream_file, e))
     else:
         device_image = response.get('device_image')
