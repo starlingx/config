@@ -18,7 +18,7 @@ class DeviceLabelTestCase(base.FunctionalTest, dbbase.ControllerHostTestCase):
         super(DeviceLabelTestCase, self).setUp()
         self.dbapi = dbapi.get_instance()
         # Create a pci_device and fpga_device object
-        self.pci_device = dbutils.create_test_pci_devices(
+        self.pci_device = dbutils.create_test_pci_device(
             host_id=self.host.id,
             pclass='Processing accelerators',
             pclass_id='120000',)

@@ -2001,3 +2001,16 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in fpga_ports_cols.items():
             self.assertTrue(isinstance(fpga_ports.c[col].type,
                             getattr(sqlalchemy.types, coltype)))
+
+    def _check_107(self, engine, data):
+        # 107_device_vf_attrs.py
+
+        # Assert data types for new columns in device table
+        devices = db_utils.get_table(engine, 'pci_devices')
+        devices_col = {
+            'sriov_vf_driver': 'String',
+            'sriov_vf_pdevice_id': 'String'
+        }
+        for col, coltype in devices_col.items():
+            self.assertTrue(isinstance(devices.c[col].type,
+                            getattr(sqlalchemy.types, coltype)))

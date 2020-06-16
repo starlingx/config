@@ -19,6 +19,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
+from sysinv.common import device as dconstants
 from sysinv import objects
 from sysinv.puppet import base
 from sysinv.puppet import interface
@@ -400,8 +401,8 @@ class KubernetesPuppet(base.BasePuppet):
 
         if (sriovdp_worker is True):
             config.update({
-                'platform::kubernetes::worker::pci::pcidp_network_resources':
-                    self._get_pcidp_network_resources(),
+                'platform::kubernetes::worker::pci::pcidp_resources':
+                    self._get_pcidp_resources(host),
             })
         return config
 
@@ -446,6 +447,15 @@ class KubernetesPuppet(base.BasePuppet):
             driver = port['driver']
         return driver
 
+    def _get_pcidp_fpga_driver(self, device):
+        sriov_vf_driver = device.get('sriov_vf_driver', None)
+        if (sriov_vf_driver and
+                constants.SRIOV_DRIVER_TYPE_VFIO in sriov_vf_driver):
+            driver = constants.SRIOV_DRIVER_VFIO_PCI
+        else:
+            driver = device['sriov_vf_driver']
+        return driver
+
     def _get_pcidp_network_resources_by_ifclass(self, ifclass):
         resources = {}
 
@@ -486,7 +496,7 @@ class KubernetesPuppet(base.BasePuppet):
                     continue
 
                 driver = self._get_pcidp_driver(port, iface, ifclass)
-                if not device:
+                if not driver:
                     LOG.error("Failed to get driver for pci device %s", port['pciaddr'])
                     continue
 
@@ -513,11 +523,62 @@ class KubernetesPuppet(base.BasePuppet):
 
         return list(resources.values())
 
-    def _get_pcidp_network_resources(self):
+    def _get_pcidp_fpga_resources(self, host):
+        resources = {}
+        fec_name = "intel_fpga_fec"
+
+        for d in self.dbapi.pci_device_get_by_host(host.id):
+            if (d['pclass_id'] == dconstants.PCI_DEVICE_CLASS_FPGA
+                    and d['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+                resource = resources.get(fec_name, None)
+                if not resource:
+                    resource = {
+                        "resourceName": fec_name,
+                        "deviceType": "accelerator",
+                        "selectors": {
+                            "vendors": [],
+                            "devices": [],
+                            "drivers": []
+                        }
+                    }
+
+                vendor = d.get('pvendor_id', None)
+                if not vendor:
+                    LOG.error("Failed to get vendor id for pci device %s", d['pciaddr'])
+                    continue
+
+                device = d.get('sriov_vf_pdevice_id', None)
+                if not device:
+                    LOG.error("Failed to get device id for pci device %s", d['pciaddr'])
+                    continue
+
+                driver = self._get_pcidp_fpga_driver(d)
+                if not driver:
+                    LOG.error("Failed to get driver for pci device %s", d['pciaddr'])
+                    continue
+
+                vendor_list = resource['selectors']['vendors']
+                if vendor not in vendor_list:
+                    vendor_list.append(vendor)
+
+                device_list = resource['selectors']['devices']
+                if device not in device_list:
+                    device_list.append(device)
+
+                driver_list = resource['selectors']['drivers']
+                if driver not in driver_list:
+                    driver_list.append(driver)
+
+                resources[fec_name] = resource
+
+        return list(resources.values())
+
+    def _get_pcidp_resources(self, host):
         # Construct a list of all PCI passthrough and SRIOV resources
         # for use with the SRIOV device plugin
         sriov_resources = self._get_pcidp_network_resources_by_ifclass(
             constants.INTERFACE_CLASS_PCI_SRIOV)
         pcipt_resources = self._get_pcidp_network_resources_by_ifclass(
             constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
-        return json.dumps({'resourceList': sriov_resources + pcipt_resources})
+        fpga_resources = self._get_pcidp_fpga_resources(host)
+        return json.dumps({'resourceList': sriov_resources + pcipt_resources + fpga_resources})

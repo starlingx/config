@@ -32,6 +32,8 @@ class PCIDevice(base.SysinvObject):
             'sriov_totalvfs': utils.int_or_none,
             'sriov_numvfs': utils.int_or_none,
             'sriov_vfs_pci_address': utils.str_or_none,
+            'sriov_vf_driver': utils.str_or_none,
+            'sriov_vf_pdevice_id': utils.str_or_none,
             'driver': utils.str_or_none,
             'enabled': utils.bool_or_none,
             'extra_info': utils.str_or_none,

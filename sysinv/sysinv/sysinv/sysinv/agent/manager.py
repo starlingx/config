@@ -685,6 +685,8 @@ class AgentManager(service.PeriodicService):
                             'sriov_totalvfs': dev.sriov_totalvfs,
                             'sriov_numvfs': dev.sriov_numvfs,
                             'sriov_vfs_pci_address': dev.sriov_vfs_pci_address,
+                            'sriov_vf_driver': dev.sriov_vf_driver,
+                            'sriov_vf_pdevice_id': dev.sriov_vf_pdevice_id,
                             'driver': dev.driver,
                             'enabled': dev.enabled,
                             'extra_info': dev.extra_info}

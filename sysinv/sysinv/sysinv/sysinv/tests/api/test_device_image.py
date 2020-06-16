@@ -289,7 +289,7 @@ class TestPatch(TestDeviceImage):
             invprovision=constants.PROVISIONED
         )
         # Create a pci_device and fpga_device object
-        self.pci_device = dbutils.create_test_pci_devices(
+        self.pci_device = dbutils.create_test_pci_device(
             host_id=self.controller.id,
             pclass='Processing accelerators',
             pclass_id='120000',)

@@ -1458,6 +1458,8 @@ class PciDevice(Base):
     sriov_totalvfs = Column(Integer)
     sriov_numvfs = Column(Integer)
     sriov_vfs_pci_address = Column(String(1020))
+    sriov_vf_driver = Column(String(255))
+    sriov_vf_pdevice_id = Column(String(4))
     driver = Column(String(255))
     enabled = Column(Boolean)
     extra_info = Column(Text)

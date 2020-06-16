@@ -142,7 +142,7 @@ class DbNodeTestCase(base.DbTestCase):
         forihostid = n['id']
 
         d = self.dbapi.pci_device_create(forihostid,
-                utils.get_test_pci_devices())
+                utils.get_test_pci_device())
         self.assertEqual(n['id'], d['host_id'])
 
     def test_create_storageVolume_on_a_server(self):
