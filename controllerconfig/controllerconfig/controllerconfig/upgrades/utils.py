@@ -14,6 +14,7 @@ import os
 import subprocess
 import tempfile
 import yaml
+import netaddr
 
 # WARNING: The controller-1 upgrade is done before any puppet manifests
 # have been applied, so only the static entries from tsconfig can be used.
@@ -254,3 +255,15 @@ def apply_upgrade_manifest(controller_address):
         msg = "Failed to execute upgrade manifest"
         print(msg)
         raise Exception(msg)
+
+
+def format_url_address(address):
+    """Format the URL address according to RFC 2732"""
+    try:
+        addr = netaddr.IPAddress(address)
+        if addr.version == sysinv_constants.IPV6_FAMILY:
+            return "[%s]" % address
+        else:
+            return str(address)
+    except netaddr.AddrFormatError:
+        return address

@@ -12,6 +12,7 @@ import glob
 import os
 import shutil
 import subprocess
+import yaml
 
 import tsconfig.tsconfig as tsc
 
@@ -91,7 +92,7 @@ def export_vim(dest_dir):
         raise
 
 
-def prepare_upgrade(from_load, to_load, i_system):
+def prepare_upgrade(from_load, to_load, i_system, mgmt_address):
     """ Executed on the release N side to prepare for an upgrade. """
     devnull = open(os.devnull, 'w')
 
@@ -161,6 +162,27 @@ def prepare_upgrade(from_load, to_load, i_system):
                       os.path.join(utils.KUBERNETES_CONF_PATH,
                                    utils.KUBERNETES_ADMIN_CONF_FILE))
         raise
+
+    # Update admin.conf file to replace the cluster address with
+    # the floating management address
+    # This is a temporary change used in upgrade of N+1 node
+    admin_conf = os.path.join(tsc.PLATFORM_PATH, "config", to_load,
+                              "kubernetes", utils.KUBERNETES_ADMIN_CONF_FILE)
+    with open(admin_conf, 'r') as yaml_file:
+        config = yaml.load(yaml_file)
+
+    for item, values in config.items():
+        # update server address in cluster
+        if item == 'clusters':
+            if 'cluster' in values[0] and 'server' in values[0]['cluster']:
+                formatted_address = utils.format_url_address(mgmt_address)
+                # TODO use urlparse() to get url components and update
+                values[0]['cluster']['server'] = \
+                    "https://" + formatted_address + ":6443"
+            break  # no need to iterate further
+
+    with open(admin_conf, 'w') as yaml_file:
+        yaml.dump(config, yaml_file, default_flow_style=False)
 
     # Remove branding tar files from the release N+1 directory as branding
     # files are not compatible between releases.

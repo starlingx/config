@@ -9277,9 +9277,14 @@ class ConductorManager(service.PeriodicService):
                 rpcapi.create_simplex_backup(context, software_upgrade)
                 return
             else:
+                # get the floating management IP
+                mgmt_address = self.dbapi.address_get_by_name(
+                    cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                              constants.NETWORK_TYPE_MGMT)
+                )
                 i_system = self.dbapi.isystem_get_one()
                 upgrades_management.prepare_upgrade(
-                    from_version, to_version, i_system)
+                    from_version, to_version, i_system, mgmt_address.address)
 
             LOG.info("Finished upgrade preparation")
         except Exception:
