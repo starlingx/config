@@ -40,6 +40,7 @@ OCF_RESKEY_config_default="/etc/sysinv/sysinv.conf"
 : ${OCF_RESKEY_config=${OCF_RESKEY_config_default}}
 
 mydaemon="/usr/bin/${OCF_RESKEY_binary}"
+TMP_DIR="/var/run/sysinv_tmp"
 
 #######################################################################
 
@@ -109,6 +110,21 @@ dbg = true   ... Additional debug logs are also sent to the output stream
 </resource-agent>
 END
    return ${OCF_SUCCESS}
+}
+
+sysinv_conductor_tmpdir () {
+    local rc
+    if [ ! -d "$TMP_DIR" ]; then
+        mkdir -p "$TMP_DIR"
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            ocf_log err "Inventory Service (${OCF_RESKEY_binary}) failed to create temp dir (rc=${rc})"
+            return ${OCF_NOT_RUNNING}
+        fi
+        chown sysinv:sysinv "$TMP_DIR"
+    fi
+    export TMPDIR="$TMP_DIR"
+    return ${OCF_SUCCESS}
 }
 
 sysinv_conductor_validate() {
@@ -389,9 +405,14 @@ esac
 # Anything except meta-data and help must pass validation
 sysinv_conductor_validate || exit $?
 
+# Set up tmpfiles directory to avoid temp files being
+# cleaned up by systemd tmpfiles clean service.
+sysinv_conductor_tmpdir || exit $?
+
 if [ ${OCF_RESKEY_dbg} = "true" ] ; then
     ocf_log info "${binname}:${__OCF_ACTION} action"
 fi
+
 
 case ${__OCF_ACTION} in
 
