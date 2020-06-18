@@ -406,6 +406,10 @@ def _validate_syntax(device_image):
     """
     Validates the syntax of each field.
     """
+    if ('uuid' in device_image.keys() and
+            not cutils.is_uuid_like(device_image['uuid'])):
+        msg = _("uuid must be a valid UUID")
+        return msg
     msg = _validate_hexadecimal_fields(device_image)
     if not msg:
         msg = _validate_bitstream_type(device_image)
