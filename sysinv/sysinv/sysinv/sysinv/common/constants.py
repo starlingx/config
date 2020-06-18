@@ -18,6 +18,9 @@ SYSINV_CONF_DEFAULT_FILE = 'sysinv.conf.default'
 SYSINV_CONF_DEFAULT_PATH = os.path.join(SYSINV_CONFIG_PATH,
                                         SYSINV_CONF_DEFAULT_FILE)
 
+HTTPS_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.https_config_required')
+ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_config_required')
+
 # IP families
 IPV4_FAMILY = 4
 IPV6_FAMILY = 6
