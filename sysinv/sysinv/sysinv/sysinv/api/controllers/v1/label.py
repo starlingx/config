@@ -1,4 +1,4 @@
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -284,6 +284,13 @@ class LabelController(rest.RestController):
         label_dict = {lbl_obj.label_key: None}
 
         try:
+            pecan.request.dbapi.label_destroy(lbl_obj.uuid)
+        except exception.HostLabelNotFound:
+            msg = _("Delete host label failed: host %s label %s=%s"
+                    % (host.hostname, lbl_obj.label_key, lbl_obj.label_value))
+            raise wsme.exc.ClientSideError(msg)
+
+        try:
             pecan.request.rpcapi.update_kubernetes_label(
                 pecan.request.context,
                 host.uuid,
@@ -293,13 +300,6 @@ class LabelController(rest.RestController):
         except Exception as e:
             with excutils.save_and_reraise_exception():
                 LOG.exception(e)
-
-        try:
-            pecan.request.dbapi.label_destroy(lbl_obj.uuid)
-        except exception.HostLabelNotFound:
-            msg = _("Delete host label failed: host %s label %s=%s"
-                    % (host.hostname, lbl_obj.label_key, lbl_obj.label_value))
-            raise wsme.exc.ClientSideError(msg)
 
         try:
             vim_api.vim_host_update(
