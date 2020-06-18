@@ -167,6 +167,13 @@ sysinv_conductor_monitor () {
         ocf_log info "${proc}"
     fi
 
+    # A workaround for monitoring the owner of /home/sysadmin/.kube
+    # This should be removed as soon as Helm v3 and Armada containerization work is complete.
+    if [ -d /home/sysadmin/.kube -a "$(stat -c %U /home/sysadmin/.kube)" != "sysadmin" ]; then
+        chown -R sysadmin:sys_protected /home/sysadmin/.kube
+        ocf_log info "Fixing /home/sysadmin/.kube ownership"
+    fi
+
     sysinv_conductor_status
     rc=$?
     return ${rc}
