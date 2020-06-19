@@ -1596,6 +1596,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        signature=signature,
                                        ))
 
+    def update_admin_ep_certificate(self, context):
+        """Synchronously, have the conductor update the admin endpoint
+        certificate and dc root ca cert
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_admin_ep_certificate'))
+
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.
 

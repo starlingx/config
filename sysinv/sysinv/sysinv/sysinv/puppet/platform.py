@@ -3,13 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import base64
 import keyring
 import os
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import kubernetes
 from sysinv.common import utils
 
 from tsconfig import tsconfig
@@ -884,37 +882,21 @@ class PlatformPuppet(base.BasePuppet):
     def _get_dc_root_ca_config(self):
         config = {}
         system = self._get_system()
-        if system.distributed_cloud_role == \
-                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and \
-                os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+            cert_data = utils.get_admin_ep_cert(
+                system.distributed_cloud_role)
 
-            kube = kubernetes.KubeOperator()
-            try:
-                secret = kube.kube_get_secret('dc-adminep-root-ca-certificate', 'dc-cert')
-            except exception.KubeNotConfigured:
-                # kubernetes admin config file does not exist, skip
+            if cert_data is None:
                 return config
 
-            if not hasattr(secret, 'data'):
-                raise Exception('Invalid secret dc-adminep-root-ca-certificate')
-
-            data = secret.data
-            if 'ca.crt' not in data or \
-                    'tls.crt' not in data or 'tls.key' not in data:
-
-                raise Exception("Invalid admin endpoint certificate data.")
-
-            try:
-                ca_crt = base64.b64decode(data['ca.crt'])
-                tls_crt = base64.b64decode(data['tls.crt'])
-                tls_key = base64.b64decode(data['tls.key'])
-            except TypeError:
-                raise Exception('admin endpoint root ca certification is invalid')
+            dc_root_ca_crt = cert_data['dc_root_ca_crt']
+            admin_ep_crt = cert_data['admin_ep_crt']
 
             config.update({
-                'platform::config::dccert::params::dc_root_ca_crt': ca_crt,
+                'platform::config::dccert::params::dc_root_ca_crt':
+                    dc_root_ca_crt,
                 'platform::config::dccert::params::dc_adminep_crt':
-                    "%s%s" % (tls_key, tls_crt)
+                    admin_ep_crt
             })
 
         return config
