@@ -2585,7 +2585,7 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("looking at device %s, %s, %s" %
                       (device.pciaddr, device.pvendor_id, device.pdevice_id))
             if (device.pvendor_id != fpga_constants.N3000_VENDOR or
-                    device.pdevice_id != fpga_constants.N3000_DEVICE):
+                    device.pdevice_id not in fpga_constants.N3000_DEVICES):
                 continue
             if device.pciaddr not in update_addrs:
                 LOG.info("Deleting stale device at address %s" % device.pciaddr)
