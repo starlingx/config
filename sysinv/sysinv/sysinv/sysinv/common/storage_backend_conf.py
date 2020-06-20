@@ -307,6 +307,11 @@ class StorageBackendConfig(object):
                 constants.CINDER_BACKEND_CEPH
             )
 
+        # if no backend is added, return default value
+        if not ceph_backend:
+            LOG.warning("No Ceph storage backend config")
+            return 0, 0
+
         pool_size = int(ceph_backend.capabilities[
                 constants.CEPH_BACKEND_REPLICATION_CAP])
         pool_min_size = int(ceph_backend.capabilities[
