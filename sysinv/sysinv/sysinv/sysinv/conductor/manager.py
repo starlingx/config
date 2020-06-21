@@ -5445,9 +5445,12 @@ class ConductorManager(service.PeriodicService):
             LOG.warning("armada pod not present")
             return
 
-        # Disable application apply during upgrades
-        if self.is_upgrade_in_progress():
-            LOG.info("Upgrade in progress - disable audit")
+        # Defer platform managed application activity while an upgrade is active
+        try:
+            self.verify_upgrade_not_in_progress()
+        except Exception:
+            LOG.info("Upgrade in progress - defer platform managed application "
+                     "activity")
             return
 
         # Check the application state and take the approprate action
@@ -5489,6 +5492,13 @@ class ConductorManager(service.PeriodicService):
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
     def check_pending_app_reapply(self, context):
+        # Defer application reapply while an upgrade is active
+        try:
+            self.verify_upgrade_not_in_progress()
+        except Exception:
+            LOG.info("Upgrade in progress - Ignore app reapply checks")
+            return
+
         # Pick first app that needs to be re-applied
         for index, app_name in enumerate(
                 constants.HELM_APPS_WITH_REAPPLY_SUPPORT):
@@ -5502,6 +5512,7 @@ class ConductorManager(service.PeriodicService):
                      "currently node(s) in an unstable state. Will "
                      "retry on next audit", app_name)
             return
+
         # Check no other app apply is in progress
         for other_app in self.dbapi.kube_app_get_all():
             if other_app.status == constants.APP_APPLY_IN_PROGRESS:
@@ -6751,24 +6762,27 @@ class ConductorManager(service.PeriodicService):
                       " report_config_status! iconfig: %(iconfig)s" %
                       {'iconfig': iconfig, 'cfg': reported_cfg})
 
-        # Skip application reapply during upgrades
-        if self.is_upgrade_in_progress():
-            LOG.info("Upgrade in progress - skip pending app reapply")
-            return
-
         if success:
             self.check_pending_app_reapply(context)
 
-    def is_upgrade_in_progress(self):
+    def verify_upgrade_not_in_progress(self):
         """ Check if there is an upgrade in progress.
+
+        Raise an exception if one is found.
         """
         try:
             self.dbapi.software_upgrade_get_one()
         except exception.NotFound:
-            # No upgrade in progress
-            return False
+            pass
         else:
-            return True
+            raise exception.SysinvException(_("Platform upgrade in progress."))
+
+        try:
+            self.dbapi.kube_upgrade_get_one()
+        except exception.NotFound:
+            pass
+        else:
+            raise exception.SysinvException(_("Kubernetes upgrade in progress."))
 
     def report_partition_mgmt_success(self, host_uuid, idisk_uuid,
                                       partition_uuid):
