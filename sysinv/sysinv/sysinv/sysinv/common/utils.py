@@ -1903,6 +1903,9 @@ def find_metadata_file(path, metadata_file):
     - <chart name>
     - <chart name>
     ...
+    maintain_user_overrides: <true|false>
+      - optional: defaults to false. Over an app update any user overrides are
+        preserved for the new version of the application
     """
     app_name = ''
     app_version = ''

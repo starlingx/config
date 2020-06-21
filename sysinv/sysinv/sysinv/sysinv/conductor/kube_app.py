@@ -173,10 +173,7 @@ class AppOperator(object):
 
     def app_has_system_plugins(self, rpc_app):
         app = AppOperator.Application(rpc_app)
-        # TODO(rchurch): Update once apps are decoupled
-        return (app.system_app or
-                app.name == constants.HELM_APP_CERT_MANAGER or
-                app.name == constants.HELM_APP_OIDC_AUTH)
+        return app.system_app
 
     def _clear_armada_locks(self):
         lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
@@ -1727,6 +1724,46 @@ class AppOperator(object):
             elif (operation_type == constants.APP_REMOVE_OP):
                 self._wait_for_pod_termination(common.HELM_NS_MONITOR)
 
+    def _in_upgrade_old_app_is_non_decoupled(self, old_app):
+        """Special case application upgrade check for STX 4.0
+
+        This is a special case identifier for platform application rollbacks of
+        non-decoupled application.
+
+        In STX 4.0, helm plugins were removed and delivered as part of the
+        application tarball. During platform upgrade, platform applications are
+        updated (uploaded and applied) to the new delivered versions. In the
+        case of an apply failure the application is rolled back to restore
+        application functionality.
+
+        The current decoupled app framework relies on the existence of a plugin
+        directory to signify that it is a system knowledgeable application. The
+        prior not decoupled applications, do not have this structure. This
+        function will identify them so their saved overrides can be used during
+        rollback.
+
+        Include the 'nginx-ingress-controller' app in this as well since it
+        possibly could be applied and is currently not a system aware platform
+        application.
+
+        NOTE: This and its call should be removed from master after branching
+        for STX 4.0 is complete. All applications post STX 4.0 will all be
+        decoupled and future application upgrades do not require this.
+        """
+        try:
+            self._dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            return False
+        else:
+            if (old_app.system_app or
+                old_app.name in [constants.HELM_APP_CERT_MANAGER,
+                                 constants.HELM_APP_OIDC_AUTH,
+                                 constants.HELM_APP_PLATFORM,
+                                 'nginx-ingress-controller']):
+                return True
+            return False
+
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
         """Perform application recover
 
@@ -1771,7 +1808,7 @@ class AppOperator(object):
             if armada_process_required:
                 overrides_str = ''
                 old_app.charts = self._get_list_of_charts(old_app.sync_armada_mfile)
-                if old_app.system_app:
+                if old_app.system_app or self._in_upgrade_old_app_is_non_decoupled(old_app):
                     (helm_files, armada_files) = self._get_overrides_files(
                         old_app.sync_overrides_dir, old_app.charts, old_app.name, mode=None)
 
