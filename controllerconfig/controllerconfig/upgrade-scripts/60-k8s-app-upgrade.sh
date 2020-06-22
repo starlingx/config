@@ -30,15 +30,35 @@ UPLOAD_RESULT_ATTEMPTS=24  # ~4 min to upload app
 UPDATE_RESULT_SLEEP=30
 UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
 
+source /etc/platform/openrc
+source /etc/platform/platform.conf
+
 # This will log to /var/log/platform.log
 function log {
     logger -p local1.info $1
 }
 
+function verify_apps_are_not_recovering {
+    # Scrape app names. Skip header and footer.
+    APPS=$(system application-list --nowrap | head -n-1 | tail -n+4 | awk '{print $2}')
+    for a in ${APPS}; do
+        APP_STATUS=$(system application-show $a --column status --format value)
+        if [[ "${APP_STATUS}" =~ ^(applying|restore-requested)$ ]]; then
+            if [ ${system_type} == 'All-in-one' ] && [ ${system_mode} == 'simplex' ]; then
+                log "$NAME: $a is in a recovering state: ${APP_STATUS}. Execute upgrade-activate again when all applications are uploaded or applied."
+            else
+                log "$NAME: $a is in an unexpected state: ${APP_STATUS}. Exiting for manual intervention..."
+            fi
+            exit 1
+        fi
+    done
+}
+
 log "$NAME: Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [ "$TO_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
-    source /etc/platform/openrc
+
+    verify_apps_are_not_recovering
 
     # Get the list of applications installed in the new release
     for fqpn_app in $PLATFORM_APPLICATION_PATH/*; do
@@ -146,7 +166,7 @@ if [ "$TO_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
                 ;;
 
             # States that are unexpected
-            uploading | upload-failed | applying | apply-failed | removing | remove-failed | updating | recovering )
+            uploading | upload-failed | applying | apply-failed | removing | remove-failed | restore-requested | updating | recovering )
                 log "$NAME: ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, is in an unexpected state: ${EXISTING_APP_STATUS}. Exiting for manual intervention..."
                 exit 1
                 ;;
