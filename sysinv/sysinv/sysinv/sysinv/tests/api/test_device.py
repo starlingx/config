@@ -319,7 +319,7 @@ class TestPatchDevice(TestDevice):
         self.assertIn('SR-IOV cannot be configured on this interface',
                       response.json['error_message'])
 
-    def test_device_modify_sriov_vf_driver(self):
+    def test_device_modify_sriov_vf_driver_igb_uio(self):
         self.pci_device = dbutils.create_test_pci_device(
             host_id=self.worker.id,
             pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
@@ -333,6 +333,21 @@ class TestPatchDevice(TestDevice):
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(http_client.OK, response.status_code)
         self.assertEqual('igb_uio', response.json['sriov_vf_driver'])
+
+    def test_device_modify_sriov_vf_driver_vfio(self):
+        self.pci_device = dbutils.create_test_pci_device(
+            host_id=self.worker.id,
+            pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
+            pdevice_id=dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
+            sriov_totalvfs=8,
+            sriov_numvfs=2)
+        response = self.patch_dict_json(
+            '%s' % self._get_path(self.pci_device['uuid']),
+            sriov_vf_driver='vfio',
+            expect_errors=False)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(http_client.OK, response.status_code)
+        self.assertEqual('vfio', response.json['sriov_vf_driver'])
 
     def test_device_modify_sriov_vf_driver_unsupported_device(self):
         self.pci_device = dbutils.create_test_pci_device(

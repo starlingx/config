@@ -75,11 +75,15 @@ class DevicePuppet(base.BasePuppet):
                 vf_addrs = [quoted_str(addr.strip())
                     for addr in vf_addrs.split(",") if addr]
                 if len(vf_addrs) == device.get('sriov_numvfs', 0):
+                    vf_driver = device.get('sriov_vf_driver', None)
+                    if vf_driver:
+                        if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
+                            vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
                     for addr in vf_addrs:
                         vf_config.update({
                             addr: {
                                 'addr': addr,
-                                'driver': device['sriov_vf_driver']
+                                'driver': vf_driver
                             }
                         })
 

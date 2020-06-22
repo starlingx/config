@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from sysinv.common import constants
+
 # PCI Device Class ID in hexidecimal string
 PCI_DEVICE_CLASS_FPGA = '120000'
 
@@ -21,6 +23,7 @@ FPGA_INTEL_5GNR_FEC_DRIVER_IGB_UIO = "igb_uio"
 FPGA_INTEL_5GNR_FEC_DRIVER_NONE = "none"
 
 FPGA_INTEL_5GNR_FEC_VF_VALID_DRIVERS = [FPGA_INTEL_5GNR_FEC_DRIVER_IGB_UIO,
+                                        constants.SRIOV_DRIVER_TYPE_VFIO,
                                         FPGA_INTEL_5GNR_FEC_DRIVER_NONE]
 FPGA_INTEL_5GNR_FEC_PF_VALID_DRIVERS = [FPGA_INTEL_5GNR_FEC_DRIVER_IGB_UIO,
                                         FPGA_INTEL_5GNR_FEC_DRIVER_NONE]
