@@ -1196,6 +1196,10 @@ def upgrade_controller_simplex(backup_file):
     print("Migrating armada configuration...")
     migrate_armada_config(from_release, to_release)
 
+    # Migrate helm config
+    print("Migrating helm configuration...")
+    migrate_helm_config(from_release, to_release)
+
     # Migrate sysinv data.
     print_log_info("Migrating sysinv configuration...")
     migrate_sysinv_data(from_release, to_release)
