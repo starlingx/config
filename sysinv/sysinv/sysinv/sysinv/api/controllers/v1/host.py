@@ -2888,6 +2888,9 @@ class HostController(rest.RestController):
             fm_constants.FM_ALARM_ID_HOST_VERSION_MISMATCH,
             entity_instance_id)
 
+        pecan.request.dbapi.ihost_update(
+            rpc_ihost.uuid, {'inv_state': constants.INV_STATE_REINSTALLING})
+
         if rpc_ihost.availability == "online":
             new_ihost_mtc = rpc_ihost.as_dict()
             new_ihost_mtc.update({'operation': 'modify'})
@@ -6430,8 +6433,11 @@ class HostController(rest.RestController):
                                     pecan.request.context, stor.uuid)
                 self._ceph.remove_osd_key(istor_obj['osdid'])
 
-        hostupdate.ihost_val_update({constants.HOST_ACTION_STATE:
-                                     constants.HAS_REINSTALLING})
+        hostupdate.ihost_val_update(
+            {
+                constants.HOST_ACTION_STATE: constants.HAS_REINSTALLING,
+                'inv_state': constants.INV_STATE_REINSTALLING
+            })
 
     @staticmethod
     def _stage_poweron(hostupdate):

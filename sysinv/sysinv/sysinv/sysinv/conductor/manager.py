@@ -8560,7 +8560,11 @@ class ConductorManager(service.PeriodicService):
             if host.personality in personalities:
                 # Never generate hieradata for uninventoried hosts, as their
                 # interface config will be incomplete.
-                if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+                valid_inventory_states = [
+                    constants.INV_STATE_INITIAL_INVENTORIED,
+                    constants.INV_STATE_REINSTALLING
+                ]
+                if host.inv_state not in valid_inventory_states:
                     LOG.info(
                         "Cannot generate the configuration for %s, "
                         "the host is not inventoried yet." % host.hostname)
