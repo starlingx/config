@@ -1009,6 +1009,13 @@ def get_sriov_interface_port(context, iface):
     return interface.get_sriov_interface_port(context, iface)
 
 
+def get_sriov_interface_device_id(context, iface):
+    """
+    Determine the underlying PCI device id of the SR-IOV interface.
+    """
+    return interface.get_sriov_interface_device_id(context, iface)
+
+
 def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):
     """
     Determine the virtual function addresses of SR-IOV interface,
@@ -1072,6 +1079,8 @@ def get_sriov_config(context, iface):
         'ifname': iface['ifname'],
         'addr': quoted_str(port['pciaddr'].strip()),
         'num_vfs': num_vfs,
+        'device_id': interface.get_sriov_interface_device_id(context, iface),
+        'port_name': port['name'],
         'vf_config': vf_config
     }
     return config
