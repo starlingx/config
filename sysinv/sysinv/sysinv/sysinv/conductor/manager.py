@@ -5398,6 +5398,22 @@ class ConductorManager(service.PeriodicService):
             app.progress = constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED
             app.save()
 
+    @staticmethod
+    def _check_software_orchestration_in_progress():
+        """
+        Returns the progress of upgrades, patches and firmware updates
+        """
+
+        vim_resp = vim_api.vim_get_sw_update_strategy(
+            None,
+            constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
+
+        if vim_resp['sw-update-type'] is not None and \
+                vim_resp['in-progress'] is not None:
+            return vim_resp['in-progress']
+
+        return False
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
@@ -5412,9 +5428,6 @@ class ConductorManager(service.PeriodicService):
                 ((active_ctrl.administrative != constants.ADMIN_UNLOCKED) or
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
-
-        if not self._requested_restore:
-            self._k8s_application_images_audit(context)
 
         # WORKAROUND: For k8s NodeAffinity issue. Call this for a limited time
         #             (5 times over ~5 minutes). As of k8s upgrade to v1.18.1,
@@ -5436,6 +5449,14 @@ class ConductorManager(service.PeriodicService):
                          datetime.now(self._start_time.tzinfo)))
             self._kube_pod.delete_failed_pods_by_reason(
                 reason='NodeAffinity')
+
+        # Defer platform managed application activity during update orchestration.
+        if self._check_software_orchestration_in_progress():
+            LOG.debug("Software update orchestration in progress. Defer audit.")
+            return
+
+        if not self._requested_restore:
+            self._k8s_application_images_audit(context)
 
         # Ensure that armada pod is running.
         pods = self._kube.kube_get_pods_by_selector("armada",
@@ -5497,6 +5518,12 @@ class ConductorManager(service.PeriodicService):
             self.verify_upgrade_not_in_progress()
         except Exception:
             LOG.info("Upgrade in progress - Ignore app reapply checks")
+            return
+
+        # Defer application reapply during update orchestration
+        if self._check_software_orchestration_in_progress():
+            LOG.info("Software update orchestration in progress. "
+                     "Ignore app reapply checks.")
             return
 
         # Pick first app that needs to be re-applied
