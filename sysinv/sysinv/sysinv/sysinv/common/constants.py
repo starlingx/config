@@ -210,6 +210,7 @@ HAS_REINSTALLING = "reinstalling"
 HAS_REINSTALLED = "reinstalled"
 
 INV_STATE_INITIAL_INVENTORIED = "inventoried"
+INV_STATE_REINSTALLING = "reinstalling"
 
 # Board Management Region Info
 REGION_PRIMARY = "Internal"
