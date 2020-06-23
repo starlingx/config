@@ -8689,7 +8689,8 @@ class ConductorManager(service.PeriodicService):
                                    force=force)
 
         for app_name in constants.HELM_APPS_WITH_REAPPLY_SUPPORT:
-            self.evaluate_app_reapply(context, app_name)
+            if cutils.is_app_applied(self.dbapi, app_name):
+                self.evaluate_app_reapply(context, app_name)
 
         # Remove reboot required flag in case it's present. Runtime manifests
         # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
@@ -11058,7 +11059,7 @@ class ConductorManager(service.PeriodicService):
 
         except exception.KubeAppNotFound:
             return
-        if app.status == constants.APP_APPLY_SUCCESS:
+        if app.active and app.status == constants.APP_APPLY_SUCCESS:
             # Hash the existing overrides
             # TODO these hashes can be stored in the db to reduce overhead,
             # as well as removing the writing to disk of the new overrides
@@ -11160,26 +11161,48 @@ class ConductorManager(service.PeriodicService):
         # deactivate the app
         self._app.deactivate(rpc_app)
         appname = self._app.get_appname(rpc_app)
-        # need to update sm stx_openstack runtime manifest first
-        # to deprovision dbmon service prior to removing the
-        # stx-openstack application
-        if constants.HELM_APP_OPENSTACK == appname:
-            self._config_sm_stx_openstack(context)
 
-        app_removed = self._app.perform_app_remove(rpc_app)
-        if constants.HELM_APP_OPENSTACK == appname and app_removed:
-            # Update the VIM and PciIrqAffinity configuration.
-            self._update_vim_config(context)
-            self._update_pciirqaffinity_config(context)
-            self._update_radosgw_config(context)
+        # TODO(rchurch): Decouple this. No specific app names should be
+        # specified. Needs to be generalized as some apps may require more
+        # complex application integration with the platform.
+        if appname in [constants.HELM_APP_OPENSTACK,
+                       constants.HELM_APP_MONITOR]:
 
-        if constants.HELM_APP_MONITOR == appname and app_removed:
-            logstash_active = cutils.is_chart_enabled(self.dbapi, constants.HELM_APP_MONITOR,
-                                                      helm_common.HELM_CHART_LOGSTASH,
-                                                      helm_common.HELM_NS_MONITOR)
+            # Pre-removal actions:
+            if constants.HELM_APP_OPENSTACK == appname:
+                # Need to update sm stx_openstack runtime manifest first
+                # to deprovision dbmon service prior to removing the
+                # stx-openstack application
+                self._config_sm_stx_openstack(context)
 
-            if logstash_active:
-                self._update_config_for_stx_monitor(context)
+            # Remove the application but defer disabling the application plugins
+            # for access by post-removal actions
+            app_removed = self._app.perform_app_remove(
+                rpc_app, deactivate_plugins=False)
+
+            # Post-removal actions:
+            if app_removed:
+                if constants.HELM_APP_OPENSTACK == appname:
+                    # Update the VIM and PciIrqAffinity configuration.
+                    self._update_vim_config(context)
+                    self._update_pciirqaffinity_config(context)
+                    self._update_radosgw_config(context)
+
+                if constants.HELM_APP_MONITOR == appname:
+                    logstash_active = cutils.is_chart_enabled(
+                        self.dbapi, constants.HELM_APP_MONITOR,
+                        helm_common.HELM_CHART_LOGSTASH,
+                        helm_common.HELM_NS_MONITOR)
+
+                    if logstash_active:
+                        self._update_config_for_stx_monitor(context)
+
+                # Now that post removal actions are complete, deactivate the
+                # plugins
+                self._app.deactivate_app_plugins(rpc_app)
+
+        else:
+            app_removed = self._app.perform_app_remove(rpc_app)
 
         return app_removed
 
