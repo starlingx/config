@@ -9156,7 +9156,13 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Failure during sw-patch init-release"))
 
-        # Remove load files in staging dir
+        # TODO(tngo): a less efficient but cleaner solution is to let sysinv
+        # api proxy copy the load files directly from the request as opposed
+        # to relying on load files in sysinv staging directory being there.
+        system = self.dbapi.isystem_get_one()
+        if system.distributed_cloud_role == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            greenthread.sleep(constants.STAGING_LOAD_FILES_REMOVAL_WAIT_TIME)
         shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
 
         LOG.info("Load import completed.")
@@ -9220,7 +9226,7 @@ class ConductorManager(service.PeriodicService):
 
     def finalize_delete_load(self, context, sw_version):
         # Clean up the staging directory in case an error occur during the
-        # import and this directoy did not get cleaned up.
+        # import and this directory did not get cleaned up.
         if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
             shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
 
