@@ -370,8 +370,13 @@ def get_n3000_pci_info():
     pci_device_list = []
     try:
         pci_operator = pci.PCIOperator()
-        pci_devices = pci_operator.pci_devices_get(
-            vendor=constants.N3000_VENDOR, device=constants.N3000_DEVICE)
+        # We want to get updated info for the FPGA itself and any "virtual"
+        # PCI devices implemented by the FPGA.  This loop isn't very
+        # efficient, but so far it's only a small number of devices.
+        pci_devices = []
+        for device in constants.N3000_DEVICES:
+            pci_devices.extend(pci_operator.pci_devices_get(
+                vendor=constants.N3000_VENDOR, device=device))
         for pci_dev in pci_devices:
             pci_dev_array = pci_operator.pci_get_device_attrs(
                 pci_dev.pciaddr)
