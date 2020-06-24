@@ -66,6 +66,9 @@ class DevicePuppet(base.BasePuppet):
         device_config = {}
         vf_config = {}
         for device in fpga_fec_devices:
+            if not device.get('driver', None) or not device.get('sriov_numvfs', None):
+                continue
+
             name = 'pci-%s' % device.pciaddr
 
             # Format the vf addresses as quoted strings in order to prevent
@@ -91,7 +94,8 @@ class DevicePuppet(base.BasePuppet):
                 device.pciaddr: {
                     'num_vfs': device['sriov_numvfs'],
                     'addr': quoted_str(device['pciaddr'].strip()),
-                    'driver': device['driver']
+                    'driver': device['driver'],
+                    'device_id': device['pdevice_id']
                 }
             }
             device_config = {

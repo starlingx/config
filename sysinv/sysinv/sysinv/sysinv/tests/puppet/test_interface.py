@@ -166,6 +166,7 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                 'mac': interface['imac'],
                 'driver': kwargs.get('driver', 'ixgbe'),
                 'dpdksupport': kwargs.get('dpdksupport', True),
+                'pdevice': "Ethernet Controller X710 for 10GbE SFP+ [1572]",
                 'pciaddr': kwargs.get('pciaddr',
                                       '0000:00:00.' + str(port_id + 1)),
                 'dev_id': kwargs.get('dev_id', 0),
@@ -787,6 +788,15 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface)
         self.assertIsNone(classifier)
 
+    def test_get_sriov_interface_device_id(self):
+        port, iface = self._create_ethernet_test(
+            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            sriov_vf_driver=None)
+        self._update_context()
+        value = interface.get_sriov_interface_device_id(self.context, iface)
+        self.assertEqual(value, '1572')
+
     def test_get_sriov_interface_port(self):
         port, iface = self._create_ethernet_test(
             'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -1114,12 +1124,14 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
     def _get_sriov_config(self, ifname='default',
                           vf_driver=constants.SRIOV_DRIVER_TYPE_VFIO,
                           vf_addrs=None, num_vfs=2,
-                          pf_addr=None):
+                          pf_addr=None, device_id='1572', port_name="eth0"):
         if vf_addrs is None:
             vf_addrs = []
         config = {'ifname': ifname,
                   'addr': pf_addr if pf_addr else self.port['pciaddr'],
+                  'device_id': device_id,
                   'num_vfs': num_vfs,
+                  'port_name': port_name,
                   'vf_config': {}}
         if vf_addrs:
             for addr in vf_addrs:
@@ -1434,6 +1446,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
     def test_get_sriov_config_netdevice(self):
         vf_addr1 = "0000:81:00.0"
         vf_addr2 = "0000:81:01.0"
+        device_id = '1572'
+        port_name = 'eth0'
         vf_addr_list = "{},{}".format(vf_addr1, vf_addr2)
         num_vfs = 2
 
@@ -1444,7 +1458,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.iface['ifname'], 'i40evf',
             [quoted_str(vf_addr1),
              quoted_str(vf_addr2)],
-            num_vfs)
+            num_vfs,
+            device_id=device_id,
+            port_name=port_name)
         self.assertEqual(expected, config)
 
     def test_get_sriov_config_vfio(self):
@@ -1490,7 +1506,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         expected = self._get_sriov_config(
             vf['ifname'], None,
             None,
-            None, pf_addr=port['pciaddr'])
+            None, pf_addr=port['pciaddr'],
+            port_name="eth1")
         self.assertEqual(expected, config)
 
     def test_is_a_mellanox_cx3_device_false(self):

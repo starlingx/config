@@ -57,7 +57,7 @@ class TestDevice(base.FunctionalTest, dbbase.BaseHostTestCase):
             self.controller = host
         else:
             self.worker = host
-        return
+        return host
 
     def _create_device(self, **kw):
         device = dbutils.create_test_pci_device(**kw)
@@ -394,3 +394,23 @@ class TestPatchDevice(TestDevice):
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
         self.assertIn('attribute restricted', response.json['error_message'])
+
+    def test_device_modify_fec_device_unprovisioned(self):
+        host = self._create_host(constants.CONTROLLER,
+                                 subfunction=constants.WORKER,
+                                 admin=constants.ADMIN_LOCKED,
+                                 invprovision="provisioning")
+        self.pci_device = dbutils.create_test_pci_device(
+            host_id=host.id,
+            pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
+            pdevice_id=dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
+            sriov_totalvfs=8,
+            sriov_numvfs=2)
+        response = self.patch_dict_json(
+            '%s' % self._get_path(self.pci_device['uuid']),
+            sriov_numvfs=-1,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('is unlocked for the first time', response.json['error_message'])

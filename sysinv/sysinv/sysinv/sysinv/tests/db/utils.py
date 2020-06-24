@@ -961,6 +961,7 @@ def get_test_ethernet_port(**kw):
         'interface_id': kw.get('interface_id'),
         'interface_uuid': kw.get('interface_uuid'),
         'pciaddr': kw.get('pciaddr'),
+        'pdevice': kw.get('pdevice'),
         'dpdksupport': kw.get('dpdksupport'),
         'dev_id': kw.get('dev_id'),
         'sriov_totalvfs': kw.get('sriov_totalvfs'),

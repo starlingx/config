@@ -354,6 +354,11 @@ def _check_field(field):
 
 def _check_device_sriov(device, host):
     sriov_update = False
+    if (device['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF and
+            host.invprovision != constants.PROVISIONED):
+        raise wsme.exc.ClientSideError(_("Cannot configure device %s "
+                    "until host %s is unlocked for the first time." %
+                    (device['uuid'], host.hostname)))
 
     if (device['pdevice_id'] not in dconstants.SRIOV_ENABLED_DEVICE_IDS and
             'sriov_numvfs' in device.keys() and device['sriov_numvfs']):
