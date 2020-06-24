@@ -2128,7 +2128,7 @@ def app_reapply_pending_fault_entity(app_name):
 
 def get_local_docker_registry_auth():
     registry_password = keyring.get_password(
-        constants.DOCKER_REGISTRY_SERVICE, constants.DOCKER_REGISTRY_USER)
+        constants.DOCKER_REGISTRY_USER, "services")
 
     if not registry_password:
         raise exception.DockerRegistryCredentialNotFound(
