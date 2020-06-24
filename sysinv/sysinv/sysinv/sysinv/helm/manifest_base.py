@@ -245,7 +245,7 @@ class ArmadaManifestOperator(object):
                     yaml.dump_all(self.content, f, Dumper=yaml.RoundTripDumper,
                                   explicit_start=True,
                                   default_flow_style=False)
-                    LOG.info("Delete manifest file %s generated" %
+                    LOG.debug("Delete manifest file %s generated" %
                              self.delete_manifest)
                 except Exception as e:
                     LOG.error("Failed to generate delete manifest file %s: "

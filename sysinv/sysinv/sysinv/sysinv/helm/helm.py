@@ -61,6 +61,9 @@ def suppress_stevedore_errors(manager, entrypoint, exception):
     pass
 
 
+LOCK_NAME = 'HelmOperator'
+
+
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
@@ -75,10 +78,11 @@ class HelmOperator(object):
         # operators
         self.discover_plugins()
 
+    @utils.synchronized(LOCK_NAME)
     def discover_plugins(self):
         """ Scan for all available plugins """
 
-        LOG.info("HelmOperator: Loading available helm and armada plugins.")
+        LOG.debug("HelmOperator: Loading available helm and armada plugins.")
 
         # Initialize the plugins
         self.helm_system_applications = {}
@@ -96,6 +100,7 @@ class HelmOperator(object):
         # dict containing Armada manifest operators per app
         self.armada_manifest_operators = self._load_armada_manifest_operators()
 
+    @utils.synchronized(LOCK_NAME)
     def purge_cache_by_location(self, install_location):
         """Purge the stevedore entry point cache."""
         for armada_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]:
@@ -177,7 +182,7 @@ class HelmOperator(object):
 
         # Provide some log feedback on plugins being used
         for (app_name, info) in iteritems(dist_info_dict):
-            LOG.info("Plugins for %-20s: loaded from %-20s - %s." % (app_name,
+            LOG.debug("Plugins for %-20s: loaded from %-20s - %s." % (app_name,
                 info['name'], info['location']))
 
         return operators_dict
@@ -606,6 +611,7 @@ class HelmOperator(object):
             LOG.exception("chart name is required")
 
     @helm_context
+    @utils.synchronized(LOCK_NAME)
     def generate_helm_application_overrides(self, path, app_name,
                                             mode=None,
                                             cnamespace=None,
@@ -696,10 +702,14 @@ class HelmOperator(object):
                         overrides[key] = new_overrides
                 self._write_chart_overrides(path, chart_name, cnamespace, overrides)
 
-                # Update manifest docs based on the plugin directives
-                if chart_name in self.chart_operators:
-                    self.chart_operators[chart_name].execute_manifest_updates(
-                        manifest_op)
+                # Update manifest docs based on the plugin directives. If the
+                # application does not provide a manifest operator, the
+                # GenericArmadaManifestOperator is used and chart specific
+                # operations can be skipped.
+                if manifest_op.APP:
+                    if chart_name in self.chart_operators:
+                        self.chart_operators[chart_name].execute_manifest_updates(
+                            manifest_op)
 
             # Update the manifest based on platform conditions
             manifest_op.platform_mode_manifest_updates(self.dbapi, mode)

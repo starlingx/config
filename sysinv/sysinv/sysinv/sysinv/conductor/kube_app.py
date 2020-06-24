@@ -2433,13 +2433,14 @@ class AppOperator(object):
         self._clear_app_alarm(to_app.name)
         return True
 
-    def perform_app_remove(self, rpc_app):
+    def perform_app_remove(self, rpc_app, deactivate_plugins=True):
         """Process application remove request
 
         This method invokes Armada to delete the application manifest.
         For system app, it also cleans up old test pods.
 
         :param rpc_app: application object in the RPC request
+        :param deactivate_plugins: Deactive plugins on removal
         :return boolean: whether application remove was successful
         """
 
@@ -2475,7 +2476,8 @@ class AppOperator(object):
                     if self._rbd_provisioner_required(app.name):
                         self._delete_rbd_provisioner_secrets(app.name)
                     self._delete_app_specific_resources(app.name, constants.APP_REMOVE_OP)
-                    self._plugins.deactivate_plugins(app)
+                    if deactivate_plugins:
+                        self._plugins.deactivate_plugins(app)
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
                 LOG.exception(e)
