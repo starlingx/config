@@ -106,8 +106,8 @@ def update_subcloud_status():
                 LOG.info("Nothing to do - load status records already exist.")
 
             cur.execute("INSERT into subcloud_status("
-                        "subcloud_id, endpoint_type, sync_status) "
-                        "select id, 'dc-cert', 'in-sync' "
+                        "subcloud_id, endpoint_type, sync_status, deleted) "
+                        "select id, 'dc-cert', 'in-sync', 0 "
                         "from subclouds where id not in "
                         "(select subcloud_id from subcloud_status "
                         "where endpoint_type = 'dc-cert')")
