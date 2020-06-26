@@ -64,9 +64,10 @@ def gethostaddress(hostname):
     return socket.getaddrinfo(hostname, None)[0][4][0]
 
 
-def get_db_credentials(shared_services, from_release):
+def get_db_credentials(shared_services, from_release, role=None):
     """
-    Returns the database credentials using the provided shared services.
+    Returns the database credentials using the provided shared services,
+    from_release and role.
     """
     db_credential_keys = \
         {'barbican': {'hiera_user_key': 'barbican::db::postgresql::user',
@@ -84,6 +85,12 @@ def get_db_credentials(shared_services, from_release):
                           'keyring_password_key': 'keystone',
                           }})
 
+    if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        db_credential_keys.update(
+            {'dcmanager': {'hiera_user_key': 'dcmanager::db::postgresql::user',
+                           'keyring_password_key': 'dcmanager',
+                           }})
+
     # Get the hiera data for the from release
     hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
                               "hieradata")
@@ -99,6 +106,22 @@ def get_db_credentials(shared_services, from_release):
         db_credentials[database] = {'username': username, 'password': password}
 
     return db_credentials
+
+
+def get_system_role():
+    """ Get the system role from the sysinv database"""
+
+    conn = psycopg2.connect("dbname=sysinv user=postgres")
+    cur = conn.cursor()
+    cur.execute("select distributed_cloud_role from i_system;")
+    row = cur.fetchone()
+    if row is None:
+        LOG.error("Failed to fetch i_system data")
+        raise psycopg2.ProgrammingError("Failed to fetch i_system data")
+
+    role = row[0]
+
+    return role
 
 
 def get_shared_services():
@@ -533,7 +556,7 @@ def migrate_sysinv_database():
 
 
 def migrate_databases(from_release, shared_services, db_credentials,
-                      simplex=False):
+                      simplex=False, role=None):
     """ Migrates databases. """
 
     devnull = open(os.devnull, 'w')
@@ -582,6 +605,18 @@ def migrate_databases(from_release, shared_services, db_credentials,
                  'keystone-manage --config-file ' +
                  '/etc/keystone/keystone-dbsync.conf db_sync')
             ]
+
+    if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        # append the migrate command for dcmanager db
+        # todo(jkung): append the migrate command for dcorch
+        with open("/etc/dcmanager/dcmanager.conf", "w") as f:
+            f.write("[database]\n")
+            f.write(get_connection_string(db_credentials, 'dcmanager'))
+
+        migrate_commands += [
+            ('dcmanager',
+             'dcmanager-manage db_sync')
+        ]
 
     # Execute migrate commands
     for cmd in migrate_commands:
@@ -775,6 +810,7 @@ def upgrade_controller(from_release, to_release):
     print("Importing databases...")
     import_databases(from_release, to_release)
 
+    role = get_system_role()
     shared_services = get_shared_services()
 
     # Create /tmp/python_keyring - used by keystone manifest.
@@ -803,7 +839,8 @@ def upgrade_controller(from_release, to_release):
     utils.add_upgrade_entries_to_hiera_data(from_release)
 
     # Get database credentials
-    db_credentials = get_db_credentials(shared_services, from_release)
+    db_credentials = get_db_credentials(
+        shared_services, from_release, role=role)
 
     # Create any new databases
     print("Creating new databases...")
@@ -814,7 +851,7 @@ def upgrade_controller(from_release, to_release):
     migrate_sysinv_database()
 
     # Migrate databases
-    migrate_databases(from_release, shared_services, db_credentials)
+    migrate_databases(from_release, shared_services, db_credentials, role=role)
 
     print("Applying configuration...")
 
