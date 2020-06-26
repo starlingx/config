@@ -96,7 +96,7 @@ spec:
 
 
 def update_dc_root_ca():
-    mgmt_ip = socket.gethostbyname('controller')
+    mgmt_ip = socket.getaddrinfo('controller', None)[0][4][0]
     resource = dc_root_cert_yaml % (mgmt_ip, mgmt_ip)
     cmd = "echo '%s' | " \
           "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f -" % \
