@@ -955,6 +955,18 @@ class AppOperator(object):
         ):
             return False
 
+        # TODO(rchurch): This needs to be driven by applications either via
+        # application metadata and queried as part of a lifecycle plugin or the
+        # applications should provide a chart component to generate the secret
+        # if required. This falls under future decoupling activities.
+        #
+        # For now, skip specific platform apps that do not have any persistent
+        # storage requirements
+        if app_name in [constants.HELM_APP_CERT_MANAGER,
+                        constants.HELM_APP_OIDC_AUTH,
+                        constants.HELM_APP_NGINX_IC]:
+            return False
+
         check_rbd_provisioner_apps = [constants.HELM_APP_MONITOR]
         if app_name not in check_rbd_provisioner_apps:
             return True
@@ -1760,7 +1772,7 @@ class AppOperator(object):
                 old_app.name in [constants.HELM_APP_CERT_MANAGER,
                                  constants.HELM_APP_OIDC_AUTH,
                                  constants.HELM_APP_PLATFORM,
-                                 'nginx-ingress-controller']):
+                                 constants.HELM_APP_NGINX_IC]):
                 return True
             return False
 

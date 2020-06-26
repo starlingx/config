@@ -1422,6 +1422,7 @@ HELM_APP_PLATFORM = 'platform-integ-apps'
 HELM_APP_MONITOR = 'stx-monitor'
 HELM_APP_OIDC_AUTH = 'oidc-auth-apps'
 HELM_APP_CERT_MANAGER = 'cert-manager'
+HELM_APP_NGINX_IC = 'nginx-ingress-controller'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
