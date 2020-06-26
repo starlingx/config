@@ -9414,6 +9414,11 @@ class ConductorManager(service.PeriodicService):
         to_load = self.dbapi.load_get(upgrade.to_load)
         to_version = to_load.software_version
 
+        # Update the config target of the controllers. This prevents the audit
+        # from changing the upgrade state before we're ready.
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+
         self.dbapi.software_upgrade_update(
             upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING})
 
@@ -9432,6 +9437,10 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
+
+        hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        for host in hosts:
+            self._update_host_config_applied(context, host, config_uuid)
 
     def complete_upgrade(self, context, upgrade, state):
         """ Complete the upgrade"""
