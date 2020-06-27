@@ -968,6 +968,7 @@ def get_test_ethernet_port(**kw):
         'sriov_numvfs': kw.get('sriov_numvfs'),
         'sriov_vf_driver': kw.get('sriov_vf_driver'),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id'),
+        'sriov_vfs_pci_address': kw.get('sriov_vfs_pci_address'),
         'driver': kw.get('driver'),
         'numa_node': kw.get('numa_node', -1)
     }
