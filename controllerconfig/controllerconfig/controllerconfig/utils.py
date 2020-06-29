@@ -10,8 +10,6 @@ Utilities
 
 import glob
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import shutil
 import subprocess
 import time
@@ -407,36 +405,3 @@ def ip_version_to_string(ip_version):
         return "IPv6"
     else:
         return "IP"
-
-
-def is_subcloud():
-    conn = psycopg2.connect("dbname='sysinv' user='postgres'")
-    with conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * from i_system")
-            system = cur.fetchone()
-            return system['distributed_cloud_role'] == 'subcloud'
-
-
-def get_keystone_user_id(user_name):
-    """ Get the a keystone user id by name"""
-
-    conn = psycopg2.connect("dbname='keystone' user='postgres'")
-    with conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT user_id FROM local_user WHERE name=%s" %
-                        user_name)
-            user_id = cur.fetchone()
-            return user_id['user_id']
-
-
-def get_keystone_project_id(project_name):
-    """ Get the a keystone project id by name"""
-
-    conn = psycopg2.connect("dbname='keystone' user='postgres'")
-    with conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id FROM project WHERE name=%s" %
-                        project_name)
-            project_id = cur.fetchone()
-            return project_id['id']

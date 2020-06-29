@@ -11,6 +11,8 @@
 
 import keyring
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import subprocess
 import tempfile
 import yaml
@@ -267,3 +269,33 @@ def format_url_address(address):
             return str(address)
     except netaddr.AddrFormatError:
         return address
+
+
+def get_keystone_user_id(user_name):
+    """ Get the a keystone user id by name"""
+
+    conn = psycopg2.connect("dbname='keystone' user='postgres'")
+    with conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT user_id FROM local_user WHERE name='%s'" %
+                        user_name)
+            user_id = cur.fetchone()
+            if user_id is not None:
+                return user_id['user_id']
+            else:
+                return user_id
+
+
+def get_keystone_project_id(project_name):
+    """ Get the a keystone project id by name"""
+
+    conn = psycopg2.connect("dbname='keystone' user='postgres'")
+    with conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM project WHERE name='%s'" %
+                        project_name)
+            project_id = cur.fetchone()
+            if project_id is not None:
+                return project_id['id']
+            else:
+                return project_id
