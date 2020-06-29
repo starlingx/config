@@ -31,6 +31,8 @@ import collections
 import contextlib
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from OpenSSL import crypto
 import datetime
 import errno
 import functools
@@ -2219,8 +2221,68 @@ def extract_certs_from_pem(pem_contents):
                 "Failed to load pem x509 certificate"))
 
         certs.append(cert)
-        start = start + index + len(marker)
+        start = index + len(marker)
     return certs
+
+
+def is_ca_cert(cert):
+    """
+    Check if the certificate is a CA certficate
+
+    :param cert: the certificate to be checked
+    :return: True is the certificate is a CA certificate, otherwise
+             False
+    """
+    # extract "ca" value from cert extensions
+    is_ca = False
+    try:
+        basic_constraints = cert.extensions.get_extension_for_oid(
+            x509.ExtensionOID.BASIC_CONSTRAINTS)
+        value = getattr(basic_constraints, 'value', None)
+        if value:
+            is_ca = getattr(value, 'ca', False)
+    except x509.ExtensionNotFound:
+        LOG.debug("The cert doesn't have BASIC_CONSTRAINTS extension")
+        pass
+    return is_ca
+
+
+def get_cert_issuer_hash(cert):
+    """
+    Get the hash value of the cert's issuer DN
+
+    :param cert: the certificate to get issuer from
+    :return: The hash value of the cert's issuer DN
+    """
+    try:
+        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+        cert_c = crypto.load_certificate(crypto.FILETYPE_PEM, public_bytes)
+        hash_issuer = cert_c.get_issuer().hash()
+    except Exception:
+        LOG.exception()
+        raise exception.SysinvException(_(
+            "Failed to get certificate issuer hash."))
+
+    return hash_issuer
+
+
+def get_cert_subject_hash(cert):
+    """
+    Get the hash value of the cert's subject DN
+
+    :param cert: the certificate to get subject from
+    :return: The hash value of the cert's subject DN
+    """
+    try:
+        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+        cert_c = crypto.load_certificate(crypto.FILETYPE_PEM, public_bytes)
+        hash_subject = cert_c.get_subject().hash()
+    except Exception:
+        LOG.exception()
+        raise exception.SysinvException(_(
+            "Failed to get certificate subject hash."))
+
+    return hash_subject
 
 
 def format_image_filename(device_image):

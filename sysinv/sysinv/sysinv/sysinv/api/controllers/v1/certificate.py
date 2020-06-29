@@ -348,12 +348,43 @@ class CertificateController(rest.RestController):
             LOG.info(msg)
             return dict(success="", error=msg)
 
-        for cert in certs:
+        hash_issuers = []
+        for index, cert in enumerate(certs):
             msg = self._check_cert_validity(cert)
             if msg is not True:
                 return dict(success="", error=msg)
 
-            if mode == constants.CERT_MODE_OPENSTACK:
+            # validation checking for ssl, tpm_mode, docker_registry
+            # and openstack certficcates
+            if mode in [constants.CERT_MODE_SSL,
+                        constants.CERT_MODE_TPM,
+                        constants.CERT_MODE_DOCKER_REGISTRY,
+                        constants.CERT_MODE_OPENSTACK,
+                        ]:
+                try:
+                    hash_issuers.append(cutils.get_cert_issuer_hash(cert))
+                    if index == 0:
+                        if cutils.is_ca_cert(cert):
+                            msg = "The first cert in the file should not be " \
+                                  "a CA cert"
+                            return dict(success="", error=msg)
+                    else:
+                        if not cutils.is_ca_cert(cert):
+                            msg = "Number %s cert in the file should be a " \
+                                  "CA cert" % (index + 1)
+                            return dict(success="", error=msg)
+                        hash_subject = cutils.get_cert_subject_hash(cert)
+                        if hash_subject != hash_issuers[index - 1]:
+                            msg = "Number %s cert in the file is not " \
+                                  "signing cert of the preceding one. Check " \
+                                  "certs order in the file." % (index + 1)
+                            return dict(success="", error=msg)
+                except Exception as e:
+                    msg = "No certificates have been added, exception " \
+                          "occured on cert %s: %s" % (index, e)
+                    return dict(success="", error=msg)
+
+            if mode == constants.CERT_MODE_OPENSTACK and index == 0:
                 domain, msg = _check_endpoint_domain_exists()
                 if domain:
                     msg = _check_cert_dns_name(cert, domain)
@@ -412,6 +443,16 @@ class CertificateController(rest.RestController):
         # information returned from conductor manager.
         certificate_dicts = []
         for inv_cert in inv_certs:
+            # for ssl, tmp_mode, docker_registry and openstack certs, if the
+            # cert is ICA signed cert (ie, the pem_contents contains
+            # intermediate CA certs), skip these intermediate CA certs.
+            if mode in [constants.CERT_MODE_SSL,
+                        constants.CERT_MODE_TPM,
+                        constants.CERT_MODE_DOCKER_REGISTRY,
+                        constants.CERT_MODE_OPENSTACK] \
+                    and inv_cert.get('is_ca', None):
+                continue
+
             values = {
                 'certtype': mode,
                 'signature': inv_cert.get('signature'),

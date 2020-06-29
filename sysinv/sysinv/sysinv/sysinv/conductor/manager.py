@@ -10297,7 +10297,7 @@ class ConductorManager(service.PeriodicService):
         :param cert_format: serialization.PrivateFormat
         :param passphrase: passphrase for PEM file
 
-        :returns: A list of {cert, private_bytes, public_bytes, signature}
+        :returns: A list of {cert, public_bytes, signature}, and private key.
         """
 
         if passphrase:
@@ -10339,7 +10339,7 @@ class ConductorManager(service.PeriodicService):
                                                   % e))
 
         certs = cutils.extract_certs_from_pem(temp_pem_contents)
-        key_list = []
+        cert_list = []
         for cert in certs:
             # format=serialization.PrivateFormat.TraditionalOpenSSL,
             try:
@@ -10350,40 +10350,49 @@ class ConductorManager(service.PeriodicService):
                                                   "bytes from PEM data: %s"
                                                   % e))
 
+            # check if the cert is a CA cert
+            is_ca = cutils.is_ca_cert(cert)
+
             signature = mode + '_' + str(cert.serial_number)
             if len(signature) > 255:
                 LOG.info("Truncating certificate serial no %s" % signature)
                 signature = signature[:255]
             LOG.info("config_certificate signature=%s" % signature)
 
-            key_list.append({'cert': cert,
-                             'private_bytes': private_bytes,
+            cert_list.append({'cert': cert,
+                             'is_ca': is_ca,
                              'public_bytes': public_bytes,
                              'signature': signature})
 
-        return key_list
+        return cert_list, private_bytes
 
     @staticmethod
-    def _get_public_bytes_one(key_list):
-        """Get exactly one public bytes entry from key list"""
+    def _get_public_bytes(cert_list):
+        """Get all public bytes from cert list"""
 
-        if len(key_list) != 1:
-            msg = "There should be exactly one certificate " \
-                  "(ie, public_bytes) in the pem contents."
+        if len(cert_list) < 1:
+            msg = "There should be at least one certificate " \
+                  "in the pem contents."
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
-        return key_list[0].get('public_bytes')
+
+        # Concatenate all the public bytes together, as the pem contents
+        # may contain intermediate CA certs in it.
+        public_bytes = ''
+        for cert in cert_list:
+            public_bytes += cert.get('public_bytes', '')
+
+        return public_bytes
 
     @staticmethod
-    def _get_private_bytes_one(key_list):
-        """Get exactly one private bytes entry from key list"""
+    def _get_private_bytes_one(private_key):
+        """Get exactly one private bytes entry from private key"""
 
-        if len(key_list) != 1:
-            msg = "There should be exactly one private key " \
-                  "(ie, private_bytes) in the pem contents."
+        if not private_key:
+            msg = "No private key found in the pem contents."
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
-        return key_list[0].get('private_bytes')
+        return private_key
 
     @staticmethod
     def _consolidate_cert_files():
@@ -10472,7 +10481,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("config_certificate mode=%s" % mode)
 
-        key_list = \
+        cert_list, private_key = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10485,8 +10494,8 @@ class ConductorManager(service.PeriodicService):
             pass
 
         if mode == constants.CERT_MODE_TPM:
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
             self._perform_config_certificate_tpm_mode(
                 context, tpm, private_bytes, public_bytes)
 
@@ -10500,8 +10509,8 @@ class ConductorManager(service.PeriodicService):
 
         elif mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
             file_content = private_bytes + public_bytes
             config_dict = {
                 'personalities': personalities,
@@ -10543,23 +10552,23 @@ class ConductorManager(service.PeriodicService):
             # The list of the actual CA certs as files in FS
             certs_file = os.listdir(constants.SSL_CERT_CA_LIST_SHARED_DIR)
 
-            # Remove these already installed from the key list
-            key_list_c = key_list[:]
-            for key in key_list_c:
-                if key.get('signature') in certs_inv \
-                        and key.get('signature') in certs_file:
-                    key_list.remove(key)
+            # Remove these already installed from the cert list
+            cert_list_c = cert_list[:]
+            for cert in cert_list_c:
+                if cert.get('signature') in certs_inv \
+                        and cert.get('signature') in certs_file:
+                    cert_list.remove(cert)
 
             # Save certs in files and cat them into ca-cert.pem to apply to the
             # system.
-            if key_list:
+            if cert_list:
                 # Save each cert in a separate file with signature as its name
                 try:
-                    for key in key_list:
-                        file_content = key.get('public_bytes')
+                    for cert in cert_list:
+                        file_content = cert.get('public_bytes')
                         file_name = \
                             os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
-                                         key.get('signature'))
+                                         cert.get('signature'))
                         with os.fdopen(
                                 os.open(file_name,
                                         os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
@@ -10569,7 +10578,7 @@ class ConductorManager(service.PeriodicService):
                 except Exception as e:
                     msg = "Failed to save cert file: %s" % str(e)
                     LOG.warn(msg)
-                    raise exception.SysinvException(_(msg))
+                    raise exception.SysinvException(msg)
 
                 # consolidate the CA cert files into ca-cert.pem to update
                 # system CA certs.
@@ -10590,11 +10599,12 @@ class ConductorManager(service.PeriodicService):
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
-            key_list_pkcs1 = \
+            _, private_key_pkcs1 = \
                 self._extract_keys_from_pem(mode, pem_contents,
                                             serialization.PrivateFormat
                                             .TraditionalOpenSSL, passphrase)
-            pkcs1_private_bytes = self._get_private_bytes_one(key_list_pkcs1)
+            pkcs1_private_bytes = \
+                self._get_private_bytes_one(private_key_pkcs1)
 
             # install certificate, key, and pkcs1 key to controllers
             config_uuid = self._config_update_hosts(context, personalities)
@@ -10602,8 +10612,8 @@ class ConductorManager(service.PeriodicService):
             cert_path = constants.DOCKER_REGISTRY_CERT_FILE
             pkcs1_key_path = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
 
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
 
             config_dict = {
                 'personalities': personalities,
@@ -10663,8 +10673,8 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context, personalities)
             key_path = constants.OPENSTACK_CERT_KEY_FILE
             cert_path = constants.OPENSTACK_CERT_FILE
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
 
             config_dict = {
                 'personalities': personalities,
@@ -10702,9 +10712,7 @@ class ConductorManager(service.PeriodicService):
 
         elif mode == constants.CERT_MODE_OPENSTACK_CA:
             config_uuid = self._config_update_hosts(context, personalities)
-            file_content = ''
-            for key in key_list:
-                file_content += key.get('public_bytes', '')
+            file_content = self._get_public_bytes(cert_list)
             config_dict = {
                 'personalities': personalities,
                 'file_names': [constants.OPENSTACK_CERT_CA_FILE],
@@ -10735,10 +10743,11 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(msg))
 
         inv_certs = []
-        for key in key_list:
-            inv_cert = {'signature': key.get('signature'),
-                        'not_valid_before': key.get('cert').not_valid_before,
-                        'not_valid_after': key.get('cert').not_valid_after}
+        for cert in cert_list:
+            inv_cert = {'signature': cert.get('signature'),
+                        'is_ca': cert.get('is_ca'),
+                        'not_valid_before': cert.get('cert').not_valid_before,
+                        'not_valid_after': cert.get('cert').not_valid_after}
             inv_certs.append(inv_cert)
 
         return inv_certs
@@ -10761,7 +10770,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("_config_selfsigned_certificate mode=%s file=%s" % (mode, certificate_file))
 
-        key_list = \
+        cert_list, private_key = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10769,8 +10778,8 @@ class ConductorManager(service.PeriodicService):
         personalities = [constants.CONTROLLER]
 
         config_uuid = self._config_update_hosts(context, personalities)
-        private_bytes = self._get_private_bytes_one(key_list)
-        public_bytes = self._get_public_bytes_one(key_list)
+        private_bytes = self._get_private_bytes_one(private_key)
+        public_bytes = self._get_public_bytes(cert_list)
         file_content = private_bytes + public_bytes
         config_dict = {
             'personalities': personalities,
@@ -10788,7 +10797,7 @@ class ConductorManager(service.PeriodicService):
                                'wb') as f:
             f.write(file_content)
 
-        return key_list[0].get('signature')
+        return cert_list[0].get('signature')
 
     def delete_certificate(self, context, mode, signature):
         """Delete a certificate by its mode and signature.
