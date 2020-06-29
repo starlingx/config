@@ -377,9 +377,9 @@ class KubernetesPuppet(base.BasePuppet):
              'platform::kubernetes::params::k8s_nodeset':
              "\"%s\"" % k8s_nodeset,
              'platform::kubernetes::params::k8s_platform_cpuset':
-             k8s_platform_cpuset,
+             "\"%s\"" % k8s_platform_cpuset,
              'platform::kubernetes::params::k8s_all_reserved_cpuset':
-             k8s_all_reserved_cpuset,
+             "\"%s\"" % k8s_all_reserved_cpuset,
              'platform::kubernetes::params::k8s_reserved_mem':
              k8s_reserved_mem,
              })
