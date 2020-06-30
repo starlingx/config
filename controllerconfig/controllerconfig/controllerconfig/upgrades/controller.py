@@ -30,7 +30,7 @@ from sysinv.common import constants as sysinv_constants
 # have been applied, so only the static entries from tsconfig can be used
 # (the platform.conf file will not have been updated with dynamic values).
 from tsconfig.tsconfig import SW_VERSION
-# from tsconfig.tsconfig import SW_VERSION_20_06
+from tsconfig.tsconfig import SW_VERSION_20_06
 from tsconfig.tsconfig import PLATFORM_PATH
 from tsconfig.tsconfig import KEYRING_PATH
 from tsconfig.tsconfig import PLATFORM_CONF_FILE
@@ -680,7 +680,7 @@ def update_platform_conf_file(uuid):
             fd.write("UUID=" + uuid + "\n")
 
 
-def migrate_hiera_data(from_release, to_release):
+def migrate_hiera_data(from_release, to_release, role=None):
     """ Migrate hiera data. """
 
     LOG.info("Migrating hiera data")
@@ -709,26 +709,26 @@ def migrate_hiera_data(from_release, to_release):
     })
     # Add dcmanager and sysinv user id as well as service project id to
     # the static.yaml on subclouds
-    # comment out the following untested code for now
-    # if to_release == SW_VERSION_20_06 and cutils.is_subcloud():
-    #    dm_user_id = cutils.get_keystone_user_id('dcmanager')
-    #    sysinv_user_id = cutils.get_keystone_user_id('sysinv')
-    #    service_project_id = cutils.get_keystone_project_id('services')
-    #    if dm_user_id:
-    #        static_config.update({
-    #            'platform::dcmanager::bootstrap::dc_dcmanager_user_id':
-    #                dm_user_id
-    #        })
-    #    if sysinv_user_id:
-    #        static_config.update({
-    #            'platform::sysinv::bootstrap::dc_sysinv_user_id':
-    #                sysinv_user_id
-    #        })
-    #    if service_project_id:
-    #        static_config.update({
-    #            'openstack::keystone::bootstrap::dc_services_project_id':
-    #                service_project_id
-    #        })
+    if (to_release == SW_VERSION_20_06 and
+            role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+        dm_user_id = utils.get_keystone_user_id('dcmanager')
+        sysinv_user_id = utils.get_keystone_user_id('sysinv')
+        service_project_id = utils.get_keystone_project_id('services')
+        if dm_user_id:
+            static_config.update({
+                'platform::dcmanager::bootstrap::dc_dcmanager_user_id':
+                    dm_user_id
+            })
+        if sysinv_user_id:
+            static_config.update({
+                'platform::sysinv::bootstrap::dc_sysinv_user_id':
+                    sysinv_user_id
+            })
+        if service_project_id:
+            static_config.update({
+                'openstack::keystone::bootstrap::dc_services_project_id':
+                    service_project_id
+            })
 
     with open(static_file, 'w') as yaml_file:
         yaml.dump(static_config, yaml_file, default_flow_style=False)
@@ -835,7 +835,7 @@ def upgrade_controller(from_release, to_release):
         raise
 
     # Migrate hiera data
-    migrate_hiera_data(from_release, to_release)
+    migrate_hiera_data(from_release, to_release, role=role)
     utils.add_upgrade_entries_to_hiera_data(from_release)
 
     # Get database credentials
@@ -1244,8 +1244,9 @@ def upgrade_controller_simplex(backup_file):
     # Simplex configurations can not have shared services
     shared_services = []
 
+    role = get_system_role()
     # Migrate hiera data
-    migrate_hiera_data(from_release, to_release)
+    migrate_hiera_data(from_release, to_release, role=role)
     db_credentials = get_db_credentials(shared_services, from_release)
 
     extract_postgres_data(archive)
