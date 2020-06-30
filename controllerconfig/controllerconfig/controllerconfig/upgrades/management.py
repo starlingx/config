@@ -27,11 +27,12 @@ LOG = log.getLogger(__name__)
 def get_upgrade_databases(system_role, shared_services):
 
     UPGRADE_DATABASES = ('postgres', 'template1', 'sysinv',
-                         'barbican')
+                         'barbican', 'fm')
 
     UPGRADE_DATABASE_SKIP_TABLES = {'postgres': (), 'template1': (),
-                                    'sysinv': ('i_alarm',),
-                                    'barbican': ()}
+                                    'sysinv': (),
+                                    'barbican': (),
+                                    'fm': ('alarm',)}
 
     if system_role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
         UPGRADE_DATABASES += ('dcmanager', 'dcorch',)
