@@ -737,8 +737,7 @@ class AppOperator(object):
 
         start = time.time()
         try:
-            with self._lock:
-                self._docker._retrieve_specified_registries()
+            registries_info = self._docker.retrieve_specified_registries()
         except Exception as e:
             raise exception.KubeAppApplyFailure(
                 name=app.name,
@@ -748,7 +747,8 @@ class AppOperator(object):
             pool = greenpool.GreenPool(size=threads)
             for tag, success in pool.imap(
                     functools.partial(self._docker.download_an_image,
-                                      app.name),
+                                      app.name,
+                                      registries_info),
                     images_to_download):
                 if success:
                     continue
@@ -761,8 +761,6 @@ class AppOperator(object):
                     LOG.info("Failed to download image: %s", tag)
                     break
             else:
-                with self._lock:
-                    self._docker._reset_registries_info()
                 elapsed = time.time() - start
                 LOG.info("All docker images for application %s were successfully "
                          "downloaded in %d seconds", app.name, elapsed)
@@ -2737,8 +2735,6 @@ class DockerHelper(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
-        self.registries_info = \
-            copy.deepcopy(constants.DEFAULT_REGISTRIES_INFO)
 
     def _parse_barbican_secret(self, secret_ref):
         """Get the registry credentials from the
@@ -2769,7 +2765,10 @@ class DockerHelper(object):
             raise exception.SysinvException(_(
                 "Unable to parse the secret payload"))
 
-    def _retrieve_specified_registries(self):
+    def retrieve_specified_registries(self):
+        registries_info = \
+            copy.deepcopy(constants.DEFAULT_REGISTRIES_INFO)
+
         registries_url = {}
         registries_type = {}
         registries_auth = {}
@@ -2789,14 +2788,14 @@ class DockerHelper(object):
 
         if not registries_url:
             # return directly if no user specified registries
-            return
+            return registries_info
 
         for section, url in registries_url.items():
             try:
-                self.registries_info[section]['registry_replaced'] = str(url)
+                registries_info[section]['registry_replaced'] = str(url)
 
                 if section in registries_overrides:
-                    self.registries_info[section]['registry_default'] = \
+                    registries_info[section]['registry_default'] = \
                         registries_overrides[section]
 
                 if section in registries_auth:
@@ -2810,7 +2809,7 @@ class DockerHelper(object):
                                 registries_type[section] == constants.DOCKER_REGISTRY_TYPE_AWS_ECR):
                             auth = cutils.get_aws_ecr_registry_credentials(
                                 self._dbapi, url, auth['username'], auth['password'])
-                        self.registries_info[section]['registry_auth'] = auth
+                        registries_info[section]['registry_auth'] = auth
             except exception.SysinvException:
                 raise exception.SysinvException(_(
                     "Unable to get the credentials to access "
@@ -2819,26 +2818,20 @@ class DockerHelper(object):
                 # Unexpected
                 pass
 
-    def _reset_registries_info(self):
-        # Set cached registries information
-        # back to default
-        if self.registries_info != \
-                constants.DEFAULT_REGISTRIES_INFO:
-            self.registries_info = copy.deepcopy(
-                constants.DEFAULT_REGISTRIES_INFO)
+        return registries_info
 
-    def _get_img_tag_with_registry(self, pub_img_tag):
+    def _get_img_tag_with_registry(self, pub_img_tag, registries_info):
         """Regenerate public image tag with user specified registries
 
            An example of passed public image reference:
            docker.io/starlingx/stx-keystone:latest
         """
 
-        if self.registries_info == constants.DEFAULT_REGISTRIES_INFO:
+        if registries_info == constants.DEFAULT_REGISTRIES_INFO:
             # return if no user specified registries
             return pub_img_tag, None
 
-        for registry_info in self.registries_info.values():
+        for registry_info in registries_info.values():
             registry_auth = registry_info['registry_auth']
 
             if pub_img_tag.startswith(registry_info['registry_default']):
@@ -2860,7 +2853,7 @@ class DockerHelper(object):
         # must be unauthenticated in this case.)
         return pub_img_tag, None
 
-    def download_an_image(self, app_name, img_tag):
+    def download_an_image(self, app_name, registries_info, img_tag):
 
         rc = True
 
@@ -2885,7 +2878,8 @@ class DockerHelper(object):
                              % img_tag)
                     pub_img_tag = img_tag.replace(
                         constants.DOCKER_REGISTRY_SERVER + "/", "")
-                    target_img_tag, registry_auth = self._get_img_tag_with_registry(pub_img_tag)
+                    target_img_tag, registry_auth = \
+                        self._get_img_tag_with_registry(pub_img_tag, registries_info)
                     client.pull(target_img_tag, auth_config=registry_auth)
                 except Exception as e:
                     rc = False
@@ -2921,7 +2915,8 @@ class DockerHelper(object):
             try:
                 LOG.info("Image %s download started from public/private registry" % img_tag)
                 client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
-                target_img_tag, registry_auth = self._get_img_tag_with_registry(img_tag)
+                target_img_tag, registry_auth = \
+                    self._get_img_tag_with_registry(img_tag, registries_info)
                 client.pull(target_img_tag, auth_config=registry_auth)
                 client.tag(target_img_tag, img_tag)
             except Exception as e:
