@@ -43,9 +43,10 @@ from controllerconfig.common import constants
 from controllerconfig import utils as cutils
 from controllerconfig.upgrades import utils
 
-from oslo_log import log
+from controllerconfig.common import oslolog as log
+from oslo_log import log as logging
 
-LOG = log.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 
 POSTGRES_MOUNT_PATH = '/mnt/postgresql'
 POSTGRES_DUMP_MOUNT_PATH = '/mnt/db_dump'
@@ -1041,6 +1042,8 @@ def main():
             exit(1)
         arg += 1
 
+    log.configure()
+
     if not from_release or not to_release:
         print("Both the FROM_RELEASE and TO_RELEASE must be specified")
         exit(1)
@@ -1334,6 +1337,8 @@ def simplex_main():
                   sys.argv[arg])
             exit(1)
         arg += 1
+
+    log.configure()
 
     if not backup_file:
         print("The BACKUP_FILE must be specified")

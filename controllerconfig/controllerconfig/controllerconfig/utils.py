@@ -25,7 +25,6 @@ from controllerconfig.common import constants
 from controllerconfig.common.exceptions import ValidateFail
 from oslo_log import log
 
-
 LOG = log.getLogger(__name__)
 
 DEVNULL = open(os.devnull, 'w')
