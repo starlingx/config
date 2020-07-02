@@ -9511,7 +9511,7 @@ class ConductorManager(service.PeriodicService):
             # Complete the upgrade
             LOG.info("Completing upgrade from release: %s to release: %s" %
                      (from_version, to_version))
-            upgrades_management.complete_upgrade(from_version, to_version)
+            upgrades_management.complete_upgrade(from_version, to_version, upgrade)
             LOG.info("Finished completing upgrade")
 
         # Delete upgrade record
