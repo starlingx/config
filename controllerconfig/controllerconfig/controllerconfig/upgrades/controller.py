@@ -76,6 +76,9 @@ def get_db_credentials(shared_services, from_release, role=None):
          'sysinv': {'hiera_user_key': 'sysinv::db::postgresql::user',
                     'keyring_password_key': 'sysinv',
                     },
+         'fm': {'hiera_user_key': 'fm::db::postgresql::user',
+                'keyring_password_key': 'fm',
+                },
          }
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
@@ -89,7 +92,11 @@ def get_db_credentials(shared_services, from_release, role=None):
         db_credential_keys.update(
             {'dcmanager': {'hiera_user_key': 'dcmanager::db::postgresql::user',
                            'keyring_password_key': 'dcmanager',
-                           }})
+                           },
+             'dcorch': {'hiera_user_key': 'dcorch::db::postgresql::user',
+                        'keyring_password_key': 'dcorch',
+                        },
+             })
 
     # Get the hiera data for the from release
     hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
@@ -575,6 +582,17 @@ def migrate_databases(from_release, shared_services, db_credentials,
          '--db-url %s' % get_connection_string(db_credentials, 'barbican')),
     ]
 
+    # Migrate fm
+    # append the migrate command for dcmanager db
+    with open("/etc/fm/fm.conf", "w") as f:
+        f.write("[database]\n")
+        f.write(get_connection_string(db_credentials, 'fm'))
+
+    migrate_commands += [
+        ('fm',
+         'fm-dbsync')
+    ]
+
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
         # To avoid a deadlock during keystone contract we will use offline
         # migration for simplex upgrades. Other upgrades will have to use
@@ -608,7 +626,6 @@ def migrate_databases(from_release, shared_services, db_credentials,
 
     if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
         # append the migrate command for dcmanager db
-        # todo(jkung): append the migrate command for dcorch
         with open("/etc/dcmanager/dcmanager.conf", "w") as f:
             f.write("[database]\n")
             f.write(get_connection_string(db_credentials, 'dcmanager'))
@@ -616,6 +633,16 @@ def migrate_databases(from_release, shared_services, db_credentials,
         migrate_commands += [
             ('dcmanager',
              'dcmanager-manage db_sync')
+        ]
+
+        # append the migrate command for dcorch db
+        with open("/etc/dcorch/dcorch.conf", "w") as f:
+            f.write("[database]\n")
+            f.write(get_connection_string(db_credentials, 'dcorch'))
+
+        migrate_commands += [
+            ('dcorch',
+             'dcorch-manage db_sync')
         ]
 
     # Execute migrate commands
