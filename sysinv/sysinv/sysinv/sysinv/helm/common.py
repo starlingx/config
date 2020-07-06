@@ -44,6 +44,7 @@ HELM_NS_HELM_TOOLKIT = 'helm-toolkit'
 HELM_NS_MONITOR = 'monitor'
 HELM_NS_RBD_PROVISIONER = HELM_NS_KUBE_SYSTEM
 HELM_NS_CERT_MANAGER = 'cert-manager'
+HELM_NS_VAULT = 'vault'
 
 # Services
 # Matches configassistant.py value => Should change to STARLINGX
