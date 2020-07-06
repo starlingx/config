@@ -21,11 +21,20 @@ function LOG {
 LOG "Waiting for registry.local to resolve"
 while true
 do
-    nslookup registry.local &> /dev/null
+    # This will ask for both A and AAAA records to handle IPv4 and IPv6.
+    # We don't want to do an ANY request because some DNS servers reject
+    # them and they can return way more data than we actually want.
+    ADDR=`dig +short registry.local A registry.local AAAA`
     if [ $? -eq 0 ]
     then
-        LOG "registry.local resolved, continuing with docker login"
-        break
+        # We got a response back from the server, but we need to check
+        # if we got an address or not.  If there is no address, ADDR will
+        # be an empty string.
+        if [ -n "$ADDR" ]
+        then
+            echo LOG "registry.local resolved, continuing with docker login"
+            break
+        fi
     fi
     sleep 1
 done
